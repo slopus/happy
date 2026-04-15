@@ -8,11 +8,11 @@ export function hackMode<T extends HackableMode>(mode: T): T {
     const normalizedName = mode.name.trim().toLowerCase();
     const normalizedKey = mode.key.trim().toLowerCase();
 
-    if (normalizedName === 'build, build' || (normalizedKey === 'build' && normalizedName === 'build')) {
-        return { ...mode, name: 'Build' };
+    if (normalizedName === 'build, build') {
+        return { ...mode, name: 'build' };
     }
-    if (normalizedName === 'plan/plan' || (normalizedKey === 'plan' && normalizedName === 'plan')) {
-        return { ...mode, name: 'Plan' };
+    if (normalizedName === 'plan/plan') {
+        return { ...mode, name: 'plan' };
     }
     return mode;
 }

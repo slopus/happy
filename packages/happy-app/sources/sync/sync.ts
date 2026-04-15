@@ -11,17 +11,27 @@ import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
-import { registerPushToken } from './apiPush';
+import { syncCurrentPushToken } from './pushRegistration';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
-import { initializeTracking, tracking } from '@/track';
+import {
+    initializeTracking,
+    trackGitHubConnected,
+    trackMessageSent,
+    tracking,
+    trackPaywallCancelled,
+    trackPaywallError,
+    trackPaywallPresented,
+    trackPaywallPurchased,
+    trackPaywallRestored,
+} from '@/track';
+import type { MessageSentSource } from '@/track';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
-import { trackPaywallPresented, trackPaywallPurchased, trackPaywallCancelled, trackPaywallRestored, trackPaywallError } from '@/track';
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
 import { log } from '@/log';
@@ -59,6 +69,11 @@ type V3PostSessionMessagesResponse = {
 type OutboxMessage = {
     localId: string;
     content: string;
+};
+
+type SendMessageOptions = {
+    displayText?: string;
+    source?: MessageSentSource;
 };
 
 class Sync {
@@ -438,7 +453,7 @@ class Sync {
         this.backgroundSendStartedAt = null;
     }
 
-    async sendMessage(sessionId: string, text: string, displayText?: string) {
+    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -455,6 +470,7 @@ class Sync {
         }
 
         const { permissionMode, model } = resolveMessageModeMeta(session);
+        const { displayText, source = 'chat' } = options ?? {};
 
         // Generate local ID
         const localId = randomUUID();
@@ -512,9 +528,18 @@ class Sync {
             localId,
             content: encryptedRawRecord
         });
+        trackMessageSent(source, session.metadata);
 
         this.getSendSync(sessionId).invalidate();
         this.maybeStartBackgroundSendWatchdog();
+    }
+
+    /** Server sent us settings — merge any pending local changes on top, then apply as one update. */
+    private applyServerSettings = (serverSettings: Settings, version: number) => {
+        const merged = Object.keys(this.pendingSettings).length > 0
+            ? applySettings(serverSettings, this.pendingSettings)
+            : serverSettings;
+        storage.getState().applySettings(merged, version);
     }
 
     applySettings = (delta: Partial<Settings>) => {
@@ -601,48 +626,50 @@ class Sync {
         }
     }
 
-    presentPaywall = async (): Promise<{ success: boolean; purchased?: boolean; error?: string }> => {
+    presentPaywall = async (flow?: string): Promise<{ success: boolean; purchased?: boolean; error?: string }> => {
         try {
             // Check if RevenueCat is initialized
             if (!this.revenueCatInitialized) {
                 const error = 'RevenueCat not initialized';
-                trackPaywallError(error);
+                trackPaywallError(error, flow);
                 return { success: false, error };
             }
 
             // Track paywall presentation
-            trackPaywallPresented();
+            trackPaywallPresented(flow);
 
-            // Present the paywall
-            const result = await RevenueCat.presentPaywall();
+            // Present the paywall (with flow custom variable if specified)
+            const result = await RevenueCat.presentPaywall(
+                flow ? { customVariables: { flow } } : undefined
+            );
 
             // Handle the result
             switch (result) {
                 case PaywallResult.PURCHASED:
-                    trackPaywallPurchased();
+                    trackPaywallPurchased(flow);
                     // Refresh customer info after purchase
                     await this.syncPurchases();
                     return { success: true, purchased: true };
                 case PaywallResult.RESTORED:
-                    trackPaywallRestored();
+                    trackPaywallRestored(flow);
                     // Refresh customer info after restore
                     await this.syncPurchases();
                     return { success: true, purchased: true };
                 case PaywallResult.CANCELLED:
-                    trackPaywallCancelled();
+                    trackPaywallCancelled(flow);
                     return { success: true, purchased: false };
                 case PaywallResult.NOT_PRESENTED:
-                    // Don't track error for NOT_PRESENTED as it's a platform limitation
+                    trackPaywallError('Paywall not presented', flow);
                     return { success: false, error: 'Paywall not available on this platform' };
                 case PaywallResult.ERROR:
                 default:
                     const errorMsg = 'Failed to present paywall';
-                    trackPaywallError(errorMsg);
+                    trackPaywallError(errorMsg, flow);
                     return { success: false, error: errorMsg };
             }
         } catch (error: any) {
             const errorMessage = error.message || 'Failed to present paywall';
-            trackPaywallError(errorMessage);
+            trackPaywallError(errorMessage, flow);
             return { success: false, error: errorMessage };
         }
     }
@@ -1282,6 +1309,8 @@ class Sync {
         if (Object.keys(this.pendingSettings).length > 0) {
 
             while (retryCount < maxRetries) {
+                // Snapshot what we're about to send so we can detect concurrent changes
+                const sentPending = { ...this.pendingSettings };
                 let version = storage.getState().settingsVersion;
                 let settings = applySettings(storage.getState().settings, this.pendingSettings);
                 const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
@@ -1304,8 +1333,16 @@ class Sync {
                     success: true
                 };
                 if (data.success) {
-                    this.pendingSettings = {};
-                    savePendingSettings({});
+                    // Only clear keys we actually sent — preserve any settings
+                    // added by applySettings() calls during the POST roundtrip
+                    const newPending: Partial<Settings> = {};
+                    for (const key of Object.keys(this.pendingSettings) as (keyof Settings)[]) {
+                        if (!(key in sentPending) || this.pendingSettings[key] !== sentPending[key]) {
+                            (newPending as any)[key] = this.pendingSettings[key];
+                        }
+                    }
+                    this.pendingSettings = newPending;
+                    savePendingSettings(this.pendingSettings);
                     break;
                 }
                 if (data.error === 'version-mismatch') {
@@ -1318,7 +1355,7 @@ class Sync {
                     const mergedSettings = applySettings(serverSettings, this.pendingSettings);
 
                     // Update local storage with merged result at server's version
-                    storage.getState().applySettings(mergedSettings, data.currentVersion);
+                    this.applyServerSettings(mergedSettings, data.currentVersion);
 
                     // Sync tracking state with merged settings
                     if (tracking) {
@@ -1373,8 +1410,8 @@ class Sync {
             version: data.settingsVersion
         }));
 
-        // Apply settings to storage
-        storage.getState().applySettings(parsedSettings, data.settingsVersion);
+        // Apply settings to storage, re-layering any pending local changes on top
+        this.applyServerSettings(parsedSettings, data.settingsVersion);
 
         // Sync PostHog opt-out state with settings
         if (tracking) {
@@ -1652,37 +1689,16 @@ class Sync {
 
     private registerPushToken = async () => {
         log.log('registerPushToken');
-        // Only register on mobile platforms
-        if (Platform.OS === 'web') {
-            return;
-        }
-
-        // Request permission
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        log.log('existingStatus: ' + JSON.stringify(existingStatus));
-
-        if (existingStatus !== 'granted') {
-            const { status } = await Notifications.requestPermissionsAsync();
-            finalStatus = status;
-        }
-        log.log('finalStatus: ' + JSON.stringify(finalStatus));
-
-        if (finalStatus !== 'granted') {
-            console.log('Failed to get push token for push notification!');
-            return;
-        }
-
-        // Get push token
-        const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
-
-        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-        log.log('tokenData: ' + JSON.stringify(tokenData));
-
-        // Register with server
         try {
-            await registerPushToken(this.credentials, tokenData.data);
-            log.log('Push token registered successfully');
+            const result = await syncCurrentPushToken(this.credentials);
+            log.log('Push token sync result: ' + JSON.stringify({
+                registered: result.registered,
+                hasToken: !!result.token,
+                permission: result.permission.status,
+            }));
+            if (!result.permission.granted) {
+                console.log('Failed to get push token for push notification!');
+            }
         } catch (error) {
             log.log('Failed to register push token: ' + JSON.stringify(error));
         }
@@ -1703,16 +1719,9 @@ class Sync {
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
             this.feedSync.invalidate();
-            const sessionsData = storage.getState().sessionsData;
-            if (sessionsData) {
-                for (const item of sessionsData) {
-                    if (typeof item !== 'string') {
-                        this.getMessagesSync(item.id).invalidate();
-                        // Also invalidate git status on reconnection
-                        gitStatusSync.invalidate(item.id);
-                    }
-                }
-            }
+            // Messages are fetched lazily per-session via onSessionVisible (called by SessionView
+            // when realtimeStatus changes). Session metadata + agentState (including permission
+            // requests) are already refreshed by sessionsSync.invalidate() above.
             for (const sync of this.sendSync.values()) {
                 sync.invalidate();
             }
@@ -1720,7 +1729,6 @@ class Sync {
     }
 
     private handleUpdate = async (update: unknown) => {
-        console.log('🔄 Sync: handleUpdate called with:', JSON.stringify(update).substring(0, 300));
         const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
         if (!validatedUpdate.success) {
             console.log('❌ Sync: Invalid update received:', validatedUpdate.error);
@@ -1801,7 +1809,6 @@ class Sync {
                     const currentLastSeq = this.sessionLastSeq.get(updateData.body.sid);
                     const incomingSeq = updateData.body.message.seq;
                     if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
-                        console.log('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
                         this.enqueueMessages(updateData.body.sid, [lastMessage]);
                         this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
                         let hasMutableTool = false;
@@ -1903,6 +1910,7 @@ class Sync {
         } else if (updateData.body.t === 'update-account') {
             const accountUpdate = updateData.body;
             const currentProfile = storage.getState().profile;
+            const hadGitHub = !!currentProfile.github?.login;
 
             // Build updated profile with new data
             const updatedProfile: Profile = {
@@ -1916,6 +1924,10 @@ class Sync {
 
             // Apply the updated profile to storage
             storage.getState().applyProfile(updatedProfile);
+
+            if (!hadGitHub && updatedProfile.github?.login) {
+                trackGitHubConnected();
+            }
 
             // Handle settings updates (new for profile sync)
             if (accountUpdate.settings?.value) {
@@ -1932,7 +1944,7 @@ class Sync {
                         );
                     }
 
-                    storage.getState().applySettings(parsedSettings, accountUpdate.settings.version);
+                    this.applyServerSettings(parsedSettings, accountUpdate.settings.version);
                     log.log(`📋 Settings synced from server (schema v${settingsSchemaVersion}, version ${accountUpdate.settings.version})`);
                 } catch (error) {
                     console.error('❌ Failed to process settings update:', error);
@@ -1991,6 +2003,16 @@ class Sync {
 
             // Update storage using applyMachines which rebuilds sessionListViewData
             storage.getState().applyMachines([updatedMachine]);
+        } else if (updateData.body.t === 'delete-machine') {
+            const machineId = updateData.body.machineId;
+            log.log(`🗑️ Delete machine update received for ${machineId}`);
+            if (!storage.getState().machines[machineId]) {
+                log.log(`Machine ${machineId} not in storage, skipping delete`);
+            } else {
+                storage.getState().deleteMachine(machineId);
+                this.encryption.removeMachineEncryption(machineId);
+                this.machineDataKeys.delete(machineId);
+            }
         } else if (updateData.body.t === 'relationship-updated') {
             log.log('👥 Received relationship-updated update');
             const relationshipUpdate = updateData.body;

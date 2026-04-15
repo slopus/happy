@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lab Rat Todo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hero-panel">
+      <p class="eyebrow">Lab Rat Project</p>
+      <h1>Todo board for reckless experiments.</h1>
+      <p class="hero-copy">
+        A tiny app for testing edits, prompts, screenshots, and provider behavior.
+      </p>
+      <div class="stats" aria-label="Todo statistics">
+        <article>
+          <span id="todo-count">0</span>
+          <p>Open items</p>
+        </article>
+        <article>
+          <span id="done-count">0</span>
+          <p>Done today</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="todo-panel">
+      <form id="todo-form" class="todo-form">
+        <label class="sr-only" for="todo-input">New todo</label>
+        <input id="todo-input" name="todo" type="text" maxlength="120" placeholder="Add a task for the lab rat" required>
+        <button type="submit">Add Task</button>
+      </form>
+
+      <div class="toolbar">
+        <div class="filters" role="tablist" aria-label="Todo filters">
+          <button class="filter active" data-filter="all" type="button">All</button>
+          <button class="filter" data-filter="open" type="button">Open</button>
+          <button class="filter" data-filter="done" type="button">Done</button>
+        </div>
+        <button id="clear-done" class="ghost-button" type="button">Clear Done</button>
+      </div>
+
+      <ul id="todo-list" class="todo-list" aria-live="polite"></ul>
+    </section>
+  </main>
+
+  <template id="todo-item-template">
+    <li class="todo-item">
+      <label class="todo-row">
+        <input class="todo-toggle" type="checkbox">
+        <span class="todo-text"></span>
+      </label>
+      <button class="delete-button" type="button" aria-label="Delete task">Delete</button>
+    </li>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>

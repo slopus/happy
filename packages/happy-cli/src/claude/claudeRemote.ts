@@ -2,8 +2,7 @@ import { EnhancedMode } from "./loop";
 import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import { mapToClaudeMode } from "./utils/permissionMode";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
-import { join, resolve } from 'node:path';
-import { projectPath } from "@/projectPath";
+import { join } from 'node:path';
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { logger } from "@/lib";
 import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
@@ -23,7 +22,9 @@ export async function claudeRemote(opts: {
     claudeArgs?: string[],
     allowedTools: string[],
     signal?: AbortSignal,
-    canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }) => Promise<PermissionResult>,
+    canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; toolUseID: string }) => Promise<PermissionResult>,
+    /** Called when the Query object is ready — allows permission handler to call setPermissionMode */
+    onQueryReady?: (query: { setPermissionMode: (mode: string) => Promise<void> }) => void,
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string,
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -39,7 +40,8 @@ export async function claudeRemote(opts: {
     onThinkingChange?: (thinking: boolean) => void,
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
-    onSessionReset?: () => void
+    onSessionReset?: () => void,
+    onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[] }) => void
 }) {
 
     // Check if session is valid
@@ -124,12 +126,8 @@ export async function claudeRemote(opts: {
         appendSystemPrompt: initial.mode.appendSystemPrompt ? initial.mode.appendSystemPrompt + '\n\n' + systemPrompt : systemPrompt,
         allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: initial.mode.disallowedTools,
-        canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal }) => opts.canCallTool(toolName, input, mode, options),
-        executable: opts.jsRuntime ?? 'node',
+        canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; toolUseID: string }) => opts.canCallTool(toolName, input, mode, options),
         abort: opts.signal,
-        pathToClaudeCodeExecutable: (() => {
-            return resolve(join(projectPath(), 'scripts', 'claude_remote_launcher.cjs'));
-        })(),
         settingsPath: opts.hookSettingsPath,
     }
 
@@ -149,6 +147,7 @@ export async function claudeRemote(opts: {
     let messages = new PushableAsyncIterable<SDKUserMessage>();
     messages.push({
         type: 'user',
+        parent_tool_use_id: null,
         message: {
             role: 'user',
             content: initial.message,
@@ -160,6 +159,13 @@ export async function claudeRemote(opts: {
         prompt: messages,
         options: sdkOptions,
     });
+
+    // Expose query control methods to permission handler
+    if (opts.onQueryReady) {
+        opts.onQueryReady({
+            setPermissionMode: (mode: string) => response.setPermissionMode(mode as any),
+        });
+    }
 
     updateThinking(true);
     try {
@@ -180,6 +186,16 @@ export async function claudeRemote(opts: {
 
                 // Session id is still in memory, wait until session file is written to disk
                 // Start a watcher for to detect the session id
+                // Emit SDK metadata (tools, slash commands) from init message
+                if (opts.onSDKMetadata) {
+                    opts.onSDKMetadata({
+                        tools: systemInit.tools,
+                        slashCommands: systemInit.slash_commands,
+                    });
+                }
+
+                // Session id is still in memory, wait until session file is written to disk
+                // Start a watcher for to detect the session id
                 if (systemInit.session_id) {
                     logger.debug(`[claudeRemote] Waiting for session file to be written to disk: ${systemInit.session_id}`);
                     const projectDir = getProjectPath(opts.path);
@@ -192,7 +208,7 @@ export async function claudeRemote(opts: {
             // Handle result messages
             if (message.type === 'result') {
                 updateThinking(false);
-                logger.debug('[claudeRemote] Result received, exiting claudeRemote');
+                logger.debug('[claudeRemote] Result received');
 
                 // Send completion messages
                 if (isCompactCommand) {
@@ -206,14 +222,19 @@ export async function claudeRemote(opts: {
                 // Send ready event
                 opts.onReady();
 
-                // Push next message
-                const next = await opts.nextMessage();
-                if (!next) {
+                // Wait for next user message without blocking the message loop.
+                // Background task messages (task_started, task_progress, task_notification)
+                // continue flowing through while we wait for user input.
+                opts.nextMessage().then((next) => {
+                    if (!next) {
+                        messages.end();
+                    } else {
+                        mode = next.mode;
+                        messages.push({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: next.message } });
+                    }
+                }).catch(() => {
                     messages.end();
-                    return;
-                }
-                mode = next.mode;
-                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                });
             }
 
             // Handle tool result

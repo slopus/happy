@@ -86,6 +86,15 @@ export const ru: TranslationStructure = {
         connectAccount: 'Подключить аккаунт',
         github: 'GitHub',
         machines: 'Машины',
+        showOfflineMachines: ({ count }: { count: number }) => {
+            const lastTwo = count % 100;
+            const lastOne = count % 10;
+            if (lastTwo >= 11 && lastTwo <= 14) return `Показать ${count} оффлайн-машин`;
+            if (lastOne === 1) return `Показать ${count} оффлайн-машину`;
+            if (lastOne >= 2 && lastOne <= 4) return `Показать ${count} оффлайн-машины`;
+            return `Показать ${count} оффлайн-машин`;
+        },
+        hideOfflineMachines: 'Скрыть оффлайн-машины',
         features: 'Функции',
         social: 'Социальное',
         account: 'Аккаунт',
@@ -116,9 +125,6 @@ export const ru: TranslationStructure = {
         exchangingTokens: 'Обмен токенов...',
         usage: 'Использование',
         usageSubtitle: 'Просмотр использования API и затрат',
-        profiles: 'Профили',
-        profilesSubtitle: 'Управление профилями переменных окружения для сессий',
-
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
@@ -187,9 +193,6 @@ export const ru: TranslationStructure = {
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
         hideInactiveSessions: 'Скрывать неактивные сессии',
         hideInactiveSessionsSubtitle: 'Показывать в списке только активные чаты',
-        enhancedSessionWizard: 'Улучшенный мастер сессий',
-        enhancedSessionWizardEnabled: 'Лаунчер с профилем активен',
-        enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',
     },
 
     errors: {
@@ -207,6 +210,9 @@ export const ru: TranslationStructure = {
         sessionNotFound: 'Сессия не найдена',
         voiceSessionFailed: 'Не удалось запустить голосовую сессию',
         voiceServiceUnavailable: 'Голосовой сервис временно недоступен',
+        voiceLimitReachedTitle: 'Лимит голоса достигнут',
+        voiceHardLimitReached: ({ hours }: { hours: number }) => `Вы использовали ${hours}+ часов голосового общения в этом месяце. Это максимально допустимый лимит. Вы можете настроить собственного агента ElevenLabs в настройках голоса, чтобы использовать свою квоту.`,
+        voiceConversationLimitReached: 'Вы достигли максимального количества голосовых разговоров в этом месяце. Возможно, в будущем мы добавим голосовое использование по запросу — пожалуйста, создайте заявку на github.com/nicepkg/happy/issues, если вы столкнулись с этим ограничением.',
         oauthInitializationFailed: 'Не удалось инициализировать процесс OAuth',
         tokenStorageFailed: 'Не удалось сохранить токены аутентификации',
         oauthStateMismatch: 'Ошибка проверки безопасности. Попробуйте снова',
@@ -240,35 +246,9 @@ export const ru: TranslationStructure = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
         title: 'Начать новую сессию',
-        noMachinesFound: 'Машины не найдены. Сначала запустите сессию Happy на вашем компьютере.',
-        allMachinesOffline: 'Все машины находятся offline',
-        machineDetails: 'Посмотреть детали машины →',
-        directoryDoesNotExist: 'Директория не найдена',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `Директория ${directory} не существует. Хотите создать её?`,
-        sessionStarted: 'Сессия запущена',
-        sessionStartedMessage: 'Сессия успешно запущена.',
-        sessionSpawningFailed: 'Ошибка создания сессии - ID сессии не получен.',
-        failedToStart: 'Не удалось запустить сессию. Убедитесь, что daemon запущен на целевой машине.',
-        sessionTimeout: 'Время запуска сессии истекло. Машина может работать медленно или daemon не отвечает.',
-        notConnectedToServer: 'Нет подключения к серверу. Проверьте интернет-соединение.',
-        startingSession: 'Запуск сессии...',
-        startNewSessionInFolder: 'Новая сессия здесь',
-        noMachineSelected: 'Пожалуйста, выберите машину для запуска сессии',
-        noPathSelected: 'Пожалуйста, выберите директорию для запуска сессии',
-        sessionType: {
-            title: 'Тип сессии',
-            simple: 'Простая',
-            worktree: 'Worktree',
-            comingSoon: 'Скоро будет доступно',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `Создание worktree '${name}'...`,
-            notGitRepo: 'Worktree требует наличия git репозитория',
-            failed: ({ error }: { error: string }) => `Не удалось создать worktree: ${error}`,
-            success: 'Worktree успешно создан',
-        }
+        machineOffline: 'Машина недоступна',
+        switchMachinesHint: '• Переключите машину, нажав на неё выше',
     },
 
     sessionHistory: {
@@ -310,8 +290,11 @@ export const ru: TranslationStructure = {
         happySessionId: 'ID сессии Happy',
         claudeCodeSessionId: 'ID сессии Claude Code',
         claudeCodeSessionIdCopied: 'ID сессии Claude Code скопирован в буфер обмена',
+        codexThreadId: 'ID треда Codex',
+        codexThreadIdCopied: 'ID треда Codex скопирован в буфер обмена',
         aiProvider: 'Поставщик ИИ',
         failedToCopyClaudeCodeSessionId: 'Не удалось скопировать ID сессии Claude Code',
+        failedToCopyCodexThreadId: 'Не удалось скопировать ID треда Codex',
         metadataCopied: 'Метаданные скопированы в буфер обмена',
         failedToCopyMetadata: 'Не удалось скопировать метаданные',
         failedToKillSession: 'Не удалось завершить сессию',
@@ -323,6 +306,14 @@ export const ru: TranslationStructure = {
         quickActions: 'Быстрые действия',
         viewMachine: 'Посмотреть машину',
         viewMachineSubtitle: 'Посмотреть детали машины и сессии',
+        resumeSession: 'Resume Session',
+        resumeSessionSubtitle: 'Resume this session on the same machine',
+        resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
+        resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
+        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
+        resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
+        resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
+        resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'Немедленно завершить сессию',
         archiveSessionSubtitle: 'Архивировать эту сессию и остановить её',
         metadata: 'Метаданные',
@@ -342,13 +333,17 @@ export const ru: TranslationStructure = {
         cliVersionOutdated: 'Требуется обновление CLI',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Установлена версия ${currentVersion}. Обновите до ${requiredVersion} или новее`,
-        updateCliInstructions: 'Пожалуйста, выполните npm install -g happy-coder@latest',
+        updateCliInstructions: 'Пожалуйста, выполните npm install -g happy@latest',
         deleteSession: 'Удалить сессию',
         deleteSessionSubtitle: 'Удалить эту сессию навсегда',
         deleteSessionConfirm: 'Удалить сессию навсегда?',
         deleteSessionWarning: 'Это действие нельзя отменить. Все сообщения и данные, связанные с этой сессией, будут удалены навсегда.',
         failedToDeleteSession: 'Не удалось удалить сессию',
         sessionDeleted: 'Сессия успешно удалена',
+        worktreeCleanupTitle: 'Удалить Worktree?',
+        worktreeCleanupMessage: 'В Worktree нет незафиксированных изменений. Хотите удалить файлы Worktree?',
+        worktreeCleanupDelete: 'Удалить Worktree',
+        worktreeCleanupKeep: 'Сохранить файлы',
     },
 
     components: {
@@ -393,6 +388,8 @@ export const ru: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Введите сообщение...',
+        inactiveArchived: 'Эта сессия неактивна.',
+        resumeFromTerminal: 'Чтобы возобновить её из терминала:',
     },
 
     commandPalette: {
@@ -405,6 +402,7 @@ export const ru: TranslationStructure = {
             default: 'По умолчанию',
             acceptEdits: 'Принимать правки',
             plan: 'Режим планирования',
+            dontAsk: 'Не спрашивать',
             bypassPermissions: 'YOLO режим',
             badgeAcceptAllEdits: 'Принимать все правки',
             badgeBypassAllPermissions: 'Обход всех разрешений',
@@ -414,10 +412,14 @@ export const ru: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            openclaw: 'OpenClaw',
         },
         model: {
             title: 'МОДЕЛЬ',
             configureInCli: 'Настройте модели в настройках CLI',
+        },
+        effort: {
+            title: 'УСИЛИЕ',
         },
         codexPermissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ CODEX',
@@ -442,12 +444,12 @@ export const ru: TranslationStructure = {
         geminiPermissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
             default: 'По умолчанию',
-            readOnly: 'Только чтение',
-            safeYolo: 'Безопасный YOLO',
+            autoEdit: 'Авто-редактирование',
             yolo: 'YOLO',
-            badgeReadOnly: 'Только чтение',
-            badgeSafeYolo: 'Безопасный YOLO',
+            plan: 'Планирование',
+            badgeAutoEdit: 'Авто-редактирование',
             badgeYolo: 'YOLO',
+            badgePlan: 'Планирование',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `Осталось ${percent}%`,
@@ -468,6 +470,8 @@ export const ru: TranslationStructure = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'Показать архив',
+        hideArchived: 'Скрыть архив',
     },
 
     toolView: {
@@ -563,6 +567,7 @@ export const ru: TranslationStructure = {
         file: 'Файл',
         fileEmpty: 'Файл пустой',
         noChanges: 'Нет изменений для отображения',
+        deleted: 'Удалён',
     },
 
     settingsVoice: {
@@ -576,7 +581,25 @@ export const ru: TranslationStructure = {
             title: 'Языки',
             footer: ({ count }: { count: number }) => `Доступно ${count} ${plural({ count, one: 'язык', few: 'языка', many: 'языков' })}`,
             autoDetect: 'Автоопределение',
-        }
+        },
+        // Bring your own agent
+        byoTitle: 'Используйте своего агента',
+        byoDescription: 'Используйте собственного агента ElevenLabs вместо стандартного Happy. Подписка не требуется — подключайтесь напрямую через свой аккаунт ElevenLabs. Ваш агент должен определить два клиентских инструмента: messageClaudeCode (отправляет текст агенту кодирования) и processPermissionRequest (разрешает или запрещает использование инструментов). Контекст сессии передаётся через динамическую переменную {{initialConversationContext}}.',
+        customAgentId: 'ElevenLabs Agent ID',
+        customAgentIdNotSet: 'Не настроено',
+        customAgentIdDescription: 'Введите ваш ElevenLabs Agent ID. Оставьте пустым, чтобы использовать стандартный Happy.',
+        customAgentIdPlaceholder: 'e.g. abc123def456',
+        bypassToken: 'Прямое подключение',
+        bypassTokenSubtitle: 'Пропустить сервер Happy, подключиться напрямую к ElevenLabs',
+        promptGuideTitle: 'Руководство по промптам агента',
+        promptGuideDescription: 'Вашему агенту ElevenLabs необходимы:\n\n• Инструмент: messageClaudeCode — параметр: message (string). Отправляет сообщение в активную сессию кодирования.\n• Инструмент: processPermissionRequest — параметр: decision ("allow" или "deny"). Одобряет или отклоняет ожидающее разрешение на использование инструмента.\n• Динамическая переменная: {{initialConversationContext}} — получает историю и контекст сессии при запуске.\n\nАгент выступает голосовым мостом между пользователем и агентами кодирования. Он должен быть кратким, отвечать только при обращении и сообщать, когда агент кодирования завершает работу.',
+        usageTitle: 'Использование (последние 30 дней)',
+        usageFooter: 'Время голосового общения за последние 30 дней. Бесплатный тариф: 20 мин. С подпиской: 5 часов. Макс. 100 разговоров в месяц.',
+        usageLabel: 'Голосовое время',
+        conversationsLabel: 'Разговоры',
+        usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} использовано из ${limit}`,
+        supportTitle: 'Улучшить голос',
+        supportSubtitle: 'Больше голосового времени и поддержка разработки',
     },
 
     settingsAccount: {
@@ -716,7 +739,7 @@ export const ru: TranslationStructure = {
 
     machine: {
         offlineUnableToSpawn: 'Запуск отключен: машина offline',
-        offlineHelp: '• Убедитесь, что компьютер online\n• Выполните `happy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g happy-coder@latest`',
+        offlineHelp: '• Убедитесь, что компьютер online\n• Выполните `happy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g happy@latest`',
         launchNewSessionInDirectory: 'Запустить новую сессию в папке',
         daemon: 'Daemon',
         status: 'Статус',
@@ -737,8 +760,18 @@ export const ru: TranslationStructure = {
         lastSeen: 'Последняя активность',
         never: 'Никогда',
         metadataVersion: 'Версия метаданных',
+        cliAvailability: 'Доступность CLI',
+        cliInstalled: 'Установлен',
+        cliNotFound: 'Не найден',
+        lastDetected: 'Последнее обнаружение',
         untitledSession: 'Безымянная сессия',
         back: 'Назад',
+        dangerZone: 'Опасная зона',
+        delete: 'Удалить машину',
+        deleteFooter: 'Удаляет машину из вашего аккаунта. История сессий сохраняется, но вы больше не сможете запускать новые сессии на ней.',
+        deleteConfirmTitle: 'Удалить эту машину?',
+        deleteConfirmMessage: 'Машина будет удалена из вашего аккаунта. История сессий сохраняется, но вы больше не сможете запускать новые сессии, пока не подключите демон заново.',
+        deleteFailed: 'Не удалось удалить машину.',
     },
 
     message: {
@@ -760,6 +793,7 @@ export const ru: TranslationStructure = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: 'Да, разрешить все правки в этой сессии',
+            yesAllowEverything: 'Да, разрешить всё в этой сессии',
             yesForTool: 'Да, больше не спрашивать для этого инструмента',
             noTellClaude: 'Нет, дать обратную связь',
         }
@@ -908,36 +942,6 @@ export const ru: TranslationStructure = {
         friendAcceptedGeneric: 'Запрос в друзья принят',
     },
 
-    profiles: {
-        // Profile management feature
-        title: 'Профили',
-        subtitle: 'Управление профилями переменных окружения для сессий',
-        noProfile: 'Без Профиля',
-        noProfileDescription: 'Использовать настройки окружения по умолчанию',
-        defaultModel: 'Модель по Умолчанию',
-        addProfile: 'Добавить Профиль',
-        profileName: 'Имя Профиля',
-        enterName: 'Введите имя профиля',
-        baseURL: 'Базовый URL',
-        authToken: 'Токен Аутентификации',
-        enterToken: 'Введите токен аутентификации',
-        model: 'Модель',
-        tmuxSession: 'Сессия Tmux',
-        enterTmuxSession: 'Введите имя сессии tmux',
-        tmuxTempDir: 'Временный каталог Tmux',
-        enterTmuxTempDir: 'Введите путь к временному каталогу',
-        tmuxUpdateEnvironment: 'Обновлять окружение автоматически',
-        nameRequired: 'Имя профиля обязательно',
-        deleteConfirm: 'Вы уверены, что хотите удалить профиль "{name}"?',
-        editProfile: 'Редактировать Профиль',
-        addProfileTitle: 'Добавить Новый Профиль',
-        delete: {
-            title: 'Удалить Профиль',
-            message: ({ name }: { name: string }) => `Вы уверены, что хотите удалить "${name}"? Это действие нельзя отменить.`,
-            confirm: 'Удалить',
-            cancel: 'Отмена',
-        },
-    }
 } as const;
 
 export type TranslationsRu = typeof ru;

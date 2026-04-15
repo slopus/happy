@@ -1,22 +1,27 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
+import { layout } from '@/components/layout';
 import {
     getAvailableModels,
     getAvailablePermissionModes,
     getDefaultModelKey,
     getDefaultPermissionModeKey,
+    getEffortLevelsForModel,
+    getDefaultEffortKeyForModel,
     resolveCurrentOption,
+    EffortLevel,
 } from '@/components/modelModeOptions';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
+import { SessionActionsAnchor, SessionActionsPopover } from '@/components/SessionActionsPopover';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
-import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
+import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
@@ -24,11 +29,13 @@ import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { tracking, trackMessageSent } from '@/track';
+import { tracking } from '@/track';
+import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { formatPathRelativeToHome, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
@@ -50,6 +57,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
+    const [sessionActionsAnchor, setSessionActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
@@ -125,6 +133,17 @@ export const SessionView = React.memo((props: { id: string }) => {
                     <ChatHeaderView
                         {...headerProps}
                         onBackPress={() => router.back()}
+                        avatarMenuExpanded={Platform.OS === 'web' && !!sessionActionsAnchor}
+                        avatarMenuSession={session}
+                        onAfterAvatarArchive={() => {
+                            setSessionActionsAnchor(null);
+                            router.replace('/');
+                        }}
+                        onAfterAvatarDelete={() => {
+                            setSessionActionsAnchor(null);
+                            router.replace('/');
+                        }}
+                        onAvatarMenuRequest={Platform.OS === 'web' && session ? setSessionActionsAnchor : undefined}
                     />
                     {/* Voice status bar below header - not on tablet (shown in sidebar) */}
                     {!isTablet && realtimeStatus !== 'disconnected' && (
@@ -134,7 +153,7 @@ export const SessionView = React.memo((props: { id: string }) => {
             )}
 
             {/* Content based on state */}
-            <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') ? safeArea.top + headerHeight + (!isTablet && realtimeStatus !== 'disconnected' ? 48 : 0) : 0 }}>
+            <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') ? safeArea.top + headerHeight + (!isTablet && realtimeStatus !== 'disconnected' ? 32 : 0) : 0 }}>
                 {!isDataReady ? (
                     // Loading state
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -152,6 +171,22 @@ export const SessionView = React.memo((props: { id: string }) => {
                     <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
                 )}
             </View>
+            {Platform.OS === 'web' && session && (
+                <SessionActionsPopover
+                    anchor={sessionActionsAnchor}
+                    onAfterArchive={() => {
+                        setSessionActionsAnchor(null);
+                        router.replace('/');
+                    }}
+                    onAfterDelete={() => {
+                        setSessionActionsAnchor(null);
+                        router.replace('/');
+                    }}
+                    onClose={() => setSessionActionsAnchor(null)}
+                    sessionId={session.id}
+                    visible={!!sessionActionsAnchor}
+                />
+            )}
         </>
     );
 });
@@ -163,10 +198,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
+    const isTablet = useIsTablet();
     const [message, setMessage] = React.useState('');
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
+    const sessionInputHorizontalPadding = Platform.OS === 'web' || isRunningOnMac() || isTablet ? 12 : 8;
 
     // Check if CLI version is outdated and not already acknowledged
     const cliVersion = session.metadata?.version;
@@ -197,10 +234,28 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             getDefaultModelKey(flavor),
         ])
     ), [availableModels, session.modelMode, session.metadata?.currentModelCode, flavor]);
+
+    // Effort level state
+    const modelKey = modelMode?.key ?? 'default';
+    const availableEffortLevels = React.useMemo<EffortLevel[]>(() => (
+        getEffortLevelsForModel(flavor, modelKey)
+    ), [flavor, modelKey]);
+    const effortLevel = React.useMemo<EffortLevel | null>(() => (
+        resolveCurrentOption(availableEffortLevels, [
+            session.effortLevel,
+            getDefaultEffortKeyForModel(flavor, modelKey),
+        ])
+    ), [availableEffortLevels, session.effortLevel, flavor, modelKey]);
+
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
+    const expResumeSession = useSetting('expResumeSession');
+    const isArchivedSession = session.metadata?.lifecycleState === 'archived';
+    const isDisconnected = !sessionStatus.isConnected;
+    const isInactiveArchivedSession = isArchivedSession && isDisconnected;
+    const resumeCommandBlock = getResumeCommandBlock(session);
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -226,6 +281,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         storage.getState().updateSessionModelMode(sessionId, mode.key);
     }, [sessionId]);
 
+    const updateEffortLevel = React.useCallback((level: EffortLevel) => {
+        storage.getState().updateSessionEffortLevel(sessionId, level.key);
+    }, [sessionId]);
+
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
         contentContainer: {
@@ -245,16 +304,35 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         if (realtimeStatus === 'disconnected' || realtimeStatus === 'error') {
             try {
                 const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
-                await startRealtimeSession(sessionId, initialPrompt);
-                tracking?.capture('voice_session_started', { sessionId });
+                const conversationId = await startRealtimeSession(sessionId, initialPrompt);
+                if (conversationId) {
+                    const hasPro = storage.getState().purchases.entitlements['pro'] ?? false;
+                    tracking?.capture('voice_session_started', {
+                        session_id: sessionId,
+                        elevenlabs_conversation_id: conversationId,
+                        has_pro: hasPro,
+                        onboarding_prompt_load_count: getVoiceOnboardingPromptLoadCount(),
+                        voice_message_count: getVoiceMessageCount(),
+                    });
+                }
             } catch (error) {
                 console.error('Failed to start realtime session:', error);
                 Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
-                tracking?.capture('voice_session_error', { error: error instanceof Error ? error.message : 'Unknown error' });
+                tracking?.capture('voice_session_error', {
+                    session_id: sessionId,
+                    elevenlabs_conversation_id: getCurrentVoiceConversationId(),
+                    error: error instanceof Error ? error.message : 'Unknown error',
+                });
             }
         } else if (realtimeStatus === 'connected') {
+            const conversationId = getCurrentVoiceConversationId();
+            const durationSeconds = getCurrentVoiceSessionDurationSeconds();
             await stopRealtimeSession();
-            tracking?.capture('voice_session_stopped');
+            tracking?.capture('voice_session_stopped', {
+                session_id: sessionId,
+                elevenlabs_conversation_id: conversationId,
+                ...(durationSeconds !== undefined ? { duration_seconds: durationSeconds } : {}),
+            });
 
             // Notify voice assistant about voice session stop
             voiceHooks.onVoiceStopped();
@@ -297,7 +375,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </>
     ) : null;
 
-    const input = (
+    const composer = (
         <AgentInput
             placeholder={t('session.inputPlaceholder')}
             value={message}
@@ -309,6 +387,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             modelMode={modelMode}
             availableModels={availableModels}
             onModelModeChange={updateModelMode}
+            effortLevel={effortLevel}
+            availableEffortLevels={availableEffortLevels}
+            onEffortLevelChange={updateEffortLevel}
             metadata={session.metadata}
             connectionStatus={{
                 text: sessionStatus.statusText,
@@ -316,20 +397,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 dotColor: sessionStatus.statusDotColor,
                 isPulsing: sessionStatus.isPulsing
             }}
+            blockSend={false}
             onSend={() => {
                 if (message.trim()) {
                     setMessage('');
                     clearDraft();
-                    sync.sendMessage(sessionId, message);
-                    trackMessageSent();
+                    sync.sendMessage(sessionId, message, { source: 'chat' });
                 }
             }}
-            onMicPress={micButtonState.onMicPress}
-            isMicActive={micButtonState.isMicActive}
-            onAbort={() => sessionAbort(sessionId)}
+            onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
+            isMicActive={isDisconnected ? false : micButtonState.isMicActive}
+            onAbort={isDisconnected ? undefined : () => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
-            // Autocomplete configuration
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
             usageData={sessionUsage ? {
@@ -347,6 +427,30 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             } : undefined}
             alwaysShowContextSize={alwaysShowContextSize}
         />
+    );
+
+    const archivedHint = isInactiveArchivedSession ? (
+        <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+            <InactiveArchivedHint
+                resumeCommandBlock={expResumeSession ? resumeCommandBlock : null}
+            />
+        </CenteredInputWidth>
+    ) : null;
+
+    const input = isInactiveArchivedSession ? (
+        <>
+            {archivedHint}
+            {composer}
+        </>
+    ) : (
+        <>
+            {expResumeSession && isDisconnected && resumeCommandBlock && (
+                <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+                    <ResumeCommandHint resumeCommandBlock={resumeCommandBlock} />
+                </CenteredInputWidth>
+            )}
+            {composer}
+        </>
     );
 
 
@@ -387,7 +491,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             )}
 
             {/* Main content area - no padding since header is overlay */}
-            <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 32 : 0) }}>
+            <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 8 : 0) }}>
                 <AgentContentView
                     content={content}
                     input={input}
@@ -434,4 +538,129 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }
         </>
     )
+}
+
+function ResumeCommandHint({ resumeCommandBlock }: {
+    resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>>;
+}) {
+    const { theme } = useUnistyles();
+
+    return (
+        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10, gap: 8 }}>
+            <ResumeCommandCopyBlock resumeCommandBlock={resumeCommandBlock} />
+            <Text style={{
+                color: theme.colors.textSecondary,
+                fontSize: 12,
+                lineHeight: 16,
+                textAlign: 'center',
+                paddingHorizontal: 8,
+            }}>
+                Run this command in your terminal to resume this session
+            </Text>
+        </View>
+    );
+}
+
+function InactiveArchivedHint(props: {
+    resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>> | null;
+}) {
+    const { theme } = useUnistyles();
+    const hintTextStyle = {
+        color: theme.colors.agentEventText,
+        fontSize: 13,
+        lineHeight: 18,
+        textAlign: 'left' as const,
+    };
+
+    return (
+        <View style={{
+            paddingTop: 12,
+            paddingBottom: 10,
+            gap: 10,
+            alignItems: 'stretch',
+        }}>
+            <View style={{ paddingHorizontal: 8, gap: 4 }}>
+                <Text style={hintTextStyle}>
+                    {t('session.inactiveArchived')}
+                </Text>
+                {props.resumeCommandBlock && (
+                    <Text style={hintTextStyle}>
+                        {t('session.resumeFromTerminal')}
+                    </Text>
+                )}
+            </View>
+            {props.resumeCommandBlock && (
+                <ResumeCommandCopyBlock resumeCommandBlock={props.resumeCommandBlock} />
+            )}
+        </View>
+    );
+}
+
+function ResumeCommandCopyBlock({ resumeCommandBlock }: {
+    resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>>;
+}) {
+    const { theme } = useUnistyles();
+    const [copied, setCopied] = React.useState(false);
+
+    return (
+        <Pressable
+            onPress={async () => {
+                await Clipboard.setStringAsync(resumeCommandBlock.copyText);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            }}
+            style={{
+                minHeight: 48,
+                borderRadius: 14,
+                backgroundColor: theme.colors.surfaceHigh,
+                flexDirection: 'row',
+                gap: 8,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                alignItems: 'flex-start',
+            }}
+        >
+            <View style={{ flex: 1 }}>
+                {resumeCommandBlock.lines.map((line, index) => (
+                    <Text
+                        key={`${line}-${index}`}
+                        style={{
+                            color: theme.colors.text,
+                            fontSize: 13,
+                            lineHeight: 18,
+                            fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                        }}
+                    >
+                        {line}
+                    </Text>
+                ))}
+            </View>
+            <Ionicons
+                name={copied ? 'checkmark' : 'copy-outline'}
+                size={16}
+                color={copied ? '#30D158' : theme.colors.textSecondary}
+                style={{ marginTop: 1 }}
+            />
+        </Pressable>
+    );
+}
+
+function CenteredInputWidth(props: {
+    children: React.ReactNode;
+    horizontalPadding: number;
+}) {
+    return (
+        <View style={{
+            width: '100%',
+            paddingHorizontal: props.horizontalPadding,
+            alignItems: 'center',
+        }}>
+            <View style={{
+                width: '100%',
+                maxWidth: layout.maxWidth,
+            }}>
+                {props.children}
+            </View>
+        </View>
+    );
 }

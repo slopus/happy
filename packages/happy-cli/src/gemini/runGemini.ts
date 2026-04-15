@@ -26,7 +26,6 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
-import { stopCaffeinate } from '@/utils/caffeinate';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
@@ -297,11 +296,15 @@ export async function runGemini(opts: {
   const sendReady = () => {
     session.sendSessionEvent({ type: 'ready' });
     try {
-      api.push().sendToAllDevices(
-        "It's ready!",
-        'Gemini is waiting for your command',
-        { sessionId: session.sessionId }
-      );
+      api.push().sendSessionNotification({
+        kind: 'done',
+        metadata: session.getMetadata(),
+        data: {
+          sessionId: session.sessionId,
+          type: 'ready',
+          provider: 'gemini',
+        }
+      });
     } catch (pushError) {
       logger.debug('[Gemini] Failed to send ready push', pushError);
     }
@@ -386,7 +389,6 @@ export async function runGemini(opts: {
         await session.close();
       }
 
-      stopCaffeinate();
       happyServer.stop();
 
       if (geminiBackend) {

@@ -1,4 +1,4 @@
-import { eventRouter, buildNewSessionUpdate } from "@/app/events/eventRouter";
+import { eventRouter, buildNewSessionUpdate, buildSessionActivityEphemeral } from "@/app/events/eventRouter";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 import { z } from "zod";
@@ -352,6 +352,38 @@ export function sessionRoutes(app: Fastify) {
                 updatedAt: v.updatedAt.getTime()
             }))
         });
+    });
+
+    // Archive session (force deactivate)
+    app.post('/v1/sessions/:sessionId/archive', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+
+        const result = await db.session.updateMany({
+            where: { id: sessionId, accountId: userId },
+            data: { active: false, lastActiveAt: new Date() }
+        });
+
+        if (result.count === 0) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        // Notify all clients about the session deactivation
+        const sessionActivity = buildSessionActivityEphemeral(sessionId, false, Date.now(), false);
+        eventRouter.emitEphemeral({
+            userId,
+            payload: sessionActivity,
+            recipientFilter: { type: 'user-scoped-only' }
+        });
+
+        return reply.send({ success: true });
     });
 
     // Delete session

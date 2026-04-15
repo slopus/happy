@@ -10,8 +10,6 @@ import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
-import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
-import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
@@ -158,7 +156,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             });
         } finally {
             reconnection.cancel();
-            stopCaffeinate();
         }
         process.exit(0);
     }
@@ -178,21 +175,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         logger.debug('[START] Failed to report to daemon (may not be running):', error);
     }
 
-    // Extract SDK metadata in background and update session when ready
-    extractSDKMetadataAsync(async (sdkMetadata) => {
-        logger.debug('[start] SDK metadata extracted, updating session:', sdkMetadata);
-        try {
-            // Update session metadata with tools and slash commands
-            api.sessionSyncClient(response).updateMetadata((currentMetadata) => ({
-                ...currentMetadata,
-                tools: sdkMetadata.tools,
-                slashCommands: sdkMetadata.slashCommands
-            }));
-            logger.debug('[start] Session metadata updated with SDK capabilities');
-        } catch (error) {
-            logger.debug('[start] Failed to update session metadata:', error);
-        }
-    });
+    // SDK metadata (tools, slash commands) is now extracted from the
+    // system.init message in claudeRemote.ts via onSDKMetadata callback
 
     // Create realtime session
     const session = api.sessionSyncClient(response);
@@ -237,12 +221,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         controlledByUser: options.startingMode !== 'remote'
     }));
 
-    // Start caffeinate to prevent sleep on macOS
-    const caffeinateStarted = startCaffeinate();
-    if (caffeinateStarted) {
-        logger.infoDeveloper('Sleep prevention enabled (macOS)');
-    }
-
     // Import MessageQueue2 and create message queue
     const messageQueue = new MessageQueue2<EnhancedMode>(mode => hashObject({
         isPlan: mode.permissionMode === 'plan',
@@ -263,6 +241,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
+    // Exit when session is archived from web/mobile
+    session.on('archived', () => {
+        logger.debug('[loop] Session archived from web/mobile, cleaning up...');
+        cleanup();
+    });
+
     session.onUserMessage((message) => {
 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
@@ -408,9 +392,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 await session.close();
             }
 
-            // Stop caffeinate
-            stopCaffeinate();
-
             // Stop Happy MCP server
             happyServer.stop();
 
@@ -491,10 +472,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Close session
     logger.debug('Closing session...');
     await session.close();
-
-    // Stop caffeinate before exiting
-    stopCaffeinate();
-    logger.debug('Stopped sleep prevention');
 
     // Stop Happy MCP server
     happyServer.stop();

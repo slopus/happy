@@ -24,21 +24,23 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+
     - name: Setup Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
-        cache: 'yarn'
-        cache-dependency-path: yarn.lock
+        cache: 'pnpm'
 
     - name: Install dependencies
-      run: yarn install --immutable
+      run: pnpm install --frozen-lockfile
 
     - name: Build package
-      run: yarn workspace happy-coder build
+      run: pnpm --filter happy build
 
     - name: Pack package
-      run: yarn workspace happy-coder pack
+      run: pnpm --filter happy pack --pack-destination packages/happy-cli
 
     - name: Install packed package globally
       run: |
@@ -84,21 +86,23 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+
     - name: Setup Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
-        cache: 'yarn'
-        cache-dependency-path: yarn.lock
+        cache: 'pnpm'
 
     - name: Install dependencies
-      run: yarn install --immutable
+      run: pnpm install --frozen-lockfile
 
     - name: Build package
-      run: yarn workspace happy-coder build
+      run: pnpm --filter happy build
 
     - name: Pack package
-      run: yarn workspace happy-coder pack
+      run: pnpm --filter happy pack --pack-destination packages/happy-cli
 
     - name: Install packed package globally
       shell: cmd
@@ -118,20 +122,20 @@ jobs:
           echo Found node_modules directory
           dir "%NPM_PREFIX%\node_modules" 2>nul
           echo.
-          echo Checking for happy-coder package:
-          if exist "%NPM_PREFIX%\node_modules\happy-coder" (
-            echo Found happy-coder package
-            dir "%NPM_PREFIX%\node_modules\happy-coder" 2>nul
+          echo Checking for happy package:
+          if exist "%NPM_PREFIX%\node_modules\happy" (
+            echo Found happy package
+            dir "%NPM_PREFIX%\node_modules\happy" 2>nul
             echo.
             echo Checking for dist directory:
-            if exist "%NPM_PREFIX%\node_modules\happy-coder\dist" (
+            if exist "%NPM_PREFIX%\node_modules\happy\dist" (
               echo Found dist directory
-              dir "%NPM_PREFIX%\node_modules\happy-coder\dist" 2>nul
+              dir "%NPM_PREFIX%\node_modules\happy\dist" 2>nul
             ) else (
               echo No dist directory found
             )
           ) else (
-            echo No happy-coder package found
+            echo No happy package found
           )
         ) else (
           echo No node_modules directory found

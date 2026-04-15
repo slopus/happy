@@ -45,15 +45,6 @@ Current session wire payload shape (decrypted message body):
 - envelope-level role remains inside `content.role` (`'user' | 'agent'`)
 - envelope timestamp is required as `content.time` (Unix ms)
 
-User text rollout toggle:
-- env flag: `ENABLE_SESSION_PROTOCOL_SEND` (truthy: `1`, `true`, `yes`)
-- default (disabled):
-  - CLI still emits modern user payloads (`role = 'session'`, `content.role = 'user'`)
-  - app consumes legacy user payloads (`role = 'user'`, `content.type = 'text'`) and drops modern user payloads
-- enabled:
-  - CLI emits modern user payloads (`role = 'session'`, `content.role = 'user'`)
-  - app consumes modern user payloads and drops legacy user payloads
-
 ## Migration in this repository
 
 ### CLI (`packages/happy-cli`)

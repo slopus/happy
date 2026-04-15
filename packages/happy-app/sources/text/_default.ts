@@ -103,6 +103,8 @@ export const en = {
         connectAccount: 'Connect account',
         github: 'GitHub',
         machines: 'Machines',
+        showOfflineMachines: ({ count }: { count: number }) => count === 1 ? 'Show 1 offline machine' : `Show ${count} offline machines`,
+        hideOfflineMachines: 'Hide offline machines',
         features: 'Features',
         social: 'Social',
         account: 'Account',
@@ -133,9 +135,6 @@ export const en = {
         exchangingTokens: 'Exchanging tokens...',
         usage: 'Usage',
         usageSubtitle: 'View your API usage and costs',
-        profiles: 'Profiles',
-        profilesSubtitle: 'Manage environment variable profiles for sessions',
-
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service} account connected`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
@@ -204,9 +203,6 @@ export const en = {
         markdownCopyV2Subtitle: 'Long press opens copy modal',
         hideInactiveSessions: 'Hide inactive sessions',
         hideInactiveSessionsSubtitle: 'Show only active chats in your list',
-        enhancedSessionWizard: 'Enhanced Session Wizard',
-        enhancedSessionWizardEnabled: 'Profile-first session launcher active',
-        enhancedSessionWizardDisabled: 'Using standard session launcher',
     },
 
     errors: {
@@ -224,6 +220,9 @@ export const en = {
         sessionNotFound: 'Session not found',
         voiceSessionFailed: 'Failed to start voice session',
         voiceServiceUnavailable: 'Voice service is temporarily unavailable',
+        voiceLimitReachedTitle: 'Voice Limit Reached',
+        voiceHardLimitReached: ({ hours }: { hours: number }) => `You've used ${hours}+ hours of voice this month. This is the maximum allowed. You can configure your own ElevenLabs agent in Voice settings to use your own quota.`,
+        voiceConversationLimitReached: 'You\'ve reached the maximum number of voice conversations this month. We may add on-demand voice usage in the future — please file an issue at github.com/nicepkg/happy/issues if you hit this limit.',
         oauthInitializationFailed: 'Failed to initialize OAuth flow',
         tokenStorageFailed: 'Failed to store authentication tokens',
         oauthStateMismatch: 'Security validation failed. Please try again',
@@ -257,35 +256,9 @@ export const en = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
         title: 'Start New Session',
-        noMachinesFound: 'No machines found. Start a Happy session on your computer first.',
-        allMachinesOffline: 'All machines appear offline',
-        machineDetails: 'View machine details →',
-        directoryDoesNotExist: 'Directory Not Found',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `The directory ${directory} does not exist. Do you want to create it?`,
-        sessionStarted: 'Session Started',
-        sessionStartedMessage: 'The session has been started successfully.',
-        sessionSpawningFailed: 'Session spawning failed - no session ID returned.',
-        startingSession: 'Starting session...',
-        startNewSessionInFolder: 'New session here',
-        failedToStart: 'Failed to start session. Make sure the daemon is running on the target machine.',
-        sessionTimeout: 'Session startup timed out. The machine may be slow or the daemon may not be responding.',
-        notConnectedToServer: 'Not connected to server. Check your internet connection.',
-        noMachineSelected: 'Please select a machine to start the session',
-        noPathSelected: 'Please select a directory to start the session in',
-        sessionType: {
-            title: 'Session Type',
-            simple: 'Simple',
-            worktree: 'Worktree',
-            comingSoon: 'Coming soon',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `Creating worktree '${name}'...`,
-            notGitRepo: 'Worktrees require a git repository',
-            failed: ({ error }: { error: string }) => `Failed to create worktree: ${error}`,
-            success: 'Worktree created successfully',
-        }
+        machineOffline: 'Machine is offline',
+        switchMachinesHint: '• Switch machines by clicking on the machine above',
     },
 
     sessionHistory: {
@@ -300,6 +273,8 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        inactiveArchived: 'This session is inactive.',
+        resumeFromTerminal: 'To resume it from the terminal:',
     },
 
     commandPalette: {
@@ -335,10 +310,13 @@ export const en = {
         happySessionId: 'Happy Session ID',
         claudeCodeSessionId: 'Claude Code Session ID',
         claudeCodeSessionIdCopied: 'Claude Code Session ID copied to clipboard',
+        codexThreadId: 'Codex Thread ID',
+        codexThreadIdCopied: 'Codex Thread ID copied to clipboard',
         aiProvider: 'AI Provider',
         failedToCopyClaudeCodeSessionId: 'Failed to copy Claude Code Session ID',
-        metadataCopied: 'Metadata copied to clipboard',
-        failedToCopyMetadata: 'Failed to copy metadata',
+        failedToCopyCodexThreadId: 'Failed to copy Codex Thread ID',
+        metadataCopied: 'Session metadata copied to clipboard',
+        failedToCopyMetadata: 'Failed to copy session metadata',
         failedToKillSession: 'Failed to kill session',
         failedToArchiveSession: 'Failed to archive session',
         connectionStatus: 'Connection Status',
@@ -348,6 +326,14 @@ export const en = {
         quickActions: 'Quick Actions',
         viewMachine: 'View Machine',
         viewMachineSubtitle: 'View machine details and sessions',
+        resumeSession: 'Resume Session',
+        resumeSessionSubtitle: 'Resume this session on the same machine',
+        resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
+        resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
+        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
+        resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
+        resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
+        resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'Immediately terminate the session',
         archiveSessionSubtitle: 'Archive this session and stop it',
         metadata: 'Metadata',
@@ -356,7 +342,7 @@ export const en = {
         operatingSystem: 'Operating System',
         processId: 'Process ID',
         happyHome: 'Happy Home',
-        copyMetadata: 'Copy Metadata',
+        copyMetadata: 'Copy session metadata',
         agentState: 'Agent State',
         controlledByUser: 'Controlled by User',
         pendingRequests: 'Pending Requests',
@@ -367,13 +353,17 @@ export const en = {
         cliVersionOutdated: 'CLI Update Required',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Version ${currentVersion} installed. Update to ${requiredVersion} or later`,
-        updateCliInstructions: 'Please run npm install -g happy-coder@latest',
+        updateCliInstructions: 'Please run npm install -g happy@latest',
         deleteSession: 'Delete Session',
         deleteSessionSubtitle: 'Permanently remove this session',
         deleteSessionConfirm: 'Delete Session Permanently?',
         deleteSessionWarning: 'This action cannot be undone. All messages and data associated with this session will be permanently deleted.',
         failedToDeleteSession: 'Failed to delete session',
         sessionDeleted: 'Session deleted successfully',
+        worktreeCleanupTitle: 'Delete Worktree?',
+        worktreeCleanupMessage: 'The worktree has no uncommitted changes. Would you like to delete the worktree files?',
+        worktreeCleanupDelete: 'Delete Worktree',
+        worktreeCleanupKeep: 'Keep Files',
         
     },
 
@@ -391,32 +381,37 @@ export const en = {
     agentInput: {
         permissionMode: {
             title: 'PERMISSION MODE',
-            default: 'Default',
-            acceptEdits: 'Accept Edits',
-            plan: 'Plan Mode',
-            bypassPermissions: 'Yolo',
-            badgeAcceptAllEdits: 'Accept All Edits',
-            badgeBypassAllPermissions: 'Yolo',
-            badgePlanMode: 'Plan Mode',
+            default: 'default permissions',
+            acceptEdits: 'accept edits',
+            plan: 'plan',
+            dontAsk: "don't ask",
+            bypassPermissions: 'yolo',
+            badgeAcceptAllEdits: 'accept all edits',
+            badgeBypassAllPermissions: 'yolo',
+            badgePlanMode: 'plan mode',
         },
         agent: {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            openclaw: 'OpenClaw',
         },
         model: {
             title: 'MODEL',
             configureInCli: 'Configure models in CLI settings',
         },
+        effort: {
+            title: 'EFFORT',
+        },
         codexPermissionMode: {
             title: 'CODEX PERMISSION MODE',
-            default: 'CLI Settings',
-            readOnly: 'Read Only Mode',
-            safeYolo: 'Safe YOLO',
-            yolo: 'YOLO',
-            badgeReadOnly: 'Read Only Mode',
-            badgeSafeYolo: 'Safe YOLO',
-            badgeYolo: 'YOLO',
+            default: 'default permissions',
+            readOnly: 'read-only',
+            safeYolo: 'safe yolo',
+            yolo: 'yolo',
+            badgeReadOnly: 'read-only',
+            badgeSafeYolo: 'safe yolo',
+            badgeYolo: 'yolo',
         },
         codexModel: {
             title: 'CODEX MODEL',
@@ -430,13 +425,13 @@ export const en = {
         },
         geminiPermissionMode: {
             title: 'GEMINI PERMISSION MODE',
-            default: 'Default',
-            readOnly: 'Read Only',
-            safeYolo: 'Safe YOLO',
-            yolo: 'YOLO',
-            badgeReadOnly: 'Read Only',
-            badgeSafeYolo: 'Safe YOLO',
-            badgeYolo: 'YOLO',
+            default: 'default permissions',
+            autoEdit: 'auto edit',
+            yolo: 'yolo',
+            plan: 'plan',
+            badgeAutoEdit: 'auto edit',
+            badgeYolo: 'yolo',
+            badgePlan: 'plan',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% left`,
@@ -457,6 +452,8 @@ export const en = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'Show archived',
+        hideArchived: 'Hide archived',
     },
 
     toolView: {
@@ -552,6 +549,7 @@ export const en = {
         file: 'File',
         fileEmpty: 'File is empty',
         noChanges: 'No changes to display',
+        deleted: 'Deleted',
     },
 
     settingsVoice: {
@@ -565,7 +563,26 @@ export const en = {
             title: 'Languages',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'language', plural: 'languages' })} available`,
             autoDetect: 'Auto-detect',
-        }
+        },
+        // Bring your own agent
+        byoTitle: 'Bring Your Own Agent',
+        byoDescription: 'Use your own ElevenLabs agent instead of the Happy default. No subscription required — connect directly with your own ElevenLabs account. Your agent must define two client tools: messageClaudeCode (sends text to the coding agent) and processPermissionRequest (allows or denies tool use). It receives session context via the {{initialConversationContext}} dynamic variable.',
+        customAgentId: 'ElevenLabs Agent ID',
+        customAgentIdNotSet: 'Not configured',
+        customAgentIdDescription: 'Enter your ElevenLabs agent ID. Leave empty to use the Happy default.',
+        customAgentIdPlaceholder: 'e.g. abc123def456',
+        bypassToken: 'Direct Connection',
+        bypassTokenSubtitle: 'Skip Happy server, connect straight to ElevenLabs',
+        promptGuideTitle: 'Agent Prompt Guide',
+        promptGuideDescription: 'Your ElevenLabs agent needs:\n\n• Tool: messageClaudeCode — parameter: message (string). Sends a message to the active coding session.\n• Tool: processPermissionRequest — parameter: decision ("allow" or "deny"). Approves or denies a pending tool permission.\n• Dynamic variable: {{initialConversationContext}} — receives session history and context on start.\n\nThe agent acts as a voice bridge between the user and coding agents. It should be concise, only respond when addressed, and report when a coding agent finishes work.',
+        // Voice usage
+        usageTitle: 'Usage (Last 30 Days)',
+        usageFooter: 'Voice time used in the last 30 days. Free tier: 20 min. Subscribed: 5 hours. Max 100 conversations per month.',
+        usageLabel: 'Voice Time',
+        conversationsLabel: 'Conversations',
+        usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} used of ${limit}`,
+        supportTitle: 'Upgrade Voice',
+        supportSubtitle: 'Get more voice time and support development',
     },
 
     settingsAccount: {
@@ -718,7 +735,7 @@ export const en = {
     machine: {
         launchNewSessionInDirectory: 'Launch New Session in Directory',
         offlineUnableToSpawn: 'Launcher disabled while machine is offline',
-        offlineHelp: '• Make sure your computer is online\n• Run `happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g happy-coder@latest`',
+        offlineHelp: '• Make sure your computer is online\n• Run `happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g happy@latest`',
         daemon: 'Daemon',
         status: 'Status',
         stopDaemon: 'Stop Daemon',
@@ -738,8 +755,18 @@ export const en = {
         lastSeen: 'Last Seen',
         never: 'Never',
         metadataVersion: 'Metadata Version',
+        cliAvailability: 'CLI Availability',
+        cliInstalled: 'Installed',
+        cliNotFound: 'Not found',
+        lastDetected: 'Last Detected',
         untitledSession: 'Untitled Session',
         back: 'Back',
+        dangerZone: 'Danger Zone',
+        delete: 'Delete Machine',
+        deleteFooter: 'Remove this machine from your account. Session history will be preserved, but you will not be able to start new sessions on this machine.',
+        deleteConfirmTitle: 'Delete this machine?',
+        deleteConfirmMessage: 'The machine will be removed from your account. Session history will be preserved, but you will not be able to start new sessions until you reconnect the daemon.',
+        deleteFailed: 'Failed to delete machine.',
     },
 
     message: {
@@ -761,6 +788,7 @@ export const en = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: 'Yes, allow all edits during this session',
+            yesAllowEverything: 'Yes, allow everything during this session',
             yesForTool: "Yes, don't ask again for this tool",
             noTellClaude: 'No, and provide feedback',
         }
@@ -885,36 +913,6 @@ export const en = {
         friendAcceptedGeneric: 'Friend request accepted',
     },
 
-    profiles: {
-        // Profile management feature
-        title: 'Profiles',
-        subtitle: 'Manage environment variable profiles for sessions',
-        noProfile: 'No Profile',
-        noProfileDescription: 'Use default environment settings',
-        defaultModel: 'Default Model',
-        addProfile: 'Add Profile',
-        profileName: 'Profile Name',
-        enterName: 'Enter profile name',
-        baseURL: 'Base URL',
-        authToken: 'Auth Token',
-        enterToken: 'Enter auth token',
-        model: 'Model',
-        tmuxSession: 'Tmux Session',
-        enterTmuxSession: 'Enter tmux session name',
-        tmuxTempDir: 'Tmux Temp Directory',
-        enterTmuxTempDir: 'Enter temp directory path',
-        tmuxUpdateEnvironment: 'Update environment automatically',
-        nameRequired: 'Profile name is required',
-        deleteConfirm: 'Are you sure you want to delete the profile "{name}"?',
-        editProfile: 'Edit Profile',
-        addProfileTitle: 'Add New Profile',
-        delete: {
-            title: 'Delete Profile',
-            message: ({ name }: { name: string }) => `Are you sure you want to delete "${name}"? This action cannot be undone.`,
-            confirm: 'Delete',
-            cancel: 'Cancel',
-        },
-    }
 } as const;
 
 export type Translations = typeof en;

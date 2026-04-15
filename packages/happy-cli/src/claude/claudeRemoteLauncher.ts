@@ -10,11 +10,11 @@ import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
-import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
+import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 
 interface PermissionsField {
     date: number;
@@ -118,29 +118,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
 
     // Handle messages
-    let planModeToolCalls = new Set<string>();
     let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
+    let notifiedQuestionToolCalls = new Set<string>();
 
     function onMessage(message: SDKMessage) {
 
         // Write to message log
         formatClaudeMessageForInk(message, messageBuffer);
-
-        // Write to permission handler for tool id resolving
-        permissionHandler.onMessage(message);
-
-        // Detect plan mode tool call
-        if (message.type === 'assistant') {
-            let umessage = message as SDKAssistantMessage;
-            if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                for (let c of umessage.message.content) {
-                    if (c.type === 'tool_use' && (c.name === 'exit_plan_mode' || c.name === 'ExitPlanMode')) {
-                        logger.debug('[remote]: detected plan mode tool call ' + c.id!);
-                        planModeToolCalls.add(c.id! as string);
-                    }
-                }
-            }
-        }
 
         // Track active tool calls
         if (message.type === 'assistant') {
@@ -154,6 +138,26 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 }
             }
         }
+
+        // Notify once when Claude asks the user a native clarifying question
+        for (const toolCallId of getAskUserQuestionToolCallIds(message)) {
+            if (notifiedQuestionToolCalls.has(toolCallId)) {
+                continue;
+            }
+            notifiedQuestionToolCalls.add(toolCallId);
+            session.api.push().sendSessionNotification({
+                kind: 'question',
+                metadata: session.client.getMetadata(),
+                data: {
+                    sessionId: session.client.sessionId,
+                    tool: 'AskUserQuestion',
+                    toolCallId,
+                    type: 'question_request',
+                    provider: 'claude',
+                }
+            });
+        }
+
         if (message.type === 'user') {
             let umessage = message as SDKUserMessage;
             if (umessage.message.content && Array.isArray(umessage.message.content)) {
@@ -169,39 +173,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         }
 
         // Convert SDK message to log format and send to client
-        let msg = message;
-
-        // Hack plan mode exit
-        if (message.type === 'user') {
-            let umessage = message as SDKUserMessage;
-            if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                msg = {
-                    ...umessage,
-                    message: {
-                        ...umessage.message,
-                        content: umessage.message.content.map((c) => {
-                            if (c.type === 'tool_result' && c.tool_use_id && planModeToolCalls.has(c.tool_use_id!)) {
-                                if (c.content === PLAN_FAKE_REJECT) {
-                                    logger.debug('[remote]: hack plan mode exit');
-                                    logger.debugLargeJson('[remote]: hack plan mode exit', c);
-                                    return {
-                                        ...c,
-                                        is_error: false,
-                                        content: 'Plan approved',
-                                        mode: c.mode
-                                    }
-                                } else {
-                                    return c;
-                                }
-                            }
-                            return c;
-                        })
-                    }
-                }
-            }
-        }
-
-        const logMessage = sdkToLogConverter.convert(msg);
+        const logMessage = sdkToLogConverter.convert(message);
         if (logMessage) {
             // Add permissions field to tool result content
             if (logMessage.type === 'user' && logMessage.message?.content) {
@@ -369,6 +341,19 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         sdkToLogConverter.updateSessionId(sessionId);
                         session.onSessionFound(sessionId);
                     },
+                    onSDKMetadata: (metadata) => {
+                        logger.debug('[remote] SDK metadata received, updating session:', metadata);
+                        session.client.updateMetadata((currentMetadata) => ({
+                            ...currentMetadata,
+                            tools: metadata.tools,
+                            slashCommands: metadata.slashCommands,
+                        }));
+                    },
+                    onQueryReady: (q) => {
+                        permissionHandler.setPermissionModeUpdater(async (mode) => {
+                            await q.setPermissionMode(mode);
+                        });
+                    },
                     onThinkingChange: session.onThinkingChange,
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
@@ -384,11 +369,15 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     onReady: () => {
                         session.client.closeClaudeSessionTurn('completed');
                         if (!pending && session.queue.size() === 0) {
-                            session.api.push().sendToAllDevices(
-                                'It\'s ready!',
-                                `Claude is waiting for your command`,
-                                { sessionId: session.client.sessionId }
-                            );
+                            session.api.push().sendSessionNotification({
+                                kind: 'done',
+                                metadata: session.client.getMetadata(),
+                                data: {
+                                    sessionId: session.client.sessionId,
+                                    type: 'ready',
+                                    provider: 'claude',
+                                }
+                            });
                         }
                     },
                     signal: abortController.signal,

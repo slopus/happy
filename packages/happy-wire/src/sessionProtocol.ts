@@ -1,3 +1,17 @@
+/**
+ * ⚠️ UNDER REVIEW — LIKELY NEEDS MORE CAREFUL DESIGN
+ *
+ * This session protocol is not used in production and should NOT be used in dev
+ * environments either until we revisit the design. The legacy protocol
+ * (role: 'user' / role: 'agent') is the active code path everywhere.
+ *
+ * Before investing more here, look at how pi.dev standardizes their agent
+ * protocol — we may want to align with or build on that approach instead of
+ * rolling our own envelope format.
+ *
+ * Types are kept here for reference but are frozen. Do not add new consumers.
+ */
+
 import { createId, isCuid } from '@paralleldrive/cuid2';
 import * as z from 'zod';
 
@@ -34,6 +48,7 @@ export const sessionFileEventSchema = z.object({
   ref: z.string(),
   name: z.string(),
   size: z.number(),
+  mimeType: z.string().optional(),
   image: z
     .object({
       width: z.number(),

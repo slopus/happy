@@ -11,6 +11,9 @@ import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from 
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
+import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
+import { shouldReconnect } from '@/utils/lidState';
 
 interface ServerToDaemonEvents {
     update: (data: Update) => void;
@@ -71,6 +74,7 @@ interface DaemonToServerEvents {
 
 type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
+    resumeSession?: (sessionId: string) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
     requestShutdown: () => void;
 }
@@ -78,7 +82,11 @@ type MachineRpcHandlers = {
 export class ApiMachineClient {
     private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
     private keepAliveInterval: NodeJS.Timeout | null = null;
+    private lastKnownCLIAvailability: CLIAvailability | null = null;
+    private lastKnownResumeSupport: ResumeSupport | null = null;
     private rpcHandlerManager: RpcHandlerManager;
+    private resumeSessionHandler: ((sessionId: string) => Promise<SpawnSessionResult>) | null = null;
+    private reconnectInterval: NodeJS.Timeout | null = null;
 
     constructor(
         private token: string,
@@ -97,19 +105,22 @@ export class ApiMachineClient {
 
     setRPCHandlers({
         spawnSession,
+        resumeSession,
         stopSession,
         requestShutdown
     }: MachineRpcHandlers) {
+        this.resumeSessionHandler = resumeSession ?? null;
+
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables } = params || {};
+            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token } = params || {};
             logger.debug(`[API MACHINE] Spawning session with params: ${JSON.stringify(params)}`);
 
             if (!directory) {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables });
+            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token });
 
             switch (result.type) {
                 case 'success':
@@ -124,6 +135,8 @@ export class ApiMachineClient {
                     throw new Error(result.errorMessage);
             }
         });
+
+        this.syncResumeSessionRpcRegistration(detectResumeSupport().rpcAvailable);
 
         // Register stop session handler  
         this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
@@ -154,6 +167,42 @@ export class ApiMachineClient {
 
             return { message: 'Daemon stop request acknowledged, starting shutdown sequence...' };
         });
+    }
+
+    private syncResumeSessionRpcRegistration(rpcAvailable: boolean): void {
+        const method = 'resume-happy-session';
+
+        if (rpcAvailable && this.resumeSessionHandler) {
+            if (!this.rpcHandlerManager.hasHandler(method)) {
+                this.rpcHandlerManager.registerHandler(method, async (params: any) => {
+                    const { sessionId } = params || {};
+
+                    if (!sessionId || typeof sessionId !== 'string') {
+                        throw new Error('Session ID is required');
+                    }
+
+                    const handler = this.resumeSessionHandler;
+                    if (!handler) {
+                        throw new Error('Resume session handler not available');
+                    }
+
+                    const result = await handler(sessionId);
+                    switch (result.type) {
+                        case 'success':
+                            return { type: 'success', sessionId: result.sessionId };
+                        case 'requestToApproveDirectoryCreation':
+                            return result;
+                        case 'error':
+                            throw new Error(result.errorMessage);
+                    }
+                });
+            }
+            return;
+        }
+
+        if (this.rpcHandlerManager.hasHandler(method)) {
+            this.rpcHandlerManager.unregisterHandler(method);
+        }
     }
 
     /**
@@ -225,17 +274,17 @@ export class ApiMachineClient {
                 machineId: this.machine.id
             },
             path: '/v1/updates',
-            reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000
+            reconnection: false,
         });
 
         this.socket.on('connect', () => {
             logger.debug('[API MACHINE] Connected to server');
 
-            // Update daemon state to running
-            // We need to override previous state because the daemon (this process)
-            // has restarted with new PID & port
+            if (this.reconnectInterval) {
+                clearInterval(this.reconnectInterval);
+                this.reconnectInterval = null;
+            }
+
             this.updateDaemonState((state) => ({
                 ...state,
                 status: 'running',
@@ -244,18 +293,16 @@ export class ApiMachineClient {
                 startedAt: Date.now()
             }));
 
-
-            // Register all handlers
             this.rpcHandlerManager.onSocketConnect(this.socket);
-
-            // Start keep-alive
+            this.syncResumeSessionRpcRegistration(detectResumeSupport().rpcAvailable);
             this.startKeepAlive();
         });
 
-        this.socket.on('disconnect', () => {
-            logger.debug('[API MACHINE] Disconnected from server');
+        this.socket.on('disconnect', (reason) => {
+            logger.debug(`[API MACHINE] Disconnected from server — reason: ${reason}`);
             this.rpcHandlerManager.onSocketDisconnect();
             this.stopKeepAlive();
+            this.startSmartReconnect();
         });
 
         // Single consolidated RPC handler
@@ -303,12 +350,59 @@ export class ApiMachineClient {
                 machineId: this.machine.id,
                 time: Date.now()
             };
-            if (process.env.DEBUG) { // too verbose for production
+            if (process.env.DEBUG) {
                 logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
             }
             this.socket.emit('machine-alive', payload);
+
+            // Re-detect CLI availability and push metadata update if changed
+            const newAvailability = detectCLIAvailability();
+            const prev = this.lastKnownCLIAvailability;
+            const newResumeSupport = detectResumeSupport();
+            const prevResume = this.lastKnownResumeSupport;
+            const cliAvailabilityChanged = !prev || prev.claude !== newAvailability.claude || prev.codex !== newAvailability.codex || prev.gemini !== newAvailability.gemini || prev.openclaw !== newAvailability.openclaw;
+            const resumeSupportChanged = !prevResume
+                || prevResume.rpcAvailable !== newResumeSupport.rpcAvailable
+                || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;
+
+            this.syncResumeSessionRpcRegistration(newResumeSupport.rpcAvailable);
+
+            if (cliAvailabilityChanged || resumeSupportChanged) {
+                this.lastKnownCLIAvailability = newAvailability;
+                this.lastKnownResumeSupport = newResumeSupport;
+                this.updateMachineMetadata((metadata) => ({
+                    ...(metadata || {} as any),
+                    cliAvailability: newAvailability,
+                    resumeSupport: newResumeSupport,
+                })).catch((err) => {
+                    logger.debug('[API MACHINE] Failed to update machine capabilities:', err);
+                });
+            }
         }, 20000);
         logger.debug('[API MACHINE] Keep-alive started (20s interval)');
+    }
+
+    private startSmartReconnect() {
+        if (this.reconnectInterval) return;
+
+        this.reconnectInterval = setInterval(() => {
+            if (this.socket.connected) {
+                clearInterval(this.reconnectInterval!);
+                this.reconnectInterval = null;
+                return;
+            }
+            if (!shouldReconnect()) {
+                logger.debug('[API MACHINE] Still not ready to reconnect');
+                return;
+            }
+            logger.debug('[API MACHINE] Attempting reconnect');
+            this.socket.connect();
+        }, 3000);
+
+        if (shouldReconnect()) {
+            logger.debug('[API MACHINE] Network up + lid open — reconnecting in 1s');
+            setTimeout(() => { if (!this.socket.connected) this.socket.connect() }, 1000);
+        }
     }
 
     private stopKeepAlive() {
@@ -322,6 +416,10 @@ export class ApiMachineClient {
     shutdown() {
         logger.debug('[API MACHINE] Shutting down');
         this.stopKeepAlive();
+        if (this.reconnectInterval) {
+            clearInterval(this.reconnectInterval);
+            this.reconnectInterval = null;
+        }
         if (this.socket) {
             this.socket.close();
             logger.debug('[API MACHINE] Socket closed');

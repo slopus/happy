@@ -40,7 +40,8 @@ This document describes how to deploy the Happy backend (`packages/happy-server`
 - GitHub OAuth/App: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, plus redirect URL/URI.
   - `GITHUB_REDIRECT_URL` is used by the OAuth callback handler.
   - `GITHUB_REDIRECT_URI` is used by the GitHub App initializer.
-- Voice: `ELEVENLABS_API_KEY` (required for `/v1/voice/token` in production).
+- Voice: `ELEVENLABS_API_KEY` (required for `/v1/voice/conversations` in production).
+- Subscriptions: `REVENUECAT_API_KEY` (server-side RevenueCat key, required for voice subscription checks).
 - Debug logging: `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` (enables file logging + dev log endpoint).
 
 ## Docker image
@@ -62,11 +63,11 @@ The deployment config expects:
 
 ## Local dev helpers
 The server package includes scripts for local infrastructure:
-- `yarn workspace happy-server db` (Postgres in Docker)
-- `yarn workspace happy-server redis`
-- `yarn workspace happy-server s3` + `s3:init`
+- `pnpm --filter happy-server db` (Postgres in Docker)
+- `pnpm --filter happy-server redis`
+- `pnpm --filter happy-server s3` + `s3:init`
 
-Use `.env`/`.env.dev` to load local settings when running `yarn workspace happy-server dev`.
+Use `.env`/`.env.dev` to load local settings when running `pnpm --filter happy-server dev`.
 
 ## Implementation references
 - Entrypoint: `packages/happy-server/sources/main.ts`

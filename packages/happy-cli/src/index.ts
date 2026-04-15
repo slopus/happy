@@ -21,7 +21,7 @@ import { killRunawayHappyProcesses } from './daemon/doctor'
 import { install } from './daemon/install'
 import { uninstall } from './daemon/uninstall'
 import { ApiClient } from './api/api'
-import { runDoctorCommand } from './ui/doctor'
+import { runDoctorCommand, runDoctorDaemon } from './ui/doctor'
 import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 import { handleAuthCommand } from './commands/auth'
 import { handleConnectCommand } from './commands/connect'
@@ -30,6 +30,9 @@ import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
 import { execFileSync } from 'node:child_process'
 import { extractNoSandboxFlag } from './utils/sandboxFlags'
+import { handleResumeCommand } from '@/resume/handleResumeCommand'
+import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
+import { handleCodexCommand } from './commands/codexCommand'
 
 
 (async () => {
@@ -97,24 +100,21 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
   } else if (subcommand === 'bye') {
     console.log('Bye!');
     process.exit(0);
+  } else if (subcommand === 'resume') {
+    try {
+      await handleResumeCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'codex') {
     // Handle codex command
     try {
-      const { runCodex } = await import('@/codex/runCodex');
-      
-      // Parse startedBy argument
-      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
-      const codexArgs = extractNoSandboxFlag(args.slice(1));
-      for (let i = 0; i < codexArgs.args.length; i++) {
-        if (codexArgs.args[i] === '--started-by') {
-          startedBy = codexArgs.args[++i] as 'daemon' | 'terminal';
-        }
-      }
-      
-      const {
-        credentials
-      } = await authAndSetupMachineIfNeeded();
-      await runCodex({credentials, startedBy, noSandbox: codexArgs.noSandbox});
+      await handleCodexCommand(args.slice(1));
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
@@ -372,19 +372,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
-
-      // Auto-start daemon for gemini (same as claude)
-      logger.debug('Ensuring Happy background service is running & matches our version...');
-      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
-        logger.debug('Starting Happy background service...');
-        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
-          detached: true,
-          stdio: 'ignore',
-          env: process.env
-        });
-        daemonProcess.unref();
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
+      await ensureDaemonRunning()
 
       await runGemini({credentials, startedBy});
     } catch (error) {
@@ -420,18 +408,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
 
       const resolved = resolveAcpAgentConfig(acpArgs);
       const { credentials } = await authAndSetupMachineIfNeeded();
-
-      logger.debug('Ensuring Happy background service is running & matches our version...');
-      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
-        logger.debug('Starting Happy background service...');
-        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
-          detached: true,
-          stdio: 'ignore',
-          env: process.env
-        });
-        daemonProcess.unref();
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
+      await ensureDaemonRunning()
 
       await runAcp({
         credentials,
@@ -440,6 +417,48 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
         agentName: resolved.agentName,
         command: resolved.command,
         args: resolved.args,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'openclaw') {
+    try {
+      const { runOpenClaw } = await import('@/openclaw/runOpenClaw');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let verbose = false;
+      let gatewayUrl: string | undefined;
+      let gatewayToken: string | undefined;
+      let gatewayPassword: string | undefined;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--verbose') {
+          verbose = true;
+        } else if (args[i] === '--gateway-url') {
+          gatewayUrl = args[++i];
+        } else if (args[i] === '--gateway-token') {
+          gatewayToken = args[++i];
+        } else if (args[i] === '--gateway-password') {
+          gatewayPassword = args[++i];
+        }
+      }
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning()
+
+      await runOpenClaw({
+        credentials,
+        startedBy,
+        verbose,
+        gatewayUrl,
+        gatewayToken,
+        gatewayPassword,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
@@ -541,8 +560,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       await stopDaemon()
       process.exit(0)
     } else if (daemonSubcommand === 'status') {
-      // Show daemon-specific doctor output
-      await runDoctorCommand('daemon')
+      await runDoctorDaemon()
       process.exit(0)
     } else if (daemonSubcommand === 'logs') {
       // Simply print the path to the latest daemon log file
@@ -685,6 +703,7 @@ ${chalk.bold('happy')} - Claude Code On the Go
 ${chalk.bold('Usage:')}
   happy [options]         Start Claude with mobile control
   happy auth              Manage authentication
+  happy resume            Resume a previous Happy session by Happy session ID
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP)
   happy droid             Start Droid mode (ACP)
@@ -698,6 +717,7 @@ ${chalk.bold('Usage:')}
 
 ${chalk.bold('Examples:')}
   happy                    Start session
+  happy resume cmmij8      Resume a previous session by Happy session ID
   happy --yolo             Start with bypassing permissions
                             happy sugar for --dangerously-skip-permissions
   happy --chrome           Enable Chrome browser access for this session
@@ -727,7 +747,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       // Run claude --help and display its output
       // Use execFileSync directly with claude CLI for runtime-agnostic compatibility
       try {
-        const claudeHelp = execFileSync(claudeCliPath, ['--help'], { encoding: 'utf8' })
+        const claudeHelp = execFileSync(claudeCliPath, ['--help'], { encoding: 'utf8', windowsHide: true })
         console.log(claudeHelp)
       } catch (e) {
         console.log(chalk.yellow('Could not retrieve claude help. Make sure claude is installed.'))
@@ -746,24 +766,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     const {
       credentials
     } = await authAndSetupMachineIfNeeded();
-
-    // Always auto-start daemon for simplicity
-    logger.debug('Ensuring Happy background service is running & matches our version...');
-
-    if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
-      logger.debug('Starting Happy background service...');
-
-      // Use the built binary to spawn daemon
-      const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
-        detached: true,
-        stdio: 'ignore',
-        env: process.env
-      })
-      daemonProcess.unref();
-
-      // Give daemon a moment to write PID & port file
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
+    await ensureDaemonRunning()
 
     // Start the CLI
     try {

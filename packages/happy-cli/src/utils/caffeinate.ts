@@ -3,7 +3,7 @@
  * Uses the built-in macOS caffeinate command to keep the system awake
  */
 
-import { spawn, ChildProcess } from 'child_process'
+import { spawn, execSync, ChildProcess } from 'child_process'
 import { logger } from '@/ui/logger'
 import { configuration } from '@/configuration'
 
@@ -34,10 +34,10 @@ export function startCaffeinate(): boolean {
         return true
     }
 
+    // Kill any orphaned caffeinate -im processes from previous daemon instances
+    killOrphanedCaffeinateProcesses()
+
     try {
-        // Spawn caffeinate with flags:
-        // -i: Prevent system from idle sleeping  
-        // -m: Prevent disk from sleeping
         caffeinateProcess = spawn('caffeinate', ['-im'], {
             stdio: 'ignore',
             detached: false
@@ -137,4 +137,14 @@ function setupCleanupHandlers(): void {
         logger.debug('[caffeinate] Unhandled rejection, cleaning up:', reason)
         cleanup()
     })
+}
+
+export function killOrphanedCaffeinateProcesses(): void {
+    if (process.platform !== 'darwin') return
+    try {
+        execSync('pkill -f "caffeinate -im"', { timeout: 5000, stdio: 'ignore' })
+        logger.debug('[caffeinate] Killed orphaned caffeinate processes')
+    } catch {
+        // pkill exits with 1 if no processes matched — expected
+    }
 }

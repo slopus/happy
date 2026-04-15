@@ -9,13 +9,19 @@ import type { VoiceSession, VoiceSessionConfig } from './types';
 // Static reference to the conversation hook instance
 let conversationInstance: ReturnType<typeof useConversation> | null = null;
 
+// VAD state for user speech detection
+const VAD_THRESHOLD = 0.5;
+const VAD_SILENCE_MS = 300;
+let vadSilenceTimer: ReturnType<typeof setTimeout> | null = null;
+let agentIsSpeaking = false;
+
 // Global voice session implementation
 class RealtimeVoiceSessionImpl implements VoiceSession {
     
-    async startSession(config: VoiceSessionConfig): Promise<void> {
+    async startSession(config: VoiceSessionConfig): Promise<string | null> {
         if (!conversationInstance) {
             console.warn('Realtime voice session not initialized');
-            return;
+            throw new Error('Realtime voice session not initialized');
         }
 
         try {
@@ -25,40 +31,50 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
             const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
             
-            if (!config.token && !config.agentId) {
-                throw new Error('Neither token nor agentId provided');
+            if (!config.conversationToken && !config.agentId) {
+                throw new Error('No conversationToken or agentId provided');
             }
-            
+
             const sessionConfig: any = {
+                // conversationToken (WebRTC JWT from server) or agentId (bypass mode)
+                ...(config.conversationToken
+                    ? { conversationToken: config.conversationToken }
+                    : { agentId: config.agentId }),
+                userId: config.userId,
                 dynamicVariables: {
                     sessionId: config.sessionId,
                     initialConversationContext: config.initialContext || ''
                 },
                 overrides: {
                     agent: {
+                        ...(config.systemPrompt ? { prompt: { prompt: config.systemPrompt } } : {}),
+                        ...(config.firstMessage ? { firstMessage: config.firstMessage } : {}),
                         language: elevenLabsLanguage
                     }
                 },
-                ...(config.token ? { conversationToken: config.token } : { agentId: config.agentId })
             };
             
             await conversationInstance.startSession(sessionConfig);
+            return conversationInstance.getId?.() ?? null;
         } catch (error) {
             console.error('Failed to start realtime session:', error);
             storage.getState().setRealtimeStatus('error');
+            throw error;
         }
     }
 
     async endSession(): Promise<void> {
         if (!conversationInstance) {
+            storage.getState().setRealtimeStatus('disconnected');
             return;
         }
 
         try {
             await conversationInstance.endSession();
-            storage.getState().setRealtimeStatus('disconnected');
         } catch (error) {
             console.error('Failed to end realtime session:', error);
+        } finally {
+            storage.getState().setRealtimeStatus('disconnected');
         }
     }
 
@@ -100,7 +116,7 @@ export const RealtimeVoiceSession: React.FC = () => {
         onDisconnect: () => {
             console.log('Realtime session disconnected');
             storage.getState().setRealtimeStatus('disconnected');
-            storage.getState().setRealtimeMode('idle', true); // immediate mode change
+            storage.getState().setRealtimeMode('idle', true);
             storage.getState().clearRealtimeModeDebounce();
         },
         onMessage: (data) => {
@@ -120,13 +136,38 @@ export const RealtimeVoiceSession: React.FC = () => {
         },
         onModeChange: (data) => {
             console.log('Realtime mode change:', data);
-            
-            // Only animate when speaking
+
             const mode = data.mode as string;
-            const isSpeaking = mode === 'speaking';
-            
+            agentIsSpeaking = mode === 'speaking';
+
             // Use centralized debounce logic from storage
-            storage.getState().setRealtimeMode(isSpeaking ? 'speaking' : 'idle');
+            if (agentIsSpeaking) {
+                storage.getState().setRealtimeMode('agent-speaking');
+            } else {
+                // Agent stopped speaking — defer to VAD for user-speaking, otherwise idle
+                storage.getState().setRealtimeMode('idle');
+            }
+        },
+        onVadScore: (data) => {
+            const { vadScore } = data;
+            if (agentIsSpeaking) return; // Agent speaking takes priority
+
+            if (vadScore > VAD_THRESHOLD) {
+                if (vadSilenceTimer) {
+                    clearTimeout(vadSilenceTimer);
+                    vadSilenceTimer = null;
+                }
+                storage.getState().setRealtimeMode('user-speaking', true);
+            } else {
+                if (!vadSilenceTimer) {
+                    vadSilenceTimer = setTimeout(() => {
+                        vadSilenceTimer = null;
+                        if (!agentIsSpeaking) {
+                            storage.getState().setRealtimeMode('idle');
+                        }
+                    }, VAD_SILENCE_MS);
+                }
+            }
         },
         onDebug: (message) => {
             console.debug('Realtime debug:', message);

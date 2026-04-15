@@ -1,7 +1,7 @@
 # happy-agent CLI Tool
 
 ## Overview
-A new standalone CLI tool (`happy-agent`) in `packages/happy-agent` that acts as a dedicated client for controlling Happy Coder agents remotely. Unlike `happy-cli` which both runs and controls agents, `happy-agent` only controls them — creating sessions, sending messages, reading history, monitoring state, and stopping sessions.
+A new standalone CLI tool (`happy-agent`) in `packages/happy-agent` that acts as a dedicated client for controlling Happy Coder agents remotely. Unlike `happy-cli` which both runs and controls agents, `happy-agent` only controls them — listing machines, spawning sessions on a machine, creating sessions, sending messages, reading history, monitoring state, and stopping sessions.
 
 This is a completely separate client from `happy-cli`. It has its own authentication flow (account auth via QR code, same as device linking in the mobile app), its own credential storage (`~/.happy/agent.key`), and is written from scratch with no code sharing.
 
@@ -25,7 +25,7 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 
 ## Testing Strategy
 - **Unit tests**: Required for every task — encryption, key derivation, API client logic, CLI argument parsing, auth flow
-- **Integration tests**: Test against mock server where feasible
+- **Integration tests**: Use the real environment bootstrap (`yarn env:up:authenticated`) and exercise the live server + daemon + CLI stack. Do not use mocked acceptance coverage for `happy-agent spawn`.
 
 ## Progress Tracking
 - Mark completed items with `[x]` immediately when done
@@ -158,7 +158,7 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 
 ### Task 8: CLI commands — `create` and `send`
 - [x] `happy-agent create --tag <tag> [--path <path>]` — creates new session with given tag and metadata (path defaults to cwd, host to hostname). Prints session ID. With `--json` outputs full session JSON.
-- [x] `happy-agent send <session-id> <message>` — resolves session key, connects Socket.IO, sends user message (encrypted with AES-256-GCM), optionally waits for idle with `--wait`. Disconnects after. Prints confirmation. With `--json` outputs message details.
+- [x] `happy-agent send <session-id> <message>` — resolves session key, connects Socket.IO, sends user message (encrypted with AES-256-GCM), optionally waits for idle with `--wait`, and supports `--yolo` to send `permissionMode=yolo`. Disconnects after. Prints confirmation. With `--json` outputs message details.
 - [x] Write tests for create command (argument parsing, metadata construction)
 - [x] Write tests for send command (message encryption, --wait flag)
 - [x] Run tests — must pass before task 9
@@ -173,7 +173,7 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 - [x] Run tests — must pass before task 10
 
 ### Task 10: Verify acceptance criteria
-- [x] Verify all 8 operations work: auth, create, send, stop, history, wait, status, list
+- [x] Verify the session control operations work: auth, create, send, stop, history, wait, status, list
 - [x] Verify `--json` flag works on all applicable commands
 - [x] Verify error handling: no credentials, server unreachable, invalid session ID
 - [x] Verify interop: session created by happy-agent is visible and controllable from mobile app
@@ -185,6 +185,13 @@ This is a completely separate client from `happy-cli`. It has its own authentica
 - [x] Add README.md to `packages/happy-agent/` with usage examples for all commands
 - [x] Update root README if it references packages
 
+### Task 12: Machines and spawn
+- [x] Add `happy-agent machines [--active] [--json]`
+- [x] Add machine record decryption using the existing account content key derivation and record data key pattern
+- [x] Add `happy-agent spawn --machine <machine-id> [--path <path>] [--agent <agent>] [--create-dir] [--json]`
+- [x] Reuse the existing machine RPC contract (`spawn-happy-session`) without encryption shortcuts
+- [x] Add a real integration test that boots `yarn env:up:authenticated`, authenticates `happy-agent`, lists machines, spawns via the real daemon RPC path, and verifies the live session
+
 ## Technical Details
 
 ### CLI Commands Summary
@@ -193,10 +200,12 @@ happy-agent auth login                          # Authenticate via QR code (scan
 happy-agent auth logout                         # Clear stored credentials
 happy-agent auth status                         # Show authentication status
 
+happy-agent machines [--active] [--json]        # List machines
 happy-agent list [--active] [--json]            # List all sessions
+happy-agent spawn --machine <machine-id> [--path <path>] [--agent <agent>] [--create-dir] [--json]  # Spawn on a machine
 happy-agent status <session-id> [--json]        # Get live session state
 happy-agent create --tag <tag> [--path <path>] [--json]  # Create new session
-happy-agent send <session-id> <message> [--wait] [--json]  # Send message
+happy-agent send <session-id> <message> [--yolo] [--wait] [--json]  # Send message
 happy-agent history <session-id> [--limit <n>] [--json]    # Read message history
 happy-agent stop <session-id>                   # Stop a session
 happy-agent wait <session-id> [--timeout <s>]   # Wait for agent to become idle

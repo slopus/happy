@@ -47,6 +47,15 @@ export class RpcHandlerManager {
         }
     }
 
+    unregisterHandler(method: string): void {
+        const prefixedMethod = this.getPrefixedMethod(method);
+        this.handlers.delete(prefixedMethod);
+
+        if (this.socket) {
+            this.socket.emit('rpc-unregister', { method: prefixedMethod });
+        }
+    }
+
     /**
      * Handle an incoming RPC request
      * @param request - The RPC request data

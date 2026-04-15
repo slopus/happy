@@ -34,6 +34,11 @@ export const ApiDeleteSessionSchema = z.object({
     sid: z.string(), // Session ID
 });
 
+export const ApiDeleteMachineSchema = z.object({
+    t: z.literal('delete-machine'),
+    machineId: z.string(),
+});
+
 export const ApiUpdateAccountSchema = z.object({
     t: z.literal('update-account'),
     id: z.string(),
@@ -120,6 +125,7 @@ export const ApiUpdateSchema = z.union([
     ApiUpdateSessionStateSchema,
     ApiUpdateAccountSchema,
     ApiUpdateMachineStateSchema,
+    ApiDeleteMachineSchema,
     ApiNewArtifactSchema,
     ApiUpdateArtifactSchema,
     ApiDeleteArtifactSchema,

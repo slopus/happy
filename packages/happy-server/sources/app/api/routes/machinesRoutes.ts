@@ -2,10 +2,11 @@ import { eventRouter } from "@/app/events/eventRouter";
 import { Fastify } from "../types";
 import { z } from "zod";
 import { db } from "@/storage/db";
+import { inTx, afterTx } from "@/storage/inTx";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
-import { buildNewMachineUpdate, buildUpdateMachineUpdate } from "@/app/events/eventRouter";
+import { buildNewMachineUpdate, buildUpdateMachineUpdate, buildDeleteMachineUpdate } from "@/app/events/eventRouter";
 
 export function machinesRoutes(app: Fastify) {
     app.post('/v1/machines', {
@@ -172,6 +173,56 @@ export function machinesRoutes(app: Fastify) {
                 updatedAt: machine.updatedAt.getTime()
             }
         };
+    });
+
+    // DELETE /v1/machines/:id - Remove a machine and its access keys.
+    // Sessions spawned by this machine are preserved so history is not lost.
+    app.delete('/v1/machines/:id', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+
+        const deleted = await inTx(async (tx) => {
+            const machine = await tx.machine.findFirst({
+                where: { accountId: userId, id }
+            });
+            if (!machine) {
+                return false;
+            }
+
+            await tx.accessKey.deleteMany({
+                where: { accountId: userId, machineId: id }
+            });
+
+            await tx.machine.delete({
+                where: { id }
+            });
+
+            afterTx(tx, async () => {
+                const updSeq = await allocateUserSeq(userId);
+                const updatePayload = buildDeleteMachineUpdate(id, updSeq, randomKeyNaked(12));
+                eventRouter.emitUpdate({
+                    userId,
+                    payload: updatePayload,
+                    recipientFilter: { type: 'user-scoped-only' }
+                });
+                log({ module: 'machines', machineId: id, userId }, 'Machine deleted');
+            });
+
+            return true;
+        });
+
+        if (!deleted) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        return reply.send({ success: true });
     });
 
 }

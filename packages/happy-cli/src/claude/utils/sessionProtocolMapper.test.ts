@@ -81,6 +81,51 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         );
     });
 
+    it('exposes the generated session subagent id on Agent tool calls', () => {
+        const started = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-agent-1',
+            message: {
+                role: 'assistant',
+                content: [
+                    {
+                        type: 'tool_use',
+                        id: 'tool-agent-1',
+                        name: 'Agent',
+                        input: {
+                            description: 'Inspect translations',
+                            prompt: 'Review all translation files',
+                            mode: 'auto',
+                        },
+                    },
+                ],
+            },
+        } as any, { currentTurnId: null });
+
+        const toolCall = started.envelopes.find((envelope) => {
+            return envelope.ev.t === 'tool-call-start'
+                && envelope.ev.call === 'tool-agent-1';
+        });
+
+        expect(toolCall).toBeDefined();
+        expect(toolCall?.ev).toEqual(expect.objectContaining({
+            t: 'tool-call-start',
+            name: 'Agent',
+            title: 'Inspect translations',
+            description: 'Inspect translations',
+            args: expect.objectContaining({
+                description: 'Inspect translations',
+                prompt: 'Review all translation files',
+                mode: 'auto',
+                sessionSubagent: expect.any(String),
+            }),
+        }));
+
+        if (toolCall?.ev.t === 'tool-call-start') {
+            expect(isCuid(String(toolCall.ev.args.sessionSubagent))).toBe(true);
+        }
+    });
+
     it('uses parent_tool_use_id as subagent and emits subagent start', () => {
         const mappedSubagent = createId();
         const state = {

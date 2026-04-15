@@ -486,6 +486,7 @@ export class TmuxUtilities {
                 stdio: ['ignore', 'pipe', 'pipe'],
                 timeout: 5000,
                 shell: false,
+                windowsHide: true,
                 ...options
             });
 

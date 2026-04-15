@@ -40,7 +40,7 @@ Control Flow:
 
 ### Version Mismatch Auto-Update
 
-The daemon detects when `npm upgrade happy-coder` occurs:
+The daemon detects when `npm upgrade happy` occurs:
 1. Heartbeat reads package.json from disk
 2. Compares `JSON.parse(package.json).version` with compiled `configuration.currentCliVersion`
 3. If mismatch detected:
@@ -112,7 +112,7 @@ Local HTTP server (127.0.0.1 only) provides:
 ### Doctor Command
 
 `happy doctor` uses `ps aux | grep` to find all Happy processes:
-- Production: matches `happy.mjs`, `happy-coder`, `dist/index.mjs`
+- Production: matches `happy.mjs`, `happy` (or legacy `happy-coder`), `dist/index.mjs`
 - Development: matches `tsx.*src/index.ts`
 - Categorizes by command args: daemon, daemon-spawned, user-session, doctor
 
@@ -158,7 +158,7 @@ Version mismatch test simulates npm upgrade:
 - Test modifies package.json, rebuilds with new version
 - Daemon's compiled version != package.json on disk
 - Critical timing: heartbeat interval must exceed rebuild time
-- pkgroll doesn't update compiled imports, must use full yarn build
+- pkgroll doesn't update compiled imports, must use full pnpm build
 
 # Improvements
 

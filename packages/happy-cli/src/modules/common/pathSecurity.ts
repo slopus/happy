@@ -2,6 +2,7 @@ import { resolve } from 'path';
 
 export interface PathValidationResult {
     valid: boolean;
+    resolvedPath?: string;
     error?: string;
 }
 
@@ -21,9 +22,10 @@ export function validatePath(targetPath: string, workingDirectory: string): Path
     if (!resolvedTarget.startsWith(resolvedWorkingDir + '/') && resolvedTarget !== resolvedWorkingDir) {
         return {
             valid: false,
+            resolvedPath: resolvedTarget,
             error: `Access denied: Path '${targetPath}' is outside the working directory`
         };
     }
 
-    return { valid: true };
+    return { valid: true, resolvedPath: resolvedTarget };
 }

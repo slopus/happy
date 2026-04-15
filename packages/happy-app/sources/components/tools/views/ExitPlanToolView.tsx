@@ -5,7 +5,7 @@ import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { knownTools } from '../../tools/knownTools';
 import { View } from 'react-native';
 
-export const ExitPlanToolView = React.memo<ToolViewProps>(({ tool }) => {
+export const ExitPlanToolView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
     let plan = '<empty>'
     const parsed = knownTools.ExitPlanMode.input.safeParse(tool.input);
     if (parsed.success) {
@@ -14,7 +14,7 @@ export const ExitPlanToolView = React.memo<ToolViewProps>(({ tool }) => {
     return (
         <ToolSectionView>
             <View style={{ paddingHorizontal: 8, marginTop: -10 }}>
-                <MarkdownView markdown={plan} />
+                <MarkdownView markdown={plan} sessionId={sessionId} />
             </View>
         </ToolSectionView>
     );

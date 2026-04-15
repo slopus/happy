@@ -1,5 +1,47 @@
 # Changelog
 
+## Version 9 - 2026-04-15
+
+Clean up stale machines cluttering your settings and session picker. Offline machines are now hidden by default with a one-tap reveal, and you can permanently remove machines you no longer use.
+
+- Offline machines are now hidden from the Settings machine list by default, with a button to reveal them
+- Added a delete option in machine details to remove stale machines from your account
+- Session history is preserved when a machine is deleted
+
+## Version 8 - 2026-04-12
+
+This update migrates the monorepo from Yarn to pnpm, delivering dramatically faster dependency installs for developers and CI.
+
+- Migrated package manager from Yarn 1 to pnpm 10 for ~11x faster installs
+- Updated all CI workflows, Dockerfiles, and build scripts for pnpm compatibility
+- Improved dependency resolution with workspace protocol for internal packages
+
+## Version 7 - 2026-04-08
+
+This preview release expands the current update with the latest Gemini models, a smarter voice onboarding flow, and more reliable Happy CLI sessions for plan approvals and Codex turns.
+
+- Update Happy CLI with `npm i -g happy`
+- Added the latest Gemini models to the picker
+- Improved voice onboarding with smarter first-run prompts and clearer upgrade guidance for free users
+- Fixed Happy CLI plan approval flows so Accept and Reject buttons show up reliably in plan mode
+- Fixed Happy CLI background task updates and Codex turns that could sometimes hang or fail to complete
+
+## Version 6 - 2026-03-19
+
+This is the biggest update since launch — a redesigned session creation experience, Git worktree management, expanded agent support.
+
+- New session composer screen with machine selection, worktree picker, draft persistence, and offline machine visibility.
+- Git worktree management — list, create, and select worktrees from the app. Worktrees auto-cleanup on session delete.
+- Automatic plan mode switching when your agent enters planning mode.
+- OpenClaw added as a selectable AI agent alongside Claude Code and Codex.
+- Session quick actions for faster interaction with active sessions.
+- Session resume support — pick up where you left off.
+- Delete sessions directly from the session info screen.
+- Renamed "bypass" permission mode to "yolo" with updated styling.
+- Improved markdown rendering and message formatting.
+- Improved message sync reliability with edge case fixes.
+- Various UI polish: send spinner, hidden internal tool calls, improved spacing.
+
 ## Version 5 - 2025-12-22
 
 This release expands AI agent support and refines the voice experience, while improving markdown rendering for a better chat experience.

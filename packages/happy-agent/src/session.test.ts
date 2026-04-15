@@ -648,6 +648,194 @@ describe('SessionClient', () => {
         });
     });
 
+    describe('waitForTurnCompletion', () => {
+        it('resolves when a turn-end arrives after turn-start', async () => {
+            const opts = makeOptions();
+            const client = new SessionClient(opts);
+
+            const completion = client.waitForTurnCompletion(1000);
+
+            mockSocketInstance!.simulateServerEvent('update', makeEncryptedUpdate(
+                opts.encryptionKey,
+                opts.encryptionVariant,
+                {
+                    role: 'session',
+                    content: {
+                        turn: 'turn-1',
+                        ev: { t: 'turn-start' },
+                    },
+                },
+                opts.sessionId,
+                { seq: 1 },
+            ));
+
+            mockSocketInstance!.simulateServerEvent('update', makeEncryptedUpdate(
+                opts.encryptionKey,
+                opts.encryptionVariant,
+                {
+                    role: 'session',
+                    content: {
+                        turn: 'turn-1',
+                        ev: { t: 'turn-end', status: 'completed' },
+                    },
+                },
+                opts.sessionId,
+                { seq: 2 },
+            ));
+
+            await completion;
+
+            client.close();
+        });
+
+        it('resolves on ready events emitted after post-send agent activity', async () => {
+            const opts = makeOptions();
+            const client = new SessionClient(opts);
+
+            const completion = client.waitForTurnCompletion(1000);
+
+            mockSocketInstance!.simulateServerEvent('update', makeEncryptedUpdate(
+                opts.encryptionKey,
+                opts.encryptionVariant,
+                {
+                    role: 'session',
+                    content: {
+                        ev: { t: 'text', text: 'Thinking...' },
+                    },
+                },
+                opts.sessionId,
+                { seq: 1 },
+            ));
+
+            mockSocketInstance!.simulateServerEvent('update', makeEncryptedUpdate(
+                opts.encryptionKey,
+                opts.encryptionVariant,
+                {
+                    role: 'agent',
+                    content: {
+                        type: 'event',
+                        data: { type: 'ready' },
+                    },
+                },
+                opts.sessionId,
+                { seq: 2 },
+            ));
+
+            await completion;
+
+            client.close();
+        });
+
+        it('does not resolve on idle state changes before any post-send activity', async () => {
+            const opts = makeOptions();
+            const client = new SessionClient(opts);
+
+            const completion = client.waitForTurnCompletion(100);
+
+            mockSocketInstance!.simulateServerEvent('update', makeSessionUpdate(
+                opts.encryptionKey,
+                opts.encryptionVariant,
+                opts.sessionId,
+                {
+                    agentState: { data: { controlledByUser: false, requests: {} }, version: 1 },
+                },
+            ));
+
+            await expect(completion).rejects.toThrow('Timeout waiting for agent turn completion');
+
+            client.close();
+        });
+
+        it('falls back to idle state after activity when no turn-end event is emitted', async () => {
+            const opts = makeOptions();
+            const client = new SessionClient(opts);
+
+            const completion = client.waitForTurnCompletion(1000);
+
+            mockSocketInstance!.simulateServerEvent('update', makeEncryptedUpdate(
+                opts.encryptionKey,
+                opts.encryptionVariant,
+                {
+                    role: 'assistant',
+                    content: {
+                        type: 'text',
+                        text: 'Working on it',
+                    },
+                },
+                opts.sessionId,
+                { seq: 1 },
+            ));
+
+            mockSocketInstance!.simulateServerEvent('update', makeSessionUpdate(
+                opts.encryptionKey,
+                opts.encryptionVariant,
+                opts.sessionId,
+                {
+                    agentState: { data: { controlledByUser: false, requests: {} }, version: 1 },
+                },
+            ));
+
+            await completion;
+
+            client.close();
+        });
+
+        it('does not resolve from idle state once a turn has started', async () => {
+            const opts = makeOptions();
+            const client = new SessionClient(opts);
+
+            let resolved = false;
+            const completion = client.waitForTurnCompletion(1000).then(() => {
+                resolved = true;
+            });
+
+            mockSocketInstance!.simulateServerEvent('update', makeEncryptedUpdate(
+                opts.encryptionKey,
+                opts.encryptionVariant,
+                {
+                    role: 'session',
+                    content: {
+                        turn: 'turn-2',
+                        ev: { t: 'turn-start' },
+                    },
+                },
+                opts.sessionId,
+                { seq: 1 },
+            ));
+
+            mockSocketInstance!.simulateServerEvent('update', makeSessionUpdate(
+                opts.encryptionKey,
+                opts.encryptionVariant,
+                opts.sessionId,
+                {
+                    agentState: { data: { controlledByUser: false, requests: {} }, version: 1 },
+                },
+            ));
+
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            expect(resolved).toBe(false);
+
+            mockSocketInstance!.simulateServerEvent('update', makeEncryptedUpdate(
+                opts.encryptionKey,
+                opts.encryptionVariant,
+                {
+                    role: 'session',
+                    content: {
+                        turn: 'turn-2',
+                        ev: { t: 'turn-end', status: 'completed' },
+                    },
+                },
+                opts.sessionId,
+                { seq: 2 },
+            ));
+
+            await completion;
+            expect(resolved).toBe(true);
+
+            client.close();
+        });
+    });
+
     describe('sendStop', () => {
         it('emits session-end event with session ID and time', () => {
             const opts = makeOptions();

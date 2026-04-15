@@ -11,6 +11,7 @@ import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
+import { shouldReconnect } from '@/utils/lidState';
 import { type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
     closeClaudeTurnWithStatus,
@@ -86,6 +87,7 @@ export class ApiSessionClient extends EventEmitter {
     private metadataLock = new AsyncLock();
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
+    private reconnectInterval: NodeJS.Timeout | null = null;
     private claudeSessionProtocolState: ClaudeSessionProtocolState = {
         currentTurnId: null,
         uuidToProviderSubagent: new Map<string, string>(),
@@ -135,10 +137,7 @@ export class ApiSessionClient extends EventEmitter {
                 sessionId: this.sessionId
             },
             path: '/v1/updates',
-            reconnection: true,
-            reconnectionAttempts: Infinity,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
+            reconnection: false,
             transports: ['websocket'],
             withCredentials: true,
             autoConnect: false
@@ -150,6 +149,10 @@ export class ApiSessionClient extends EventEmitter {
 
         this.socket.on('connect', () => {
             logger.debug('Socket connected successfully');
+            if (this.reconnectInterval) {
+                clearInterval(this.reconnectInterval);
+                this.reconnectInterval = null;
+            }
             this.rpcHandlerManager.onSocketConnect(this.socket);
             this.receiveSync.invalidate();
         })
@@ -160,8 +163,9 @@ export class ApiSessionClient extends EventEmitter {
         })
 
         this.socket.on('disconnect', (reason) => {
-            logger.debug('[API] Socket disconnected:', reason);
+            logger.debug(`[API] Socket disconnected: ${reason}`);
             this.rpcHandlerManager.onSocketDisconnect();
+            this.startSmartReconnect();
         })
 
         this.socket.on('connect_error', (error) => {
@@ -197,6 +201,12 @@ export class ApiSessionClient extends EventEmitter {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
                         this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
                         this.metadataVersion = data.body.metadata.version;
+                        // Check if session was archived from web/mobile
+                        const meta = this.metadata as any;
+                        if (meta?.lifecycleState === 'archiveRequested' || meta?.lifecycleState === 'archived') {
+                            logger.debug(`[SOCKET] Session archived (${meta.lifecycleState}), exiting...`);
+                            this.emit('archived');
+                        }
                     }
                     if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
                         this.agentState = data.body.agentState.value ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.agentState.value)) : null;
@@ -308,30 +318,34 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    private static readonly MAX_OUTBOX_BATCH_SIZE = 50;
+
     private async flushOutbox() {
-        if (this.pendingOutbox.length === 0) {
-            return;
+        // Send latest messages first so the user sees recent activity immediately,
+        // then backfill older messages in subsequent batches.
+        while (this.pendingOutbox.length > 0) {
+            const batchSize = Math.min(this.pendingOutbox.length, ApiSessionClient.MAX_OUTBOX_BATCH_SIZE);
+            const batchStart = this.pendingOutbox.length - batchSize;
+            const batch = this.pendingOutbox.slice(batchStart);
+
+            const response = await axios.post<V3PostSessionMessagesResponse>(
+                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+                {
+                    messages: batch
+                },
+                {
+                    headers: this.authHeaders(),
+                    timeout: 60000
+                }
+            );
+
+            const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
+            const maxSeq = messages.reduce((acc, message) => (
+                message.seq > acc ? message.seq : acc
+            ), this.lastSeq);
+            this.lastSeq = maxSeq;
+            this.pendingOutbox.splice(batchStart, batch.length);
         }
-
-        const batch = this.pendingOutbox.slice();
-        const response = await axios.post<V3PostSessionMessagesResponse>(
-            `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-            {
-                messages: batch
-            },
-            {
-                headers: this.authHeaders(),
-                timeout: 60000
-            }
-        );
-
-        this.pendingOutbox.splice(0, batch.length);
-
-        const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
-        const maxSeq = messages.reduce((acc, message) => (
-            message.seq > acc ? message.seq : acc
-        ), this.lastSeq);
-        this.lastSeq = maxSeq;
     }
 
     private enqueueMessage(content: unknown, invalidate: boolean = true) {
@@ -431,7 +445,7 @@ export class ApiSessionClient extends EventEmitter {
      * @param provider - The agent provider sending the message (e.g., 'gemini', 'codex', 'claude')
      * @param body - The message payload (type: 'message' | 'reasoning' | 'tool-call' | 'tool-result')
      */
-    sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode', body: ACPMessageData) {
+    sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode' | 'openclaw', body: ACPMessageData) {
         let content = {
             role: 'agent',
             content: {
@@ -522,6 +536,13 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
+     * Returns the latest session metadata known to the client.
+     */
+    getMetadata(): Metadata | null {
+        return this.metadata;
+    }
+
+    /**
      * Update session metadata
      * @param handler - Handler function that returns the updated metadata
      */
@@ -599,6 +620,33 @@ export class ApiSessionClient extends EventEmitter {
         logger.debug('[API] socket.close() called');
         this.sendSync.stop();
         this.receiveSync.stop();
+        if (this.reconnectInterval) {
+            clearInterval(this.reconnectInterval);
+            this.reconnectInterval = null;
+        }
         this.socket.close();
+    }
+
+    private startSmartReconnect() {
+        if (this.reconnectInterval) return;
+
+        this.reconnectInterval = setInterval(() => {
+            if (this.socket.connected) {
+                clearInterval(this.reconnectInterval!);
+                this.reconnectInterval = null;
+                return;
+            }
+            if (!shouldReconnect()) {
+                logger.debug('[API] Still not ready to reconnect');
+                return;
+            }
+            logger.debug('[API] Attempting reconnect');
+            this.socket.connect();
+        }, 3000);
+
+        if (shouldReconnect()) {
+            logger.debug('[API] Network up + lid open — reconnecting in 1s');
+            setTimeout(() => { if (!this.socket.connected) this.socket.connect() }, 1000);
+        }
     }
 }

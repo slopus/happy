@@ -1,4 +1,10 @@
-<div align="center"><img src="/.github/logotype-dark.png" width="400" title="Happy Coder" alt="Happy Coder"/></div>
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="/.github/logotype-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="/.github/logotype-light.png">
+    <img src="/.github/logotype-dark.png" width="400" alt="Happy">
+  </picture>
+</div>
 
 <h1 align="center">
   Mobile and Web Client for Claude Code & Codex
@@ -30,50 +36,25 @@ Step 2: Install CLI on your computer
 </h3>
 
 ```bash
-npm install -g happy-coder
+npm install -g happy
 ```
 
-<h3 align="center">
-Run From Source (Repo Checkout)
-</h3>
-
-```bash
-# from repository root
-yarn cli --help
-yarn cli codex
-```
-
-<h3 align="center">
-Release (Maintainers)
-</h3>
-
-```bash
-# from repository root
-yarn release
-```
+> Migrated from the `happy-coder` package. Thanks to [@franciscop](https://github.com/franciscop) for donating the `happy` package name!
 
 <h3 align="center">
 Step 3: Start using `happy` instead of `claude` or `codex`
 </h3>
 
 ```bash
-
-# Instead of: claude
-# Use: happy
-
-happy
-
-# Instead of: codex
-# Use: happy codex
-
+# Instead of claude, use:
+happy claude
+# or
 happy codex
 
 # Droid (ACP-compatible)
 happy droid
 
 ```
-
-<div align="center"><img src="/.github/mascot.png" width="200" title="Happy Coder" alt="Happy Coder"/></div>
 
 ## How does it work?
 
@@ -101,7 +82,7 @@ We're engineers scattered across Bay Area coffee shops and hacker houses, consta
 ## 📚 Documentation & Contributing
 
 - **[Documentation Website](https://happy.engineering/docs/)** - Learn how to use Happy Coder effectively
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development setup including iOS, Android, and macOS desktop variant builds
+- **[Contributing Guide](docs/CONTRIBUTING.md)** - How to contribute, PR guidelines, and development setup
 - **[Edit docs at github.com/slopus/slopus.github.io](https://github.com/slopus/slopus.github.io)** - Help improve our documentation and guides
 
 ## License

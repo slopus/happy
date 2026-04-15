@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { logger } from '@/ui/logger'
 import { Expo, ExpoPushMessage } from 'expo-server-sdk'
+import type { Metadata } from './types'
 
 export interface PushToken {
     id: string
@@ -9,6 +10,65 @@ export interface PushToken {
     updatedAt: number
 }
 
+export type SessionNotificationKind = 'done' | 'permission' | 'question'
+
+function getSessionTitle(metadata: Metadata | null | undefined): string {
+    const summaryText = metadata?.summary?.text?.trim()
+    if (summaryText) {
+        return summaryText
+    }
+
+    const path = metadata?.path?.trim()
+    if (!path) {
+        return 'Session'
+    }
+
+    const segments = path.split(/[\\/]/).filter(Boolean)
+    return segments[segments.length - 1] || 'Session'
+}
+
+function getSessionNotificationUrl(data: Record<string, any> | undefined): `/session/${string}` | null {
+    const sessionId = data?.sessionId
+    if (typeof sessionId !== 'string') {
+        return null
+    }
+
+    const trimmedSessionId = sessionId.trim()
+    if (!trimmedSessionId) {
+        return null
+    }
+
+    return `/session/${encodeURIComponent(trimmedSessionId)}`
+}
+
+export function getSessionNotificationTitle(
+    kind: SessionNotificationKind
+): string {
+    switch (kind) {
+        case 'done':
+            return "It's ready!"
+        case 'permission':
+            return 'Permission request'
+        case 'question':
+            return 'Clarification needed'
+    }
+}
+
+export function getSessionNotificationBody(
+    metadata: Metadata | null | undefined
+): string {
+    return getSessionTitle(metadata)
+}
+
+export function getSessionNotificationCopy(
+    kind: SessionNotificationKind,
+    metadata: Metadata | null | undefined
+): { title: string; body: string } {
+    return {
+        title: getSessionNotificationTitle(kind),
+        body: getSessionNotificationBody(metadata),
+    }
+}
 
 export class PushNotificationClient {
     private readonly token: string
@@ -22,32 +82,41 @@ export class PushNotificationClient {
     }
 
     /**
-     * Fetch all push tokens for the authenticated user
+     * Fetch all push tokens for the authenticated user.
+     * Retries up to 3 times with exponential backoff on transient errors.
      */
     async fetchPushTokens(): Promise<PushToken[]> {
-        try {
-            const response = await axios.get<{ tokens: PushToken[] }>(
-                `${this.baseUrl}/v1/push-tokens`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.token}`,
-                        'Content-Type': 'application/json'
+        const maxAttempts = 3
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                const response = await axios.get<{ tokens: PushToken[] }>(
+                    `${this.baseUrl}/v1/push-tokens`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`,
+                            'Content-Type': 'application/json'
+                        }
                     }
-                }
-            )
+                )
 
-            logger.debug(`Fetched ${response.data.tokens.length} push tokens`)
-            
-            // Log token information
-            response.data.tokens.forEach((token, index) => {
-                logger.debug(`[PUSH] Token ${index + 1}: id=${token.id}, created=${new Date(token.createdAt).toISOString()}, updated=${new Date(token.updatedAt).toISOString()}`)
-            })
-            
-            return response.data.tokens
-        } catch (error) {
-            logger.debug('[PUSH] [ERROR] Failed to fetch push tokens:', error)
-            throw new Error(`Failed to fetch push tokens: ${error instanceof Error ? error.message : 'Unknown error'}`)
+                logger.debug(`Fetched ${response.data.tokens.length} push tokens`)
+
+                // Log token information
+                response.data.tokens.forEach((token, index) => {
+                    logger.debug(`[PUSH] Token ${index + 1}: id=${token.id}, created=${new Date(token.createdAt).toISOString()}, updated=${new Date(token.updatedAt).toISOString()}`)
+                })
+
+                return response.data.tokens
+            } catch (error) {
+                logger.debug(`[PUSH] [ERROR] Failed to fetch push tokens (attempt ${attempt}/${maxAttempts}):`, error)
+                if (attempt < maxAttempts) {
+                    const delay = 1000 * Math.pow(2, attempt - 1) // 1s, 2s
+                    await new Promise(resolve => setTimeout(resolve, delay))
+                }
+            }
         }
+        logger.debug('[PUSH] [ERROR] All push token fetch attempts failed')
+        return []
     }
 
     /**
@@ -127,8 +196,8 @@ export class PushNotificationClient {
      * @param body - Notification body
      * @param data - Additional data to send with the notification
      */
-    sendToAllDevices(title: string, body: string, data?: Record<string, any>): void {
-        logger.debug(`[PUSH] sendToAllDevices called with title: "${title}", body: "${body}"`);
+    sendToAllDevices(title: string, body?: string, data?: Record<string, any>): void {
+        logger.debug(`[PUSH] sendToAllDevices called with title: "${title}", body: "${body ?? ''}"`);
         
         // Execute async operations without awaiting
         (async () => {
@@ -154,8 +223,11 @@ export class PushNotificationClient {
                     return {
                         to: token.token,
                         title,
-                        body,
+                        body: body && body.length > 0 ? body : undefined,
                         data,
+                        // TODO: For brutalist session artwork, attach rich media via a public HTTPS image URL.
+                        // Bundled app asset paths / require(...) / local file paths will not work in push payloads.
+                        // iOS also needs a Notification Service Extension to render richContent.image reliably.
                         sound: 'default',
                         priority: 'high'
                     }
@@ -169,5 +241,21 @@ export class PushNotificationClient {
                 logger.debug('[PUSH] Error sending to all devices:', error)
             }
         })()
+    }
+
+    sendSessionNotification(params: {
+        kind: SessionNotificationKind
+        metadata: Metadata | null | undefined
+        data?: Record<string, any>
+    }): void {
+        const { title, body } = getSessionNotificationCopy(params.kind, params.metadata)
+        const sessionTitle = getSessionNotificationBody(params.metadata)
+        const url = getSessionNotificationUrl(params.data)
+        this.sendToAllDevices(title, body, {
+            ...params.data,
+            kind: params.kind,
+            sessionTitle,
+            ...(url ? { url } : {}),
+        })
     }
 }

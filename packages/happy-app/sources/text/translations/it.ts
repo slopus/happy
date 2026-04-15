@@ -71,36 +71,6 @@ export const it: TranslationStructure = {
         status: 'Stato',
     },
 
-    profiles: {
-        title: 'Profili',
-        subtitle: 'Gestisci i profili delle variabili ambiente per le sessioni',
-        noProfile: 'Nessun profilo',
-        noProfileDescription: 'Usa le impostazioni ambiente predefinite',
-        defaultModel: 'Modello predefinito',
-        addProfile: 'Aggiungi profilo',
-        profileName: 'Nome profilo',
-        enterName: 'Inserisci nome profilo',
-        baseURL: 'URL base',
-        authToken: 'Token di autenticazione',
-        enterToken: 'Inserisci token di autenticazione',
-        model: 'Modello',
-        tmuxSession: 'Sessione Tmux',
-        enterTmuxSession: 'Inserisci nome sessione tmux',
-        tmuxTempDir: 'Directory temporanea Tmux',
-        enterTmuxTempDir: 'Inserisci percorso directory temporanea',
-        tmuxUpdateEnvironment: 'Aggiorna ambiente automaticamente',
-        nameRequired: 'Il nome del profilo è obbligatorio',
-        deleteConfirm: 'Sei sicuro di voler eliminare il profilo "{name}"?',
-        editProfile: 'Modifica profilo',
-        addProfileTitle: 'Aggiungi nuovo profilo',
-        delete: {
-            title: 'Elimina profilo',
-            message: ({ name }: { name: string }) => `Sei sicuro di voler eliminare "${name}"? Questa azione non può essere annullata.`,
-            confirm: 'Elimina',
-            cancel: 'Annulla',
-        },
-    },
-
     status: {
         connected: 'connesso',
         connecting: 'connessione in corso',
@@ -133,6 +103,8 @@ export const it: TranslationStructure = {
         connectAccount: 'Collega account',
         github: 'GitHub',
         machines: 'Macchine',
+        showOfflineMachines: ({ count }: { count: number }) => count === 1 ? 'Mostra 1 macchina offline' : `Mostra ${count} macchine offline`,
+        hideOfflineMachines: 'Nascondi macchine offline',
         features: 'Funzionalità',
         social: 'Social',
         account: 'Account',
@@ -163,9 +135,6 @@ export const it: TranslationStructure = {
         exchangingTokens: 'Scambio dei token...',
         usage: 'Utilizzo',
         usageSubtitle: 'Vedi il tuo utilizzo API e i costi',
-        profiles: 'Profili',
-        profilesSubtitle: 'Gestisci i profili delle variabili ambiente per le sessioni',
-
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Account ${service} collegato`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
@@ -234,9 +203,6 @@ export const it: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pressione lunga apre la finestra di copia',
         hideInactiveSessions: 'Nascondi sessioni inattive',
         hideInactiveSessionsSubtitle: 'Mostra solo le chat attive nella tua lista',
-        enhancedSessionWizard: 'Wizard sessione avanzato',
-        enhancedSessionWizardEnabled: 'Avvio sessioni con profili attivo',
-        enhancedSessionWizardDisabled: 'Usando avvio sessioni standard',
     },
 
     errors: {
@@ -254,6 +220,9 @@ export const it: TranslationStructure = {
         sessionNotFound: 'Sessione non trovata',
         voiceSessionFailed: 'Avvio della sessione vocale non riuscito',
         voiceServiceUnavailable: 'Il servizio vocale non è temporaneamente disponibile',
+        voiceLimitReachedTitle: 'Limite vocale raggiunto',
+        voiceHardLimitReached: ({ hours }: { hours: number }) => `Hai utilizzato ${hours}+ ore di voce questo mese. Questo è il massimo consentito. Puoi configurare il tuo agente ElevenLabs nelle impostazioni vocali per utilizzare la tua quota.`,
+        voiceConversationLimitReached: 'Hai raggiunto il numero massimo di conversazioni vocali questo mese. Potremmo aggiungere l\'uso vocale su richiesta in futuro — per favore apri un issue su github.com/nicepkg/happy/issues se raggiungi questo limite.',
         oauthInitializationFailed: 'Impossibile inizializzare il flusso OAuth',
         tokenStorageFailed: 'Impossibile salvare i token di autenticazione',
         oauthStateMismatch: 'Convalida di sicurezza non riuscita. Riprova',
@@ -287,35 +256,9 @@ export const it: TranslationStructure = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
         title: 'Avvia nuova sessione',
-        noMachinesFound: 'Nessuna macchina trovata. Avvia prima una sessione Happy sul tuo computer.',
-        allMachinesOffline: 'Tutte le macchine sembrano offline',
-        machineDetails: 'Visualizza dettagli macchina →',
-        directoryDoesNotExist: 'Directory non trovata',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `La directory ${directory} non esiste. Vuoi crearla?`,
-        sessionStarted: 'Sessione avviata',
-        sessionStartedMessage: 'La sessione è stata avviata con successo.',
-        sessionSpawningFailed: 'Avvio sessione non riuscito - nessun ID sessione restituito.',
-        startingSession: 'Avvio sessione...',
-        startNewSessionInFolder: 'Nuova sessione qui',
-        failedToStart: 'Impossibile avviare la sessione. Assicurati che il daemon sia in esecuzione sulla macchina di destinazione.',
-        sessionTimeout: 'Avvio sessione scaduto. La macchina potrebbe essere lenta o il daemon potrebbe non rispondere.',
-        notConnectedToServer: 'Non connesso al server. Controlla la tua connessione Internet.',
-        noMachineSelected: 'Seleziona una macchina per avviare la sessione',
-        noPathSelected: 'Seleziona una directory in cui avviare la sessione',
-        sessionType: {
-            title: 'Tipo di sessione',
-            simple: 'Semplice',
-            worktree: 'Worktree',
-            comingSoon: 'In arrivo',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `Creazione worktree '${name}'...`,
-            notGitRepo: 'Le worktree richiedono un repository git',
-            failed: ({ error }: { error: string }) => `Impossibile creare la worktree: ${error}`,
-            success: 'Worktree creata con successo',
-        }
+        machineOffline: 'La macchina è offline',
+        switchMachinesHint: '• Cambia macchina cliccando sulla macchina sopra',
     },
 
     sessionHistory: {
@@ -330,6 +273,8 @@ export const it: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Scrivi un messaggio ...',
+        inactiveArchived: 'Questa sessione è inattiva.',
+        resumeFromTerminal: 'Per riprenderla dal terminale:',
     },
 
     commandPalette: {
@@ -365,8 +310,11 @@ export const it: TranslationStructure = {
         happySessionId: 'ID sessione Happy',
         claudeCodeSessionId: 'ID sessione Claude Code',
         claudeCodeSessionIdCopied: 'ID sessione Claude Code copiato negli appunti',
+        codexThreadId: 'ID thread Codex',
+        codexThreadIdCopied: 'ID thread Codex copiato negli appunti',
         aiProvider: 'Provider IA',
         failedToCopyClaudeCodeSessionId: 'Impossibile copiare l\'ID sessione Claude Code',
+        failedToCopyCodexThreadId: 'Impossibile copiare l\'ID thread Codex',
         metadataCopied: 'Metadati copiati negli appunti',
         failedToCopyMetadata: 'Impossibile copiare i metadati',
         failedToKillSession: 'Impossibile terminare la sessione',
@@ -378,6 +326,14 @@ export const it: TranslationStructure = {
         quickActions: 'Azioni rapide',
         viewMachine: 'Visualizza macchina',
         viewMachineSubtitle: 'Visualizza dettagli e sessioni della macchina',
+        resumeSession: 'Resume Session',
+        resumeSessionSubtitle: 'Resume this session on the same machine',
+        resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
+        resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
+        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
+        resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
+        resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
+        resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'Termina immediatamente la sessione',
         archiveSessionSubtitle: 'Archivia questa sessione e fermala',
         metadata: 'Metadati',
@@ -397,14 +353,18 @@ export const it: TranslationStructure = {
         cliVersionOutdated: 'Aggiornamento CLI richiesto',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versione ${currentVersion} installata. Aggiorna a ${requiredVersion} o successiva`,
-        updateCliInstructions: 'Esegui npm install -g happy-coder@latest',
+        updateCliInstructions: 'Esegui npm install -g happy@latest',
         deleteSession: 'Elimina sessione',
         deleteSessionSubtitle: 'Rimuovi definitivamente questa sessione',
         deleteSessionConfirm: 'Eliminare definitivamente la sessione?',
         deleteSessionWarning: 'Questa azione non può essere annullata. Tutti i messaggi e i dati associati a questa sessione verranno eliminati definitivamente.',
         failedToDeleteSession: 'Impossibile eliminare la sessione',
         sessionDeleted: 'Sessione eliminata con successo',
-        
+        worktreeCleanupTitle: 'Eliminare Worktree?',
+        worktreeCleanupMessage: 'Il Worktree non ha modifiche non confermate. Vuoi eliminare i file del Worktree?',
+        worktreeCleanupDelete: 'Elimina Worktree',
+        worktreeCleanupKeep: 'Conserva file',
+
     },
 
     components: {
@@ -424,6 +384,7 @@ export const it: TranslationStructure = {
             default: 'Predefinito',
             acceptEdits: 'Accetta modifiche',
             plan: 'Modalità piano',
+            dontAsk: 'Non chiedere',
             bypassPermissions: 'Modalità YOLO',
             badgeAcceptAllEdits: 'Accetta tutte le modifiche',
             badgeBypassAllPermissions: 'Bypassa tutti i permessi',
@@ -433,10 +394,14 @@ export const it: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            openclaw: 'OpenClaw',
         },
         model: {
             title: 'MODELLO',
             configureInCli: 'Configura i modelli nelle impostazioni CLI',
+        },
+        effort: {
+            title: 'IMPEGNO',
         },
         codexPermissionMode: {
             title: 'MODALITÀ PERMESSI CODEX',
@@ -461,12 +426,12 @@ export const it: TranslationStructure = {
         geminiPermissionMode: {
             title: 'MODALITÀ PERMESSI GEMINI',
             default: 'Predefinito',
-            readOnly: 'Solo lettura',
-            safeYolo: 'YOLO sicuro',
+            autoEdit: 'Modifica automatica',
             yolo: 'YOLO',
-            badgeReadOnly: 'Solo lettura',
-            badgeSafeYolo: 'YOLO sicuro',
+            plan: 'Pianificazione',
+            badgeAutoEdit: 'Modifica automatica',
             badgeYolo: 'YOLO',
+            badgePlan: 'Pianificazione',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
@@ -487,6 +452,8 @@ export const it: TranslationStructure = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'Mostra archiviate',
+        hideArchived: 'Nascondi archiviate',
     },
 
     toolView: {
@@ -582,6 +549,7 @@ export const it: TranslationStructure = {
         file: 'File',
         fileEmpty: 'File vuoto',
         noChanges: 'Nessuna modifica da mostrare',
+        deleted: 'Eliminato',
     },
 
     settingsVoice: {
@@ -595,7 +563,25 @@ export const it: TranslationStructure = {
             title: 'Lingue',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'lingua', plural: 'lingue' })} disponibili`,
             autoDetect: 'Rilevamento automatico',
-        }
+        },
+        // Bring your own agent
+        byoTitle: 'Porta il tuo agente',
+        byoDescription: 'Usa il tuo agente ElevenLabs al posto di quello predefinito di Happy. Nessun abbonamento richiesto — connettiti direttamente con il tuo account ElevenLabs. Il tuo agente deve definire due strumenti client: messageClaudeCode (invia testo all\'agente di codice) e processPermissionRequest (consente o nega l\'uso degli strumenti). Riceve il contesto della sessione tramite la variabile dinamica {{initialConversationContext}}.',
+        customAgentId: 'ElevenLabs Agent ID',
+        customAgentIdNotSet: 'Non configurato',
+        customAgentIdDescription: 'Inserisci il tuo ElevenLabs Agent ID. Lascia vuoto per usare quello predefinito di Happy.',
+        customAgentIdPlaceholder: 'e.g. abc123def456',
+        bypassToken: 'Connessione diretta',
+        bypassTokenSubtitle: 'Salta il server di Happy, connettiti direttamente a ElevenLabs',
+        promptGuideTitle: 'Guida al prompt dell\'agente',
+        promptGuideDescription: 'Il tuo agente ElevenLabs necessita:\n\n• Strumento: messageClaudeCode — parametro: message (string). Invia un messaggio alla sessione di codice attiva.\n• Strumento: processPermissionRequest — parametro: decision ("allow" o "deny"). Approva o nega un permesso di strumento in sospeso.\n• Variabile dinamica: {{initialConversationContext}} — riceve la cronologia e il contesto della sessione all\'avvio.\n\nL\'agente funge da ponte vocale tra l\'utente e gli agenti di codice. Deve essere conciso, rispondere solo quando interpellato e segnalare quando un agente di codice termina il lavoro.',
+        usageTitle: 'Utilizzo (ultimi 30 giorni)',
+        usageFooter: 'Tempo vocale utilizzato negli ultimi 30 giorni. Piano gratuito: 20 min. Abbonato: 5 ore. Max 100 conversazioni al mese.',
+        usageLabel: 'Tempo vocale',
+        conversationsLabel: 'Conversazioni',
+        usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} utilizzato su ${limit}`,
+        supportTitle: 'Migliora voce',
+        supportSubtitle: 'Più tempo vocale e supporta lo sviluppo',
     },
 
     settingsAccount: {
@@ -748,7 +734,7 @@ export const it: TranslationStructure = {
     machine: {
         launchNewSessionInDirectory: 'Avvia nuova sessione nella directory',
         offlineUnableToSpawn: 'Avvio disabilitato quando la macchina è offline',
-        offlineHelp: '• Assicurati che il tuo computer sia online\n• Esegui `happy daemon status` per diagnosticare\n• Stai usando l\'ultima versione della CLI? Aggiorna con `npm install -g happy-coder@latest`',
+        offlineHelp: '• Assicurati che il tuo computer sia online\n• Esegui `happy daemon status` per diagnosticare\n• Stai usando l\'ultima versione della CLI? Aggiorna con `npm install -g happy@latest`',
         daemon: 'Daemon',
         status: 'Stato',
         stopDaemon: 'Arresta daemon',
@@ -768,8 +754,18 @@ export const it: TranslationStructure = {
         lastSeen: 'Ultimo accesso',
         never: 'Mai',
         metadataVersion: 'Versione metadati',
+        cliAvailability: 'Disponibilità CLI',
+        cliInstalled: 'Installato',
+        cliNotFound: 'Non trovato',
+        lastDetected: 'Ultimo rilevamento',
         untitledSession: 'Sessione senza titolo',
         back: 'Indietro',
+        dangerZone: 'Zona di pericolo',
+        delete: 'Elimina macchina',
+        deleteFooter: 'Rimuove questa macchina dal tuo account. La cronologia delle sessioni viene mantenuta, ma non potrai più avviare nuove sessioni su di essa.',
+        deleteConfirmTitle: 'Eliminare questa macchina?',
+        deleteConfirmMessage: 'La macchina verrà rimossa dal tuo account. La cronologia delle sessioni viene mantenuta, ma non potrai avviare nuove sessioni finché non riconnetti il daemon.',
+        deleteFailed: 'Impossibile eliminare la macchina.',
     },
 
     message: {
@@ -791,6 +787,7 @@ export const it: TranslationStructure = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: 'Sì, consenti tutte le modifiche durante questa sessione',
+            yesAllowEverything: 'Sì, consenti tutto durante questa sessione',
             yesForTool: 'Sì, non chiedere più per questo strumento',
             noTellClaude: 'No, fornisci feedback',
         }

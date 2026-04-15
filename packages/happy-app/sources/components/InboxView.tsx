@@ -156,7 +156,7 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                 <UpdateBanner />
                 <View style={styles.emptyContainer}>
                     <Image
-                        source={require('@/assets/images/brutalist/Brutalism 10.png')}
+                        source={require('@/assets/images/brutalist/Brutalism-10.png')}
                         contentFit="contain"
                         style={[{ width: 64, height: 64 }, styles.emptyIcon]}
                         tintColor={theme.colors.textSecondary}

@@ -494,6 +494,74 @@ describe('reducer', () => {
             }
         });
 
+        it('should merge real tool-call patch args into matched permission messages', () => {
+            const state = createReducer();
+            const fileChanges = {
+                'src/example.ts': {
+                    modify: {
+                        old_content: 'before',
+                        new_content: 'after'
+                    }
+                }
+            };
+            const changes = {
+                'src/example.ts': {
+                    modify: {
+                        old_content: 'before',
+                        new_content: 'after'
+                    }
+                }
+            };
+            const agentState: AgentState = {
+                completedRequests: {
+                    'tool-1': {
+                        tool: 'CodexPatch',
+                        arguments: { fileChanges },
+                        createdAt: 1000,
+                        completedAt: 2000,
+                        status: 'approved'
+                    }
+                }
+            };
+
+            reducer(state, [], agentState);
+
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 3000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'CodexPatch',
+                        input: {
+                            auto_approved: false,
+                            changes
+                        },
+                        description: 'Apply patch to 1 file',
+                        uuid: 'msg-1-uuid',
+                        parentUUID: null
+                    }]
+                }
+            ];
+
+            const result = reducer(state, messages, agentState);
+
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].kind).toBe('tool-call');
+            if (result.messages[0].kind === 'tool-call') {
+                expect(result.messages[0].tool.input).toEqual({
+                    auto_approved: false,
+                    changes,
+                    fileChanges
+                });
+                expect(result.messages[0].tool.startedAt).toBe(3000);
+            }
+        });
+
         it('should match tool calls by ID regardless of arguments', () => {
             const state = createReducer();
             
@@ -2907,6 +2975,195 @@ describe('reducer', () => {
                     expect(result.messages[0].children[0].text).toBe('Subagent output');
                 }
             }
+        });
+
+        it('nests Agent sidechains via sessionSubagent and suppresses the duplicated prompt echo', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                {
+                    id: 'agent-parent-msg',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-agent-parent',
+                        name: 'Agent',
+                        input: {
+                            description: 'Add translations for switchMachinesHint',
+                            prompt: 'Add translations for switchMachinesHint',
+                            sessionSubagent: 'session-subagent-1',
+                        },
+                        description: 'Add translations for switchMachinesHint',
+                        uuid: 'agent-parent-uuid',
+                        parentUUID: null
+                    }]
+                },
+                {
+                    id: 'agent-prompt-echo',
+                    localId: null,
+                    createdAt: 1100,
+                    role: 'agent',
+                    isSidechain: true,
+                    content: [{
+                        type: 'text',
+                        text: 'Add translations for switchMachinesHint',
+                        uuid: 'agent-prompt-uuid',
+                        parentUUID: 'session-subagent-1'
+                    }]
+                },
+                {
+                    id: 'agent-child-tool',
+                    localId: null,
+                    createdAt: 1200,
+                    role: 'agent',
+                    isSidechain: true,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-read-child',
+                        name: 'Read',
+                        input: { file_path: '/tmp/example.ts' },
+                        description: null,
+                        uuid: 'agent-child-tool-uuid',
+                        parentUUID: 'session-subagent-1'
+                    }]
+                }
+            ]);
+
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].kind).toBe('tool-call');
+            if (result.messages[0].kind === 'tool-call') {
+                expect(result.messages[0].tool.name).toBe('Agent');
+                expect(result.messages[0].children).toHaveLength(1);
+                expect(result.messages[0].children[0].kind).toBe('tool-call');
+                if (result.messages[0].children[0].kind === 'tool-call') {
+                    expect(result.messages[0].children[0].tool.name).toBe('Read');
+                }
+            }
+        });
+    });
+
+    describe('TodoWrite latestTodos handling', () => {
+        it('does not update todos from a running TodoWrite input', () => {
+            const state = createReducer();
+            const result = reducer(state, [{
+                id: 'todo-call-only',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-todos',
+                    name: 'TodoWrite',
+                    input: {
+                        todos: [{
+                            content: 'Do the thing',
+                            status: 'pending'
+                        }]
+                    },
+                    description: null,
+                    uuid: 'tool-uuid',
+                    parentUUID: null
+                }]
+            }]);
+
+            expect(result.todos).toBeUndefined();
+        });
+
+        it('updates todos from successful TodoWrite result newTodos', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                {
+                    id: 'todo-call',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-success',
+                        name: 'TodoWrite',
+                        input: {
+                            todos: [{
+                                content: 'Old task state',
+                                status: 'pending'
+                            }]
+                        },
+                        description: null,
+                        uuid: 'tool-uuid-success',
+                        parentUUID: null
+                    }]
+                },
+                {
+                    id: 'todo-result',
+                    localId: null,
+                    createdAt: 1010,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-success',
+                        content: {
+                            oldTodos: [],
+                            newTodos: [{
+                                content: 'New authoritative task state',
+                                status: 'completed'
+                            }]
+                        },
+                        is_error: false,
+                        uuid: 'tool-uuid-success',
+                        parentUUID: null
+                    }]
+                }
+            ]);
+
+            expect(result.todos).toEqual([{
+                content: 'New authoritative task state',
+                status: 'completed'
+            }]);
+        });
+
+        it('ignores malformed TodoWrite input that later fails validation', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                {
+                    id: 'bad-todo-call',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-bad',
+                        name: 'TodoWrite',
+                        input: {
+                            todos: '[{"content":"Broken","status":"pending"}]'
+                        },
+                        description: null,
+                        uuid: 'tool-uuid-bad',
+                        parentUUID: null
+                    }]
+                },
+                {
+                    id: 'bad-todo-result',
+                    localId: null,
+                    createdAt: 1010,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-bad',
+                        content: 'InputValidationError',
+                        is_error: true,
+                        uuid: 'tool-uuid-bad',
+                        parentUUID: null
+                    }]
+                }
+            ]);
+
+            expect(result.todos).toBeUndefined();
         });
     });
 });

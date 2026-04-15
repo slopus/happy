@@ -3,6 +3,8 @@
 
 import { Message, ToolCall } from '@/sync/typesMessage';
 
+const MARKDOWN_RENDERER_TEST_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg==';
+
 // Helper to create a tool call with proper timestamps
 const createToolCall = (name: string, state: ToolCall['state'], input: any, result?: any, description?: string | null): ToolCall => ({
     name,
@@ -121,6 +123,22 @@ export async function processUserDataWithValidationAndTransformation(
 \`\`\`
 
 This function handles validation, transformation, and normalization in a single pass.`
+    },
+
+    {
+        id: 'agent-markdown-verification',
+        localId: null,
+        createdAt: Date.now() - 182500,
+        kind: 'agent-text',
+        text: `Markdown renderer verification:
+
+* Bullet item one
+* Bullet item with [Markdown click target](https://example.com/markdown-click-target)
++ Bullet item with bare URL https://example.com/bare-markdown-url
+
+Inline code now renders as \`happy render\` without a background highlight.
+
+![Markdown renderable image](${MARKDOWN_RENDERER_TEST_IMAGE})`
     },
     createSectionTitle('missing-tool-call-title', 'What happens when a tool call Message has zero tools? If the empty tools array would render anything, it would show up between these two messages\nvvvvvvvvvvvvvvvvvvvv'),
     

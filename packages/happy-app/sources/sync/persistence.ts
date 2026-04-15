@@ -7,8 +7,12 @@ import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
+const REGISTERED_PUSH_TOKEN_KEY = 'registered-push-token-v1';
+const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
+const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-count';
+const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
 
-export type NewSessionAgentType = 'claude' | 'codex' | 'gemini';
+export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw';
 export type NewSessionSessionType = 'simple' | 'worktree';
 
 export interface NewSessionDraft {
@@ -17,7 +21,9 @@ export interface NewSessionDraft {
     selectedPath: string | null;
     agentType: NewSessionAgentType;
     permissionMode: PermissionModeKey;
+    modelMode: string;
     sessionType: NewSessionSessionType;
+    worktreeKey: string | null;
     updatedAt: number;
 }
 
@@ -139,13 +145,15 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const input = typeof parsed.input === 'string' ? parsed.input : '';
         const selectedMachineId = typeof parsed.selectedMachineId === 'string' ? parsed.selectedMachineId : null;
         const selectedPath = typeof parsed.selectedPath === 'string' ? parsed.selectedPath : null;
-        const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini'
+        const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini' || parsed.agentType === 'openclaw'
             ? parsed.agentType
             : 'claude';
         const permissionMode: PermissionModeKey = typeof parsed.permissionMode === 'string'
             ? parsed.permissionMode
             : 'default';
+        const modelMode: string = typeof parsed.modelMode === 'string' ? parsed.modelMode : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
+        const worktreeKey = typeof parsed.worktreeKey === 'string' ? parsed.worktreeKey : null;
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
 
         return {
@@ -154,7 +162,9 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             selectedPath,
             agentType,
             permissionMode,
+            modelMode,
             sessionType,
+            worktreeKey,
             updatedAt,
         };
     } catch (e) {
@@ -169,6 +179,18 @@ export function saveNewSessionDraft(draft: NewSessionDraft) {
 
 export function clearNewSessionDraft() {
     mmkv.delete(NEW_SESSION_DRAFT_KEY);
+}
+
+export function loadRegisteredPushToken(): string | null {
+    return mmkv.getString(REGISTERED_PUSH_TOKEN_KEY) ?? null;
+}
+
+export function saveRegisteredPushToken(token: string) {
+    mmkv.set(REGISTERED_PUSH_TOKEN_KEY, token);
+}
+
+export function clearRegisteredPushToken() {
+    mmkv.delete(REGISTERED_PUSH_TOKEN_KEY);
 }
 
 export function loadSessionPermissionModes(): Record<string, string> {
@@ -221,6 +243,44 @@ export function retrieveTempText(id: string): string | null {
         return content;
     }
     return null;
+}
+
+export function getVoiceSoftPaywallShownCount(): number {
+    return mmkv.getNumber(VOICE_SOFT_PAYWALL_SHOWN_KEY) ?? 0;
+}
+
+export function incrementVoiceSoftPaywallShown() {
+    mmkv.set(VOICE_SOFT_PAYWALL_SHOWN_KEY, getVoiceSoftPaywallShownCount() + 1);
+}
+
+export function getVoiceOnboardingPromptLoadCount(): number {
+    return mmkv.getNumber(VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY) ?? 0;
+}
+
+export function incrementVoiceOnboardingPromptLoadCount() {
+    mmkv.set(VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY, getVoiceOnboardingPromptLoadCount() + 1);
+}
+
+export function getVoiceMessageCount(): number {
+    return mmkv.getNumber(VOICE_MESSAGE_COUNT_KEY) ?? 0;
+}
+
+export function incrementVoiceMessageCount() {
+    mmkv.set(VOICE_MESSAGE_COUNT_KEY, getVoiceMessageCount() + 1);
+}
+
+export function getVoiceLocalCounters() {
+    return {
+        softPaywallShownCount: getVoiceSoftPaywallShownCount(),
+        onboardingPromptLoadCount: getVoiceOnboardingPromptLoadCount(),
+        voiceMessageCount: getVoiceMessageCount(),
+    };
+}
+
+export function resetVoiceLocalCounters() {
+    mmkv.delete(VOICE_SOFT_PAYWALL_SHOWN_KEY);
+    mmkv.delete(VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY);
+    mmkv.delete(VOICE_MESSAGE_COUNT_KEY);
 }
 
 export function clearPersistence() {

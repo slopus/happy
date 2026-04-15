@@ -9,37 +9,57 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
         if (!data) {
             return data;
         }
-        if (!hideInactiveSessions) {
-            return data;
-        }
 
-        const filtered: SessionListViewItem[] = [];
-        let pendingProjectGroup: SessionListViewItem | null = null;
+        const result: SessionListViewItem[] = [];
+        let hasInactive = false;
 
+        // First pass: add active sessions group and check if inactive sessions exist
         for (const item of data) {
-            if (item.type === 'project-group') {
-                pendingProjectGroup = item;
-                continue;
-            }
-
-            if (item.type === 'session') {
-                if (item.session.active) {
-                    if (pendingProjectGroup) {
-                        filtered.push(pendingProjectGroup);
-                        pendingProjectGroup = null;
-                    }
-                    filtered.push(item);
-                }
-                continue;
-            }
-
-            pendingProjectGroup = null;
-
             if (item.type === 'active-sessions') {
-                filtered.push(item);
+                result.push(item);
+            } else if (item.type === 'session' && !item.session.active) {
+                hasInactive = true;
             }
         }
 
-        return filtered;
+        // Insert archive toggle if there are inactive sessions
+        if (hasInactive) {
+            result.push({ type: 'archive-toggle', hidden: hideInactiveSessions });
+        }
+
+        // If not hiding, add all remaining items (headers, project groups, inactive sessions)
+        if (!hideInactiveSessions) {
+            let pendingProjectGroup: SessionListViewItem | null = null;
+
+            for (const item of data) {
+                if (item.type === 'active-sessions') {
+                    continue; // already added
+                }
+
+                if (item.type === 'project-group') {
+                    pendingProjectGroup = item;
+                    continue;
+                }
+
+                if (item.type === 'session') {
+                    if (!item.session.active) {
+                        if (pendingProjectGroup) {
+                            result.push(pendingProjectGroup);
+                            pendingProjectGroup = null;
+                        }
+                        result.push(item);
+                    }
+                    continue;
+                }
+
+                pendingProjectGroup = null;
+
+                if (item.type === 'header') {
+                    result.push(item);
+                }
+            }
+        }
+
+        return result;
     }, [data, hideInactiveSessions]);
 }

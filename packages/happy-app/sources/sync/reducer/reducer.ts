@@ -113,7 +113,7 @@
 import { Message, ToolCall } from "../typesMessage";
 import { AgentEvent, NormalizedMessage, UsageData } from "../typesRaw";
 import { createTracer, traceMessages, TracerState } from "./reducerTracer";
-import { AgentState } from "../storageTypes";
+import { AgentState, TodoItem, TodoItemsSchema } from "../storageTypes";
 import { MessageMeta } from "../typesMessageMeta";
 import { parseMessageAsEvent } from "./messageToEvent";
 
@@ -151,12 +151,7 @@ export type ReducerState = {
     sidechains: Map<string, ReducerMessage[]>;
     tracerState: TracerState; // Tracer state for sidechain processing
     latestTodos?: {
-        todos: Array<{
-            content: string;
-            status: 'pending' | 'in_progress' | 'completed';
-            priority: 'high' | 'medium' | 'low';
-            id: string;
-        }>;
+        todos: TodoItem[];
         timestamp: number;
     };
     latestUsage?: {
@@ -184,14 +179,59 @@ export function createReducer(): ReducerState {
 
 const ENABLE_LOGGING = false;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function mergeToolInputs(existingInput: unknown, nextInput: unknown): unknown {
+    if (isRecord(existingInput) && isRecord(nextInput)) {
+        return { ...nextInput, ...existingInput };
+    }
+    return nextInput ?? existingInput;
+}
+
+function getSidechainOwner(state: ReducerState, sidechainId: string): ReducerMessage | null {
+    const ownerMessageId = state.messageIds.get(sidechainId);
+    if (ownerMessageId) {
+        const owner = state.messages.get(ownerMessageId);
+        if (owner?.tool) {
+            return owner;
+        }
+    }
+
+    for (const message of state.messages.values()) {
+        if (message.realID === sidechainId && message.tool) {
+            return message;
+        }
+    }
+
+    return null;
+}
+
+function getVisibleSidechainPrompt(owner: ReducerMessage | null): string | null {
+    const prompt = owner?.tool?.input?.prompt;
+    if (typeof prompt !== 'string') {
+        return null;
+    }
+    const normalized = prompt.trim();
+    return normalized.length > 0 ? normalized : null;
+}
+
+function isDuplicateSidechainPrompt(
+    existingSidechain: ReducerMessage[],
+    ownerPrompt: string | null,
+    text: string,
+): boolean {
+    if (existingSidechain.length > 0 || !ownerPrompt) {
+        return false;
+    }
+
+    return text.trim() === ownerPrompt;
+}
+
 export type ReducerResult = {
     messages: Message[];
-    todos?: Array<{
-        content: string;
-        status: 'pending' | 'in_progress' | 'completed';
-        priority: 'high' | 'medium' | 'low';
-        id: string;
-    }>;
+    todos?: TodoItem[];
     usage?: {
         inputTokens: number;
         outputTokens: number;
@@ -201,6 +241,20 @@ export type ReducerResult = {
     };
     hasReadyEvent?: boolean;
 };
+
+function updateLatestTodos(state: ReducerState, value: unknown, timestamp: number) {
+    const parsed = TodoItemsSchema.safeParse(value);
+    if (!parsed.success) {
+        return;
+    }
+
+    if (!state.latestTodos || timestamp > state.latestTodos.timestamp) {
+        state.latestTodos = {
+            todos: parsed.data,
+            timestamp,
+        };
+    }
+}
 
 export function reducer(state: ReducerState, messages: NormalizedMessage[], agentState?: AgentState | null): ReducerResult {
     if (ENABLE_LOGGING) {
@@ -678,6 +732,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         const message = state.messages.get(existingMessageId);
                         if (message?.tool) {
                             message.realID = msg.id;
+                            message.tool.input = mergeToolInputs(message.tool.input, c.input);
                             message.tool.description = c.description;
                             message.tool.startedAt = msg.createdAt;
                             // If permission was approved and shown as completed (no tool), now it's running
@@ -688,16 +743,6 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             }
                             changed.add(existingMessageId);
 
-                            // Track TodoWrite tool inputs when updating existing messages
-                            if (message.tool.name === 'TodoWrite' && message.tool.state === 'running' && message.tool.input?.todos) {
-                                // Only update if this is newer than existing todos
-                                if (!state.latestTodos || message.tool.createdAt > state.latestTodos.timestamp) {
-                                    state.latestTodos = {
-                                        todos: message.tool.input.todos,
-                                        timestamp: message.tool.createdAt
-                                    };
-                                }
-                            }
                         }
                     } else {
                         if (ENABLE_LOGGING) {
@@ -709,7 +754,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         let toolCall: ToolCall = {
                             name: c.name,
                             state: 'running' as const,
-                            input: permission ? permission.arguments : c.input,  // Use permission args if available
+                            input: permission ? mergeToolInputs(permission.arguments, c.input) : c.input,
                             createdAt: permission ? permission.createdAt : msg.createdAt,  // Use permission timestamp if available
                             startedAt: msg.createdAt,
                             completedAt: null,
@@ -756,16 +801,6 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         state.toolIdToMessageId.set(c.id, mid);
                         changed.add(mid);
 
-                        // Track TodoWrite tool inputs
-                        if (toolCall.name === 'TodoWrite' && toolCall.state === 'running' && toolCall.input?.todos) {
-                            // Only update if this is newer than existing todos
-                            if (!state.latestTodos || toolCall.createdAt > state.latestTodos.timestamp) {
-                                state.latestTodos = {
-                                    todos: toolCall.input.todos,
-                                    timestamp: toolCall.createdAt
-                                };
-                            }
-                        }
                     }
                 }
             }
@@ -827,6 +862,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         }
                     }
 
+                    if (message.tool.name === 'TodoWrite' && !c.is_error) {
+                        updateLatestTodos(state, message.tool.result?.newTodos, msg.createdAt);
+                    }
+
                     changed.add(messageId);
                 }
             }
@@ -849,10 +888,16 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
         // Get or create the sidechain array for this Task
         const existingSidechain = state.sidechains.get(msg.sidechainId) || [];
+        const owner = getSidechainOwner(state, msg.sidechainId);
+        const ownerPrompt = getVisibleSidechainPrompt(owner);
 
         // Process and add new sidechain messages
         if (msg.role === 'agent' && msg.content[0]?.type === 'sidechain') {
             // This is the sidechain root - create a user message
+            if (isDuplicateSidechainPrompt(existingSidechain, ownerPrompt, msg.content[0].prompt)) {
+                state.sidechains.set(msg.sidechainId, existingSidechain);
+                continue;
+            }
             let mid = allocateId();
             let userMsg: ReducerMessage = {
                 id: mid,
@@ -870,6 +915,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             // Process agent content in sidechain
             for (let c of msg.content) {
                 if (c.type === 'text' || c.type === 'thinking') {
+                    const text = c.type === 'thinking' ? c.thinking : c.text;
+                    if (c.type === 'text' && isDuplicateSidechainPrompt(existingSidechain, ownerPrompt, text)) {
+                        continue;
+                    }
                     let mid = allocateId();
                     const isThinking = c.type === 'thinking';
                     let textMsg: ReducerMessage = {

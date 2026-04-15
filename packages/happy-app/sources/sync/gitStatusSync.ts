@@ -18,6 +18,8 @@ export class GitStatusSync {
     private projectSyncMap = new Map<string, InvalidateSync>();
     // Map session IDs to project keys for cleanup
     private sessionToProjectKey = new Map<string, string>();
+    // Debounce timers to coalesce rapid invalidations (e.g. new-message + update-session arriving together)
+    private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     /**
      * Get project key string for a session
@@ -52,15 +54,23 @@ export class GitStatusSync {
     }
 
     /**
-     * Invalidate git status for a session (triggers refresh for the entire project)
+     * Invalidate git status for a session (triggers refresh for the entire project).
+     * Debounces rapid calls (e.g. new-message + update-session arriving together)
+     * to avoid duplicate RPC round-trips.
      */
     invalidate(sessionId: string): void {
         const projectKey = this.sessionToProjectKey.get(sessionId);
         if (projectKey) {
-            const sync = this.projectSyncMap.get(projectKey);
-            if (sync) {
-                sync.invalidate();
-            }
+            const existing = this.debounceTimers.get(projectKey);
+            if (existing) clearTimeout(existing);
+
+            this.debounceTimers.set(projectKey, setTimeout(() => {
+                this.debounceTimers.delete(projectKey);
+                const sync = this.projectSyncMap.get(projectKey);
+                if (sync) {
+                    sync.invalidate();
+                }
+            }, 300));
         }
     }
 
@@ -77,6 +87,11 @@ export class GitStatusSync {
             
             // Only stop the project sync if no other sessions are using it
             if (!hasOtherSessions) {
+                const timer = this.debounceTimers.get(projectKey);
+                if (timer) {
+                    clearTimeout(timer);
+                    this.debounceTimers.delete(projectKey);
+                }
                 const sync = this.projectSyncMap.get(projectKey);
                 if (sync) {
                     sync.stop();

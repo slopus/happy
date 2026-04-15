@@ -41,6 +41,7 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     exit_plan_mode: ExitPlanToolView,
     MultiEdit: MultiEditView,
     Task: TaskView,
+    Agent: TaskView,
     AskUserQuestion: AskUserQuestionView,
     // Gemini tools (lowercase)
     edit: GeminiEditView,
@@ -49,8 +50,11 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
 
 export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
     Bash: BashViewFull,
+    CodexBash: CodexBashView,
     Edit: EditViewFull,
-    MultiEdit: MultiEditViewFull
+    MultiEdit: MultiEditViewFull,
+    Task: TaskView,
+    Agent: TaskView,
 };
 
 // Helper function to get the appropriate view component for a tool

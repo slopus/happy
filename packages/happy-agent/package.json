@@ -1,5 +1,5 @@
 {
-  "name": "@slopus/agent",
+  "name": "happy-agent",
   "version": "0.1.0",
   "description": "CLI client for controlling Happy Coder agents remotely",
   "author": "Kirill Dubovitskiy",
@@ -33,14 +33,15 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc --noEmit && pkgroll",
     "test": "$npm_execpath run build && vitest run",
+    "test:integration": "$npm_execpath run build && vitest run --config vitest.integration.config.ts",
     "dev": "tsx src/index.ts",
     "prepublishOnly": "$npm_execpath run build && $npm_execpath test",
     "release": "npx --no-install release-it"
   },
   "dependencies": {
-    "@slopus/happy-wire": "^0.1.0",
+    "@slopus/happy-wire": "workspace:*",
     "axios": "^1.13.2",
     "chalk": "^5.6.2",
     "commander": "^13.1.0",
@@ -53,7 +54,6 @@
     "@types/qrcode-terminal": "^0.12.2",
     "pkgroll": "^2.14.2",
     "release-it": "^19.0.6",
-    "shx": "^0.3.3",
     "tsx": "^4.20.6",
     "typescript": "5.9.3",
     "vitest": "^3.2.4"
@@ -61,5 +61,5 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org"
   },
-  "packageManager": "yarn@1.22.22"
+  "packageManager": "pnpm@10.11.0"
 }

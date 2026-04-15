@@ -5,9 +5,18 @@ describe('validatePath', () => {
     const workingDir = '/home/user/project';
 
     it('should allow paths within working directory', () => {
-        expect(validatePath('/home/user/project/file.txt', workingDir).valid).toBe(true);
-        expect(validatePath('file.txt', workingDir).valid).toBe(true);
-        expect(validatePath('./src/file.txt', workingDir).valid).toBe(true);
+        expect(validatePath('/home/user/project/file.txt', workingDir)).toEqual({
+            valid: true,
+            resolvedPath: '/home/user/project/file.txt',
+        });
+        expect(validatePath('file.txt', workingDir)).toEqual({
+            valid: true,
+            resolvedPath: '/home/user/project/file.txt',
+        });
+        expect(validatePath('./src/file.txt', workingDir)).toEqual({
+            valid: true,
+            resolvedPath: '/home/user/project/src/file.txt',
+        });
     });
 
     it('should reject paths outside working directory', () => {
@@ -23,7 +32,13 @@ describe('validatePath', () => {
     });
 
     it('should allow the working directory itself', () => {
-        expect(validatePath('.', workingDir).valid).toBe(true);
-        expect(validatePath(workingDir, workingDir).valid).toBe(true);
+        expect(validatePath('.', workingDir)).toEqual({
+            valid: true,
+            resolvedPath: '/home/user/project',
+        });
+        expect(validatePath(workingDir, workingDir)).toEqual({
+            valid: true,
+            resolvedPath: '/home/user/project',
+        });
     });
 });

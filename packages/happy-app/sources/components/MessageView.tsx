@@ -10,7 +10,7 @@ import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
-import { useSetting } from "@/sync/storage";
+
 
 export const MessageView = (props: {
   message: Message;
@@ -70,13 +70,13 @@ function UserTextBlock(props: {
   sessionId: string;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title);
+    sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
   return (
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
-        <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} />
+        <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
         {/* {__DEV__ && (
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
@@ -89,19 +89,18 @@ function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
 }) {
-  const experiments = useSetting('experiments');
   const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title);
+    sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
-  // Hide thinking messages unless experiments is enabled
-  if (props.message.isThinking && !experiments) {
+  // Hide thinking messages
+  if (props.message.isThinking) {
     return null;
   }
 
   return (
-    <View style={[styles.agentMessageContainer, props.message.isThinking && { opacity: 0.3 }]}>
-      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
+    <View style={styles.agentMessageContainer}>
+      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
     </View>
   );
 }
@@ -180,7 +179,9 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'column',
     flexGrow: 1,
     flexBasis: 0,
+    minWidth: 0,
     maxWidth: layout.maxWidth,
+    overflow: 'hidden',
   },
   userMessageContainer: {
     maxWidth: '100%',
@@ -201,7 +202,6 @@ const styles = StyleSheet.create((theme) => ({
     marginHorizontal: 16,
     marginBottom: 12,
     borderRadius: 16,
-    alignSelf: 'flex-start',
   },
   agentEventContainer: {
     marginHorizontal: 8,

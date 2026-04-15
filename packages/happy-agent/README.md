@@ -2,7 +2,7 @@
 
 CLI client for controlling Happy Coder agents remotely.
 
-Unlike `happy-cli` which both runs and controls agents, `happy-agent` only controls them — creating sessions, sending messages, reading history, monitoring state, and stopping sessions.
+Unlike `happy-cli` which both runs and controls agents, `happy-agent` only controls them — listing machines, spawning sessions on a machine, creating sessions, sending messages, reading history, monitoring state, and stopping sessions.
 
 ## Installation
 
@@ -50,6 +50,35 @@ happy-agent list --active
 happy-agent list --json
 ```
 
+### List machines
+
+```bash
+# List all machines
+happy-agent machines
+
+# List only active machines
+happy-agent machines --active
+
+# Output as JSON
+happy-agent machines --json
+```
+
+### Spawn on a machine
+
+```bash
+# Spawn a session on a specific machine
+happy-agent spawn --machine <machine-id> --path ~/project
+
+# Let the daemon create the directory if needed
+happy-agent spawn --machine <machine-id> --path ~/new-project --create-dir
+
+# Choose a specific agent
+happy-agent spawn --machine <machine-id> --path ~/project --agent codex
+
+# Output as JSON
+happy-agent spawn --machine <machine-id> --path ~/project --json
+```
+
 ### Session status
 
 ```bash
@@ -78,6 +107,9 @@ happy-agent create --tag my-project --json
 ```bash
 # Send a message to a session
 happy-agent send <session-id> "Fix the login bug"
+
+# Send with yolo permissions
+happy-agent send <session-id> "Ship it" --yolo
 
 # Send and wait for the agent to finish
 happy-agent send <session-id> "Run the tests" --wait
@@ -126,9 +158,11 @@ Exit code 0 when agent becomes idle, 1 on timeout.
 
 All commands that accept a `<session-id>` support prefix matching. You can provide the first few characters of a session ID and the CLI will resolve the full ID.
 
+Machine-aware commands such as `spawn --machine <machine-id>` also support ID prefix matching.
+
 ## Encryption
 
-All session data is end-to-end encrypted. New sessions use AES-256-GCM with per-session keys. Existing sessions created by other clients are decrypted using the appropriate key scheme (AES-256-GCM or legacy NaCl secretbox).
+All machine and session data is end-to-end encrypted. New records use AES-256-GCM with per-record keys. Existing records created by other clients are decrypted using the appropriate key scheme (AES-256-GCM or legacy NaCl secretbox).
 
 ## Requirements
 

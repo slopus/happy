@@ -1,13 +1,16 @@
 {
-  "name": "happy-coder",
-  "version": "0.14.0-0",
+  "name": "happy",
+  "version": "1.1.6",
   "description": "Mobile and Web client for Claude Code and Codex",
   "author": "Kirill Dubovitskiy",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/slopus/happy-cli",
-  "bugs": "https://github.com/slopus/happy-cli/issues",
-  "repository": "slopus/happy-cli",
+  "homepage": "https://happy.engineering",
+  "bugs": "https://github.com/slopus/happy/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/slopus/happy"
+  },
   "bin": {
     "happy": "./bin/happy.mjs",
     "happy-mcp": "./bin/happy-mcp.mjs"
@@ -57,47 +60,48 @@
   "scripts": {
     "why do we need to build before running tests / dev?": "We need the binary to be built so we run daemon commands which directly run the binary - we don't want them to go out of sync or have custom spawn logic depending how we started happy",
     "typecheck": "tsc --noEmit",
-    "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
+    "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
     "test": "$npm_execpath run build && vitest run",
     "start": "$npm_execpath run build && node ./bin/happy.mjs",
     "cli": "tsx src/index.ts",
     "dev": "tsx src/index.ts",
     "dev:local-server": "$npm_execpath run build && tsx --env-file .env.dev-local-server src/index.ts",
-    "dev:integration-test-env": "$npm_execpath run build && tsx --env-file .env.integration-test src/index.ts",
     "prepublishOnly": "$npm_execpath run build && $npm_execpath test",
     "release": "npx --no-install release-it",
     "postinstall": "node scripts/unpack-tools.cjs",
-    "// ==== Dev/Stable Variant Management ====": "",
+    "// ==== Dev/Stable Variant Management ====": "echo comment",
     "stable": "node scripts/env-wrapper.cjs stable",
     "dev:variant": "node scripts/env-wrapper.cjs dev",
-    "// ==== Stable Version Quick Commands ====": "",
+    "// ==== Stable Version Quick Commands ====": "echo comment",
     "stable:daemon:start": "node scripts/env-wrapper.cjs stable daemon start",
     "stable:daemon:stop": "node scripts/env-wrapper.cjs stable daemon stop",
     "stable:daemon:status": "node scripts/env-wrapper.cjs stable daemon status",
     "stable:auth": "node scripts/env-wrapper.cjs stable auth",
-    "// ==== Development Version Quick Commands ====": "",
+    "// ==== Development Version Quick Commands ====": "echo comment",
     "dev:daemon:start": "node scripts/env-wrapper.cjs dev daemon start",
     "dev:daemon:stop": "node scripts/env-wrapper.cjs dev daemon stop",
     "dev:daemon:status": "node scripts/env-wrapper.cjs dev daemon status",
     "dev:auth": "node scripts/env-wrapper.cjs dev auth",
-    "// ==== Setup ====": "",
+    "// ==== Setup ====": "echo comment",
     "setup:dev": "node scripts/setup-dev.cjs",
     "doctor": "node scripts/env-wrapper.cjs stable doctor",
-    "// ==== Development Linking ====": "",
+    "// ==== Development Linking ====": "echo comment",
     "link:dev": "node scripts/link-dev.cjs",
     "unlink:dev": "node scripts/link-dev.cjs unlink"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.14.1",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.96",
     "@anthropic-ai/sandbox-runtime": "^0.0.37",
-    "@modelcontextprotocol/sdk": "^1.25.3",
+    "@modelcontextprotocol/sdk": "1.25.3",
+    "@noble/ed25519": "^3.0.0",
+    "@noble/hashes": "^2.0.1",
     "@paralleldrive/cuid2": "^2.2.2",
-    "@slopus/happy-wire": "^0.1.0",
+    "@slopus/happy-wire": "workspace:*",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
     "@types/cross-spawn": "^6.0.6",
     "@types/http-proxy": "^1.17.17",
-    "@types/ps-list": "^6.2.1",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/react": "^19.2.7",
     "@types/tmp": "^0.2.6",
@@ -120,12 +124,14 @@
     "tar": "^7.5.2",
     "tmp": "^0.2.5",
     "tweetnacl": "^1.0.3",
+    "ws": "^8.19.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
     "@eslint/compat": "^1",
     "@types/inquirer": "^9.0.9",
     "@types/node": ">=20",
+    "@types/ws": "^8.18.1",
     "cross-env": "^10.1.0",
     "dotenv": "^16.6.1",
     "eslint": "^9",
@@ -138,13 +144,8 @@
     "typescript": "5.9.3",
     "vitest": "^3.2.4"
   },
-  "resolutions": {
-    "whatwg-url": "14.2.0",
-    "parse-path": "7.0.3",
-    "@types/parse-path": "7.0.3"
-  },
   "publishConfig": {
     "registry": "https://registry.npmjs.org"
   },
-  "packageManager": "yarn@1.22.22"
+  "packageManager": "pnpm@10.11.0"
 }

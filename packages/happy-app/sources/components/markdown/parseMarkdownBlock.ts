@@ -1,14 +1,30 @@
-import type { MarkdownBlock } from "./parseMarkdown";
+import type { MarkdownBlock, MarkdownSpan } from "./parseMarkdown";
 import { parseMarkdownSpans } from "./parseMarkdownSpans";
+
+// Split a pipe-delimited table row into cells, stripping only the leading/trailing
+// empty strings caused by outer pipes while preserving interior empty cells.
+function splitTableRow(line: string): string[] {
+    let cells = line.trim().split('|').map(cell => cell.trim());
+    if (cells.length > 0 && cells[0] === '') cells = cells.slice(1);
+    if (cells.length > 0 && cells[cells.length - 1] === '') cells = cells.slice(0, -1);
+    return cells;
+}
 
 function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock | null; nextIndex: number } {
     let index = startIndex;
     const tableLines: string[] = [];
 
-    // Collect consecutive lines that contain pipe characters to identify potential table rows
-    while (index < lines.length && lines[index].includes('|')) {
-        tableLines.push(lines[index]);
-        index++;
+    // Collect consecutive lines that contain pipe characters, skipping blank lines
+    // that LLMs often insert between table rows
+    while (index < lines.length) {
+        if (lines[index].includes('|')) {
+            tableLines.push(lines[index]);
+            index++;
+        } else if (lines[index].trim() === '') {
+            index++;
+        } else {
+            break;
+        }
     }
 
     if (tableLines.length < 2) {
@@ -23,31 +39,20 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
         return { table: null, nextIndex: startIndex };
     }
 
-    // Extract header cells from the first line, filtering out empty cells that may result from leading/trailing pipes
-    const headerLine = tableLines[0].trim();
-    const headers = headerLine
-        .split('|')
-        .map(cell => cell.trim())
-        .filter(cell => cell.length > 0);
+    const headers = splitTableRow(tableLines[0])
+        .map(cell => parseMarkdownSpans(cell, false));
 
     if (headers.length === 0) {
         return { table: null, nextIndex: startIndex };
     }
 
-    // Extract data rows from remaining lines (skipping the separator line), preserving valid cell content
-    const rows: string[][] = [];
+    // Extract data rows from remaining lines (skipping the separator line)
+    const rows: MarkdownSpan[][][] = [];
     for (let i = 2; i < tableLines.length; i++) {
-        const rowLine = tableLines[i].trim();
-        if (rowLine.startsWith('|')) {
-            const rowCells = rowLine
-                .split('|')
-                .map(cell => cell.trim())
-                .filter(cell => cell.length > 0);
-
-            // Include rows that contain actual content, filtering out empty rows
-            if (rowCells.length > 0) {
-                rows.push(rowCells);
-            }
+        const rowCells = splitTableRow(tableLines[i])
+            .map(cell => parseMarkdownSpans(cell, false));
+        if (rowCells.length > 0) {
+            rows.push(rowCells);
         }
     }
 
@@ -131,13 +136,20 @@ export function parseMarkdownBlock(markdown: string) {
             continue;
         }
 
+        // Image block
+        const imageMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+        if (imageMatch) {
+            blocks.push({ type: 'image', alt: imageMatch[1], url: imageMatch[2].trim() });
+            continue;
+        }
+
         // If it is a numbered list
-        const numberedListMatch = trimmed.match(/^(\d+)\.\s/);
+        const numberedListMatch = trimmed.match(/^(\d+)\.\s+/);
         if (numberedListMatch) {
             let allLines = [{ number: parseInt(numberedListMatch[1]), content: trimmed.slice(numberedListMatch[0].length) }];
             while (index < lines.length) {
                 const nextLine = lines[index].trim();
-                const nextMatch = nextLine.match(/^(\d+)\.\s/);
+                const nextMatch = nextLine.match(/^(\d+)\.\s+/);
                 if (!nextMatch) break;
                 allLines.push({ number: parseInt(nextMatch[1]), content: nextLine.slice(nextMatch[0].length) });
                 index++;
@@ -147,10 +159,16 @@ export function parseMarkdownBlock(markdown: string) {
         }
 
         // If it is a list
-        if (trimmed.startsWith('- ')) {
-            let allLines = [trimmed.slice(2)];
-            while (index < lines.length && lines[index].trim().startsWith('- ')) {
-                allLines.push(lines[index].trim().slice(2));
+        const listMatch = trimmed.match(/^([-*+])\s+/);
+        if (listMatch) {
+            let allLines = [trimmed.slice(listMatch[0].length)];
+            while (index < lines.length) {
+                const nextLine = lines[index].trim();
+                const nextMatch = nextLine.match(/^([-*+])\s+/);
+                if (!nextMatch) {
+                    break;
+                }
+                allLines.push(nextLine.slice(nextMatch[0].length));
                 index++;
             }
             blocks.push({ type: 'list', items: allLines.map((l) => parseMarkdownSpans(l, false)) });
