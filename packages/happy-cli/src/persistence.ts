@@ -6,7 +6,7 @@
 
 import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
-import { existsSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs'
+import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync } from 'node:fs'
 import { constants } from 'node:fs'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
@@ -435,7 +435,9 @@ export function persistSession(sessionId: string, session: PersistedSession): vo
   try {
     const existing = readPersistedSessions();
     existing[sessionId] = session;
-    writeFileSync(configuration.sessionsFile, JSON.stringify({ sessions: existing }, null, 2), 'utf-8');
+    const tmpFile = configuration.sessionsFile + '.tmp';
+    writeFileSync(tmpFile, JSON.stringify({ sessions: existing }, null, 2), 'utf-8');
+    renameSync(tmpFile, configuration.sessionsFile);
   } catch (error) {
     logger.debug(`[PERSISTENCE] Failed to persist session ${sessionId}:`, error);
   }
