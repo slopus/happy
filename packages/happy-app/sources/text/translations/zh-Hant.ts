@@ -180,8 +180,6 @@ export const zhHant: TranslationStructure = {
         },
         showFlavorIcons: '顯示 AI 提供者圖示',
         showFlavorIconsDescription: '在工作階段頭像上顯示 AI 提供者圖示',
-        compactSessionView: '緊湊工作階段檢視',
-        compactSessionViewDescription: '以更緊湊的版面配置顯示活躍工作階段',
     },
 
     settingsFeatures: {

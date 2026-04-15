@@ -30,7 +30,6 @@ export default function AppearanceSettingsScreen() {
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
-    const [compactSessionView, setCompactSessionView] = useSettingMutable('compactSessionView');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
     
@@ -121,17 +120,6 @@ export default function AppearanceSettingsScreen() {
 
             {/* Display Settings */}
             <ItemGroup title={t('settingsAppearance.display')} footer={t('settingsAppearance.displayDescription')}>
-                <Item
-                    title={t('settingsAppearance.compactSessionView')}
-                    subtitle={t('settingsAppearance.compactSessionViewDescription')}
-                    icon={<Ionicons name="albums-outline" size={29} color="#5856D6" />}
-                    rightElement={
-                        <Switch
-                            value={compactSessionView}
-                            onValueChange={setCompactSessionView}
-                        />
-                    }
-                />
                 <Item
                     title={t('settingsAppearance.inlineToolCalls')}
                     subtitle={t('settingsAppearance.inlineToolCallsDescription')}

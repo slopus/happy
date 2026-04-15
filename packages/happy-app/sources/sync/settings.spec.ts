@@ -186,7 +186,7 @@ describe('settings', () => {
                 alwaysShowContextSize: false,
                 avatarStyle: 'brutalist',
                 showFlavorIcons: false,
-                compactSessionView: false,
+
                 agentInputEnterToSend: true,
                 hideInactiveSessions: false,
                 expResumeSession: false,

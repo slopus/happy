@@ -178,8 +178,6 @@ export const it: TranslationStructure = {
         },
         showFlavorIcons: 'Mostra icone provider IA',
         showFlavorIconsDescription: 'Mostra le icone del provider IA sugli avatar di sessione',
-        compactSessionView: 'Vista sessioni compatta',
-        compactSessionViewDescription: 'Mostra le sessioni attive in un layout più compatto',
     },
 
     settingsFeatures: {

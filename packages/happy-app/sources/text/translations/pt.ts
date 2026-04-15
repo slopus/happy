@@ -179,8 +179,6 @@ export const pt: TranslationStructure = {
         },
         showFlavorIcons: 'Mostrar ícones de provedores de IA',
         showFlavorIconsDescription: 'Exibir ícones do provedor de IA nos avatares de sessão',
-        compactSessionView: 'Visualização compacta de sessões',
-        compactSessionViewDescription: 'Mostrar sessões ativas em um layout mais compacto',
     },
 
     settingsFeatures: {

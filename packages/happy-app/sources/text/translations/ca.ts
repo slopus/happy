@@ -180,8 +180,6 @@ export const ca: TranslationStructure = {
         },
         showFlavorIcons: "Mostrar icones de proveïdors d'IA",
         showFlavorIconsDescription: "Mostrar icones del proveïdor d'IA als avatars de sessió",
-        compactSessionView: 'Vista compacta de sessions',
-        compactSessionViewDescription: 'Mostra les sessions actives en un disseny més compacte',
     },
 
     settingsFeatures: {

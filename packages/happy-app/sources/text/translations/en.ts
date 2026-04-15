@@ -194,8 +194,6 @@ export const en: TranslationStructure = {
         },
         showFlavorIcons: 'Show AI Provider Icons',
         showFlavorIconsDescription: 'Display AI provider icons on session avatars',
-        compactSessionView: 'Compact Session View',
-        compactSessionViewDescription: 'Show active sessions in a more compact layout',
     },
 
     settingsFeatures: {

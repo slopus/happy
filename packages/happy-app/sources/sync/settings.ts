@@ -23,7 +23,7 @@ export const SettingsSchema = z.object({
     agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
     avatarStyle: z.string().describe('Avatar display style'),
     showFlavorIcons: z.boolean().describe('Whether to show AI provider icons in avatars'),
-    compactSessionView: z.boolean().describe('Whether to use compact view for active sessions'),
+
     hideInactiveSessions: z.boolean().describe('Hide inactive sessions in the main list'),
     expResumeSession: z.boolean().describe('Enable experimental session resume feature'),
     reviewPromptAnswered: z.boolean().describe('Whether the review prompt has been answered'),
@@ -89,7 +89,7 @@ export const settingsDefaults: Settings = {
     agentInputEnterToSend: true,
     avatarStyle: 'brutalist',
     showFlavorIcons: false,
-    compactSessionView: false,
+
     hideInactiveSessions: false,
     expResumeSession: false,
     reviewPromptAnswered: false,

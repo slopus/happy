@@ -181,8 +181,6 @@ export const zhHans: TranslationStructure = {
         },
         showFlavorIcons: '显示 AI 提供商图标',
         showFlavorIconsDescription: '在会话头像上显示 AI 提供商图标',
-        compactSessionView: '紧凑会话视图',
-        compactSessionViewDescription: '以更紧凑的布局显示活跃会话',
     },
 
     settingsFeatures: {

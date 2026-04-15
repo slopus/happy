@@ -181,8 +181,6 @@ export const ja: TranslationStructure = {
         },
         showFlavorIcons: 'AIプロバイダーアイコンを表示',
         showFlavorIconsDescription: 'セッションアバターにAIプロバイダーアイコンを表示',
-        compactSessionView: 'コンパクトセッション表示',
-        compactSessionViewDescription: 'アクティブなセッションをコンパクトなレイアウトで表示',
     },
 
     settingsFeatures: {
