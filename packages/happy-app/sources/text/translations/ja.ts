@@ -106,6 +106,8 @@ export const ja: TranslationStructure = {
         connectAccount: 'アカウントを接続',
         github: 'GitHub',
         machines: 'マシン',
+        showOfflineMachines: ({ count }: { count: number }) => `${count} 台のオフラインマシンを表示`,
+        hideOfflineMachines: 'オフラインマシンを非表示',
         features: '機能',
         social: 'ソーシャル',
         account: 'アカウント',
@@ -761,6 +763,12 @@ export const ja: TranslationStructure = {
         lastDetected: '最終検出',
         untitledSession: '無題のセッション',
         back: '戻る',
+        dangerZone: '危険ゾーン',
+        delete: 'マシンを削除',
+        deleteFooter: 'このマシンをアカウントから削除します。セッション履歴は保持されますが、このマシンで新しいセッションを起動できなくなります。',
+        deleteConfirmTitle: 'このマシンを削除しますか？',
+        deleteConfirmMessage: 'マシンがアカウントから削除されます。セッション履歴は保持されますが、デーモンを再接続するまで新しいセッションを起動できません。',
+        deleteFailed: 'マシンの削除に失敗しました。',
     },
 
     message: {

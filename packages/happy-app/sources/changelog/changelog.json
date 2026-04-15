@@ -1,6 +1,17 @@
 {
   "entries": [
     {
+      "version": 9,
+      "date": "2026-04-15",
+      "summary": "Clean up stale machines cluttering your settings and session picker. Offline machines are now hidden by default with a one-tap reveal, and you can permanently remove machines you no longer use.",
+      "changes": [
+        "Offline machines are now hidden from the Settings machine list by default, with a button to reveal them",
+        "Added a delete option in machine details to remove stale machines from your account",
+        "Session history is preserved when a machine is deleted"
+      ],
+      "rawMarkdown": "## Version 9 - 2026-04-15\n\n\nClean up stale machines cluttering your settings and session picker. Offline machines are now hidden by default with a one-tap reveal, and you can permanently remove machines you no longer use.\n\n- Offline machines are now hidden from the Settings machine list by default, with a button to reveal them\n- Added a delete option in machine details to remove stale machines from your account\n- Session history is preserved when a machine is deleted"
+    },
+    {
       "version": 8,
       "date": "2026-04-12",
       "summary": "This update migrates the monorepo from Yarn to pnpm, delivering dramatically faster dependency installs for developers and CI.",
@@ -108,5 +119,5 @@
       "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
     }
   ],
-  "latestVersion": 8
+  "latestVersion": 9
 }

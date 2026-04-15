@@ -2003,6 +2003,16 @@ class Sync {
 
             // Update storage using applyMachines which rebuilds sessionListViewData
             storage.getState().applyMachines([updatedMachine]);
+        } else if (updateData.body.t === 'delete-machine') {
+            const machineId = updateData.body.machineId;
+            log.log(`🗑️ Delete machine update received for ${machineId}`);
+            if (!storage.getState().machines[machineId]) {
+                log.log(`Machine ${machineId} not in storage, skipping delete`);
+            } else {
+                storage.getState().deleteMachine(machineId);
+                this.encryption.removeMachineEncryption(machineId);
+                this.machineDataKeys.delete(machineId);
+            }
         } else if (updateData.body.t === 'relationship-updated') {
             log.log('👥 Received relationship-updated update');
             const relationshipUpdate = updateData.body;

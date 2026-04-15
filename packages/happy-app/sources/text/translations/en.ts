@@ -119,6 +119,8 @@ export const en: TranslationStructure = {
         connectAccount: 'Connect account',
         github: 'GitHub',
         machines: 'Machines',
+        showOfflineMachines: ({ count }: { count: number }) => count === 1 ? 'Show 1 offline machine' : `Show ${count} offline machines`,
+        hideOfflineMachines: 'Hide offline machines',
         features: 'Features',
         social: 'Social',
         account: 'Account',
@@ -774,6 +776,12 @@ export const en: TranslationStructure = {
         lastDetected: 'Last Detected',
         untitledSession: 'Untitled Session',
         back: 'Back',
+        dangerZone: 'Danger Zone',
+        delete: 'Delete Machine',
+        deleteFooter: 'Removes this machine from your account. Session history is preserved, but you will no longer be able to launch new sessions on it.',
+        deleteConfirmTitle: 'Delete this machine?',
+        deleteConfirmMessage: 'This removes the machine from your account. Session history is preserved, but you can no longer launch new sessions on it until you reconnect the daemon.',
+        deleteFailed: 'Failed to delete machine.',
     },
 
     message: {

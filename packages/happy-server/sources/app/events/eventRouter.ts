@@ -108,6 +108,9 @@ export type UpdateEvent = {
     };
     activeAt?: number;
 } | {
+    type: 'delete-machine';
+    machineId: string;
+} | {
     type: 'new-artifact';
     artifactId: string;
     seq: number;
@@ -447,6 +450,18 @@ export function buildUpdateMachineUpdate(machineId: string, updateSeq: number, u
             machineId,
             metadata,
             daemonState
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildDeleteMachineUpdate(machineId: string, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'delete-machine',
+            machineId
         },
         createdAt: Date.now()
     };

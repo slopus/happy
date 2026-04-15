@@ -38,7 +38,18 @@ export const SettingsView = React.memo(function SettingsView() {
     const isPro = __DEV__ || useEntitlement('pro');
     const experiments = useSetting('experiments');
     const isCustomServer = isUsingCustomServer();
-    const allMachines = useAllMachines();
+    const [showOfflineMachines, setShowOfflineMachines] = React.useState(false);
+    const allMachinesWithOffline = useAllMachines({ includeOffline: true });
+    const offlineMachineCount = React.useMemo(
+        () => allMachinesWithOffline.filter(m => !isMachineOnline(m)).length,
+        [allMachinesWithOffline]
+    );
+    const visibleMachines = React.useMemo(
+        () => showOfflineMachines
+            ? allMachinesWithOffline
+            : allMachinesWithOffline.filter(isMachineOnline),
+        [allMachinesWithOffline, showOfflineMachines]
+    );
     const profile = useProfile();
     const displayName = getDisplayName(profile);
     const avatarUrl = getAvatarUrl(profile);
@@ -256,9 +267,9 @@ export const SettingsView = React.memo(function SettingsView() {
             </ItemGroup> */}
 
             {/* Machines (sorted: online first, then last seen desc) */}
-            {allMachines.length > 0 && (
+            {allMachinesWithOffline.length > 0 && (
                 <ItemGroup title={t('settings.machines')}>
-                    {[...allMachines].map((machine) => {
+                    {visibleMachines.map((machine) => {
                         const isOnline = isMachineOnline(machine);
                         const host = machine.metadata?.host || 'Unknown';
                         const displayName = machine.metadata?.displayName;
@@ -293,6 +304,19 @@ export const SettingsView = React.memo(function SettingsView() {
                             />
                         );
                     })}
+                    {offlineMachineCount > 0 && (
+                        <Item
+                            title={showOfflineMachines
+                                ? t('settings.hideOfflineMachines')
+                                : t('settings.showOfflineMachines', { count: offlineMachineCount })}
+                            onPress={() => setShowOfflineMachines(v => !v)}
+                            showChevron={false}
+                            titleStyle={{
+                                textAlign: 'center',
+                                color: theme.colors.textLink,
+                            }}
+                        />
+                    )}
                 </ItemGroup>
             )}
 

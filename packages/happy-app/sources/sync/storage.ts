@@ -168,6 +168,7 @@ interface StorageState {
     nativeUpdateStatus: { available: boolean; updateUrl?: string } | null;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
+    deleteMachine: (machineId: string) => void;
     applyLoaded: () => void;
     applyReady: () => void;
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
@@ -1010,6 +1011,17 @@ export const storage = create<StorageState>()((set, get) => {
                 ...state,
                 machines: mergedMachines,
                 sessionListViewData
+            };
+        }),
+        deleteMachine: (machineId: string) => set((state) => {
+            if (!state.machines[machineId]) {
+                return state;
+            }
+            const { [machineId]: _removed, ...remaining } = state.machines;
+            return {
+                ...state,
+                machines: remaining,
+                sessionListViewData: buildSessionListViewData(state.sessions)
             };
         }),
         // Artifact methods

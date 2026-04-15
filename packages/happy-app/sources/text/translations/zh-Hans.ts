@@ -106,6 +106,8 @@ export const zhHans: TranslationStructure = {
         connectAccount: '连接账户',
         github: 'GitHub',
         machines: '设备',
+        showOfflineMachines: ({ count }: { count: number }) => `显示 ${count} 台离线设备`,
+        hideOfflineMachines: '隐藏离线设备',
         features: '功能',
         social: '社交',
         account: '账户',
@@ -761,6 +763,12 @@ export const zhHans: TranslationStructure = {
         lastDetected: '最近检测',
         untitledSession: '无标题会话',
         back: '返回',
+        dangerZone: '危险区域',
+        delete: '删除设备',
+        deleteFooter: '从您的账户中移除此设备。会话历史将保留，但您无法再在此设备上启动新会话。',
+        deleteConfirmTitle: '删除此设备？',
+        deleteConfirmMessage: '设备将从您的账户中移除。会话历史将保留，但在您重新连接守护进程之前，您将无法启动新会话。',
+        deleteFailed: '删除设备失败。',
     },
 
     message: {
