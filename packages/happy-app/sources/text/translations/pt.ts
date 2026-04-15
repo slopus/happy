@@ -104,6 +104,8 @@ export const pt: TranslationStructure = {
         connectAccount: 'Conectar conta',
         github: 'GitHub',
         machines: 'Máquinas',
+        showOfflineMachines: ({ count }: { count: number }) => count === 1 ? 'Mostrar 1 máquina offline' : `Mostrar ${count} máquinas offline`,
+        hideOfflineMachines: 'Ocultar máquinas offline',
         features: 'Recursos',
         social: 'Social',
         account: 'Conta',
@@ -759,6 +761,12 @@ export const pt: TranslationStructure = {
         lastDetected: 'Última detecção',
         untitledSession: 'Sessão sem título',
         back: 'Voltar',
+        dangerZone: 'Zona de perigo',
+        delete: 'Excluir máquina',
+        deleteFooter: 'Remove esta máquina da sua conta. O histórico de sessões será preservado, mas você não poderá iniciar novas sessões nesta máquina.',
+        deleteConfirmTitle: 'Excluir esta máquina?',
+        deleteConfirmMessage: 'A máquina será removida da sua conta. O histórico de sessões será preservado, mas você não poderá iniciar novas sessões até reconectar o daemon.',
+        deleteFailed: 'Falha ao excluir a máquina.',
     },
 
     message: {

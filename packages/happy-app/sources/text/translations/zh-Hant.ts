@@ -105,6 +105,8 @@ export const zhHant: TranslationStructure = {
         connectAccount: '連結帳戶',
         github: 'GitHub',
         machines: '裝置',
+        showOfflineMachines: ({ count }: { count: number }) => `顯示 ${count} 台離線裝置`,
+        hideOfflineMachines: '隱藏離線裝置',
         features: '功能',
         social: '社交',
         account: '帳戶',
@@ -760,6 +762,12 @@ export const zhHant: TranslationStructure = {
         lastDetected: '最近偵測',
         untitledSession: '無標題工作階段',
         back: '返回',
+        dangerZone: '危險區域',
+        delete: '刪除裝置',
+        deleteFooter: '從您的帳戶中移除此裝置。工作階段歷史將保留,但您將無法在此裝置上啟動新的工作階段。',
+        deleteConfirmTitle: '刪除此裝置?',
+        deleteConfirmMessage: '裝置將從您的帳戶中移除。工作階段歷史將保留,但在您重新連接守護程序之前,您將無法啟動新的工作階段。',
+        deleteFailed: '刪除裝置失敗。',
     },
 
     message: {

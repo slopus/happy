@@ -103,6 +103,8 @@ export const it: TranslationStructure = {
         connectAccount: 'Collega account',
         github: 'GitHub',
         machines: 'Macchine',
+        showOfflineMachines: ({ count }: { count: number }) => count === 1 ? 'Mostra 1 macchina offline' : `Mostra ${count} macchine offline`,
+        hideOfflineMachines: 'Nascondi macchine offline',
         features: 'Funzionalità',
         social: 'Social',
         account: 'Account',
@@ -758,6 +760,12 @@ export const it: TranslationStructure = {
         lastDetected: 'Ultimo rilevamento',
         untitledSession: 'Sessione senza titolo',
         back: 'Indietro',
+        dangerZone: 'Zona di pericolo',
+        delete: 'Elimina macchina',
+        deleteFooter: 'Rimuove questa macchina dal tuo account. La cronologia delle sessioni viene mantenuta, ma non potrai più avviare nuove sessioni su di essa.',
+        deleteConfirmTitle: 'Eliminare questa macchina?',
+        deleteConfirmMessage: 'La macchina verrà rimossa dal tuo account. La cronologia delle sessioni viene mantenuta, ma non potrai avviare nuove sessioni finché non riconnetti il daemon.',
+        deleteFailed: 'Impossibile eliminare la macchina.',
     },
 
     message: {

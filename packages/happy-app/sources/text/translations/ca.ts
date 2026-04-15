@@ -104,6 +104,8 @@ export const ca: TranslationStructure = {
         connectAccount: 'Connectar compte',
         github: 'GitHub',
         machines: 'Màquines',
+        showOfflineMachines: ({ count }: { count: number }) => count === 1 ? 'Mostra 1 màquina fora de línia' : `Mostra ${count} màquines fora de línia`,
+        hideOfflineMachines: 'Amaga màquines fora de línia',
         features: 'Funcions',
         social: 'Social',
         account: 'Compte',
@@ -760,6 +762,12 @@ export const ca: TranslationStructure = {
         lastDetected: 'Última detecció',
         untitledSession: 'Sessió sense títol',
         back: 'Enrere',
+        dangerZone: 'Zona de perill',
+        delete: 'Elimina la màquina',
+        deleteFooter: 'Elimina aquesta màquina del teu compte. L\'historial de sessions es conservarà, però no podràs iniciar noves sessions en aquesta màquina.',
+        deleteConfirmTitle: 'Eliminar aquesta màquina?',
+        deleteConfirmMessage: 'La màquina s\'eliminarà del teu compte. L\'historial de sessions es conservarà, però no podràs iniciar noves sessions fins que tornis a connectar el dimoni.',
+        deleteFailed: 'No s\'ha pogut eliminar la màquina.',
     },
 
     message: {
