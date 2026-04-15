@@ -56,8 +56,11 @@ export function startSocket(app: Fastify) {
     // Initialize event router with Socket.IO server instance
     eventRouter.init(io);
 
-    io.on("connection", async (socket) => {
-        log({ module: 'websocket' }, `New connection attempt from socket: ${socket.id}`);
+    // Auth runs in middleware so it completes BEFORE the client's `connect`
+    // event fires. Without this, the async verifyToken in the connection
+    // callback creates a window where client events (rpc-register, rpc-call)
+    // arrive before handlers are attached — and get silently dropped.
+    io.use(async (socket, next) => {
         const token = socket.handshake.auth.token as string;
         const clientType = socket.handshake.auth.clientType as 'session-scoped' | 'user-scoped' | 'machine-scoped' | undefined;
         const sessionId = socket.handshake.auth.sessionId as string | undefined;
@@ -65,36 +68,42 @@ export function startSocket(app: Fastify) {
 
         if (!token) {
             log({ module: 'websocket' }, `No token provided`);
-            socket.emit('error', { message: 'Missing authentication token' });
-            socket.disconnect();
+            next(new Error('Missing authentication token'));
             return;
         }
 
-        // Validate session-scoped clients have sessionId
         if (clientType === 'session-scoped' && !sessionId) {
             log({ module: 'websocket' }, `Session-scoped client missing sessionId`);
-            socket.emit('error', { message: 'Session ID required for session-scoped clients' });
-            socket.disconnect();
+            next(new Error('Session ID required for session-scoped clients'));
             return;
         }
 
-        // Validate machine-scoped clients have machineId
         if (clientType === 'machine-scoped' && !machineId) {
             log({ module: 'websocket' }, `Machine-scoped client missing machineId`);
-            socket.emit('error', { message: 'Machine ID required for machine-scoped clients' });
-            socket.disconnect();
+            next(new Error('Machine ID required for machine-scoped clients'));
             return;
         }
 
         const verified = await auth.verifyToken(token);
         if (!verified) {
             log({ module: 'websocket' }, `Invalid token provided`);
-            socket.emit('error', { message: 'Invalid authentication token' });
-            socket.disconnect();
+            next(new Error('Invalid authentication token'));
             return;
         }
 
-        const userId = verified.userId;
+        socket.data.userId = verified.userId;
+        socket.data.clientType = clientType;
+        socket.data.sessionId = sessionId;
+        socket.data.machineId = machineId;
+        next();
+    });
+
+    io.on("connection", (socket) => {
+        const userId = socket.data.userId as string;
+        const clientType = socket.data.clientType as 'session-scoped' | 'user-scoped' | 'machine-scoped' | undefined;
+        const sessionId = socket.data.sessionId as string | undefined;
+        const machineId = socket.data.machineId as string | undefined;
+
         log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`);
 
         // Store connection based on type
