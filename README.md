@@ -36,6 +36,10 @@ Step 2: Install CLI on your computer
 </h3>
 
 ```bash
+# Default installation
+npm install -g happy
+
+# If using cnpm (China Taobao mirror), install the renamed package instead:
 npm install -g happy-coder
 ```
 

@@ -36,6 +36,10 @@
 </h3>
 
 ```bash
+# 默认安装方式
+npm install -g happy
+
+# 如果使用 cnpm（淘宝镜像源），安装改名后的包：
 npm install -g happy-coder
 ```
 
