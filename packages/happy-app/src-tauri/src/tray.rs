@@ -11,6 +11,20 @@ pub struct TraySession {
     pub name: String,
 }
 
+/// Restore and focus the main window from minimized/hidden state
+fn restore_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    // macOS: activate the application itself
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.show();
+    }
+}
+
 /// Build and register the system tray icon with default menu
 pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_menu(app, true, &[])?;
@@ -25,23 +39,18 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
     tray_builder
         .menu(&menu)
+        // Left click opens menu (standard macOS pattern). "Show Window" is the first item.
         .on_menu_event(move |app, event| {
             let id = event.id().0.as_str();
             match id {
                 "show" => {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                    restore_window(app);
                 }
                 "new-session" => {
                     let _ = app.emit("tray-action", serde_json::json!({
                         "action": "new-session"
                     }));
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                    restore_window(app);
                 }
                 "quit" => {
                     app.exit(0);
@@ -52,22 +61,12 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                         "action": "navigate",
                         "sessionId": session_id
                     }));
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                    restore_window(app);
                 }
                 _ => {}
             }
         })
-        .on_tray_icon_event(|tray, event| {
-            if let tauri::tray::TrayIconEvent::DoubleClick { .. } = event {
-                if let Some(window) = tray.app_handle().get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }
-        })
+        // No custom tray icon click — menu handles all interactions
         .build(app)?;
 
     Ok(())

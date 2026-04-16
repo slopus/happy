@@ -29,10 +29,19 @@ pub fn run() {
       Ok(())
     })
     .on_window_event(|window, event| {
-      // Close-to-tray: hide window instead of quitting
       if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-        let _ = window.hide();
         api.prevent_close();
+        let window = window.clone();
+        std::thread::spawn(move || {
+          let confirmed = rfd::MessageDialog::new()
+            .set_title("Quit Happy")
+            .set_description("Are you sure you want to quit?")
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show();
+          if confirmed == rfd::MessageDialogResult::Yes {
+            let _ = window.destroy();
+          }
+        });
       }
     })
     .run(tauri::generate_context!())

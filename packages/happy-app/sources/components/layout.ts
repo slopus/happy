@@ -4,8 +4,7 @@ import { isRunningOnMac, isDesktop } from '@/utils/platform';
 
 // Calculate max width based on device type
 function getMaxWidth(): number {
-    // Desktop: content fills center column in three-column layout, no maxWidth needed
-    if (isDesktop()) {
+    if (isRunningOnMac()) {
         return Number.POSITIVE_INFINITY;
     }
 
@@ -17,15 +16,16 @@ function getMaxWidth(): number {
         return Math.max(width, height);
     }
 
-    // For tablets and web, use 800px
+    // Desktop (Tauri) and tablets/web: 800px content width.
+    // In three-column layout the center column is flex:1 (~680px),
+    // so 800px is effectively unconstrained within the column.
     return 800;
 }
 
 // Calculate max width based on device type
 function getMaxLayoutWidth(): number {
-    // Desktop: content fills center column in three-column layout
-    if (isDesktop()) {
-        return Number.POSITIVE_INFINITY;
+    if (isRunningOnMac()) {
+        return 1400;
     }
 
     const deviceType = getDeviceType();
@@ -36,7 +36,7 @@ function getMaxLayoutWidth(): number {
         return Math.max(width, height);
     }
 
-    // For tablets and web, use 800px
+    // Desktop (Tauri) and tablets/web: 800px layout width.
     return 800;
 }
 

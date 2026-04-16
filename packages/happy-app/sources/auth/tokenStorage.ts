@@ -8,6 +8,11 @@ const MIGRATION_FLAG = '_keychain_migrated';
 // Cache for synchronous access
 let credentialsCache: string | null = null;
 
+// Use OS keychain only in production Tauri builds (dev builds use localStorage to avoid Keychain password prompts)
+function shouldUseKeychain(): boolean {
+    return isTauri() && !__DEV__;
+}
+
 // Lazy-load Tauri invoke to avoid import errors on non-Tauri platforms
 let tauriInvoke: ((cmd: string, args?: any) => Promise<any>) | null = null;
 async function getInvoke() {
@@ -50,8 +55,8 @@ async function migrateToKeychain(invoke: (cmd: string, args?: any) => Promise<an
 
 export const TokenStorage = {
     async getCredentials(): Promise<AuthCredentials | null> {
-        // Tauri: use OS keychain with localStorage migration
-        if (isTauri()) {
+        // Tauri production: use OS keychain with localStorage migration
+        if (shouldUseKeychain()) {
             try {
                 const invoke = await getInvoke();
                 const stored = await invoke('keychain_get', { key: AUTH_KEY }) as string | null;
@@ -88,7 +93,7 @@ export const TokenStorage = {
     },
 
     async setCredentials(credentials: AuthCredentials): Promise<boolean> {
-        if (isTauri()) {
+        if (shouldUseKeychain()) {
             try {
                 const invoke = await getInvoke();
                 await invoke('keychain_set', { key: AUTH_KEY, value: JSON.stringify(credentials) });
@@ -117,7 +122,7 @@ export const TokenStorage = {
     },
 
     async removeCredentials(): Promise<boolean> {
-        if (isTauri()) {
+        if (shouldUseKeychain()) {
             try {
                 const invoke = await getInvoke();
                 await invoke('keychain_delete', { key: AUTH_KEY });

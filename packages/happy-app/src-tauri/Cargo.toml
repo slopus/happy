@@ -27,3 +27,4 @@ tauri-plugin-http = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-window-state = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
+rfd = "0.15"

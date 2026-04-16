@@ -12,28 +12,18 @@ import { ZenModeProvider } from '@/hooks/useZenMode';
 export const SidebarNavigator = React.memo(() => {
     const auth = useAuth();
     const isTablet = useIsTablet();
-    const useDesktopLayout = isDesktop() && auth.isAuthenticated;
+    const showDesktop = isDesktop() && auth.isAuthenticated;
     const showPermanentDrawer = auth.isAuthenticated && isTablet;
     const { width: windowWidth } = useWindowDimensions();
 
-    // Desktop: three-column layout (SidebarView + Slot + ContextPanel)
-    if (useDesktopLayout) {
-        return (
-            <ZenModeProvider>
-                <DesktopLayout />
-            </ZenModeProvider>
-        );
-    }
-
-    // Calculate drawer width only when needed
+    // All hooks must be called before any conditional return
     const drawerWidth = React.useMemo(() => {
-        if (!showPermanentDrawer) return 280; // Default width for hidden drawer
+        if (!showPermanentDrawer) return 280;
         return Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
     }, [windowWidth, showPermanentDrawer]);
 
     const drawerNavigationOptions = React.useMemo(() => {
         if (!showPermanentDrawer) {
-            // When drawer is hidden, use minimal configuration
             return {
                 lazy: false,
                 headerShown: false,
@@ -46,7 +36,6 @@ export const SidebarNavigator = React.memo(() => {
             };
         }
 
-        // When drawer is permanent
         return {
             lazy: false,
             headerShown: false,
@@ -64,11 +53,19 @@ export const SidebarNavigator = React.memo(() => {
         };
     }, [showPermanentDrawer, drawerWidth]);
 
-    // Always render SidebarView but hide it when not needed
     const drawerContent = React.useCallback(
         () => <SidebarView />,
         []
     );
+
+    // Desktop: three-column layout (SidebarView + Slot + ContextPanel)
+    if (showDesktop) {
+        return (
+            <ZenModeProvider>
+                <DesktopLayout />
+            </ZenModeProvider>
+        );
+    }
 
     return (
         <Drawer
