@@ -44,6 +44,9 @@ WORKDIR /repo
 RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
+RUN addgroup --system --gid 1001 appgroup && \
+    adduser --system --uid 1001 --ingroup appgroup appuser
+
 # Set environment to production
 ENV NODE_ENV=production
 
@@ -52,9 +55,12 @@ COPY --from=builder /repo/node_modules /repo/node_modules
 COPY --from=builder /repo/packages/happy-wire /repo/packages/happy-wire
 COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
 
+RUN chown -R appuser:appgroup /repo
+
 # Expose the port the app will run on
 EXPOSE 3000
 
 # Command to run the application
 COPY --from=builder /repo/package.json /repo/pnpm-workspace.yaml /repo/
+USER appuser
 CMD ["pnpm", "--filter", "happy-server", "start"]
