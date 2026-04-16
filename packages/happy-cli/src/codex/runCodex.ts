@@ -198,13 +198,34 @@ export async function runCodex(opts: {
     let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
 
+    // Valid Codex permission modes from remote messages. Matches the modes
+    // the mobile UI exposes for Codex sessions (see modelModeOptions.ts:
+    // getCodexPermissionModes) and mirrors the Gemini validation pattern at
+    // runGemini.ts:222. Anything outside this set is silently ignored — the
+    // previous code blindly cast `message.meta.permissionMode as PermissionMode`
+    // at runtime, meaning a crafted value like `'totally_unsafe'` would be
+    // accepted and then fall through to the `default` branch in
+    // resolveCodexExecutionPolicy() — or worse, an attacker-chosen valid value
+    // could escalate sandbox scope (issue #1092).
+    const VALID_REMOTE_PERMISSION_MODES: readonly PermissionMode[] = [
+        'default',
+        'read-only',
+        'safe-yolo',
+        'yolo',
+    ];
+
     session.onUserMessage((message) => {
-        // Resolve permission mode (accept all modes, will be mapped in switch statement)
+        // Resolve permission mode (validate against Codex-native modes)
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            messagePermissionMode = message.meta.permissionMode as import('@/api/types').PermissionMode;
-            currentPermissionMode = messagePermissionMode;
-            logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
+            const incoming = message.meta.permissionMode as PermissionMode;
+            if (VALID_REMOTE_PERMISSION_MODES.includes(incoming)) {
+                messagePermissionMode = incoming;
+                currentPermissionMode = messagePermissionMode;
+                logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
+            } else {
+                logger.debug(`[Codex] Ignoring invalid permission mode from user message: ${String(message.meta.permissionMode)}`);
+            }
         } else {
             logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
         }

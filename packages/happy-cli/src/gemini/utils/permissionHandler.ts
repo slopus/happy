@@ -53,20 +53,36 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
     private shouldAutoApprove(toolName: string, toolCallId: string, input: unknown): boolean {
         // Always auto-approve these tools regardless of permission mode:
         // - change_title: Changing chat title is safe and should be automatic
-        // - GeminiReasoning: Reasoning is just display of thinking process, not an action
-        // - think: Thinking/saving memories is safe
-        // - save_memory: Saving memories is safe
-        const alwaysAutoApproveNames = ['change_title', 'happy__change_title', 'GeminiReasoning', 'CodexReasoning', 'think', 'save_memory'];
-        const alwaysAutoApproveIds = ['change_title', 'save_memory'];
-        
+        // - GeminiReasoning / CodexReasoning: Display of thinking process, not an action
+        // - think / save_memory: Safe introspective operations
+        //
+        // Exact-match by tool name (no substring) to prevent bypass through
+        // crafted tool names like `change_title_and_run_command`. Include each
+        // legitimate naming variant explicitly (bare, MCP-qualified, etc).
+        const alwaysAutoApproveNames: ReadonlySet<string> = new Set([
+            'change_title',
+            'happy__change_title',
+            'mcp__happy__change_title',
+            'GeminiReasoning',
+            'CodexReasoning',
+            'think',
+            'save_memory',
+        ]);
+        // Tool-call IDs auto-approve when they exactly match one of these
+        // values or start with `<name>-` (Gemini CLI format, e.g.
+        // `change_title-1765385846663`). Substring was a bypass vector.
+        const alwaysAutoApproveIdPrefixes: readonly string[] = ['change_title', 'save_memory'];
+
         // Check by tool name
-        if (alwaysAutoApproveNames.some(name => toolName.toLowerCase().includes(name.toLowerCase()))) {
+        if (alwaysAutoApproveNames.has(toolName)) {
             return true;
         }
-        
-        // Check by toolCallId (Gemini CLI may send change_title as "other" but toolCallId contains "change_title")
-        if (alwaysAutoApproveIds.some(id => toolCallId.toLowerCase().includes(id.toLowerCase()))) {
-            return true;
+
+        // Check by toolCallId (Gemini CLI may send change_title as "other" but toolCallId is like "change_title-<timestamp>")
+        for (const prefix of alwaysAutoApproveIdPrefixes) {
+            if (toolCallId === prefix || toolCallId.startsWith(`${prefix}-`)) {
+                return true;
+            }
         }
         
         switch (this.currentPermissionMode) {
