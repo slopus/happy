@@ -5,12 +5,25 @@ import { useIsTablet } from '@/utils/responsive';
 import { SidebarView } from './SidebarView';
 import { Slot } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
+import { isDesktop } from '@/utils/platform';
+import { DesktopLayout } from './DesktopLayout';
+import { ZenModeProvider } from '@/hooks/useZenMode';
 
 export const SidebarNavigator = React.memo(() => {
     const auth = useAuth();
     const isTablet = useIsTablet();
+    const useDesktopLayout = isDesktop() && auth.isAuthenticated;
     const showPermanentDrawer = auth.isAuthenticated && isTablet;
     const { width: windowWidth } = useWindowDimensions();
+
+    // Desktop: three-column layout (SidebarView + Slot + ContextPanel)
+    if (useDesktopLayout) {
+        return (
+            <ZenModeProvider>
+                <DesktopLayout />
+            </ZenModeProvider>
+        );
+    }
 
     // Calculate drawer width only when needed
     const drawerWidth = React.useMemo(() => {
@@ -32,7 +45,7 @@ export const SidebarNavigator = React.memo(() => {
                 },
             };
         }
-        
+
         // When drawer is permanent
         return {
             lazy: false,

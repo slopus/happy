@@ -1,40 +1,42 @@
 import { Dimensions, Platform } from 'react-native';
 import { getDeviceType } from '@/utils/responsive';
-import { isRunningOnMac } from '@/utils/platform';
+import { isRunningOnMac, isDesktop } from '@/utils/platform';
 
 // Calculate max width based on device type
 function getMaxWidth(): number {
+    // Desktop: content fills center column in three-column layout, no maxWidth needed
+    if (isDesktop()) {
+        return Number.POSITIVE_INFINITY;
+    }
+
     const deviceType = getDeviceType();
-    
+
     // For phones, use the max dimension (width or height)
     if (deviceType === 'phone' && Platform.OS !== 'web') {
         const { width, height } = Dimensions.get('window');
         return Math.max(width, height);
     }
 
-    if (isRunningOnMac()) {
-        return Number.POSITIVE_INFINITY;
-    }
-    
-    // For tablets and web, use 700px
+    // For tablets and web, use 800px
     return 800;
 }
 
 // Calculate max width based on device type
 function getMaxLayoutWidth(): number {
+    // Desktop: content fills center column in three-column layout
+    if (isDesktop()) {
+        return Number.POSITIVE_INFINITY;
+    }
+
     const deviceType = getDeviceType();
-    
+
     // For phones, use the max dimension (width or height)
     if (deviceType === 'phone' && Platform.OS !== 'web') {
         const { width, height } = Dimensions.get('window');
         return Math.max(width, height);
     }
 
-    if (isRunningOnMac()) {
-        return 1400;
-    }
-    
-    // For tablets and web, use 700px
+    // For tablets and web, use 800px
     return 800;
 }
 

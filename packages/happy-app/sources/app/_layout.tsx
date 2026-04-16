@@ -29,29 +29,33 @@ import { initConsoleLogging, setConsoleOutputEnabled } from '@/utils/consoleLogg
 import { useLocalSetting } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
 import { AsyncLock } from '@/utils/lock';
+import { isTauri } from '@/utils/platform';
 import { getSessionRouteFromNotificationResponse } from '@/utils/notificationRouting';
 import { navigateToSession } from '@/hooks/useNavigateToSession';
 import { applyVoiceUpsellOverride } from '@/realtime/voiceExperiment';
 
 // Configure notification handler for foreground notifications
-Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-    }),
-});
-
-// Setup Android notification channel (required for Android 8.0+)
-if (Platform.OS === 'android') {
-    Notifications.setNotificationChannelAsync('default', {
-        name: 'Default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF231F7C',
+// Skip in Tauri — expo-notifications native module is not available in webview
+if (!isTauri()) {
+    Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: true,
+            shouldSetBadge: true,
+            shouldShowBanner: true,
+            shouldShowList: true,
+        }),
     });
+
+    // Setup Android notification channel (required for Android 8.0+)
+    if (Platform.OS === 'android') {
+        Notifications.setNotificationChannelAsync('default', {
+            name: 'Default',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#FF231F7C',
+        });
+    }
 }
 
 export {
@@ -104,12 +108,7 @@ async function loadFonts() {
             return;
         }
         loaded = true;
-        // Check if running in Tauri
-        const isTauri = Platform.OS === 'web' &&
-            typeof window !== 'undefined' &&
-            (window as any).__TAURI_INTERNALS__ !== undefined;
-
-        if (!isTauri) {
+        if (!isTauri()) {
             // Normal font loading for non-Tauri environments (native and regular web)
             await Fonts.loadAsync({
                 // Keep existing font
@@ -314,8 +313,9 @@ export default function RootLayout() {
         }
     }, [router]);
 
+    // Notification response listener — skip in Tauri (expo-notifications not available)
     React.useEffect(() => {
-        if (!initState) {
+        if (!initState || isTauri()) {
             return;
         }
 
