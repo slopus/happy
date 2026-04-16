@@ -156,12 +156,18 @@ export async function runCodex(opts: {
     let currentModel: string | undefined = undefined;
 
     session.onUserMessage((message) => {
-        // Resolve permission mode (accept all modes, will be mapped in switch statement)
+        // Resolve permission mode (validate against allowlist to prevent remote escalation)
+        const VALID_REMOTE_MODES: import('@/api/types').PermissionMode[] = ['default', 'acceptEdits', 'plan', 'read-only', 'safe-yolo'];
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            messagePermissionMode = message.meta.permissionMode as import('@/api/types').PermissionMode;
-            currentPermissionMode = messagePermissionMode;
-            logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
+            const requested = message.meta.permissionMode as import('@/api/types').PermissionMode;
+            if (VALID_REMOTE_MODES.includes(requested)) {
+                messagePermissionMode = requested;
+                currentPermissionMode = messagePermissionMode;
+                logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
+            } else {
+                logger.debug(`[Codex] Rejected remote permission mode: ${message.meta.permissionMode} (not in allowlist)`);
+            }
         } else {
             logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
         }
