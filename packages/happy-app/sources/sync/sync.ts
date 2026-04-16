@@ -89,6 +89,9 @@ class Sync {
     private sendSync = new Map<string, InvalidateSync>();
     private sendAbortControllers = new Map<string, AbortController>();
     private sessionLastSeq = new Map<string, number>();
+    private sessionOldestSeq = new Map<string, number>();
+    private sessionHasMoreOlder = new Map<string, boolean>();
+    private sessionLoadingOlder = new Set<string>();
     private pendingOutbox = new Map<string, OutboxMessage[]>();
     private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
     private sessionQueueProcessing = new Set<string>();
@@ -1676,12 +1679,12 @@ class Sync {
             let hasMore = true;
             let totalNormalized = 0;
 
-            // First load: fetch only the latest 100 messages for fast initial render
+            // First load: fetch only the latest 50 messages for fast initial render
             const isFirstLoad = afterSeq === 0;
 
             while (hasMore) {
                 const url = isFirstLoad && afterSeq === 0
-                    ? `/v3/sessions/${sessionId}/messages?latest=true&limit=100`
+                    ? `/v3/sessions/${sessionId}/messages?latest=true&limit=50`
                     : `/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`;
                 const response = await apiSocket.request(url);
                 if (!response.ok) {
@@ -1691,9 +1694,13 @@ class Sync {
                 const messages = Array.isArray(data.messages) ? data.messages : [];
 
                 let maxSeq = afterSeq;
+                let minSeq = messages.length > 0 ? messages[0].seq : afterSeq;
                 for (const message of messages) {
                     if (message.seq > maxSeq) {
                         maxSeq = message.seq;
+                    }
+                    if (message.seq < minSeq) {
+                        minSeq = message.seq;
                     }
                 }
 
@@ -1718,7 +1725,12 @@ class Sync {
                 this.sessionLastSeq.set(sessionId, maxSeq);
 
                 // For first load with latest=true, stop after first page
+                // Track oldest seq for lazy loading of older messages
                 if (isFirstLoad && afterSeq === 0) {
+                    if (messages.length > 0) {
+                        this.sessionOldestSeq.set(sessionId, minSeq);
+                        this.sessionHasMoreOlder.set(sessionId, !!data.hasMore);
+                    }
                     afterSeq = maxSeq;
                     hasMore = false;
                     break;
@@ -1735,6 +1747,70 @@ class Sync {
             storage.getState().applyMessagesLoaded(sessionId);
             log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages`);
         });
+    }
+
+    /**
+     * Lazy-load older messages when user scrolls to the top of the chat.
+     * Uses `before_seq` to fetch messages older than the oldest currently loaded.
+     */
+    public loadOlderMessages = async (sessionId: string): Promise<boolean> => {
+        if (this.sessionLoadingOlder.has(sessionId)) {
+            return false;
+        }
+        if (this.sessionHasMoreOlder.get(sessionId) === false) {
+            return false;
+        }
+        const beforeSeq = this.sessionOldestSeq.get(sessionId);
+        if (beforeSeq === undefined) {
+            return false;
+        }
+
+        this.sessionLoadingOlder.add(sessionId);
+        try {
+            const encryption = this.encryption.getSessionEncryption(sessionId);
+            if (!encryption) {
+                return false;
+            }
+
+            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?before_seq=${beforeSeq}&limit=50`);
+            if (!response.ok) {
+                return false;
+            }
+            const data = await response.json() as V3GetSessionMessagesResponse;
+            const messages = Array.isArray(data.messages) ? data.messages : [];
+
+            if (messages.length === 0) {
+                this.sessionHasMoreOlder.set(sessionId, false);
+                return false;
+            }
+
+            let minSeq = messages[0].seq;
+            for (const message of messages) {
+                if (message.seq < minSeq) {
+                    minSeq = message.seq;
+                }
+            }
+
+            const decryptedMessages = await encryption.decryptMessages(messages);
+            const normalizedMessages: NormalizedMessage[] = [];
+            for (const decrypted of decryptedMessages) {
+                if (!decrypted) continue;
+                const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                if (normalized) {
+                    normalizedMessages.push(normalized);
+                }
+            }
+
+            if (normalizedMessages.length > 0) {
+                this.enqueueMessages(sessionId, normalizedMessages);
+            }
+
+            this.sessionOldestSeq.set(sessionId, minSeq);
+            this.sessionHasMoreOlder.set(sessionId, !!data.hasMore);
+            return true;
+        } finally {
+            this.sessionLoadingOlder.delete(sessionId);
+        }
     }
 
     private registerPushToken = async () => {

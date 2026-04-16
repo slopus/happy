@@ -7,6 +7,7 @@ import { type Fastify } from "../types";
 
 const getMessagesQuerySchema = z.object({
     after_seq: z.coerce.number().int().min(0).default(0),
+    before_seq: z.coerce.number().int().min(0).optional(),
     limit: z.coerce.number().int().min(1).max(500).default(100),
     latest: z.coerce.boolean().optional(),
 });
@@ -61,7 +62,7 @@ export function v3SessionRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
-        const { after_seq, limit, latest } = request.query;
+        const { after_seq, before_seq, limit, latest } = request.query;
 
         const session = await db.session.findFirst({
             where: {
@@ -75,9 +76,13 @@ export function v3SessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
-        if (latest) {
+        if (latest || before_seq !== undefined) {
+            const where: { sessionId: string; seq?: { lt: number } } = { sessionId };
+            if (before_seq !== undefined) {
+                where.seq = { lt: before_seq };
+            }
             const messages = await db.sessionMessage.findMany({
-                where: { sessionId },
+                where,
                 orderBy: { seq: 'desc' },
                 take: limit + 1,
                 select: {
