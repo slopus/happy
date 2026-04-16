@@ -19,7 +19,7 @@ import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
-import { readFileSync } from 'fs';
+import { statSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
@@ -754,6 +754,22 @@ export async function startDaemon(): Promise<void> {
     writeDaemonState(fileState);
     logger.debug('[DAEMON RUN] Daemon state written');
 
+    // Capture the bundled CLI's mtime at startup so the heartbeat can detect
+    // when npm replaces `dist/index.mjs` on disk (= the user ran `npm i -g happy`).
+    // We previously compared disk `package.json.version` to our bundled version,
+    // but that produced infinite restart loops (#1107) when the manifest version
+    // diverged from the bundled version (e.g. `happy-coder@0.13.1` deprecation
+    // stub bumped package.json without rebuilding dist). File mtime is a more
+    // reliable signal: it only changes when the bundle is actually replaced.
+    const bundlePath = join(projectPath(), 'dist', 'index.mjs');
+    let initialBundleMtimeMs = 0;
+    try {
+      initialBundleMtimeMs = statSync(bundlePath).mtimeMs;
+    } catch {
+      // dist/index.mjs not present (e.g. dev mode via tsx) — skip upgrade detection.
+      logger.debug(`[DAEMON RUN] Bundle at ${bundlePath} not found; self-restart on upgrade disabled`);
+    }
+
     // Prepare initial daemon state
     const initialDaemonState: DaemonState = {
       status: 'offline',
@@ -816,11 +832,19 @@ export async function startDaemon(): Promise<void> {
         }
       }
 
-      // Check if daemon needs update
-      // If version on disk is different from the one in package.json - we need to restart
-      // BIG if - does this get updated from underneath us on npm upgrade?
-      const projectVersion = JSON.parse(readFileSync(join(projectPath(), 'package.json'), 'utf-8')).version;
-      if (projectVersion !== configuration.currentCliVersion) {
+      // Check if daemon needs update by detecting whether `dist/index.mjs` was
+      // replaced on disk since the daemon started (npm install rewrites the file).
+      // Skip if we never captured an initial mtime (dev mode).
+      let bundleReplaced = false;
+      if (initialBundleMtimeMs > 0) {
+        try {
+          const currentMtimeMs = statSync(bundlePath).mtimeMs;
+          bundleReplaced = currentMtimeMs !== initialBundleMtimeMs;
+        } catch {
+          // File temporarily missing (e.g. mid-install) — retry on next heartbeat.
+        }
+      }
+      if (bundleReplaced) {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would
         // ask the OS to start the latest daemon instead of hand-rolling respawn/kill behavior here.
