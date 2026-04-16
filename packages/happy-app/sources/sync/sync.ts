@@ -1676,8 +1676,14 @@ class Sync {
             let hasMore = true;
             let totalNormalized = 0;
 
+            // First load: fetch only the latest 100 messages for fast initial render
+            const isFirstLoad = afterSeq === 0;
+
             while (hasMore) {
-                const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
+                const url = isFirstLoad && afterSeq === 0
+                    ? `/v3/sessions/${sessionId}/messages?latest=true&limit=100`
+                    : `/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`;
+                const response = await apiSocket.request(url);
                 if (!response.ok) {
                     throw new Error(`Failed to fetch messages for ${sessionId}: ${response.status}`);
                 }
@@ -1710,6 +1716,14 @@ class Sync {
                 }
 
                 this.sessionLastSeq.set(sessionId, maxSeq);
+
+                // For first load with latest=true, stop after first page
+                if (isFirstLoad && afterSeq === 0) {
+                    afterSeq = maxSeq;
+                    hasMore = false;
+                    break;
+                }
+
                 hasMore = !!data.hasMore;
                 if (hasMore && maxSeq === afterSeq) {
                     log.log(`💬 fetchMessages: pagination stalled for ${sessionId}, stopping to avoid infinite loop`);
