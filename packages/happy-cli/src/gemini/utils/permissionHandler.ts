@@ -59,13 +59,13 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
         const alwaysAutoApproveNames = ['change_title', 'happy__change_title', 'GeminiReasoning', 'CodexReasoning', 'think', 'save_memory'];
         const alwaysAutoApproveIds = ['change_title', 'save_memory'];
         
-        // Check by tool name
-        if (alwaysAutoApproveNames.some(name => toolName.toLowerCase().includes(name.toLowerCase()))) {
+        // Check by tool name (exact match to prevent substring bypass)
+        if (alwaysAutoApproveNames.some(name => toolName.toLowerCase() === name.toLowerCase())) {
             return true;
         }
-        
-        // Check by toolCallId (Gemini CLI may send change_title as "other" but toolCallId contains "change_title")
-        if (alwaysAutoApproveIds.some(id => toolCallId.toLowerCase().includes(id.toLowerCase()))) {
+
+        // Check by toolCallId (exact match)
+        if (alwaysAutoApproveIds.some(id => toolCallId.toLowerCase() === id.toLowerCase())) {
             return true;
         }
         
