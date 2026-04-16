@@ -36,7 +36,7 @@ Step 2: Install CLI on your computer
 </h3>
 
 ```bash
-npm install -g happy
+npm install -g happy-coder
 ```
 
 > Migrated from the `happy-coder` package. Thanks to [@franciscop](https://github.com/franciscop) for donating the `happy` package name!

@@ -36,7 +36,7 @@
 </h3>
 
 ```bash
-npm install -g happy
+npm install -g happy-coder
 ```
 
 > 从 `happy-coder` 包迁移而来。感谢 [@franciscop](https://github.com/franciscop) 捐赠 `happy` 包名称！
