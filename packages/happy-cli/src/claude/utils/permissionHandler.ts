@@ -177,6 +177,12 @@ export class PermissionHandler {
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
+        // Plan mode: auto-approve read-only tools (Read, Glob, Grep, etc.)
+        // Dangerous tools (Bash, Edit, Write) still require approval
+        if (this.permissionMode === 'plan' && !descriptor.dangerous) {
+            return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
+        }
+
         //
         // Approval flow
         //
@@ -301,6 +307,7 @@ export class PermissionHandler {
         this.allowedTools.clear();
         this.allowedBashLiterals.clear();
         this.allowedBashPrefixes.clear();
+        this.permissionMode = 'default';
 
         // Cancel all pending requests
         for (const [, pending] of this.pendingRequests.entries()) {
