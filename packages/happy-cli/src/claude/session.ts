@@ -9,7 +9,7 @@ export class Session {
     readonly path: string;
     readonly logPath: string;
     readonly api: ApiClient;
-    readonly client: ApiSessionClient;
+    client: ApiSessionClient;
     readonly queue: MessageQueue2<EnhancedMode>;
     readonly claudeEnvVars?: Record<string, string>;
     claudeArgs?: string[];  // Made mutable to allow filtering
@@ -25,10 +25,10 @@ export class Session {
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
-    
+
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
-    
+
     /** Keep alive interval reference for cleanup */
     private keepAliveInterval: NodeJS.Timeout;
 
@@ -71,7 +71,7 @@ export class Session {
             this.client.keepAlive(this.thinking, this.mode);
         }, 2000);
     }
-    
+
     /**
      * Cleanup resources (call when session is no longer needed)
      */
@@ -79,6 +79,12 @@ export class Session {
         clearInterval(this.keepAliveInterval);
         this.sessionFoundCallbacks = [];
         logger.debug('[Session] Cleaned up resources');
+    }
+
+    updateClient = (client: ApiSessionClient): void => {
+        this.client = client;
+        this.client.keepAlive(this.thinking, this.mode);
+        logger.debug(`[Session] Session client updated to ${client.sessionId}`);
     }
 
     onThinkingChange = (thinking: boolean) => {
@@ -94,38 +100,38 @@ export class Session {
 
     /**
      * Called when Claude session ID is discovered or changed.
-     * 
+     *
      * This is triggered by the SessionStart hook when:
      * - Claude starts a new session (fresh start)
      * - Claude resumes a session (--continue, --resume flags)
      * - Claude forks a session (/compact, double-escape fork)
-     * 
+     *
      * Updates internal state, syncs to API metadata, and notifies
      * all registered callbacks (e.g., SessionScanner) about the change.
      */
     onSessionFound = (sessionId: string) => {
         this.sessionId = sessionId;
-        
+
         // Update metadata with Claude Code session ID
         this.client.updateMetadata((metadata) => ({
             ...metadata,
             claudeSessionId: sessionId
         }));
         logger.debug(`[Session] Claude Code session ID ${sessionId} added to metadata`);
-        
+
         // Notify all registered callbacks
         for (const callback of this.sessionFoundCallbacks) {
             callback(sessionId);
         }
     }
-    
+
     /**
      * Register a callback to be notified when session ID is found/changed
      */
     addSessionFoundCallback = (callback: (sessionId: string) => void): void => {
         this.sessionFoundCallbacks.push(callback);
     }
-    
+
     /**
      * Remove a session found callback
      */
@@ -150,16 +156,16 @@ export class Session {
      */
     consumeOneTimeFlags = (): void => {
         if (!this.claudeArgs) return;
-        
+
         const filteredArgs: string[] = [];
         for (let i = 0; i < this.claudeArgs.length; i++) {
             const arg = this.claudeArgs[i];
-            
+
             if (arg === '--continue') {
                 logger.debug('[Session] Consumed --continue flag');
                 continue;
             }
-            
+
             if (arg === '--resume') {
                 // Check if next arg looks like a UUID (contains dashes and alphanumeric)
                 if (i + 1 < this.claudeArgs.length) {
@@ -179,10 +185,10 @@ export class Session {
                 }
                 continue;
             }
-            
+
             filteredArgs.push(arg);
         }
-        
+
         this.claudeArgs = filteredArgs.length > 0 ? filteredArgs : undefined;
         logger.debug(`[Session] Consumed one-time flags, remaining args:`, this.claudeArgs);
     }

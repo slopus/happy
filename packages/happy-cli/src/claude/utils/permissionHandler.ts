@@ -46,6 +46,11 @@ export class PermissionHandler {
         this.setupClientHandler();
     }
 
+    updateSession(session: Session): void {
+        this.session = session;
+        this.setupClientHandler();
+    }
+
     /**
      * Set callback to trigger when permission request is made
      */

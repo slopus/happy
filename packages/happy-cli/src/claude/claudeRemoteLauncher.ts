@@ -98,6 +98,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     // Create permission handler
     const permissionHandler = new PermissionHandler(session);
+    session.addSessionFoundCallback(() => {
+        permissionHandler.updateSession(session);
+    });
 
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(

@@ -188,6 +188,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Variable to track current session instance (updated via onSessionReady callback)
     // Used by hook server to notify Session when Claude changes session ID
     let currentSession: Session | null = null;
+    let currentApiSession = session;
 
     // Start Hook server for receiving Claude session notifications
     const hookServer = await startHookServer({
@@ -422,7 +423,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         cleanup();
     });
 
-    registerKillSessionHandler(session.rpcHandlerManager, cleanup);
+    registerKillSessionHandler(currentApiSession.rpcHandlerManager, cleanup);
 
     // Create claude loop
     const exitCode = await loop({
@@ -434,8 +435,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         api,
         allowedTools: happyServer.toolNames.map(toolName => `mcp__happy__${toolName}`),
         onModeChange: (newMode) => {
-            session.sendSessionEvent({ type: 'switch', mode: newMode });
-            session.updateAgentState((currentState) => ({
+            currentApiSession.sendSessionEvent({ type: 'switch', mode: newMode });
+            currentApiSession.updateAgentState((currentState) => ({
                 ...currentState,
                 controlledByUser: newMode === 'local'
             }));
@@ -443,6 +444,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         onSessionReady: (sessionInstance) => {
             // Store reference for hook server callback
             currentSession = sessionInstance;
+            currentSession.updateClient(currentApiSession);
         },
         mcpServers: {
             'happy': {
