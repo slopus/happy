@@ -16,22 +16,20 @@ import { Counter, Histogram, register } from 'prom-client';
 const RPC_ROOM_PREFIX = 'rpc:';
 const RPC_CALL_TIMEOUT_MS = 30_000;
 const RPC_PRESENCE_POLL_MS = 1_000;
-// Timeout for cross-replica fetchSockets during initial daemon lookup and the
-// reconnect grace window. Must be long enough for the full Redis streams
-// round-trip (XADD → peer XREAD → process → XADD response → local XREAD)
-// across all replicas. The cluster-adapter default heartbeatTimeout is 10s;
-// 2s is well above typical healthy latency (~50-200ms) while still allowing
-// ~6-7 polls within the grace window.
-const RPC_LOOKUP_FETCH_TIMEOUT_MS = 2_000;
+// Timeouts for cross-replica fetchSockets during the reconnect grace window.
+// Exponential backoff: 2s → 4s → 8s. Reduces stream pressure under load
+// (fewer timed-out requests flooding the stream) while giving later attempts
+// more time to succeed when Redis is slow.
+const RPC_LOOKUP_FETCH_TIMEOUTS_MS = [2_000, 4_000, 8_000];
 // Timeout for in-flight presence-poll fetchSockets. Must be << RPC_CALL_TIMEOUT_MS
 // so a dead replica doesn't stall each poll for the full adapter heartbeatTimeout
 // (10s). 500ms keeps daemon-death detection responsive (~1s).
 const RPC_PRESENCE_FETCH_TIMEOUT_MS = 500;
 // How long an rpc-call waits for the daemon socket to appear in the room when
 // the room is empty at call time (e.g. brief daemon reconnect window). With
-// RPC_LOOKUP_FETCH_TIMEOUT_MS at 2s + RPC_RECONNECT_POLL_MS at 200ms, each
-// poll iteration takes ~2.2s. 15s gives ~6-7 iterations — enough to catch a
-// daemon mid-reconnect after a rolling deploy or transient network drop.
+// exponential backoff (2s, 4s, 8s) + 200ms sleep, iterations take 2.2s, 4.2s,
+// 8.2s. 15s gives ~3 iterations with increasing timeouts — fewer requests
+// under load while still catching a daemon mid-reconnect.
 const RPC_RECONNECT_GRACE_MS = 15_000;
 const RPC_RECONNECT_POLL_MS = 200;
 
@@ -104,14 +102,16 @@ async function fetchRoomSockets(io: Server, room: string, timeoutMs: number, con
 
 /**
  * Poll fetchRoomSockets until it returns at least one socket OR `maxMs`
- * elapses. Used to give a daemon a brief window to reconnect when an
- * rpc-call arrives during a transient disconnect.
+ * elapses. Uses exponential backoff on fetch timeouts (2s, 4s, 8s) to
+ * reduce stream pressure when Redis is slow — fewer requests in flight
+ * means less amplification of the timeout → retry → timeout spiral.
  */
 async function waitForRoomMember(io: Server, room: string, maxMs: number, metricMethod: string): Promise<RoomSockets> {
     const deadline = Date.now() + maxMs;
     let polls = 0;
     while (true) {
-        const sockets = await fetchRoomSockets(io, room, RPC_LOOKUP_FETCH_TIMEOUT_MS);
+        const timeoutMs = RPC_LOOKUP_FETCH_TIMEOUTS_MS[Math.min(polls, RPC_LOOKUP_FETCH_TIMEOUTS_MS.length - 1)];
+        const sockets = await fetchRoomSockets(io, room, timeoutMs);
         if (sockets.length > 0) {
             rpcLookupRetries.observe({ method: metricMethod }, polls);
             return sockets;
@@ -180,7 +180,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
             // unresponsive — fetchRoomSockets logs and returns []) fall
             // through to the wait-for-reconnect grace window.
             const room = rpcRoom(userId, method);
-            let targets = await fetchRoomSockets(io, room, RPC_LOOKUP_FETCH_TIMEOUT_MS);
+            let targets = await fetchRoomSockets(io, room, RPC_LOOKUP_FETCH_TIMEOUTS_MS[0]);
             if (targets.length === 0) {
                 targets = await waitForRoomMember(io, room, RPC_RECONNECT_GRACE_MS, baseMethodName(method));
             }
