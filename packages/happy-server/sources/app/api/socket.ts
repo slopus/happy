@@ -49,7 +49,7 @@ export function startSocket(app: Fastify) {
     // Multi-process support: attach Redis streams adapter when REDIS_URL is set
     if (process.env.REDIS_URL) {
         const streamClient = new Redis(process.env.REDIS_URL);
-        io.adapter(createAdapter(streamClient, { maxLen: 50000 }));
+        io.adapter(createAdapter(streamClient, { maxLen: 200000 }));
         log({ module: 'websocket' }, 'Redis streams adapter enabled for multi-process support');
     }
 
