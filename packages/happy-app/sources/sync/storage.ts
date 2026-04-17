@@ -229,45 +229,41 @@ interface StorageState {
 function buildSessionListViewData(
     sessions: Record<string, Session>
 ): SessionListViewItem[] {
-    // Separate active and inactive sessions
+    // Partition: starred sessions go to a dedicated "Starred" section regardless
+    // of active/inactive status so users can find pinned conversations in one place.
+    const starredSessions: Session[] = [];
     const activeSessions: Session[] = [];
-    const inactiveSessions: Session[] = [];
+    const unstarredInactive: Session[] = [];
 
     Object.values(sessions).forEach(session => {
-        if (isSessionActive(session)) {
+        if (session.starred) {
+            starredSessions.push(session);
+        } else if (isSessionActive(session)) {
             activeSessions.push(session);
         } else {
-            inactiveSessions.push(session);
+            unstarredInactive.push(session);
         }
     });
 
-    // Sort by starred first, then by creation date (newest first)
-    activeSessions.sort((a, b) => {
-        if (!!a.starred !== !!b.starred) return a.starred ? -1 : 1;
-        return b.createdAt - a.createdAt;
-    });
-    inactiveSessions.sort((a, b) => {
-        if (!!a.starred !== !!b.starred) return a.starred ? -1 : 1;
-        return b.createdAt - a.createdAt;
-    });
+    // Sort each bucket by creation date (newest first)
+    starredSessions.sort((a, b) => b.createdAt - a.createdAt);
+    activeSessions.sort((a, b) => b.createdAt - a.createdAt);
+    unstarredInactive.sort((a, b) => b.createdAt - a.createdAt);
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
 
-    // Add active sessions as a single item at the top (if any)
-    if (activeSessions.length > 0) {
-        listData.push({ type: 'active-sessions', sessions: activeSessions.map(buildSessionRowData) });
-    }
-
-    // Show starred inactive sessions in a dedicated "Starred" section at the top
-    const starredInactive = inactiveSessions.filter(s => s.starred);
-    const unstarredInactive = inactiveSessions.filter(s => !s.starred);
-
-    if (starredInactive.length > 0) {
+    // Starred section at the very top
+    if (starredSessions.length > 0) {
         listData.push({ type: 'header', title: 'Starred' });
-        starredInactive.forEach(sess => {
+        starredSessions.forEach(sess => {
             listData.push({ type: 'session', session: buildSessionRowData(sess) });
         });
+    }
+
+    // Add remaining active sessions as a single item (if any)
+    if (activeSessions.length > 0) {
+        listData.push({ type: 'active-sessions', sessions: activeSessions.map(buildSessionRowData) });
     }
 
     // Group remaining inactive sessions by date
