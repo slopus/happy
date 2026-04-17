@@ -21,7 +21,7 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
-import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
+import { CODEX_CHANGE_TITLE_INSTRUCTION } from './titleInstruction';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { connectionState } from '@/utils/serverConnectionErrors';
@@ -604,7 +604,7 @@ export async function runCodex(opts: {
                 }
 
                 const turnPrompt = first
-                    ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION
+                    ? message.message + '\n\n' + CODEX_CHANGE_TITLE_INSTRUCTION
                     : message.message;
 
                 const result = await client.sendTurnAndWait(turnPrompt, {
