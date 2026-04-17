@@ -69,6 +69,16 @@ function rpcRoom(userId: string, method: string): string {
     return `${RPC_ROOM_PREFIX}${userId}:${method}`;
 }
 
+/**
+ * Strip the scope prefix (machineId/sessionId) from a prefixed method name
+ * to get the base method for metrics labels. Wire format: "cm9xyz123:bash" -> "bash".
+ * Falls back to "unknown" if no colon separator found.
+ */
+function baseMethodName(prefixedMethod: string): string {
+    const lastColon = prefixedMethod.lastIndexOf(':');
+    return lastColon >= 0 ? prefixedMethod.substring(lastColon + 1) : prefixedMethod;
+}
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 type RoomSockets = RemoteSocket<DefaultEventsMap, any>[];
@@ -97,17 +107,17 @@ async function fetchRoomSockets(io: Server, room: string, timeoutMs: number, con
  * elapses. Used to give a daemon a brief window to reconnect when an
  * rpc-call arrives during a transient disconnect.
  */
-async function waitForRoomMember(io: Server, room: string, maxMs: number, method: string): Promise<RoomSockets> {
+async function waitForRoomMember(io: Server, room: string, maxMs: number, metricMethod: string): Promise<RoomSockets> {
     const deadline = Date.now() + maxMs;
     let polls = 0;
     while (true) {
         const sockets = await fetchRoomSockets(io, room, RPC_LOOKUP_FETCH_TIMEOUT_MS);
         if (sockets.length > 0) {
-            rpcLookupRetries.observe({ method }, polls);
+            rpcLookupRetries.observe({ method: metricMethod }, polls);
             return sockets;
         }
         if (Date.now() >= deadline) {
-            rpcLookupRetries.observe({ method }, polls);
+            rpcLookupRetries.observe({ method: metricMethod }, polls);
             return sockets;
         }
         polls++;
@@ -153,7 +163,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
 
         const finish = (result: string) => {
             const durationSec = (Date.now() - startTime) / 1000;
-            const m = method || 'unknown';
+            const m = baseMethodName(method || 'unknown');
             rpcCallCounter.inc({ method: m, result });
             rpcCallDuration.observe({ method: m, result }, durationSec);
         };
@@ -172,7 +182,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
             const room = rpcRoom(userId, method);
             let targets = await fetchRoomSockets(io, room, RPC_LOOKUP_FETCH_TIMEOUT_MS);
             if (targets.length === 0) {
-                targets = await waitForRoomMember(io, room, RPC_RECONNECT_GRACE_MS, method);
+                targets = await waitForRoomMember(io, room, RPC_RECONNECT_GRACE_MS, baseMethodName(method));
             }
 
             if (targets.length === 0) {
