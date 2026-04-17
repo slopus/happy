@@ -15,17 +15,23 @@ import type { DefaultEventsMap } from "socket.io/dist/typed-events";
 const RPC_ROOM_PREFIX = 'rpc:';
 const RPC_CALL_TIMEOUT_MS = 30_000;
 const RPC_PRESENCE_POLL_MS = 1_000;
-// Timeout for presence-poll fetchSockets. Must be << RPC_CALL_TIMEOUT_MS so a
-// dead replica that never replies to FETCH_SOCKETS doesn't itself stall the
-// poll for the cluster-adapter default of 5s.
+// Timeout for cross-replica fetchSockets during initial daemon lookup and the
+// reconnect grace window. Must be long enough for the full Redis streams
+// round-trip (XADD → peer XREAD → process → XADD response → local XREAD)
+// across all replicas. The cluster-adapter default heartbeatTimeout is 10s;
+// 2s is well above typical healthy latency (~50-200ms) while still allowing
+// ~6-7 polls within the grace window.
+const RPC_LOOKUP_FETCH_TIMEOUT_MS = 2_000;
+// Timeout for in-flight presence-poll fetchSockets. Must be << RPC_CALL_TIMEOUT_MS
+// so a dead replica doesn't stall each poll for the full adapter heartbeatTimeout
+// (10s). 500ms keeps daemon-death detection responsive (~1s).
 const RPC_PRESENCE_FETCH_TIMEOUT_MS = 500;
 // How long an rpc-call waits for the daemon socket to appear in the room when
-// the room is empty at call time (e.g. brief daemon reconnect window). Set to
-// 10s — 2× the streams adapter's 5s heartbeat interval — so cross-replica
-// room discovery has time to converge after a pod restart. Lower values cause
-// transient "method not available" failures for ~5s after every rolling
-// deploy when the daemon's reconnect lands on a freshly-started replica.
-const RPC_RECONNECT_GRACE_MS = 10_000;
+// the room is empty at call time (e.g. brief daemon reconnect window). With
+// RPC_LOOKUP_FETCH_TIMEOUT_MS at 2s + RPC_RECONNECT_POLL_MS at 200ms, each
+// poll iteration takes ~2.2s. 15s gives ~6-7 iterations — enough to catch a
+// daemon mid-reconnect after a rolling deploy or transient network drop.
+const RPC_RECONNECT_GRACE_MS = 15_000;
 const RPC_RECONNECT_POLL_MS = 200;
 
 function rpcRoom(userId: string, method: string): string {
@@ -37,18 +43,19 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 type RoomSockets = RemoteSocket<DefaultEventsMap, any>[];
 
 /**
- * fetchSockets(room) wrapped with our short cross-replica timeout. Returns
- * `[]` and logs on failure (cluster-adapter request timeout, peer replica
- * unresponsive). Cluster-adapter default timeout is 5s; we cap at 500ms so a
- * single dead peer doesn't stall the caller for the entire grace window.
+ * fetchSockets(room) wrapped with a caller-specified timeout. Returns `[]`
+ * and logs on failure (cluster-adapter request timeout, peer replica
+ * unresponsive). Use RPC_LOOKUP_FETCH_TIMEOUT_MS for daemon lookups (initial
+ * + grace window) and RPC_PRESENCE_FETCH_TIMEOUT_MS for in-flight presence
+ * polling.
  */
-async function fetchRoomSockets(io: Server, room: string): Promise<RoomSockets> {
+async function fetchRoomSockets(io: Server, room: string, timeoutMs: number): Promise<RoomSockets> {
     try {
         return await io.in(room)
-            .timeout(RPC_PRESENCE_FETCH_TIMEOUT_MS)
+            .timeout(timeoutMs)
             .fetchSockets();
     } catch (error) {
-        log({ module: 'websocket' }, `fetchSockets failed for ${room}: ${error}`);
+        log({ module: 'websocket' }, `fetchSockets failed for ${room} (timeout=${timeoutMs}ms): ${error}`);
         return [];
     }
 }
@@ -61,7 +68,7 @@ async function fetchRoomSockets(io: Server, room: string): Promise<RoomSockets> 
 async function waitForRoomMember(io: Server, room: string, maxMs: number): Promise<RoomSockets> {
     const deadline = Date.now() + maxMs;
     while (true) {
-        const sockets = await fetchRoomSockets(io, room);
+        const sockets = await fetchRoomSockets(io, room, RPC_LOOKUP_FETCH_TIMEOUT_MS);
         if (sockets.length > 0) return sockets;
         if (Date.now() >= deadline) return sockets;
         await sleep(RPC_RECONNECT_POLL_MS);
@@ -113,7 +120,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
             // unresponsive — fetchRoomSockets logs and returns []) fall
             // through to the wait-for-reconnect grace window.
             const room = rpcRoom(userId, method);
-            let targets = await fetchRoomSockets(io, room);
+            let targets = await fetchRoomSockets(io, room, RPC_LOOKUP_FETCH_TIMEOUT_MS);
             if (targets.length === 0) {
                 targets = await waitForRoomMember(io, room, RPC_RECONNECT_GRACE_MS);
             }
@@ -152,7 +159,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
                 while (presenceAlive) {
                     await sleep(RPC_PRESENCE_POLL_MS);
                     if (!presenceAlive) return;
-                    const stillThere = await fetchRoomSockets(io, room);
+                    const stillThere = await fetchRoomSockets(io, room, RPC_PRESENCE_FETCH_TIMEOUT_MS);
                     if (!stillThere.some(s => s.id === target.id)) {
                         throw new Error('RPC target disconnected');
                     }
