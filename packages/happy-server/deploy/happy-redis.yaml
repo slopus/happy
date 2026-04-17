@@ -61,10 +61,10 @@ spec:
         resources:
           requests:
             cpu: 100m
-            memory: 256Mi
+            memory: 512Mi
           limits:
             cpu: 500m
-            memory: 512Mi
+            memory: 2Gi
       - name: redis-exporter
         image: oliver006/redis_exporter:v1.67.0-alpine
         ports:
