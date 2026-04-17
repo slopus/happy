@@ -28,6 +28,9 @@ export class Session {
     
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
+
+    /** Callbacks to be notified when Claude changes cwd (e.g. worktree) */
+    private cwdChangeCallbacks: ((newCwd: string) => void)[] = [];
     
     /** Keep alive interval reference for cleanup */
     private keepAliveInterval: NodeJS.Timeout;
@@ -78,6 +81,7 @@ export class Session {
     cleanup = (): void => {
         clearInterval(this.keepAliveInterval);
         this.sessionFoundCallbacks = [];
+        this.cwdChangeCallbacks = [];
         logger.debug('[Session] Cleaned up resources');
     }
 
@@ -133,6 +137,34 @@ export class Session {
         const index = this.sessionFoundCallbacks.indexOf(callback);
         if (index !== -1) {
             this.sessionFoundCallbacks.splice(index, 1);
+        }
+    }
+
+    /**
+     * Called when Claude's working directory changes (e.g. entering a worktree).
+     * Notifies all registered callbacks so the session scanner can update its path.
+     */
+    onCwdChange = (newCwd: string) => {
+        logger.debug(`[Session] Claude cwd changed to ${newCwd}`);
+        for (const callback of this.cwdChangeCallbacks) {
+            callback(newCwd);
+        }
+    }
+
+    /**
+     * Register a callback to be notified when Claude's cwd changes
+     */
+    addCwdChangeCallback = (callback: (newCwd: string) => void): void => {
+        this.cwdChangeCallbacks.push(callback);
+    }
+
+    /**
+     * Remove a cwd change callback
+     */
+    removeCwdChangeCallback = (callback: (newCwd: string) => void): void => {
+        const index = this.cwdChangeCallbacks.indexOf(callback);
+        if (index !== -1) {
+            this.cwdChangeCallbacks.splice(index, 1);
         }
     }
 
