@@ -90,15 +90,12 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
                 // Auto-approve everything in yolo mode
                 return true;
             case 'safe-yolo':
-                // Auto-approve read-only operations, ask for write operations
-                // For now, we'll auto-approve everything (can be enhanced later)
-                return true;
-            case 'read-only':
-                // Deny all write operations - only allow read operations
-                // Check if tool is a write operation (can be enhanced with tool metadata)
-                const writeTools = ['write', 'edit', 'create', 'delete', 'patch', 'fs-edit'];
-                const isWriteTool = writeTools.some(wt => toolName.toLowerCase().includes(wt));
-                return !isWriteTool;
+            case 'read-only': {
+                // Auto-approve read-only operations, ask for write/dangerous operations
+                const dangerousTools = ['write', 'edit', 'create', 'delete', 'patch', 'fs-edit', 'bash', 'shell', 'execute'];
+                const isDangerous = dangerousTools.some(wt => toolName.toLowerCase().includes(wt));
+                return !isDangerous;
+            }
             case 'default':
             default:
                 // Default mode - always ask for permission (except for always-auto-approve tools above)
