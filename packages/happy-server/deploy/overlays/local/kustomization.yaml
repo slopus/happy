@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - ../../base
   - postgres.yaml
+  - minio.yaml
   - secrets.yaml
 
 # Use locally-built image instead of private registry
@@ -12,24 +13,25 @@ images:
     newName: happy-server
     newTag: local
 
-# Patch: 2 replicas + remove ExternalSecret (not available locally)
+# Patches: minimal local-only overrides (replicas match prod)
 patches:
-  # Scale to 2 replicas for multi-process testing
+  # Point S3_PUBLIC_URL at local MinIO instead of prod
   - target:
       kind: Deployment
       name: handy-server
     patch: |-
-      - op: replace
-        path: /spec/replicas
-        value: 2
-
-  # Remove S3_PUBLIC_URL (using local file storage)
-  - target:
+      apiVersion: apps/v1
       kind: Deployment
-      name: handy-server
-    patch: |-
-      - op: remove
-        path: /spec/template/spec/containers/0/env/3
+      metadata:
+        name: handy-server
+      spec:
+        template:
+          spec:
+            containers:
+            - name: handy
+              env:
+              - name: S3_PUBLIC_URL
+                value: http://localhost:9000/happy
 
   # Remove ExternalSecret — we use plain Secret instead
   - target:

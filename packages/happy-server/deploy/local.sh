@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OVERLAY="$REPO_ROOT/deploy/overlays/local"
+REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+OVERLAY="$REPO_ROOT/packages/happy-server/deploy/overlays/local"
 
 echo "=== Happy Local Deployment (minikube) ==="
 
