@@ -17,10 +17,14 @@ This document describes how to deploy the Happy backend (`packages/happy-server`
 2. **Redis**
    - Required by startup (`redis.ping()` is called).
    - Configure via `REDIS_URL`.
+   - Managed by this repo: `packages/happy-server/deploy/happy-redis.yaml` (StatefulSet + redis-exporter sidecar).
 
 3. **S3-compatible storage**
    - Used for avatars and other uploaded assets.
    - Configure via `S3_HOST`, `S3_PORT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_PUBLIC_URL`, `S3_USE_SSL`.
+   - **Deployed separately** — not managed by this repo's Kubernetes manifests. In prod, the S3-compatible service (MinIO or similar) behind `S3_PUBLIC_URL` is provisioned and managed by external infrastructure. The app only consumes it via env vars: `S3_PUBLIC_URL` is set in the Deployment, and credentials come from Vault via ExternalSecret (`/handy-files`).
+   - If `S3_HOST` is unset, the server falls back to local filesystem storage (`./data/files/`).
+   - For local k8s dev, a MinIO pod is deployed via `deploy/overlays/local/minio.yaml`.
 
 ## Environment variables
 **Required**
