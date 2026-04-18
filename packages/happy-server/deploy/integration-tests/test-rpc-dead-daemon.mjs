@@ -3,7 +3,7 @@ import { io } from "socket.io-client";
 import { Buffer } from "buffer";
 import { execSync, spawn } from "child_process";
 
-const SERVER = "http://127.0.0.1:3000";
+const SERVER = process.env.SERVER_URL || "http://127.0.0.1:3000";
 const base64 = (buf) => Buffer.from(buf).toString("base64");
 
 async function getToken() {

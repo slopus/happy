@@ -33,6 +33,21 @@ patches:
               - name: S3_PUBLIC_URL
                 value: http://localhost:9000/happy
 
+  # NodePort so tests connect through kube-proxy (real load balancing).
+  # kubectl port-forward tunnels to ONE pod — when that pod dies,
+  # ALL connections through it break. NodePort uses iptables rules
+  # that survive pod kills and route to healthy pods.
+  - target:
+      kind: Service
+      name: handy-server
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: handy-server
+      spec:
+        type: NodePort
+
   # Remove ExternalSecret — we use plain Secret instead
   - target:
       kind: ExternalSecret
