@@ -28,7 +28,7 @@ import { execSync } from "child_process";
 import { randomBytes } from "crypto";
 import Redis from "ioredis";
 
-const SERVER = "http://127.0.0.1:3000";
+const SERVER = process.env.SERVER_URL || "http://127.0.0.1:3000";
 const base64 = (b) => Buffer.from(b).toString("base64");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -90,8 +90,11 @@ async function connectSocket(token, opts = {}) {
 // is the actual failure mechanism: fetchSockets responses get trimmed out
 // of the stream before the requesting pod reads them.
 async function getRealAdapterUid(redis) {
-    // Read a few entries from the stream to find a real adapter UID
-    const entries = await redis.xrange("socket.io", "-", "+", "COUNT", 10);
+    // Read from the END of the stream to get a UID from a CURRENT pod.
+    // Old entries may have stale UIDs from pods that no longer exist (e.g.
+    // after a redeployment). Using a stale UID creates a phantom peer that
+    // the adapter waits for but never responds — 100% fetchSockets timeout.
+    const entries = await redis.xrevrange("socket.io", "+", "-", "COUNT", 10);
     for (const [, fields] of entries) {
         for (let i = 0; i < fields.length - 1; i += 2) {
             if (fields[i] === "uid") return fields[i + 1];

@@ -17,7 +17,7 @@ import { io } from "socket.io-client";
 import { Buffer } from "buffer";
 import { execSync } from "child_process";
 
-const SERVER = "http://127.0.0.1:3000";
+const SERVER = process.env.SERVER_URL || "http://127.0.0.1:3000";
 const base64 = (b) => Buffer.from(b).toString("base64");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
