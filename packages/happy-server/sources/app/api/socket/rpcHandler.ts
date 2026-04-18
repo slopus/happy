@@ -27,6 +27,10 @@ const RPC_LOOKUP_FETCH_TIMEOUT_MS = 2_000;
 // so a dead replica doesn't stall each poll for the full adapter heartbeatTimeout
 // (10s). 500ms keeps daemon-death detection responsive (~1s).
 const RPC_PRESENCE_FETCH_TIMEOUT_MS = 500;
+// Timeout for the post-register barrier fetchSockets. Short enough that a dead
+// peer replica doesn't stall every registration for the full heartbeatTimeout
+// (10s), long enough to absorb typical streams backlog under load.
+const RPC_REGISTER_BARRIER_TIMEOUT_MS = 1_000;
 // How long an rpc-call waits for the daemon socket to appear in the room when
 // the room is empty at call time (e.g. brief daemon reconnect window). With
 // RPC_LOOKUP_FETCH_TIMEOUT_MS at 2s + RPC_RECONNECT_POLL_MS at 200ms, each
@@ -127,14 +131,32 @@ async function waitForRoomMember(io: Server, room: string, maxMs: number, metric
 
 export function rpcHandler(userId: string, socket: Socket, io: Server) {
 
-    socket.on('rpc-register', (data: any) => {
+    socket.on('rpc-register', async (data: any) => {
         try {
             const { method } = data ?? {};
             if (!method || typeof method !== 'string') {
                 socket.emit('rpc-error', { type: 'register', error: 'Invalid method name' });
                 return;
             }
-            socket.join(rpcRoom(userId, method));
+            const room = rpcRoom(userId, method);
+            socket.join(room);
+            // Force a cluster-adapter round-trip before acking, so peer
+            // replicas drain their Redis-streams XREAD cursor past this point.
+            // Without it, a caller that fires rpc-call on another replica
+            // immediately after rpc-registered can hit either an empty
+            // fetchSockets (peer backlog) or a stalled cross-replica
+            // emitWithAck (ack-path cursor lag). fetchSockets publishes a
+            // FETCH_SOCKETS message and waits for every peer to respond —
+            // when it resolves, every known peer has XREAD at least up to
+            // our request, which implicitly drains any earlier backlog.
+            //
+            // Single-replica deployments short-circuit inside the adapter
+            // (expectedResponseCount === 0), so this is effectively free
+            // there. Under load, it adapts to actual streams RTT instead of
+            // a fixed sleep. On timeout fetchRoomSockets returns [] + logs;
+            // we still ack (best effort) — worse than a confirmed barrier
+            // but no worse than a fixed-sleep fallback.
+            await fetchRoomSockets(io, room, RPC_REGISTER_BARRIER_TIMEOUT_MS);
             socket.emit('rpc-registered', { method });
         } catch (error) {
             log({ module: 'websocket', level: 'error' }, `Error in rpc-register: ${error}`);
