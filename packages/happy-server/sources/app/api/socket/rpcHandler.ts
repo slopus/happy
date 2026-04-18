@@ -15,7 +15,7 @@ import { Counter, Histogram, register } from 'prom-client';
 
 const RPC_ROOM_PREFIX = 'rpc:';
 const RPC_CALL_TIMEOUT_MS = 30_000;
-const RPC_PRESENCE_POLL_MS = 1_000;
+const RPC_PRESENCE_POLL_MS = 2_000;
 // Timeouts for cross-replica fetchSockets during the reconnect grace window.
 // Exponential backoff: 2s → 4s → 8s. Reduces stream pressure under load
 // (fewer timed-out requests flooding the stream) while giving later attempts
@@ -212,18 +212,27 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
             // set RPC_CALL_TIMEOUT_MS (30s). Heartbeat-based pod liveness
             // detection in the adapter takes ~10s and doesn't proactively
             // cancel pending broadcasts. Polling fetchSockets is the only way
-            // to detect "the target socket is gone" and abort fast (~1s).
+            // to detect "the target socket is gone" and abort fast (~2-4s).
+            //
+            // Requires 2 consecutive empty polls before declaring disconnect
+            // to avoid false positives from transient Redis/adapter timeouts.
             const ackPromise = target.timeout(RPC_CALL_TIMEOUT_MS)
                 .emitWithAck('rpc-request', { method, params });
 
             let presenceAlive = true;
             const presencePoll = (async () => {
+                let consecutiveMisses = 0;
                 while (presenceAlive) {
                     await sleep(RPC_PRESENCE_POLL_MS);
                     if (!presenceAlive) return;
                     const stillThere = await fetchRoomSockets(io, room, RPC_PRESENCE_FETCH_TIMEOUT_MS, 'presence');
                     if (!stillThere.some(s => s.id === target.id)) {
-                        throw new Error('RPC target disconnected');
+                        consecutiveMisses++;
+                        if (consecutiveMisses >= 2) {
+                            throw new Error('RPC target disconnected');
+                        }
+                    } else {
+                        consecutiveMisses = 0;
                     }
                 }
             })();
