@@ -4,7 +4,8 @@ import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
-import { DefaultTransport } from '@/agent/transport';
+import { DefaultTransport, geminiTransport, kimiTransport } from '@/agent/transport';
+import type { TransportHandler } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
@@ -445,6 +446,13 @@ function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' 
   return 'acp';
 }
 
+
+function resolveTransport(agentName: string): TransportHandler {
+  if (agentName === 'gemini') return geminiTransport;
+  if (agentName === 'kimi') return kimiTransport;
+  return new DefaultTransport(agentName);
+}
+
 export async function runAcp(opts: {
   credentials: Credentials;
   agentName: string;
@@ -532,7 +540,7 @@ export async function runAcp(opts: {
     args: opts.args,
     mcpServers,
     permissionHandler,
-    transportHandler: new DefaultTransport(opts.agentName),
+    transportHandler: resolveTransport(opts.agentName),
     verbose,
   });
 
