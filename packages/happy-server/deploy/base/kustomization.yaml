@@ -3,4 +3,3 @@ kind: Kustomization
 
 resources:
   - ../handy.yaml
-  - ../happy-redis.yaml
