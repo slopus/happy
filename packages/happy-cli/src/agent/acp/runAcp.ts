@@ -847,12 +847,12 @@ export async function runAcp(opts: {
     }
 
     const trimmed = message.content.text.trim().toLowerCase();
-    if (trimmed === '/bypass' || trimmed === '/yolo') {
+    if (trimmed === '/bypass') {
       permissionHandler.setYolo(true);
       logger.debug('[acp] YOLO toggle');
       return;
     }
-    if (trimmed === '/ask' || trimmed === '/default') {
+    if (trimmed === '/ask') {
       permissionHandler.setYolo(false);
       logger.debug('[acp] YOLO toggle');
       return;
