@@ -6,7 +6,7 @@ import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { Redis } from "ioredis";
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";
-import { decrementWebSocketConnection, incrementWebSocketConnection, websocketEventsCounter } from "../monitoring/metrics2";
+import { decrementWebSocketConnection, incrementWebSocketConnection, redisStreamLagMsGauge, websocketEventsCounter } from "../monitoring/metrics2";
 import { usageHandler } from "./socket/usageHandler";
 import { rpcHandler } from "./socket/rpcHandler";
 import { pingHandler } from "./socket/pingHandler";
@@ -51,6 +51,25 @@ export function startSocket(app: Fastify) {
         const streamClient = new Redis(process.env.REDIS_URL);
         io.adapter(createAdapter(streamClient, { maxLen: 200000, readCount: 2000 }));
         log({ module: 'websocket' }, 'Redis streams adapter enabled for multi-process support');
+
+        // Track stream reader lag: wrap onRawMessage to capture last-read offset,
+        // then periodically compare against stream HEAD.
+        let lastReadOffset = "0-0";
+        const adapter = io.of("/").adapter as any;
+        const origOnRawMessage = adapter.onRawMessage.bind(adapter);
+        adapter.onRawMessage = (msg: any, offset: string) => {
+            lastReadOffset = offset;
+            return origOnRawMessage(msg, offset);
+        };
+        setInterval(async () => {
+            try {
+                const info = await streamClient.xinfo("STREAM", "socket.io") as any[];
+                const headId = String(info[info.indexOf("last-generated-id") + 1]);
+                const headMs = parseInt(headId.split("-")[0]);
+                const readMs = parseInt(lastReadOffset.split("-")[0]);
+                redisStreamLagMsGauge.set(headMs - readMs);
+            } catch { /* stream may not exist yet */ }
+        }, 5000);
     }
 
     // Initialize event router with Socket.IO server instance

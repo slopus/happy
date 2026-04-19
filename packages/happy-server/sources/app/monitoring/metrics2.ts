@@ -111,5 +111,12 @@ export function startDatabaseMetricsUpdater(): void {
     });
 }
 
+// Redis stream lag — how far behind this pod's reader is from the stream head
+export const redisStreamLagMsGauge = new Gauge({
+    name: 'redis_stream_lag_ms',
+    help: 'Milliseconds between this pod read cursor and stream HEAD',
+    registers: [register]
+});
+
 // Export the register for combining metrics
 export { register };
