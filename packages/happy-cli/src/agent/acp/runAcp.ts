@@ -406,10 +406,19 @@ function resolveRequestedLegacyModelCode(models: SessionModelState, requested: s
 
 class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPermissionHandler {
   private readonly logPrefix: string;
+  private yolo: boolean;
 
-  constructor(session: ApiSessionClient, agentName: string) {
+  constructor(session: ApiSessionClient, agentName: string, yolo: boolean = false) {
     super(session);
     this.logPrefix = `[${agentName}]`;
+    this.yolo = yolo;
+  }
+
+  setYolo(yolo: boolean): void {
+    if (this.yolo !== yolo) {
+      logger.debug(`${this.logPrefix} YOLO mode -> ${yolo}`);
+    }
+    this.yolo = yolo;
   }
 
   protected getLogPrefix(): string {
@@ -417,6 +426,10 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
   }
 
   async handleToolCall(toolCallId: string, toolName: string, input: unknown): Promise<PermissionResult> {
+    if (this.yolo) {
+      logger.debug(`${this.logPrefix} [YOLO] Auto-approving tool: ${toolName} (${toolCallId})`);
+      return { decision: 'approved_for_session' };
+    }
     return new Promise<PermissionResult>((resolve, reject) => {
       this.pendingRequests.set(toolCallId, {
         resolve,
@@ -460,6 +473,7 @@ export async function runAcp(opts: {
   args: string[];
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
+  yolo?: boolean;
 }): Promise<void> {
   const verbose = opts.verbose === true;
   const sessionTag = randomUUID();
@@ -512,7 +526,7 @@ export async function runAcp(opts: {
     }
   }
 
-  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName);
+  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName, opts.yolo === true);
   const sessionManager = new AcpSessionManager();
   const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
   let currentPermissionMode: string | undefined;
@@ -832,9 +846,25 @@ export async function runAcp(opts: {
       return;
     }
 
+    const trimmed = message.content.text.trim().toLowerCase();
+    if (trimmed === '/bypass' || trimmed === '/yolo') {
+      permissionHandler.setYolo(true);
+      logger.debug('[acp] YOLO toggle');
+      return;
+    }
+    if (trimmed === '/ask' || trimmed === '/default') {
+      permissionHandler.setYolo(false);
+      logger.debug('[acp] YOLO toggle');
+      return;
+    }
+
     if (typeof message.meta?.permissionMode === 'string') {
       currentPermissionMode = message.meta.permissionMode;
       logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
+      const bypass = currentPermissionMode === 'bypassPermissions'
+        || currentPermissionMode === 'yolo'
+        || currentPermissionMode === 'acceptEdits';
+      permissionHandler.setYolo(bypass);
     }
 
     if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {

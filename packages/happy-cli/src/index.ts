@@ -336,6 +336,7 @@ import { handleCodexCommand } from './commands/codexCommand'
 
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
       let verbose = false;
+      let yolo = false;
       const acpArgs: string[] = [];
       let customCommandMode = false;
       for (let i = 1; i < args.length; i++) {
@@ -345,6 +346,10 @@ import { handleCodexCommand } from './commands/codexCommand'
         }
         if (!customCommandMode && args[i] === '--verbose') {
           verbose = true;
+          continue;
+        }
+        if (!customCommandMode && (args[i] === '--yolo' || args[i] === '--dangerously-skip-permissions')) {
+          yolo = true;
           continue;
         }
         if (args[i] === '--') {
@@ -361,6 +366,7 @@ import { handleCodexCommand } from './commands/codexCommand'
         credentials,
         startedBy,
         verbose,
+        yolo,
         agentName: resolved.agentName,
         command: resolved.command,
         args: resolved.args,
