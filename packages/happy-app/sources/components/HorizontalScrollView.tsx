@@ -1,9 +1,10 @@
 import * as React from 'react';
 import { Platform, ScrollView, ScrollViewProps } from 'react-native';
 
-// Horizontal-dominant wheel (touchpad two-finger swipe) scrolls natively.
-// Vertical wheel only hijacks to horizontal when Shift is held, so pointer-over
-// the block doesn't hostage vertical page scroll.
+// Touchpad horizontal swipe (deltaX) scrolls the block. Vertical wheel (deltaY)
+// only scrolls the block when Shift is held — otherwise let the page scroll.
+// We drive scrollLeft ourselves instead of relying on native div overflow because
+// react-native-web's ScrollView can intercept wheel events.
 function useHorizontalWheelScroll() {
     const ref = React.useRef<ScrollView>(null);
     React.useEffect(() => {
@@ -14,11 +15,25 @@ function useHorizontalWheelScroll() {
             const el = node as HTMLElement;
             const maxScroll = el.scrollWidth - el.clientWidth;
             if (maxScroll <= 0) return;
-            if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
-            if (!e.shiftKey) return;
-            e.preventDefault();
-            e.stopPropagation();
-            el.scrollLeft += e.deltaY;
+
+            // Any horizontal intent (touchpad) — consume the whole event so the
+            // page doesn't scroll vertically at the same time.
+            if (e.deltaX !== 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                el.scrollLeft += e.deltaX;
+                return;
+            }
+
+            // Shift + wheel: convert vertical wheel to horizontal scroll.
+            if (e.shiftKey && e.deltaY !== 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                el.scrollLeft += e.deltaY;
+                return;
+            }
+
+            // Plain vertical wheel without Shift — let the page scroll.
         };
         node.addEventListener('wheel', handler, { passive: false });
         return () => node.removeEventListener('wheel', handler);

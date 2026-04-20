@@ -161,21 +161,6 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                         )}
                     </View>
 
-                    {onSidebarTogglePress && (
-                        <Pressable
-                            onPress={onSidebarTogglePress}
-                            hitSlop={10}
-                            style={styles.sidebarToggleButton}
-                            accessibilityLabel={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
-                        >
-                            <Ionicons
-                                name={sidebarCollapsed ? 'albums-outline' : 'albums'}
-                                size={22}
-                                color={theme.colors.header.tint}
-                            />
-                        </Pressable>
-                    )}
-
                     {avatarId && onAvatarPress && (
                         <View collapsable={false} ref={avatarAnchorRef} style={styles.avatarButtonSlot}>
                             {avatarMenuSession ? (
@@ -214,6 +199,21 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                                 </Pressable>
                             )}
                         </View>
+                    )}
+
+                    {onSidebarTogglePress && (
+                        <Pressable
+                            onPress={onSidebarTogglePress}
+                            hitSlop={10}
+                            style={styles.sidebarToggleButton}
+                            accessibilityLabel={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                        >
+                            <Ionicons
+                                name={sidebarCollapsed ? 'albums-outline' : 'albums'}
+                                size={22}
+                                color={theme.colors.header.tint}
+                            />
+                        </Pressable>
                     )}
                 </View>
             </View>
@@ -261,7 +261,6 @@ const styles = StyleSheet.create({
         lineHeight: 14,
     },
     avatarButtonSlot: {
-        marginRight: Platform.select({ ios: -8, default: -8 }),
         overflow: 'visible',
     },
     avatarButton: {
@@ -275,6 +274,6 @@ const styles = StyleSheet.create({
         height: 36,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 4,
+        marginRight: Platform.select({ ios: -8, default: -8 }),
     },
 });

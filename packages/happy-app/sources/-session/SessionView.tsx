@@ -175,7 +175,15 @@ export const SessionView = React.memo((props: { id: string }) => {
                 }}>
                     <ChatHeaderView
                         {...headerProps}
-                        onBackPress={() => router.back()}
+                        onBackPress={() => {
+                            // If a sidebar file is currently shown inline, first
+                            // close the diff; only leave the session on the next press.
+                            if (selectedFilePath) {
+                                setSelectedFilePath(null);
+                                return;
+                            }
+                            router.back();
+                        }}
                         avatarMenuExpanded={Platform.OS === 'web' && !!sessionActionsAnchor}
                         avatarMenuSession={session}
                         onAfterAvatarArchive={() => {

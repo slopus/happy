@@ -284,9 +284,27 @@ function RenderSpans(props: RenderSpanProps) {
     </>)
 }
 
-// Table rendering uses column-first layout to ensure consistent column widths.
-// Each column is rendered as a vertical container with all its cells (header + data).
-// This ensures that cells in the same column have the same width, determined by the widest content.
+// Plain-text length of a span array — used to estimate column widths.
+function spansLength(spans: MarkdownSpan[]): number {
+    let n = 0;
+    for (const s of spans) n += s.text.length;
+    return n;
+}
+
+const TABLE_MIN_COL_WIDTH = 80;
+const TABLE_MAX_COL_WIDTH = 360;
+const TABLE_CHAR_WIDTH = 8.5;  // approx px per char at 16px default font
+const TABLE_CELL_H_PADDING = 24;
+
+// Row-first layout with content-estimated column widths.
+//
+// - Each column's width is picked from the widest text in that column (header +
+//   rows), clamped to [MIN, MAX]. This gives column-alignment across rows and
+//   lets narrow columns (like "1, 2, 3") stay narrow.
+// - Each row is a flex row — default `alignItems: 'stretch'` makes all cells in
+//   a row match the tallest cell's height.
+// - Wrapped in a horizontal ScrollView so wide tables still scroll instead of
+//   being squashed unreadably.
 function RenderTableBlock(props: {
     headers: MarkdownSpan[][],
     rows: MarkdownSpan[][][],
@@ -297,32 +315,53 @@ function RenderTableBlock(props: {
 }) {
     const columnCount = props.headers.length;
     const rowCount = props.rows.length;
+    const isLastCol = (colIndex: number) => colIndex === columnCount - 1;
     const isLastRow = (rowIndex: number) => rowIndex === rowCount - 1;
+
+    const columnWidths = React.useMemo(() => {
+        const widths = new Array(columnCount).fill(0);
+        for (let c = 0; c < columnCount; c++) {
+            widths[c] = Math.max(widths[c], spansLength(props.headers[c] ?? []));
+        }
+        for (const row of props.rows) {
+            for (let c = 0; c < columnCount; c++) {
+                widths[c] = Math.max(widths[c], spansLength(row[c] ?? []));
+            }
+        }
+        return widths.map(len => Math.min(TABLE_MAX_COL_WIDTH, Math.max(TABLE_MIN_COL_WIDTH, len * TABLE_CHAR_WIDTH + TABLE_CELL_H_PADDING)));
+    }, [props.headers, props.rows, columnCount]);
 
     return (
         <View style={[style.tableContainer, props.first && style.first, props.last && style.last]}>
-            <HorizontalScrollView style={style.tableScrollView}>
-                <View style={style.tableContent}>
-                    {props.headers.map((header, colIndex) => (
-                        <View
-                            key={`column-${colIndex}`}
-                            style={[
-                                style.tableColumn,
-                                colIndex === columnCount - 1 && style.tableColumnLast
-                            ]}
-                        >
-                            <View style={[style.tableCell, style.tableHeaderCell, style.tableCellFirst]}>
-                                <Text style={style.tableHeaderText}><RenderSpans spans={header} baseStyle={style.tableHeaderText} onLinkPress={props.onLinkPress} selectable={props.selectable} /></Text>
+            <HorizontalScrollView>
+                <View>
+                    {/* Header row */}
+                    <View style={[style.tableRow, style.tableHeaderRow]}>
+                        {props.headers.map((header, colIndex) => (
+                            <View
+                                key={`header-${colIndex}`}
+                                style={[style.tableCell, style.tableHeaderCell, { width: columnWidths[colIndex] }, !isLastCol(colIndex) && style.tableCellBorderRight]}
+                            >
+                                <Text style={style.tableHeaderText}>
+                                    <RenderSpans spans={header} baseStyle={style.tableHeaderText} onLinkPress={props.onLinkPress} selectable={props.selectable} />
+                                </Text>
                             </View>
-                            {props.rows.map((row, rowIndex) => (
+                        ))}
+                    </View>
+                    {/* Data rows */}
+                    {props.rows.map((row, rowIndex) => (
+                        <View
+                            key={`row-${rowIndex}`}
+                            style={[style.tableRow, !isLastRow(rowIndex) && style.tableRowBorderBottom]}
+                        >
+                            {props.headers.map((_, colIndex) => (
                                 <View
                                     key={`cell-${rowIndex}-${colIndex}`}
-                                    style={[
-                                        style.tableCell,
-                                        isLastRow(rowIndex) && style.tableCellLast
-                                    ]}
+                                    style={[style.tableCell, { width: columnWidths[colIndex] }, !isLastCol(colIndex) && style.tableCellBorderRight]}
                                 >
-                                    <Text style={style.tableCellText}><RenderSpans spans={row[colIndex] ?? []} baseStyle={style.tableCellText} onLinkPress={props.onLinkPress} selectable={props.selectable} /></Text>
+                                    <Text style={style.tableCellText}>
+                                        <RenderSpans spans={row[colIndex] ?? []} baseStyle={style.tableCellText} onLinkPress={props.onLinkPress} selectable={props.selectable} />
+                                    </Text>
                                 </View>
                             ))}
                         </View>
@@ -579,34 +618,26 @@ const style = StyleSheet.create((theme) => ({
         maxWidth: '100%',
         alignSelf: 'flex-start',
     },
-    tableScrollView: {
-        flexGrow: 0,
-        flexShrink: 1,
-    },
-    tableContent: {
+    tableRow: {
         flexDirection: 'row',
+        alignItems: 'stretch',
     },
-    tableColumn: {
-        flexDirection: 'column',
-        borderRightWidth: 1,
-        borderRightColor: theme.colors.divider,
-        maxWidth: 360,
+    tableRowBorderBottom: {
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
     },
-    tableColumnLast: {
-        borderRightWidth: 0,
+    tableHeaderRow: {
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
     },
     tableCell: {
         paddingHorizontal: 12,
         paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.divider,
         alignItems: 'flex-start',
     },
-    tableCellFirst: {
-        borderTopWidth: 0,
-    },
-    tableCellLast: {
-        borderBottomWidth: 0,
+    tableCellBorderRight: {
+        borderRightWidth: 1,
+        borderRightColor: theme.colors.divider,
     },
     tableHeaderCell: {
         backgroundColor: theme.colors.surfaceHigh,
