@@ -15,11 +15,31 @@ export default function FeaturesSettingsScreen() {
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const [expResumeSession, setExpResumeSession] = useSettingMutable('expResumeSession');
+    const [fileDiffsSidebar, setFileDiffsSidebar] = useSettingMutable('fileDiffsSidebar');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
+            {/* Interface */}
+            <ItemGroup
+                title="Interface"
+                footer="Optional panels and layout elements."
+            >
+                <Item
+                    title="File Diffs Sidebar"
+                    subtitle="Show git changes next to the chat on desktop"
+                    icon={<Ionicons name="git-branch-outline" size={29} color="#5AC8FA" />}
+                    rightElement={
+                        <Switch
+                            value={fileDiffsSidebar}
+                            onValueChange={setFileDiffsSidebar}
+                        />
+                    }
+                    showChevron={false}
+                />
+            </ItemGroup>
+
             {/* Experimental Features */}
-            <ItemGroup 
+            <ItemGroup
                 title={t('settingsFeatures.experiments')}
                 footer={t('settingsFeatures.experimentsDescription')}
             >

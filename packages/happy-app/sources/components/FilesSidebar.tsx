@@ -11,9 +11,11 @@ import { t } from '@/text';
 
 interface FilesSidebarProps {
     sessionId: string;
+    selectedPath?: string | null;
+    onFilePress?: (file: GitFileStatus) => void;
 }
 
-export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId }) => {
+export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId, selectedPath, onFilePress }) => {
     const router = useRouter();
     const gitStatusFiles = useSessionGitStatusFiles(sessionId);
     const gitStatus = useSessionGitStatus(sessionId);
@@ -32,9 +34,13 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId }) => {
 
     const handleFilePress = React.useCallback((file: GitFileStatus) => {
         if (file.status === 'deleted') return;
+        if (onFilePress) {
+            onFilePress(file);
+            return;
+        }
         const encodedPath = btoa(file.fullPath);
         router.push(`/session/${sessionId}/file?path=${encodedPath}`);
-    }, [router, sessionId]);
+    }, [router, sessionId, onFilePress]);
 
     const renderFileGroup = (files: GitFileStatus[], label: string) => {
         if (files.length === 0) return null;
@@ -50,6 +56,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId }) => {
                         const isFirst = index === 0;
                         const isSingle = files.length === 1;
                         const isDeleted = file.status === 'deleted';
+                        const isSelected = selectedPath === file.fullPath;
 
                         return (
                             <Pressable
@@ -62,6 +69,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId }) => {
                                     !isSingle && isFirst && styles.fileItemFirst,
                                     !isSingle && isLast && styles.fileItemLast,
                                     pressed && !isDeleted && styles.fileItemPressed,
+                                    isSelected && !isDeleted && styles.fileItemSelected,
                                     isDeleted && styles.fileItemDeleted,
                                 ]}
                             >
@@ -237,6 +245,9 @@ const styles = StyleSheet.create((theme) => ({
         borderBottomWidth: 0,
     },
     fileItemPressed: {
+        backgroundColor: theme.colors.surfaceSelected,
+    },
+    fileItemSelected: {
         backgroundColor: theme.colors.surfaceSelected,
     },
     fileItemDeleted: {

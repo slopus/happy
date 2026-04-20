@@ -34,6 +34,8 @@ import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { FilesSidebar } from '@/components/FilesSidebar';
+import { InlineFileDiff } from '@/components/InlineFileDiff';
+import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
@@ -42,7 +44,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
@@ -62,8 +64,10 @@ export const SessionView = React.memo((props: { id: string }) => {
     const isTablet = useIsTablet();
     const { width: windowWidth } = useWindowDimensions();
     const [sessionActionsAnchor, setSessionActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
+    const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
 
-    const showSidebar = (isRunningOnMac() || Platform.OS === 'web')
+    const showSidebar = fileDiffsSidebarEnabled
+        && (isRunningOnMac() || Platform.OS === 'web')
         && windowWidth >= SIDEBAR_MIN_WINDOW_WIDTH
         && isDataReady && !!session;
 
@@ -86,13 +90,20 @@ export const SessionView = React.memo((props: { id: string }) => {
         overflow: 'hidden' as const,
     }));
 
-    const animatedArrowStyle = useAnimatedStyle(() => ({
-        transform: [{ rotate: `${(1 - sidebarAnim.value) * 180}deg` }],
-    }));
-
     const toggleSidebar = React.useCallback(() => {
         setSidebarCollapsed(!sidebarCollapsed);
     }, [sidebarCollapsed, setSidebarCollapsed]);
+
+    const [selectedFilePath, setSelectedFilePath] = React.useState<string | null>(null);
+    const handleSidebarFilePress = React.useCallback((file: GitFileStatus) => {
+        setSelectedFilePath((current) => (current === file.fullPath ? null : file.fullPath));
+    }, []);
+    const clearSelectedFile = React.useCallback(() => setSelectedFilePath(null), []);
+
+    // When sidebar is hidden or disabled, don't keep a stale selection.
+    React.useEffect(() => {
+        if (!showSidebar || sidebarCollapsed) setSelectedFilePath(null);
+    }, [showSidebar, sidebarCollapsed]);
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
@@ -176,6 +187,8 @@ export const SessionView = React.memo((props: { id: string }) => {
                             router.replace('/');
                         }}
                         onAvatarMenuRequest={Platform.OS === 'web' && session ? setSessionActionsAnchor : undefined}
+                        onSidebarTogglePress={showSidebar ? toggleSidebar : undefined}
+                        sidebarCollapsed={sidebarCollapsed}
                     />
                     {/* Voice status bar below header - not on tablet (shown in sidebar) */}
                     {!isTablet && realtimeStatus !== 'disconnected' && (
@@ -223,58 +236,45 @@ export const SessionView = React.memo((props: { id: string }) => {
         return mainContent;
     }
 
-    // Desktop layout: chat + sidebar at the same level (full height)
+    // Desktop layout: chat + sidebar at the same level (full height).
+    // When a sidebar file is selected, InlineFileDiff overlays the main content
+    // (chat stays mounted underneath so state is preserved).
     return (
         <View style={{ flex: 1, flexDirection: 'row' }}>
             <View style={{ flex: 1 }}>
                 {mainContent}
+                {selectedFilePath && !sidebarCollapsed && (
+                    <View
+                        pointerEvents="box-none"
+                        style={{
+                            position: 'absolute',
+                            top: safeArea.top + headerHeight,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: theme.colors.surface,
+                        }}
+                    >
+                        <InlineFileDiff
+                            sessionId={sessionId}
+                            fullPath={selectedFilePath}
+                            onClose={clearSelectedFile}
+                        />
+                    </View>
+                )}
             </View>
-            <SidebarToggleButton
-                onPress={toggleSidebar}
-                animatedArrowStyle={animatedArrowStyle}
-                theme={theme}
-            />
             <Animated.View style={[{ minWidth: 0, alignSelf: 'stretch' }, animatedSidebarStyle]}>
                 <View style={{ width: sidebarWidth, flex: 1 }}>
-                    <FilesSidebar sessionId={sessionId} />
+                    <FilesSidebar
+                        sessionId={sessionId}
+                        selectedPath={selectedFilePath}
+                        onFilePress={handleSidebarFilePress}
+                    />
                 </View>
             </Animated.View>
         </View>
     );
 });
-
-const SidebarToggleButton = React.memo(({ onPress, animatedArrowStyle, theme }: {
-    onPress: () => void;
-    animatedArrowStyle: any;
-    theme: any;
-}) => (
-    <View style={{
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 10,
-    }}>
-        <Pressable
-            onPress={onPress}
-            style={({ pressed }) => ({
-                width: 20,
-                height: 48,
-                borderRadius: 6,
-                backgroundColor: pressed ? theme.colors.surfaceSelected : theme.colors.groupped.background,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: theme.colors.divider,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginHorizontal: -10,
-                cursor: 'pointer' as any,
-            })}
-        >
-            <Animated.View style={animatedArrowStyle}>
-                <Ionicons name="chevron-forward" size={14} color={theme.colors.textSecondary} />
-            </Animated.View>
-        </Pressable>
-    </View>
-));
-
 
 const SIDEBAR_MIN_WINDOW_WIDTH = 1100;
 

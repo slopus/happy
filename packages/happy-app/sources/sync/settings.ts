@@ -26,6 +26,7 @@ export const SettingsSchema = z.object({
 
     hideInactiveSessions: z.boolean().describe('Hide inactive sessions in the main list'),
     expResumeSession: z.boolean().describe('Enable experimental session resume feature'),
+    fileDiffsSidebar: z.boolean().describe('Show the file diffs sidebar next to the chat on desktop'),
     reviewPromptAnswered: z.boolean().describe('Whether the review prompt has been answered'),
     reviewPromptLikedApp: z.boolean().nullish().describe('Whether user liked the app when asked'),
     voiceAssistantLanguage: z.string().nullable().describe('Preferred language for voice assistant (null for auto-detect)'),
@@ -92,6 +93,7 @@ export const settingsDefaults: Settings = {
 
     hideInactiveSessions: false,
     expResumeSession: false,
+    fileDiffsSidebar: false,
     reviewPromptAnswered: false,
     reviewPromptLikedApp: null,
     voiceAssistantLanguage: null,
