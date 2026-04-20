@@ -6,6 +6,8 @@ resources:
   - postgres.yaml
   - minio.yaml
   - secrets.yaml
+  - prometheus.yaml
+  - grafana.yaml
 
 # Use locally-built image instead of private registry
 images:
