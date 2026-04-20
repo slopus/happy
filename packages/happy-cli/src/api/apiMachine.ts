@@ -271,7 +271,8 @@ export class ApiMachineClient {
             auth: {
                 token: this.token,
                 clientType: 'machine-scoped' as const,
-                machineId: this.machine.id
+                machineId: this.machine.id,
+                happyClient: `cli-daemon/${configuration.currentCliVersion}`
             },
             path: '/v1/updates',
             reconnection: false,

@@ -134,7 +134,8 @@ export class ApiSessionClient extends EventEmitter {
             auth: {
                 token: this.token,
                 clientType: 'session-scoped' as const,
-                sessionId: this.sessionId
+                sessionId: this.sessionId,
+                happyClient: `cli-coding-session/${configuration.currentCliVersion}`
             },
             path: '/v1/updates',
             reconnection: false,
@@ -246,7 +247,8 @@ export class ApiSessionClient extends EventEmitter {
     private authHeaders() {
         return {
             'Authorization': `Bearer ${this.token}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`
         };
     }
 

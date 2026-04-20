@@ -201,7 +201,10 @@ function handleApiError(err: unknown, context: string): never {
 }
 
 function authHeaders(creds: Credentials): Record<string, string> {
-    return { Authorization: `Bearer ${creds.token}` };
+    return {
+        Authorization: `Bearer ${creds.token}`,
+        'X-Happy-Client': 'cli-control-plane/0.1.0',
+    };
 }
 
 // --- API functions ---

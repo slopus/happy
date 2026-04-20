@@ -68,7 +68,8 @@ export class ApiClient {
         {
           headers: {
             'Authorization': `Bearer ${this.credential.token}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`
           },
           timeout: 60000 // 1 minute timeout for very bad network connections
         }
@@ -188,7 +189,8 @@ export class ApiClient {
         {
           headers: {
             'Authorization': `Bearer ${this.credential.token}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`
           },
           timeout: 60000 // 1 minute timeout for very bad network connections
         }
@@ -299,7 +301,8 @@ export class ApiClient {
         {
           headers: {
             'Authorization': `Bearer ${this.credential.token}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`
           },
           timeout: 5000
         }
@@ -327,7 +330,8 @@ export class ApiClient {
         {
           headers: {
             'Authorization': `Bearer ${this.credential.token}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`
           },
           timeout: 5000
         }
