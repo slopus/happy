@@ -6,7 +6,7 @@ import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { Redis } from "ioredis";
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";
-import { decrementWebSocketConnection, incrementWebSocketConnection, redisStreamLagMsGauge, websocketEventsCounter } from "../monitoring/metrics2";
+import { getMetricsLabelsFromSocket, redisStreamLagMsGauge, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
 import { usageHandler } from "./socket/usageHandler";
 import { rpcHandler } from "./socket/rpcHandler";
 import { pingHandler } from "./socket/pingHandler";
@@ -114,6 +114,9 @@ export function startSocket(app: Fastify) {
         socket.data.clientType = clientType;
         socket.data.sessionId = sessionId;
         socket.data.machineId = machineId;
+        socket.data.happyClient = socket.handshake.auth.happyClient as string
+            || socket.handshake.headers['x-happy-client'] as string
+            || undefined;
         next();
     });
 
@@ -122,8 +125,9 @@ export function startSocket(app: Fastify) {
         const clientType = socket.data.clientType as 'session-scoped' | 'user-scoped' | 'machine-scoped' | undefined;
         const sessionId = socket.data.sessionId as string | undefined;
         const machineId = socket.data.machineId as string | undefined;
+        const labels = getMetricsLabelsFromSocket(socket);
 
-        log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`);
+        log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, client: ${labels.client}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`);
 
         // Store connection based on type
         const metadata = { clientType: clientType || 'user-scoped', sessionId, machineId };
@@ -150,7 +154,7 @@ export function startSocket(app: Fastify) {
             };
         }
         eventRouter.addConnection(userId, connection);
-        incrementWebSocketConnection(connection.connectionType);
+        websocketConnectionsGauge.inc({ type: connection.connectionType, ...labels });
 
         // Broadcast daemon online status
         if (connection.connectionType === 'machine-scoped') {
@@ -164,11 +168,11 @@ export function startSocket(app: Fastify) {
         }
 
         socket.on('disconnect', () => {
-            websocketEventsCounter.inc({ event_type: 'disconnect' });
+            websocketEventsCounter.inc({ event_type: 'disconnect', ...labels });
 
             // Cleanup connections
             eventRouter.removeConnection(userId, connection);
-            decrementWebSocketConnection(connection.connectionType);
+            websocketConnectionsGauge.dec({ type: connection.connectionType, ...labels });
 
             log({ module: 'websocket' }, `User disconnected: ${userId}`);
 

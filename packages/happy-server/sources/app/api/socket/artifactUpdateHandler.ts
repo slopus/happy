@@ -1,4 +1,4 @@
-import { websocketEventsCounter } from "@/app/monitoring/metrics2";
+import { getMetricsLabelsFromSocket, websocketEventsCounter } from "@/app/monitoring/metrics2";
 import { buildNewArtifactUpdate, buildUpdateArtifactUpdate, buildDeleteArtifactUpdate, eventRouter } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
 import { allocateUserSeq } from "@/storage/seq";
@@ -8,12 +8,13 @@ import { Socket } from "socket.io";
 import * as privacyKit from "privacy-kit";
 
 export function artifactUpdateHandler(userId: string, socket: Socket) {
+    const labels = getMetricsLabelsFromSocket(socket);
     // Read artifact with full body
     socket.on('artifact-read', async (data: {
         artifactId: string;
     }, callback: (response: any) => void) => {
         try {
-            websocketEventsCounter.inc({ event_type: 'artifact-read' });
+            websocketEventsCounter.inc({ event_type: 'artifact-read', ...labels });
 
             const { artifactId } = data;
 
@@ -75,7 +76,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
         };
     }, callback: (response: any) => void) => {
         try {
-            websocketEventsCounter.inc({ event_type: 'artifact-update' });
+            websocketEventsCounter.inc({ event_type: 'artifact-update', ...labels });
 
             const { artifactId, header, body } = data;
 
@@ -261,7 +262,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
         dataEncryptionKey: string;
     }, callback: (response: any) => void) => {
         try {
-            websocketEventsCounter.inc({ event_type: 'artifact-create' });
+            websocketEventsCounter.inc({ event_type: 'artifact-create', ...labels });
 
             const { id, header, body, dataEncryptionKey } = data;
 
@@ -354,7 +355,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
         artifactId: string;
     }, callback: (response: any) => void) => {
         try {
-            websocketEventsCounter.inc({ event_type: 'artifact-delete' });
+            websocketEventsCounter.inc({ event_type: 'artifact-delete', ...labels });
 
             const { artifactId } = data;
 
