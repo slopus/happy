@@ -8,7 +8,7 @@ import { MessageView } from './MessageView';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
-import { Ionicons } from '@expo/vector-icons';
+import { Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const SCROLL_THRESHOLD = 300;
@@ -90,7 +90,7 @@ const ChatListInternal = React.memo((props: {
                         ]}
                         onPress={scrollToBottom}
                     >
-                        <Ionicons name="chevron-down" size={20} color={theme.colors.fab.icon} />
+                        <Octicons name="arrow-down" size={14} color={theme.colors.text} />
                     </Pressable>
                 </View>
             )}
@@ -101,27 +101,33 @@ const ChatListInternal = React.memo((props: {
 const styles = StyleSheet.create((theme) => ({
     scrollButtonContainer: {
         position: 'absolute',
-        right: 16,
-        bottom: 8,
+        left: 0,
+        right: 0,
+        bottom: 12,
         alignItems: 'center',
         justifyContent: 'center',
+        pointerEvents: 'box-none',
     },
     scrollButton: {
-        borderRadius: 18,
-        width: 36,
-        height: 36,
+        borderRadius: 16,
+        width: 32,
+        height: 32,
         alignItems: 'center',
         justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
         shadowColor: theme.colors.shadow.color,
-        shadowOffset: { width: 0, height: 2 },
-        shadowRadius: 3.84,
-        shadowOpacity: theme.colors.shadow.opacity,
-        elevation: 5,
+        shadowOffset: { width: 0, height: 1 },
+        shadowRadius: 2,
+        shadowOpacity: theme.colors.shadow.opacity * 0.5,
+        elevation: 2,
     },
     scrollButtonDefault: {
-        backgroundColor: theme.colors.fab.background,
+        backgroundColor: theme.colors.surface,
+        opacity: 0.9,
     },
     scrollButtonPressed: {
-        backgroundColor: theme.colors.fab.backgroundPressed,
+        backgroundColor: theme.colors.surface,
+        opacity: 0.7,
     },
 }));
