@@ -1,27 +1,7 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import * as React from 'react';
-import { Image, Pressable, ScrollView, View, Platform, ScrollView as ScrollViewType } from 'react-native';
-
-// Converts vertical wheel events to horizontal scroll on web, blocks page scroll
-function useHorizontalWheelScroll() {
-    const ref = React.useRef<ScrollViewType>(null);
-    React.useEffect(() => {
-        if (Platform.OS !== 'web' || !ref.current) return;
-        const node = (ref.current as any)?.getScrollableNode?.() ?? (ref.current as any);
-        if (!node || !node.addEventListener) return;
-        const handler = (e: WheelEvent) => {
-            const el = node as HTMLElement;
-            const maxScroll = el.scrollWidth - el.clientWidth;
-            if (maxScroll <= 0) return;
-            e.preventDefault();
-            e.stopPropagation();
-            el.scrollLeft += e.deltaY || e.deltaX;
-        };
-        node.addEventListener('wheel', handler, { passive: false });
-        return () => node.removeEventListener('wheel', handler);
-    });
-    return ref;
-}
+import { Image, Pressable, View, Platform } from 'react-native';
+import { HorizontalScrollView } from '../HorizontalScrollView';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../StyledText';
@@ -181,7 +161,6 @@ function RenderNumberedListBlock(props: { items: { number: number, spans: Markdo
 
 function RenderCodeBlock(props: { content: string, language: string | null, first: boolean, last: boolean, selectable: boolean }) {
     const [isHovered, setIsHovered] = React.useState(false);
-    const wheelRef = useHorizontalWheelScroll();
 
     const copyCode = React.useCallback(async () => {
         try {
@@ -202,18 +181,15 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
             onMouseLeave={() => setIsHovered(false)}
         >
             {props.language && <Text selectable={props.selectable} style={style.codeLanguage}>{props.language}</Text>}
-            <ScrollView
-                ref={wheelRef}
-                horizontal={true}
+            <HorizontalScrollView
                 contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}
-                showsHorizontalScrollIndicator={true}
             >
                 <SimpleSyntaxHighlighter
                     code={props.content}
                     language={props.language}
                     selectable={props.selectable}
                 />
-            </ScrollView>
+            </HorizontalScrollView>
             <View
                 style={[style.copyButtonWrapper, isHovered && style.copyButtonWrapperVisible]}
                 {...(Platform.OS === 'web' ? ({ className: 'copy-button-wrapper' } as any) : {})}
@@ -323,17 +299,9 @@ function RenderTableBlock(props: {
     const rowCount = props.rows.length;
     const isLastRow = (rowIndex: number) => rowIndex === rowCount - 1;
 
-    const wheelRef = useHorizontalWheelScroll();
-
     return (
         <View style={[style.tableContainer, props.first && style.first, props.last && style.last]}>
-            <ScrollView
-                ref={wheelRef}
-                horizontal
-                showsHorizontalScrollIndicator={true}
-                nestedScrollEnabled={true}
-                style={style.tableScrollView}
-            >
+            <HorizontalScrollView style={style.tableScrollView}>
                 <View style={style.tableContent}>
                     {props.headers.map((header, colIndex) => (
                         <View
@@ -360,7 +328,7 @@ function RenderTableBlock(props: {
                         </View>
                     ))}
                 </View>
-            </ScrollView>
+            </HorizontalScrollView>
         </View>
     );
 }
@@ -622,6 +590,7 @@ const style = StyleSheet.create((theme) => ({
         flexDirection: 'column',
         borderRightWidth: 1,
         borderRightColor: theme.colors.divider,
+        maxWidth: 360,
     },
     tableColumnLast: {
         borderRightWidth: 0,
