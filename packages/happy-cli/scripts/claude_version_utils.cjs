@@ -33,16 +33,52 @@ function resolvePathSafe(filePath) {
 }
 
 /**
+ * Resolve the Claude Code entrypoint inside a package directory.
+ *
+ * Prior to @anthropic-ai/claude-code@2.1.113 the package shipped a JS
+ * entrypoint (`cli.js`) at the root. Starting with 2.1.113 the package
+ * ships a platform-specific native binary declared in package.json `bin`
+ * (e.g. `bin/claude.exe` on Windows, `bin/claude` elsewhere) and no
+ * longer contains `cli.js`.
+ *
+ * @param {string} pkgDir - Path to the @anthropic-ai/claude-code directory
+ * @returns {string|null} Path to the entrypoint, or null if not resolvable
+ */
+function resolveClaudeEntrypoint(pkgDir) {
+    // Legacy: cli.js at package root (< 2.1.113)
+    const legacyCliPath = path.join(pkgDir, 'cli.js');
+    if (fs.existsSync(legacyCliPath)) {
+        return legacyCliPath;
+    }
+
+    // Current: native binary declared via package.json "bin" (>= 2.1.113)
+    const pkgJsonPath = path.join(pkgDir, 'package.json');
+    if (!fs.existsSync(pkgJsonPath)) {
+        return null;
+    }
+    try {
+        const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+        const binRel = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.claude;
+        if (!binRel) return null;
+        const binPath = path.join(pkgDir, binRel);
+        if (fs.existsSync(binPath)) {
+            return binPath;
+        }
+    } catch (e) {
+        // Malformed package.json — treat as not found
+    }
+    return null;
+}
+
+/**
  * Find path to npm globally installed Claude Code CLI
- * @returns {string|null} Path to cli.js or null if not found
+ * @returns {string|null} Path to cli.js or native binary, or null if not found
  */
 function findNpmGlobalCliPath() {
     try {
         const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
-        const globalCliPath = path.join(globalRoot, '@anthropic-ai', 'claude-code', 'cli.js');
-        if (fs.existsSync(globalCliPath)) {
-            return globalCliPath;
-        }
+        const pkgDir = path.join(globalRoot, '@anthropic-ai', 'claude-code');
+        return resolveClaudeEntrypoint(pkgDir);
     } catch (e) {
         // npm root -g failed
     }
@@ -80,11 +116,12 @@ function findClaudeInPath() {
             const isExecutable = resolvedPath.endsWith('.js') || resolvedPath.endsWith('.cjs') || resolvedPath.endsWith('.exe');
             if (!isExecutable) {
                 const shimDir = path.dirname(claudePath);
-                const cliJsPath = path.join(shimDir, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
-                if (fs.existsSync(cliJsPath)) {
-                    return { path: cliJsPath, source: 'npm' };
+                const pkgDir = path.join(shimDir, 'node_modules', '@anthropic-ai', 'claude-code');
+                const entrypoint = resolveClaudeEntrypoint(pkgDir);
+                if (entrypoint) {
+                    return { path: entrypoint, source: 'npm' };
                 }
-                // Shim found but no cli.js next to it — skip and let other finders handle it
+                // Shim found but no resolvable entrypoint — skip and let other finders handle it
                 return null;
             }
 
