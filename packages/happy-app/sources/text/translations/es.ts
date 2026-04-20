@@ -104,6 +104,8 @@ export const es: TranslationStructure = {
         connectAccount: 'Conectar cuenta',
         github: 'GitHub',
         machines: 'Máquinas',
+        showOfflineMachines: ({ count }: { count: number }) => count === 1 ? 'Mostrar 1 máquina sin conexión' : `Mostrar ${count} máquinas sin conexión`,
+        hideOfflineMachines: 'Ocultar máquinas sin conexión',
         features: 'Características',
         social: 'Social',
         account: 'Cuenta',
@@ -764,6 +766,12 @@ export const es: TranslationStructure = {
         lastDetected: 'Última detección',
         untitledSession: 'Sesión sin título',
         back: 'Atrás',
+        dangerZone: 'Zona de peligro',
+        delete: 'Eliminar máquina',
+        deleteFooter: 'Elimina esta máquina de tu cuenta. El historial de sesiones se conservará, pero no podrás iniciar nuevas sesiones en esta máquina.',
+        deleteConfirmTitle: '¿Eliminar esta máquina?',
+        deleteConfirmMessage: 'La máquina se eliminará de tu cuenta. El historial de sesiones se conservará, pero no podrás iniciar nuevas sesiones hasta que vuelvas a conectar el daemon.',
+        deleteFailed: 'No se pudo eliminar la máquina.',
     },
 
     message: {

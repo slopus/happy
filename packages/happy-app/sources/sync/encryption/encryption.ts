@@ -136,6 +136,13 @@ export class Encryption {
         return this.machineEncryptions.get(machineId) || null;
     }
 
+    /**
+     * Remove machine encryption from memory when the machine is deleted
+     */
+    removeMachineEncryption(machineId: string): void {
+        this.machineEncryptions.delete(machineId);
+    }
+
     //
     // Legacy methods for machine metadata (temporary until machines are migrated)
     //

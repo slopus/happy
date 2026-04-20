@@ -4,6 +4,8 @@ How handy-server runs across multiple Kubernetes replicas: socket distribution,
 room-based RPC routing, broadcast fan-out, daemon lifecycle, and what happens
 during the messy cases (pod kill, brief reconnect, network partition).
 
+For the shorter high-level control-flow doc, see `realtime-sync-and-rpc.md`.
+
 > **Status:** the code in this doc is on `main` but `handy.yaml` ships
 > `replicas: 1`. Flipping prod to multi-replica is a separate decision.
 

@@ -130,6 +130,7 @@ async function fetchSessions(credentials: LocalHappyAgentCredentials): Promise<R
         const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
             headers: {
                 Authorization: `Bearer ${credentials.token}`,
+                'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`,
             },
         });
         return (response.data as { sessions: RawSession[] }).sessions;

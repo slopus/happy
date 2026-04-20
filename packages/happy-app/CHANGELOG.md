@@ -1,5 +1,13 @@
 # Changelog
 
+## Version 9 - 2026-04-15
+
+Clean up stale machines cluttering your settings and session picker. Offline machines are now hidden by default with a one-tap reveal, and you can permanently remove machines you no longer use.
+
+- Offline machines are now hidden from the Settings machine list by default, with a button to reveal them
+- Added a delete option in machine details to remove stale machines from your account
+- Session history is preserved when a machine is deleted
+
 ## Version 8 - 2026-04-12
 
 This update migrates the monorepo from Yarn to pnpm, delivering dramatically faster dependency installs for developers and CI.

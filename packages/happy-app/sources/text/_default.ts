@@ -103,6 +103,8 @@ export const en = {
         connectAccount: 'Connect account',
         github: 'GitHub',
         machines: 'Machines',
+        showOfflineMachines: ({ count }: { count: number }) => count === 1 ? 'Show 1 offline machine' : `Show ${count} offline machines`,
+        hideOfflineMachines: 'Hide offline machines',
         features: 'Features',
         social: 'Social',
         account: 'Account',
@@ -763,6 +765,12 @@ export const en = {
         lastDetected: 'Last Detected',
         untitledSession: 'Untitled Session',
         back: 'Back',
+        dangerZone: 'Danger Zone',
+        delete: 'Delete Machine',
+        deleteFooter: 'Remove this machine from your account. Session history will be preserved, but you will not be able to start new sessions on this machine.',
+        deleteConfirmTitle: 'Delete this machine?',
+        deleteConfirmMessage: 'The machine will be removed from your account. Session history will be preserved, but you will not be able to start new sessions until you reconnect the daemon.',
+        deleteFailed: 'Failed to delete machine.',
     },
 
     message: {

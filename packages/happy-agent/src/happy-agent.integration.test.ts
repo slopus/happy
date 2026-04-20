@@ -213,6 +213,7 @@ async function approveAgentLogin(
         headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
+            'X-Happy-Client': 'cli-control-plane/0.1.0',
         },
         body: JSON.stringify({
             publicKey: publicKeyBase64,

@@ -52,6 +52,7 @@ import axios from 'axios';
 import chalk from 'chalk';
 import { exponentialBackoffDelay } from '@/utils/time';
 import { logger } from '@/ui/logger';
+import { configuration } from '@/configuration';
 
 /**
  * Configuration for offline reconnection behavior.
@@ -155,7 +156,10 @@ export function startOfflineReconnection<TSession>(
     const defaultHealthCheck = async () => {
         await axios.get(`${config.serverUrl}/v1/sessions`, {
             timeout: 5000,
-            validateStatus: (status) => status < 500 // 4xx = server is up, 5xx = server error
+            validateStatus: (status) => status < 500, // 4xx = server is up, 5xx = server error
+            headers: {
+                'X-Happy-Client': `cli-daemon/${configuration.currentCliVersion}`
+            }
         });
     };
 

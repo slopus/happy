@@ -86,6 +86,15 @@ export const ru: TranslationStructure = {
         connectAccount: 'Подключить аккаунт',
         github: 'GitHub',
         machines: 'Машины',
+        showOfflineMachines: ({ count }: { count: number }) => {
+            const lastTwo = count % 100;
+            const lastOne = count % 10;
+            if (lastTwo >= 11 && lastTwo <= 14) return `Показать ${count} оффлайн-машин`;
+            if (lastOne === 1) return `Показать ${count} оффлайн-машину`;
+            if (lastOne >= 2 && lastOne <= 4) return `Показать ${count} оффлайн-машины`;
+            return `Показать ${count} оффлайн-машин`;
+        },
+        hideOfflineMachines: 'Скрыть оффлайн-машины',
         features: 'Функции',
         social: 'Социальное',
         account: 'Аккаунт',
@@ -761,6 +770,12 @@ export const ru: TranslationStructure = {
         lastDetected: 'Последнее обнаружение',
         untitledSession: 'Безымянная сессия',
         back: 'Назад',
+        dangerZone: 'Опасная зона',
+        delete: 'Удалить машину',
+        deleteFooter: 'Удаляет машину из вашего аккаунта. История сессий сохраняется, но вы больше не сможете запускать новые сессии на ней.',
+        deleteConfirmTitle: 'Удалить эту машину?',
+        deleteConfirmMessage: 'Машина будет удалена из вашего аккаунта. История сессий сохраняется, но вы больше не сможете запускать новые сессии, пока не подключите демон заново.',
+        deleteFailed: 'Не удалось удалить машину.',
     },
 
     message: {

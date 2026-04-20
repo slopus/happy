@@ -197,6 +197,28 @@ export async function machineResumeSession(options: ResumeSessionOptions & { mod
 }
 
 /**
+ * Permanently remove a machine from the server. Sessions spawned by the
+ * machine are preserved; only the Machine row and its AccessKeys are deleted.
+ */
+export async function machineDelete(machineId: string): Promise<{ success: boolean; message?: string }> {
+    try {
+        const response = await apiSocket.request(`/v1/machines/${machineId}`, {
+            method: 'DELETE'
+        });
+        if (response.ok) {
+            return { success: true };
+        }
+        const error = await response.text();
+        return { success: false, message: error || 'Failed to delete machine' };
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
  * Stop the daemon on a specific machine
  */
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {

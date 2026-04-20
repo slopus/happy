@@ -1,4 +1,4 @@
-import { machineAliveEventsCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
+import { getMetricsLabelsFromSocket, machineAliveEventsCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
 import { activityCache } from "@/app/presence/sessionCache";
 import { buildMachineActivityEphemeral, buildUpdateMachineUpdate, eventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
@@ -8,13 +8,15 @@ import { allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 
 export function machineUpdateHandler(userId: string, socket: Socket) {
+    const labels = getMetricsLabelsFromSocket(socket);
+
     socket.on('machine-alive', async (data: {
         machineId: string;
         time: number;
     }) => {
         try {
             // Track metrics
-            websocketEventsCounter.inc({ event_type: 'machine-alive' });
+            websocketEventsCounter.inc({ event_type: 'machine-alive', ...labels });
             machineAliveEventsCounter.inc();
 
             // Basic validation

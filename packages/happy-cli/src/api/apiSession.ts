@@ -136,7 +136,8 @@ export class ApiSessionClient extends EventEmitter {
             auth: {
                 token: this.token,
                 clientType: 'session-scoped' as const,
-                sessionId: this.sessionId
+                sessionId: this.sessionId,
+                happyClient: `cli-coding-session/${configuration.currentCliVersion}`
             },
             path: '/v1/updates',
             reconnection: false,
@@ -253,7 +254,8 @@ export class ApiSessionClient extends EventEmitter {
     private authHeaders() {
         return {
             'Authorization': `Bearer ${this.token}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`
         };
     }
 
@@ -654,22 +656,23 @@ export class ApiSessionClient extends EventEmitter {
     private startSmartReconnect() {
         if (this.reconnectInterval) return;
 
-        if (shouldReconnect()) {
-            logger.debug('[API] Network up + lid open — reconnecting in 1s');
-            setTimeout(() => { if (!this.socket.connected) this.socket.connect() }, 1000);
-            return;
-        }
-
-        logger.debug('[API] Conditions not met for reconnect — polling every 5s');
         this.reconnectInterval = setInterval(() => {
+            if (this.socket.connected) {
+                clearInterval(this.reconnectInterval!);
+                this.reconnectInterval = null;
+                return;
+            }
             if (!shouldReconnect()) {
                 logger.debug('[API] Still not ready to reconnect');
                 return;
             }
-            logger.debug('[API] Conditions met — reconnecting');
-            clearInterval(this.reconnectInterval!);
-            this.reconnectInterval = null;
+            logger.debug('[API] Attempting reconnect');
             this.socket.connect();
-        }, 5000);
+        }, 3000);
+
+        if (shouldReconnect()) {
+            logger.debug('[API] Network up + lid open — reconnecting in 1s');
+            setTimeout(() => { if (!this.socket.connected) this.socket.connect() }, 1000);
+        }
     }
 }

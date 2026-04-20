@@ -3,6 +3,7 @@ import { decodeBase64, encodeBase64 } from '../encryption/base64';
 import { getServerUrl } from '@/sync/serverConfig';
 import { QRAuthKeyPair } from './authQRStart';
 import { decryptBox } from '@/encryption/libsodium';
+import { getHappyClientId } from '@/sync/apiSocket';
 
 export interface AuthCredentials {
     secret: Uint8Array;
@@ -21,6 +22,10 @@ export async function authQRWait(keypair: QRAuthKeyPair, onProgress?: (dots: num
         try {
             const response = await axios.post(`${serverUrl}/v1/auth/account/request`, {
                 publicKey: encodeBase64(keypair.publicKey),
+            }, {
+                headers: {
+                    'X-Happy-Client': getHappyClientId(),
+                }
             });
 
             if (response.data.state === 'authorized') {

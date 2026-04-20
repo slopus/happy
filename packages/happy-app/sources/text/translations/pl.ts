@@ -115,6 +115,14 @@ export const pl: TranslationStructure = {
         connectAccount: 'Połącz konto',
         github: 'GitHub',
         machines: 'Maszyny',
+        showOfflineMachines: ({ count }: { count: number }) => {
+            const mod10 = count % 10;
+            const mod100 = count % 100;
+            if (count === 1) return 'Pokaż 1 maszynę offline';
+            if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `Pokaż ${count} maszyny offline`;
+            return `Pokaż ${count} maszyn offline`;
+        },
+        hideOfflineMachines: 'Ukryj maszyny offline',
         features: 'Funkcje',
         social: 'Społeczność',
         account: 'Konto',
@@ -774,6 +782,12 @@ export const pl: TranslationStructure = {
         lastDetected: 'Ostatnio wykryto',
         untitledSession: 'Sesja bez nazwy',
         back: 'Wstecz',
+        dangerZone: 'Strefa niebezpieczna',
+        delete: 'Usuń maszynę',
+        deleteFooter: 'Usuń tę maszynę ze swojego konta. Historia sesji zostanie zachowana, ale nie będziesz mógł uruchamiać nowych sesji na tej maszynie.',
+        deleteConfirmTitle: 'Usunąć tę maszynę?',
+        deleteConfirmMessage: 'Maszyna zostanie usunięta z twojego konta. Historia sesji zostanie zachowana, ale nie będziesz mógł uruchamiać nowych sesji, dopóki ponownie nie podłączysz demona.',
+        deleteFailed: 'Nie udało się usunąć maszyny.',
     },
 
     message: {

@@ -1,7 +1,18 @@
 import { io, Socket } from 'socket.io-client';
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { Encryption } from './encryption/encryption';
 import { storage } from './storage';
+
+export function getHappyClientId(): string {
+    let platform: string = Platform.OS; // 'ios' | 'android' | 'web'
+    if (platform === 'web' && typeof window !== 'undefined' && '__TAURI__' in window) {
+        platform = 'desktop';
+    }
+    const version = Constants.expoConfig?.version || '0.0.0';
+    return `${platform}/${version}`;
+}
 
 //
 // Types
@@ -60,7 +71,8 @@ class ApiSocket {
             path: '/v1/updates',
             auth: {
                 token: this.config.token,
-                clientType: 'user-scoped' as const
+                clientType: 'user-scoped' as const,
+                happyClient: getHappyClientId()
             },
             transports: ['websocket'],
             reconnection: true,
@@ -178,6 +190,7 @@ class ApiSocket {
         const url = `${this.config.endpoint}${path}`;
         const headers = {
             'Authorization': `Bearer ${credentials.token}`,
+            'X-Happy-Client': getHappyClientId(),
             ...options?.headers
         };
 

@@ -1,6 +1,6 @@
 import { db } from "@/storage/db";
 import { Fastify } from "../types";
-import { httpRequestsCounter, httpRequestDurationHistogram } from "@/app/monitoring/metrics2";
+import { httpRequestsCounter, httpRequestDurationHistogram, getMetricsLabelsFromRequest } from "@/app/monitoring/metrics2";
 import { log } from "@/utils/log";
 
 export function enableMonitoring(app: Fastify) {
@@ -15,12 +15,13 @@ export function enableMonitoring(app: Fastify) {
         // Use routeOptions.url for the route template, fallback to parsed URL path
         const route = request.routeOptions?.url || request.url.split('?')[0] || 'unknown';
         const status = reply.statusCode.toString();
+        const labels = getMetricsLabelsFromRequest(request);
 
         // Increment request counter
-        httpRequestsCounter.inc({ method, route, status });
+        httpRequestsCounter.inc({ method, route, status, ...labels });
 
         // Record request duration
-        httpRequestDurationHistogram.observe({ method, route, status }, duration);
+        httpRequestDurationHistogram.observe({ method, route, status, ...labels }, duration);
     });
 
     app.get('/health', async (request, reply) => {

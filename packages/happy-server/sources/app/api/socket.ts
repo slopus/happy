@@ -6,7 +6,7 @@ import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { Redis } from "ioredis";
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";
-import { decrementWebSocketConnection, incrementWebSocketConnection, websocketEventsCounter } from "../monitoring/metrics2";
+import { getMetricsLabelsFromSocket, redisStreamLagMsGauge, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
 import { usageHandler } from "./socket/usageHandler";
 import { rpcHandler } from "./socket/rpcHandler";
 import { pingHandler } from "./socket/pingHandler";
@@ -49,15 +49,37 @@ export function startSocket(app: Fastify) {
     // Multi-process support: attach Redis streams adapter when REDIS_URL is set
     if (process.env.REDIS_URL) {
         const streamClient = new Redis(process.env.REDIS_URL);
-        io.adapter(createAdapter(streamClient, { maxLen: 50000 }));
+        io.adapter(createAdapter(streamClient, { maxLen: 200000, readCount: 2000 }));
         log({ module: 'websocket' }, 'Redis streams adapter enabled for multi-process support');
+
+        // Track stream reader lag: wrap onRawMessage to capture last-read offset,
+        // then periodically compare against stream HEAD.
+        let lastReadOffset = "0-0";
+        const adapter = io.of("/").adapter as any;
+        const origOnRawMessage = adapter.onRawMessage.bind(adapter);
+        adapter.onRawMessage = (msg: any, offset: string) => {
+            lastReadOffset = offset;
+            return origOnRawMessage(msg, offset);
+        };
+        setInterval(async () => {
+            try {
+                const info = await streamClient.xinfo("STREAM", "socket.io") as any[];
+                const headId = String(info[info.indexOf("last-generated-id") + 1]);
+                const headMs = parseInt(headId.split("-")[0]);
+                const readMs = parseInt(lastReadOffset.split("-")[0]);
+                redisStreamLagMsGauge.set(headMs - readMs);
+            } catch { /* stream may not exist yet */ }
+        }, 5000);
     }
 
     // Initialize event router with Socket.IO server instance
     eventRouter.init(io);
 
-    io.on("connection", async (socket) => {
-        log({ module: 'websocket' }, `New connection attempt from socket: ${socket.id}`);
+    // Auth runs in middleware so it completes BEFORE the client's `connect`
+    // event fires. Without this, the async verifyToken in the connection
+    // callback creates a window where client events (rpc-register, rpc-call)
+    // arrive before handlers are attached — and get silently dropped.
+    io.use(async (socket, next) => {
         const token = socket.handshake.auth.token as string;
         const clientType = socket.handshake.auth.clientType as 'session-scoped' | 'user-scoped' | 'machine-scoped' | undefined;
         const sessionId = socket.handshake.auth.sessionId as string | undefined;
@@ -65,37 +87,47 @@ export function startSocket(app: Fastify) {
 
         if (!token) {
             log({ module: 'websocket' }, `No token provided`);
-            socket.emit('error', { message: 'Missing authentication token' });
-            socket.disconnect();
+            next(new Error('Missing authentication token'));
             return;
         }
 
-        // Validate session-scoped clients have sessionId
         if (clientType === 'session-scoped' && !sessionId) {
             log({ module: 'websocket' }, `Session-scoped client missing sessionId`);
-            socket.emit('error', { message: 'Session ID required for session-scoped clients' });
-            socket.disconnect();
+            next(new Error('Session ID required for session-scoped clients'));
             return;
         }
 
-        // Validate machine-scoped clients have machineId
         if (clientType === 'machine-scoped' && !machineId) {
             log({ module: 'websocket' }, `Machine-scoped client missing machineId`);
-            socket.emit('error', { message: 'Machine ID required for machine-scoped clients' });
-            socket.disconnect();
+            next(new Error('Machine ID required for machine-scoped clients'));
             return;
         }
 
         const verified = await auth.verifyToken(token);
         if (!verified) {
             log({ module: 'websocket' }, `Invalid token provided`);
-            socket.emit('error', { message: 'Invalid authentication token' });
-            socket.disconnect();
+            next(new Error('Invalid authentication token'));
             return;
         }
 
-        const userId = verified.userId;
-        log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`);
+        socket.data.userId = verified.userId;
+        socket.data.clientType = clientType;
+        socket.data.sessionId = sessionId;
+        socket.data.machineId = machineId;
+        socket.data.happyClient = socket.handshake.auth.happyClient as string
+            || socket.handshake.headers['x-happy-client'] as string
+            || undefined;
+        next();
+    });
+
+    io.on("connection", (socket) => {
+        const userId = socket.data.userId as string;
+        const clientType = socket.data.clientType as 'session-scoped' | 'user-scoped' | 'machine-scoped' | undefined;
+        const sessionId = socket.data.sessionId as string | undefined;
+        const machineId = socket.data.machineId as string | undefined;
+        const labels = getMetricsLabelsFromSocket(socket);
+
+        log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, client: ${labels.client}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`);
 
         // Store connection based on type
         const metadata = { clientType: clientType || 'user-scoped', sessionId, machineId };
@@ -122,7 +154,7 @@ export function startSocket(app: Fastify) {
             };
         }
         eventRouter.addConnection(userId, connection);
-        incrementWebSocketConnection(connection.connectionType);
+        websocketConnectionsGauge.inc({ type: connection.connectionType, ...labels });
 
         // Broadcast daemon online status
         if (connection.connectionType === 'machine-scoped') {
@@ -136,11 +168,11 @@ export function startSocket(app: Fastify) {
         }
 
         socket.on('disconnect', () => {
-            websocketEventsCounter.inc({ event_type: 'disconnect' });
+            websocketEventsCounter.inc({ event_type: 'disconnect', ...labels });
 
             // Cleanup connections
             eventRouter.removeConnection(userId, connection);
-            decrementWebSocketConnection(connection.connectionType);
+            websocketConnectionsGauge.dec({ type: connection.connectionType, ...labels });
 
             log({ module: 'websocket' }, `User disconnected: ${userId}`);
 

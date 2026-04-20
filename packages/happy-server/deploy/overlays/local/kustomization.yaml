@@ -1,0 +1,62 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - postgres.yaml
+  - minio.yaml
+  - secrets.yaml
+  - prometheus.yaml
+  - grafana.yaml
+
+# Use locally-built image instead of private registry
+images:
+  - name: docker.korshakov.com/handy-server
+    newName: happy-server
+    newTag: local
+
+# Patches: minimal local-only overrides (replicas match prod)
+patches:
+  # Point S3_PUBLIC_URL at local MinIO instead of prod
+  - target:
+      kind: Deployment
+      name: handy-server
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: handy-server
+      spec:
+        template:
+          spec:
+            containers:
+            - name: handy
+              env:
+              - name: S3_PUBLIC_URL
+                value: http://localhost:9000/happy
+
+  # NodePort so tests connect through kube-proxy (real load balancing).
+  # kubectl port-forward tunnels to ONE pod — when that pod dies,
+  # ALL connections through it break. NodePort uses iptables rules
+  # that survive pod kills and route to healthy pods.
+  - target:
+      kind: Service
+      name: handy-server
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: handy-server
+      spec:
+        type: NodePort
+
+  # Remove ExternalSecret — we use plain Secret instead
+  - target:
+      kind: ExternalSecret
+      name: handy-secrets
+    patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1beta1
+      kind: ExternalSecret
+      metadata:
+        name: handy-secrets

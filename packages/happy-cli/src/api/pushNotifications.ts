@@ -2,6 +2,7 @@ import axios from 'axios'
 import { logger } from '@/ui/logger'
 import { Expo, ExpoPushMessage } from 'expo-server-sdk'
 import type { Metadata } from './types'
+import { configuration } from '@/configuration'
 
 export interface PushToken {
     id: string
@@ -94,7 +95,8 @@ export class PushNotificationClient {
                     {
                         headers: {
                             'Authorization': `Bearer ${this.token}`,
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            'X-Happy-Client': `cli-daemon/${configuration.currentCliVersion}`
                         }
                     }
                 )
