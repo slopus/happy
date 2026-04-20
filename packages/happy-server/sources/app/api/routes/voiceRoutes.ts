@@ -111,7 +111,7 @@ export function voiceRoutes(app: Fastify) {
         const elevenUserId = deriveElevenUserId(userId);
 
         // Check usage from ElevenLabs directly
-        const { usedSeconds, conversationCount } = { usedSeconds: 0, conversationCount: 0 }; // BYPASS
+        const { usedSeconds, conversationCount } = await getVoiceUsage(elevenLabsApiKey, elevenUserId);
         log({ module: 'voice' }, `User ${userId}: ${usedSeconds}s used, ${conversationCount} convos (free=${VOICE_FREE_LIMIT_SECONDS}s, hard=${VOICE_HARD_LIMIT_SECONDS}s)`);
 
         // Conversation count cap — we can only track 100 per query (ElevenLabs page_size limit)
