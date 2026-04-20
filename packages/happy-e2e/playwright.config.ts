@@ -18,8 +18,8 @@ const serverDir = path.resolve(__dirname, '../../packages/happy-server');
 const appDir = path.resolve(__dirname, '../../packages/happy-app');
 
 const TEST_SECRET = 'happy-e2e-test-secret-do-not-use-in-prod';
-const SERVER_PORT = 3005;
-const APP_PORT = 8081;
+const SERVER_PORT = parseInt(process.env.E2E_SERVER_PORT ?? '3005', 10);
+const APP_PORT = parseInt(process.env.E2E_APP_PORT ?? '8081', 10);
 
 export const SERVER_URL = `http://localhost:${SERVER_PORT}`;
 export const APP_URL = `http://localhost:${APP_PORT}`;
@@ -61,14 +61,14 @@ export default defineConfig({
                 `PORT=${SERVER_PORT}`,
                 `DB_PROVIDER=pglite`,
                 `METRICS_ENABLED=false`,
-                `node_modules/.bin/tsx ./sources/standalone.ts migrate`,
+                `pnpm exec tsx ./sources/standalone.ts migrate`,
                 `&&`,
                 `PGLITE_DIR="${pgliteDir}"`,
                 `HANDY_MASTER_SECRET="${TEST_SECRET}"`,
                 `PORT=${SERVER_PORT}`,
                 `DB_PROVIDER=pglite`,
                 `METRICS_ENABLED=false`,
-                `node_modules/.bin/tsx ./sources/standalone.ts serve`,
+                `pnpm exec tsx ./sources/standalone.ts serve`,
             ].join(' '),
             cwd: serverDir,
             url: SERVER_URL,
@@ -81,7 +81,7 @@ export default defineConfig({
             command: [
                 `EXPO_PUBLIC_HAPPY_SERVER_URL=${SERVER_URL}`,
                 `APP_ENV=development`,
-                `node_modules/.bin/expo start --web --non-interactive --port ${APP_PORT} --max-workers 2`,
+                `CI=1 pnpm exec expo start --web --port ${APP_PORT} --max-workers 2`,
             ].join(' '),
             cwd: appDir,
             url: APP_URL,

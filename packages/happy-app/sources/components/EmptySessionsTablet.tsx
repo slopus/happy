@@ -69,14 +69,14 @@ export function EmptySessionsTablet() {
     };
     
     return (
-        <View style={styles.container}>
-            <Ionicons 
-                name="terminal-outline" 
-                size={64} 
+        <View style={styles.container} testID="empty-main-screen">
+            <Ionicons
+                name="terminal-outline"
+                size={64}
                 color={theme.colors.textSecondary}
                 style={styles.iconContainer}
             />
-            
+
             <Text style={styles.titleText}>
                 No active sessions
             </Text>

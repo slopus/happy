@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import * as tweetnacl from 'tweetnacl';
 
-const SERVER_URL = 'http://localhost:3005';
-const APP_URL = 'http://localhost:8081';
+const SERVER_URL = `http://localhost:${process.env.E2E_SERVER_PORT ?? '3005'}`;
+const APP_URL = `http://localhost:${process.env.E2E_APP_PORT ?? '8081'}`;
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────
 
