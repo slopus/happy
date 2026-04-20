@@ -267,7 +267,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
     type: z.literal('output'),
     data: z.intersection(z.discriminatedUnion('type', [
         z.object({ type: z.literal('system') }),
-        z.object({ type: z.literal('result') }),
+        z.object({ type: z.literal('result'), result: z.string().nullish(), subtype: z.string().nullish(), is_error: z.boolean().nullish() }),
         z.object({ type: z.literal('summary'), summary: z.string() }),
         z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string(), content: z.array(rawAgentContentSchema), usage: usageDataSchema.optional() }), parent_tool_use_id: z.string().nullable().optional() }),
         z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.union([z.string(), z.array(rawAgentContentSchema)]) }), parent_tool_use_id: z.string().nullable().optional(), toolUseResult: z.any().nullable().optional() }),
@@ -738,6 +738,28 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
 
             // Skip compact summary messages
             if (raw.content.data.isCompactSummary) {
+                return null;
+            }
+
+            // Handle Result messages (e.g. slash command errors like "Unknown skill: mcp")
+            if (raw.content.data.type === 'result') {
+                const resultText = raw.content.data.result;
+                if (resultText) {
+                    return {
+                        id,
+                        localId,
+                        createdAt,
+                        role: 'agent',
+                        content: [{
+                            type: 'text' as const,
+                            text: resultText,
+                            uuid: raw.content.data.uuid ?? id,
+                            parentUUID: raw.content.data.parentUuid ?? null,
+                        }],
+                        isSidechain: false,
+                        meta: raw.meta,
+                    } satisfies NormalizedMessage;
+                }
                 return null;
             }
 

@@ -41,7 +41,7 @@ export async function claudeRemote(opts: {
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
     onSessionReset?: () => void,
-    onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[] }) => void
+    onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[] }) => void
 }) {
 
     // Check if session is valid
@@ -191,6 +191,8 @@ export async function claudeRemote(opts: {
                     opts.onSDKMetadata({
                         tools: systemInit.tools,
                         slashCommands: systemInit.slash_commands,
+                        mcpServers: systemInit.mcp_servers?.map(s => ({ name: s.name, status: s.status })),
+                        skills: systemInit.skills,
                     });
                 }
 

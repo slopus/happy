@@ -13,7 +13,7 @@ html, body {
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--colors-surface-high);
+    background: transparent;
     border-radius: 6px;
 }
 
@@ -30,13 +30,13 @@ html, body {
 }
 
 ::-webkit-scrollbar-corner {
-    background: var(--colors-surface-high);
+    background: transparent;
 }
 
 /* Firefox */
 * {
     scrollbar-width: thin;
-    scrollbar-color: var(--colors-divider) var(--colors-surface-high);
+    scrollbar-color: var(--colors-divider) transparent;
 }
 
 /* Ensure scrollbars are visible on hover for macOS */

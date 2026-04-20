@@ -284,6 +284,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
+    let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
     // Exit when session is archived from web/mobile
     session.on('archived', () => {
         logger.debug('[loop] Session archived from web/mobile, cleaning up...');
@@ -397,6 +398,48 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             return;
         }
 
+        if (specialCommand.type === 'mcp' || specialCommand.type === 'skills') {
+            // In local mode, let Claude Code handle these commands natively
+            if (currentRunMode === 'local') {
+                logger.debug(`[start] /${specialCommand.type} in local mode — passing through to Claude Code`);
+            } else {
+                logger.debug(`[start] Detected /${specialCommand.type} command in remote mode`);
+                const metadata = session.getMetadata();
+                let responseText: string;
+
+                if (specialCommand.type === 'mcp') {
+                    const servers = metadata?.mcpServers;
+                    if (servers && servers.length > 0) {
+                        responseText = '**MCP Servers**\n\n' + servers.map(s => `- **${s.name}** — ${s.status}`).join('\n');
+                    } else {
+                        responseText = 'No MCP servers configured. Session may still be initializing — try again after sending a message.';
+                    }
+                } else {
+                    const skills = metadata?.skills ?? metadata?.slashCommands;
+                    if (skills && skills.length > 0) {
+                        responseText = '**Available Skills**\n\n' + skills.map(s => `- /${s}`).join('\n');
+                    } else {
+                        responseText = 'No skills available. Session may still be initializing — try again after sending a message.';
+                    }
+                }
+
+                session.sendClaudeSessionMessage({
+                    type: 'assistant',
+                    uuid: randomUUID(),
+                    parentUuid: null,
+                    isSidechain: false,
+                    sessionId: session.sessionId || 'unknown',
+                    timestamp: new Date().toISOString(),
+                    message: {
+                        role: 'assistant',
+                        model: 'system',
+                        content: [{ type: 'text', text: responseText }],
+                    },
+                } as any);
+                return;
+            }
+        }
+
         // Push with resolved permission mode, model, system prompts, and tools
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode || 'default',
@@ -477,6 +520,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         api,
         allowedTools: happyServer.toolNames.map(toolName => `mcp__happy__${toolName}`),
         onModeChange: (newMode) => {
+            currentRunMode = newMode;
             session.sendSessionEvent({ type: 'switch', mode: newMode });
             session.updateAgentState((currentState) => ({
                 ...currentState,
