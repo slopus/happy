@@ -286,9 +286,9 @@ function RenderSpans(props: RenderSpanProps) {
     </>)
 }
 
-// Table rendering uses column-first layout to ensure consistent column widths.
-// Each column is rendered as a vertical container with all its cells (header + data).
-// This ensures that cells in the same column have the same width, determined by the widest content.
+// Table rendering uses row-first layout to ensure consistent row heights.
+// Each row is rendered as a horizontal container with all its cells.
+// This ensures that cells in the same row have the same height.
 function RenderTableBlock(props: {
     headers: MarkdownSpan[][],
     rows: MarkdownSpan[][][],
@@ -305,31 +305,41 @@ function RenderTableBlock(props: {
         <View style={[style.tableContainer, props.first && style.first, props.last && style.last]}>
             <ScrollView
                 horizontal
-                showsHorizontalScrollIndicator={Platform.OS !== 'web'}
+                showsHorizontalScrollIndicator={true}
                 nestedScrollEnabled={true}
                 style={style.tableScrollView}
+                contentContainerStyle={style.tableScrollContent}
             >
                 <View style={style.tableContent}>
-                    {/* Render each column as a vertical container */}
-                    {props.headers.map((header, colIndex) => (
-                        <View
-                            key={`column-${colIndex}`}
-                            style={[
-                                style.tableColumn,
-                                colIndex === columnCount - 1 && style.tableColumnLast
-                            ]}
-                        >
-                            {/* Header cell for this column */}
-                            <View style={[style.tableCell, style.tableHeaderCell, style.tableCellFirst]}>
+                    {/* Row-first: rows align across columns (like HTML table).
+                        Long text wraps naturally so cells in a row share height. */}
+                    {/* Header row */}
+                    <View style={[style.tableRow, style.tableCellBorderBottom]}>
+                        {props.headers.map((header, colIndex) => (
+                            <View
+                                key={`header-${colIndex}`}
+                                style={[
+                                    style.tableCell,
+                                    style.tableHeaderCell,
+                                    colIndex < columnCount - 1 && style.tableCellBorderRight,
+                                ]}
+                            >
                                 <Text style={style.tableHeaderText}><RenderSpans spans={header} baseStyle={style.tableHeaderText} onLinkPress={props.onLinkPress} selectable={props.selectable} /></Text>
                             </View>
-                            {/* Data cells for this column */}
-                            {props.rows.map((row, rowIndex) => (
+                        ))}
+                    </View>
+                    {/* Data rows */}
+                    {props.rows.map((row, rowIndex) => (
+                        <View
+                            key={`row-${rowIndex}`}
+                            style={[style.tableRow, !isLastRow(rowIndex) && style.tableCellBorderBottom]}
+                        >
+                            {props.headers.map((_, colIndex) => (
                                 <View
                                     key={`cell-${rowIndex}-${colIndex}`}
                                     style={[
                                         style.tableCell,
-                                        isLastRow(rowIndex) && style.tableCellLast
+                                        colIndex < columnCount - 1 && style.tableCellBorderRight,
                                     ]}
                                 >
                                     <Text style={style.tableCellText}><RenderSpans spans={row[colIndex] ?? []} baseStyle={style.tableCellText} onLinkPress={props.onLinkPress} selectable={props.selectable} /></Text>
@@ -586,36 +596,35 @@ const style = StyleSheet.create((theme) => ({
         borderRadius: 8,
         overflow: 'hidden',
         maxWidth: '100%',
-        flexGrow: 0,
-        flexShrink: 1,
     },
     tableScrollView: {
         flexGrow: 0,
-        flexShrink: 1,
+        maxWidth: '100%',
+    },
+    tableScrollContent: {
+        flexGrow: 1,
     },
     tableContent: {
+        flexDirection: 'column',
+        minWidth: '100%',
+    },
+    tableRow: {
         flexDirection: 'row',
     },
-    tableColumn: {
-        flexDirection: 'column',
+    tableCell: {
+        flex: 1,
+        minHeight: 40,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        justifyContent: 'center',
+    },
+    tableCellBorderRight: {
         borderRightWidth: 1,
         borderRightColor: theme.colors.divider,
     },
-    tableColumnLast: {
-        borderRightWidth: 0,
-    },
-    tableCell: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+    tableCellBorderBottom: {
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.divider,
-        alignItems: 'flex-start',
-    },
-    tableCellFirst: {
-        borderTopWidth: 0,
-    },
-    tableCellLast: {
-        borderBottomWidth: 0,
     },
     tableHeaderCell: {
         backgroundColor: theme.colors.surfaceHigh,
