@@ -9,6 +9,7 @@ import {
     getEffortLevelsForModel,
     getDefaultEffortKeyForModel,
     resolveCurrentOption,
+    resolveCurrentEffortLevel,
     EffortLevel,
 } from '@/components/modelModeOptions';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
@@ -241,11 +242,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         getEffortLevelsForModel(flavor, modelKey)
     ), [flavor, modelKey]);
     const effortLevel = React.useMemo<EffortLevel | null>(() => (
-        resolveCurrentOption(availableEffortLevels, [
+        resolveCurrentEffortLevel(availableEffortLevels, [
             session.effortLevel,
+            session.metadata?.currentThoughtLevelCode,
             getDefaultEffortKeyForModel(flavor, modelKey),
         ])
-    ), [availableEffortLevels, session.effortLevel, flavor, modelKey]);
+    ), [availableEffortLevels, session.effortLevel, session.metadata?.currentThoughtLevelCode, flavor, modelKey]);
 
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
