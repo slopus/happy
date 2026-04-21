@@ -17,6 +17,16 @@ const theme = {
 
 const api = {}
 
+const win = {
+    isFullScreenSync: (): boolean =>
+        ipcRenderer.sendSync('win:sync:is-fullscreen') as boolean,
+    onFullScreenChange: (cb: (fullscreen: boolean) => void) => {
+        const listener = (_: unknown, fullscreen: boolean) => cb(fullscreen)
+        ipcRenderer.on('win:fullscreen', listener)
+        return () => ipcRenderer.off('win:fullscreen', listener)
+    },
+}
+
 const pty = {
     create: (opts: { cols?: number; rows?: number; cwd?: string } = {}) =>
         ipcRenderer.invoke('pty:create', opts) as Promise<string>,
@@ -44,6 +54,7 @@ if (process.contextIsolated) {
         contextBridge.exposeInMainWorld('api', api)
         contextBridge.exposeInMainWorld('theme', theme)
         contextBridge.exposeInMainWorld('pty', pty)
+        contextBridge.exposeInMainWorld('win', win)
     } catch (error) {
         console.error(error)
     }
@@ -56,4 +67,6 @@ if (process.contextIsolated) {
     window.theme = theme
     // @ts-expect-error augmenting window
     window.pty = pty
+    // @ts-expect-error augmenting window
+    window.win = win
 }

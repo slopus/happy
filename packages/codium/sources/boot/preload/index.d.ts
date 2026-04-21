@@ -18,11 +18,17 @@ export type PtyApi = {
     onExit(id: string, cb: () => void): () => void
 }
 
+export type WinApi = {
+    isFullScreenSync(): boolean
+    onFullScreenChange(cb: (fullscreen: boolean) => void): () => void
+}
+
 declare global {
     interface Window {
         electron: ElectronAPI
         api: unknown
         theme: ThemeApi
         pty: PtyApi
+        win: WinApi
     }
 }

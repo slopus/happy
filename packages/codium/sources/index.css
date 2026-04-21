@@ -729,6 +729,16 @@ button {
     margin-left: 208px;
 }
 
+html:not([data-os='darwin']) .app__toolbar,
+.app--fullscreen .app__toolbar {
+    padding-left: 16px;
+}
+
+html:not([data-os='darwin']) .app--sidebar-hidden .page__header,
+.app--fullscreen.app--sidebar-hidden .page__header {
+    margin-left: 116px;
+}
+
 .page__header-title {
     font-size: var(--text-lg);
     font-weight: 600;

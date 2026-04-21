@@ -10,3 +10,9 @@ export interface TerminalEntry {
 }
 
 export const terminalsAtom = atom<TerminalEntry[]>([])
+
+export const fullscreenAtom = atom<boolean>(
+    typeof window !== 'undefined' && window.win
+        ? window.win.isFullScreenSync()
+        : false
+)

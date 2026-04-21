@@ -39,10 +39,19 @@ ipcMain.handle(
             env: process.env as Record<string, string>,
         })
         const id = randomUUID()
-        p.onData((d) => e.sender.send(`pty:data:${id}`, d))
+        const wc = e.sender
+        const safeSend = (channel: string, ...args: unknown[]) => {
+            if (wc.isDestroyed()) return
+            try {
+                wc.send(channel, ...args)
+            } catch {
+                /* webContents went away between the check and the send */
+            }
+        }
+        p.onData((d) => safeSend(`pty:data:${id}`, d))
         p.onExit(() => {
             ptys.delete(id)
-            e.sender.send(`pty:exit:${id}`)
+            safeSend(`pty:exit:${id}`)
         })
         ptys.set(id, p)
         return id
@@ -84,6 +93,11 @@ app.on('before-quit', () => {
     ptys.clear()
 })
 
+ipcMain.on('win:sync:is-fullscreen', (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    e.returnValue = win?.isFullScreen() ?? false
+})
+
 function createWindow(): void {
     const isMac = process.platform === 'darwin'
     const mainWindow = new BrowserWindow({
@@ -105,6 +119,13 @@ function createWindow(): void {
 
     mainWindow.on('ready-to-show', () => {
         mainWindow.show()
+    })
+
+    mainWindow.on('enter-full-screen', () => {
+        mainWindow.webContents.send('win:fullscreen', true)
+    })
+    mainWindow.on('leave-full-screen', () => {
+        mainWindow.webContents.send('win:fullscreen', false)
     })
 
     mainWindow.webContents.setWindowOpenHandler((details) => {
