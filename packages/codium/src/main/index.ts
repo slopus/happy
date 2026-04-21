@@ -1,6 +1,24 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { join } from 'node:path'
+
+type ThemeSource = 'system' | 'light' | 'dark'
+const themeState = () => ({
+    source: nativeTheme.themeSource as ThemeSource,
+    shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
+})
+
+ipcMain.handle('theme:get', () => themeState())
+ipcMain.handle('theme:set', (_, source: ThemeSource) => {
+    nativeTheme.themeSource = source
+    return themeState()
+})
+nativeTheme.on('updated', () => {
+    const state = themeState()
+    for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('theme:updated', state)
+    }
+})
 
 function createWindow(): void {
     const isMac = process.platform === 'darwin'

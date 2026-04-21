@@ -1,5 +1,65 @@
 @import 'tailwindcss';
 
+html.electron-dark {
+    color-scheme: dark;
+
+    --color-accent-blue: #339cff;
+    --color-accent-purple: #ad7bf9;
+    --color-accent-green: #40c977;
+    --color-accent-red: #fa423e;
+
+    --color-background-surface: #181818;
+    --color-background-surface-under: #141414;
+    --color-background-panel: #232323;
+    --color-background-elevated: rgba(54, 54, 54, 0.96);
+    --color-background-control: rgba(45, 45, 45, 0.96);
+
+    --color-text-foreground: #ffffff;
+    --color-text-foreground-secondary: rgba(255, 255, 255, 0.71);
+    --color-text-foreground-tertiary: rgba(255, 255, 255, 0.498);
+    --color-text-accent: rgb(131, 195, 255);
+
+    --color-border: rgba(255, 255, 255, 0.084);
+    --color-border-heavy: rgba(255, 255, 255, 0.156);
+    --color-border-light: rgba(255, 255, 255, 0.042);
+    --color-border-focus: rgba(131, 195, 255, 0.76);
+
+    --color-hover: rgba(255, 255, 255, 0.042);
+    --color-active: rgba(255, 255, 255, 0.1);
+    --color-button-bg: rgba(255, 255, 255, 0.052);
+    --color-button-hover: rgba(255, 255, 255, 0.078);
+}
+
+html.electron-light {
+    color-scheme: light;
+
+    --color-accent-blue: #0969da;
+    --color-accent-purple: #8250df;
+    --color-accent-green: #1f883d;
+    --color-accent-red: #cf222e;
+
+    --color-background-surface: #ffffff;
+    --color-background-surface-under: #f5f5f5;
+    --color-background-panel: #fbfbfb;
+    --color-background-elevated: rgba(250, 250, 250, 0.96);
+    --color-background-control: rgba(245, 245, 245, 0.96);
+
+    --color-text-foreground: #1d1d1f;
+    --color-text-foreground-secondary: rgba(0, 0, 0, 0.65);
+    --color-text-foreground-tertiary: rgba(0, 0, 0, 0.45);
+    --color-text-accent: #0969da;
+
+    --color-border: rgba(0, 0, 0, 0.084);
+    --color-border-heavy: rgba(0, 0, 0, 0.18);
+    --color-border-light: rgba(0, 0, 0, 0.052);
+    --color-border-focus: rgba(9, 105, 218, 0.62);
+
+    --color-hover: rgba(0, 0, 0, 0.042);
+    --color-active: rgba(0, 0, 0, 0.08);
+    --color-button-bg: rgba(0, 0, 0, 0.048);
+    --color-button-hover: rgba(0, 0, 0, 0.08);
+}
+
 *,
 *::before,
 *::after {
@@ -72,12 +132,12 @@ button {
 }
 
 .app__nav-item:hover {
-    background: rgba(255, 255, 255, 0.042);
+    background: var(--color-hover);
     color: var(--color-text-foreground);
 }
 
 .app__nav-item--active {
-    background: var(--color-background-panel);
+    background: var(--color-active);
     color: var(--color-text-foreground);
 }
 
@@ -134,7 +194,7 @@ button {
     align-self: flex-start;
     padding: 6px 12px;
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.052);
+    background: var(--color-button-bg);
     border: 1px solid var(--color-border);
     font-size: var(--text-base);
     color: var(--color-text-foreground);
@@ -142,10 +202,41 @@ button {
 }
 
 .app__button:hover {
-    background: rgba(255, 255, 255, 0.078);
+    background: var(--color-button-hover);
 }
 
 .app__button:focus-visible {
     outline: 2px solid var(--color-border-focus);
     outline-offset: 2px;
+}
+
+.theme-switch {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px;
+    border-radius: 999px;
+    background: var(--color-button-bg);
+    border: 1px solid var(--color-border);
+    gap: 2px;
+}
+
+.theme-switch__option {
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: var(--text-xs);
+    color: var(--color-text-foreground-secondary);
+    background: transparent;
+    transition:
+        background 120ms ease,
+        color 120ms ease;
+}
+
+.theme-switch__option:hover {
+    color: var(--color-text-foreground);
+}
+
+.theme-switch__option--active {
+    background: var(--color-background-panel);
+    color: var(--color-text-foreground);
+    box-shadow: 0 0 0 1px var(--color-border-light);
 }

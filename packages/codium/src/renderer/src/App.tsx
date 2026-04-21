@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { ThemeSwitcher } from './ThemeSwitcher'
+import { useTheme } from './theme'
 
 const NAV = ['Workspace', 'Sessions', 'Extensions', 'Settings'] as const
 type Nav = (typeof NAV)[number]
@@ -6,6 +8,7 @@ type Nav = (typeof NAV)[number]
 export function App() {
     const [active, setActive] = useState<Nav>('Workspace')
     const [count, setCount] = useState(0)
+    useTheme()
 
     return (
         <div className="app">
@@ -31,8 +34,12 @@ export function App() {
                     <h1 className="app__title">{active}</h1>
                     <p className="app__subtitle">
                         Electron + Vite + React bootstrapped with a Codex-inspired
-                        dark scaffold.
+                        scaffold.
                     </p>
+                    <div className="app__card">
+                        <span className="app__card-label">Appearance</span>
+                        <ThemeSwitcher />
+                    </div>
                     <div className="app__card">
                         <span className="app__card-label">Demo</span>
                         <button className="app__button" onClick={() => setCount((c) => c + 1)}>
