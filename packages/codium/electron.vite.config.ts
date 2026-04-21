@@ -1,5 +1,6 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'node:path'
 
 export default defineConfig({
@@ -17,7 +18,7 @@ export default defineConfig({
             },
             dedupe: ['react', 'react-dom'],
         },
-        plugins: [react()],
+        plugins: [react(), tailwindcss()],
         build: {
             rollupOptions: {
                 input: resolve(__dirname, 'src/renderer/index.html'),
