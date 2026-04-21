@@ -6,22 +6,32 @@ import { resolve } from 'node:path'
 export default defineConfig({
     main: {
         plugins: [externalizeDepsPlugin()],
+        build: {
+            lib: {
+                entry: resolve(__dirname, 'sources/boot/main/index.ts'),
+            },
+        },
     },
     preload: {
         plugins: [externalizeDepsPlugin()],
+        build: {
+            lib: {
+                entry: resolve(__dirname, 'sources/boot/preload/index.ts'),
+            },
+        },
     },
     renderer: {
-        root: resolve(__dirname, 'src/renderer'),
+        root: resolve(__dirname, 'sources'),
         resolve: {
             alias: {
-                '@renderer': resolve(__dirname, 'src/renderer/src'),
+                '@': resolve(__dirname, 'sources'),
             },
             dedupe: ['react', 'react-dom'],
         },
         plugins: [react(), tailwindcss()],
         build: {
             rollupOptions: {
-                input: resolve(__dirname, 'src/renderer/index.html'),
+                input: resolve(__dirname, 'sources/index.html'),
             },
         },
     },

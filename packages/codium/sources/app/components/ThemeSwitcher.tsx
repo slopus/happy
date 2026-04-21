@@ -1,5 +1,5 @@
-import { useTheme } from './theme'
-import type { ThemeSource } from './theme'
+import { useTheme } from '@/theme'
+import type { ThemeSource } from '@/theme'
 
 const OPTIONS: { value: ThemeSource; label: string }[] = [
     { value: 'system', label: 'System' },

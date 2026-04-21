@@ -29,7 +29,7 @@ function createWindow(): void {
         autoHideMenuBar: true,
         backgroundColor: isMac ? '#00000000' : '#181818',
         titleBarStyle: isMac ? 'hiddenInset' : 'default',
-        trafficLightPosition: isMac ? { x: 12, y: 11 } : undefined,
+        trafficLightPosition: isMac ? { x: 20, y: 17 } : undefined,
         vibrancy: isMac ? 'sidebar' : undefined,
         visualEffectState: 'active',
         webPreferences: {
