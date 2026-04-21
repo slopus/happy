@@ -3,6 +3,7 @@ import { RootLayout } from './layouts/RootLayout'
 import { MainLayout } from './layouts/MainLayout'
 import { SettingsLayout } from './layouts/SettingsLayout'
 import { NewChatPage } from './pages/NewChat'
+import { ChatPage } from './pages/Chat'
 import { AutomationsPage } from './pages/Automations'
 import { PluginsPage } from './pages/Plugins'
 import { AppearanceSettings } from './pages/settings/Appearance'
@@ -18,6 +19,7 @@ export const router = createHashRouter([
                 children: [
                     { index: true, element: <Navigate to="/chat/new" replace /> },
                     { path: 'chat/new', element: <NewChatPage /> },
+                    { path: 'chat/:id', element: <ChatPage /> },
                     { path: 'automations', element: <AutomationsPage /> },
                     { path: 'plugins', element: <PluginsPage /> },
                 ],
