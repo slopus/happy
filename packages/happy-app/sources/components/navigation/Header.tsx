@@ -3,8 +3,10 @@ import { View, Text, Platform, StatusBar, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { layout } from '../layout';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
+import { isDesktop } from '@/utils/platform';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet } from 'react-native-unistyles';
 
@@ -107,9 +109,12 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
     const { options, route, back, navigation } = props;
     const extendedOptions = options as ExtendedNavigationOptions;
     const isTablet = useIsTablet();
+    const router = useRouter();
 
     // Check if we should hide back button on tablet
+    // On desktop (Tauri), always show back button — three-column layout uses Slot not Drawer
     const shouldHideBackButton = React.useMemo(() => {
+        if (isDesktop()) return false;
         if (!isTablet) return false;
 
         // Get navigation state to check stack depth
@@ -157,11 +162,18 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
         headerLeftContent = () => options.headerLeft!({ canGoBack: !!back, tintColor: options.headerTintColor });
     } else if (back && options.headerBackVisible !== false && !shouldHideBackButton) {
         // Show default back button if can go back and not explicitly hidden
-        // Also hide on tablet when at first or second screen
         headerLeftContent = () => (
             <DefaultBackButton
                 tintColor={options.headerTintColor}
-                onPress={() => navigation.goBack()}
+                onPress={() => {
+                    // Check if navigation can go back before attempting
+                    if (navigation.canGoBack()) {
+                        navigation.goBack();
+                    } else {
+                        // In desktop three-column layout, Slot may not have navigation history
+                        router.replace('/');
+                    }
+                }}
             />
         );
     }

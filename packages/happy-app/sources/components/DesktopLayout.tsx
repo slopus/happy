@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View } from 'react-native';
+import { View, Pressable, Text } from 'react-native';
 import { Slot } from 'expo-router';
 import { StyleSheet } from 'react-native-unistyles';
 import { SidebarView } from './SidebarView';
@@ -8,11 +8,24 @@ import { useZenMode } from '@/hooks/useZenMode';
 
 // Three-column desktop layout per docs/layout-core.md:
 // SidebarView (~300px) | Center (flex:1, routes via Slot) | ContextPanel (~300px)
-// Zen mode (Cmd/Ctrl+0) hides both side panels.
+// Left/right panels can be individually toggled. Cmd/Ctrl+0 toggles both (Zen mode).
 export const DesktopLayout = React.memo(() => {
     const { zen, toggleZen } = useZenMode();
+    const [sidebarVisible, setSidebarVisible] = React.useState(true);
+    const [contextVisible, setContextVisible] = React.useState(true);
 
-    // Register Cmd/Ctrl+0 for Zen mode toggle (desktop only)
+    // Zen mode overrides individual panel state
+    React.useEffect(() => {
+        if (zen) {
+            setSidebarVisible(false);
+            setContextVisible(false);
+        } else {
+            setSidebarVisible(true);
+            setContextVisible(true);
+        }
+    }, [zen]);
+
+    // Register Cmd/Ctrl+0 for Zen mode toggle
     React.useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key === '0') {
@@ -26,15 +39,33 @@ export const DesktopLayout = React.memo(() => {
 
     return (
         <View style={styles.container}>
-            {!zen && (
+            {sidebarVisible && (
                 <View style={styles.sidebar}>
                     <SidebarView />
                 </View>
             )}
             <View style={styles.center}>
-                <Slot />
+                {/* Toggle buttons at top of center column */}
+                <View style={styles.toggleBar}>
+                    <Pressable
+                        onPress={() => setSidebarVisible(v => !v)}
+                        style={styles.toggleButton}
+                    >
+                        <Text style={styles.toggleText}>{sidebarVisible ? '◀' : '▶'}</Text>
+                    </Pressable>
+                    <View style={styles.toggleSpacer} />
+                    <Pressable
+                        onPress={() => setContextVisible(v => !v)}
+                        style={styles.toggleButton}
+                    >
+                        <Text style={styles.toggleText}>{contextVisible ? '▶' : '◀'}</Text>
+                    </Pressable>
+                </View>
+                <View style={styles.centerContent}>
+                    <Slot />
+                </View>
             </View>
-            {!zen && (
+            {contextVisible && (
                 <View style={styles.contextPanel}>
                     <ContextPanel />
                 </View>
@@ -52,8 +83,32 @@ const styles = StyleSheet.create((theme) => ({
         width: 300,
         borderRightWidth: 1,
         borderRightColor: theme.colors.divider,
+        overflow: 'hidden',
     },
     center: {
+        flex: 1,
+    },
+    centerContent: {
+        flex: 1,
+    },
+    toggleBar: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingHorizontal: 4,
+        paddingVertical: 2,
+        backgroundColor: theme.colors.surface,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
+    },
+    toggleButton: {
+        padding: 4,
+        borderRadius: 4,
+    },
+    toggleText: {
+        fontSize: 10,
+        color: theme.colors.textSecondary,
+    },
+    toggleSpacer: {
         flex: 1,
     },
     contextPanel: {
