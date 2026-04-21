@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   mockLoggerDebug: vi.fn(),
   mockIsDaemonRunningCurrentlyInstalledHappyVersion: vi.fn(),
+  mockWaitForDaemonReady: vi.fn(),
   mockSpawnHappyCLI: vi.fn(),
 }))
 
@@ -14,6 +15,7 @@ vi.mock('@/ui/logger', () => ({
 
 vi.mock('./controlClient', () => ({
   isDaemonRunningCurrentlyInstalledHappyVersion: mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion,
+  waitForDaemonReady: mocks.mockWaitForDaemonReady,
 }))
 
 vi.mock('@/utils/spawnHappyCLI', () => ({
@@ -28,6 +30,7 @@ describe('ensureDaemonRunning', () => {
     mocks.mockSpawnHappyCLI.mockReturnValue({
       unref: vi.fn(),
     })
+    mocks.mockWaitForDaemonReady.mockResolvedValue(true)
   })
 
   it('returns without spawning when the daemon is already running', async () => {
@@ -55,7 +58,15 @@ describe('ensureDaemonRunning', () => {
       stdio: 'ignore',
       env: process.env,
     })
+    expect(mocks.mockWaitForDaemonReady).toHaveBeenCalledWith()
     expect(mockUnref).toHaveBeenCalled()
     expect(mocks.mockLoggerDebug).toHaveBeenCalledWith('Starting Happy background service...')
+  })
+
+  it('throws when the daemon never becomes ready', async () => {
+    mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion.mockResolvedValue(false)
+    mocks.mockWaitForDaemonReady.mockResolvedValue(false)
+
+    await expect(ensureDaemonRunning()).rejects.toThrow('Happy daemon failed to become ready')
   })
 })
