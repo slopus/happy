@@ -9,10 +9,20 @@ export type ThemeApi = {
     onUpdate(cb: (state: ThemeState) => void): () => void
 }
 
+export type PtyApi = {
+    create(opts?: { cols?: number; rows?: number; cwd?: string }): Promise<string>
+    write(id: string, data: string): void
+    resize(id: string, cols: number, rows: number): void
+    kill(id: string): void
+    onData(id: string, cb: (data: string) => void): () => void
+    onExit(id: string, cb: () => void): () => void
+}
+
 declare global {
     interface Window {
         electron: ElectronAPI
         api: unknown
         theme: ThemeApi
+        pty: PtyApi
     }
 }

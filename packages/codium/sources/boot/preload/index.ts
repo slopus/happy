@@ -17,11 +17,33 @@ const theme = {
 
 const api = {}
 
+const pty = {
+    create: (opts: { cols?: number; rows?: number; cwd?: string } = {}) =>
+        ipcRenderer.invoke('pty:create', opts) as Promise<string>,
+    write: (id: string, data: string) => ipcRenderer.send('pty:write', id, data),
+    resize: (id: string, cols: number, rows: number) =>
+        ipcRenderer.send('pty:resize', id, cols, rows),
+    kill: (id: string) => ipcRenderer.send('pty:kill', id),
+    onData: (id: string, cb: (data: string) => void) => {
+        const channel = `pty:data:${id}`
+        const listener = (_: unknown, data: string) => cb(data)
+        ipcRenderer.on(channel, listener)
+        return () => ipcRenderer.off(channel, listener)
+    },
+    onExit: (id: string, cb: () => void) => {
+        const channel = `pty:exit:${id}`
+        const listener = () => cb()
+        ipcRenderer.on(channel, listener)
+        return () => ipcRenderer.off(channel, listener)
+    },
+}
+
 if (process.contextIsolated) {
     try {
         contextBridge.exposeInMainWorld('electron', electronAPI)
         contextBridge.exposeInMainWorld('api', api)
         contextBridge.exposeInMainWorld('theme', theme)
+        contextBridge.exposeInMainWorld('pty', pty)
     } catch (error) {
         console.error(error)
     }
@@ -32,4 +54,6 @@ if (process.contextIsolated) {
     window.api = api
     // @ts-expect-error augmenting window
     window.theme = theme
+    // @ts-expect-error augmenting window
+    window.pty = pty
 }

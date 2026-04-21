@@ -1,10 +1,13 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useSetAtom } from 'jotai'
-import { preSettingsPathAtom, searchOpenAtom } from '@/app/state'
+import { useAtom, useSetAtom } from 'jotai'
+import {
+    preSettingsPathAtom,
+    searchOpenAtom,
+    terminalsAtom,
+    type TerminalEntry,
+} from '@/app/state'
 
-type IconProps = { className?: string }
-
-function NewChatIcon(_: IconProps) {
+function NewChatIcon() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 20h9" />
@@ -38,6 +41,33 @@ function PluginsIcon() {
     )
 }
 
+function TerminalIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m4 6 6 6-6 6" />
+            <path d="M12 19h8" />
+        </svg>
+    )
+}
+
+function PlusIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
+        </svg>
+    )
+}
+
+function CloseIcon() {
+    return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+        </svg>
+    )
+}
+
 function GearIcon() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -52,10 +82,33 @@ export function MainSidebar() {
     const navigate = useNavigate()
     const setPreSettings = useSetAtom(preSettingsPathAtom)
     const setSearchOpen = useSetAtom(searchOpenAtom)
+    const [terminals, setTerminals] = useAtom(terminalsAtom)
 
     const openSettings = () => {
         setPreSettings(location.pathname)
         navigate('/settings')
+    }
+
+    const addTerminal = () => {
+        const id =
+            typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                ? crypto.randomUUID()
+                : `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const next: TerminalEntry = {
+            id,
+            title: `Terminal ${terminals.length + 1}`,
+        }
+        setTerminals([...terminals, next])
+        navigate(`/terminal/${id}`)
+    }
+
+    const closeTerminal = (targetId: string) => {
+        const remaining = terminals.filter((t) => t.id !== targetId)
+        setTerminals(remaining)
+        if (location.pathname === `/terminal/${targetId}`) {
+            const next = remaining[remaining.length - 1]
+            navigate(next ? `/terminal/${next.id}` : '/chat/new')
+        }
     }
 
     return (
@@ -97,6 +150,42 @@ export function MainSidebar() {
                     <PluginsIcon />
                     <span>Plugins</span>
                 </NavLink>
+                <button
+                    type="button"
+                    className="app__nav-item"
+                    onClick={addTerminal}
+                >
+                    <PlusIcon />
+                    <span>New terminal</span>
+                </button>
+                {terminals.length > 0 && (
+                    <div className="app__sidebar-section">
+                        <div className="app__sidebar-section-header">Terminals</div>
+                        {terminals.map((t) => (
+                            <div key={t.id} className="app__sidebar-row">
+                                <NavLink
+                                    to={`/terminal/${t.id}`}
+                                    className={({ isActive }) =>
+                                        isActive
+                                            ? 'app__nav-item app__sidebar-row-main app__nav-item--active'
+                                            : 'app__nav-item app__sidebar-row-main'
+                                    }
+                                >
+                                    <TerminalIcon />
+                                    <span>{t.title}</span>
+                                </NavLink>
+                                <button
+                                    type="button"
+                                    className="app__sidebar-row-close"
+                                    aria-label={`Close ${t.title}`}
+                                    onClick={() => closeTerminal(t.id)}
+                                >
+                                    <CloseIcon />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
             <div className="app__sidebar-footer">
                 <button type="button" className="app__nav-item" onClick={openSettings}>

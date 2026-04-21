@@ -599,6 +599,106 @@ button {
     font-style: italic;
 }
 
+/* Terminal */
+
+.terminal-host {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.terminal-host--visible {
+    display: flex;
+}
+
+.terminal-host__panes {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    background: #0b0d10;
+}
+
+.terminal-host__pane {
+    display: none;
+    position: absolute;
+    inset: 0;
+}
+
+.terminal-host__pane--active {
+    display: block;
+}
+
+.terminal-pane {
+    width: 100%;
+    height: 100%;
+    padding: 8px 4px 4px 12px;
+    box-sizing: border-box;
+    background: #0b0d10;
+    overflow: hidden;
+}
+
+/* Sidebar sections + row with close button */
+
+.app__sidebar-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin-top: 8px;
+}
+
+.app__sidebar-section-header {
+    padding: 6px 14px 2px;
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-foreground-tertiary);
+}
+
+.app__sidebar-row {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+}
+
+.app__sidebar-row-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.app__sidebar-row-main > span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.app__sidebar-row-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    margin: 6px 6px 6px 0;
+    border-radius: 5px;
+    color: var(--color-text-foreground-tertiary);
+    background: transparent;
+    opacity: 0;
+    transition:
+        opacity 120ms ease,
+        background 120ms ease,
+        color 120ms ease;
+}
+
+.app__sidebar-row:hover .app__sidebar-row-close,
+.app__sidebar-row-close:focus-visible {
+    opacity: 1;
+}
+
+.app__sidebar-row-close:hover {
+    background: var(--color-hover);
+    color: var(--color-text-foreground);
+}
+
 .app__main {
     flex: 1;
     min-width: 0;

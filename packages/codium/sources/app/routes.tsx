@@ -22,6 +22,7 @@ export const router = createHashRouter([
                     { path: 'chat/:id', element: <ChatPage /> },
                     { path: 'automations', element: <AutomationsPage /> },
                     { path: 'plugins', element: <PluginsPage /> },
+                    { path: 'terminal/:id', element: null },
                 ],
             },
             {
