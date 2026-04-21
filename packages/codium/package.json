@@ -1,0 +1,27 @@
+{
+    "name": "codium",
+    "version": "0.0.1",
+    "private": true,
+    "type": "module",
+    "main": "./out/main/index.js",
+    "scripts": {
+        "dev": "electron-vite dev",
+        "build": "electron-vite build",
+        "preview": "electron-vite preview",
+        "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+    },
+    "devDependencies": {
+        "@electron-toolkit/preload": "^3.0.2",
+        "@electron-toolkit/tsconfig": "^2.0.0",
+        "@electron-toolkit/utils": "^4.0.0",
+        "@types/react": "^19.2.14",
+        "@types/react-dom": "^19.2.3",
+        "@vitejs/plugin-react": "^6.0.1",
+        "electron": "^41.2.1",
+        "electron-vite": "^5.0.0",
+        "react": "19.2.0",
+        "react-dom": "19.2.0",
+        "typescript": "^6.0.3",
+        "vite": "^8.0.9"
+    }
+}

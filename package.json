@@ -30,7 +30,8 @@
             "packages/happy-cli",
             "packages/happy-server",
             "packages/happy-wire",
-            "packages/happy-app-logs"
+            "packages/happy-app-logs",
+            "packages/codium"
         ]
     },
     "pnpm": {
@@ -44,6 +45,7 @@
             "@prisma/client",
             "@prisma/engines",
             "@shopify/react-native-skia",
+            "electron",
             "esbuild",
             "prisma",
             "sharp"

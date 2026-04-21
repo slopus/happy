@@ -5,3 +5,4 @@ packages:
   - "packages/happy-server"
   - "packages/happy-wire"
   - "packages/happy-app-logs"
+  - "packages/codium"
