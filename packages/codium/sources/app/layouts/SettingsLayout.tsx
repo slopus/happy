@@ -8,9 +8,7 @@ export function SettingsLayout() {
             <Toolbar />
             <SettingsSidebar />
             <main className="app__main">
-                <div className="app__content">
-                    <Outlet />
-                </div>
+                <Outlet />
             </main>
         </>
     )

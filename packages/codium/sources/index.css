@@ -356,11 +356,42 @@ button {
         0 2px 4px -1px rgba(0, 0, 0, 0.08);
 }
 
-.app__content {
+.page__header {
+    flex-shrink: 0;
+    height: var(--height-toolbar);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 24px;
+    margin-left: 0;
+    -webkit-app-region: drag;
+    transition: margin-left 180ms ease;
+}
+
+.app--sidebar-hidden .page__header {
+    margin-left: 208px;
+}
+
+.page__header-title {
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--color-text-foreground);
+    -webkit-app-region: no-drag;
+}
+
+.page__header-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    -webkit-app-region: no-drag;
+}
+
+.page__content {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: calc(var(--height-toolbar) + 12px) 32px 28px;
+    padding: 16px 32px 28px;
     display: flex;
     flex-direction: column;
     gap: 18px;

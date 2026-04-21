@@ -1,8 +1,9 @@
+import { Page } from '@/app/components/Page'
+
 export function NewChatPage() {
     return (
-        <>
-            <h1 className="app__title">New chat</h1>
+        <Page title="New chat">
             <p className="app__subtitle">Start a new conversation.</p>
-        </>
+        </Page>
     )
 }

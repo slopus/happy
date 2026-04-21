@@ -1,8 +1,9 @@
+import { Page } from '@/app/components/Page'
+
 export function GeneralSettings() {
     return (
-        <>
-            <h1 className="app__title">General</h1>
+        <Page title="General">
             <p className="app__subtitle">General preferences.</p>
-        </>
+        </Page>
     )
 }

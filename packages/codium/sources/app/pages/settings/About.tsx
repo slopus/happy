@@ -1,8 +1,9 @@
+import { Page } from '@/app/components/Page'
+
 export function AboutSettings() {
     return (
-        <>
-            <h1 className="app__title">About</h1>
+        <Page title="About">
             <p className="app__subtitle">Codium — an Electron scaffold.</p>
-        </>
+        </Page>
     )
 }

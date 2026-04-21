@@ -17,9 +17,7 @@ export function MainLayout() {
             </Toolbar>
             <MainSidebar />
             <main className="app__main">
-                <div className="app__content">
-                    <Outlet />
-                </div>
+                <Outlet />
             </main>
         </>
     )
