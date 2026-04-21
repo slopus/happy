@@ -1,16 +1,198 @@
 <!doctype html>
-<html lang="en">
+<html
+    lang="en"
+    class="electron-dark"
+    style="
+        --text-4xl: 72px;
+        --text-3xl: 48px;
+        --text-2xl: 36px;
+        --text-xl: 28px;
+        --text-lg: 16px;
+        --text-base: 13px;
+        --text-sm: 12px;
+        --text-xs: 11px;
+        --text-heading-lg: 24px;
+        --text-heading-md: 20px;
+
+        --color-accent-blue: #339cff;
+        --color-accent-purple: #ad7bf9;
+        --color-accent-green: #40c977;
+        --color-accent-red: #fa423e;
+
+        --color-background-surface: #181818;
+        --color-background-surface-under: #141414;
+        --color-background-panel: #232323;
+        --color-background-elevated: rgba(54, 54, 54, 0.96);
+        --color-background-control: rgba(45, 45, 45, 0.96);
+
+        --color-text-foreground: #ffffff;
+        --color-text-foreground-secondary: rgba(255, 255, 255, 0.71);
+        --color-text-foreground-tertiary: rgba(255, 255, 255, 0.498);
+        --color-text-accent: rgb(131, 195, 255);
+
+        --color-border: rgba(255, 255, 255, 0.084);
+        --color-border-heavy: rgba(255, 255, 255, 0.156);
+        --color-border-light: rgba(255, 255, 255, 0.042);
+        --color-border-focus: rgba(131, 195, 255, 0.76);
+
+        --height-toolbar: 36px;
+        --window-zoom: 1;
+    "
+>
     <head>
         <meta charset="UTF-8" />
-        <meta
-            http-equiv="Content-Security-Policy"
-            content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
-        />
-        <title>Codium</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Codium</title>
+        <style>
+            :root {
+                --startup-background: transparent;
+                --startup-logo-base: #7a7a7a;
+                --startup-logo-shimmer-soft: rgb(255 255 255 / 0.02);
+                --startup-logo-shimmer-peak: rgb(255 255 255 / 0.46);
+                --startup-logo-shimmer-tail: rgb(255 255 255 / 0.06);
+                color-scheme: dark;
+            }
+
+            html,
+            body {
+                margin: 0;
+                width: 100%;
+                height: 100%;
+                background: var(--startup-background);
+                font-family:
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    'Segoe UI',
+                    sans-serif;
+                color: var(--color-text-foreground);
+                font-size: var(--text-base);
+                line-height: 1.5;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            body {
+                outline: none;
+                background-color: transparent;
+            }
+
+            #root {
+                width: 100%;
+                height: 100%;
+            }
+
+            .startup-loader {
+                display: flex;
+                width: 100%;
+                height: 100%;
+                align-items: center;
+                justify-content: center;
+                background: var(--startup-background);
+                -webkit-app-region: drag;
+            }
+
+            .startup-loader__logo {
+                position: relative;
+                width: 56px;
+                height: 56px;
+                opacity: 0;
+                animation: startup-logo-fade-in 180ms ease-out 60ms forwards;
+            }
+
+            .startup-loader__base,
+            .startup-loader__overlay {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+            }
+
+            .startup-loader__base {
+                color: var(--startup-logo-base);
+            }
+
+            .startup-loader__overlay {
+                background-image: linear-gradient(
+                    112deg,
+                    transparent 22%,
+                    var(--startup-logo-shimmer-soft) 38%,
+                    var(--startup-logo-shimmer-peak) 49%,
+                    var(--startup-logo-shimmer-tail) 56%,
+                    transparent 74%
+                );
+                background-position: 140% 0;
+                background-repeat: no-repeat;
+                background-size: 220% 100%;
+                animation: startup-logo-shimmer 2200ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+                -webkit-mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='black'%3E%3Cpath d='M22.2 19.9 10.1 32l12.1 12.1a2.8 2.8 0 1 1-4 4l-14.1-14a2.8 2.8 0 0 1 0-4l14.1-14.1a2.8 2.8 0 1 1 4 4Zm19.6-4a2.8 2.8 0 0 1 4 0l14.1 14.1a2.8 2.8 0 0 1 0 4l-14.1 14a2.8 2.8 0 1 1-4-4L53.9 32 41.8 19.9a2.8 2.8 0 0 1 0-4Z'/%3E%3C/svg%3E");
+                mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='black'%3E%3Cpath d='M22.2 19.9 10.1 32l12.1 12.1a2.8 2.8 0 1 1-4 4l-14.1-14a2.8 2.8 0 0 1 0-4l14.1-14.1a2.8 2.8 0 1 1 4 4Zm19.6-4a2.8 2.8 0 0 1 4 0l14.1 14.1a2.8 2.8 0 0 1 0 4l-14.1 14a2.8 2.8 0 1 1-4-4L53.9 32 41.8 19.9a2.8 2.8 0 0 1 0-4Z'/%3E%3C/svg%3E");
+                -webkit-mask-position: center;
+                mask-position: center;
+                -webkit-mask-repeat: no-repeat;
+                mask-repeat: no-repeat;
+                -webkit-mask-size: contain;
+                mask-size: contain;
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                .startup-loader__logo {
+                    animation: none;
+                    opacity: 1;
+                }
+
+                .startup-loader__overlay {
+                    animation: none;
+                }
+            }
+
+            @keyframes startup-logo-fade-in {
+                0% {
+                    opacity: 0;
+                }
+                100% {
+                    opacity: 1;
+                }
+            }
+
+            @keyframes startup-logo-shimmer {
+                0% {
+                    background-position: 140% 0;
+                }
+                100% {
+                    background-position: -120% 0;
+                }
+            }
+        </style>
     </head>
-    <body>
-        <div id="root"></div>
+    <body
+        tabindex="0"
+        style="
+            outline: none;
+            --text-4xl: 72px;
+            --text-3xl: 48px;
+            --text-2xl: 36px;
+            --text-xl: 28px;
+            --text-lg: 16px;
+            --text-base: 13px;
+            --text-sm: 12px;
+            --text-xs: 11px;
+            --text-heading-lg: 24px;
+            --text-heading-md: 20px;
+        "
+    >
+        <div id="root">
+            <div class="startup-loader" role="presentation">
+                <div class="startup-loader__logo" aria-hidden="true">
+                    <div class="startup-loader__base">
+                        <svg viewBox="0 0 64 64" fill="currentColor">
+                            <path
+                                d="M22.2 19.9 10.1 32l12.1 12.1a2.8 2.8 0 1 1-4 4l-14.1-14a2.8 2.8 0 0 1 0-4l14.1-14.1a2.8 2.8 0 1 1 4 4Zm19.6-4a2.8 2.8 0 0 1 4 0l14.1 14.1a2.8 2.8 0 0 1 0 4l-14.1 14a2.8 2.8 0 1 1-4-4L53.9 32 41.8 19.9a2.8 2.8 0 0 1 0-4Z"
+                            />
+                        </svg>
+                    </div>
+                    <div class="startup-loader__overlay"></div>
+                </div>
+            </div>
+        </div>
         <script type="module" src="/src/main.tsx"></script>
     </body>
 </html>

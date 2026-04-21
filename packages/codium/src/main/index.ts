@@ -3,11 +3,17 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { join } from 'node:path'
 
 function createWindow(): void {
+    const isMac = process.platform === 'darwin'
     const mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
         show: false,
         autoHideMenuBar: true,
+        backgroundColor: isMac ? '#00000000' : '#181818',
+        titleBarStyle: isMac ? 'hiddenInset' : 'default',
+        trafficLightPosition: isMac ? { x: 12, y: 11 } : undefined,
+        vibrancy: isMac ? 'sidebar' : undefined,
+        visualEffectState: 'active',
         webPreferences: {
             preload: join(__dirname, '../preload/index.mjs'),
             sandbox: false,
