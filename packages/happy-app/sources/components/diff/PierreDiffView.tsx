@@ -16,6 +16,8 @@ export interface PierreDiffViewProps {
     disableFileHeader?: boolean;
     /** Forces a theme override; defaults to the current app theme. */
     theme?: 'dark' | 'light';
+    /** Replace Pierre's default header with custom React content. Web-only. */
+    renderCustomHeader?: (fileDiff: any) => React.ReactNode;
 }
 
 export const PierreDiffView = React.memo(function PierreDiffView(props: PierreDiffViewProps) {
@@ -89,11 +91,11 @@ const PierreDiffViewWeb = React.memo(function PierreDiffViewWeb(props: PierreDif
     };
 
     if (props.patch) {
-        return <PatchFilesWeb bundle={bundle} patch={props.patch} options={options} />;
+        return <PatchFilesWeb bundle={bundle} patch={props.patch} options={options} renderCustomHeader={props.renderCustomHeader} />;
     }
 
     if (props.oldFile && props.newFile) {
-        return <FileDiffFromFiles bundle={bundle} oldFile={props.oldFile} newFile={props.newFile} options={options} />;
+        return <FileDiffFromFiles bundle={bundle} oldFile={props.oldFile} newFile={props.newFile} options={options} renderCustomHeader={props.renderCustomHeader} />;
     }
 
     return <View />;
@@ -103,10 +105,12 @@ function PatchFilesWeb({
     bundle,
     patch,
     options,
+    renderCustomHeader,
 }: {
     bundle: PierreBundle;
     patch: string;
     options: any;
+    renderCustomHeader?: (fileDiff: any) => React.ReactNode;
 }) {
     const files = React.useMemo(() => {
         try {
@@ -121,7 +125,7 @@ function PatchFilesWeb({
     return (
         <View>
             {files.map((fileDiff, i) => (
-                <FileDiff key={i} fileDiff={fileDiff} options={options} />
+                <FileDiff key={i} fileDiff={fileDiff} options={options} renderCustomHeader={renderCustomHeader} />
             ))}
         </View>
     );
@@ -132,18 +136,20 @@ function FileDiffFromFiles({
     oldFile,
     newFile,
     options,
+    renderCustomHeader,
 }: {
     bundle: PierreBundle;
     oldFile: { name: string; contents: string };
     newFile: { name: string; contents: string };
     options: any;
+    renderCustomHeader?: (fileDiff: any) => React.ReactNode;
 }) {
     const fileDiff = React.useMemo(
         () => bundle.main.parseDiffFromFile(oldFile, newFile),
         [bundle, oldFile, newFile],
     );
     const { FileDiff } = bundle.react;
-    return <FileDiff fileDiff={fileDiff} options={options} />;
+    return <FileDiff fileDiff={fileDiff} options={options} renderCustomHeader={renderCustomHeader} />;
 }
 
 function DiffSkeleton() {

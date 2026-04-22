@@ -5,10 +5,12 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { FileIcon } from '@/components/FileIcon';
 import { PierreDiffView } from '@/components/diff/PierreDiffView';
+import { getPatchDiffStats } from '@/components/diff/calculateDiff';
 import { sessionBash } from '@/sync/ops';
 import { storage, useSettingMutable } from '@/sync/storage';
 import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
+import { layout } from '@/components/layout';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 
@@ -51,8 +53,6 @@ export const InlineFileDiff = React.memo(function InlineFileDiff({ sessionId, fu
                 return;
             }
             try {
-                // Untracked files have no index/HEAD entry — read the file directly
-                // and render it as a pure addition via PierreDiffView's oldFile/newFile API.
                 if (status === 'untracked') {
                     const res = await sessionBash(sessionId, {
                         command: `cat -- "${gitDiffPath}"`,
@@ -68,9 +68,6 @@ export const InlineFileDiff = React.memo(function InlineFileDiff({ sessionId, fu
                     return;
                 }
 
-                // Tracked files: `git diff HEAD` covers staged + unstaged + deleted
-                // in a single diff, so the user sees the same thing regardless of
-                // which sidebar section they clicked.
                 const res = await sessionBash(sessionId, {
                     command: `git diff HEAD --no-ext-diff -- "${gitDiffPath}"`,
                     cwd: sessionPath,
@@ -98,50 +95,100 @@ export const InlineFileDiff = React.memo(function InlineFileDiff({ sessionId, fu
         content.kind === 'patch' ? content.patch.trim() === '' :
         content.contents === '';
 
+    const stats = React.useMemo(() => {
+        if (!content) return null;
+        if (content.kind === 'patch') return getPatchDiffStats(content.patch);
+        const lineCount = content.contents === '' ? 0 : content.contents.split('\n').length;
+        return { additions: lineCount, deletions: 0 };
+    }, [content]);
+
     return (
-        <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
-            <View style={[styles.header, { borderBottomColor: theme.colors.divider, backgroundColor: theme.colors.surfaceHigh }]}>
-                <FileIcon fileName={fileName} size={18} />
-                <Text
-                    numberOfLines={1}
-                    ellipsizeMode="middle"
-                    style={[styles.headerPath, { color: theme.colors.textSecondary }]}
-                >
-                    {fullPath}
-                </Text>
-                {Platform.OS === 'web' ? (
-                    <DiffStyleToggle value={diffStyle} onChange={setDiffStyle} />
-                ) : null}
-                <Pressable onPress={onClose} hitSlop={15} style={styles.closeButton}>
-                    <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
-                </Pressable>
+        <View style={[styles.outer, { backgroundColor: theme.colors.surface }]}>
+            <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+                <DiffPaneHeader
+                    fullPath={fullPath}
+                    fileName={fileName}
+                    stats={stats}
+                    diffStyle={diffStyle}
+                    onDiffStyleChange={setDiffStyle}
+                    onClose={onClose}
+                    showToggle={Platform.OS === 'web'}
+                />
+                {loading ? (
+                    <View style={styles.centered}>
+                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    </View>
+                ) : error ? (
+                    <View style={styles.centered}>
+                        <Text style={{ color: theme.colors.textSecondary, ...Typography.default() }}>{error}</Text>
+                    </View>
+                ) : !content || isEmpty ? (
+                    <View style={styles.centered}>
+                        <Text style={{ color: theme.colors.textSecondary, ...Typography.default() }}>{t('files.noChanges')}</Text>
+                    </View>
+                ) : (
+                    <ScrollView style={{ flex: 1 }}>
+                        {content.kind === 'patch' ? (
+                            <PierreDiffView
+                                key={diffStyle}
+                                patch={content.patch}
+                                diffStyle={diffStyle}
+                                disableFileHeader
+                            />
+                        ) : (
+                            <PierreDiffView
+                                key={diffStyle}
+                                oldFile={{ name: fileName, contents: '' }}
+                                newFile={{ name: fileName, contents: content.contents }}
+                                diffStyle={diffStyle}
+                                disableFileHeader
+                            />
+                        )}
+                    </ScrollView>
+                )}
             </View>
-            {loading ? (
-                <View style={styles.centered}>
-                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+        </View>
+    );
+});
+
+const DiffPaneHeader = React.memo(function DiffPaneHeader({
+    fullPath,
+    fileName,
+    stats,
+    diffStyle,
+    onDiffStyleChange,
+    onClose,
+    showToggle,
+}: {
+    fullPath: string;
+    fileName: string;
+    stats: { additions: number; deletions: number } | null;
+    diffStyle: 'unified' | 'split';
+    onDiffStyleChange: (v: 'unified' | 'split') => void;
+    onClose: () => void;
+    showToggle: boolean;
+}) {
+    const { theme } = useUnistyles();
+    return (
+        <View style={[styles.paneHeader, { backgroundColor: theme.colors.surfaceHigh, borderBottomColor: theme.colors.divider }]}>
+            <FileIcon fileName={fileName} size={18} />
+            <Text
+                numberOfLines={1}
+                ellipsizeMode="middle"
+                style={[styles.headerPath, { color: theme.colors.textSecondary }]}
+            >
+                {fullPath}
+            </Text>
+            {stats && (stats.additions > 0 || stats.deletions > 0) ? (
+                <View style={styles.stats}>
+                    {stats.additions > 0 ? <Text style={styles.added}>+{stats.additions}</Text> : null}
+                    {stats.deletions > 0 ? <Text style={styles.removed}>-{stats.deletions}</Text> : null}
                 </View>
-            ) : error ? (
-                <View style={styles.centered}>
-                    <Text style={{ color: theme.colors.textSecondary, ...Typography.default() }}>{error}</Text>
-                </View>
-            ) : !content || isEmpty ? (
-                <View style={styles.centered}>
-                    <Text style={{ color: theme.colors.textSecondary, ...Typography.default() }}>{t('files.noChanges')}</Text>
-                </View>
-            ) : (
-                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
-                    {content.kind === 'patch' ? (
-                        <PierreDiffView key={diffStyle} patch={content.patch} diffStyle={diffStyle} />
-                    ) : (
-                        <PierreDiffView
-                            key={diffStyle}
-                            oldFile={{ name: fileName, contents: '' }}
-                            newFile={{ name: fileName, contents: content.contents }}
-                            diffStyle={diffStyle}
-                        />
-                    )}
-                </ScrollView>
-            )}
+            ) : null}
+            {showToggle ? <DiffStyleToggle value={diffStyle} onChange={onDiffStyleChange} /> : null}
+            <Pressable onPress={onClose} hitSlop={15} style={styles.closeButton}>
+                <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
+            </Pressable>
         </View>
     );
 });
@@ -182,20 +229,40 @@ const toggleStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
+    outer: {
+        flex: 1,
+        alignItems: 'center',
+    },
     container: {
         flex: 1,
+        width: '100%',
+        maxWidth: layout.maxWidth,
     },
-    header: {
+    paneHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
         paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
+        paddingVertical: 10,
+        borderBottomWidth: 1,
     },
     headerPath: {
         flex: 1,
         fontSize: 13,
+        ...Typography.mono(),
+    },
+    stats: {
+        flexDirection: 'row',
+        gap: 6,
+    },
+    added: {
+        fontSize: 12,
+        color: '#34C759',
+        ...Typography.mono(),
+    },
+    removed: {
+        fontSize: 12,
+        color: '#FF3B30',
         ...Typography.mono(),
     },
     closeButton: {
