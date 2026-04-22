@@ -12,6 +12,8 @@ export interface PierreDiffViewProps {
     diffStyle?: 'unified' | 'split';
     overflow?: 'scroll' | 'wrap';
     disableLineNumbers?: boolean;
+    /** Hide Pierre's built-in file-name/stats header — useful when the surrounding UI already shows one. Web-only. */
+    disableFileHeader?: boolean;
     /** Forces a theme override; defaults to the current app theme. */
     theme?: 'dark' | 'light';
 }
@@ -83,6 +85,7 @@ const PierreDiffViewWeb = React.memo(function PierreDiffViewWeb(props: PierreDif
         diffStyle: props.diffStyle,
         overflow: props.overflow,
         disableLineNumbers: props.disableLineNumbers,
+        disableFileHeader: props.disableFileHeader,
     };
 
     if (props.patch) {

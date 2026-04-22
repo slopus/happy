@@ -171,6 +171,12 @@ export const ca: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Mostra els números de línia a les diferències de vistes d\'eines',
         wrapLinesInDiffs: 'Ajusta les línies a les diferències',
         wrapLinesInDiffsDescription: 'Ajusta les línies llargues en lloc de desplaçament horitzontal a les vistes de diferències',
+        diffStyle: 'Vista de diferències',
+        diffStyleDescription: 'Mostra les diferències en una sola columna (unified) o una al costat de l\'altra (split). La vista split només funciona al web.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Mostra sempre la mida del context',
         alwaysShowContextSizeDescription: 'Mostra l\'ús del context fins i tot quan no estigui prop del límit',
         avatarStyle: 'Estil d\'avatar',

@@ -7,6 +7,7 @@ import { ToolSectionView } from '../ToolSectionView';
 import { Metadata } from '@/sync/storageTypes';
 import { resolvePath } from '@/utils/pathUtils';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
+import { getDiffStats, getPatchDiffStats } from '@/components/diff/calculateDiff';
 
 interface CodexPatchViewProps {
     tool: ToolCall;
@@ -93,6 +94,11 @@ export const CodexPatchView = React.memo<CodexPatchViewProps>(({ tool, metadata 
                 const kindLabel = getPatchKindLabel(change);
                 const movePath = change.kind?.move_path ? resolvePath(change.kind.move_path, metadata) : null;
                 const fileName = file.split('/').pop() ?? file;
+                const stats = !diffInput
+                    ? null
+                    : diffInput.kind === 'patch'
+                        ? getPatchDiffStats(diffInput.patch)
+                        : getDiffStats(diffInput.oldText, diffInput.newText);
 
                 return (
                     <ToolSectionView key={file} fullWidth>
@@ -102,6 +108,12 @@ export const CodexPatchView = React.memo<CodexPatchViewProps>(({ tool, metadata 
                                     <Octicons name="file-diff" size={16} color={theme.colors.textSecondary} />
                                     <Text style={styles.filePath}>{filePath}</Text>
                                     {kindLabel ? <Text style={styles.kindLabel}>{kindLabel}</Text> : null}
+                                    {stats && (stats.additions > 0 || stats.deletions > 0) ? (
+                                        <View style={styles.stats}>
+                                            {stats.additions > 0 ? <Text style={styles.added}>+{stats.additions}</Text> : null}
+                                            {stats.deletions > 0 ? <Text style={styles.removed}>-{stats.deletions}</Text> : null}
+                                        </View>
+                                    ) : null}
                                 </View>
                                 {movePath ? <Text style={styles.movePath}>{movePath}</Text> : null}
                             </View>
@@ -156,5 +168,19 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 12,
         color: theme.colors.textSecondary,
         fontFamily: 'monospace',
+    },
+    stats: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    added: {
+        fontSize: 12,
+        fontFamily: 'monospace',
+        color: '#34C759',
+    },
+    removed: {
+        fontSize: 12,
+        fontFamily: 'monospace',
+        color: '#FF3B30',
     },
 }));

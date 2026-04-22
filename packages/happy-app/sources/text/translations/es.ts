@@ -171,6 +171,12 @@ export const es: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Mostrar números de línea en diferencias de vistas de herramientas',
         wrapLinesInDiffs: 'Ajustar líneas en diferencias',
         wrapLinesInDiffsDescription: 'Ajustar líneas largas en lugar de desplazamiento horizontal en vistas de diferencias',
+        diffStyle: 'Vista de diferencias',
+        diffStyleDescription: 'Mostrar diferencias en una sola columna (unified) o lado a lado (split). La vista split solo funciona en web.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Mostrar siempre tamaño del contexto',
         alwaysShowContextSizeDescription: 'Mostrar uso del contexto incluso cuando no esté cerca del límite',
         avatarStyle: 'Estilo de avatar',

@@ -159,6 +159,12 @@ export const ru: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Отображать номера строк в различиях представлений инструментов',
         wrapLinesInDiffs: 'Перенос строк в различиях',
         wrapLinesInDiffsDescription: 'Переносить длинные строки вместо горизонтальной прокрутки в представлениях различий',
+        diffStyle: 'Вид сравнения',
+        diffStyleDescription: 'Показывать различия в одну колонку (unified) или рядом (split). Режим split доступен только на web.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Всегда показывать размер контекста',
         alwaysShowContextSizeDescription: 'Отображать использование контекста даже когда не близко к лимиту',
         avatarStyle: 'Стиль аватара',

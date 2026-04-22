@@ -294,3 +294,24 @@ export function getDiffStats(oldText: string, newText: string): { additions: num
     const result = calculateUnifiedDiff(oldText, newText);
     return result.stats;
 }
+
+/**
+ * Count additions/deletions in a unified-diff patch string.
+ * Ignores file headers (+++ / ---) and hunk headers (@@).
+ */
+export function getPatchDiffStats(patch: string): { additions: number; deletions: number } {
+    let additions = 0;
+    let deletions = 0;
+    let inHunk = false;
+    for (const line of patch.split('\n')) {
+        if (line.startsWith('@@')) {
+            inHunk = true;
+            continue;
+        }
+        if (!inHunk) continue;
+        if (line.startsWith('+++') || line.startsWith('---')) continue;
+        if (line.startsWith('+')) additions++;
+        else if (line.startsWith('-')) deletions++;
+    }
+    return { additions, deletions };
+}

@@ -172,6 +172,12 @@ export const ja: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'ツールビューの差分に行番号を表示',
         wrapLinesInDiffs: '差分で行を折り返し',
         wrapLinesInDiffsDescription: '差分表示で水平スクロールの代わりに長い行を折り返す',
+        diffStyle: '差分表示',
+        diffStyleDescription: '差分を1列（unified）または横並び（split）で表示します。split 表示は Web 専用です。',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: '常にコンテキストサイズを表示',
         alwaysShowContextSizeDescription: '上限に近づいていなくてもコンテキスト使用量を表示',
         avatarStyle: 'アバタースタイル',

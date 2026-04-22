@@ -31,9 +31,13 @@ export const ToolDiffView = React.memo<ToolDiffViewProps>(({
 
     const effectiveFileName = fileName ?? 'file.txt';
 
+    // Chat tool diffs are always inline unified — the split view lives on the
+    // dedicated InlineFileDiff pane (controlled via the diffStyle setting).
     const common = {
         overflow: wrapLines ? ('wrap' as const) : ('scroll' as const),
         disableLineNumbers: !(showLineNumbers ?? showLineNumbersInToolViews),
+        disableFileHeader: true,
+        diffStyle: 'unified' as const,
     };
 
     if (patch) {

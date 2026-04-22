@@ -171,6 +171,12 @@ export const zhHant: TranslationStructure = {
         showLineNumbersInToolViewsDescription: '在工具檢視差異中顯示行號',
         wrapLinesInDiffs: '在差異中換行',
         wrapLinesInDiffsDescription: '在差異檢視中換行顯示長行而不是水平捲動',
+        diffStyle: '差異檢視',
+        diffStyleDescription: '以單欄（unified）或並排（split）顯示差異。split 檢視僅在 Web 上可用。',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: '始終顯示上下文大小',
         alwaysShowContextSizeDescription: '即使未接近限制時也顯示上下文使用情況',
         avatarStyle: '頭像風格',

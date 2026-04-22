@@ -180,6 +180,7 @@ describe('settings', () => {
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
                 wrapLinesInDiffs: false,
+                diffStyle: 'unified',
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,

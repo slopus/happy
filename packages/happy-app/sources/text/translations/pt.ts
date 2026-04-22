@@ -170,6 +170,12 @@ export const pt: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Exibir números de linha nos diffs das visualizações de ferramentas',
         wrapLinesInDiffs: 'Quebrar linhas nos diffs',
         wrapLinesInDiffsDescription: 'Quebrar linhas longas ao invés de rolagem horizontal nas visualizações de diffs',
+        diffStyle: 'Visualização do diff',
+        diffStyleDescription: 'Mostrar diffs em uma única coluna (unified) ou lado a lado (split). A visualização split funciona apenas na web.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Sempre mostrar tamanho do contexto',
         alwaysShowContextSizeDescription: 'Exibir uso do contexto mesmo quando não estiver próximo do limite',
         avatarStyle: 'Estilo do avatar',
