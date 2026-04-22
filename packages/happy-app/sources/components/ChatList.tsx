@@ -69,6 +69,15 @@ const ChatListInternal = React.memo((props: {
                 data={props.messages}
                 inverted={true}
                 keyExtractor={keyExtractor}
+                // Restored after the initial perf fix: the tight virtualization props
+                // below cap the mount-time measurement cost that made this expensive
+                // on large chats, so it no longer blocks the JS thread. Without
+                // maintainVisibleContentPosition, users scrolled up to read history
+                // see the viewport jump when new messages prepend at data[0].
+                maintainVisibleContentPosition={{
+                    minIndexForVisible: 0,
+                    autoscrollToTopThreshold: 10,
+                }}
                 initialNumToRender={8}
                 maxToRenderPerBatch={4}
                 windowSize={5}
