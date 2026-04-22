@@ -179,7 +179,7 @@ describe('settings', () => {
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
-                wrapLinesInDiffs: false,
+                wrapLinesInDiffs: true,
                 diffStyle: 'unified',
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,

@@ -75,7 +75,7 @@ function usePierreBundle(): PierreBundle | null {
 const PierreDiffViewWeb = React.memo(function PierreDiffViewWeb(props: PierreDiffViewProps) {
     const { theme } = useUnistyles();
     const themeName: 'dark' | 'light' = props.theme ?? (theme.dark ? 'dark' : 'light');
-    const diffsTheme = themeName === 'dark' ? 'github-dark' : 'github-light';
+    const diffsTheme = themeName === 'dark' ? 'github-dark-default' : 'github-light-default';
     const bundle = usePierreBundle();
 
     if (!bundle) return <DiffSkeleton />;

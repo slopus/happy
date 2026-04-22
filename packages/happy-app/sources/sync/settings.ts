@@ -84,7 +84,7 @@ export const settingsDefaults: Settings = {
     expandTodos: true,
     showLineNumbers: true,
     showLineNumbersInToolViews: false,
-    wrapLinesInDiffs: false,
+    wrapLinesInDiffs: true,
     diffStyle: 'unified',
     analyticsOptOut: false,
     experiments: false,
