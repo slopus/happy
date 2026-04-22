@@ -1,12 +1,10 @@
 import * as React from 'react';
 import { View, Text } from 'react-native';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 import { ToolCall } from '@/sync/typesMessage';
 import { ToolSectionView } from '../ToolSectionView';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { Metadata } from '@/sync/storageTypes';
-import { useSetting } from '@/sync/storage';
-import { t } from '@/text';
 import { parseUnifiedDiff } from '@/utils/codexUnifiedDiff';
 
 interface CodexDiffViewProps {
@@ -15,39 +13,21 @@ interface CodexDiffViewProps {
 }
 
 export const CodexDiffView = React.memo<CodexDiffViewProps>(({ tool, metadata }) => {
-    const { theme } = useUnistyles();
-    const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
     const { input } = tool;
+    const patch = typeof input?.unified_diff === 'string' ? input.unified_diff : undefined;
+    const fileName = patch ? parseUnifiedDiff(patch).fileName : undefined;
 
-    // Parse the unified diff
-    let oldText = '';
-    let newText = '';
-    let fileName: string | undefined;
-
-    if (input?.unified_diff && typeof input.unified_diff === 'string') {
-        const parsed = parseUnifiedDiff(input.unified_diff);
-        oldText = parsed.oldText;
-        newText = parsed.newText;
-        fileName = parsed.fileName;
-    }
-
-    // If we have a filename, show it as a header
-    const fileHeader = fileName ? (
-        <View style={styles.fileHeader}>
-            <Text style={styles.fileName}>{fileName}</Text>
-        </View>
-    ) : null;
+    if (!patch) return null;
 
     return (
         <>
-            {fileHeader}
+            {fileName ? (
+                <View style={styles.fileHeader}>
+                    <Text style={styles.fileName}>{fileName}</Text>
+                </View>
+            ) : null}
             <ToolSectionView fullWidth>
-                <ToolDiffView 
-                    oldText={oldText} 
-                    newText={newText} 
-                    showLineNumbers={showLineNumbersInToolViews}
-                    showPlusMinusSymbols={showLineNumbersInToolViews}
-                />
+                <ToolDiffView patch={patch} fileName={fileName} />
             </ToolSectionView>
         </>
     );

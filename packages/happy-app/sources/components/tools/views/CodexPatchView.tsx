@@ -7,8 +7,6 @@ import { ToolSectionView } from '../ToolSectionView';
 import { Metadata } from '@/sync/storageTypes';
 import { resolvePath } from '@/utils/pathUtils';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
-import { useSetting } from '@/sync/storage';
-import { parseUnifiedDiff } from '@/utils/codexUnifiedDiff';
 
 interface CodexPatchViewProps {
     tool: ToolCall;
@@ -43,36 +41,23 @@ function getPatchChanges(input: any): Record<string, CodexPatchEntry> | null {
     return null;
 }
 
-function getPatchTexts(change: CodexPatchEntry): { oldText: string; newText: string } | null {
-    if (change.modify) {
-        return {
-            oldText: change.modify.old_content || '',
-            newText: change.modify.new_content || '',
-        };
-    }
+type PatchInput =
+    | { kind: 'patch'; patch: string }
+    | { kind: 'pair'; oldText: string; newText: string };
 
-    if (change.add) {
-        return {
-            oldText: '',
-            newText: change.add.content || '',
-        };
-    }
-
-    if (change.delete) {
-        return {
-            oldText: change.delete.content || '',
-            newText: '',
-        };
-    }
-
+function getPatchInput(change: CodexPatchEntry): PatchInput | null {
     if (typeof change.diff === 'string') {
-        const parsed = parseUnifiedDiff(change.diff);
-        return {
-            oldText: parsed.oldText,
-            newText: parsed.newText,
-        };
+        return { kind: 'patch', patch: change.diff };
     }
-
+    if (change.modify) {
+        return { kind: 'pair', oldText: change.modify.old_content || '', newText: change.modify.new_content || '' };
+    }
+    if (change.add) {
+        return { kind: 'pair', oldText: '', newText: change.add.content || '' };
+    }
+    if (change.delete) {
+        return { kind: 'pair', oldText: change.delete.content || '', newText: '' };
+    }
     return null;
 }
 
@@ -91,7 +76,6 @@ function getPatchKindLabel(change: CodexPatchEntry): string | null {
 
 export const CodexPatchView = React.memo<CodexPatchViewProps>(({ tool, metadata }) => {
     const { theme } = useUnistyles();
-    const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
     const { input } = tool;
     const changes = getPatchChanges(input);
 
@@ -105,10 +89,10 @@ export const CodexPatchView = React.memo<CodexPatchViewProps>(({ tool, metadata 
         <>
             {entries.map(([file, change]) => {
                 const filePath = resolvePath(file, metadata);
-                const texts = getPatchTexts(change);
+                const diffInput = getPatchInput(change);
                 const kindLabel = getPatchKindLabel(change);
                 const movePath = change.kind?.move_path ? resolvePath(change.kind.move_path, metadata) : null;
-                const hasDiff = !!texts && (texts.oldText.length > 0 || texts.newText.length > 0);
+                const fileName = file.split('/').pop() ?? file;
 
                 return (
                     <ToolSectionView key={file} fullWidth>
@@ -121,12 +105,13 @@ export const CodexPatchView = React.memo<CodexPatchViewProps>(({ tool, metadata 
                                 </View>
                                 {movePath ? <Text style={styles.movePath}>{movePath}</Text> : null}
                             </View>
-                            {hasDiff ? (
+                            {diffInput?.kind === 'patch' ? (
+                                <ToolDiffView patch={diffInput.patch} fileName={fileName} />
+                            ) : diffInput?.kind === 'pair' && (diffInput.oldText.length > 0 || diffInput.newText.length > 0) ? (
                                 <ToolDiffView
-                                    oldText={texts.oldText}
-                                    newText={texts.newText}
-                                    showLineNumbers={showLineNumbersInToolViews}
-                                    showPlusMinusSymbols={showLineNumbersInToolViews}
+                                    oldText={diffInput.oldText}
+                                    newText={diffInput.newText}
+                                    fileName={fileName}
                                 />
                             ) : null}
                         </View>

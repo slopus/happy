@@ -4,26 +4,34 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { FileIcon } from '@/components/FileIcon';
+import { PierreDiffView } from '@/components/diff/PierreDiffView';
 import { sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
+import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 
 interface InlineFileDiffProps {
     sessionId: string;
     fullPath: string;
+    /** File status from sidebar — drives which git command we use to build the diff. */
+    status: GitFileStatus['status'];
     onClose: () => void;
 }
 
-export const InlineFileDiff = React.memo(function InlineFileDiff({ sessionId, fullPath, onClose }: InlineFileDiffProps) {
+type DiffContent =
+    | { kind: 'patch'; patch: string }
+    | { kind: 'newFile'; contents: string };
+
+export const InlineFileDiff = React.memo(function InlineFileDiff({ sessionId, fullPath, status, onClose }: InlineFileDiffProps) {
     const { theme } = useUnistyles();
     const session = storage.getState().sessions[sessionId];
     const sessionPath = session?.metadata?.path ?? null;
     const resolved = resolveSessionFilePath(fullPath, sessionPath);
     const gitDiffPath = resolved?.withinSessionRoot ? resolved.relativePath : null;
 
-    const [diff, setDiff] = React.useState<string | null>(null);
+    const [content, setContent] = React.useState<DiffContent | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
 
@@ -31,7 +39,7 @@ export const InlineFileDiff = React.memo(function InlineFileDiff({ sessionId, fu
         let cancelled = false;
         setLoading(true);
         setError(null);
-        setDiff(null);
+        setContent(null);
 
         (async () => {
             if (!sessionPath || !gitDiffPath) {
@@ -42,8 +50,28 @@ export const InlineFileDiff = React.memo(function InlineFileDiff({ sessionId, fu
                 return;
             }
             try {
+                // Untracked files have no index/HEAD entry — read the file directly
+                // and render it as a pure addition via PierreDiffView's oldFile/newFile API.
+                if (status === 'untracked') {
+                    const res = await sessionBash(sessionId, {
+                        command: `cat -- "${gitDiffPath}"`,
+                        cwd: sessionPath,
+                        timeout: 5000,
+                    });
+                    if (cancelled) return;
+                    if (!res.success) {
+                        setError(res.error || 'Failed to read file');
+                        return;
+                    }
+                    setContent({ kind: 'newFile', contents: res.stdout ?? '' });
+                    return;
+                }
+
+                // Tracked files: `git diff HEAD` covers staged + unstaged + deleted
+                // in a single diff, so the user sees the same thing regardless of
+                // which sidebar section they clicked.
                 const res = await sessionBash(sessionId, {
-                    command: `git diff --no-ext-diff -- "${gitDiffPath}"`,
+                    command: `git diff HEAD --no-ext-diff -- "${gitDiffPath}"`,
                     cwd: sessionPath,
                     timeout: 5000,
                 });
@@ -52,7 +80,7 @@ export const InlineFileDiff = React.memo(function InlineFileDiff({ sessionId, fu
                     setError(res.error || 'Failed to fetch diff');
                     return;
                 }
-                setDiff(res.stdout ?? '');
+                setContent({ kind: 'patch', patch: res.stdout ?? '' });
             } catch (err) {
                 if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to fetch diff');
             } finally {
@@ -61,9 +89,13 @@ export const InlineFileDiff = React.memo(function InlineFileDiff({ sessionId, fu
         })();
 
         return () => { cancelled = true; };
-    }, [sessionId, sessionPath, gitDiffPath]);
+    }, [sessionId, sessionPath, gitDiffPath, status]);
 
     const fileName = fullPath.split('/').pop() || fullPath;
+    const isEmpty =
+        content === null ? false :
+        content.kind === 'patch' ? content.patch.trim() === '' :
+        content.contents === '';
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
@@ -88,60 +120,22 @@ export const InlineFileDiff = React.memo(function InlineFileDiff({ sessionId, fu
                 <View style={styles.centered}>
                     <Text style={{ color: theme.colors.textSecondary, ...Typography.default() }}>{error}</Text>
                 </View>
-            ) : !diff || diff.trim() === '' ? (
+            ) : !content || isEmpty ? (
                 <View style={styles.centered}>
                     <Text style={{ color: theme.colors.textSecondary, ...Typography.default() }}>{t('files.noChanges')}</Text>
                 </View>
             ) : (
                 <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
-                    <DiffLines diff={diff} />
+                    {content.kind === 'patch' ? (
+                        <PierreDiffView patch={content.patch} />
+                    ) : (
+                        <PierreDiffView
+                            oldFile={{ name: fileName, contents: '' }}
+                            newFile={{ name: fileName, contents: content.contents }}
+                        />
+                    )}
                 </ScrollView>
             )}
-        </View>
-    );
-});
-
-const DiffLines = React.memo(function DiffLines({ diff }: { diff: string }) {
-    const { theme } = useUnistyles();
-    const lines = React.useMemo(() => diff.split('\n'), [diff]);
-
-    return (
-        <View>
-            {lines.map((line, index) => {
-                const baseStyle = { ...Typography.mono(), fontSize: 13, lineHeight: 20 };
-                let lineStyle: any = baseStyle;
-                let backgroundColor: string = 'transparent';
-                let borderLeftWidth = 0;
-                let borderLeftColor = 'transparent';
-
-                if (line.startsWith('+') && !line.startsWith('+++')) {
-                    lineStyle = { ...baseStyle, color: theme.colors.diff.addedText };
-                    backgroundColor = theme.colors.diff.addedBg;
-                    borderLeftWidth = 3;
-                    borderLeftColor = theme.colors.diff.addedBorder;
-                } else if (line.startsWith('-') && !line.startsWith('---')) {
-                    lineStyle = { ...baseStyle, color: theme.colors.diff.removedText };
-                    backgroundColor = theme.colors.diff.removedBg;
-                    borderLeftWidth = 3;
-                    borderLeftColor = theme.colors.diff.removedBorder;
-                } else if (line.startsWith('@@')) {
-                    lineStyle = { ...baseStyle, color: theme.colors.diff.hunkHeaderText, fontWeight: '600' as const };
-                    backgroundColor = theme.colors.diff.hunkHeaderBg;
-                } else if (line.startsWith('+++') || line.startsWith('---')) {
-                    lineStyle = { ...baseStyle, color: theme.colors.text, fontWeight: '600' as const };
-                } else {
-                    lineStyle = { ...baseStyle, color: theme.colors.diff.contextText };
-                }
-
-                return (
-                    <View
-                        key={index}
-                        style={{ backgroundColor, paddingHorizontal: 8, paddingVertical: 1, borderLeftWidth, borderLeftColor }}
-                    >
-                        <Text style={lineStyle}>{line || ' '}</Text>
-                    </View>
-                );
-            })}
         </View>
     );
 });

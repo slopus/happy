@@ -35,6 +35,7 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { FilesSidebar } from '@/components/FilesSidebar';
 import { InlineFileDiff } from '@/components/InlineFileDiff';
+import { prefetchPierreDiff } from '@/components/diff/PierreDiffView';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
@@ -94,16 +95,21 @@ export const SessionView = React.memo((props: { id: string }) => {
         setSidebarCollapsed(!sidebarCollapsed);
     }, [sidebarCollapsed, setSidebarCollapsed]);
 
-    const [selectedFilePath, setSelectedFilePath] = React.useState<string | null>(null);
+    const [selectedFile, setSelectedFile] = React.useState<GitFileStatus | null>(null);
     const handleSidebarFilePress = React.useCallback((file: GitFileStatus) => {
-        setSelectedFilePath((current) => (current === file.fullPath ? null : file.fullPath));
+        setSelectedFile((current) => (current?.fullPath === file.fullPath ? null : file));
     }, []);
-    const clearSelectedFile = React.useCallback(() => setSelectedFilePath(null), []);
+    const clearSelectedFile = React.useCallback(() => setSelectedFile(null), []);
 
     // When sidebar is hidden or disabled, don't keep a stale selection.
     React.useEffect(() => {
-        if (!showSidebar || sidebarCollapsed) setSelectedFilePath(null);
+        if (!showSidebar || sidebarCollapsed) setSelectedFile(null);
     }, [showSidebar, sidebarCollapsed]);
+
+    // Warm Pierre's lazy web chunks while the user is still reading chat.
+    React.useEffect(() => {
+        prefetchPierreDiff();
+    }, []);
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
@@ -243,7 +249,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         <View style={{ flex: 1, flexDirection: 'row' }}>
             <View style={{ flex: 1 }}>
                 {mainContent}
-                {selectedFilePath && !sidebarCollapsed && (
+                {selectedFile && !sidebarCollapsed && (
                     <View
                         pointerEvents="box-none"
                         style={{
@@ -257,7 +263,8 @@ export const SessionView = React.memo((props: { id: string }) => {
                     >
                         <InlineFileDiff
                             sessionId={sessionId}
-                            fullPath={selectedFilePath}
+                            fullPath={selectedFile.fullPath}
+                            status={selectedFile.status}
                             onClose={clearSelectedFile}
                         />
                     </View>
@@ -267,7 +274,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                 <View style={{ width: sidebarWidth, flex: 1 }}>
                     <FilesSidebar
                         sessionId={sessionId}
-                        selectedPath={selectedFilePath}
+                        selectedPath={selectedFile?.fullPath ?? null}
                         onFilePress={handleSidebarFilePress}
                     />
                 </View>
