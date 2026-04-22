@@ -27,6 +27,7 @@ export default function AppearanceSettingsScreen() {
     const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
     const [showLineNumbersInToolViews, setShowLineNumbersInToolViews] = useSettingMutable('showLineNumbersInToolViews');
     const [wrapLinesInDiffs, setWrapLinesInDiffs] = useSettingMutable('wrapLinesInDiffs');
+    const [diffStyle, setDiffStyle] = useSettingMutable('diffStyle');
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
@@ -174,6 +175,13 @@ export default function AppearanceSettingsScreen() {
                             onValueChange={setWrapLinesInDiffs}
                         />
                     }
+                />
+                <Item
+                    title={t('settingsAppearance.diffStyle')}
+                    subtitle={t('settingsAppearance.diffStyleDescription')}
+                    icon={<Ionicons name="git-compare-outline" size={29} color="#5856D6" />}
+                    detail={diffStyle === 'split' ? t('settingsAppearance.diffStyleOptions.split') : t('settingsAppearance.diffStyleOptions.unified')}
+                    onPress={() => setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')}
                 />
                 <Item
                     title={t('settingsAppearance.alwaysShowContextSize')}

@@ -169,6 +169,12 @@ export const it: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Mostra i numeri di riga nei diff delle viste strumenti',
         wrapLinesInDiffs: 'A capo nelle differenze',
         wrapLinesInDiffsDescription: 'A capo delle righe lunghe invece dello scorrimento orizzontale nelle viste diff',
+        diffStyle: 'Vista diff',
+        diffStyleDescription: 'Mostra le differenze in una sola colonna (unified) o affiancate (split). La vista split è disponibile solo sul web.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Mostra sempre dimensione contesto',
         alwaysShowContextSizeDescription: 'Mostra l\'uso del contesto anche quando non è vicino al limite',
         avatarStyle: 'Stile avatar',
@@ -553,6 +559,8 @@ export const it: TranslationStructure = {
         file: 'File',
         fileEmpty: 'File vuoto',
         noChanges: 'Nessuna modifica da mostrare',
+        noChangesTitle: 'Nessuna modifica',
+        noChangesSubtitle: 'L\'albero di lavoro è pulito',
         deleted: 'Eliminato',
     },
 
