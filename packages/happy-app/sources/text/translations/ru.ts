@@ -577,6 +577,8 @@ export const ru: TranslationStructure = {
         file: 'Файл',
         fileEmpty: 'Файл пустой',
         noChanges: 'Нет изменений для отображения',
+        noChangesTitle: 'Нет изменений',
+        noChangesSubtitle: 'Рабочее дерево чистое',
         deleted: 'Удалён',
     },
 

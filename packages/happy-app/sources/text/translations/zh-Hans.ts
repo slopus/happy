@@ -562,6 +562,8 @@ export const zhHans: TranslationStructure = {
         file: '文件',
         fileEmpty: '文件为空',
         noChanges: '没有要显示的更改',
+        noChangesTitle: '没有更改',
+        noChangesSubtitle: '工作区是干净的',
         deleted: '已删除',
     },
 

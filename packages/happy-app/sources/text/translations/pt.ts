@@ -560,6 +560,8 @@ export const pt: TranslationStructure = {
         file: 'Arquivo',
         fileEmpty: 'Arquivo está vazio',
         noChanges: 'Nenhuma alteração para exibir',
+        noChangesTitle: 'Sem alterações',
+        noChangesSubtitle: 'A árvore de trabalho está limpa',
         deleted: 'Excluído',
     },
 

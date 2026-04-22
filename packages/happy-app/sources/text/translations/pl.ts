@@ -577,6 +577,8 @@ export const pl: TranslationStructure = {
         file: 'Plik',
         fileEmpty: 'Plik jest pusty',
         noChanges: 'Brak zmian do wyświetlenia',
+        noChangesTitle: 'Brak zmian',
+        noChangesSubtitle: 'Drzewo robocze jest czyste',
         deleted: 'Usunięty',
     },
 

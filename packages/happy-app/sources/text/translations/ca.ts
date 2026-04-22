@@ -561,6 +561,8 @@ export const ca: TranslationStructure = {
         file: 'Fitxer',
         fileEmpty: 'El fitxer està buit',
         noChanges: 'No hi ha canvis a mostrar',
+        noChangesTitle: 'Sense canvis',
+        noChangesSubtitle: 'L\'arbre de treball està net',
         deleted: 'Eliminat',
     },
 

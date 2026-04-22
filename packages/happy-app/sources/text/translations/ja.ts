@@ -562,6 +562,8 @@ export const ja: TranslationStructure = {
         file: 'ファイル',
         fileEmpty: 'ファイルは空です',
         noChanges: '表示する変更はありません',
+        noChangesTitle: '変更なし',
+        noChangesSubtitle: 'ワーキングツリーはクリーンです',
         deleted: '削除済み',
     },
 

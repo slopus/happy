@@ -559,6 +559,8 @@ export const it: TranslationStructure = {
         file: 'File',
         fileEmpty: 'File vuoto',
         noChanges: 'Nessuna modifica da mostrare',
+        noChangesTitle: 'Nessuna modifica',
+        noChangesSubtitle: 'L\'albero di lavoro è pulito',
         deleted: 'Eliminato',
     },
 

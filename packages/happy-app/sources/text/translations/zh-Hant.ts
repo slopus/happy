@@ -561,6 +561,8 @@ export const zhHant: TranslationStructure = {
         file: '檔案',
         fileEmpty: '檔案為空',
         noChanges: '沒有要顯示的更改',
+        noChangesTitle: '沒有變更',
+        noChangesSubtitle: '工作區是乾淨的',
         deleted: '已刪除',
     },
 
