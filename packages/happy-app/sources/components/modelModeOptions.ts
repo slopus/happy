@@ -252,6 +252,13 @@ export function getDefaultEffortKeyForModel(flavor: AgentFlavor, modelKey: strin
     return levels[levels.length - 1].key;
 }
 
+export function resolveCurrentEffortLevel(
+    levels: EffortLevel[],
+    preferredKeys: Array<string | null | undefined>,
+): EffortLevel | null {
+    return resolveCurrentOption(levels, preferredKeys);
+}
+
 export function getSupportsWorktree(flavor: AgentFlavor): boolean {
     if (flavor === 'openclaw') return false;
     return true;

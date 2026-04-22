@@ -21,8 +21,7 @@ import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
-import type { PermissionModeKey } from '@/components/PermissionModeSelector';
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadSessionEffortLevels, saveSessionEffortLevels } from "./persistence";
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -31,6 +30,7 @@ import { isMutableTool } from "@/components/tools/knownTools";
 import { projectManager } from "./projectManager";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
+import { collectSessionValueMap, resolveSessionLocalState } from "./sessionLocalState";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -51,11 +51,6 @@ function resolveSessionOnlineState(session: { active: boolean; activeAt: number 
 function isSessionActive(session: { active: boolean; activeAt: number }): boolean {
     // Use the active flag directly, no timeout checks
     return session.active;
-}
-
-function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boolean {
-    const sandbox = metadata?.sandbox;
-    return !!sandbox && typeof sandbox === 'object' && (sandbox as { enabled?: unknown }).enabled === true;
 }
 
 // Known entitlement IDs
@@ -323,6 +318,8 @@ export const storage = create<StorageState>()((set, get) => {
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
+    let sessionModelModes = loadSessionModelModes();
+    let sessionEffortLevels = loadSessionEffortLevels();
     return {
         settings,
         settingsVersion: version,
@@ -376,6 +373,8 @@ export const storage = create<StorageState>()((set, get) => {
             // Load drafts and permission modes if sessions are empty (initial load)
             const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
             const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
+            const savedModelModes = Object.keys(state.sessions).length === 0 ? sessionModelModes : {};
+            const savedEffortLevels = Object.keys(state.sessions).length === 0 ? sessionEffortLevels : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -385,23 +384,19 @@ export const storage = create<StorageState>()((set, get) => {
                 // Use centralized resolver for consistent state management
                 const presence = resolveSessionOnlineState(session);
 
-                // Preserve existing draft and permission mode if they exist, or load from saved data
-                const existingDraft = state.sessions[session.id]?.draft;
-                const savedDraft = savedDrafts[session.id];
-                const existingPermissionMode = state.sessions[session.id]?.permissionMode;
-                const savedPermissionMode = savedPermissionModes[session.id];
-                const defaultPermissionMode: PermissionModeKey = isSandboxEnabled(session.metadata) ? 'bypassPermissions' : 'default';
-                const resolvedPermissionMode: PermissionModeKey =
-                    (existingPermissionMode && existingPermissionMode !== 'default' ? existingPermissionMode : undefined) ||
-                    (savedPermissionMode && savedPermissionMode !== 'default' ? savedPermissionMode : undefined) ||
-                    (session.permissionMode && session.permissionMode !== 'default' ? session.permissionMode : undefined) ||
-                    defaultPermissionMode;
+                const localState = resolveSessionLocalState({
+                    session,
+                    existingSession: state.sessions[session.id],
+                    savedDraft: savedDrafts[session.id],
+                    savedPermissionMode: savedPermissionModes[session.id],
+                    savedModelMode: savedModelModes[session.id],
+                    savedEffortLevel: savedEffortLevels[session.id],
+                });
 
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
-                    draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: resolvedPermissionMode
+                    ...localState,
                 };
             });
 
@@ -655,14 +650,8 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Persist plan mode change
             if (shouldEnterPlanMode) {
-                const allModes: Record<string, string> = {};
                 const currentState = get();
-                Object.entries(currentState.sessions).forEach(([id, sess]) => {
-                    if (sess.permissionMode && sess.permissionMode !== 'default') {
-                        allModes[id] = sess.permissionMode;
-                    }
-                });
-                saveSessionPermissionModes(allModes);
+                saveSessionPermissionModes(collectSessionValueMap(currentState.sessions, 'permissionMode'));
             }
 
             return { changed: Array.from(changed), hasReadyEvent };
@@ -911,16 +900,8 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
 
-            // Collect all permission modes for persistence
-            const allModes: Record<string, string> = {};
-            Object.entries(updatedSessions).forEach(([id, sess]) => {
-                if (sess.permissionMode && sess.permissionMode !== 'default') {
-                    allModes[id] = sess.permissionMode;
-                }
-            });
-
             // Persist permission modes (only non-default values to save space)
-            saveSessionPermissionModes(allModes);
+            saveSessionPermissionModes(collectSessionValueMap(updatedSessions, 'permissionMode'));
 
             // No need to rebuild sessionListViewData since permission mode doesn't affect the list display
             return {
@@ -941,6 +922,8 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
 
+            saveSessionModelModes(collectSessionValueMap(updatedSessions, 'modelMode'));
+
             // No need to rebuild sessionListViewData since model mode doesn't affect the list display
             return {
                 ...state,
@@ -958,6 +941,8 @@ export const storage = create<StorageState>()((set, get) => {
                     effortLevel: level
                 }
             };
+
+            saveSessionEffortLevels(collectSessionValueMap(updatedSessions, 'effortLevel'));
 
             return {
                 ...state,
@@ -1081,6 +1066,14 @@ export const storage = create<StorageState>()((set, get) => {
             const modes = loadSessionPermissionModes();
             delete modes[sessionId];
             saveSessionPermissionModes(modes);
+
+            const modelModes = loadSessionModelModes();
+            delete modelModes[sessionId];
+            saveSessionModelModes(modelModes);
+
+            const effortLevels = loadSessionEffortLevels();
+            delete effortLevels[sessionId];
+            saveSessionEffortLevels(effortLevels);
             
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions);
