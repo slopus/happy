@@ -16,3 +16,9 @@ export const fullscreenAtom = atom<boolean>(
         ? window.win.isFullScreenSync()
         : false
 )
+
+export type EffortLevel = 'low' | 'medium' | 'high'
+
+export const modelAtom = atom<string>('claude-opus-4-7')
+export const effortAtom = atom<EffortLevel>('high')
+export const contextUsageAtom = atom<number>(0.24)
