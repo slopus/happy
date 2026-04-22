@@ -1,5 +1,5 @@
 import { logger } from '@/ui/logger'
-import { isDaemonRunningCurrentlyInstalledHappyVersion } from './controlClient'
+import { isDaemonRunningCurrentlyInstalledHappyVersion, waitForDaemonReady } from './controlClient'
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI'
 
 export async function ensureDaemonRunning(): Promise<void> {
@@ -18,6 +18,8 @@ export async function ensureDaemonRunning(): Promise<void> {
   })
   daemonProcess.unref()
 
-  // Give daemon a moment to write PID & port file before first notification.
-  await new Promise(resolve => setTimeout(resolve, 200))
+  const started = await waitForDaemonReady()
+  if (!started) {
+    throw new Error('Happy daemon failed to become ready')
+  }
 }

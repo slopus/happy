@@ -10,14 +10,13 @@ import { logger } from '@/ui/logger';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
-import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock } from '@/persistence';
+import { getInstalledCliVersion, startedCliVersion } from '@/cliVersion';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
-import { readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
@@ -35,7 +34,7 @@ const hostSuffix = process.env.HAPPY_VARIANT === 'dev' ? '-dev' : '';
 export const initialMachineMetadata: MachineMetadata = {
   host: os.hostname() + hostSuffix,
   platform: os.platform(),
-  happyCliVersion: packageJson.version,
+  happyCliVersion: startedCliVersion,
   homeDir: os.homedir(),
   happyHomeDir: configuration.happyHomeDir,
   happyLibDir: projectPath(),
@@ -639,7 +638,7 @@ export async function startDaemon(): Promise<void> {
       pid: process.pid,
       httpPort: controlPort,
       startTime: new Date().toLocaleString(),
-      startedWithCliVersion: packageJson.version,
+      startedWithCliVersion: startedCliVersion,
       daemonLogPath: logger.logFilePath
     };
     writeDaemonState(fileState);
@@ -710,8 +709,8 @@ export async function startDaemon(): Promise<void> {
       // Check if daemon needs update
       // If version on disk is different from the one in package.json - we need to restart
       // BIG if - does this get updated from underneath us on npm upgrade?
-      const projectVersion = JSON.parse(readFileSync(join(projectPath(), 'package.json'), 'utf-8')).version;
-      if (projectVersion !== configuration.currentCliVersion) {
+      const installedCliVersion = getInstalledCliVersion();
+      if (installedCliVersion !== fileState.startedWithCliVersion) {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would
         // ask the OS to start the latest daemon instead of hand-rolling respawn/kill behavior here.
@@ -755,7 +754,7 @@ export async function startDaemon(): Promise<void> {
           pid: process.pid,
           httpPort: controlPort,
           startTime: fileState.startTime,
-          startedWithCliVersion: packageJson.version,
+          startedWithCliVersion: fileState.startedWithCliVersion,
           lastHeartbeat: new Date().toLocaleString(),
           daemonLogPath: fileState.daemonLogPath
         };

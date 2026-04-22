@@ -6,10 +6,7 @@
 import { logger } from '@/ui/logger';
 import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
-import { projectPath } from '@/projectPath';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { configuration } from '@/configuration';
+import { getInstalledCliVersion } from '@/cliVersion';
 
 async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
   const state = await readDaemonState();
@@ -176,10 +173,7 @@ export async function isDaemonRunningCurrentlyInstalledHappyVersion(): Promise<b
   }
   
   try {
-    // Read package.json on demand from disk - so we are guaranteed to get the latest version
-    const packageJsonPath = join(projectPath(), 'package.json');
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-    const currentCliVersion = packageJson.version;
+    const currentCliVersion = getInstalledCliVersion();
     
     logger.debug(`[DAEMON CONTROL] Current CLI version: ${currentCliVersion}, Daemon started with version: ${state.startedWithCliVersion}`);
     return currentCliVersion === state.startedWithCliVersion;
@@ -204,6 +198,23 @@ export async function isDaemonRunningCurrentlyInstalledHappyVersion(): Promise<b
     logger.debug('[DAEMON CONTROL] Error checking daemon version', error);
     return false;
   }
+}
+
+export async function waitForDaemonReady(
+  timeoutMs: number = 5000,
+  pollIntervalMs: number = 100,
+): Promise<boolean> {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    if (await isDaemonRunningCurrentlyInstalledHappyVersion()) {
+      return true;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+  }
+
+  return await isDaemonRunningCurrentlyInstalledHappyVersion();
 }
 
 export async function cleanupDaemonState(): Promise<void> {
