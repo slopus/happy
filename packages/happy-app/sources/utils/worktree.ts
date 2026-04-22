@@ -55,7 +55,9 @@ export async function createWorktree(
             success: false,
             worktreePath: '',
             branchName: '',
-            error: 'Not a Git repository'
+            error: gitCheck.exitCode === -1
+                ? (gitCheck.stderr || 'Failed to reach machine')
+                : 'Not a Git repository'
         };
     }
 
