@@ -13,11 +13,14 @@ import {
 } from '@/components/modelModeOptions';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
-import { ChatList } from '@/components/ChatList';
+import { ChatList, ChatListHandle } from '@/components/ChatList';
+import { TurnInfo } from '@/hooks/useTurnIndices';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { SessionActionsAnchor, SessionActionsPopover } from '@/components/SessionActionsPopover';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
+import { TurnNavigator } from '@/components/TurnNavigator';
+import { useTurnNavigationKeyboard } from '@/hooks/useTurnNavigationKeyboard';
 import { useDraft } from '@/hooks/useDraft';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
@@ -356,11 +359,40 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         gitStatusSync.getSync(sessionId);
     }, [sessionId, realtimeStatus]);
 
+    const chatListRef = React.useRef<ChatListHandle>(null);
+    const [turnInfo, setTurnInfo] = React.useState<{ current: number | null; total: number; turns: TurnInfo[] }>({ current: null, total: 0, turns: [] });
+
+    const handleTurnChange = React.useCallback((current: number | null, total: number, turns: TurnInfo[]) => {
+        setTurnInfo({ current, total, turns });
+    }, []);
+
+    // Reset turn info when ChatList unmounts (messages become empty)
+    React.useEffect(() => {
+        if (messages.length === 0) {
+            setTurnInfo({ current: null, total: 0, turns: [] });
+        }
+    }, [messages.length]);
+
+    const handlePrevTurn = React.useCallback(() => chatListRef.current?.prevTurn(), []);
+    const handleNextTurn = React.useCallback(() => chatListRef.current?.nextTurn(), []);
+    const handlePrevPage = React.useCallback(() => chatListRef.current?.prevPage(), []);
+    const handleNextPage = React.useCallback(() => chatListRef.current?.nextPage(), []);
+    const handleEndTurn = React.useCallback(() => chatListRef.current?.goToEnd(), []);
+    const handleGoToTurn = React.useCallback((turnNumber: number) => chatListRef.current?.goToTurn(turnNumber), []);
+
+    useTurnNavigationKeyboard({
+        onPrev: handlePrevTurn,
+        onNext: handleNextTurn,
+        onPrevPage: handlePrevPage,
+        onNextPage: handleNextPage,
+        onEnd: handleEndTurn,
+    });
+
     let content = (
         <>
             <Deferred>
                 {messages.length > 0 && (
-                    <ChatList session={session} />
+                    <ChatList ref={chatListRef} session={session} onTurnChange={handleTurnChange} />
                 )}
             </Deferred>
         </>
@@ -496,6 +528,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     content={content}
                     input={input}
                     placeholder={placeholder}
+                />
+                <TurnNavigator
+                    currentTurnNumber={turnInfo.current}
+                    totalTurns={turnInfo.total}
+                    turns={turnInfo.turns}
+                    onPrev={handlePrevTurn}
+                    onNext={handleNextTurn}
+                    onPrevPage={handlePrevPage}
+                    onNextPage={handleNextPage}
+                    onEnd={handleEndTurn}
+                    onGoToTurn={handleGoToTurn}
+                    hasPrev={turnInfo.current !== null ? turnInfo.current > 1 : turnInfo.total > 0}
+                    hasNext={turnInfo.current !== null && turnInfo.current < turnInfo.total}
                 />
             </View >
 
