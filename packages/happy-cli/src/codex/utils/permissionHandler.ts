@@ -38,11 +38,11 @@ export class CodexPermissionHandler extends BasePermissionHandler {
     }
 
     private shouldAutoApprove(toolName: string, toolCallId: string): boolean {
-        if (CodexPermissionHandler.ALWAYS_AUTO_APPROVE_NAMES.some((name) => toolName.toLowerCase().includes(name.toLowerCase()))) {
+        if (CodexPermissionHandler.ALWAYS_AUTO_APPROVE_NAMES.some((name) => toolName.toLowerCase() === name.toLowerCase())) {
             return true;
         }
 
-        if (CodexPermissionHandler.ALWAYS_AUTO_APPROVE_IDS.some((id) => toolCallId.toLowerCase().includes(id.toLowerCase()))) {
+        if (CodexPermissionHandler.ALWAYS_AUTO_APPROVE_IDS.some((id) => toolCallId.toLowerCase() === id.toLowerCase())) {
             return true;
         }
 
