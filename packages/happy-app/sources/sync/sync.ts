@@ -92,6 +92,7 @@ class Sync {
     private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
     private sessionQueueProcessing = new Set<string>();
     private sessionMessageLocks = new Map<string, AsyncLock>();
+    private sessionUpdateChain = new Map<string, Promise<void>>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
@@ -1601,18 +1602,12 @@ class Sync {
                 throw new Error(`Failed to send messages for ${sessionId}: ${response.status}`);
             }
 
-            const data = await response.json() as V3PostSessionMessagesResponse;
+            await response.json() as V3PostSessionMessagesResponse;
             pending.splice(0, batch.length);
-            if (Array.isArray(data.messages) && data.messages.length > 0) {
-                const currentLastSeq = this.sessionLastSeq.get(sessionId) ?? 0;
-                let maxSeq = currentLastSeq;
-                for (const message of data.messages) {
-                    if (message.seq > maxSeq) {
-                        maxSeq = message.seq;
-                    }
-                }
-                this.sessionLastSeq.set(sessionId, maxSeq);
-            }
+            // NOTE: Do NOT update sessionLastSeq here. The sent message will arrive
+            // via WebSocket and update seq through the normal fast-path in processNewMessage.
+            // Updating seq here races with the serialized sessionUpdateChain, causing
+            // in-flight WS messages to fail the consecutive-seq check and get dropped.
         } catch (error) {
             this.maybeStartBackgroundSendWatchdog();
             throw error;
@@ -1734,6 +1729,94 @@ class Sync {
         });
     }
 
+    private processNewMessage = async (updateData: import('./apiTypes').ApiUpdateContainer & { body: import('./apiTypes').ApiUpdateNewMessage }) => {
+        const sid = updateData.body.sid;
+
+        // Get encryption
+        const encryption = this.encryption.getSessionEncryption(sid);
+        if (!encryption) { // Should never happen
+            console.error(`Session ${sid} not found`);
+            this.fetchSessions(); // Just fetch sessions again
+            return;
+        }
+
+        // Decrypt message
+        let lastMessage: NormalizedMessage | null = null;
+        if (updateData.body.message) {
+            const decrypted = await encryption.decryptMessage(updateData.body.message);
+            if (decrypted) {
+                lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+
+                // Check for task lifecycle events to update thinking state
+                // This ensures UI updates even if volatile activity updates are lost
+                const rawContent = decrypted.content as {
+                    role?: string;
+                    content?: {
+                        type?: string;
+                        data?: {
+                            type?: string;
+                            ev?: { t?: string };
+                        }
+                    }
+                } | null;
+                const contentType = rawContent?.content?.type;
+                const dataType = rawContent?.content?.data?.type;
+                const sessionEventType = rawContent?.content?.data?.ev?.t;
+
+                // Debug logging to trace lifecycle events
+                if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started' || sessionEventType === 'turn-start' || sessionEventType === 'turn-end') {
+                    console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}, sessionEventType=${sessionEventType}`);
+                }
+
+                const isTaskComplete =
+                    ((contentType === 'acp' || contentType === 'codex') &&
+                        (dataType === 'task_complete' || dataType === 'turn_aborted')) ||
+                    (contentType === 'session' && sessionEventType === 'turn-end');
+
+                const isTaskStarted =
+                    ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started') ||
+                    (contentType === 'session' && sessionEventType === 'turn-start');
+
+                if (isTaskComplete || isTaskStarted) {
+                    console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
+                }
+
+                // Update session
+                const session = storage.getState().sessions[sid];
+                if (session) {
+                    this.applySessions([{
+                        ...session,
+                        updatedAt: updateData.createdAt,
+                        seq: updateData.seq,
+                        // Update thinking state based on task lifecycle events
+                        ...(isTaskComplete ? { thinking: false } : {}),
+                        ...(isTaskStarted ? { thinking: true } : {})
+                    }])
+                } else {
+                    // Fetch sessions again if we don't have this session
+                    this.fetchSessions();
+                }
+
+                // Fast-path only on consecutive seq values, otherwise fetch from server.
+                const currentLastSeq = this.sessionLastSeq.get(sid);
+                const incomingSeq = updateData.body.message.seq;
+                if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
+                    this.enqueueMessages(sid, [lastMessage]);
+                    this.sessionLastSeq.set(sid, incomingSeq);
+                    let hasMutableTool = false;
+                    if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
+                        hasMutableTool = storage.getState().isMutableToolCall(sid, lastMessage.content[0].tool_use_id);
+                    }
+                    if (hasMutableTool) {
+                        gitStatusSync.invalidate(sid);
+                    }
+                } else {
+                    this.getMessagesSync(sid).invalidate();
+                }
+            }
+        }
+    }
+
     private handleUpdate = async (update: unknown) => {
         const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
         if (!validatedUpdate.success) {
@@ -1746,89 +1829,17 @@ class Sync {
 
         if (updateData.body.t === 'new-message') {
 
-            // Get encryption
-            const encryption = this.encryption.getSessionEncryption(updateData.body.sid);
-            if (!encryption) { // Should never happen
-                console.error(`Session ${updateData.body.sid} not found`);
-                this.fetchSessions(); // Just fetch sessions again
-                return;
-            }
-
-            // Decrypt message
-            let lastMessage: NormalizedMessage | null = null;
-            if (updateData.body.message) {
-                const decrypted = await encryption.decryptMessage(updateData.body.message);
-                if (decrypted) {
-                    lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-
-                    // Check for task lifecycle events to update thinking state
-                    // This ensures UI updates even if volatile activity updates are lost
-                    const rawContent = decrypted.content as {
-                        role?: string;
-                        content?: {
-                            type?: string;
-                            data?: {
-                                type?: string;
-                                ev?: { t?: string };
-                            }
-                        }
-                    } | null;
-                    const contentType = rawContent?.content?.type;
-                    const dataType = rawContent?.content?.data?.type;
-                    const sessionEventType = rawContent?.content?.data?.ev?.t;
-                    
-                    // Debug logging to trace lifecycle events
-                    if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started' || sessionEventType === 'turn-start' || sessionEventType === 'turn-end') {
-                        console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}, sessionEventType=${sessionEventType}`);
-                    }
-                    
-                    const isTaskComplete = 
-                        ((contentType === 'acp' || contentType === 'codex') && 
-                            (dataType === 'task_complete' || dataType === 'turn_aborted')) ||
-                        (contentType === 'session' && sessionEventType === 'turn-end');
-                    
-                    const isTaskStarted = 
-                        ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started') ||
-                        (contentType === 'session' && sessionEventType === 'turn-start');
-                    
-                    if (isTaskComplete || isTaskStarted) {
-                        console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
-                    }
-
-                    // Update session
-                    const session = storage.getState().sessions[updateData.body.sid];
-                    if (session) {
-                        this.applySessions([{
-                            ...session,
-                            updatedAt: updateData.createdAt,
-                            seq: updateData.seq,
-                            // Update thinking state based on task lifecycle events
-                            ...(isTaskComplete ? { thinking: false } : {}),
-                            ...(isTaskStarted ? { thinking: true } : {})
-                        }])
-                    } else {
-                        // Fetch sessions again if we don't have this session
-                        this.fetchSessions();
-                    }
-
-                    // Fast-path only on consecutive seq values, otherwise fetch from server.
-                    const currentLastSeq = this.sessionLastSeq.get(updateData.body.sid);
-                    const incomingSeq = updateData.body.message.seq;
-                    if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
-                        this.enqueueMessages(updateData.body.sid, [lastMessage]);
-                        this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
-                        let hasMutableTool = false;
-                        if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
-                            hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
-                        }
-                        if (hasMutableTool) {
-                            gitStatusSync.invalidate(updateData.body.sid);
-                        }
-                    } else {
-                        this.getMessagesSync(updateData.body.sid).invalidate();
-                    }
-                }
-            }
+            // Serialize per-session to prevent async decrypt from causing seq race conditions.
+            // Without this, two concurrent handleUpdate calls for the same session can both read
+            // the same sessionLastSeq value before either updates it, causing the second message
+            // to incorrectly take the invalidate() (full server fetch) path instead of the
+            // fast enqueue path.
+            const typedUpdate = updateData as typeof updateData & { body: import('./apiTypes').ApiUpdateNewMessage };
+            const sid = typedUpdate.body.sid;
+            const prev = this.sessionUpdateChain.get(sid) ?? Promise.resolve();
+            const next = prev.then(() => this.processNewMessage(typedUpdate));
+            this.sessionUpdateChain.set(sid, next.catch(() => { /* prevent chain break */ }));
+            await next;
 
             // Ping session
             this.onSessionVisible(updateData.body.sid);
@@ -1858,6 +1869,7 @@ class Sync {
             this.sessionMessageLocks.delete(sessionId);
             this.sessionMessageQueue.delete(sessionId);
             this.sessionQueueProcessing.delete(sessionId);
+            this.sessionUpdateChain.delete(sessionId);
 
             log.log(`🗑️ Session ${sessionId} deleted from local storage`);
         } else if (updateData.body.t === 'update-session') {
