@@ -333,7 +333,10 @@ function RenderTableBlock(props: {
 
     return (
         <View style={[style.tableContainer, props.first && style.first, props.last && style.last]}>
-            <HorizontalScrollView>
+            {/* flexGrow:0 stops iOS from stretching the horizontal ScrollView
+                vertically to fill the parent — the cause of the table's frame
+                extending down past the last row into empty space. */}
+            <HorizontalScrollView style={{ flexGrow: 0 }}>
                 <View>
                     {/* Header row */}
                     <View style={[style.tableRow, style.tableHeaderRow]}>
