@@ -5,6 +5,7 @@
         "cli": "pnpm --filter happy cli",
         "release": "node ./scripts/release.cjs",
         "web": "pnpm --filter happy-app web",
+        "codium": "pnpm --filter codium dev",
         "app-logs": "pnpm --filter happy-app-logs start",
         "postinstall": "node ./scripts/postinstall.cjs",
         "env:new": "tsx environments/environments.ts new",
@@ -30,7 +31,8 @@
             "packages/happy-cli",
             "packages/happy-server",
             "packages/happy-wire",
-            "packages/happy-app-logs"
+            "packages/happy-app-logs",
+            "packages/codium"
         ]
     },
     "pnpm": {
@@ -44,7 +46,11 @@
             "@prisma/client",
             "@prisma/engines",
             "@shopify/react-native-skia",
+            "@tailwindcss/oxide",
+            "better-sqlite3",
+            "electron",
             "esbuild",
+            "node-pty",
             "prisma",
             "sharp"
         ]

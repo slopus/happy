@@ -1,0 +1,11 @@
+{
+    "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
+    "include": [
+        "electron.vite.config.ts",
+        "sources/boot/**/*"
+    ],
+    "compilerOptions": {
+        "composite": true,
+        "types": ["electron-vite/node"]
+    }
+}
