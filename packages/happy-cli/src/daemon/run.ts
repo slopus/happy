@@ -640,6 +640,7 @@ export async function startDaemon(): Promise<void> {
       httpPort: controlPort,
       startTime: new Date().toLocaleString(),
       startedWithCliVersion: packageJson.version,
+      startedFromCwd: process.cwd(),
       daemonLogPath: logger.logFilePath
     };
     writeDaemonState(fileState);

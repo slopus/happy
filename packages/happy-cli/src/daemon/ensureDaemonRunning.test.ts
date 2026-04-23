@@ -1,61 +1,101 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
-  mockLoggerDebug: vi.fn(),
-  mockIsDaemonRunningCurrentlyInstalledHappyVersion: vi.fn(),
-  mockSpawnHappyCLI: vi.fn(),
-}))
-
-vi.mock('@/ui/logger', () => ({
-  logger: {
-    debug: mocks.mockLoggerDebug,
-  },
-}))
+const mockIsDaemonRunningCurrentlyInstalledHappyVersion = vi.fn();
+const mockStopDaemon = vi.fn();
+const mockReadDaemonState = vi.fn();
+const mockSpawnHappyCLI = vi.fn();
+const mockUnref = vi.fn();
 
 vi.mock('./controlClient', () => ({
-  isDaemonRunningCurrentlyInstalledHappyVersion: mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion,
-}))
+  isDaemonRunningCurrentlyInstalledHappyVersion: mockIsDaemonRunningCurrentlyInstalledHappyVersion,
+  stopDaemon: mockStopDaemon,
+}));
+
+vi.mock('@/persistence', () => ({
+  readDaemonState: mockReadDaemonState,
+}));
 
 vi.mock('@/utils/spawnHappyCLI', () => ({
-  spawnHappyCLI: mocks.mockSpawnHappyCLI,
-}))
-
-import { ensureDaemonRunning } from './ensureDaemonRunning'
+  spawnHappyCLI: mockSpawnHappyCLI,
+}));
 
 describe('ensureDaemonRunning', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    mocks.mockSpawnHappyCLI.mockReturnValue({
-      unref: vi.fn(),
-    })
-  })
+    vi.resetAllMocks();
+    vi.resetModules();
+    vi.useFakeTimers();
+    mockSpawnHappyCLI.mockReturnValue({ unref: mockUnref });
+    mockStopDaemon.mockResolvedValue(undefined);
+    mockReadDaemonState.mockResolvedValue({
+      pid: 123,
+      httpPort: 456,
+      startTime: 'now',
+      startedWithCliVersion: '1.1.6',
+      startedFromCwd: process.cwd(),
+    });
+  });
 
-  it('returns without spawning when the daemon is already running', async () => {
-    mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion.mockResolvedValue(true)
+  it('does nothing when the daemon version matches and cwd is unchanged', async () => {
+    mockIsDaemonRunningCurrentlyInstalledHappyVersion.mockResolvedValue(true);
 
-    await ensureDaemonRunning()
+    const { ensureDaemonRunning } = await import('./ensureDaemonRunning');
+    await ensureDaemonRunning();
 
-    expect(mocks.mockSpawnHappyCLI).not.toHaveBeenCalled()
-    expect(mocks.mockLoggerDebug).toHaveBeenCalledWith(
-      'Ensuring Happy background service is running & matches our version...',
-    )
-  })
+    expect(mockStopDaemon).not.toHaveBeenCalled();
+    expect(mockSpawnHappyCLI).not.toHaveBeenCalled();
+  });
 
-  it('starts the daemon when the installed version is not running', async () => {
-    const mockUnref = vi.fn()
-    mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion.mockResolvedValue(false)
-    mocks.mockSpawnHappyCLI.mockReturnValue({
-      unref: mockUnref,
-    })
+  it('restarts the daemon when the current cwd changed', async () => {
+    mockIsDaemonRunningCurrentlyInstalledHappyVersion.mockResolvedValue(true);
+    mockReadDaemonState.mockResolvedValue({
+      pid: 123,
+      httpPort: 456,
+      startTime: 'now',
+      startedWithCliVersion: '1.1.6',
+      startedFromCwd: '/tmp/other-project',
+    });
 
-    await ensureDaemonRunning()
+    const { ensureDaemonRunning } = await import('./ensureDaemonRunning');
+    const promise = ensureDaemonRunning();
+    await vi.runAllTimersAsync();
+    await promise;
 
-    expect(mocks.mockSpawnHappyCLI).toHaveBeenCalledWith(['daemon', 'start-sync'], {
+    expect(mockStopDaemon).toHaveBeenCalledTimes(1);
+    expect(mockSpawnHappyCLI).toHaveBeenCalledWith(['daemon', 'start-sync'], {
       detached: true,
       stdio: 'ignore',
       env: process.env,
-    })
-    expect(mockUnref).toHaveBeenCalled()
-    expect(mocks.mockLoggerDebug).toHaveBeenCalledWith('Starting Happy background service...')
-  })
-})
+    });
+    expect(mockUnref).toHaveBeenCalledTimes(1);
+  });
+
+  it('restarts the daemon once for older state files without a remembered cwd', async () => {
+    mockIsDaemonRunningCurrentlyInstalledHappyVersion.mockResolvedValue(true);
+    mockReadDaemonState.mockResolvedValue({
+      pid: 123,
+      httpPort: 456,
+      startTime: 'now',
+      startedWithCliVersion: '1.1.6',
+    });
+
+    const { ensureDaemonRunning } = await import('./ensureDaemonRunning');
+    const promise = ensureDaemonRunning();
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(mockStopDaemon).toHaveBeenCalledTimes(1);
+    expect(mockSpawnHappyCLI).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts the daemon when none is running', async () => {
+    mockIsDaemonRunningCurrentlyInstalledHappyVersion.mockResolvedValue(false);
+
+    const { ensureDaemonRunning } = await import('./ensureDaemonRunning');
+    const promise = ensureDaemonRunning();
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(mockStopDaemon).not.toHaveBeenCalled();
+    expect(mockSpawnHappyCLI).toHaveBeenCalledTimes(1);
+  });
+});
