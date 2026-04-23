@@ -1957,7 +1957,7 @@ class Sync {
                     // Don't crash on settings sync errors, just log
                 }
             }
-        } else if (updateData.body.t === 'update-machine') {
+        } else if (updateData.body.t === 'update-machine' || updateData.body.t === 'new-machine') {
             const machineUpdate = updateData.body;
             const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
             const machine = storage.getState().machines[machineId];
@@ -1976,38 +1976,40 @@ class Sync {
                 daemonStateVersion: machine?.daemonStateVersion ?? 0
             };
 
-            // Get machine-specific encryption (might not exist if machine wasn't initialized)
-            const machineEncryption = this.encryption.getMachineEncryption(machineId);
-            if (!machineEncryption) {
-                console.error(`Machine encryption not found for ${machineId} - cannot decrypt updates`);
-                return;
-            }
-
-            // If metadata is provided, decrypt and update it
-            const metadataUpdate = machineUpdate.metadata;
-            if (metadataUpdate) {
-                try {
-                    const metadata = await machineEncryption.decryptMetadata(metadataUpdate.version, metadataUpdate.value);
-                    updatedMachine.metadata = metadata;
-                    updatedMachine.metadataVersion = metadataUpdate.version;
-                } catch (error) {
-                    console.error(`Failed to decrypt machine metadata for ${machineId}:`, error);
+            // Decrypt encrypted fields if machine encryption is available.
+            // When encryption keys are missing (e.g. V1 auth fallback, or a machine
+            // registered before the client finished key setup), we still apply the
+            // machine record so that non-encrypted fields like `active` / `activeAt`
+            // are visible — this is critical for onboarding auto-detection and for
+            // the sessions list to correctly show machine online state.
+            const machineEncryption = this.encryption?.getMachineEncryption(machineId);
+            if (machineEncryption) {
+                const metadataUpdate = machineUpdate.metadata;
+                if (metadataUpdate) {
+                    try {
+                        const metadata = await machineEncryption.decryptMetadata(metadataUpdate.version, metadataUpdate.value);
+                        updatedMachine.metadata = metadata;
+                        updatedMachine.metadataVersion = metadataUpdate.version;
+                    } catch (error) {
+                        console.error(`Failed to decrypt machine metadata for ${machineId}:`, error);
+                    }
                 }
-            }
 
-            // If daemonState is provided, decrypt and update it
-            const daemonStateUpdate = machineUpdate.daemonState;
-            if (daemonStateUpdate) {
-                try {
-                    const daemonState = await machineEncryption.decryptDaemonState(daemonStateUpdate.version, daemonStateUpdate.value);
-                    updatedMachine.daemonState = daemonState;
-                    updatedMachine.daemonStateVersion = daemonStateUpdate.version;
-                } catch (error) {
-                    console.error(`Failed to decrypt machine daemonState for ${machineId}:`, error);
+                const daemonStateUpdate = machineUpdate.daemonState;
+                if (daemonStateUpdate) {
+                    try {
+                        const daemonState = await machineEncryption.decryptDaemonState(daemonStateUpdate.version, daemonStateUpdate.value);
+                        updatedMachine.daemonState = daemonState;
+                        updatedMachine.daemonStateVersion = daemonStateUpdate.version;
+                    } catch (error) {
+                        console.error(`Failed to decrypt machine daemonState for ${machineId}:`, error);
+                    }
                 }
+            } else {
+                console.warn(`Machine encryption not found for ${machineId} - applying without decrypted metadata`);
             }
 
-            // Update storage using applyMachines which rebuilds sessionListViewData
+            // Always update storage so non-encrypted fields (active, activeAt) are visible
             storage.getState().applyMachines([updatedMachine]);
         } else if (updateData.body.t === 'delete-machine') {
             const machineId = updateData.body.machineId;

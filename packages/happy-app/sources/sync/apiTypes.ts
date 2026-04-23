@@ -4,6 +4,7 @@ import {
     ApiUpdateMachineStateSchema,
     ApiUpdateNewMessageSchema,
     ApiUpdateSessionStateSchema,
+    NewMachineBodySchema,
     type ApiMessage,
 } from '@slopus/happy-wire';
 import { GitHubProfileSchema, ImageRefSchema } from './profile';
@@ -126,6 +127,7 @@ export const ApiUpdateSchema = z.union([
     ApiUpdateAccountSchema,
     ApiUpdateMachineStateSchema,
     ApiDeleteMachineSchema,
+    NewMachineBodySchema,
     ApiNewArtifactSchema,
     ApiUpdateArtifactSchema,
     ApiDeleteArtifactSchema,
