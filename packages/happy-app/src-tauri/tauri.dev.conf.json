@@ -5,7 +5,9 @@
   "app": {
     "windows": [
       {
-        "title": "Happy (dev)"
+        "title": "Happy (dev)",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ]
   }
