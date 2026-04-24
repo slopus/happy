@@ -430,34 +430,84 @@ function findLatestVersionBinary(versionsDir, binaryName = null) {
 }
 
 /**
+ * Get the cache file path for Claude Code CLI detection results
+ * @returns {string} Path to cache file
+ */
+function getCacheFilePath() {
+    const homeDir = process.env.HAPPY_HOME_DIR
+        ? process.env.HAPPY_HOME_DIR.replace(/^~/, os.homedir())
+        : path.join(os.homedir(), '.happy');
+    return path.join(homeDir, 'claude-cli.cache');
+}
+
+/**
+ * Read cached Claude Code CLI path
+ * @returns {{path: string, source: string}|null} Cached result or null
+ */
+function readCliPathCache() {
+    try {
+        const cachePath = getCacheFilePath();
+        if (!fs.existsSync(cachePath)) return null;
+        const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+        // Validate: cached path must still exist
+        if (!cached.path || !fs.existsSync(cached.path)) {
+            return null;
+        }
+        return { path: cached.path, source: cached.source };
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Write Claude Code CLI path to cache
+ * @param {{path: string, source: string}} result
+ */
+function writeCliPathCache(result) {
+    try {
+        const cachePath = getCacheFilePath();
+        const cacheDir = path.dirname(cachePath);
+        if (!fs.existsSync(cacheDir)) {
+            fs.mkdirSync(cacheDir, { recursive: true });
+        }
+        fs.writeFileSync(cachePath, JSON.stringify(result));
+    } catch (e) {
+        // Cache write failure is non-critical
+    }
+}
+
+/**
  * Find path to globally installed Claude Code CLI
- * Priority: HAPPY_CLAUDE_PATH env var > PATH > npm > Bun > Homebrew > Native
+ * Priority: HAPPY_CLAUDE_PATH env var > cache > PATH > npm > Bun > Homebrew > Native
  * @returns {{path: string, source: string}|null} Path and source, or null if not found
  */
 function findGlobalClaudeCliPath() {
-    // 1. Environment variable (explicit override)
+    // 1. Environment variable (explicit override — bypass cache)
     const envPath = process.env.HAPPY_CLAUDE_PATH;
     if (envPath && fs.existsSync(envPath)) {
         const resolved = resolvePathSafe(envPath) || envPath;
         return { path: resolved, source: 'HAPPY_CLAUDE_PATH' };
     }
 
-    // 2. Check PATH (respects user's shell config)
-    const pathResult = findClaudeInPath();
-    if (pathResult) return pathResult;
+    // 2. Check cache (skip execSync calls if still valid)
+    const cached = readCliPathCache();
+    if (cached) return cached;
 
-    // 3. Fall back to package manager detection
+    // 3. Full detection cascade
+    const pathResult = findClaudeInPath();
+    if (pathResult) { writeCliPathCache(pathResult); return pathResult; }
+
     const npmPath = findNpmGlobalCliPath();
-    if (npmPath) return { path: npmPath, source: 'npm' };
+    if (npmPath) { const r = { path: npmPath, source: 'npm' }; writeCliPathCache(r); return r; }
 
     const bunPath = findBunGlobalCliPath();
-    if (bunPath) return { path: bunPath, source: 'Bun' };
+    if (bunPath) { const r = { path: bunPath, source: 'Bun' }; writeCliPathCache(r); return r; }
 
     const homebrewPath = findHomebrewCliPath();
-    if (homebrewPath) return { path: homebrewPath, source: 'Homebrew' };
+    if (homebrewPath) { const r = { path: homebrewPath, source: 'Homebrew' }; writeCliPathCache(r); return r; }
 
     const nativePath = findNativeInstallerCliPath();
-    if (nativePath) return { path: nativePath, source: 'native installer' };
+    if (nativePath) { const r = { path: nativePath, source: 'native installer' }; writeCliPathCache(r); return r; }
 
     return null;
 }
@@ -565,6 +615,8 @@ module.exports = {
     getVersion,
     compareVersions,
     getClaudeCliPath,
-    runClaudeCli
+    runClaudeCli,
+    readCliPathCache,
+    writeCliPathCache
 };
 

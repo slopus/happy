@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import {
   findGlobalClaudeCliPath,
   findClaudeInPath,
@@ -9,7 +11,9 @@ import {
   findHomebrewCliPath,
   findNativeInstallerCliPath,
   getVersion,
-  compareVersions
+  compareVersions,
+  readCliPathCache,
+  writeCliPathCache
 } from '../scripts/claude_version_utils.cjs';
 
 describe('Claude Version Utils - Cross-Platform Detection', () => {
@@ -369,5 +373,45 @@ describe('HAPPY_CLAUDE_PATH env var', () => {
     process.env.HAPPY_CLAUDE_PATH = '/nonexistent/path/claude';
     const result = findGlobalClaudeCliPath();
     expect(result?.source).not.toBe('HAPPY_CLAUDE_PATH');
+  });
+});
+
+describe('CLI path cache', () => {
+  const tmpDir = path.join(os.tmpdir(), 'happy-test-cache');
+  const originalHomeDir = process.env.HAPPY_HOME_DIR;
+
+  beforeEach(() => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    process.env.HAPPY_HOME_DIR = tmpDir;
+  });
+
+  afterEach(() => {
+    process.env.HAPPY_HOME_DIR = originalHomeDir;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should write and read cache', () => {
+    writeCliPathCache({ path: '/some/path/claude', source: 'test' });
+    const cached = readCliPathCache();
+    // Cache returns null because path doesn't exist
+    expect(cached).toBeNull();
+  });
+
+  it('should return cached result when path exists', () => {
+    const fakeExe = path.join(tmpDir, 'claude');
+    fs.writeFileSync(fakeExe, 'fake');
+    writeCliPathCache({ path: fakeExe, source: 'test' });
+    const cached = readCliPathCache();
+    expect(cached).toEqual({ path: fakeExe, source: 'test' });
+  });
+
+  it('should return null for corrupted cache file', () => {
+    const cachePath = path.join(tmpDir, 'claude-cli.cache');
+    fs.writeFileSync(cachePath, 'not json');
+    expect(readCliPathCache()).toBeNull();
+  });
+
+  it('should return null when cache file does not exist', () => {
+    expect(readCliPathCache()).toBeNull();
   });
 });
