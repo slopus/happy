@@ -33,16 +33,20 @@ describe('mapToClaudeMode', () => {
         it('passes through plan', () => {
             expect(mapToClaudeMode('plan')).toBe('plan');
         });
+
+        it('passes through dontAsk', () => {
+            expect(mapToClaudeMode('dontAsk')).toBe('dontAsk');
+        });
     });
 
-    describe('all 7 PermissionMode values are handled', () => {
+    describe('all 8 PermissionMode values are handled', () => {
         const allModes: PermissionMode[] = [
-            'default', 'acceptEdits', 'bypassPermissions', 'plan',  // Claude modes
+            'default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk',  // Claude modes
             'read-only', 'safe-yolo', 'yolo'  // Codex modes
         ];
 
         it('returns a valid Claude mode for every PermissionMode', () => {
-            const validClaudeModes = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
+            const validClaudeModes = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk'];
 
             allModes.forEach(mode => {
                 const result = mapToClaudeMode(mode);

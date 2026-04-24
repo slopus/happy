@@ -248,7 +248,7 @@ Notes:
 ```ts
 {
   sentFrom?: string;
-  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo';
+  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'read-only' | 'safe-yolo' | 'yolo';
   model?: string | null;
   fallbackModel?: string | null;
   customSystemPrompt?: string | null;
