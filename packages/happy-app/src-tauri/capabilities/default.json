@@ -8,6 +8,8 @@
   "permissions": [
     "core:default",
     "core:webview:allow-set-webview-zoom",
+    "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
     "http:default",
     {
       "identifier": "http:default",
