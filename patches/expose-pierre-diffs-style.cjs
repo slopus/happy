@@ -10,13 +10,19 @@
 const fs = require('fs');
 const path = require('path');
 
-const pkgDir = path.resolve(__dirname, '..', 'node_modules/@pierre/diffs');
-const pkgJsonPath = path.join(pkgDir, 'package.json');
-const styleDtsPath = path.join(pkgDir, 'dist/style.d.ts');
+const pkgDirs = [
+    path.resolve(__dirname, '..', 'node_modules/@pierre/diffs'),
+    path.resolve(__dirname, '..', 'packages/happy-app/node_modules/@pierre/diffs'),
+];
 
 let patched = 0;
 
-if (fs.existsSync(pkgJsonPath)) {
+for (const pkgDir of pkgDirs) {
+    const pkgJsonPath = path.join(pkgDir, 'package.json');
+    const styleDtsPath = path.join(pkgDir, 'dist/style.d.ts');
+
+    if (!fs.existsSync(pkgJsonPath)) continue;
+
     const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
     if (pkg.exports && !pkg.exports['./style.js']) {
         pkg.exports['./style.js'] = {
@@ -26,15 +32,15 @@ if (fs.existsSync(pkgJsonPath)) {
         fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
         patched++;
     }
-}
 
-if (!fs.existsSync(styleDtsPath)) {
-    fs.writeFileSync(
-        styleDtsPath,
-        'declare const style_default: string;\nexport default style_default;\n',
-        'utf8'
-    );
-    patched++;
+    if (fs.existsSync(path.dirname(styleDtsPath)) && !fs.existsSync(styleDtsPath)) {
+        fs.writeFileSync(
+            styleDtsPath,
+            'declare const style_default: string;\nexport default style_default;\n',
+            'utf8'
+        );
+        patched++;
+    }
 }
 
 if (patched > 0) {

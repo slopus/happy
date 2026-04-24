@@ -392,6 +392,9 @@ importers:
       '@more-tech/react-native-libsodium':
         specifier: ^1.5.5
         version: 1.5.6(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
+      '@paralleldrive/cuid2':
+        specifier: ^2.3.1
+        version: 2.3.1
       '@peoplesgrocers/seti-ui-file-icons':
         specifier: 1.11.3
         version: 1.11.3
@@ -419,6 +422,9 @@ importers:
       '@react-navigation/native':
         specifier: ^7.2.0
         version: 7.2.0(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
+      '@react-navigation/native-stack':
+        specifier: ^7.14.7
+        version: 7.14.7(@react-native-masked-view/masked-view@0.3.2(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0))(@react-navigation/native@7.2.0(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0))(react-native-safe-area-context@5.7.0(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0))(react-native-screens@4.22.0(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0))(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
       '@revenuecat/purchases-js':
         specifier: ^1.24.3
         version: 1.28.0
@@ -431,6 +437,9 @@ importers:
       '@slopus/happy-wire':
         specifier: workspace:*
         version: link:../happy-wire
+      '@tauri-apps/api':
+        specifier: 2.9.1
+        version: 2.9.1
       '@tauri-apps/cli':
         specifier: ^2.8.1
         version: 2.9.6
@@ -572,6 +581,9 @@ importers:
       expo-mesh-gradient:
         specifier: ~55.0.0
         version: 55.0.9(expo@55.0.8)(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
+      expo-modules-core:
+        specifier: ~55.0.17
+        version: 55.0.17(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
       expo-navigation-bar:
         specifier: ~55.0.0
         version: 55.0.9(expo@55.0.8)(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
@@ -617,6 +629,9 @@ importers:
       expo-web-browser:
         specifier: ~55.0.0
         version: 55.0.10(expo@55.0.8)(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))
+      fast-deep-equal:
+        specifier: ^3.1.3
+        version: 3.1.3
       fuse.js:
         specifier: ^7.1.0
         version: 7.1.0

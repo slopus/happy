@@ -15,108 +15,111 @@ const path = require('path');
 
 let patched = 0;
 
-// --- Fix 1: Stale Room reuse in @livekit/components-react ---
-
-// ESM bundle: room-Bb6uLxS5.mjs
-// Variables: e=token, r=passedRoom, t=options, T=roomOptionsStringifyReplacer
-const esmFile = path.resolve(
-    __dirname,
-    '..',
-    'node_modules/@livekit/components-react/dist/room-Bb6uLxS5.mjs'
-);
-if (fs.existsSync(esmFile)) {
-    let content = fs.readFileSync(esmFile, 'utf8');
-    const original = content;
-    content = content.replace(
-        /O\(r \?\? new U\(t\)\);\s*\}, \[r, JSON\.stringify\(t, T\)\]\)/,
-        'O(r ?? new U(t));\n  }, [r, JSON.stringify(t, T), e])'
-    );
-    if (content !== original) {
-        fs.writeFileSync(esmFile, content, 'utf8');
-        patched++;
-    }
-}
-
-// CJS bundle: shared-BGiZtWPs.js
-// Variables: t=token, f=passedRoom, s=options, M.roomOptionsStringifyReplacer
-const cjsFile = path.resolve(
-    __dirname,
-    '..',
-    'node_modules/@livekit/components-react/dist/shared-BGiZtWPs.js'
-);
-if (fs.existsSync(cjsFile)) {
-    let content = fs.readFileSync(cjsFile, 'utf8');
-    const original = content;
-    content = content.replace(
-        /I\(f\?\?new d\.Room\(s\)\)\}\,\[f,JSON\.stringify\(s,M\.roomOptionsStringifyReplacer\)\]\)/,
-        'I(f??new d.Room(s))},[f,JSON.stringify(s,M.roomOptionsStringifyReplacer),t])'
-    );
-    if (content !== original) {
-        fs.writeFileSync(cjsFile, content, 'utf8');
-        patched++;
-    }
-}
-
-// Source file (Metro may resolve from src/)
-const srcFile = path.resolve(
-    __dirname,
-    '..',
-    'node_modules/@livekit/components-react/src/hooks/useLiveKitRoom.ts'
-);
-if (fs.existsSync(srcFile)) {
-    let content = fs.readFileSync(srcFile, 'utf8');
-    const original = content;
-    content = content.replace(
-        '}, [passedRoom, JSON.stringify(options, roomOptionsStringifyReplacer)]);',
-        '}, [passedRoom, JSON.stringify(options, roomOptionsStringifyReplacer), token]);'
-    );
-    if (content !== original) {
-        fs.writeFileSync(srcFile, content, 'utf8');
-        patched++;
-    }
-}
-
-// --- Fix 2: Force v0 RTC path in @elevenlabs/react-native LiveKitRoomWrapper ---
-// Add singlePeerConnection: false to options so LiveKit skips the /rtc/v1 path
-// that returns 404 on ElevenLabs' server.
-
-const elNativeFiles = [
-    'node_modules/@elevenlabs/react-native/dist/lib.js',
-    'node_modules/@elevenlabs/react-native/dist/lib.module.js',
+const nodeModulesRoots = [
+    path.resolve(__dirname, '..', 'node_modules'),
+    path.resolve(__dirname, '..', 'packages/happy-app/node_modules'),
 ];
 
-for (const file of elNativeFiles) {
-    const filePath = path.resolve(__dirname, '..', file);
-    if (!fs.existsSync(filePath)) continue;
+// --- Fix 1: Stale Room reuse in @livekit/components-react ---
 
-    let content = fs.readFileSync(filePath, 'utf8');
-    const original = content;
-    content = content.replace(
-        /options:\{adaptiveStream:\{pixelDensity:"screen"\}\}/g,
-        'options:{adaptiveStream:{pixelDensity:"screen"},singlePeerConnection:false}'
+for (const nodeModulesRoot of nodeModulesRoots) {
+    // ESM bundle: room-Bb6uLxS5.mjs
+    // Variables: e=token, r=passedRoom, t=options, T=roomOptionsStringifyReplacer
+    const esmFile = path.join(
+        nodeModulesRoot,
+        '@livekit/components-react/dist/room-Bb6uLxS5.mjs'
     );
-    if (content !== original) {
-        fs.writeFileSync(filePath, content, 'utf8');
-        patched++;
+    if (fs.existsSync(esmFile)) {
+        let content = fs.readFileSync(esmFile, 'utf8');
+        const original = content;
+        content = content.replace(
+            /O\(r \?\? new U\(t\)\);\s*\}, \[r, JSON\.stringify\(t, T\)\]\)/,
+            'O(r ?? new U(t));\n  }, [r, JSON.stringify(t, T), e])'
+        );
+        if (content !== original) {
+            fs.writeFileSync(esmFile, content, 'utf8');
+            patched++;
+        }
     }
-}
 
-// Also patch the source file
-const elNativeSrc = path.resolve(
-    __dirname,
-    '..',
-    'node_modules/@elevenlabs/react-native/src/components/LiveKitRoomWrapper.tsx'
-);
-if (fs.existsSync(elNativeSrc)) {
-    let content = fs.readFileSync(elNativeSrc, 'utf8');
-    const original = content;
-    content = content.replace(
-        "adaptiveStream: { pixelDensity: 'screen' },",
-        "adaptiveStream: { pixelDensity: 'screen' },\n        singlePeerConnection: false,"
+    // CJS bundle: shared-BGiZtWPs.js
+    // Variables: t=token, f=passedRoom, s=options, M.roomOptionsStringifyReplacer
+    const cjsFile = path.join(
+        nodeModulesRoot,
+        '@livekit/components-react/dist/shared-BGiZtWPs.js'
     );
-    if (content !== original) {
-        fs.writeFileSync(elNativeSrc, content, 'utf8');
-        patched++;
+    if (fs.existsSync(cjsFile)) {
+        let content = fs.readFileSync(cjsFile, 'utf8');
+        const original = content;
+        content = content.replace(
+            /I\(f\?\?new d\.Room\(s\)\)\}\,\[f,JSON\.stringify\(s,M\.roomOptionsStringifyReplacer\)\]\)/,
+            'I(f??new d.Room(s))},[f,JSON.stringify(s,M.roomOptionsStringifyReplacer),t])'
+        );
+        if (content !== original) {
+            fs.writeFileSync(cjsFile, content, 'utf8');
+            patched++;
+        }
+    }
+
+    // Source file (Metro may resolve from src/)
+    const srcFile = path.join(
+        nodeModulesRoot,
+        '@livekit/components-react/src/hooks/useLiveKitRoom.ts'
+    );
+    if (fs.existsSync(srcFile)) {
+        let content = fs.readFileSync(srcFile, 'utf8');
+        const original = content;
+        content = content.replace(
+            '}, [passedRoom, JSON.stringify(options, roomOptionsStringifyReplacer)]);',
+            '}, [passedRoom, JSON.stringify(options, roomOptionsStringifyReplacer), token]);'
+        );
+        if (content !== original) {
+            fs.writeFileSync(srcFile, content, 'utf8');
+            patched++;
+        }
+    }
+
+    // --- Fix 2: Force v0 RTC path in @elevenlabs/react-native LiveKitRoomWrapper ---
+    // Add singlePeerConnection: false to options so LiveKit skips the /rtc/v1 path
+    // that returns 404 on ElevenLabs' server.
+
+    const elNativeFiles = [
+        '@elevenlabs/react-native/dist/lib.js',
+        '@elevenlabs/react-native/dist/lib.module.js',
+    ];
+
+    for (const file of elNativeFiles) {
+        const filePath = path.join(nodeModulesRoot, file);
+        if (!fs.existsSync(filePath)) continue;
+
+        let content = fs.readFileSync(filePath, 'utf8');
+        const original = content;
+        content = content.replace(
+            /options:\{adaptiveStream:\{pixelDensity:"screen"\}\}/g,
+            'options:{adaptiveStream:{pixelDensity:"screen"},singlePeerConnection:false}'
+        );
+        if (content !== original) {
+            fs.writeFileSync(filePath, content, 'utf8');
+            patched++;
+        }
+    }
+
+    // Also patch the source file
+    const elNativeSrc = path.join(
+        nodeModulesRoot,
+        '@elevenlabs/react-native/src/components/LiveKitRoomWrapper.tsx'
+    );
+    if (fs.existsSync(elNativeSrc)) {
+        let content = fs.readFileSync(elNativeSrc, 'utf8');
+        const original = content;
+        content = content.replace(
+            "adaptiveStream: { pixelDensity: 'screen' },",
+            "adaptiveStream: { pixelDensity: 'screen' },\n        singlePeerConnection: false,"
+        );
+        if (content !== original) {
+            fs.writeFileSync(elNativeSrc, content, 'utf8');
+            patched++;
+        }
     }
 }
 

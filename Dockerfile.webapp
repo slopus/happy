@@ -9,20 +9,21 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY scripts ./scripts
 COPY patches ./patches
 
-RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-wire
+RUN mkdir -p packages/happy-app packages/happy-wire
 
 COPY packages/happy-app/package.json packages/happy-app/
-COPY packages/happy-server/package.json packages/happy-server/
-COPY packages/happy-cli/package.json packages/happy-cli/
 COPY packages/happy-wire/package.json packages/happy-wire/
 
 # Workspace postinstall requirements
 COPY packages/happy-app/patches packages/happy-app/patches
-COPY packages/happy-server/prisma packages/happy-server/prisma
-COPY packages/happy-cli/scripts packages/happy-cli/scripts
-COPY packages/happy-cli/tools packages/happy-cli/tools
 
-RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile
+# The repo defaults to a hoisted linker for local development. Keep this Docker
+# install isolated so unrelated workspace native deps do not get built here.
+RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install \
+    --frozen-lockfile \
+    --filter happy-app... \
+    --config.node-linker=isolated \
+    --config.shamefully-hoist=false
 
 # Stage 2: build the web app
 FROM deps AS builder
