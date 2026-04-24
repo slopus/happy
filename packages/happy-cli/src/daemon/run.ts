@@ -848,17 +848,20 @@ export async function startDaemon(): Promise<void> {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would
         // ask the OS to start the latest daemon instead of hand-rolling respawn/kill behavior here.
-        logger.debug('[DAEMON RUN] Daemon is outdated, triggering self-restart with latest version, clearing heartbeat interval');
+        logger.debug('[DAEMON RUN] Daemon bundle replaced on disk, handing off to new daemon');
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
 
-        // Spawn new daemon through the CLI
-        // We do not need to clean ourselves up - we will be killed by
-        // the CLI start command.
-        // 1. It will first check if daemon is running (yes in this case)
-        // 2. If the version is stale (it will read daemon.state.json file and check startedWithCliVersion) & compare it to its own version
-        // 3. Next it will start a new daemon with the latest version with daemon-sync :D
-        // Done!
+        // Release ownership BEFORE spawning the new daemon. Otherwise the spawned
+        // `happy daemon start` reads our still-present daemon.state.json, sees
+        // isDaemonRunningCurrentlyInstalledHappyVersion() === true, and exits —
+        // leaving nothing running once we also exit.
+        apiMachine.shutdown();
+        await stopControlServer();
+        await cleanupDaemonState();
+        await releaseDaemonLock(daemonLockHandle);
+        await stopCaffeinate();
+
         try {
           spawnHappyCLI(['daemon', 'start'], {
             detached: true,
@@ -868,9 +871,6 @@ export async function startDaemon(): Promise<void> {
           logger.debug('[DAEMON RUN] Failed to spawn new daemon, this is quite likely to happen during integration tests as we are cleaning out dist/ directory', error);
         }
 
-        // So we can just hang forever
-        logger.debug('[DAEMON RUN] Hanging for a bit - waiting for CLI to kill us because we are running outdated version of the code');
-        await new Promise(resolve => setTimeout(resolve, 10_000));
         process.exit(0);
       }
 
