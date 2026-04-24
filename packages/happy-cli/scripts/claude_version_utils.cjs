@@ -469,10 +469,16 @@ function findGlobalClaudeCliPath() {
  */
 function getVersion(cliPath) {
     try {
-        const pkgPath = path.join(path.dirname(cliPath), 'package.json');
-        if (fs.existsSync(pkgPath)) {
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-            return pkg.version;
+        let pkgDir = path.dirname(cliPath);
+        const pkgPath = path.join(pkgDir, 'package.json');
+        // When entrypoint is in a subdirectory (e.g. bin/claude.exe), look one level up
+        if (!fs.existsSync(pkgPath)) {
+            pkgDir = path.dirname(pkgDir);
+        }
+        const parentPkgPath = path.join(pkgDir, 'package.json');
+        if (fs.existsSync(parentPkgPath)) {
+            const pkg = JSON.parse(fs.readFileSync(parentPkgPath, 'utf8'));
+            return pkg.version || null;
         }
     } catch (e) {}
     return null;
@@ -555,6 +561,7 @@ function runClaudeCli(cliPath) {
 }
 
 module.exports = {
+    resolveClaudeEntrypoint,
     findGlobalClaudeCliPath,
     findClaudeInPath,
     detectSourceFromPath,
