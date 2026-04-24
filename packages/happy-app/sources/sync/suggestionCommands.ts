@@ -31,7 +31,6 @@ export const IGNORED_COMMANDS = [
     "ide",
     "init",
     "install-github-app",
-    "mcp",
     "memory",
     "migrate-installer",
     "model",
@@ -55,7 +54,9 @@ export const IGNORED_COMMANDS = [
 // Default commands always available
 const DEFAULT_COMMANDS: CommandItem[] = [
     { command: 'compact', description: 'Compact the conversation history' },
-    { command: 'clear', description: 'Clear the conversation' }
+    { command: 'clear', description: 'Clear the conversation' },
+    { command: 'mcp', description: 'Show connected MCP servers' },
+    { command: 'skills', description: 'Show available skills' },
 ];
 
 // Command descriptions for known tools/commands

@@ -6,9 +6,6 @@
 import { logger } from '@/ui/logger';
 import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
-import { projectPath } from '@/projectPath';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import { configuration } from '@/configuration';
 
 async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
@@ -59,14 +56,38 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
   }
 }
 
+const SESSION_STARTED_RETRY_TIMEOUT_MS = 3000;
+const SESSION_STARTED_RETRY_INTERVAL_MS = 100;
+
 export async function notifyDaemonSessionStarted(
   sessionId: string,
-  metadata: Metadata
+  metadata: Metadata,
+  encryption?: {
+    encryptionKey: string;
+    encryptionVariant: 'legacy' | 'dataKey';
+    seq: number;
+    metadataVersion: number;
+    agentStateVersion: number;
+  }
 ): Promise<{ error?: string } | any> {
-  return await daemonPost('/session-started', {
-    sessionId,
-    metadata
-  });
+  // Retry briefly — ensureDaemonRunning already waits for readiness, but we may
+  // race a daemon that is mid-restart (version upgrade, crash recovery). Without
+  // this, the session's encryption data never reaches the daemon and the mobile
+  // app's resume-happy-session RPC fails with "not tracked by this daemon".
+  const payload = { sessionId, metadata, encryption };
+  const deadline = Date.now() + SESSION_STARTED_RETRY_TIMEOUT_MS;
+  let result: { error?: string } | any;
+
+  while (true) {
+    result = await daemonPost('/session-started', payload);
+    if (!result?.error) {
+      return result;
+    }
+    if (Date.now() >= deadline) {
+      return result;
+    }
+    await new Promise(resolve => setTimeout(resolve, SESSION_STARTED_RETRY_INTERVAL_MS));
+  }
 }
 
 export async function listDaemonSessions(): Promise<any[]> {
@@ -175,35 +196,23 @@ export async function isDaemonRunningCurrentlyInstalledHappyVersion(): Promise<b
     return false;
   }
   
-  try {
-    // Read package.json on demand from disk - so we are guaranteed to get the latest version
-    const packageJsonPath = join(projectPath(), 'package.json');
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-    const currentCliVersion = packageJson.version;
-    
-    logger.debug(`[DAEMON CONTROL] Current CLI version: ${currentCliVersion}, Daemon started with version: ${state.startedWithCliVersion}`);
-    return currentCliVersion === state.startedWithCliVersion;
-    
-    // PREVIOUS IMPLEMENTATION - Keeping this commented in case we need it
-    // Kirill does not understand how the upgrade of npm packages happen and whether 
-    // we will get a new path or not when happy is upgraded globally.
-    // If reading package.json doesn't work correctly after npm upgrades, 
-    // we can revert to spawning a process (but should add timeout and cleanup!)
-    /*
-    const { spawnHappyCLI } = await import('@/utils/spawnHappyCLI');
-    const happyProcess = spawnHappyCLI(['--version'], { stdio: 'pipe' });
-    let version: string | null = null;
-    happyProcess.stdout?.on('data', (data) => {
-      version = data.toString().trim();
-    });
-    await new Promise(resolve => happyProcess.stdout?.on('close', resolve));
-    logger.debug(`[DAEMON CONTROL] Current CLI version: ${version}, Daemon started with version: ${state.startedWithCliVersion}`);
-    return version === state.startedWithCliVersion;
-    */
-  } catch (error) {
-    logger.debug('[DAEMON CONTROL] Error checking daemon version', error);
-    return false;
-  }
+  // Compare the running daemon's recorded version against THIS CLI invocation's
+  // bundled version. Both are read from the same source of truth: the `version`
+  // field baked into `dist/` at build time via `import packageJson from '../package.json'`.
+  //
+  // Previously we read `package.json` fresh from disk on every check, but that
+  // produced infinite restart loops (#1107) when `package.json.version` diverged
+  // from the bundled version — e.g. when `happy-coder@0.13.1` was published as
+  // a deprecation stub that bumped the manifest without rebuilding `dist/`.
+  // The daemon would write its bundled version (0.13.0), read 0.13.1 from disk,
+  // detect a mismatch, self-restart, and the new daemon would repeat the cycle.
+  //
+  // Using `configuration.currentCliVersion` instead guarantees the writer and
+  // reader agree whenever they're executing the same `dist/` bundle, and still
+  // correctly detects real npm upgrades (the new bundle has a new baked version).
+  const currentCliVersion = configuration.currentCliVersion;
+  logger.debug(`[DAEMON CONTROL] Current CLI version: ${currentCliVersion}, Daemon started with version: ${state.startedWithCliVersion}`);
+  return currentCliVersion === state.startedWithCliVersion;
 }
 
 export async function cleanupDaemonState(): Promise<void> {

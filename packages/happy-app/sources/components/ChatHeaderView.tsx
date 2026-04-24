@@ -27,6 +27,8 @@ interface ChatHeaderViewProps {
     avatarMenuSession?: Session | null;
     onAfterAvatarArchive?: () => void;
     onAfterAvatarDelete?: () => void;
+    onSidebarTogglePress?: () => void;
+    sidebarCollapsed?: boolean;
 }
 
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
@@ -42,6 +44,8 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     avatarMenuSession,
     onAfterAvatarArchive,
     onAfterAvatarDelete,
+    onSidebarTogglePress,
+    sidebarCollapsed,
 }) => {
     const { theme } = useUnistyles();
     const navigation = useNavigation();
@@ -196,6 +200,21 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             )}
                         </View>
                     )}
+
+                    {onSidebarTogglePress && (
+                        <Pressable
+                            onPress={onSidebarTogglePress}
+                            hitSlop={10}
+                            style={styles.sidebarToggleButton}
+                            accessibilityLabel={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                        >
+                            <Ionicons
+                                name={sidebarCollapsed ? 'albums-outline' : 'albums'}
+                                size={22}
+                                color={theme.colors.header.tint}
+                            />
+                        </Pressable>
+                    )}
                 </View>
             </View>
         </View>
@@ -242,7 +261,6 @@ const styles = StyleSheet.create({
         lineHeight: 14,
     },
     avatarButtonSlot: {
-        marginRight: Platform.select({ ios: -8, default: -8 }),
         overflow: 'visible',
     },
     avatarButton: {
@@ -250,5 +268,12 @@ const styles = StyleSheet.create({
         height: 44,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    sidebarToggleButton: {
+        width: 36,
+        height: 36,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: Platform.select({ ios: -8, default: -8 }),
     },
 });

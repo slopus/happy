@@ -172,6 +172,12 @@ export const zhHans: TranslationStructure = {
         showLineNumbersInToolViewsDescription: '在工具视图差异中显示行号',
         wrapLinesInDiffs: '在差异中换行',
         wrapLinesInDiffsDescription: '在差异视图中换行显示长行而不是水平滚动',
+        diffStyle: '差异视图',
+        diffStyleDescription: '以单列（unified）或并排（split）显示差异。split 视图仅在 Web 上可用。',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: '始终显示上下文大小',
         alwaysShowContextSizeDescription: '即使未接近限制时也显示上下文使用情况',
         avatarStyle: '头像风格',
@@ -183,8 +189,6 @@ export const zhHans: TranslationStructure = {
         },
         showFlavorIcons: '显示 AI 提供商图标',
         showFlavorIconsDescription: '在会话头像上显示 AI 提供商图标',
-        compactSessionView: '紧凑会话视图',
-        compactSessionViewDescription: '以更紧凑的布局显示活跃会话',
     },
 
     settingsFeatures: {
@@ -206,6 +210,11 @@ export const zhHans: TranslationStructure = {
         markdownCopyV2Subtitle: '长按打开复制模态框',
         hideInactiveSessions: '隐藏非活跃会话',
         hideInactiveSessionsSubtitle: '仅在列表中显示活跃的聊天',
+        privacy: '隐私',
+        privacyDescription: '完全禁用所有分析和遥测。不会向 PostHog 或任何其他跟踪服务发送数据。',
+        disableAnalytics: '禁用分析',
+        analyticsDisabled: '所有跟踪和遥测已禁用',
+        analyticsEnabled: '匿名使用分析已启用',
     },
 
     errors: {
@@ -531,6 +540,7 @@ export const zhHans: TranslationStructure = {
     },
 
     files: {
+        changes: '更改',
         searchPlaceholder: '搜索文件...',
         detachedHead: '游离 HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} 已暂存 • ${unstaged} 未暂存`,
@@ -552,6 +562,8 @@ export const zhHans: TranslationStructure = {
         file: '文件',
         fileEmpty: '文件为空',
         noChanges: '没有要显示的更改',
+        noChangesTitle: '没有更改',
+        noChangesSubtitle: '工作区是干净的',
         deleted: '已删除',
     },
 

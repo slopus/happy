@@ -26,6 +26,8 @@ import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
+import { decodeBase64, encodeBase64 } from '@/api/encryption';
+import type { Session as ApiSession } from '@/api/types';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -114,7 +116,31 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
     };
-    const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+
+    // Check for session reconnection env vars (set by daemon for resume-in-place)
+    const reconnectSessionId = process.env.HAPPY_RECONNECT_SESSION_ID;
+    const reconnectKeyBase64 = process.env.HAPPY_RECONNECT_ENCRYPTION_KEY;
+    const reconnectVariant = process.env.HAPPY_RECONNECT_ENCRYPTION_VARIANT as 'legacy' | 'dataKey' | undefined;
+    const reconnectSeq = process.env.HAPPY_RECONNECT_SEQ;
+    const reconnectMetadataVersion = process.env.HAPPY_RECONNECT_METADATA_VERSION;
+    const reconnectAgentStateVersion = process.env.HAPPY_RECONNECT_AGENT_STATE_VERSION;
+
+    let response: ApiSession | null;
+    if (reconnectSessionId && reconnectKeyBase64 && reconnectVariant) {
+        logger.debug(`[START] Reconnecting to existing session ${reconnectSessionId}`);
+        response = {
+            id: reconnectSessionId,
+            seq: parseInt(reconnectSeq || '0', 10),
+            encryptionKey: decodeBase64(reconnectKeyBase64),
+            encryptionVariant: reconnectVariant,
+            metadata,
+            metadataVersion: parseInt(reconnectMetadataVersion || '0', 10),
+            agentState: state,
+            agentStateVersion: parseInt(reconnectAgentStateVersion || '0', 10),
+        };
+    } else {
+        response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+    }
 
     // Handle server unreachable case - run Claude locally with hot reconnection
     // Note: connectionState.notifyOffline() was already called by api.ts with error details
@@ -165,7 +191,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Always report to daemon if it exists
     try {
         logger.debug(`[START] Reporting session ${response.id} to daemon`);
-        const result = await notifyDaemonSessionStarted(response.id, metadata);
+        const result = await notifyDaemonSessionStarted(response.id, metadata, {
+            encryptionKey: encodeBase64(response.encryptionKey),
+            encryptionVariant: response.encryptionVariant,
+            seq: response.seq,
+            metadataVersion: response.metadataVersion,
+            agentStateVersion: response.agentStateVersion,
+        });
         if (result.error) {
             logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
         } else {
@@ -180,6 +212,17 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Create realtime session
     const session = api.sessionSyncClient(response);
+
+    // On reconnect, un-archive the session and skip replaying old messages.
+    if (reconnectSessionId) {
+        session.suppressNextArchiveSignal();
+        session.skipExistingMessages();
+        session.updateMetadata((meta) => ({
+            ...meta,
+            lifecycleState: 'running',
+            archivedBy: undefined,
+        }));
+    }
 
     // Start Happy MCP server
     const happyServer = await startHappyServer(session);
@@ -241,6 +284,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
+    let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
     // Exit when session is archived from web/mobile
     session.on('archived', () => {
         logger.debug('[loop] Session archived from web/mobile, cleaning up...');
@@ -354,6 +398,48 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             return;
         }
 
+        if (specialCommand.type === 'mcp' || specialCommand.type === 'skills') {
+            // In local mode, let Claude Code handle these commands natively
+            if (currentRunMode === 'local') {
+                logger.debug(`[start] /${specialCommand.type} in local mode — passing through to Claude Code`);
+            } else {
+                logger.debug(`[start] Detected /${specialCommand.type} command in remote mode`);
+                const metadata = session.getMetadata();
+                let responseText: string;
+
+                if (specialCommand.type === 'mcp') {
+                    const servers = metadata?.mcpServers;
+                    if (servers && servers.length > 0) {
+                        responseText = '**MCP Servers**\n\n' + servers.map(s => `- **${s.name}** — ${s.status}`).join('\n');
+                    } else {
+                        responseText = 'No MCP servers configured. Session may still be initializing — try again after sending a message.';
+                    }
+                } else {
+                    const skills = metadata?.skills ?? metadata?.slashCommands;
+                    if (skills && skills.length > 0) {
+                        responseText = '**Available Skills**\n\n' + skills.map(s => `- /${s}`).join('\n');
+                    } else {
+                        responseText = 'No skills available. Session may still be initializing — try again after sending a message.';
+                    }
+                }
+
+                session.sendClaudeSessionMessage({
+                    type: 'assistant',
+                    uuid: randomUUID(),
+                    parentUuid: null,
+                    isSidechain: false,
+                    sessionId: session.sessionId || 'unknown',
+                    timestamp: new Date().toISOString(),
+                    message: {
+                        role: 'assistant',
+                        model: 'system',
+                        content: [{ type: 'text', text: responseText }],
+                    },
+                } as any);
+                return;
+            }
+        }
+
         // Push with resolved permission mode, model, system prompts, and tools
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode || 'default',
@@ -434,6 +520,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         api,
         allowedTools: happyServer.toolNames.map(toolName => `mcp__happy__${toolName}`),
         onModeChange: (newMode) => {
+            currentRunMode = newMode;
             session.sendSessionEvent({ type: 'switch', mode: newMode });
             session.updateAgentState((currentState) => ({
                 ...currentState,

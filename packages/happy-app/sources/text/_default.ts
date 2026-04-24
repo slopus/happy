@@ -169,6 +169,12 @@ export const en = {
         showLineNumbersInToolViewsDescription: 'Display line numbers in tool view diffs',
         wrapLinesInDiffs: 'Wrap Lines in Diffs',
         wrapLinesInDiffsDescription: 'Wrap long lines instead of horizontal scrolling in diff views',
+        diffStyle: 'Diff View',
+        diffStyleDescription: 'Show diffs as a single column (unified) or side-by-side (split). Split view is web-only.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Always Show Context Size',
         alwaysShowContextSizeDescription: 'Display context usage even when not near limit',
         avatarStyle: 'Avatar Style',
@@ -180,8 +186,6 @@ export const en = {
         },
         showFlavorIcons: 'Show AI Provider Icons',
         showFlavorIconsDescription: 'Display AI provider icons on session avatars',
-        compactSessionView: 'Compact Session View',
-        compactSessionViewDescription: 'Show active sessions in a more compact layout',
     },
 
     settingsFeatures: {
@@ -203,6 +207,11 @@ export const en = {
         markdownCopyV2Subtitle: 'Long press opens copy modal',
         hideInactiveSessions: 'Hide inactive sessions',
         hideInactiveSessionsSubtitle: 'Show only active chats in your list',
+        privacy: 'Privacy',
+        privacyDescription: 'Completely disables all analytics and telemetry. No data will be sent to PostHog or any other tracking service.',
+        disableAnalytics: 'Disable Analytics',
+        analyticsDisabled: 'All tracking and telemetry disabled',
+        analyticsEnabled: 'Anonymous usage analytics active',
     },
 
     errors: {
@@ -528,6 +537,7 @@ export const en = {
     },
 
     files: {
+        changes: 'Changes',
         searchPlaceholder: 'Search files...',
         detachedHead: 'detached HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} staged • ${unstaged} unstaged`,
@@ -549,6 +559,8 @@ export const en = {
         file: 'File',
         fileEmpty: 'File is empty',
         noChanges: 'No changes to display',
+        noChangesTitle: 'No changes',
+        noChangesSubtitle: 'Working tree is clean',
         deleted: 'Deleted',
     },
 

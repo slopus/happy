@@ -6,10 +6,8 @@ import { SessionListViewItem, SessionRowData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
-import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSetting } from '@/sync/storage';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
@@ -198,7 +196,6 @@ export function SessionsList() {
     const data = useVisibleSessionListViewData();
     const pathname = usePathname();
     const isTablet = useIsTablet();
-    const compactSessionView = useSetting('compactSessionView');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const toggleArchived = React.useCallback(() => {
         setHideInactiveSessions(!hideInactiveSessions);
@@ -265,9 +262,8 @@ export function SessionsList() {
                     selectedId = parts[2]; // parts[0] is empty, parts[1] is 'session', parts[2] is the ID
                 }
 
-                const ActiveComponent = compactSessionView ? ActiveSessionsGroupCompact : ActiveSessionsGroup;
                 return (
-                    <ActiveComponent
+                    <ActiveSessionsGroupCompact
                         sessions={item.sessions}
                         selectedSessionId={selectedId}
                     />
@@ -304,7 +300,7 @@ export function SessionsList() {
                     />
                 );
         }
-    }, [pathname, dataWithSelected, compactSessionView, toggleArchived]);
+    }, [pathname, dataWithSelected, toggleArchived]);
 
 
     // Remove this section as we'll use FlatList for all items now

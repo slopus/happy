@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn as crossSpawn } from "cross-spawn";
 import { resolve, join } from "node:path";
 import { createInterface } from "node:readline";
 import { mkdirSync, existsSync } from "node:fs";
@@ -288,7 +288,9 @@ export async function claudeLocal(opts: {
                     }
                 }
 
-                const child = spawn(
+                // Use cross-spawn so `node` resolves to `node.exe` on Windows
+                // (issue #1082 — same root cause as #1022 at a different site).
+                const child = crossSpawn(
                     spawnWithShell && spawnCommand ? spawnCommand : 'node',
                     spawnWithShell ? [] : spawnArgs,
                     {

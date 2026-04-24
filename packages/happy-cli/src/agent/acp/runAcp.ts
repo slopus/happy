@@ -15,6 +15,7 @@ import { initialMachineMetadata } from '@/daemon/run';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
+import { encodeBase64 } from '@/api/encryption';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { projectPath } from '@/projectPath';
@@ -498,7 +499,13 @@ export async function runAcp(opts: {
 
   if (response) {
     try {
-      await notifyDaemonSessionStarted(response.id, metadata);
+      await notifyDaemonSessionStarted(response.id, metadata, {
+        encryptionKey: encodeBase64(response.encryptionKey),
+        encryptionVariant: response.encryptionVariant,
+        seq: response.seq,
+        metadataVersion: response.metadataVersion,
+        agentStateVersion: response.agentStateVersion,
+      });
     } catch (error) {
       logger.debug('[acp] Failed to report session to daemon:', error);
     }

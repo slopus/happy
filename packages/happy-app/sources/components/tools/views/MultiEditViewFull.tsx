@@ -1,13 +1,12 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { ToolCall } from '@/sync/typesMessage';
 import { Metadata } from '@/sync/storageTypes';
 import { knownTools } from '@/components/tools/knownTools';
 import { toolFullViewStyles } from '../ToolFullView';
-import { DiffView } from '@/components/diff/DiffView';
+import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { trimIdent } from '@/utils/trimIdent';
 import { t } from '@/text';
-import { useSetting } from '@/sync/storage';
 
 interface MultiEditViewFullProps {
     tool: ToolCall;
@@ -16,11 +15,9 @@ interface MultiEditViewFullProps {
 
 export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, metadata }) => {
     const { input } = tool;
-    const wrapLinesInDiffs = useSetting('wrapLinesInDiffs');
 
-    // Parse the input
     let edits: Array<{ old_string: string; new_string: string; replace_all?: boolean }> = [];
-    
+
     const parsed = knownTools.MultiEdit.input.safeParse(input);
     if (parsed.success && parsed.data.edits) {
         edits = parsed.data.edits;
@@ -30,12 +27,11 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
         return null;
     }
 
-    const content = (
-        <View style={{ flex: 1 }}>
+    return (
+        <View style={toolFullViewStyles.sectionFullWidth}>
             {edits.map((edit, index) => {
                 const oldString = trimIdent(edit.old_string || '');
                 const newString = trimIdent(edit.new_string || '');
-                
                 return (
                     <View key={index}>
                         <View style={styles.editHeader}>
@@ -48,41 +44,11 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
                                 </View>
                             )}
                         </View>
-                        <DiffView 
-                            oldText={oldString} 
-                            newText={newString} 
-                            wrapLines={wrapLinesInDiffs}
-                            showLineNumbers={true}
-                            showPlusMinusSymbols={true}
-                        />
+                        <ToolDiffView oldText={oldString} newText={newString} showLineNumbers />
                         {index < edits.length - 1 && <View style={styles.separator} />}
                     </View>
                 );
             })}
-        </View>
-    );
-
-    if (wrapLinesInDiffs) {
-        // When wrapping lines, no horizontal scroll needed
-        return (
-            <View style={toolFullViewStyles.sectionFullWidth}>
-                {content}
-            </View>
-        );
-    }
-
-    // When not wrapping, use horizontal scroll
-    return (
-        <View style={toolFullViewStyles.sectionFullWidth}>
-            <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={true}
-                showsVerticalScrollIndicator={true}
-                nestedScrollEnabled={true}
-                contentContainerStyle={{ flexGrow: 1 }}
-            >
-                {content}
-            </ScrollView>
         </View>
     );
 });

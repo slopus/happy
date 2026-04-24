@@ -159,6 +159,12 @@ export const ru: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Отображать номера строк в различиях представлений инструментов',
         wrapLinesInDiffs: 'Перенос строк в различиях',
         wrapLinesInDiffsDescription: 'Переносить длинные строки вместо горизонтальной прокрутки в представлениях различий',
+        diffStyle: 'Вид сравнения',
+        diffStyleDescription: 'Показывать различия в одну колонку (unified) или рядом (split). Режим split доступен только на web.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Всегда показывать размер контекста',
         alwaysShowContextSizeDescription: 'Отображать использование контекста даже когда не близко к лимиту',
         avatarStyle: 'Стиль аватара',
@@ -170,8 +176,6 @@ export const ru: TranslationStructure = {
         },
         showFlavorIcons: 'Показывать иконки провайдеров ИИ',
         showFlavorIconsDescription: 'Отображать иконки провайдеров ИИ на аватарах сессий',
-        compactSessionView: 'Компактный вид сессий',
-        compactSessionViewDescription: 'Отображать активные сессии в более компактном виде',
     },
 
     settingsFeatures: {
@@ -193,6 +197,11 @@ export const ru: TranslationStructure = {
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
         hideInactiveSessions: 'Скрывать неактивные сессии',
         hideInactiveSessionsSubtitle: 'Показывать в списке только активные чаты',
+        privacy: 'Конфиденциальность',
+        privacyDescription: 'Полностью отключает всю аналитику и телеметрию. Никакие данные не будут отправляться в PostHog или другие сервисы отслеживания.',
+        disableAnalytics: 'Отключить аналитику',
+        analyticsDisabled: 'Вся аналитика и телеметрия отключены',
+        analyticsEnabled: 'Анонимная аналитика использования активна',
     },
 
     errors: {
@@ -546,6 +555,7 @@ export const ru: TranslationStructure = {
     },
 
     files: {
+        changes: 'Изменения',
         searchPlaceholder: 'Поиск файлов...',
         detachedHead: 'отделённый HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} подготовлено • ${unstaged} не подготовлено`,
@@ -567,6 +577,8 @@ export const ru: TranslationStructure = {
         file: 'Файл',
         fileEmpty: 'Файл пустой',
         noChanges: 'Нет изменений для отображения',
+        noChangesTitle: 'Нет изменений',
+        noChangesSubtitle: 'Рабочее дерево чистое',
         deleted: 'Удалён',
     },
 

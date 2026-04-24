@@ -170,6 +170,12 @@ export const pt: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Exibir números de linha nos diffs das visualizações de ferramentas',
         wrapLinesInDiffs: 'Quebrar linhas nos diffs',
         wrapLinesInDiffsDescription: 'Quebrar linhas longas ao invés de rolagem horizontal nas visualizações de diffs',
+        diffStyle: 'Visualização do diff',
+        diffStyleDescription: 'Mostrar diffs em uma única coluna (unified) ou lado a lado (split). A visualização split funciona apenas na web.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Sempre mostrar tamanho do contexto',
         alwaysShowContextSizeDescription: 'Exibir uso do contexto mesmo quando não estiver próximo do limite',
         avatarStyle: 'Estilo do avatar',
@@ -181,8 +187,6 @@ export const pt: TranslationStructure = {
         },
         showFlavorIcons: 'Mostrar ícones de provedores de IA',
         showFlavorIconsDescription: 'Exibir ícones do provedor de IA nos avatares de sessão',
-        compactSessionView: 'Visualização compacta de sessões',
-        compactSessionViewDescription: 'Mostrar sessões ativas em um layout mais compacto',
     },
 
     settingsFeatures: {
@@ -204,6 +208,11 @@ export const pt: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pressione e segure para abrir modal de cópia',
         hideInactiveSessions: 'Ocultar sessões inativas',
         hideInactiveSessionsSubtitle: 'Mostre apenas os chats ativos na sua lista',
+        privacy: 'Privacidade',
+        privacyDescription: 'Desativa completamente toda a análise e telemetria. Nenhum dado será enviado ao PostHog ou qualquer outro serviço de rastreamento.',
+        disableAnalytics: 'Desativar análises',
+        analyticsDisabled: 'Todo rastreamento e telemetria desativados',
+        analyticsEnabled: 'Análises anônimas de uso ativas',
     },
 
     errors: {
@@ -529,6 +538,7 @@ export const pt: TranslationStructure = {
     },
 
     files: {
+        changes: 'Alterações',
         searchPlaceholder: 'Buscar arquivos...',
         detachedHead: 'HEAD desanexado',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} preparados • ${unstaged} não preparados`,
@@ -550,6 +560,8 @@ export const pt: TranslationStructure = {
         file: 'Arquivo',
         fileEmpty: 'Arquivo está vazio',
         noChanges: 'Nenhuma alteração para exibir',
+        noChangesTitle: 'Sem alterações',
+        noChangesSubtitle: 'A árvore de trabalho está limpa',
         deleted: 'Excluído',
     },
 

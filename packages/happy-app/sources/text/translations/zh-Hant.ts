@@ -171,6 +171,12 @@ export const zhHant: TranslationStructure = {
         showLineNumbersInToolViewsDescription: '在工具檢視差異中顯示行號',
         wrapLinesInDiffs: '在差異中換行',
         wrapLinesInDiffsDescription: '在差異檢視中換行顯示長行而不是水平捲動',
+        diffStyle: '差異檢視',
+        diffStyleDescription: '以單欄（unified）或並排（split）顯示差異。split 檢視僅在 Web 上可用。',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: '始終顯示上下文大小',
         alwaysShowContextSizeDescription: '即使未接近限制時也顯示上下文使用情況',
         avatarStyle: '頭像風格',
@@ -182,8 +188,6 @@ export const zhHant: TranslationStructure = {
         },
         showFlavorIcons: '顯示 AI 提供者圖示',
         showFlavorIconsDescription: '在工作階段頭像上顯示 AI 提供者圖示',
-        compactSessionView: '緊湊工作階段檢視',
-        compactSessionViewDescription: '以更緊湊的版面配置顯示活躍工作階段',
     },
 
     settingsFeatures: {
@@ -205,6 +209,11 @@ export const zhHant: TranslationStructure = {
         markdownCopyV2Subtitle: '長按開啟複製強制回應視窗',
         hideInactiveSessions: '隱藏非活躍工作階段',
         hideInactiveSessionsSubtitle: '僅在清單中顯示活躍的聊天',
+        privacy: '隱私',
+        privacyDescription: '完全停用所有分析和遙測。不會向 PostHog 或任何其他追蹤服務傳送資料。',
+        disableAnalytics: '停用分析',
+        analyticsDisabled: '所有追蹤和遙測已停用',
+        analyticsEnabled: '匿名使用分析已啟用',
     },
 
     errors: {
@@ -530,6 +539,7 @@ export const zhHant: TranslationStructure = {
     },
 
     files: {
+        changes: '變更',
         searchPlaceholder: '搜尋檔案...',
         detachedHead: '游離 HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} 已暫存 • ${unstaged} 未暫存`,
@@ -551,6 +561,8 @@ export const zhHant: TranslationStructure = {
         file: '檔案',
         fileEmpty: '檔案為空',
         noChanges: '沒有要顯示的更改',
+        noChangesTitle: '沒有變更',
+        noChangesSubtitle: '工作區是乾淨的',
         deleted: '已刪除',
     },
 

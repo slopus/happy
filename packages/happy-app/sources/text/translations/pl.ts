@@ -188,6 +188,12 @@ export const pl: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Wyświetlaj numery linii w różnicach widoków narzędzi',
         wrapLinesInDiffs: 'Zawijanie linii w różnicach',
         wrapLinesInDiffsDescription: 'Zawijaj długie linie zamiast przewijania poziomego w widokach różnic',
+        diffStyle: 'Widok różnic',
+        diffStyleDescription: 'Pokazuj różnice w jednej kolumnie (unified) lub obok siebie (split). Widok split działa tylko w przeglądarce.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Zawsze pokazuj rozmiar kontekstu',
         alwaysShowContextSizeDescription: 'Wyświetlaj użycie kontekstu nawet gdy nie jest blisko limitu',
         avatarStyle: 'Styl awatara',
@@ -199,8 +205,6 @@ export const pl: TranslationStructure = {
         },
         showFlavorIcons: 'Pokaż ikony dostawcy AI',
         showFlavorIconsDescription: 'Wyświetlaj ikony dostawcy AI na awatarach sesji',
-        compactSessionView: 'Kompaktowy widok sesji',
-        compactSessionViewDescription: 'Pokazuj aktywne sesje w bardziej zwartym układzie',
     },
 
     settingsFeatures: {
@@ -222,6 +226,11 @@ export const pl: TranslationStructure = {
         markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',
         hideInactiveSessions: 'Ukryj nieaktywne sesje',
         hideInactiveSessionsSubtitle: 'Wyświetlaj tylko aktywne czaty na liście',
+        privacy: 'Prywatność',
+        privacyDescription: 'Całkowicie wyłącza wszystkie analizy i telemetrię. Żadne dane nie będą wysyłane do PostHog ani żadnego innego serwisu śledzącego.',
+        disableAnalytics: 'Wyłącz analitykę',
+        analyticsDisabled: 'Wszystkie śledzenie i telemetria wyłączone',
+        analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
     },
 
     errors: {
@@ -546,6 +555,7 @@ export const pl: TranslationStructure = {
     },
 
     files: {
+        changes: 'Zmiany',
         searchPlaceholder: 'Wyszukaj pliki...',
         detachedHead: 'odłączony HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} przygotowanych • ${unstaged} nieprzygotowanych`,
@@ -567,6 +577,8 @@ export const pl: TranslationStructure = {
         file: 'Plik',
         fileEmpty: 'Plik jest pusty',
         noChanges: 'Brak zmian do wyświetlenia',
+        noChangesTitle: 'Brak zmian',
+        noChangesSubtitle: 'Drzewo robocze jest czyste',
         deleted: 'Usunięty',
     },
 

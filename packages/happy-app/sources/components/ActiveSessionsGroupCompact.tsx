@@ -87,8 +87,16 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRo
         router.navigate('/new');
     }, [session.machineId, session.homeDir, repoPath, isWorktree, sessionPath, draft, router]);
 
+    const [isHovered, setIsHovered] = React.useState(false);
+
     return (
-        <View style={hasBranch ? styles.sectionHeader : styles.sectionHeaderSingleLine}>
+        <View
+            style={hasBranch ? styles.sectionHeader : styles.sectionHeaderSingleLine}
+            // @ts-ignore - Web only events
+            onMouseEnter={() => setIsHovered(true)}
+            // @ts-ignore - Web only events
+            onMouseLeave={() => setIsHovered(false)}
+        >
             {/* Avatar — vertically centered */}
             <View style={styles.sectionHeaderAvatar}>
                 <Avatar id={session.avatarId} size={24} flavor={null} />
@@ -122,11 +130,11 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRo
                 )}
             </View>
 
-            {/* + button — vertically centered, large hit area */}
+            {/* + button — vertically centered, large hit area; desktop: hover-only */}
             <Pressable
                 onPress={handleAdd}
                 hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                style={styles.addButton}
+                style={[styles.addButton, { opacity: Platform.OS !== 'web' || isHovered ? 1 : 0 }]}
             >
                 <Ionicons name="add-outline" size={14} color={theme.colors.textSecondary} />
             </Pressable>

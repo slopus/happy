@@ -171,6 +171,12 @@ export const ca: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Mostra els números de línia a les diferències de vistes d\'eines',
         wrapLinesInDiffs: 'Ajusta les línies a les diferències',
         wrapLinesInDiffsDescription: 'Ajusta les línies llargues en lloc de desplaçament horitzontal a les vistes de diferències',
+        diffStyle: 'Vista de diferències',
+        diffStyleDescription: 'Mostra les diferències en una sola columna (unified) o una al costat de l\'altra (split). La vista split només funciona al web.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Mostra sempre la mida del context',
         alwaysShowContextSizeDescription: 'Mostra l\'ús del context fins i tot quan no estigui prop del límit',
         avatarStyle: 'Estil d\'avatar',
@@ -182,8 +188,6 @@ export const ca: TranslationStructure = {
         },
         showFlavorIcons: "Mostrar icones de proveïdors d'IA",
         showFlavorIconsDescription: "Mostrar icones del proveïdor d'IA als avatars de sessió",
-        compactSessionView: 'Vista compacta de sessions',
-        compactSessionViewDescription: 'Mostra les sessions actives en un disseny més compacte',
     },
 
     settingsFeatures: {
@@ -205,6 +209,11 @@ export const ca: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
         hideInactiveSessions: 'Amaga les sessions inactives',
         hideInactiveSessionsSubtitle: 'Mostra només els xats actius a la llista',
+        privacy: 'Privadesa',
+        privacyDescription: 'Desactiva completament tota l\'analítica i telemetria. No s\'enviaran dades a PostHog ni a cap altre servei de seguiment.',
+        disableAnalytics: 'Desactivar analítica',
+        analyticsDisabled: 'Tot el seguiment i telemetria desactivats',
+        analyticsEnabled: 'Analítica anònima d\'ús activa',
     },
 
     errors: {
@@ -530,6 +539,7 @@ export const ca: TranslationStructure = {
     },
 
     files: {
+        changes: 'Canvis',
         searchPlaceholder: 'Cerca fitxers...',
         detachedHead: 'HEAD separat',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} preparats • ${unstaged} sense preparar`,
@@ -551,6 +561,8 @@ export const ca: TranslationStructure = {
         file: 'Fitxer',
         fileEmpty: 'El fitxer està buit',
         noChanges: 'No hi ha canvis a mostrar',
+        noChangesTitle: 'Sense canvis',
+        noChangesSubtitle: 'L\'arbre de treball està net',
         deleted: 'Eliminat',
     },
 

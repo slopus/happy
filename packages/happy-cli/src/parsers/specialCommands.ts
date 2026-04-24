@@ -12,7 +12,7 @@ export interface ClearCommandResult {
 }
 
 export interface SpecialCommandResult {
-    type: 'compact' | 'clear' | null;
+    type: 'compact' | 'clear' | 'mcp' | 'skills' | null;
     originalMessage?: string;
 }
 
@@ -75,6 +75,14 @@ export function parseSpecialCommand(message: string): SpecialCommandResult {
         };
     }
     
+    const trimmed = message.trim().toLowerCase();
+    if (trimmed === '/mcp') {
+        return { type: 'mcp' };
+    }
+    if (trimmed === '/skills') {
+        return { type: 'skills' };
+    }
+
     return {
         type: null
     };

@@ -172,6 +172,12 @@ export const ja: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'ツールビューの差分に行番号を表示',
         wrapLinesInDiffs: '差分で行を折り返し',
         wrapLinesInDiffsDescription: '差分表示で水平スクロールの代わりに長い行を折り返す',
+        diffStyle: '差分表示',
+        diffStyleDescription: '差分を1列（unified）または横並び（split）で表示します。split 表示は Web 専用です。',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: '常にコンテキストサイズを表示',
         alwaysShowContextSizeDescription: '上限に近づいていなくてもコンテキスト使用量を表示',
         avatarStyle: 'アバタースタイル',
@@ -183,8 +189,6 @@ export const ja: TranslationStructure = {
         },
         showFlavorIcons: 'AIプロバイダーアイコンを表示',
         showFlavorIconsDescription: 'セッションアバターにAIプロバイダーアイコンを表示',
-        compactSessionView: 'コンパクトセッション表示',
-        compactSessionViewDescription: 'アクティブなセッションをコンパクトなレイアウトで表示',
     },
 
     settingsFeatures: {
@@ -206,6 +210,11 @@ export const ja: TranslationStructure = {
         markdownCopyV2Subtitle: '長押しでコピーモーダルを開く',
         hideInactiveSessions: '非アクティブセッションを非表示',
         hideInactiveSessionsSubtitle: 'アクティブなチャットのみをリストに表示',
+        privacy: 'プライバシー',
+        privacyDescription: 'すべての分析とテレメトリを完全に無効にします。PostHogやその他のトラッキングサービスにデータは送信されません。',
+        disableAnalytics: '分析を無効化',
+        analyticsDisabled: 'すべてのトラッキングとテレメトリが無効',
+        analyticsEnabled: '匿名の使用状況分析がアクティブ',
     },
 
     errors: {
@@ -531,6 +540,7 @@ export const ja: TranslationStructure = {
     },
 
     files: {
+        changes: '変更',
         searchPlaceholder: 'ファイルを検索...',
         detachedHead: 'detached HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `ステージ済み ${staged} • 未ステージ ${unstaged}`,
@@ -552,6 +562,8 @@ export const ja: TranslationStructure = {
         file: 'ファイル',
         fileEmpty: 'ファイルは空です',
         noChanges: '表示する変更はありません',
+        noChangesTitle: '変更なし',
+        noChangesSubtitle: 'ワーキングツリーはクリーンです',
         deleted: '削除済み',
     },
 

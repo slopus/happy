@@ -22,6 +22,10 @@ type RawSession = {
     id: string;
     active: boolean;
     metadata: string;
+    metadataVersion: number;
+    agentState: string | null;
+    agentStateVersion: number;
+    seq: number;
     dataEncryptionKey: string | null;
 };
 
@@ -34,6 +38,14 @@ export type ResumableHappySession = {
     id: string;
     active: boolean;
     metadata: Metadata;
+};
+
+export type ReconnectableHappySession = ResumableHappySession & {
+    seq: number;
+    metadataVersion: number;
+    agentStateVersion: number;
+    encryptionKey: Uint8Array;
+    encryptionVariant: 'legacy' | 'dataKey';
 };
 
 export function resolveSessionRecordByPrefix<T extends { id: string }>(records: T[], sessionId: string): T {
@@ -113,10 +125,7 @@ function decryptSessionMetadata(session: RawSession, credentials: LocalHappyAgen
     }
 }
 
-export async function resolveHappySession(sessionId: string): Promise<ResumableHappySession> {
-    const credentials = readAgentCredentials();
-
-    let sessions: RawSession[];
+async function fetchSessions(credentials: LocalHappyAgentCredentials): Promise<RawSession[]> {
     try {
         const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
             headers: {
@@ -124,7 +133,7 @@ export async function resolveHappySession(sessionId: string): Promise<ResumableH
                 'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`,
             },
         });
-        sessions = (response.data as { sessions: RawSession[] }).sessions;
+        return (response.data as { sessions: RawSession[] }).sessions;
     } catch (error) {
         if (error instanceof AxiosError) {
             if (error.response?.status === 401) {
@@ -134,11 +143,32 @@ export async function resolveHappySession(sessionId: string): Promise<ResumableH
         }
         throw error;
     }
+}
 
+export async function resolveHappySession(sessionId: string): Promise<ResumableHappySession> {
+    const credentials = readAgentCredentials();
+    const sessions = await fetchSessions(credentials);
     const matched = resolveSessionRecordByPrefix(sessions, sessionId);
     return {
         id: matched.id,
         active: matched.active,
         metadata: decryptSessionMetadata(matched, credentials),
+    };
+}
+
+export async function resolveReconnectableSession(sessionId: string): Promise<ReconnectableHappySession> {
+    const credentials = readAgentCredentials();
+    const sessions = await fetchSessions(credentials);
+    const matched = resolveSessionRecordByPrefix(sessions, sessionId);
+    const encryption = resolveSessionEncryption(matched, credentials);
+    return {
+        id: matched.id,
+        active: matched.active,
+        metadata: decryptSessionMetadata(matched, credentials),
+        seq: matched.seq,
+        metadataVersion: matched.metadataVersion,
+        agentStateVersion: matched.agentStateVersion,
+        encryptionKey: encryption.key,
+        encryptionVariant: encryption.variant,
     };
 }

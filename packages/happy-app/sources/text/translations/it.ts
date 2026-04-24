@@ -169,6 +169,12 @@ export const it: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Mostra i numeri di riga nei diff delle viste strumenti',
         wrapLinesInDiffs: 'A capo nelle differenze',
         wrapLinesInDiffsDescription: 'A capo delle righe lunghe invece dello scorrimento orizzontale nelle viste diff',
+        diffStyle: 'Vista diff',
+        diffStyleDescription: 'Mostra le differenze in una sola colonna (unified) o affiancate (split). La vista split è disponibile solo sul web.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Mostra sempre dimensione contesto',
         alwaysShowContextSizeDescription: 'Mostra l\'uso del contesto anche quando non è vicino al limite',
         avatarStyle: 'Stile avatar',
@@ -180,8 +186,6 @@ export const it: TranslationStructure = {
         },
         showFlavorIcons: 'Mostra icone provider IA',
         showFlavorIconsDescription: 'Mostra le icone del provider IA sugli avatar di sessione',
-        compactSessionView: 'Vista sessioni compatta',
-        compactSessionViewDescription: 'Mostra le sessioni attive in un layout più compatto',
     },
 
     settingsFeatures: {
@@ -203,6 +207,11 @@ export const it: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pressione lunga apre la finestra di copia',
         hideInactiveSessions: 'Nascondi sessioni inattive',
         hideInactiveSessionsSubtitle: 'Mostra solo le chat attive nella tua lista',
+        privacy: 'Privacy',
+        privacyDescription: 'Disabilita completamente tutte le analisi e la telemetria. Nessun dato verrà inviato a PostHog o ad altri servizi di tracciamento.',
+        disableAnalytics: 'Disabilita analisi',
+        analyticsDisabled: 'Tutto il tracciamento e la telemetria disabilitati',
+        analyticsEnabled: 'Analisi anonime di utilizzo attive',
     },
 
     errors: {
@@ -528,6 +537,7 @@ export const it: TranslationStructure = {
     },
 
     files: {
+        changes: 'Modifiche',
         searchPlaceholder: 'Cerca file...',
         detachedHead: 'HEAD scollegato',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} in stage • ${unstaged} non in stage`,
@@ -549,6 +559,8 @@ export const it: TranslationStructure = {
         file: 'File',
         fileEmpty: 'File vuoto',
         noChanges: 'Nessuna modifica da mostrare',
+        noChangesTitle: 'Nessuna modifica',
+        noChangesSubtitle: 'L\'albero di lavoro è pulito',
         deleted: 'Eliminato',
     },
 

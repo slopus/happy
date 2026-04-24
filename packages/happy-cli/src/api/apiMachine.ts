@@ -74,7 +74,7 @@ interface DaemonToServerEvents {
 
 type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
-    resumeSession?: (sessionId: string) => Promise<SpawnSessionResult>;
+    resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
     requestShutdown: () => void;
 }
@@ -85,7 +85,7 @@ export class ApiMachineClient {
     private lastKnownCLIAvailability: CLIAvailability | null = null;
     private lastKnownResumeSupport: ResumeSupport | null = null;
     private rpcHandlerManager: RpcHandlerManager;
-    private resumeSessionHandler: ((sessionId: string) => Promise<SpawnSessionResult>) | null = null;
+    private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
 
     constructor(
@@ -136,9 +136,9 @@ export class ApiMachineClient {
             }
         });
 
-        this.syncResumeSessionRpcRegistration(detectResumeSupport().rpcAvailable);
+        this.syncResumeSessionRpcRegistration();
 
-        // Register stop session handler  
+        // Register stop session handler
         this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
             const { sessionId } = params || {};
 
@@ -169,13 +169,13 @@ export class ApiMachineClient {
         });
     }
 
-    private syncResumeSessionRpcRegistration(rpcAvailable: boolean): void {
+    private syncResumeSessionRpcRegistration(): void {
         const method = 'resume-happy-session';
 
-        if (rpcAvailable && this.resumeSessionHandler) {
+        if (this.resumeSessionHandler) {
             if (!this.rpcHandlerManager.hasHandler(method)) {
                 this.rpcHandlerManager.registerHandler(method, async (params: any) => {
-                    const { sessionId } = params || {};
+                    const { sessionId, model, permissionMode } = params || {};
 
                     if (!sessionId || typeof sessionId !== 'string') {
                         throw new Error('Session ID is required');
@@ -186,7 +186,7 @@ export class ApiMachineClient {
                         throw new Error('Resume session handler not available');
                     }
 
-                    const result = await handler(sessionId);
+                    const result = await handler(sessionId, { model, permissionMode });
                     switch (result.type) {
                         case 'success':
                             return { type: 'success', sessionId: result.sessionId };
@@ -295,7 +295,7 @@ export class ApiMachineClient {
             }));
 
             this.rpcHandlerManager.onSocketConnect(this.socket);
-            this.syncResumeSessionRpcRegistration(detectResumeSupport().rpcAvailable);
+            this.syncResumeSessionRpcRegistration();
             this.startKeepAlive();
         });
 
@@ -366,15 +366,13 @@ export class ApiMachineClient {
                 || prevResume.rpcAvailable !== newResumeSupport.rpcAvailable
                 || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;
 
-            this.syncResumeSessionRpcRegistration(newResumeSupport.rpcAvailable);
-
             if (cliAvailabilityChanged || resumeSupportChanged) {
                 this.lastKnownCLIAvailability = newAvailability;
                 this.lastKnownResumeSupport = newResumeSupport;
                 this.updateMachineMetadata((metadata) => ({
                     ...(metadata || {} as any),
                     cliAvailability: newAvailability,
-                    resumeSupport: newResumeSupport,
+                    resumeSupport: { ...newResumeSupport, rpcAvailable: !!this.resumeSessionHandler },
                 })).catch((err) => {
                     logger.debug('[API MACHINE] Failed to update machine capabilities:', err);
                 });

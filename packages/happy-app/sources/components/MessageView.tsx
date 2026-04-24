@@ -202,6 +202,7 @@ const styles = StyleSheet.create((theme) => ({
     marginHorizontal: 16,
     marginBottom: 12,
     borderRadius: 16,
+    maxWidth: '100%',
   },
   agentEventContainer: {
     marginHorizontal: 8,
@@ -214,6 +215,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   toolContainer: {
     marginHorizontal: 8,
+    maxWidth: '100%',
+    overflow: 'hidden',
   },
   debugText: {
     color: theme.colors.agentEventText,

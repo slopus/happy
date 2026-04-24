@@ -24,7 +24,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -33,14 +33,20 @@ import { tracking } from '@/track';
 import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
+import { FilesSidebar } from '@/components/FilesSidebar';
+import { InlineFileDiff } from '@/components/InlineFileDiff';
+import { prefetchPierreDiff } from '@/components/diff/PierreDiffView';
+import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
@@ -57,12 +63,57 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
+    const { width: windowWidth } = useWindowDimensions();
     const [sessionActionsAnchor, setSessionActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
+    const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
+
+    const showSidebar = fileDiffsSidebarEnabled
+        && (isRunningOnMac() || Platform.OS === 'web')
+        && windowWidth >= SIDEBAR_MIN_WINDOW_WIDTH
+        && isDataReady && !!session;
+
+    // Match left sidebar width: 30% of window, clamped to 250–360px
+    const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
+
+    const [sidebarCollapsed, setSidebarCollapsed] = useLocalSettingMutable('sidebarCollapsed');
+    const sidebarAnim = useSharedValue(sidebarCollapsed ? 0 : 1);
+
+    React.useEffect(() => {
+        sidebarAnim.value = withTiming(sidebarCollapsed ? 0 : 1, {
+            duration: 250,
+            easing: Easing.out(Easing.cubic),
+        });
+    }, [sidebarCollapsed]);
+
+    const animatedSidebarStyle = useAnimatedStyle(() => ({
+        width: sidebarAnim.value * sidebarWidth,
+        opacity: sidebarAnim.value,
+        overflow: 'hidden' as const,
+    }));
+
+    const toggleSidebar = React.useCallback(() => {
+        setSidebarCollapsed(!sidebarCollapsed);
+    }, [sidebarCollapsed, setSidebarCollapsed]);
+
+    const [selectedFile, setSelectedFile] = React.useState<GitFileStatus | null>(null);
+    const handleSidebarFilePress = React.useCallback((file: GitFileStatus) => {
+        setSelectedFile((current) => (current?.fullPath === file.fullPath ? null : file));
+    }, []);
+    const clearSelectedFile = React.useCallback(() => setSelectedFile(null), []);
+
+    // When sidebar is hidden or disabled, don't keep a stale selection.
+    React.useEffect(() => {
+        if (!showSidebar || sidebarCollapsed) setSelectedFile(null);
+    }, [showSidebar, sidebarCollapsed]);
+
+    // Warm Pierre's lazy web chunks while the user is still reading chat.
+    React.useEffect(() => {
+        prefetchPierreDiff();
+    }, []);
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
         if (!isDataReady) {
-            // Loading state - show empty header
             return {
                 title: '',
                 subtitle: undefined,
@@ -74,7 +125,6 @@ export const SessionView = React.memo((props: { id: string }) => {
         }
 
         if (!session) {
-            // Deleted state - show deleted message in header
             return {
                 title: t('errors.sessionDeleted'),
                 subtitle: undefined,
@@ -85,7 +135,6 @@ export const SessionView = React.memo((props: { id: string }) => {
             };
         }
 
-        // Normal state - show session info
         const isConnected = session.presence === 'online';
         return {
             title: getSessionName(session),
@@ -98,7 +147,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         };
     }, [session, isDataReady, sessionId, router]);
 
-    return (
+    const mainContent = (
         <>
             {/* Status bar shadow for landscape mode */}
             {isLandscape && deviceType === 'phone' && (
@@ -132,7 +181,15 @@ export const SessionView = React.memo((props: { id: string }) => {
                 }}>
                     <ChatHeaderView
                         {...headerProps}
-                        onBackPress={() => router.back()}
+                        onBackPress={() => {
+                            // If a sidebar file is currently shown inline, first
+                            // close the diff; only leave the session on the next press.
+                            if (selectedFile) {
+                                setSelectedFile(null);
+                                return;
+                            }
+                            router.back();
+                        }}
                         avatarMenuExpanded={Platform.OS === 'web' && !!sessionActionsAnchor}
                         avatarMenuSession={session}
                         onAfterAvatarArchive={() => {
@@ -144,6 +201,8 @@ export const SessionView = React.memo((props: { id: string }) => {
                             router.replace('/');
                         }}
                         onAvatarMenuRequest={Platform.OS === 'web' && session ? setSessionActionsAnchor : undefined}
+                        onSidebarTogglePress={showSidebar ? toggleSidebar : undefined}
+                        sidebarCollapsed={sidebarCollapsed}
                     />
                     {/* Voice status bar below header - not on tablet (shown in sidebar) */}
                     {!isTablet && realtimeStatus !== 'disconnected' && (
@@ -155,19 +214,16 @@ export const SessionView = React.memo((props: { id: string }) => {
             {/* Content based on state */}
             <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') ? safeArea.top + headerHeight + (!isTablet && realtimeStatus !== 'disconnected' ? 32 : 0) : 0 }}>
                 {!isDataReady ? (
-                    // Loading state
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     </View>
                 ) : !session ? (
-                    // Deleted state
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <Ionicons name="trash-outline" size={48} color={theme.colors.textSecondary} />
                         <Text style={{ color: theme.colors.text, fontSize: 20, marginTop: 16, fontWeight: '600' }}>{t('errors.sessionDeleted')}</Text>
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
                 ) : (
-                    // Normal session view
                     <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
                 )}
             </View>
@@ -189,8 +245,53 @@ export const SessionView = React.memo((props: { id: string }) => {
             )}
         </>
     );
+
+    if (!showSidebar) {
+        return mainContent;
+    }
+
+    // Desktop layout: chat + sidebar at the same level (full height).
+    // When a sidebar file is selected, InlineFileDiff overlays the main content
+    // (chat stays mounted underneath so state is preserved).
+    return (
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+            <View style={{ flex: 1 }}>
+                {mainContent}
+                {selectedFile && !sidebarCollapsed && (
+                    <View
+                        pointerEvents="box-none"
+                        style={{
+                            position: 'absolute',
+                            top: safeArea.top + headerHeight,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: theme.colors.surface,
+                        }}
+                    >
+                        <InlineFileDiff
+                            sessionId={sessionId}
+                            fullPath={selectedFile.fullPath}
+                            status={selectedFile.status}
+                            onClose={clearSelectedFile}
+                        />
+                    </View>
+                )}
+            </View>
+            <Animated.View style={[{ minWidth: 0, alignSelf: 'stretch' }, animatedSidebarStyle]}>
+                <View style={{ width: sidebarWidth, flex: 1 }}>
+                    <FilesSidebar
+                        sessionId={sessionId}
+                        selectedPath={selectedFile?.fullPath ?? null}
+                        onFilePress={handleSidebarFilePress}
+                    />
+                </View>
+            </Animated.View>
+        </View>
+    );
 });
 
+const SIDEBAR_MIN_WINDOW_WIDTH = 1100;
 
 function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session }) {
     const { theme } = useUnistyles();
@@ -252,6 +353,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
     const expResumeSession = useSetting('expResumeSession');
+    const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
     const isArchivedSession = session.metadata?.lifecycleState === 'archived';
     const isDisconnected = !sessionStatus.isConnected;
     const isInactiveArchivedSession = isArchivedSession && isDisconnected;
@@ -433,6 +535,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
             <InactiveArchivedHint
                 resumeCommandBlock={expResumeSession ? resumeCommandBlock : null}
+                canResume={canResume}
+                resuming={resumingSession}
+                onResume={resumeSession}
             />
         </CenteredInputWidth>
     ) : null;
@@ -563,6 +668,9 @@ function ResumeCommandHint({ resumeCommandBlock }: {
 
 function InactiveArchivedHint(props: {
     resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>> | null;
+    canResume: boolean;
+    resuming: boolean;
+    onResume: () => void;
 }) {
     const { theme } = useUnistyles();
     const hintTextStyle = {
@@ -583,13 +691,35 @@ function InactiveArchivedHint(props: {
                 <Text style={hintTextStyle}>
                     {t('session.inactiveArchived')}
                 </Text>
-                {props.resumeCommandBlock && (
+                {props.canResume ? null : props.resumeCommandBlock && (
                     <Text style={hintTextStyle}>
                         {t('session.resumeFromTerminal')}
                     </Text>
                 )}
             </View>
-            {props.resumeCommandBlock && (
+            {props.canResume ? (
+                <Pressable
+                    onPress={props.onResume}
+                    disabled={props.resuming}
+                    style={({ pressed }) => ({
+                        height: 40,
+                        borderRadius: 10,
+                        backgroundColor: theme.colors.button.primary.background,
+                        opacity: props.resuming ? 0.6 : pressed ? 0.8 : 1,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginHorizontal: 8,
+                    })}
+                >
+                    {props.resuming ? (
+                        <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
+                    ) : (
+                        <Text style={{ color: theme.colors.button.primary.tint, fontSize: 15, fontWeight: '600' }}>
+                            {t('sessionInfo.resumeSession')}
+                        </Text>
+                    )}
+                </Pressable>
+            ) : props.resumeCommandBlock && (
                 <ResumeCommandCopyBlock resumeCommandBlock={props.resumeCommandBlock} />
             )}
         </View>

@@ -9,16 +9,37 @@ import { t } from '@/text';
 
 export default function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');
+    const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
     const [agentInputEnterToSend, setAgentInputEnterToSend] = useSettingMutable('agentInputEnterToSend');
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const [expResumeSession, setExpResumeSession] = useSettingMutable('expResumeSession');
+    const [fileDiffsSidebar, setFileDiffsSidebar] = useSettingMutable('fileDiffsSidebar');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
+            {/* Interface */}
+            <ItemGroup
+                title="Interface"
+                footer="Optional panels and layout elements."
+            >
+                <Item
+                    title="File Diffs Sidebar"
+                    subtitle="Show git changes next to the chat on desktop"
+                    icon={<Ionicons name="git-branch-outline" size={29} color="#5AC8FA" />}
+                    rightElement={
+                        <Switch
+                            value={fileDiffsSidebar}
+                            onValueChange={setFileDiffsSidebar}
+                        />
+                    }
+                    showChevron={false}
+                />
+            </ItemGroup>
+
             {/* Experimental Features */}
-            <ItemGroup 
+            <ItemGroup
                 title={t('settingsFeatures.experiments')}
                 footer={t('settingsFeatures.experimentsDescription')}
             >
@@ -60,12 +81,31 @@ export default function FeaturesSettingsScreen() {
                 />
                 <Item
                     title="Resume Session"
-                    subtitle="Allow resuming disconnected sessions via the machine daemon"
+                    subtitle="Resume disconnected Claude Code and Codex sessions via the machine daemon"
                     icon={<Ionicons name="play-circle-outline" size={29} color="#30D158" />}
                     rightElement={
                         <Switch
                             value={expResumeSession}
                             onValueChange={setExpResumeSession}
+                        />
+                    }
+                    showChevron={false}
+                />
+            </ItemGroup>
+
+            {/* Privacy */}
+            <ItemGroup
+                title={t('settingsFeatures.privacy')}
+                footer={t('settingsFeatures.privacyDescription')}
+            >
+                <Item
+                    title={t('settingsFeatures.disableAnalytics')}
+                    subtitle={analyticsOptOut ? t('settingsFeatures.analyticsDisabled') : t('settingsFeatures.analyticsEnabled')}
+                    icon={<Ionicons name="analytics-outline" size={29} color="#FF3B30" />}
+                    rightElement={
+                        <Switch
+                            value={analyticsOptOut}
+                            onValueChange={setAnalyticsOptOut}
                         />
                     }
                     showChevron={false}
