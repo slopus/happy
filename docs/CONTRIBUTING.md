@@ -91,31 +91,17 @@ pnpm --filter happy-app tauri:build:dev
 ```bash
 pnpm --filter happy build
 pnpm --filter happy test
-pnpm --filter happy dev                # Run without building (uses tsx)
+pnpm --filter happy cli:install   # Build + link this workspace as the global `happy` + restart daemon
 ```
 
-#### Local `happy-dev` Command
-
-To test your local build without overwriting the global `happy`:
+`cli:install` replaces the `happy` binary installed from npm with a symlink to this workspace.
+It reuses `~/.happy/` (auth, sessions) — no separate dev home. To undo:
 
 ```bash
-cd packages/happy-cli
-pnpm link:dev       # Creates global happy-dev symlink
-pnpm unlink:dev     # Removes it
+npm unlink -g happy && npm i -g happy@latest
 ```
 
-Now `happy` runs the stable npm version, `happy-dev` runs your local build.
-
-#### Stable vs Dev Data Isolation
-
-The CLI keeps stable and dev data completely separate:
-
-| | Stable | Development |
-|-|--------|-------------|
-| Data | `~/.happy/` | `~/.happy-dev/` |
-| Start daemon | `npm run stable:daemon:start` | `npm run dev:daemon:start` |
-
-First time? Run `npm run setup:dev` to create the dev data directory.
+To sandbox dev data, set `HAPPY_HOME_DIR=~/.happy-dev` in your shell before running `happy`.
 
 ### Happy Server
 

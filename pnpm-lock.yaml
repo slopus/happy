@@ -937,9 +937,6 @@ importers:
       pkgroll:
         specifier: ^2.14.2
         version: 2.22.0(typescript@5.9.3)
-      release-it:
-        specifier: ^19.0.6
-        version: 19.2.4(@types/node@20.19.39)
       shx:
         specifier: ^0.3.3
         version: 0.3.4
