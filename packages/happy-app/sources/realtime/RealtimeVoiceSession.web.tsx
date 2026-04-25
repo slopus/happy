@@ -119,9 +119,13 @@ export const RealtimeVoiceSession: React.FC = () => {
         },
         onDisconnect: () => {
             console.log('Realtime session disconnected');
+            const prev = storage.getState().realtimeStatus;
             storage.getState().setRealtimeStatus('disconnected');
             storage.getState().setRealtimeMode('idle', true);
             storage.getState().clearRealtimeModeDebounce();
+            if (prev === 'connected' || prev === 'connecting') {
+                storage.getState().incrementVoiceSessionGeneration();
+            }
         },
         onMessage: (data) => {
             console.log('Realtime message:', data);
@@ -130,8 +134,7 @@ export const RealtimeVoiceSession: React.FC = () => {
             // Log but don't block app - voice features will be unavailable
             // This prevents initialization errors from showing "Terminals error" on startup
             console.warn('Realtime voice not available:', error);
-            // Don't set error status during initialization - just set disconnected
-            // This allows the app to continue working without voice features
+            // See native variant for why we don't bump generation in onError.
             storage.getState().setRealtimeStatus('disconnected');
             storage.getState().setRealtimeMode('idle', true); // immediate mode change
         },
