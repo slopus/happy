@@ -1,4 +1,14 @@
 const fs = require('fs');
+const { execSync } = require('child_process');
+
+// Set UTF-8 code page on Windows to fix garbled box-drawing characters
+if (process.platform === 'win32') {
+    try {
+        execSync('chcp 65001', { stdio: 'pipe' });
+    } catch (e) {
+        // Non-critical: some Windows environments don't support chcp
+    }
+}
 
 // Disable autoupdater (never works really)
 process.env.DISABLE_AUTOUPDATER = '1';
