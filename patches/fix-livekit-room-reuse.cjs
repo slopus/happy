@@ -1,14 +1,14 @@
 /**
- * Patches @livekit/components-react and @elevenlabs/react-native for two bugs:
+ * Patches @elevenlabs/react-native to force /rtc (v0) RTC path because
+ * ElevenLabs' LiveKit server returns 404 on /rtc/v1, and the v1→v0 retry
+ * delay breaks every session. Adds singlePeerConnection: false to the
+ * LiveKitRoom options.
  *
- * 1. Stale Room reuse: useLiveKitRoom's Room creation effect omits `token`
- *    from deps, so the same Room instance is reused across sessions. After
- *    disconnect(), reconnecting silently fails. Fix: add `token` to deps.
- *
- * 2. v1 RTC 404: ElevenLabs' LiveKit server doesn't support the /rtc/v1 path.
- *    LiveKit tries v1 first (when singlePeerConnection is true, the default),
- *    gets 404, then retries on v0 — slow and unreliable. Fix: add
- *    singlePeerConnection: false to LiveKitRoom options so v0 is used directly.
+ * NOTE: an earlier version of this patch also added `token` to the Room
+ * creation effect deps in @livekit/components-react. That's now reverted —
+ * it raced with provider re-keying (two Rooms overlapping, fingerprint
+ * mismatch errors). Provider re-key in app code handles stale Room reuse
+ * cleanly. We actively un-patch here to restore originals on existing installs.
  */
 const fs = require('fs');
 const path = require('path');
@@ -20,11 +20,10 @@ const nodeModulesRoots = [
     path.resolve(__dirname, '..', 'packages/happy-app/node_modules'),
 ];
 
-// --- Fix 1: Stale Room reuse in @livekit/components-react ---
+// --- Revert prior token-in-deps patch on @livekit/components-react ---
 
 for (const nodeModulesRoot of nodeModulesRoots) {
-    // ESM bundle: room-Bb6uLxS5.mjs
-    // Variables: e=token, r=passedRoom, t=options, T=roomOptionsStringifyReplacer
+    // ESM bundle: revert `[r, JSON.stringify(t, T), e]` back to `[r, JSON.stringify(t, T)]`
     const esmFile = path.join(
         nodeModulesRoot,
         '@livekit/components-react/dist/room-Bb6uLxS5.mjs'
@@ -33,8 +32,8 @@ for (const nodeModulesRoot of nodeModulesRoots) {
         let content = fs.readFileSync(esmFile, 'utf8');
         const original = content;
         content = content.replace(
-            /O\(r \?\? new U\(t\)\);\s*\}, \[r, JSON\.stringify\(t, T\)\]\)/,
-            'O(r ?? new U(t));\n  }, [r, JSON.stringify(t, T), e])'
+            /O\(r \?\? new U\(t\)\);\s*\}, \[r, JSON\.stringify\(t, T\), e\]\)/,
+            'O(r ?? new U(t));\n  }, [r, JSON.stringify(t, T)])'
         );
         if (content !== original) {
             fs.writeFileSync(esmFile, content, 'utf8');
@@ -42,8 +41,7 @@ for (const nodeModulesRoot of nodeModulesRoots) {
         }
     }
 
-    // CJS bundle: shared-BGiZtWPs.js
-    // Variables: t=token, f=passedRoom, s=options, M.roomOptionsStringifyReplacer
+    // CJS bundle: revert the same
     const cjsFile = path.join(
         nodeModulesRoot,
         '@livekit/components-react/dist/shared-BGiZtWPs.js'
@@ -52,8 +50,8 @@ for (const nodeModulesRoot of nodeModulesRoots) {
         let content = fs.readFileSync(cjsFile, 'utf8');
         const original = content;
         content = content.replace(
-            /I\(f\?\?new d\.Room\(s\)\)\}\,\[f,JSON\.stringify\(s,M\.roomOptionsStringifyReplacer\)\]\)/,
-            'I(f??new d.Room(s))},[f,JSON.stringify(s,M.roomOptionsStringifyReplacer),t])'
+            /I\(f\?\?new d\.Room\(s\)\)\}\,\[f,JSON\.stringify\(s,M\.roomOptionsStringifyReplacer\),t\]\)/,
+            'I(f??new d.Room(s))},[f,JSON.stringify(s,M.roomOptionsStringifyReplacer)])'
         );
         if (content !== original) {
             fs.writeFileSync(cjsFile, content, 'utf8');
@@ -61,7 +59,7 @@ for (const nodeModulesRoot of nodeModulesRoots) {
         }
     }
 
-    // Source file (Metro may resolve from src/)
+    // Source file: revert
     const srcFile = path.join(
         nodeModulesRoot,
         '@livekit/components-react/src/hooks/useLiveKitRoom.ts'
@@ -70,8 +68,8 @@ for (const nodeModulesRoot of nodeModulesRoots) {
         let content = fs.readFileSync(srcFile, 'utf8');
         const original = content;
         content = content.replace(
-            '}, [passedRoom, JSON.stringify(options, roomOptionsStringifyReplacer)]);',
-            '}, [passedRoom, JSON.stringify(options, roomOptionsStringifyReplacer), token]);'
+            '}, [passedRoom, JSON.stringify(options, roomOptionsStringifyReplacer), token]);',
+            '}, [passedRoom, JSON.stringify(options, roomOptionsStringifyReplacer)]);'
         );
         if (content !== original) {
             fs.writeFileSync(srcFile, content, 'utf8');
@@ -83,9 +81,14 @@ for (const nodeModulesRoot of nodeModulesRoots) {
     // Add singlePeerConnection: false to options so LiveKit skips the /rtc/v1 path
     // that returns 404 on ElevenLabs' server.
 
+    // Metro picks one of lib.{js,module,umd,modern}.js depending on resolution
+    // mode — patch all of them, otherwise the v1 RTC 404 retry will still fire
+    // through whichever bundle wasn't covered.
     const elNativeFiles = [
         '@elevenlabs/react-native/dist/lib.js',
         '@elevenlabs/react-native/dist/lib.module.js',
+        '@elevenlabs/react-native/dist/lib.umd.js',
+        '@elevenlabs/react-native/dist/lib.modern.js',
     ];
 
     for (const file of elNativeFiles) {
@@ -104,7 +107,8 @@ for (const nodeModulesRoot of nodeModulesRoots) {
         }
     }
 
-    // Also patch the source file
+    // Also patch the source file (idempotent: collapse any duplicates from prior
+    // non-idempotent runs, then ensure exactly one singlePeerConnection: false).
     const elNativeSrc = path.join(
         nodeModulesRoot,
         '@elevenlabs/react-native/src/components/LiveKitRoomWrapper.tsx'
@@ -113,7 +117,7 @@ for (const nodeModulesRoot of nodeModulesRoots) {
         let content = fs.readFileSync(elNativeSrc, 'utf8');
         const original = content;
         content = content.replace(
-            "adaptiveStream: { pixelDensity: 'screen' },",
+            /adaptiveStream: \{ pixelDensity: 'screen' \},(\n\s*singlePeerConnection: false,)*/,
             "adaptiveStream: { pixelDensity: 'screen' },\n        singlePeerConnection: false,"
         );
         if (content !== original) {
