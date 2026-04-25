@@ -90,6 +90,7 @@
     "fastify-type-provider-zod": "4.0.2",
     "http-proxy": "^1.18.1",
     "http-proxy-middleware": "^3.0.5",
+    "https-proxy-agent": "^9.0.0",
     "ink": "^6.5.1",
     "inquirer": "^13.2.2",
     "open": "^10.2.0",

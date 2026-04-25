@@ -14,6 +14,7 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
+import { createProxyAgentFromEnv, getProxyUrlFromEnv, maskProxyUrl } from './proxy';
 
 interface ServerToDaemonEvents {
     update: (data: Update) => void;
@@ -266,7 +267,13 @@ export class ApiMachineClient {
         const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
         logger.debug(`[API MACHINE] Connecting to ${serverUrl}`);
 
-        this.socket = io(serverUrl, {
+        const proxyUrl = getProxyUrlFromEnv();
+        const proxyAgent = createProxyAgentFromEnv();
+        if (proxyAgent && proxyUrl) {
+            logger.debug(`[API MACHINE] Using proxy agent: ${maskProxyUrl(proxyUrl)}`);
+        }
+
+        const socketOptions: NonNullable<Parameters<typeof io>[1]> = {
             transports: ['websocket'],
             auth: {
                 token: this.token,
@@ -276,7 +283,16 @@ export class ApiMachineClient {
             },
             path: '/v1/updates',
             reconnection: false,
-        });
+        };
+        if (proxyAgent) {
+            socketOptions.transportOptions = {
+                websocket: {
+                    agent: proxyAgent,
+                },
+            };
+        }
+
+        this.socket = io(serverUrl, socketOptions);
 
         this.socket.on('connect', () => {
             logger.debug('[API MACHINE] Connected to server');

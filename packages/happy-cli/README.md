@@ -98,6 +98,19 @@ happy connect status
 | `HAPPY_DISABLE_CAFFEINATE` | Disable macOS sleep prevention |
 | `HAPPY_EXPERIMENTAL` | Enable experimental features |
 
+### Using Happy behind an HTTP proxy
+
+If your machine needs an HTTP or HTTPS proxy to reach Happy's relay server, set standard proxy environment variables:
+
+```bash
+export HTTPS_PROXY=http://127.0.0.1:5901
+export HTTP_PROXY=http://127.0.0.1:5901
+```
+
+Happy also supports `ALL_PROXY` and lowercase variants such as `https_proxy`, `http_proxy`, and `all_proxy`.
+
+This applies to both daemon machine connections and active session connections. It is useful for remote servers, containers, SSH reverse tunnels, corporate networks, or restricted outbound networks.
+
 ### Sandbox (experimental)
 
 Happy can run agents inside an OS-level sandbox to restrict file system and network access.
