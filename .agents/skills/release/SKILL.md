@@ -160,38 +160,67 @@ The smoke check must confirm that `happy --version` matches the published versio
 
 ### Build types
 
-Ask the user what kind of release. OTA is the most common — suggest it first:
+**Always ask the user explicitly what they want to release.** Present these
+options in order of popularity:
 
-- **OTA update (preview)** — push JS update to preview channel (most common)
+1. **OTA update (preview)** — push JS bundle to preview channel. Most common release type.
+2. **OTA update (production)** — push JS bundle to production channel. Do this after preview OTA is validated.
+3. **Native dev build** — when native code changes. Points to dev server with bundled app.
+4. **Full native release** — build all profiles (dev + preview + production) to prep for a new native release.
+
+#### OTA Updates
+
   ```bash
+  # Preview (most common)
   pnpm --filter happy-app run ota
-  ```
 
-- **OTA update (production)** — push JS update to production channel
-  ```bash
+  # Production
   pnpm --filter happy-app run ota:production
   ```
 
-Native builds are rare — only needed when native code changes:
-
-- **Dev builds** — development + preview variants (internal distribution)
+OTA scripts require a message — stdin is not readable from Claude Code, so run the
+underlying `eas update` directly with `--message`:
   ```bash
-  pnpm --filter happy-app run release:build:developer
+  cd packages/happy-app && APP_ENV=preview NODE_ENV=preview tsx sources/scripts/parseChangelog.ts && pnpm typecheck && eas update --branch preview --message "<message>"
   ```
 
-- **App Store** — production builds with auto-submit
+#### Native Builds
+
+- **Dev build** — development profile, used when native code changes (points to dev server)
   ```bash
+  cd packages/happy-app && eas build --profile development --platform all --non-interactive
+  ```
+
+- **TestFlight / Play Store builds** — use `-store` profiles for distribution via TestFlight and Play Store
+  ```bash
+  # Preview (TestFlight/internal testing)
+  cd packages/happy-app && eas build --profile preview-store --platform ios --non-interactive
+
+  # Production (App Store / Play Store submission)
   pnpm --filter happy-app run release:build:appstore
   ```
 
+**IMPORTANT:** Always pass `--non-interactive` to `eas build` commands. Without it,
+EAS prompts for Apple account login interactively which breaks in non-TTY contexts
+(Claude Code, CI). Remote credentials are already configured on EAS servers.
+
 ### EAS Build Profiles
+
+    Profile              Distribution   Channel       Notes
+    development-store    store          development   Dev build via TestFlight
+    preview-store        store          preview       TestFlight / Play Store internal testing
+    production           store          production    App Store / Play Store submission
+
+---
+
+#### Internal / ad-hoc profiles (rarely used)
+
+These install via direct link, NOT TestFlight. Almost never needed — prefer
+the `-store` profiles above.
 
     Profile              Distribution   Channel
     development          internal       development
-    development-store    store          development
     preview              internal       preview
-    preview-store        store          preview
-    production           store          production
 
 Version source is remote (EAS manages build numbers, auto-incremented).
 Runtime version "20" — bump when native code changes to invalidate OTA.
