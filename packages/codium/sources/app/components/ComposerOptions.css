@@ -55,21 +55,14 @@
 }
 
 .composer-options__label {
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.composer-options__item:nth-child(1) {
-    width: 89.27px;
-}
-
-.composer-options__item:nth-child(2) {
-    width: 118.63px;
-}
-
+/*
+ * The third item (branch) sits in its own visual group, separated from the
+ * first two by a slightly larger gap.
+ */
 .composer-options__item:nth-child(3) {
-    width: 77.03px;
     margin-left: 4px;
 }
 
