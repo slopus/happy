@@ -1,28 +1,12 @@
 import { useTheme } from '@/theme'
 import {
     BUILTIN_THEMES,
+    THEME_DISPLAY_NAMES,
     type ChromeTheme,
     type ThemeEntry,
     type ThemeMode,
 } from '@/theme/index'
 import './ThemePicker.css'
-
-const PRETTY_NAME: Record<string, string> = {
-    codex: 'Codex',
-    'linear-light': 'Linear',
-    'linear-dark': 'Linear',
-    'vercel-light': 'Vercel',
-    'vercel-dark': 'Vercel',
-    'raycast-light': 'Raycast',
-    'raycast-dark': 'Raycast',
-    'notion-light': 'Notion',
-    'notion-dark': 'Notion',
-    'matrix-dark': 'Matrix',
-    'lobster-dark': 'Lobster',
-    'sentry-dark': 'Sentry',
-    'proof-light': 'Proof',
-    'github-dark-default': 'GitHub',
-}
 
 function ThemeSwatch({ theme }: { theme: ChromeTheme }) {
     return (
@@ -52,7 +36,7 @@ function ThemePickerRow({ mode, activeId }: RowProps) {
         <div className="theme-picker__row" role="radiogroup" aria-label={`${mode} themes`}>
             {entries.map((entry: ThemeEntry) => {
                 const active = entry.codeThemeId === activeId
-                const name = PRETTY_NAME[entry.codeThemeId] ?? entry.codeThemeId
+                const name = THEME_DISPLAY_NAMES[entry.codeThemeId] ?? entry.codeThemeId
                 return (
                     <button
                         key={`${entry.variant}:${entry.codeThemeId}`}
