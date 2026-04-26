@@ -261,6 +261,14 @@ export class OpenClawBackend implements AgentBackend {
     if (event !== 'chat') return;
 
     const chatEvent = payload as OpenClawChatEventPayload;
+    // Filter chat events by sessionKey: the gateway broadcasts chat events to
+    // every connected socket, so without this filter every Happy session on
+    // the same daemon receives every other session's deltas — even when the
+    // gateway sessionKey is correctly isolated. The sessionKey field is
+    // normalized server-side to lowercase, so we compare case-insensitively.
+    if (this.sessionKey && chatEvent.sessionKey && chatEvent.sessionKey.toLowerCase() !== this.sessionKey.toLowerCase()) {
+      return;
+    }
     const state = chatEvent.state;
 
     if (state === 'started') {
