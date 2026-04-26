@@ -1,4 +1,5 @@
 import { ReactNode } from 'react'
+import './Page.css'
 
 interface PageProps {
     title?: ReactNode

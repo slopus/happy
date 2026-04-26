@@ -3,6 +3,7 @@ import { Command } from 'cmdk'
 import { useAtom } from 'jotai'
 import { useEffect } from 'react'
 import { searchOpenAtom } from '@/app/state'
+import './SearchDialog.css'
 
 export function SearchDialog() {
     const [open, setOpen] = useAtom(searchOpenAtom)

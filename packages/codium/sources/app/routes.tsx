@@ -6,6 +6,7 @@ import { NewChatPage } from './pages/NewChat'
 import { ChatPage } from './pages/Chat'
 import { AutomationsPage } from './pages/Automations'
 import { PluginsPage } from './pages/Plugins'
+import { ComponentsPage } from './pages/Components'
 import { AppearanceSettings } from './pages/settings/Appearance'
 import { GeneralSettings } from './pages/settings/General'
 import { AboutSettings } from './pages/settings/About'
@@ -22,6 +23,7 @@ export const router = createHashRouter([
                     { path: 'chat/:id', element: <ChatPage /> },
                     { path: 'automations', element: <AutomationsPage /> },
                     { path: 'plugins', element: <PluginsPage /> },
+                    { path: 'components', element: <ComponentsPage /> },
                     { path: 'terminal/:id', element: null },
                 ],
             },

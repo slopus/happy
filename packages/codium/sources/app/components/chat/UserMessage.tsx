@@ -1,3 +1,5 @@
+import './UserMessage.css'
+
 export function UserMessage({ children }: { children: string }) {
     return (
         <div className="chat-message chat-message--user">

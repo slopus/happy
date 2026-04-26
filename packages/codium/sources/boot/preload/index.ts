@@ -27,6 +27,23 @@ const win = {
     },
 }
 
+const files = {
+    pick: () =>
+        ipcRenderer.invoke('files:pick') as Promise<
+            Array<{ path: string; name: string; ext: string }>
+        >,
+    pickDirectory: () =>
+        ipcRenderer.invoke('files:pick-directory') as Promise<{
+            path: string
+            name: string
+            ext: string
+        } | null>,
+    readDataUrl: (filePath: string) =>
+        ipcRenderer.invoke('files:read-data-url', filePath) as Promise<
+            string | null
+        >,
+}
+
 const pty = {
     create: (opts: { cols?: number; rows?: number; cwd?: string } = {}) =>
         ipcRenderer.invoke('pty:create', opts) as Promise<string>,
@@ -55,6 +72,7 @@ if (process.contextIsolated) {
         contextBridge.exposeInMainWorld('theme', theme)
         contextBridge.exposeInMainWorld('pty', pty)
         contextBridge.exposeInMainWorld('win', win)
+        contextBridge.exposeInMainWorld('files', files)
     } catch (error) {
         console.error(error)
     }
@@ -69,4 +87,6 @@ if (process.contextIsolated) {
     window.pty = pty
     // @ts-expect-error augmenting window
     window.win = win
+    // @ts-expect-error augmenting window
+    window.files = files
 }

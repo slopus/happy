@@ -2,6 +2,7 @@ import { useLocation } from 'react-router-dom'
 import { useAtomValue } from 'jotai'
 import { terminalsAtom } from '@/app/state'
 import { TerminalPane } from './TerminalPane'
+import './TerminalHost.css'
 
 export function TerminalHost() {
     const terminals = useAtomValue(terminalsAtom)

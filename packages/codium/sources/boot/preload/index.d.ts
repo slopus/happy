@@ -23,6 +23,14 @@ export type WinApi = {
     onFullScreenChange(cb: (fullscreen: boolean) => void): () => void
 }
 
+export type PickedFile = { path: string; name: string; ext: string }
+
+export type FilesApi = {
+    pick(): Promise<PickedFile[]>
+    pickDirectory(): Promise<PickedFile | null>
+    readDataUrl(path: string): Promise<string | null>
+}
+
 declare global {
     interface Window {
         electron: ElectronAPI
@@ -30,5 +38,6 @@ declare global {
         theme: ThemeApi
         pty: PtyApi
         win: WinApi
+        files: FilesApi
     }
 }

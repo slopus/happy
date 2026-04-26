@@ -1,0 +1,48 @@
+.app__toolbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: var(--sidebar-width, 319px);
+    height: var(--height-toolbar);
+    transition: width 180ms ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-left: 104px;
+    -webkit-app-region: drag;
+    z-index: 10;
+}
+
+.app__toolbar-btn {
+    -webkit-app-region: no-drag;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    color: var(--color-text-foreground-tertiary);
+    background: transparent;
+    transition:
+        background 120ms ease,
+        color 120ms ease,
+        border-color 120ms ease;
+}
+
+.app__toolbar-btn:hover,
+.app__toolbar-btn:focus-visible {
+    background: var(--color-hover);
+    border-color: var(--color-border);
+    color: var(--color-text-foreground);
+}
+
+.app__toolbar-btn:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 1px;
+}
+
+html:not([data-os='darwin']) .app__toolbar,
+.app--fullscreen .app__toolbar {
+    padding-left: 16px;
+}

@@ -1,3 +1,5 @@
+import './ContextRing.css'
+
 interface ContextRingProps {
     /** 0..1 — fraction of context used */
     ratio: number

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Terminal, useTerminal } from '@wterm/react'
 import '@wterm/react/css'
+import './TerminalPane.css'
 
 interface TerminalPaneProps {
     id: string

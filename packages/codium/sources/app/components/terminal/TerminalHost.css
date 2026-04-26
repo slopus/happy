@@ -1,0 +1,27 @@
+.terminal-host {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.terminal-host--visible {
+    display: flex;
+}
+
+.terminal-host__panes {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    background: #0b0d10;
+}
+
+.terminal-host__pane {
+    display: none;
+    position: absolute;
+    inset: 0;
+}
+
+.terminal-host__pane--active {
+    display: block;
+}

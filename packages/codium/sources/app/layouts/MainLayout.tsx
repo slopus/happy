@@ -7,6 +7,7 @@ import {
 } from '@/app/components/Toolbar'
 import { MainSidebar } from '@/app/components/MainSidebar'
 import { TerminalHost } from '@/app/components/terminal/TerminalHost'
+import './MainLayout.css'
 
 export function MainLayout() {
     const location = useLocation()

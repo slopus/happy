@@ -1,5 +1,6 @@
 import { useTheme } from '@/theme'
 import type { ThemeSource } from '@/theme'
+import './ThemeSwitcher.css'
 
 const OPTIONS: { value: ThemeSource; label: string }[] = [
     { value: 'system', label: 'System' },

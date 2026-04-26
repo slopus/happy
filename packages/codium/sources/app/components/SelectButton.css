@@ -1,0 +1,35 @@
+.select-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 12.5px;
+    color: var(--color-text-foreground);
+    background: rgba(255, 255, 255, 0.05);
+    font-size: var(--text-base);
+    line-height: 18px;
+    white-space: nowrap;
+    transition:
+        background 120ms ease,
+        border-color 120ms ease;
+}
+
+.select-button:hover,
+.select-button:focus-visible {
+    background: var(--color-button-hover);
+    border-color: var(--color-border);
+}
+
+.select-button:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+.select-button__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

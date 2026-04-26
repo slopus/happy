@@ -1,0 +1,11 @@
+.terminal-pane {
+    width: 100%;
+    height: 100%;
+    background: #0b0d10;
+    overflow: hidden;
+}
+
+.terminal-pane > * {
+    width: 100%;
+    height: 100%;
+}

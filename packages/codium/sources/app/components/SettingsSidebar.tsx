@@ -1,6 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAtomValue } from 'jotai'
 import { preSettingsPathAtom } from '@/app/state'
+import './MainSidebar.css'
+import './SettingsSidebar.css'
 
 const NAV = [
     { path: '/settings/appearance', label: 'Appearance' },

@@ -1,6 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useAtom } from 'jotai'
 import { modelAtom } from '@/app/state'
+import './Composer.css'
 
 interface ModelOption {
     id: string
@@ -9,11 +10,11 @@ interface ModelOption {
 }
 
 const MODELS: ModelOption[] = [
-    { id: 'claude-opus-4-7', label: 'Claude 4.7 Opus', group: 'Anthropic' },
+    { id: 'gpt-5-5', label: '5.5', group: 'OpenAI' },
+    { id: 'gpt-5-4', label: '5.4', group: 'OpenAI' },
+    { id: 'gpt-5-3-codex', label: '5.3 Codex', group: 'OpenAI' },
+    { id: 'gpt-5-mini', label: '5 mini', group: 'OpenAI' },
     { id: 'claude-sonnet-4-6', label: 'Claude 4.6 Sonnet', group: 'Anthropic' },
-    { id: 'claude-haiku-4-5', label: 'Claude 4.5 Haiku', group: 'Anthropic' },
-    { id: 'gpt-5', label: 'GPT-5', group: 'OpenAI' },
-    { id: 'gpt-5-mini', label: 'GPT-5 mini', group: 'OpenAI' },
 ]
 
 function ChevronDown() {

@@ -1,6 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useAtom } from 'jotai'
 import { effortAtom, type EffortLevel } from '@/app/state'
+import './Composer.css'
 
 const EFFORTS: { id: EffortLevel; label: string }[] = [
     { id: 'low', label: 'Low' },

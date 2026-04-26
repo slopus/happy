@@ -2,6 +2,7 @@ import { ReactNode } from 'react'
 import { useAtom } from 'jotai'
 import { useNavigate } from 'react-router-dom'
 import { sidebarOpenAtom } from '@/app/state'
+import './Toolbar.css'
 
 export function Toolbar({ children }: { children?: ReactNode }) {
     return <div className="app__toolbar">{children}</div>

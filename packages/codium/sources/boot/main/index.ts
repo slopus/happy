@@ -1,9 +1,21 @@
-import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
+import {
+    app,
+    BrowserWindow,
+    dialog,
+    ipcMain,
+    nativeTheme,
+    shell,
+} from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { basename, extname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import * as pty from 'node-pty'
+
+if (is.dev) {
+    app.commandLine.appendSwitch('remote-debugging-port', '9224')
+}
 
 type ThemeSource = 'system' | 'light' | 'dark'
 const themeState = () => ({
@@ -96,6 +108,68 @@ app.on('before-quit', () => {
 ipcMain.on('win:sync:is-fullscreen', (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     e.returnValue = win?.isFullScreen() ?? false
+})
+
+const IMAGE_MIME: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml',
+    heic: 'image/heic',
+}
+
+ipcMain.handle('files:pick', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (!win) return []
+    const result = await dialog.showOpenDialog(win, {
+        properties: ['openFile', 'multiSelections'],
+        filters: [
+            {
+                name: 'Images',
+                extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'heic'],
+            },
+            {
+                name: 'Documents',
+                extensions: ['pdf', 'txt', 'md', 'json', 'csv', 'rtf', 'docx'],
+            },
+            { name: 'All Files', extensions: ['*'] },
+        ],
+    })
+    if (result.canceled) return []
+    return result.filePaths.map((p) => ({
+        path: p,
+        name: basename(p),
+        ext: extname(p).toLowerCase().slice(1),
+    }))
+})
+
+ipcMain.handle('files:pick-directory', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+        properties: ['openDirectory'],
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    const path = result.filePaths[0]
+    return {
+        path,
+        name: basename(path),
+        ext: 'folder',
+    }
+})
+
+ipcMain.handle('files:read-data-url', async (_e, filePath: string) => {
+    const ext = extname(filePath).toLowerCase().slice(1)
+    const mime = IMAGE_MIME[ext]
+    if (!mime) return null
+    try {
+        const buf = await readFile(filePath)
+        return `data:${mime};base64,${buf.toString('base64')}`
+    } catch {
+        return null
+    }
 })
 
 function createWindow(): void {

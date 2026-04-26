@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import './PermissionPrompt.css'
 
 interface PermissionPromptProps {
     question: string

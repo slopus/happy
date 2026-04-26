@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Page } from '@/app/components/Page'
 import { Composer } from '@/app/components/Composer'
+import './NewChat.css'
 
 export function NewChatPage() {
     const navigate = useNavigate()

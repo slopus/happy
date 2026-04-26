@@ -3,6 +3,7 @@ import { Composer } from '@/app/components/Composer'
 import { UserMessage } from '@/app/components/chat/UserMessage'
 import { AssistantMessage } from '@/app/components/chat/AssistantMessage'
 import { PermissionPrompt } from '@/app/components/chat/PermissionPrompt'
+import './Chat.css'
 
 type MockMessage =
     | { type: 'user'; id: string; text: string }
