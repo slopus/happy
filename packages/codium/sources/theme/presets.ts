@@ -132,16 +132,6 @@ const CODEX_THEME_PARTIALS: { name: string; codeThemeId: string; variant: ThemeM
         name: 'Proof Light', codeThemeId: 'proof-light', variant: 'light',
         partial: { opaqueWindows: true, fonts: { ui: null, code: null } },
     },
-    {
-        // User-supplied entry — GitHub Dark mirroring github-dark-default code theme.
-        name: 'GitHub Dark', codeThemeId: 'github-dark-default', variant: 'dark',
-        partial: {
-            accent: '#1f6feb', ink: '#e6edf3', surface: '#0d1117', contrast: 60,
-            opaqueWindows: false,
-            fonts: { ui: null, code: null },
-            semanticColors: { diffAdded: '#3fb950', diffRemoved: '#f85149', skill: '#bc8cff' },
-        },
-    },
 ]
 
 /**
@@ -210,27 +200,48 @@ const EXTRA_THEME_PARTIALS: { name: string; codeThemeId: string; variant: ThemeM
     { name: 'Vitesse Light',              codeThemeId: 'vitesse-light',              variant: 'light', partial: { accent: '#1c6b48', ink: '#393a34', surface: '#ffffff' } },
 ]
 
-/** All built-in theme entries (codex defaults + chrome theme partials + code-theme-derived). */
-export const BUILTIN_THEMES: ThemeEntry[] = [
-    { codeThemeId: 'codex', variant: 'light', theme: CODEX_LIGHT_DEFAULT },
-    { codeThemeId: 'codex', variant: 'dark',  theme: CODEX_DARK_DEFAULT  },
-    ...CODEX_THEME_PARTIALS.map((p) => ({
-        codeThemeId: p.codeThemeId,
-        variant: p.variant,
-        theme: mergeWithDefault(p.partial, p.variant),
-    })),
-    ...EXTRA_THEME_PARTIALS.map((p) => ({
-        codeThemeId: p.codeThemeId,
-        variant: p.variant,
-        theme: mergeWithDefault(p.partial, p.variant),
-    })),
-]
+/**
+ * All built-in theme entries — codex defaults + first-class chrome theme
+ * partials + code-theme-derived. The arrays are merged in priority order:
+ * later sources are skipped when a (codeThemeId, variant) pair was already
+ * registered by an earlier source. This guarantees a unique selection in the
+ * picker even if a code theme later gets shipped with a chrome partial.
+ */
+export const BUILTIN_THEMES: ThemeEntry[] = (() => {
+    const out: ThemeEntry[] = []
+    const seen = new Set<string>()
+    const push = (entry: ThemeEntry) => {
+        const key = `${entry.variant}:${entry.codeThemeId}`
+        if (seen.has(key)) return
+        seen.add(key)
+        out.push(entry)
+    }
+    push({ codeThemeId: 'codex', variant: 'light', theme: CODEX_LIGHT_DEFAULT })
+    push({ codeThemeId: 'codex', variant: 'dark',  theme: CODEX_DARK_DEFAULT  })
+    for (const p of CODEX_THEME_PARTIALS) {
+        push({ codeThemeId: p.codeThemeId, variant: p.variant, theme: mergeWithDefault(p.partial, p.variant) })
+    }
+    for (const p of EXTRA_THEME_PARTIALS) {
+        // Code-theme-derived presets default to opaque windows: they were
+        // authored for VS Code (no vibrancy), and translucent vibrancy would
+        // distort their carefully-chosen surface color.
+        push({
+            codeThemeId: p.codeThemeId,
+            variant: p.variant,
+            theme: mergeWithDefault({ ...p.partial, opaqueWindows: true }, p.variant),
+        })
+    }
+    return out
+})()
 
-/** Display name for a built-in theme by codeThemeId. */
+/**
+ * Display name for a built-in theme by codeThemeId. CODEX_THEME_PARTIALS take
+ * precedence — for shared codeThemeIds, that name wins.
+ */
 export const THEME_DISPLAY_NAMES: Record<string, string> = (() => {
     const out: Record<string, string> = { codex: 'Codex' }
-    for (const p of CODEX_THEME_PARTIALS) out[p.codeThemeId] = p.name
     for (const p of EXTRA_THEME_PARTIALS) out[p.codeThemeId] = p.name
+    for (const p of CODEX_THEME_PARTIALS) out[p.codeThemeId] = p.name
     return out
 })()
 
