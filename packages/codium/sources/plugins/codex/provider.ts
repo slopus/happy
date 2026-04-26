@@ -99,12 +99,22 @@ function buildHeaders(token: string, accountId: string, sessionId?: string): Rec
     return h
 }
 
+/**
+ * Codex's Responses endpoint rejects requests without `instructions`
+ * (returns `{"detail":"Instructions are required"}`). The CLI ships its own
+ * agentic prompt; for plain chat we send a minimal one.
+ */
+const DEFAULT_INSTRUCTIONS = 'You are a helpful assistant.'
+
 function buildBody(modelId: string, ctx: InferenceContext, params: CodexParameters): unknown {
+    const instructions = (ctx.systemPrompt ?? '').trim().length > 0
+        ? ctx.systemPrompt
+        : DEFAULT_INSTRUCTIONS
     const body: Record<string, unknown> = {
         model: modelId,
         store: false,
         stream: true,
-        instructions: ctx.systemPrompt,
+        instructions,
         input: convertMessages(ctx.messages),
         text: { verbosity: 'medium' },
         include: ['reasoning.encrypted_content'],
@@ -320,7 +330,13 @@ export async function validateCredential(
         const res = await fetch(ENDPOINT, {
             method: 'POST',
             headers: buildHeaders(cred.accessToken, cred.accountId),
-            body: JSON.stringify({ model: 'gpt-5.5', store: false, stream: false, input: [] }),
+            body: JSON.stringify({
+                model: 'gpt-5.5',
+                store: false,
+                stream: false,
+                instructions: DEFAULT_INSTRUCTIONS,
+                input: [],
+            }),
             signal,
         })
         if (res.status === 401 || res.status === 403) {
