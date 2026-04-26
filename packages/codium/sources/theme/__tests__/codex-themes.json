@@ -1,0 +1,219 @@
+{
+  "codexDefault": {
+    "dark": {
+      "accent": "#339cff",
+      "ink": "#ffffff",
+      "surface": "#181818",
+      "contrast": 60,
+      "opaqueWindows": false,
+      "semanticColors": {
+        "diffAdded": "#40c977",
+        "diffRemoved": "#fa423e",
+        "skill": "#ad7bf9"
+      },
+      "fonts": {
+        "ui": null,
+        "code": null
+      }
+    },
+    "light": {
+      "accent": "#339cff",
+      "ink": "#1a1c1f",
+      "surface": "#ffffff",
+      "contrast": 45,
+      "opaqueWindows": false,
+      "semanticColors": {
+        "diffAdded": "#00a240",
+        "diffRemoved": "#ba2623",
+        "skill": "#924ff7"
+      },
+      "fonts": {
+        "ui": null,
+        "code": null
+      }
+    }
+  },
+  "themes": [
+    {
+      "name": "Linear Dark",
+      "bg": null,
+      "fg": "#e6e9ef",
+      "partial": {
+        "accent": "#606acc",
+        "ink": "#e3e4e6",
+        "surface": "#0f0f11",
+        "opaqueWindows": true,
+        "fonts": {
+          "ui": "Inter",
+          "code": null
+        },
+        "semanticColors": {
+          "diffAdded": "#69c967",
+          "diffRemoved": "#ff7e78",
+          "skill": "#c2a1ff"
+        }
+      }
+    },
+    {
+      "name": "Linear Light",
+      "bg": null,
+      "fg": "#2a3140",
+      "partial": {
+        "ink": "#1b1b1b",
+        "surface": "#fcfcfd",
+        "opaqueWindows": true,
+        "fonts": {
+          "ui": "Inter",
+          "code": null
+        },
+        "semanticColors": {
+          "diffAdded": "#52a450",
+          "diffRemoved": "#c94446",
+          "skill": "#8160d8"
+        }
+      }
+    },
+    {
+      "name": "Lobster Dark",
+      "bg": null,
+      "fg": "#e4e4e7",
+      "partial": {
+        "fonts": {
+          "ui": "Satoshi",
+          "code": null
+        }
+      }
+    },
+    {
+      "name": "Matrix Dark",
+      "bg": null,
+      "fg": "#b8ffca",
+      "partial": {
+        "opaqueWindows": true,
+        "fonts": {
+          "ui": "ui-monospace, \"SFMono-Regular\", \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace",
+          "code": null
+        }
+      }
+    },
+    {
+      "name": "Notion Dark",
+      "bg": null,
+      "fg": "#d9d9d8",
+      "partial": {
+        "opaqueWindows": true,
+        "fonts": {
+          "ui": null,
+          "code": null
+        }
+      }
+    },
+    {
+      "name": "Notion Light",
+      "bg": null,
+      "fg": "#37352f",
+      "partial": {
+        "opaqueWindows": true,
+        "fonts": {
+          "ui": null,
+          "code": null
+        }
+      }
+    },
+    {
+      "name": "Proof Light",
+      "bg": null,
+      "fg": "#2f312d",
+      "partial": {
+        "opaqueWindows": false,
+        "fonts": {
+          "ui": null,
+          "code": null
+        }
+      }
+    },
+    {
+      "name": "Raycast Dark",
+      "bg": null,
+      "fg": null,
+      "partial": {
+        "accent": "#ff6363",
+        "ink": "#fefefe",
+        "surface": "#101010",
+        "opaqueWindows": false,
+        "fonts": {
+          "ui": "Inter",
+          "code": "\"Jetbrains Mono\""
+        }
+      }
+    },
+    {
+      "name": "Raycast Light",
+      "bg": null,
+      "fg": null,
+      "partial": {
+        "accent": "#ff6363",
+        "ink": "#030303",
+        "surface": "#ffffff",
+        "opaqueWindows": false,
+        "fonts": {
+          "ui": "Inter",
+          "code": "\"Jetbrains Mono\""
+        }
+      }
+    },
+    {
+      "name": "Sentry Dark",
+      "bg": null,
+      "fg": "#e6dff9",
+      "partial": {
+        "fonts": {
+          "ui": null,
+          "code": null
+        }
+      }
+    },
+    {
+      "name": "Vercel Dark",
+      "bg": null,
+      "fg": "#ededed",
+      "partial": {
+        "accent": "#006efe",
+        "ink": "#ededed",
+        "surface": "#000000",
+        "contrast": 50,
+        "opaqueWindows": true,
+        "fonts": {
+          "ui": "Geist, Inter",
+          "code": "\"Geist Mono\", ui-monospace, \"SFMono-Regular\""
+        },
+        "semanticColors": {
+          "diffAdded": "#00AD3A",
+          "diffRemoved": "#F13342",
+          "skill": "#9540D5"
+        }
+      }
+    },
+    {
+      "name": "Vercel Light",
+      "bg": null,
+      "fg": "#171717",
+      "partial": {
+        "accent": "#006aff",
+        "ink": "#171717",
+        "surface": "#ffffff",
+        "contrast": 40,
+        "opaqueWindows": true,
+        "fonts": {
+          "ui": "Geist, Inter",
+          "code": "\"Geist Mono\", ui-monospace, \"SFMono-Regular\""
+        },
+        "semanticColors": {
+          "diffAdded": "#28A948",
+          "diffRemoved": "#EB001D",
+          "skill": "#A100F8"
+        }
+      }
+    }
+  ]
+}

@@ -8,6 +8,7 @@ const theme = {
     get: (): Promise<ThemeState> => ipcRenderer.invoke('theme:get'),
     set: (source: ThemeSource): Promise<ThemeState> =>
         ipcRenderer.invoke('theme:set', source),
+    setOpaque: (opaque: boolean) => ipcRenderer.send('theme:set-opaque', opaque),
     onUpdate: (cb: (state: ThemeState) => void) => {
         const listener = (_: unknown, state: ThemeState) => cb(state)
         ipcRenderer.on('theme:updated', listener)

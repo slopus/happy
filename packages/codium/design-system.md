@@ -9,6 +9,585 @@ Observed app version:
 - Theme class: `electron-dark`
 - Viewport sampled: `1344 x 877`
 
+## Theming Pipeline (reverse-engineered)
+
+Codex generates ~149 CSS custom properties from **5 atomic user inputs** per theme, via a JS pre-pass that writes derived values onto `<html>`'s inline `style`, plus a CSS layer that resolves the rest with `color-mix(in oklab, …)`.
+
+### Inputs (per theme — `Light`, `Dark`)
+
+The user-editable theme object is persisted to `~/.codex/.codex-global-state.json` under `electron-persisted-atom-state.appearance{Light,Dark}ChromeTheme`:
+
+```jsonc
+{
+  "accent":   "#0169cc",       // link/highlight color
+  "ink":      "#0d0d0d",       // foreground text/icon color
+  "surface":  "#ffffff",       // primary surface color
+  "contrast": 40,              // 0–100 — single shaping knob
+  "fonts":    { "ui": "Geist, Inter", "code": "\"Geist Mono\", ui-monospace, ..." },
+  "opaqueWindows": true,       // light=true, dark=false (vibrancy)
+  "semanticColors": {
+    "diffAdded":   "#00a240",
+    "diffRemoved": "#e02e2a",
+    "skill":       "#751ed9"
+  }
+}
+```
+
+`appearanceTheme` (top-level) selects the resolved mode: `"light" | "dark" | "system"`. `system` queries `nativeTheme.shouldUseDarkColors`.
+
+### Resolution flow
+
+1. Resolve mode → pick the matching `appearance{Light,Dark}ChromeTheme` object.
+2. Set `<html>` class:
+   - `electron-light` or `electron-dark` (resolved theme)
+   - `+ electron-opaque` if `opaqueWindows: true` (Tailwind variant trigger)
+3. Inline-style `<html>` with the 5 base values verbatim:
+   ```css
+   --codex-base-accent:   <accent>;
+   --codex-base-ink:      <ink>;
+   --codex-base-surface:  <surface>;
+   --codex-base-contrast: <contrast>;
+   --vscode-font-family:        <fonts.ui>;
+   --vscode-editor-font-family: <fonts.code>;
+   ```
+4. JS pre-pass writes ~80 derived hex/rgba values onto the same inline `style`, so most tokens are concrete colors at runtime.
+5. CSS rules add ~70 more tokens via `color-mix(in oklab, var(--color-text-foreground) X%, transparent)` etc., for the constant-alpha overlays.
+
+### The shaping function
+
+Every contrast-driven token has the form:
+
+```
+value(contrast) = base + delta · t(contrast)
+```
+
+Where `t(0) = 0`, `t(100) = 1`, and `t(c) = (c/100)^p`. Fitting 9 different alpha tokens against the same shaping function yields tightly clustered exponents:
+
+- **Light theme:** `p ≈ 1.50`
+- **Dark theme:** `p ≈ 1.66`
+
+Dark uses a slightly steeper curve, presumably to compensate for vibrancy compositing reducing perceptual contrast on translucent surfaces. Each token defines its own `(base, delta)` pair; the curve `t(c)` is shared across all of them.
+
+### Token derivation buckets
+
+| Bucket | Behavior | Example tokens | Formula |
+|---|---|---|---|
+| **A. Pass-through** | Literal copy of an input | `--color-text-foreground = ink`, `--color-background-surface = surface`, `--color-text-accent = accent` (light only) | `value = input` |
+| **B. Static-alpha ink overlays** | Constant alpha, contrast-independent | `--color-token-list-hover-background` (5%), `--color-token-bg-fog` (2.5%), `--color-token-badge-background` (4.7%), `--color-token-input-border` (7.4%) | `rgba(ink, k)` — k is per-token constant |
+| **C. Contrast-shaped ink overlays** | `rgba(ink, …)` ramped by contrast | `--color-border` (0.04 → 0.17), `--color-text-foreground-secondary` (0.60 → 0.93), `--color-background-button-primary-active` (0.04 → 0.44), `--color-icon-secondary`, `--color-text-foreground-tertiary` | `rgba(ink, base + delta · t(c))` |
+| **D. Surface ↔ ink mixes** | Slight tint of surface toward ink | `--color-background-surface-under` (sidebar/page bg) | `mix(surface, ink, base + delta · t(c))` |
+| **E. Surface ↔ accent mixes** | Pale accent backgrounds (selection/hover) | `--color-background-accent`, `--color-background-accent-hover`, `--color-background-accent-active` | `mix(surface, accent, base + delta · t(c))` |
+
+In **dark mode only**, `--color-text-accent` is itself a contrast-shaped mix toward `ink` (= white):
+
+```
+text-accent_dark(c) = mix(accent, ink, 0.19 + 0.46 · t(c))
+```
+
+This auto-lightens the user-supplied accent (e.g. `#339cff`) toward white for legibility against `#181818`. Light mode leaves `accent` as a pass-through.
+
+### Empirical token table (light theme, `ink=#0d0d0d`, `surface=#ffffff`, `accent=#0169cc`)
+
+| Token | c=0 | c=40 | c=100 | Formula |
+|---|---|---|---|---|
+| `--color-text-foreground` | `#0d0d0d` | `#0d0d0d` | `#0d0d0d` | `ink` |
+| `--color-background-surface` | `#ffffff` | `#ffffff` | `#ffffff` | `surface` |
+| `--color-background-surface-under` | `#ffffff` | `#f7f7f7` | `#e5e5e5` | `mix(surface, ink, 0.10·t(c))` |
+| `--color-text-foreground-secondary` | `rgba(13,13,13,0.598)` | `rgba(…,0.684)` | `rgba(…,0.933)` | `rgba(ink, 0.60 + 0.34·t(c))` |
+| `--color-text-foreground-tertiary` | `rgba(…,0.398)` | `rgba(…,0.484)` | `rgba(…,0.733)` | `secondary − 0.20` (constant offset) |
+| `--color-border` | `rgba(…,0.039)` | `rgba(…,0.074)` | `rgba(…,0.173)` | `rgba(ink, 0.04 + 0.13·t(c))` |
+| `--color-border-heavy` | `rgba(…,0.059)` | `rgba(…,0.111)` | `rgba(…,0.260)` | `rgba(ink, 0.06 + 0.20·t(c))` |
+| `--color-background-button-primary-active` | `rgba(…,0.037)` | `rgba(…,0.141)` | `rgba(…,0.440)` | `rgba(ink, 0.04 + 0.40·t(c))` |
+| `--color-background-accent` | `#e8f2fa` | `#e0ecf9` | `#c6def4` | `mix(surface, accent, 0.09 + 0.13·t(c))` |
+| `--color-token-list-hover-background` | `rgba(…,0.05)` | `rgba(…,0.05)` | `rgba(…,0.05)` | `rgba(ink, 0.05)` (constant) |
+| `--color-token-bg-fog` | `mix(oklab, ink 2.5%, transparent)` | same | same | constant alpha, CSS-only |
+
+### Effects of changing each input
+
+| Input | Tokens affected |
+|---|---|
+| `accent` | Only the **accent family** (`text-accent`, `icon-accent`, `bg-accent`, `bg-accent-hover`, `bg-accent-active`) — ~6 tokens. Borders and ink overlays don't shift. |
+| `ink` | **Most tokens** — every `rgba(ink, α)` overlay plus surface↔ink mixes. Setting `ink: #ff0000` recolors borders, secondary text, fog, hover, etc., and tints `surface-under` toward red. |
+| `surface` | `background-surface` directly, plus all surface mixes (`surface-under`, `bg-accent` family, `dropdown`, `input-background`). |
+| `contrast` | Only the **contrast-shaped tokens** (~25). Static-alpha overlays don't move. |
+| `opaqueWindows` | Toggles vibrancy: light = opaque body, dark = `body { background: color(srgb 0.157 0.157 0.157 / 0.55) }` so macOS vibrancy shows through. Adds/removes `electron-opaque` class. |
+
+### Design ideas
+
+1. **Few inputs, many outputs.** A theme is a small JSON; designers pick 3 colors + 1 slider; "Copy theme" / "Import" exchange the JSON.
+2. **Single shaping curve per theme.** Contrast isn't 25 knobs — it's one `t(c) = (c/100)^p` applied to every contrast-driven token. Per-token `(base, delta)` is the only thing that varies.
+3. **Ink as an alpha source.** Dividers/secondary text/hover are `rgba(ink, α)`, not literal greys. Auto-flips with theme; works with custom ink colors; keeps perceptual contrast consistent.
+4. **Accent stays on its own track.** Changing accent never recolors general tokens — only the explicit accent family. Custom themes can't go chaotic.
+5. **Constant-alpha for ambient, contrast-shaped for interactive.** Fog/list-hover are quiet across the slider; borders/button states get punchier as the user dials contrast up — exactly what the slider name implies.
+6. **Two-tier compute.** Heavy precomputed colors live in JS-injected inline style; light constant-alpha overlays stay in CSS via `color-mix(in oklab, …)` so they hot-recompute when ink changes.
+7. **Theme-aware accent legibility.** Dark mode auto-mixes accent toward white as contrast increases, so users can pick any accent hue without worrying about contrast failures on `#181818`.
+8. **Semantic colors are literal.** `diffAdded`/`diffRemoved`/`skill` bypass the derivation pipeline — they're direct inputs because diff red and OK green need to mean what they mean.
+
+## Token Counts
+
+When the renderer settles, `getComputedStyle(:root)` reports ~149 reachable
+custom properties. They split as:
+
+| Layer | Count | Source |
+|---|---|---|
+| Inline-style chrome tokens | **65** | Computed in JS by `deriveTokens()` and written to `<html>.style` |
+| `--color-token-*` design-system aliases | **96** | CSS-only, `var()` references to inline tokens |
+| Other (fonts, Tailwind base palette, VS Code editor tokens) | ~700 | Unrelated to chrome theme; bundled VS Code editor / framework defaults |
+
+The 65 + 96 ≈ 161 surface that chrome components actually consume.
+
+## JS Derivation Functions
+
+The runtime functions that compute the 65 inline tokens. Pseudocode pulled
+from the running app, normalized to the names used in
+`packages/codium/sources/theme/derive.ts`.
+
+### Inputs
+
+```ts
+type ChromeTheme = {
+    accent:   string   // hex
+    ink:      string   // hex (foreground)
+    surface:  string   // hex (primary surface)
+    contrast: number   // 0..100
+    opaqueWindows: boolean
+    fonts: { ui: string | null, code: string | null }
+    semanticColors: { diffAdded: string, diffRemoved: string, skill: string }
+}
+
+type ThemeMode = 'light' | 'dark'
+```
+
+### Color helpers
+
+```ts
+type RGB = [number, number, number]
+
+const parseHex = (h: string): RGB => …          // '#0d0d0d' → [13, 13, 13]
+const rgbToHex = (rgb: RGB): string => …        // [13, 13, 13] → '#0d0d0d'
+const rgba     = (rgb: RGB, a: number): string  // → 'rgba(13, 13, 13, 0.123)'
+const rgb      = (rgb: RGB): string             // → 'rgb(13, 13, 13)'
+
+// Standard sRGB linear interpolation (the running app does NOT use oklab here
+// for the JS-side mixes; it only uses oklab for the CSS-side `color-mix`).
+const mix = (a: RGB, b: RGB, t: number): RGB => [
+    a[0] * (1 - t) + b[0] * t,
+    a[1] * (1 - t) + b[1] * t,
+    a[2] * (1 - t) + b[2] * t,
+]
+
+const BLACK: RGB = [0, 0, 0]
+const WHITE: RGB = [255, 255, 255]
+```
+
+### Shaping function
+
+The contrast slider is a **single** non-linear knob applied to every
+contrast-driven token. Each mode has its own exponent.
+
+```ts
+const shape = (contrast: number, mode: ThemeMode): number => {
+    const c = clamp01(contrast / 100)
+    const p = mode === 'dark' ? 1.66 : 1.50
+    return Math.pow(c, p)
+}
+
+const apply = (curve: { base: number, delta: number }, t: number) =>
+    curve.base + curve.delta * t
+```
+
+### Per-token coefficient table
+
+Empirically fit from snapshots of the running Codex app.
+
+```ts
+const COEFFS: Record<ThemeMode, ModeCoeffs> = {
+    light: {
+        p: 1.5,
+        fgSecondary:          { base: 0.598, delta: 0.335 },
+        fgTertiary:           { base: 0.398, delta: 0.335 },
+        border:               { base: 0.04,  delta: 0.133 },
+        borderHeavy:          { base: 0.06,  delta: 0.20  },
+        borderLight:          { base: 0.03,  delta: 0.067 },
+        iconPrimary:          'passthrough',           // light: ink as-is
+        btnPrimaryActive:     { base: 0.04,   delta: 0.40  },
+        btnPrimaryHover:      { base: 0.02,   delta: 0.20  },
+        btnPrimaryInactive:   { base: 0.151,  delta: 0.306 },
+        btnSecondary:         { base: 0.037,  delta: 0.041 },
+        btnSecondaryActive:   { base: 0.027,  delta: 0.041 },
+        btnSecondaryHover:    { base: 0.035,  delta: 0.061 },
+        btnSecondaryInactive: { base: 0.007,  delta: 0.041 },
+        btnTertiary:          { base: 0,      delta: 0     }, // always transparent
+        btnTertiaryActive:    { base: 0.140,  delta: 0.184 },
+        btnTertiaryHover:     { base: 0.073,  delta: 0.082 },
+        surfUnder:            { base: 0.0,    delta: 0.10  },  // mix(surface, ink)
+        bgAccent:             { base: 0.09,   delta: 0.13  },  // mix(surface, accent)
+        bgAccentHover:        { base: 0.10,   delta: 0.15  },
+        bgAccentActive:       { base: 0.11,   delta: 0.16  },
+        accentForegroundMix:  { base: 0,      delta: 0     },  // light: passthrough
+        accentPurple:         '#751ed9',
+        decorationAdded:      '#00a240',
+        decorationDeleted:    '#e02e2a',
+        editorOverlayAlpha:   0.15,
+    },
+    dark: {
+        p: 1.66,
+        fgSecondary:          { base: 0.58,  delta: 0.303 },
+        fgTertiary:           { base: 0.329, delta: 0.394 },
+        border:               { base: 0.032, delta: 0.121 },
+        borderHeavy:          { base: 0.078, delta: 0.182 },
+        borderLight:          { base: 0.016, delta: 0.061 },
+        iconPrimary:          { base: 0.79,  delta: 0.27  },
+        btnPrimaryActive:     { base: 0.035, delta: 0.152 },
+        btnPrimaryHover:      { base: 0.019, delta: 0.091 },
+        btnPrimaryInactive:   { base: 0.017, delta: 0.036 },
+        btnSecondary:         { base: 0.037, delta: 0.036 },
+        btnSecondaryActive:   { base: 0.078, delta: 0.099 },
+        btnSecondaryHover:    { base: 0.051, delta: 0.063 },
+        btnSecondaryInactive: { base: 0.015, delta: 0.054 },
+        btnTertiary:          { base: 0.017, delta: 0.027 },
+        btnTertiaryActive:    { base: 0.058, delta: 0.099 },
+        btnTertiaryHover:     { base: 0.041, delta: 0.063 },
+        surfUnder:            { base: 0.05,  delta: 0.16 },   // mix(surface, BLACK)
+        bgAccent:             { base: 0.17,  delta: 0.19 },   // mix(BLACK, accent)
+        bgAccentHover:        { base: 0.18,  delta: 0.21 },
+        bgAccentActive:       { base: 0.20,  delta: 0.23 },
+        accentForegroundMix:  { base: 0.19,  delta: 0.46 },
+        accentPurple:         '#ad7bf9',
+        decorationAdded:      '#40c977',
+        decorationDeleted:    '#fa423e',
+        editorOverlayAlpha:   0.23,
+    },
+}
+
+// Dark-mode-only "above surface" mixes (no headroom in light because
+// surface is already at maximum brightness).
+const DARK_SURFACE_MIX = {
+    controlOpaque:     { base: 0.049, delta: 0.099 },  // mix(surface, ink, …)
+    editorOpaque:      { base: 0.058, delta: 0.027 },  // mix(surface, ink, …)
+    elevatedPrimary:   { base: 0.053, delta: 0.180 },  // mix(surface, ink, …)
+    buttonPrimaryFill: { base: 0.46,  delta: 0     },  // mix(surface, BLACK, …)
+    textBtnSecondary:  { base: 0.20,  delta: 0.09  },  // mix(surface, ink, …)
+}
+```
+
+### Main derivation
+
+```ts
+function deriveTokens(theme: ChromeTheme, mode: ThemeMode): Record<string, string> {
+    const ink     = parseHex(theme.ink)
+    const surface = parseHex(theme.surface)
+    const accent  = parseHex(theme.accent)
+    const t = shape(theme.contrast, mode)
+    const C = COEFFS[mode]
+
+    const inkA       = (alpha: number) => rgba(ink, alpha)
+    const inkOverlay = (curve: Curve)  => inkA(apply(curve, t))
+
+    // — accent foreground (legibility)
+    const accentFg = mode === 'dark'
+        ? rgbToHex(mix(accent, WHITE, apply(C.accentForegroundMix, t)))
+        : theme.accent
+
+    // — surface "below" (page / sidebar bg) — quieter than surface in both modes
+    const surfaceUnder = rgbToHex(mix(
+        surface,
+        mode === 'dark' ? BLACK : ink,
+        apply(C.surfUnder, t),
+    ))
+
+    // — surface "above" (panel / elevated / control / editor)
+    const above = mode === 'dark'
+        ? {
+            control:  mix(surface, ink, apply(DARK_SURFACE_MIX.controlOpaque,  t)),
+            editor:   mix(surface, ink, apply(DARK_SURFACE_MIX.editorOpaque,   t)),
+            elevated: mix(surface, ink, apply(DARK_SURFACE_MIX.elevatedPrimary, t)),
+        }
+        : { control: surface, editor: surface, elevated: surface }
+
+    // — bg-accent family (selection / hover accent)
+    const bgAccentBase = mode === 'dark' ? BLACK : surface
+    const bgAccentRgb       = mix(bgAccentBase, accent, apply(C.bgAccent,        t))
+    const bgAccentHoverRgb  = mix(bgAccentBase, accent, apply(C.bgAccentHover,   t))
+    const bgAccentActiveRgb = mix(bgAccentBase, accent, apply(C.bgAccentActive,  t))
+
+    // — primary button fill
+    const buttonPrimaryFill = mode === 'dark'
+        ? mix(surface, BLACK, apply(DARK_SURFACE_MIX.buttonPrimaryFill, t))
+        : ink
+
+    return {
+        // base inputs (echoed)
+        '--codex-base-accent':   theme.accent,
+        '--codex-base-ink':      theme.ink,
+        '--codex-base-surface':  theme.surface,
+        '--codex-base-contrast': String(theme.contrast),
+
+        // fonts
+        '--vscode-font-family':        appendFontFallback(theme.fonts.ui   ?? 'Geist, Inter',                                  'sans'),
+        '--vscode-editor-font-family': appendFontFallback(theme.fonts.code ?? '"Geist Mono", ui-monospace, "SFMono-Regular"',  'mono'),
+
+        // typography (fixed; not theme-dependent)
+        '--text-xs': '11px', '--text-sm': '12px', '--text-base': '13px', '--text-lg': '16px',
+        '--text-heading-sm': '18px', '--text-heading-md': '20px', '--text-heading-lg': '24px',
+        '--text-xl': '28px', '--text-2xl': '36px', '--text-3xl': '48px', '--text-4xl': '72px',
+        '--vscode-font-size': '13px', '--vscode-editor-font-size': '12px',
+
+        // pass-throughs / accent
+        '--color-text-foreground':    theme.ink,
+        '--color-icon-primary':       C.iconPrimary === 'passthrough' ? theme.ink : inkA(apply(C.iconPrimary, t)),
+        '--color-text-accent':        accentFg,
+        '--color-icon-accent':        accentFg,
+        '--color-background-surface': theme.surface,
+        '--color-accent-blue':        theme.accent,
+        '--color-accent-purple':      C.accentPurple,
+
+        // static-alpha ink overlays
+        '--color-hover':                          inkA(0.05),
+        '--color-token-list-hover-background':    inkA(0.05),
+        '--color-token-toolbar-hover-background': inkA(0.05),
+        '--color-token-badge-background':         inkA(0.047),
+        '--color-token-input-border':             inkA(0.074),
+        '--color-token-bg-fog':                   inkA(0.025),
+
+        // contrast-shaped ink overlays
+        '--color-text-foreground-secondary':            inkOverlay(C.fgSecondary),
+        '--color-text-foreground-tertiary':             inkOverlay(C.fgTertiary),
+        '--color-icon-secondary':                       inkOverlay(C.fgSecondary),
+        '--color-icon-tertiary':                        inkOverlay(C.fgTertiary),
+        '--color-border':                               inkOverlay(C.border),
+        '--color-border-heavy':                         inkOverlay(C.borderHeavy),
+        '--color-border-light':                         inkOverlay(C.borderLight),
+        '--color-active':                               inkA(0.04 + 0.06 * t),
+        '--color-button-bg':                            inkA(0.04 + 0.06 * t),
+        '--color-button-hover':                         inkA(0.04 + 0.04 * t),
+
+        // simple-scrim: BLACK in light, INK in dark
+        '--color-simple-scrim': mode === 'light'
+            ? rgba(BLACK, 0.06 + 0.13 * t)
+            : inkA(0.06 + 0.13 * t),
+
+        // button background family
+        '--color-background-button-primary':            mode === 'dark' ? rgb(buttonPrimaryFill) : rgbToHex(buttonPrimaryFill),
+        '--color-background-button-primary-active':     inkOverlay(C.btnPrimaryActive),
+        '--color-background-button-primary-hover':      inkOverlay(C.btnPrimaryHover),
+        '--color-background-button-primary-inactive':   inkOverlay(C.btnPrimaryInactive),
+        '--color-background-button-secondary':          inkOverlay(C.btnSecondary),
+        '--color-background-button-secondary-active':   inkOverlay(C.btnSecondaryActive),
+        '--color-background-button-secondary-hover':    inkOverlay(C.btnSecondaryHover),
+        '--color-background-button-secondary-inactive': inkOverlay(C.btnSecondaryInactive),
+        '--color-background-button-tertiary':           inkOverlay(C.btnTertiary),
+        '--color-background-button-tertiary-active':    inkOverlay(C.btnTertiaryActive),
+        '--color-background-button-tertiary-hover':     inkOverlay(C.btnTertiaryHover),
+
+        // text on buttons
+        '--color-text-button-primary':   mode === 'dark' ? rgb(buttonPrimaryFill) : theme.surface,
+        '--color-text-button-secondary': mode === 'dark'
+            ? rgbToHex(mix(surface, ink, apply(DARK_SURFACE_MIX.textBtnSecondary, t)))
+            : theme.ink,
+        '--color-text-button-tertiary':  inkOverlay(C.fgTertiary),
+
+        // surface family
+        '--color-background-surface-under':             surfaceUnder,
+        '--color-background-panel':                     mode === 'dark' ? rgbToHex(mix(surface, ink, 0.07)) : theme.surface,
+        '--color-background-control':                   rgba(above.control, 0.96),
+        '--color-background-control-opaque':            rgb(above.control),
+        '--color-background-editor-opaque':             rgb(above.editor),
+        '--color-background-elevated':                  rgba(above.elevated, 0.96),
+        '--color-background-elevated-primary':          rgba(above.elevated, 0.96),
+        '--color-background-elevated-primary-opaque':   rgb(above.elevated),
+        '--color-background-elevated-secondary':        mode === 'dark' ? inkOverlay(C.btnPrimaryInactive) : rgba(surface, 0.96),
+        '--color-background-elevated-secondary-opaque': rgbToHex(above.editor),
+
+        // accent backgrounds
+        '--color-background-accent':         rgbToHex(bgAccentRgb),
+        '--color-background-accent-hover':   rgbToHex(bgAccentHoverRgb),
+        '--color-background-accent-active':  rgbToHex(bgAccentActiveRgb),
+
+        // focus ring
+        '--color-border-focus': mode === 'dark'
+            ? rgba(parseHex(accentFg), 0.76)
+            : theme.accent,
+
+        // fixed brand: diff / editor overlays
+        '--color-decoration-added':   C.decorationAdded,
+        '--color-decoration-deleted': C.decorationDeleted,
+        '--color-editor-added':       rgba(parseHex(C.decorationAdded),   C.editorOverlayAlpha),
+        '--color-editor-deleted':     rgba(parseHex(C.decorationDeleted), C.editorOverlayAlpha),
+
+        // legacy semantic-color shortcuts
+        '--color-accent-green': theme.semanticColors.diffAdded,
+        '--color-accent-red':   theme.semanticColors.diffRemoved,
+    }
+}
+```
+
+### Apply to the document
+
+```ts
+function applyTheme(theme: ChromeTheme, mode: ThemeMode) {
+    const root = document.documentElement
+    for (const [k, v] of Object.entries(deriveTokens(theme, mode))) {
+        root.style.setProperty(k, v)
+    }
+    root.classList.toggle('electron-light',  mode === 'light')
+    root.classList.toggle('electron-dark',   mode === 'dark')
+    root.classList.toggle('electron-opaque', !!theme.opaqueWindows)
+    root.style.colorScheme = mode
+}
+```
+
+## CSS-Side Aliases
+
+Codex defines ~96 `--color-token-*` design-system aliases in CSS that
+reference the inline-injected tokens. Components consume these via Tailwind
+utilities (e.g. `bg-token-input-background`, `text-token-foreground`).
+
+They live in CSS so they hot-recompute when an inline token changes — no JS
+re-derive needed. Most are `var()` references; a few are `color-mix()`
+derivations; status/error/charts colors are fixed brand colors per mode.
+
+```css
+:root {
+    /* text aliases */
+    --color-token-foreground:                            var(--color-text-foreground);
+    --color-token-text-primary:                          var(--color-text-foreground);
+    --color-token-text-secondary:                        var(--color-text-foreground-secondary);
+    --color-token-text-tertiary:                         var(--color-text-foreground-tertiary);
+    --color-token-description-foreground:                var(--color-text-foreground-tertiary);
+    --color-token-disabled-foreground:                   var(--color-text-foreground-tertiary);
+
+    /* icon */
+    --color-token-icon-foreground:                       var(--color-icon-primary);
+
+    /* surface / background */
+    --color-token-main-surface-primary:                  var(--color-background-surface);
+    --color-token-bg-primary:                            var(--color-background-surface-under);
+    --color-token-bg-secondary:                          color-mix(in srgb, var(--color-background-surface-under) 92%, transparent);
+    --color-token-bg-tertiary:                           color-mix(in srgb, var(--color-background-surface-under) 85%, transparent);
+    --color-token-side-bar-background:                   var(--color-background-surface-under);
+    --color-token-input-background:                      var(--color-background-control);
+    --color-token-dropdown-background:                   var(--color-background-elevated-primary-opaque);
+    --color-token-menu-background:                       var(--color-background-elevated-primary);
+    --color-token-checkbox-background:                   var(--color-background-elevated-primary);
+    --color-token-bg-fog:                                color-mix(in oklab, var(--color-text-foreground) 2.5%, transparent);
+
+    /* input / checkbox / menu */
+    --color-token-input-foreground:                      var(--color-text-foreground);
+    --color-token-input-placeholder-foreground:          var(--color-text-foreground-tertiary);
+    --color-token-input-border:                          var(--color-border);
+    --color-token-checkbox-foreground:                   var(--color-text-foreground);
+    --color-token-checkbox-border:                       var(--color-border);
+    --color-token-menu-border:                           var(--color-border);
+    --color-token-menubar-selection-foreground:          var(--color-text-foreground);
+    --color-token-menubar-selection-background:          var(--color-token-bg-fog);
+    --color-token-radio-active-foreground:               var(--color-text-foreground);
+
+    /* link */
+    --color-token-link:                                  var(--color-text-accent);
+    --color-token-text-link-foreground:                  var(--color-text-accent);
+    --color-token-text-link-active-foreground:           var(--color-text-accent);
+
+    /* border */
+    --color-token-border:                                var(--color-border);
+    --color-token-border-default:                        var(--color-border);
+    --color-token-border-heavy:                          var(--color-border-heavy);
+    --color-token-border-light:                          var(--color-border-light);
+    --color-token-focus-border:                          var(--color-border-focus);
+    --color-token-list-focus-outline:                    var(--color-border-focus);
+
+    /* button */
+    --color-token-button-background:                     var(--color-background-button-primary);
+    --color-token-button-foreground:                     var(--color-background-button-primary);
+    --color-token-button-border:                         var(--color-border);
+    --color-token-button-secondary-hover-background:     var(--color-background-button-secondary-hover);
+
+    /* list / hover */
+    --color-token-list-hover-background:                 var(--color-background-button-tertiary-hover);
+    --color-token-toolbar-hover-background:              var(--color-background-button-tertiary-hover);
+    --color-token-list-active-selection-background:      var(--color-background-button-secondary);
+    --color-token-list-active-selection-foreground:      var(--color-text-foreground);
+    --color-token-list-active-selection-icon-foreground: var(--color-icon-primary);
+
+    /* badge */
+    --color-token-badge-background:                      var(--color-background-button-secondary);
+    --color-token-badge-foreground:                      var(--color-text-foreground-secondary);
+
+    /* code block */
+    --color-token-text-code-block-background:            var(--color-border);
+
+    /* scrollbar */
+    --color-token-scrollbar-slider-background:           var(--color-border);
+    --color-token-scrollbar-slider-hover-background:     var(--color-border-heavy);
+    --color-token-scrollbar-slider-active-background:    var(--color-border-heavy);
+
+    /* editor */
+    --color-token-editor-foreground:                     var(--color-text-foreground);
+    --color-token-editor-background:                     var(--color-background-editor-opaque);
+    --color-token-editor-error-foreground:               #ff6764;
+    --color-token-editor-warning-foreground:             #ff8549;
+
+    /* terminal */
+    --color-token-terminal-foreground:                   var(--color-text-foreground);
+    --color-token-terminal-background:                   var(--color-background-surface);
+    --color-token-terminal-border:                       var(--color-border);
+    --color-token-terminal-ansi-black:                   var(--color-text-foreground-tertiary);
+    --color-token-terminal-ansi-bright-black:            var(--color-text-foreground-secondary);
+    --color-token-terminal-ansi-blue:                    var(--color-accent-blue);
+    --color-token-terminal-ansi-bright-blue:             var(--color-accent-blue);
+    --color-token-terminal-ansi-cyan:                    var(--color-accent-blue);
+    --color-token-terminal-ansi-bright-cyan:             var(--color-accent-blue);
+    --color-token-terminal-ansi-green:                   var(--color-decoration-added);
+    --color-token-terminal-ansi-bright-green:            var(--color-decoration-added);
+    --color-token-terminal-ansi-magenta:                 var(--color-accent-purple);
+    --color-token-terminal-ansi-bright-magenta:          var(--color-accent-purple);
+    --color-token-terminal-ansi-red:                     #ff6764;
+    --color-token-terminal-ansi-bright-red:              #ff6764;
+    --color-token-terminal-ansi-white:                   var(--color-text-foreground);
+    --color-token-terminal-ansi-bright-white:            var(--color-text-foreground);
+    --color-token-terminal-ansi-yellow:                  #ffd240;
+    --color-token-terminal-ansi-bright-yellow:           #ffd240;
+
+    /* charts */
+    --color-token-charts-blue:                           var(--color-accent-blue);
+    --color-token-charts-green:                          var(--color-decoration-added);
+    --color-token-charts-orange:                         #fb6a22;
+    --color-token-charts-purple:                         var(--color-accent-purple);
+    --color-token-charts-red:                            #ff6764;
+    --color-token-charts-yellow:                         #ffd240;
+
+    /* git decoration */
+    --color-token-git-decoration-added-resource-foreground:   var(--color-decoration-added);
+    --color-token-git-decoration-deleted-resource-foreground: var(--color-decoration-deleted);
+
+    /* diff surface (mix toward foreground for contrast) */
+    --color-token-diff-surface:                          color-mix(in srgb, var(--color-background-surface) 94%, var(--color-text-foreground));
+
+    /* error / warning / status */
+    --color-token-error-foreground:                      #ff6764;
+    --color-icon-warning:                                #ff8549;
+    --color-background-status-error:                     #4d100e;
+    --color-background-status-warning:                   #4a2206;
+    --color-background-status-success:                   color-mix(in oklab, #04b84c 16%, transparent);
+}
+
+/* Light-mode tweaks for status/error tokens whose dark default doesn't read on a light surface */
+html.electron-light {
+    --color-token-editor-error-foreground:   #b6161c;
+    --color-token-editor-warning-foreground: #b55a16;
+    --color-token-error-foreground:          #b6161c;
+    --color-token-terminal-ansi-red:         #b6161c;
+    --color-token-terminal-ansi-bright-red:  #b6161c;
+    --color-token-charts-red:                #b6161c;
+    --color-token-charts-orange:             #b04300;
+    --color-token-charts-yellow:             #ad7e00;
+    --color-icon-warning:                    #b55a16;
+    --color-background-status-error:         color-mix(in oklab, #b6161c 12%, transparent);
+    --color-background-status-warning:       color-mix(in oklab, #b55a16 12%, transparent);
+    --color-background-status-success:       color-mix(in oklab, #04b84c 12%, transparent);
+}
+```
+
 ## Visual Direction
 
 Codex is a dense desktop tool UI. It uses a transparent macOS sidebar, a dark rounded main surface, compact 28-30px controls, low-contrast token borders, and almost no decorative gradients. The design language is practical and quiet:

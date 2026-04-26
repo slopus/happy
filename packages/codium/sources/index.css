@@ -1,63 +1,171 @@
 @import 'tailwindcss';
 
-html.electron-dark {
-    color-scheme: dark;
+/*
+ * Theme tokens are derived from a 5-input theme object (accent, ink, surface,
+ * contrast, opaqueWindows + fonts/semanticColors) by the JS pipeline in
+ * `sources/theme/derive.ts`, then written to <html>'s inline style at runtime.
+ * See packages/codium/design-system.md for the full derivation model.
+ *
+ * The two class branches below only flip color-scheme; the ~65 chrome-theme
+ * `--color-*` values come from the inline style on <html>.
+ */
+html.electron-dark { color-scheme: dark; }
+html.electron-light { color-scheme: light; }
 
-    --color-accent-blue: #339cff;
-    --color-accent-purple: #ad7bf9;
-    --color-accent-green: #40c977;
-    --color-accent-red: #fa423e;
+/* ─────────────────────────────────────────────────────────────────────────
+ * Design-system aliases (--color-token-*).
+ *
+ * Codex defines ~96 `--color-token-*` aliases in CSS that reference the
+ * inline-injected chrome theme tokens. Components consume these via Tailwind
+ * utilities (e.g. `bg-token-input-background`, `text-token-foreground`).
+ *
+ * They're kept in CSS (not the JS derivation) so they hot-recompute when the
+ * inline tokens change without re-running the derive pass.
+ *
+ * Fixed brand colors (charts, status, decorations, ANSI primaries) are
+ * inlined as `var(--…)` aliases that resolve to the JS-derived values where
+ * possible, or to literal hex when they aren't theme-dependent.
+ * ──────────────────────────────────────────────────────────────────────── */
+:root {
+    /* — text aliases — */
+    --color-token-foreground:                            var(--color-text-foreground);
+    --color-token-text-primary:                          var(--color-text-foreground);
+    --color-token-text-secondary:                        var(--color-text-foreground-secondary);
+    --color-token-text-tertiary:                         var(--color-text-foreground-tertiary);
+    --color-token-description-foreground:                var(--color-text-foreground-tertiary);
+    --color-token-disabled-foreground:                   var(--color-text-foreground-tertiary);
 
-    --color-background-surface: #181818;
-    --color-background-surface-under: #141414;
-    --color-background-panel: #232323;
-    --color-background-elevated: rgba(54, 54, 54, 0.96);
-    --color-background-control: rgba(45, 45, 45, 0.96);
+    /* — icon aliases — */
+    --color-token-icon-foreground:                       var(--color-icon-primary);
 
-    --color-text-foreground: #ffffff;
-    --color-text-foreground-secondary: rgba(255, 255, 255, 0.71);
-    --color-text-foreground-tertiary: rgba(255, 255, 255, 0.498);
-    --color-text-accent: rgb(131, 195, 255);
+    /* — surface / background aliases — */
+    --color-token-main-surface-primary:                  var(--color-background-surface);
+    --color-token-bg-primary:                            var(--color-background-surface-under);
+    --color-token-bg-secondary:                          color-mix(in srgb, var(--color-background-surface-under) 92%, transparent);
+    --color-token-bg-tertiary:                           color-mix(in srgb, var(--color-background-surface-under) 85%, transparent);
+    --color-token-side-bar-background:                   var(--color-background-surface-under);
+    --color-token-input-background:                      var(--color-background-control);
+    --color-token-dropdown-background:                   var(--color-background-elevated-primary-opaque);
+    --color-token-menu-background:                       var(--color-background-elevated-primary);
+    --color-token-checkbox-background:                   var(--color-background-elevated-primary);
+    --color-token-bg-fog:                                color-mix(in oklab, var(--color-text-foreground) 2.5%, transparent);
 
-    --color-border: rgba(255, 255, 255, 0.084);
-    --color-border-heavy: rgba(255, 255, 255, 0.156);
-    --color-border-light: rgba(255, 255, 255, 0.042);
-    --color-border-focus: rgba(131, 195, 255, 0.76);
+    /* — input/checkbox/menu aliases — */
+    --color-token-input-foreground:                      var(--color-text-foreground);
+    --color-token-input-placeholder-foreground:          var(--color-text-foreground-tertiary);
+    --color-token-input-border:                          var(--color-border);
+    --color-token-checkbox-foreground:                   var(--color-text-foreground);
+    --color-token-checkbox-border:                       var(--color-border);
+    --color-token-menu-border:                           var(--color-border);
+    --color-token-menubar-selection-foreground:          var(--color-text-foreground);
+    --color-token-menubar-selection-background:          var(--color-token-bg-fog);
+    --color-token-radio-active-foreground:               var(--color-text-foreground);
 
-    --color-hover: rgba(255, 255, 255, 0.042);
-    --color-active: rgba(255, 255, 255, 0.1);
-    --color-button-bg: rgba(255, 255, 255, 0.052);
-    --color-button-hover: rgba(255, 255, 255, 0.078);
+    /* — link aliases — */
+    --color-token-link:                                  var(--color-text-accent);
+    --color-token-text-link-foreground:                  var(--color-text-accent);
+    --color-token-text-link-active-foreground:           var(--color-text-accent);
+
+    /* — border aliases — */
+    --color-token-border:                                var(--color-border);
+    --color-token-border-default:                        var(--color-border);
+    --color-token-border-heavy:                          var(--color-border-heavy);
+    --color-token-border-light:                          var(--color-border-light);
+    --color-token-focus-border:                          var(--color-border-focus);
+    --color-token-list-focus-outline:                    var(--color-border-focus);
+
+    /* — button aliases — */
+    --color-token-button-background:                     var(--color-background-button-primary);
+    --color-token-button-foreground:                     var(--color-background-button-primary);
+    --color-token-button-border:                         var(--color-border);
+    --color-token-button-secondary-hover-background:     var(--color-background-button-secondary-hover);
+
+    /* — list / hover aliases — */
+    --color-token-list-hover-background:                 var(--color-background-button-tertiary-hover);
+    --color-token-toolbar-hover-background:              var(--color-background-button-tertiary-hover);
+    --color-token-list-active-selection-background:      var(--color-background-button-secondary);
+    --color-token-list-active-selection-foreground:      var(--color-text-foreground);
+    --color-token-list-active-selection-icon-foreground: var(--color-icon-primary);
+
+    /* — badge — */
+    --color-token-badge-background:                      var(--color-background-button-secondary);
+    --color-token-badge-foreground:                      var(--color-text-foreground-secondary);
+
+    /* — text / code block — */
+    --color-token-text-code-block-background:            var(--color-border);
+
+    /* — scrollbar — */
+    --color-token-scrollbar-slider-background:           var(--color-border);
+    --color-token-scrollbar-slider-hover-background:     var(--color-border-heavy);
+    --color-token-scrollbar-slider-active-background:    var(--color-border-heavy);
+
+    /* — editor — */
+    --color-token-editor-foreground:                     var(--color-text-foreground);
+    --color-token-editor-background:                     var(--color-background-editor-opaque);
+    --color-token-editor-error-foreground:               #ff6764;
+    --color-token-editor-warning-foreground:             #ff8549;
+
+    /* — terminal — */
+    --color-token-terminal-foreground:                   var(--color-text-foreground);
+    --color-token-terminal-background:                   var(--color-background-surface);
+    --color-token-terminal-border:                       var(--color-border);
+    --color-token-terminal-ansi-black:                   var(--color-text-foreground-tertiary);
+    --color-token-terminal-ansi-bright-black:            var(--color-text-foreground-secondary);
+    --color-token-terminal-ansi-blue:                    var(--color-accent-blue);
+    --color-token-terminal-ansi-bright-blue:             var(--color-accent-blue);
+    --color-token-terminal-ansi-cyan:                    var(--color-accent-blue);
+    --color-token-terminal-ansi-bright-cyan:             var(--color-accent-blue);
+    --color-token-terminal-ansi-green:                   var(--color-decoration-added);
+    --color-token-terminal-ansi-bright-green:            var(--color-decoration-added);
+    --color-token-terminal-ansi-magenta:                 var(--color-accent-purple);
+    --color-token-terminal-ansi-bright-magenta:          var(--color-accent-purple);
+    --color-token-terminal-ansi-red:                     #ff6764;
+    --color-token-terminal-ansi-bright-red:              #ff6764;
+    --color-token-terminal-ansi-white:                   var(--color-text-foreground);
+    --color-token-terminal-ansi-bright-white:            var(--color-text-foreground);
+    --color-token-terminal-ansi-yellow:                  #ffd240;
+    --color-token-terminal-ansi-bright-yellow:           #ffd240;
+
+    /* — charts — */
+    --color-token-charts-blue:                           var(--color-accent-blue);
+    --color-token-charts-green:                          var(--color-decoration-added);
+    --color-token-charts-orange:                         #fb6a22;
+    --color-token-charts-purple:                         var(--color-accent-purple);
+    --color-token-charts-red:                            #ff6764;
+    --color-token-charts-yellow:                         #ffd240;
+
+    /* — git decoration — */
+    --color-token-git-decoration-added-resource-foreground:   var(--color-decoration-added);
+    --color-token-git-decoration-deleted-resource-foreground: var(--color-decoration-deleted);
+
+    /* — diff surface (inverse-mix) — */
+    --color-token-diff-surface:                          color-mix(in srgb, var(--color-background-surface) 94%, var(--color-text-foreground));
+
+    /* — error / warning — */
+    --color-token-error-foreground:                      #ff6764;
+    --color-icon-warning:                                #ff8549;
+    --color-background-status-error:                     #4d100e;
+    --color-background-status-warning:                   #4a2206;
+    --color-background-status-success:                   color-mix(in oklab, #04b84c 16%, transparent);
 }
 
+/*
+ * Light-mode overrides for the few status/error tokens whose dark default
+ * doesn't read against a light surface.
+ */
 html.electron-light {
-    color-scheme: light;
-
-    --color-accent-blue: #0969da;
-    --color-accent-purple: #8250df;
-    --color-accent-green: #1f883d;
-    --color-accent-red: #cf222e;
-
-    --color-background-surface: #ffffff;
-    --color-background-surface-under: #f5f5f5;
-    --color-background-panel: #fbfbfb;
-    --color-background-elevated: rgba(250, 250, 250, 0.96);
-    --color-background-control: rgba(245, 245, 245, 0.96);
-
-    --color-text-foreground: #0d0d0d;
-    --color-text-foreground-secondary: rgba(13, 13, 13, 0.71);
-    --color-text-foreground-tertiary: rgba(13, 13, 13, 0.498);
-    --color-text-accent: #0969da;
-
-    --color-border: rgba(0, 0, 0, 0.084);
-    --color-border-heavy: rgba(0, 0, 0, 0.18);
-    --color-border-light: rgba(0, 0, 0, 0.052);
-    --color-border-focus: rgba(9, 105, 218, 0.62);
-
-    --color-hover: rgba(0, 0, 0, 0.042);
-    --color-active: rgba(0, 0, 0, 0.08);
-    --color-button-bg: rgba(0, 0, 0, 0.048);
-    --color-button-hover: rgba(0, 0, 0, 0.08);
+    --color-token-editor-error-foreground:   #b6161c;
+    --color-token-editor-warning-foreground: #b55a16;
+    --color-token-error-foreground:          #b6161c;
+    --color-token-terminal-ansi-red:         #b6161c;
+    --color-token-terminal-ansi-bright-red:  #b6161c;
+    --color-token-charts-red:                #b6161c;
+    --color-token-charts-orange:             #b04300;
+    --color-token-charts-yellow:             #ad7e00;
+    --color-icon-warning:                    #b55a16;
+    --color-background-status-error:         color-mix(in oklab, #b6161c 12%, transparent);
+    --color-background-status-warning:       color-mix(in oklab, #b55a16 12%, transparent);
+    --color-background-status-success:       color-mix(in oklab, #04b84c 12%, transparent);
 }
 
 *,

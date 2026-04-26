@@ -28,6 +28,16 @@ ipcMain.handle('theme:set', (_, source: ThemeSource) => {
     nativeTheme.themeSource = source
     return themeState()
 })
+ipcMain.on('theme:set-opaque', (e, opaque: boolean) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (!win || process.platform !== 'darwin') return
+    try {
+        win.setVibrancy(opaque ? null : 'sidebar')
+        win.setBackgroundColor(opaque ? '#ffffff' : '#00000000')
+    } catch {
+        /* not all macOS versions accept all vibrancies */
+    }
+})
 nativeTheme.on('updated', () => {
     const state = themeState()
     for (const win of BrowserWindow.getAllWindows()) {
