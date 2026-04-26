@@ -1,21 +1,9 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useAtom } from 'jotai'
+import { Link } from 'react-router-dom'
 import { effortAtom, modelAtom, type EffortLevel } from '@/app/state'
+import { useInferenceModels } from '@/plugins'
 import './Composer.css'
-
-interface ModelOption {
-    id: string
-    label: string
-    group: string
-}
-
-const MODELS: ModelOption[] = [
-    { id: 'gpt-5-5',            label: '5.5',         group: 'OpenAI' },
-    { id: 'gpt-5-4',            label: '5.4',         group: 'OpenAI' },
-    { id: 'claude-sonnet-4-6',  label: 'Sonnet 4.6',  group: 'Anthropic' },
-    { id: 'claude-opus-4-6',    label: 'Opus 4.6',    group: 'Anthropic' },
-    { id: 'claude-opus-4-7',    label: 'Opus 4.7',    group: 'Anthropic' },
-]
 
 const EFFORTS: { id: EffortLevel; label: string }[] = [
     { id: 'low',    label: 'Low' },
@@ -41,9 +29,11 @@ function Check() {
 export function ModelEffortPicker() {
     const [model, setModel] = useAtom(modelAtom)
     const [effort, setEffort] = useAtom(effortAtom)
-    const currentModel = MODELS.find((m) => m.id === model) ?? MODELS[0]
+    const inferenceModels = useInferenceModels()
+
+    const currentModel = inferenceModels.find((m) => m.model.id === model)?.model
     const currentEffort = EFFORTS.find((e) => e.id === effort) ?? EFFORTS[2]
-    const groups = Array.from(new Set(MODELS.map((m) => m.group)))
+    const groups = Array.from(new Set(inferenceModels.map(({ model: m }) => m.group)))
 
     return (
         <DropdownMenu.Root>
@@ -54,7 +44,7 @@ export function ModelEffortPicker() {
                     aria-label="Model and reasoning effort"
                 >
                     <span className="composer-footer__btn-text composer-footer__btn-text--strong">
-                        {currentModel.label}
+                        {currentModel?.label ?? 'No model'}
                     </span>
                     <span className="composer-footer__btn-text composer-footer__btn-text--muted">
                         {currentEffort.label}
@@ -69,21 +59,35 @@ export function ModelEffortPicker() {
                     align="end"
                     sideOffset={6}
                 >
+                    {inferenceModels.length === 0 && (
+                        <DropdownMenu.Group className="composer-menu__group">
+                            <DropdownMenu.Label className="composer-menu__label">
+                                No inference plugins connected
+                            </DropdownMenu.Label>
+                            <DropdownMenu.Item asChild>
+                                <Link to="/plugins" className="composer-menu__item">
+                                    <span>Open Plugins…</span>
+                                </Link>
+                            </DropdownMenu.Item>
+                        </DropdownMenu.Group>
+                    )}
                     {groups.map((g) => (
                         <DropdownMenu.Group key={g} className="composer-menu__group">
                             <DropdownMenu.Label className="composer-menu__label">
                                 {g}
                             </DropdownMenu.Label>
-                            {MODELS.filter((m) => m.group === g).map((m) => (
-                                <DropdownMenu.Item
-                                    key={m.id}
-                                    className="composer-menu__item"
-                                    onSelect={() => setModel(m.id)}
-                                >
-                                    <span>{m.label}</span>
-                                    {model === m.id && <Check />}
-                                </DropdownMenu.Item>
-                            ))}
+                            {inferenceModels
+                                .filter(({ model: m }) => m.group === g)
+                                .map(({ model: m }) => (
+                                    <DropdownMenu.Item
+                                        key={m.id}
+                                        className="composer-menu__item"
+                                        onSelect={() => setModel(m.id)}
+                                    >
+                                        <span>{m.label}</span>
+                                        {model === m.id && <Check />}
+                                    </DropdownMenu.Item>
+                                ))}
                         </DropdownMenu.Group>
                     ))}
                     <DropdownMenu.Group className="composer-menu__group">
