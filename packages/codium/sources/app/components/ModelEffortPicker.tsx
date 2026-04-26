@@ -10,11 +10,11 @@ interface ModelOption {
 }
 
 const MODELS: ModelOption[] = [
-    { id: 'gpt-5-5',            label: '5.5',               group: 'OpenAI' },
-    { id: 'gpt-5-4',            label: '5.4',               group: 'OpenAI' },
-    { id: 'gpt-5-3-codex',      label: '5.3 Codex',         group: 'OpenAI' },
-    { id: 'gpt-5-mini',         label: '5 mini',            group: 'OpenAI' },
-    { id: 'claude-sonnet-4-6',  label: 'Claude 4.6 Sonnet', group: 'Anthropic' },
+    { id: 'gpt-5-5',            label: '5.5',         group: 'OpenAI' },
+    { id: 'gpt-5-4',            label: '5.4',         group: 'OpenAI' },
+    { id: 'claude-sonnet-4-6',  label: 'Sonnet 4.6',  group: 'Anthropic' },
+    { id: 'claude-opus-4-6',    label: 'Opus 4.6',    group: 'Anthropic' },
+    { id: 'claude-opus-4-7',    label: 'Opus 4.7',    group: 'Anthropic' },
 ]
 
 const EFFORTS: { id: EffortLevel; label: string }[] = [
