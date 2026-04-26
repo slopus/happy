@@ -12,6 +12,19 @@
 html.electron-dark { color-scheme: dark; }
 html.electron-light { color-scheme: light; }
 
+/*
+ * Body background: when the active theme has `opaqueWindows: true` we paint a
+ * solid color so macOS vibrancy doesn't bleed through behind the rounded main
+ * surface. When opaqueWindows is false the body stays transparent so the
+ * window-level vibrancy material is visible.
+ */
+html, body { background: transparent; }
+html.electron-opaque body {
+    /* Codex's own light page bg — slightly darker than the main surface so
+     * the rounded white surface still pops. */
+    background: var(--color-background-surface-under);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Design-system aliases (--color-token-*).
  *

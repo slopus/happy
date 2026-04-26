@@ -28,16 +28,31 @@ ipcMain.handle('theme:set', (_, source: ThemeSource) => {
     nativeTheme.themeSource = source
     return themeState()
 })
-ipcMain.on('theme:set-opaque', (e, opaque: boolean) => {
-    const win = BrowserWindow.fromWebContents(e.sender)
-    if (!win || process.platform !== 'darwin') return
-    try {
-        win.setVibrancy(opaque ? null : 'sidebar')
-        win.setBackgroundColor(opaque ? '#ffffff' : '#00000000')
-    } catch {
-        /* not all macOS versions accept all vibrancies */
+ipcMain.on(
+    'theme:set-opaque',
+    (e, args: { opaque: boolean; surface?: string } | boolean) => {
+        const win = BrowserWindow.fromWebContents(e.sender)
+        if (!win || process.platform !== 'darwin') return
+        // Backwards-compat: legacy callers send a bare boolean.
+        const opaque = typeof args === 'boolean' ? args : !!args?.opaque
+        const surface = typeof args === 'object' ? args?.surface : undefined
+        try {
+            if (opaque) {
+                // Disable macOS vibrancy and set the actual theme surface as the
+                // window's solid background. Without setBackgroundColor, the
+                // initial transparent backing remains and the body shows through.
+                win.setVibrancy(null)
+                win.setBackgroundColor(surface || '#ffffff')
+            } else {
+                win.setVibrancy('sidebar')
+                // Transparent so the vibrancy material shows through.
+                win.setBackgroundColor('#00000000')
+            }
+        } catch {
+            /* not all macOS versions accept all vibrancies */
+        }
     }
-})
+)
 nativeTheme.on('updated', () => {
     const state = themeState()
     for (const win of BrowserWindow.getAllWindows()) {

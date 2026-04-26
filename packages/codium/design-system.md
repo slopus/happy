@@ -136,6 +136,112 @@ custom properties. They split as:
 
 The 65 + 96 ≈ 161 surface that chrome components actually consume.
 
+## Built-in Themes Catalog
+
+Codex's `app.asar` bundles ~70 theme files. They split into two kinds based
+on what they export, and both kinds end up as selectable themes in the UI.
+
+### Kind 1 — first-class chrome themes (12 files)
+
+These export a fully-formed `chromeTheme` object next to their VS Code-style
+`colors` object. They were authored explicitly for Codex's chrome — designer
+chose every input by hand:
+
+```js
+// e.g. linear-dark.js
+export const chromeTheme = {
+    accent:   '#5e6ad2',
+    contrast: 60,
+    fonts:    { ui: 'Inter', code: null },
+    ink:      '#e3e4e6',
+    opaqueWindows: true,
+    semanticColors: {
+        diffAdded:   '#69c967',
+        diffRemoved: '#ff7e78',
+        skill:       '#c2a1ff',
+    },
+    surface: '#0f0f11',
+}
+```
+
+Bundled themes of this kind: **Linear Dark/Light, Vercel Dark/Light, Raycast
+Dark/Light, Notion Dark/Light, Sentry Dark, Lobster Dark, Matrix Dark, Proof
+Light** (12 entries). Plus the codex default in `appearance{Light,Dark}ChromeTheme`
+on the persistent global state file (counts as 2 more).
+
+The chrome theme object can be a partial — Codex merges it on top of the
+codex default for the same variant. Lobster, Matrix, Notion, Proof, and
+Sentry only override `fonts` and/or `opaqueWindows` and inherit everything
+chromatic from the codex default.
+
+### Kind 2 — VS Code code themes (~55 files)
+
+The rest are pure VS Code colorTheme JSONs (Dracula, Tokyo Night,
+Catppuccin, One Dark Pro, Gruvbox, Monokai, Nord, Solarized, Material
+Theme, etc.). They define editor / activity-bar / terminal colors but
+**don't** carry a `chromeTheme` object:
+
+```js
+// e.g. dracula.js
+{
+    "editor.background": "#282A36",
+    "editor.foreground": "#F8F8F2",
+    "focusBorder":       "#bd93f9",
+    "activityBar.activeBorder": "#bd93f9",
+    "terminal.ansiBlue": "#bd93f9",
+    /* …50+ more editor.* / activityBar.* / terminal.* fields… */
+}
+```
+
+When the user picks one of these from the code-theme picker, Codex
+**synthesizes a chrome theme on the fly** from the VS Code colors. The
+mapping is:
+
+| Chrome input | Source field (first non-null wins) | Notes |
+|---|---|---|
+| `surface` | `editor.background` | The dominant background color of the editor pane. |
+| `ink` | `editor.foreground` | The primary text color. |
+| `accent` | `focusBorder` → `activityBar.activeBorder` → `editorCursor.foreground` → `terminal.ansiBlue` → `button.background` | Pick the first that's non-transparent and ≠ surface. Themes whose `focusBorder` is `#XXXXXX00` (alpha 0) fall through to the next candidate. |
+| `contrast` | (codex default for variant) | 45 light / 60 dark. |
+| `opaqueWindows` | (codex default for variant) | `false` for both — code themes don't author this. |
+| `fonts` | (codex default) | Geist UI + Geist Mono code. |
+| `semanticColors.diffAdded` | (codex default for variant) | `#00a240` light / `#40c977` dark. |
+| `semanticColors.diffRemoved` | (codex default) | `#ba2623` / `#fa423e`. |
+| `semanticColors.skill` | (codex default) | `#924ff7` / `#ad7bf9`. |
+
+The synthesized chrome theme then runs through the same `deriveTokens()`
+pipeline as a first-class chrome theme — there's no separate code path.
+
+### Catalog (Codium ships)
+
+| Kind | Source | Count |
+|---|---|---|
+| Codex defaults | `appearance{Light,Dark}ChromeTheme` global state | 2 |
+| First-class chrome themes | bundled `chromeTheme` exports | 12 |
+| Code-theme-derived | synthesized from `editor.*` / `focusBorder` | 55 |
+| **Total** | | **69** |
+
+### Limitations of synthesis
+
+A code theme can't communicate the things that don't live in its color
+table:
+
+- **Contrast** — the `editor.*` JSON has no equivalent of the contrast knob,
+  so all 55 derived themes start at the codex default contrast (45 / 60).
+  The user can still adjust it in Settings → Appearance.
+- **`opaqueWindows`** — same: no signal for whether the window should be
+  opaque vs translucent. Defaults to `false` (vibrancy on).
+- **Fonts** — code themes don't ship UI/code font preferences; we use the
+  codex defaults. (Codex's first-class chrome themes like Linear sometimes
+  do override fonts — `Inter` for Linear, `Satoshi` for Lobster.)
+- **Diff / skill colors** — these are intentionally meaningful (red-must-mean-error,
+  green-must-mean-added) and code themes don't always agree on them, so we
+  always use the codex default semantic colors.
+
+If you want a more faithful version of any synthesized theme, override the
+relevant inputs by hand — the chrome theme is just a JSON, persisted to
+`localStorage` by `applyPreset()`.
+
 ## JS Derivation Functions
 
 The runtime functions that compute the 65 inline tokens. Pseudocode pulled

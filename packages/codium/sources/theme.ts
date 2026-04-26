@@ -93,7 +93,7 @@ export function useTheme() {
         const t = mode === 'light' ? light : dark
         applyTheme(t, mode)
         try {
-            window.theme.setOpaque(!!t.opaqueWindows)
+            window.theme.setOpaque({ opaque: !!t.opaqueWindows, surface: t.surface })
         } catch {}
     }
 

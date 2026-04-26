@@ -6,7 +6,7 @@ export type ThemeState = { source: ThemeSource; shouldUseDarkColors: boolean }
 export type ThemeApi = {
     get(): Promise<ThemeState>
     set(source: ThemeSource): Promise<ThemeState>
-    setOpaque(opaque: boolean): void
+    setOpaque(args: { opaque: boolean; surface?: string }): void
     onUpdate(cb: (state: ThemeState) => void): () => void
 }
 
