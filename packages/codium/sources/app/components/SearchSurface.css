@@ -6,7 +6,7 @@
     background: var(--color-background-elevated);
     box-shadow:
         0 0 0 0.5px var(--color-border-light),
-        0 18px 40px rgba(0, 0, 0, 0.32);
+        0 18px 40px var(--color-simple-scrim);
 }
 
 .search-surface__input {

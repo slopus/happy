@@ -7,14 +7,15 @@
 .composer__primary {
     position: relative;
     z-index: 1;
-    background: rgba(255, 255, 255, 0.864);
+    /* Codex composer uses input-background at 90% alpha. Light: white@90; dark: dropdown-background@90. */
+    background: color-mix(in srgb, var(--color-token-input-background) 90%, transparent);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border-radius: 25px;
     corner-shape: superellipse(1.5);
     box-shadow:
-        0 0 0 1px rgba(0, 0, 0, 0.1),
-        0 4px 16px 0 rgba(0, 0, 0, 0.05);
+        0 0 0 1px var(--color-border),
+        0 4px 16px 0 var(--color-simple-scrim);
     min-height: 96px;
     padding: 12px 0 0;
     margin-bottom: 8px;
@@ -24,7 +25,7 @@
 }
 
 html.electron-dark .composer__primary {
-    background: color-mix(in srgb, var(--color-background-elevated) 96%, transparent);
+    background: var(--color-token-dropdown-background);
 }
 
 .composer__editor {
@@ -201,7 +202,7 @@ html.electron-dark .composer__primary {
     padding: 4px;
     box-shadow:
         0 0 0 0.5px var(--color-border),
-        0 12px 32px rgba(0, 0, 0, 0.2);
+        0 12px 32px var(--color-simple-scrim);
     z-index: 200;
 }
 

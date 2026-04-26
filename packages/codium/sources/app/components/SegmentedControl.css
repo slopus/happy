@@ -28,6 +28,6 @@
 }
 
 .segmented-control__option--active {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--color-active);
     color: var(--color-text-foreground);
 }

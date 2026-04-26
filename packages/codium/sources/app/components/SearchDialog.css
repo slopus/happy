@@ -1,7 +1,7 @@
 .search-dialog__overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.35);
+    background: var(--color-simple-scrim);
     backdrop-filter: blur(6px);
     z-index: 100;
     animation: fade-in 120ms ease;
@@ -17,7 +17,7 @@
     background: var(--color-background-elevated);
     border: 1px solid var(--color-border);
     border-radius: 12px;
-    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 20px 48px var(--color-simple-scrim);
     overflow: hidden;
     animation: fade-in 120ms ease;
 }

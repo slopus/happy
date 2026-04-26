@@ -13,7 +13,7 @@
     flex: 1;
     min-height: 0;
     position: relative;
-    background: #0b0d10;
+    background: var(--color-token-terminal-background);
 }
 
 .terminal-host__pane {

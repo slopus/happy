@@ -6,7 +6,7 @@
     background: var(--color-background-elevated);
     box-shadow:
         0 0 0 0.5px var(--color-border-light),
-        0 12px 28px rgba(0, 0, 0, 0.28);
+        0 12px 28px var(--color-simple-scrim);
 }
 
 .account-popover__identity {

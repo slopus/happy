@@ -9,7 +9,7 @@
     border-bottom-left-radius: 12.5px;
     box-shadow:
         0 0 0 0.5px var(--color-border-heavy),
-        0 2px 4px -1px rgba(0, 0, 0, 0.08);
+        0 2px 4px -1px var(--color-simple-scrim);
     transition:
         border-radius 180ms ease,
         box-shadow 180ms ease;

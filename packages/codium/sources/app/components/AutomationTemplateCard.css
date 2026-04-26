@@ -11,7 +11,8 @@
     border-radius: 30px;
     corner-shape: superellipse(1.5);
     color: var(--color-text-foreground);
-    background: rgba(255, 255, 255, 0.672);
+    /* Codex automation cards use input-background at 67% alpha. */
+    background: color-mix(in srgb, var(--color-token-input-background) 67%, transparent);
     font-size: var(--text-base);
     line-height: 1.5;
     text-align: left;
@@ -21,7 +22,7 @@
 }
 
 html.electron-dark .automation-template-card {
-    background: rgba(54, 54, 54, 0.672);
+    background: color-mix(in srgb, var(--color-token-dropdown-background) 67%, transparent);
 }
 
 .automation-template-card:hover,
