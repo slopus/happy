@@ -1,5 +1,6 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { buildHappySessionKey, resolveOpenClawSessionKey } from './OpenClawBackend';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { buildHappySessionKey, resolveOpenClawSessionKey, OpenClawBackend } from './OpenClawBackend';
+import type { OpenClawGatewayConfig } from './openclawTypes';
 
 describe('buildHappySessionKey', () => {
   it('builds an isolated per-Happy-session key from the gateway main key', () => {
@@ -61,5 +62,55 @@ describe('resolveOpenClawSessionKey', () => {
     const a = resolveOpenClawSessionKey({ mainKey: 'agent:main:main', sessionTag: 'tag-A' });
     const b = resolveOpenClawSessionKey({ mainKey: 'agent:main:main', sessionTag: 'tag-B' });
     expect(a).not.toBe(b);
+  });
+});
+
+describe('OpenClawBackend chat-event sessionKey filter', () => {
+  const gatewayConfig: OpenClawGatewayConfig = { url: 'ws://127.0.0.1:1' };
+  const baseOpts = { homeDir: '/tmp', gatewayConfig, sessionTag: 'tag-A' };
+
+  const makeBackendWithKey = (sessionKey: string) => {
+    const backend = new OpenClawBackend(baseOpts);
+    // The filter compares against `this.sessionKey`, normally set by startSession()
+    // after the gateway hello. Inject it here so we can unit-test handleEvent in isolation.
+    (backend as unknown as { sessionKey: string | null }).sessionKey = sessionKey;
+    return backend;
+  };
+
+  it('drops chat events whose sessionKey does not match this backend', () => {
+    const backend = makeBackendWithKey('agent:main:happy:tag-A');
+    const handler = vi.fn();
+    backend.onMessage(handler);
+
+    // Simulate a delta event for a DIFFERENT session (case-insensitive normalization on gateway side)
+    (backend as unknown as { handleEvent: (e: string, p: unknown) => void }).handleEvent('chat', {
+      runId: 'r1', sessionKey: 'agent:main:happy:tag-B', seq: 0, state: 'delta',
+      message: { content: [{ type: 'text', text: 'leaked' }] },
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('forwards chat events whose sessionKey matches', () => {
+    const backend = makeBackendWithKey('agent:main:happy:tag-A');
+    const handler = vi.fn();
+    backend.onMessage(handler);
+
+    (backend as unknown as { handleEvent: (e: string, p: unknown) => void }).handleEvent('chat', {
+      runId: 'r1', sessionKey: 'agent:main:happy:tag-A', seq: 0, state: 'delta',
+      message: { content: [{ type: 'text', text: 'mine' }] },
+    });
+    expect(handler).toHaveBeenCalled();
+  });
+
+  it('compares case-insensitively (gateway lowercases keys)', () => {
+    const backend = makeBackendWithKey('agent:main:happy:Tag-A');
+    const handler = vi.fn();
+    backend.onMessage(handler);
+
+    (backend as unknown as { handleEvent: (e: string, p: unknown) => void }).handleEvent('chat', {
+      runId: 'r1', sessionKey: 'agent:main:happy:tag-a', seq: 0, state: 'delta',
+      message: { content: [{ type: 'text', text: 'mine' }] },
+    });
+    expect(handler).toHaveBeenCalled();
   });
 });
