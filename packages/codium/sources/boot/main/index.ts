@@ -7,13 +7,17 @@ import {
     shell,
 } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { readFile, unlink } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import * as pty from 'node-pty'
+import {
+    cancelLogin as cancelCodexLogin,
+    getStatus as getCodexStatus,
+    login as codexLogin,
+    logout as codexLogout,
+} from './codex-oauth'
 
 if (is.dev) {
     app.commandLine.appendSwitch('remote-debugging-port', '9224')
@@ -55,143 +59,11 @@ ipcMain.on(
         }
     }
 )
-/* ─────────── Codex OAuth via `codex login` ─────────── */
-
-interface CodexTokens {
-    access_token: string
-    id_token: string
-    refresh_token?: string
-    account_id?: string
-}
-interface CodexAuthFile {
-    OPENAI_API_KEY: string | null
-    tokens?: CodexTokens
-    last_refresh?: string
-}
-interface CodexAuthSnapshot {
-    status: 'unconfigured' | 'connected'
-    email?: string
-    accountId?: string
-    /** Bearer token (access_token) ready to use as Authorization header. */
-    accessToken?: string
-    expiresAt?: number
-}
-
-const CODEX_AUTH_PATH = join(homedir(), '.codex', 'auth.json')
-const CODEX_BIN_CANDIDATES = [
-    '/Applications/Codex.app/Contents/Resources/codex',
-    '/usr/local/bin/codex',
-    '/opt/homebrew/bin/codex',
-]
-
-function decodeJwtPayload<T = Record<string, unknown>>(jwt: string): T | null {
-    const parts = jwt.split('.')
-    if (parts.length !== 3) return null
-    try {
-        let s = parts[1]!.replace(/-/g, '+').replace(/_/g, '/')
-        while (s.length % 4) s += '='
-        return JSON.parse(Buffer.from(s, 'base64').toString('utf8')) as T
-    } catch {
-        return null
-    }
-}
-
-async function readCodexAuth(): Promise<CodexAuthSnapshot> {
-    if (!existsSync(CODEX_AUTH_PATH)) return { status: 'unconfigured' }
-    try {
-        const raw = await readFile(CODEX_AUTH_PATH, 'utf8')
-        const parsed = JSON.parse(raw) as CodexAuthFile
-        const tokens = parsed.tokens
-        if (!tokens?.access_token) return { status: 'unconfigured' }
-        const claims = decodeJwtPayload<{ exp?: number }>(tokens.access_token)
-        const idClaims = decodeJwtPayload<{ email?: string }>(tokens.id_token ?? '')
-        return {
-            status: 'connected',
-            email: idClaims?.email,
-            accountId: tokens.account_id,
-            accessToken: tokens.access_token,
-            expiresAt: claims?.exp,
-        }
-    } catch {
-        return { status: 'unconfigured' }
-    }
-}
-
-function findCodexBin(): string | null {
-    for (const p of CODEX_BIN_CANDIDATES) {
-        if (existsSync(p)) return p
-    }
-    return null
-}
-
-let activeLogin: ChildProcess | null = null
-
-async function spawnCodexLogin(): Promise<CodexAuthSnapshot> {
-    if (activeLogin) {
-        // already running — wait for it
-    }
-    const bin = findCodexBin()
-    if (!bin) {
-        throw new Error('Codex CLI not found. Install Codex.app or run `npm i -g @openai/codex`.')
-    }
-    // Drop any stale auth so we wait for a fresh write.
-    try {
-        if (existsSync(CODEX_AUTH_PATH)) await unlink(CODEX_AUTH_PATH)
-    } catch {}
-
-    return new Promise<CodexAuthSnapshot>((resolve, reject) => {
-        const child = spawn(bin, ['login'], {
-            stdio: ['ignore', 'pipe', 'pipe'],
-            env: process.env,
-        })
-        activeLogin = child
-        let stderr = ''
-        child.stderr?.on('data', (chunk) => { stderr += String(chunk) })
-        child.on('error', (err) => {
-            activeLogin = null
-            reject(err)
-        })
-        child.on('exit', async (code) => {
-            activeLogin = null
-            if (code !== 0) {
-                reject(new Error(`codex login exited ${code}: ${stderr.trim() || 'unknown'}`))
-                return
-            }
-            const snap = await readCodexAuth()
-            if (snap.status !== 'connected') {
-                reject(new Error('codex login finished but auth.json was not written'))
-                return
-            }
-            resolve(snap)
-        })
-        // Safety: if `codex login` runs longer than 5 minutes, abort.
-        setTimeout(() => {
-            if (activeLogin === child) {
-                child.kill()
-                activeLogin = null
-                reject(new Error('codex login timed out after 5 minutes'))
-            }
-        }, 5 * 60 * 1000)
-    })
-}
-
-ipcMain.handle('codex:auth:status', async () => readCodexAuth())
-ipcMain.handle('codex:auth:login', async () => {
-    return spawnCodexLogin()
-})
-ipcMain.handle('codex:auth:logout', async () => {
-    if (activeLogin) {
-        try { activeLogin.kill() } catch {}
-        activeLogin = null
-    }
-    try { if (existsSync(CODEX_AUTH_PATH)) await unlink(CODEX_AUTH_PATH) } catch {}
-})
-ipcMain.on('codex:auth:cancel-login', () => {
-    if (activeLogin) {
-        try { activeLogin.kill() } catch {}
-        activeLogin = null
-    }
-})
+/* ─────────── Codex OAuth (PKCE flow, no CLI dependency) ─────────── */
+ipcMain.handle('codex:auth:status', () => getCodexStatus())
+ipcMain.handle('codex:auth:login', () => codexLogin())
+ipcMain.handle('codex:auth:logout', () => codexLogout())
+ipcMain.on('codex:auth:cancel-login', () => cancelCodexLogin())
 
 nativeTheme.on('updated', () => {
     const state = themeState()
