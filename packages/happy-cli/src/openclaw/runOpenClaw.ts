@@ -233,6 +233,7 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
     homeDir: os.homedir(),
     gatewayConfig,
     log,
+    sessionTag,
   });
 
   const onBackendMessage = (msg: AgentMessage) => {

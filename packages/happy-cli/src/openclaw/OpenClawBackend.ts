@@ -39,6 +39,44 @@ export interface OpenClawBackendOptions {
   clientMode?: OpenClawSocketOptions['clientMode'];
   displayName?: string;
   log?: (msg: string) => void;
+  /**
+   * Per-Happy-session unique tag, used to construct an isolated gateway
+   * sessionKey (`agent:<agentId>:happy:<sessionTag>`). Without this, every
+   * Happy session collapses onto the gateway's shared `agent:<id>:main`
+   * session, which queues turns and merges transcripts across tabs/devices.
+   * Mirrors the per-chat scoping used by Telegram/Discord channels.
+   */
+  sessionTag?: string;
+}
+
+/**
+ * Build a per-Happy-session gateway sessionKey from the gateway-provided
+ * main key (e.g. `agent:main:main`) and a unique tag. The gateway accepts
+ * arbitrary suffixes — see Telegram's `agent:<id>:telegram:group:<chatId>`
+ * pattern. Falls back to mainKey if parsing fails (defensive).
+ */
+export function buildHappySessionKey(mainKey: string, sessionTag: string): string {
+  // mainKey is `agent:<agentId>:<mainKey>` (typically `agent:main:main`).
+  const parts = mainKey.split(':');
+  if (parts.length < 3 || parts[0] !== 'agent' || !parts[1]) return mainKey;
+  return `agent:${parts[1]}:happy:${sessionTag}`;
+}
+
+/**
+ * Resolve the gateway sessionKey for a Happy session. Priority:
+ *   1. `HAPPY_OPENCLAW_SESSION_KEY` env override (any string)
+ *   2. Per-tag isolation: `agent:<agentId>:happy:<sessionTag>` derived from mainKey
+ *   3. Legacy: gateway-provided mainKey (shared across all Happy sessions)
+ */
+export function resolveOpenClawSessionKey(params: {
+  mainKey: string;
+  sessionTag?: string;
+  envOverride?: string;
+}): string {
+  const trimmedOverride = params.envOverride?.trim();
+  if (trimmedOverride) return trimmedOverride;
+  if (params.sessionTag) return buildHappySessionKey(params.mainKey, params.sessionTag);
+  return params.mainKey;
 }
 
 function extractTextFromMessage(message?: OpenClawChatMessage): string {
@@ -59,6 +97,7 @@ export class OpenClawBackend implements AgentBackend {
   private gatewayConfig: OpenClawGatewayConfig;
   private handlers = new Set<AgentMessageHandler>();
   private sessionKey: string | null = null;
+  private sessionTag: string | undefined;
   private lastDeltaText: string | null = null;
   private log: (msg: string) => void;
 
@@ -75,6 +114,7 @@ export class OpenClawBackend implements AgentBackend {
   constructor(opts: OpenClawBackendOptions) {
     this.log = opts.log ?? (() => {});
     this.gatewayConfig = opts.gatewayConfig;
+    this.sessionTag = opts.sessionTag;
     this.socket = new OpenClawSocket({
       homeDir: opts.homeDir,
       clientId: opts.clientId,
@@ -101,13 +141,22 @@ export class OpenClawBackend implements AgentBackend {
     this.socket.connect(this.gatewayConfig);
     await this.connectionReady;
 
-    this.sessionKey = this.socket.getMainSessionKey();
-    if (!this.sessionKey) {
+    const mainKey = this.socket.getMainSessionKey();
+    if (!mainKey) {
       throw new Error('No main session key from gateway');
     }
 
+    // Per-Happy-session isolation: derive a unique sessionKey per spawn so
+    // multiple Happy tabs/devices don't collapse onto the gateway's single
+    // `agent:<id>:main` session (which serializes turns and merges history).
+    this.sessionKey = resolveOpenClawSessionKey({
+      mainKey,
+      sessionTag: this.sessionTag,
+      envOverride: process.env.HAPPY_OPENCLAW_SESSION_KEY,
+    });
+
     const sessionId = this.sessionKey;
-    this.log(`Session started: ${sessionId}`);
+    this.log(`Session started: ${sessionId} (mainKey=${mainKey})`);
     return { sessionId };
   }
 
