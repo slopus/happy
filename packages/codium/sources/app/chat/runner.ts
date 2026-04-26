@@ -39,13 +39,19 @@ export interface RunArgs {
 function toInferenceMessages(history: ChatMessage[]): Message[] {
     const out: Message[] = []
     for (const m of history) {
-        if (m.text.length === 0) continue
         if (m.role === 'user') {
+            if (m.text.length === 0) continue
             out.push({ role: 'user', content: [{ type: 'text', text: m.text }] })
         } else {
             const blocks: AssistantContent[] = []
+            // Preserve thinking blocks (with their provider-specific vendor
+            // payload) so e.g. Codex reasoning continuity isn't broken.
             if (m.thinking && m.thinking.length > 0) {
-                blocks.push({ type: 'thinking', text: m.thinking })
+                blocks.push({
+                    type: 'thinking',
+                    text: m.thinking,
+                    vendor: m.thinkingVendor,
+                })
             }
             if (m.text.length > 0) {
                 blocks.push({ type: 'text', text: m.text })
@@ -113,7 +119,21 @@ export function useChatRunner() {
                         accumulatedThinking += ev.delta
                         updateMsg({ chatId: args.chatId, messageId: assistantId, patch: { thinking: accumulatedThinking } })
                     } else if (ev.type === 'done') {
-                        updateMsg({ chatId: args.chatId, messageId: assistantId, patch: { finished: true } })
+                        // Pull the thinking block's vendor payload off the
+                        // assembled message so we can round-trip it to the
+                        // model on the next turn (Codex requires this).
+                        const thinking = ev.message.content.find(
+                            (b): b is Extract<AssistantContent, { type: 'thinking' }> =>
+                                b.type === 'thinking',
+                        )
+                        updateMsg({
+                            chatId: args.chatId,
+                            messageId: assistantId,
+                            patch: {
+                                finished: true,
+                                thinkingVendor: thinking?.vendor,
+                            },
+                        })
                         updateChat({ chatId: args.chatId, patch: { status: 'idle' } })
                     } else if (ev.type === 'error') {
                         const message = ev.error ?? 'Inference failed'

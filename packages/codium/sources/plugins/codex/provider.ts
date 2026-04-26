@@ -38,13 +38,32 @@ export interface CodexCredential {
     accountId: string
 }
 
+/** Vendor key under which we store Codex-specific round-trip data on
+ *  thinking blocks. */
+const VENDOR_KEY = 'openai-codex'
+
+interface CodexThinkingVendor {
+    /** Encrypted reasoning blob the server hands back via
+     *  `response.output_item.done` for reasoning items. We need to round-trip
+     *  this so the model keeps continuity across turns. */
+    encrypted_content?: string
+    /** Item id (e.g. `rs_…`). Optional but cheap to keep. */
+    id?: string
+}
+
 /** Convert our internal `Message[]` to the Responses API `input` shape.
  *
- * The Responses API rejects `{type: 'reasoning'}` inside a message's content
- * array — reasoning is a top-level `input` item with encrypted_content we
- * don't preserve between turns. For chat-style use we drop thinking blocks
- * on the way back to Codex; the model regenerates its own per-turn
- * reasoning. Tool calls remain top-level items as the API expects.
+ * Reasoning items live at the TOP LEVEL of the input array (NOT inside an
+ * assistant message's content). They look like:
+ *     { type: 'reasoning',
+ *       id?: 'rs_…',
+ *       encrypted_content: '<opaque blob>',
+ *       summary: [{ type: 'summary_text', text: '<plain summary>' }] }
+ *
+ * We persist the `encrypted_content` in `block.vendor['openai-codex']` when
+ * the model emits it, then re-emit it here so reasoning continuity is
+ * preserved. If we have no encrypted blob (e.g. the block came from a
+ * different provider), we send only the summary.
  */
 function convertMessages(messages: Message[]): unknown[] {
     const out: unknown[] = []
@@ -60,13 +79,21 @@ function convertMessages(messages: Message[]): unknown[] {
                 ),
             })
         } else if (msg.role === 'assistant') {
-            const content: unknown[] = []
+            const messageContent: unknown[] = []
             for (const b of msg.content) {
-                if (b.type === 'text' && b.text.length > 0) {
-                    content.push({ type: 'output_text', text: b.text })
-                }
-                // thinking intentionally dropped — see comment above.
-                if (b.type === 'tool_call') {
+                if (b.type === 'thinking') {
+                    // Top-level reasoning item, BEFORE the message it belongs to.
+                    const vendor = (b.vendor?.[VENDOR_KEY] as CodexThinkingVendor | undefined) ?? {}
+                    const item: Record<string, unknown> = { type: 'reasoning' }
+                    if (vendor.id) item.id = vendor.id
+                    if (vendor.encrypted_content) item.encrypted_content = vendor.encrypted_content
+                    item.summary = b.text.length > 0
+                        ? [{ type: 'summary_text', text: b.text }]
+                        : []
+                    out.push(item)
+                } else if (b.type === 'text' && b.text.length > 0) {
+                    messageContent.push({ type: 'output_text', text: b.text })
+                } else if (b.type === 'tool_call') {
                     out.push({
                         type: 'function_call',
                         call_id: b.id,
@@ -75,8 +102,8 @@ function convertMessages(messages: Message[]): unknown[] {
                     })
                 }
             }
-            if (content.length > 0) {
-                out.push({ type: 'message', role: 'assistant', content })
+            if (messageContent.length > 0) {
+                out.push({ type: 'message', role: 'assistant', content: messageContent })
             }
         } else {
             const text = msg.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
@@ -165,7 +192,12 @@ interface CodexEvent {
     type?: string
     delta?: string
     output_index?: number
-    item?: { type?: string; text?: string }
+    item?: {
+        type?: string
+        id?: string
+        text?: string
+        encrypted_content?: string
+    }
     response?: { error?: { message?: string }; status?: string; output?: unknown[] }
     code?: string
     message?: string
@@ -240,9 +272,42 @@ export async function* runStream(
                     out.content.push(block)
                     indexMap.set(outIdx, out.content.length - 1)
                 } else if (item?.type === 'reasoning') {
-                    const block: AssistantContent = { type: 'thinking', text: '' }
+                    // Stash the item id under our codex vendor key so we can
+                    // round-trip it. encrypted_content lands in
+                    // response.output_item.done below.
+                    const vendor: CodexThinkingVendor = {}
+                    if (item.id) vendor.id = item.id
+                    if (item.encrypted_content) vendor.encrypted_content = item.encrypted_content
+                    const block: AssistantContent = {
+                        type: 'thinking',
+                        text: '',
+                        vendor: { [VENDOR_KEY]: vendor },
+                    }
                     out.content.push(block)
                     indexMap.set(outIdx, out.content.length - 1)
+                }
+                continue
+            }
+            if (type === 'response.output_item.done') {
+                // The completed reasoning item carries the encrypted_content
+                // blob we need for follow-up turns. Anchor it on the existing
+                // thinking block via the codex vendor key.
+                const item = ev.item
+                if (item?.type === 'reasoning') {
+                    const idx = indexMap.get(ev.output_index ?? -1)
+                    if (idx !== undefined) {
+                        const block = out.content[idx]
+                        if (block?.type === 'thinking') {
+                            const existing =
+                                (block.vendor?.[VENDOR_KEY] as CodexThinkingVendor | undefined) ?? {}
+                            const next: CodexThinkingVendor = {
+                                ...existing,
+                                id: item.id ?? existing.id,
+                                encrypted_content: item.encrypted_content ?? existing.encrypted_content,
+                            }
+                            block.vendor = { ...block.vendor, [VENDOR_KEY]: next }
+                        }
+                    }
                 }
                 continue
             }

@@ -10,6 +10,11 @@ export interface ChatMessage {
     text: string
     /** Reasoning summary streamed for thinking-capable models. */
     thinking?: string
+    /** Provider-specific round-trip data for the thinking block — e.g.
+     *  Codex's `encrypted_content` blob that we must echo back on follow-up
+     *  turns to keep reasoning continuity. Untyped because each provider
+     *  defines its own shape. */
+    thinkingVendor?: Record<string, unknown>
     /** Set when the message has finished streaming or produced an error. */
     finished?: boolean
     error?: string
