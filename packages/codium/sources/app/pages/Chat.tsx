@@ -20,9 +20,27 @@ export function ChatPage() {
     const effort = useAtomValue(effortAtom)
     const { run, cancel } = useChatRunner()
     const scrollRef = useRef<HTMLDivElement>(null)
+    /** Whether the user is "pinned" to the bottom — true when they've not
+     *  manually scrolled up. We only auto-scroll while pinned, so that
+     *  reading older content isn't interrupted by new tokens. */
+    const pinnedRef = useRef(true)
 
-    // Auto-scroll to bottom when messages grow.
     useEffect(() => {
+        const el = scrollRef.current
+        if (!el) return
+        const onScroll = () => {
+            // 32px slack: treat "near the bottom" as still pinned.
+            const distance = el.scrollHeight - (el.scrollTop + el.clientHeight)
+            pinnedRef.current = distance < 32
+        }
+        el.addEventListener('scroll', onScroll, { passive: true })
+        return () => el.removeEventListener('scroll', onScroll)
+    }, [])
+
+    // Auto-scroll only while pinned — never yank the viewport away from
+    // content the user is reading.
+    useEffect(() => {
+        if (!pinnedRef.current) return
         const el = scrollRef.current
         if (!el) return
         el.scrollTop = el.scrollHeight
