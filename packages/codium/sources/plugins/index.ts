@@ -3,7 +3,15 @@ import { codexPlugin } from './codex'
 import { registerPlugin } from './host'
 
 export type { AuthState, Capability, ModelDescriptor, Plugin, PluginCategory } from './types'
-export type { InferenceContext, InferenceParameters, StreamEvent } from './llm'
+export type {
+    AssistantContent,
+    AssistantMessage,
+    InferenceContext,
+    InferenceParameters,
+    Message,
+    StreamEvent,
+    UserMessage,
+} from './llm'
 export {
     pluginHost,
     pluginsAtom,
