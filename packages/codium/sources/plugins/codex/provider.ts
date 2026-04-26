@@ -38,7 +38,14 @@ export interface CodexCredential {
     accountId: string
 }
 
-/** Convert our internal `Message[]` to the Responses API `input` shape. */
+/** Convert our internal `Message[]` to the Responses API `input` shape.
+ *
+ * The Responses API rejects `{type: 'reasoning'}` inside a message's content
+ * array — reasoning is a top-level `input` item with encrypted_content we
+ * don't preserve between turns. For chat-style use we drop thinking blocks
+ * on the way back to Codex; the model regenerates its own per-turn
+ * reasoning. Tool calls remain top-level items as the API expects.
+ */
 function convertMessages(messages: Message[]): unknown[] {
     const out: unknown[] = []
     for (const msg of messages) {
@@ -58,9 +65,7 @@ function convertMessages(messages: Message[]): unknown[] {
                 if (b.type === 'text' && b.text.length > 0) {
                     content.push({ type: 'output_text', text: b.text })
                 }
-                if (b.type === 'thinking') {
-                    content.push({ type: 'reasoning', summary: [{ type: 'summary_text', text: b.text }] })
-                }
+                // thinking intentionally dropped — see comment above.
                 if (b.type === 'tool_call') {
                     out.push({
                         type: 'function_call',
