@@ -1,3 +1,79 @@
 .chat-message--assistant {
     padding: 2px 4px;
 }
+
+/* — Streamdown markdown styling — */
+.chat-message__markdown {
+    color: var(--color-text-foreground);
+    font-size: var(--text-base);
+    line-height: 1.55;
+}
+.chat-message__markdown :where(p, ul, ol, blockquote, pre, table) {
+    margin: 0 0 12px;
+}
+.chat-message__markdown :where(p, ul, ol, blockquote, pre, table):last-child {
+    margin-bottom: 0;
+}
+.chat-message__markdown h1 { font-size: 22px; font-weight: 600; margin: 16px 0 8px; }
+.chat-message__markdown h2 { font-size: 18px; font-weight: 600; margin: 14px 0 6px; }
+.chat-message__markdown h3 { font-size: 16px; font-weight: 600; margin: 12px 0 6px; }
+.chat-message__markdown h4 { font-size: 14px; font-weight: 600; margin: 10px 0 4px; }
+.chat-message__markdown ul, .chat-message__markdown ol {
+    padding-left: 24px;
+}
+.chat-message__markdown li + li { margin-top: 4px; }
+.chat-message__markdown a {
+    color: var(--color-text-accent);
+    text-decoration: none;
+}
+.chat-message__markdown a:hover { text-decoration: underline; }
+
+.chat-message__markdown code {
+    font-family: var(--vscode-editor-font-family);
+    font-size: 0.9em;
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    background: var(--color-token-text-code-block-background);
+}
+.chat-message__markdown pre {
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--color-border-light);
+    background: var(--color-background-editor-opaque);
+    overflow-x: auto;
+}
+.chat-message__markdown pre code {
+    padding: 0;
+    background: transparent;
+    font-size: var(--vscode-editor-font-size);
+    line-height: 1.5;
+}
+
+.chat-message__markdown blockquote {
+    margin-inline: 0;
+    padding: 4px 12px;
+    border-left: 3px solid var(--color-border);
+    color: var(--color-text-foreground-secondary);
+}
+
+.chat-message__markdown table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95em;
+}
+.chat-message__markdown th,
+.chat-message__markdown td {
+    padding: 6px 10px;
+    border: 1px solid var(--color-border-light);
+    text-align: left;
+}
+.chat-message__markdown th {
+    background: var(--color-hover);
+    font-weight: 600;
+}
+
+.chat-message__markdown hr {
+    border: 0;
+    border-top: 1px solid var(--color-border-light);
+    margin: 16px 0;
+}

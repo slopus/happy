@@ -59,17 +59,20 @@ export function ChatPage() {
             <div className="chat">
                 <div className="chat__scroll" ref={scrollRef}>
                     <div className="chat__thread">
-                        {chat.messages.map((m) =>
-                            m.role === 'user' ? (
-                                <UserMessage key={m.id}>{m.text}</UserMessage>
-                            ) : (
-                                <AssistantMessage key={m.id}>
+                        {chat.messages.map((m, i) => {
+                            if (m.role === 'user') {
+                                return <UserMessage key={m.id}>{m.text}</UserMessage>
+                            }
+                            const isLast = i === chat.messages.length - 1
+                            const streaming = isLast && chat.status === 'streaming'
+                            return (
+                                <AssistantMessage key={m.id} streaming={streaming}>
                                     {m.error
                                         ? m.text || `⚠️ ${m.error}`
-                                        : m.text || (chat.status === 'streaming' ? '…' : '')}
+                                        : m.text || (streaming ? '…' : '')}
                                 </AssistantMessage>
-                            ),
-                        )}
+                            )
+                        })}
                         {chat.status === 'error' && chat.error && !chat.messages.some((m) => m.error) && (
                             <AssistantMessage>{`⚠️ ${chat.error}`}</AssistantMessage>
                         )}

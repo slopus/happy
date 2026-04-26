@@ -108,6 +108,7 @@
         "remark-rehype": "^11.1.2",
         "remark-stringify": "^11.0.0",
         "shiki": "^4.0.2",
+        "streamdown": "^2.5.0",
         "tailwind-merge": "^3.5.0",
         "tailwind-styled-components": "^2.2.0",
         "uuid": "^14.0.0",
