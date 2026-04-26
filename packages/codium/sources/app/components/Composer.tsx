@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { ComposerEditor, type ComposerEditorHandle } from './ComposerEditor'
 import { AttachButton } from './AttachButton'
 import { ComposerOptions } from './ComposerOptions'
+import { ModelEffortPicker } from './ModelEffortPicker'
 import { AttachmentChip, type Attachment } from './AttachmentChip'
 import './Composer.css'
 
@@ -145,19 +146,7 @@ export function Composer({
                         </button>
                     </div>
                     <div className="composer__footer-group composer__footer-group--right">
-                        <button
-                            type="button"
-                            className="composer-footer__btn composer-footer__btn--model-effort"
-                            aria-label="Model and reasoning effort"
-                        >
-                            <span className="composer-footer__btn-text composer-footer__btn-text--strong">
-                                5.5
-                            </span>
-                            <span className="composer-footer__btn-text composer-footer__btn-text--muted">
-                                High
-                            </span>
-                            <ChevronDown />
-                        </button>
+                        <ModelEffortPicker />
                         <button
                             type="button"
                             className="composer-footer__btn composer-footer__btn--icon composer-footer__btn--mic"
