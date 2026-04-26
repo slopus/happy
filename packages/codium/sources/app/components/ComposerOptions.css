@@ -15,7 +15,10 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    min-width: 0;
+    /* All elements on the secondary panel are non-elastic and keep their
+     * width — they don't shrink when the composer narrows, matching Codex. */
+    flex-shrink: 0;
+    flex-grow: 0;
     height: 28px;
     padding: 0 6px;
     border: 1px solid transparent;
@@ -52,7 +55,6 @@
 }
 
 .composer-options__label {
-    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

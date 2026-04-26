@@ -150,8 +150,12 @@ export function Composer({
                             className="composer-footer__btn composer-footer__btn--model-effort"
                             aria-label="Model and reasoning effort"
                         >
-                            <span className="composer-footer__btn-text">5.5</span>
-                            <span className="composer-footer__btn-text">High</span>
+                            <span className="composer-footer__btn-text composer-footer__btn-text--strong">
+                                5.5
+                            </span>
+                            <span className="composer-footer__btn-text composer-footer__btn-text--muted">
+                                High
+                            </span>
                             <ChevronDown />
                         </button>
                         <button

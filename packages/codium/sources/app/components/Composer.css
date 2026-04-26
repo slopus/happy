@@ -122,15 +122,34 @@ html.electron-dark .composer__primary {
     text-overflow: ellipsis;
 }
 
+/* Model+effort: model name reads at full foreground; effort and chevron stay muted. */
+.composer-footer__btn-text--strong {
+    color: var(--color-text-foreground);
+}
+.composer-footer__btn-text--muted {
+    color: var(--color-text-foreground-tertiary);
+}
+
 .composer-footer__btn:hover,
 .composer-footer__btn[data-state='open'] {
     background: var(--color-hover);
     color: var(--color-text-foreground);
 }
 
+/*
+ * Permission mode (Auto-review) renders all of its content — shield icon,
+ * label, and chevron — in the accent color, matching Codex's
+ * `text-token-text-link-foreground` styling.
+ */
 .composer-footer__btn--accent {
     width: 120.57px;
     padding: 0 6px;
+    color: var(--color-text-accent);
+}
+.composer-footer__btn--accent:hover,
+.composer-footer__btn--accent[data-state='open'] {
+    color: var(--color-text-accent);
+    background: color-mix(in srgb, var(--color-text-accent) 8%, transparent);
 }
 
 .composer-footer__btn:focus-visible {
