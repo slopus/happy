@@ -32,6 +32,21 @@ export type FilesApi = {
     readDataUrl(path: string): Promise<string | null>
 }
 
+export interface CodexAuthSnapshot {
+    status: 'unconfigured' | 'connected'
+    email?: string
+    accountId?: string
+    accessToken?: string
+    expiresAt?: number
+}
+
+export type CodexAuthApi = {
+    status(): Promise<CodexAuthSnapshot>
+    login(): Promise<CodexAuthSnapshot>
+    logout(): Promise<void>
+    cancelLogin(): void
+}
+
 declare global {
     interface Window {
         electron: ElectronAPI
@@ -40,5 +55,6 @@ declare global {
         pty: PtyApi
         win: WinApi
         files: FilesApi
+        codexAuth: CodexAuthApi
     }
 }

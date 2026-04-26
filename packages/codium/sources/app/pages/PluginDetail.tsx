@@ -10,10 +10,14 @@ const CRED_PROMPT: Record<string, { label: string; placeholder: string; help: st
         placeholder: 'sk-ant-…',
         help: 'Create one at console.anthropic.com → Settings → API keys.',
     },
+}
+
+/** Plugins whose connect() call doesn't take a credential string — they
+ *  drive their own auth flow (e.g. OAuth via Codex CLI). */
+const OAUTH_PLUGINS: Record<string, { buttonLabel: string; help: string }> = {
     codex: {
-        label: 'ChatGPT session token',
-        placeholder: 'eyJ…',
-        help: 'Open chatgpt.com → DevTools → Application → Cookies → "__Secure-next-auth.session-token". Or run `codex auth print-token` if you have the Codex CLI.',
+        buttonLabel: 'Sign in with Codex',
+        help: 'Opens your browser to auth.openai.com via the Codex CLI. You\'ll need Codex.app or `npm i -g @openai/codex` installed.',
     },
 }
 
@@ -34,16 +38,16 @@ export function PluginDetailPage() {
     }
 
     const auth = plugin.getAuthState()
-    const prompt = CRED_PROMPT[plugin.id] ?? {
-        label: 'Credential',
-        placeholder: '',
-        help: 'Plugin-specific credential.',
-    }
+    const oauthPrompt = OAUTH_PLUGINS[plugin.id]
+    const credPrompt = !oauthPrompt
+        ? CRED_PROMPT[plugin.id] ?? { label: 'Credential', placeholder: '', help: 'Plugin-specific credential.' }
+        : null
 
     const onConnect = async () => {
         setBusy(true)
         try {
-            await pluginHost.connect(plugin.id, credential)
+            // OAuth plugins ignore the credential string; we still pass empty.
+            await pluginHost.connect(plugin.id, oauthPrompt ? '' : credential)
         } finally {
             setBusy(false)
             setCredential('')
@@ -108,19 +112,38 @@ export function PluginDetailPage() {
                                 Disconnect
                             </button>
                         </div>
-                    ) : (
+                    ) : oauthPrompt ? (
                         <div className="plugin-detail__row plugin-detail__row--column">
-                            <label className="plugin-detail__label">{prompt.label}</label>
+                            <small className="plugin-detail__help">{oauthPrompt.help}</small>
+                            {auth.status === 'error' && (
+                                <small className="plugin-detail__help plugin-detail__help--bad">
+                                    {auth.message}
+                                </small>
+                            )}
+                            <div className="plugin-detail__actions">
+                                <button
+                                    type="button"
+                                    className="plugins-page__action plugins-page__action--primary"
+                                    onClick={onConnect}
+                                    disabled={busy || auth.status === 'connecting'}
+                                >
+                                    {busy || auth.status === 'connecting' ? 'Waiting for browser…' : oauthPrompt.buttonLabel}
+                                </button>
+                            </div>
+                        </div>
+                    ) : credPrompt ? (
+                        <div className="plugin-detail__row plugin-detail__row--column">
+                            <label className="plugin-detail__label">{credPrompt.label}</label>
                             <input
                                 type="password"
                                 className="plugin-detail__input"
-                                placeholder={prompt.placeholder}
+                                placeholder={credPrompt.placeholder}
                                 value={credential}
                                 onChange={(e) => setCredential(e.target.value)}
                                 autoComplete="off"
                                 spellCheck={false}
                             />
-                            <small className="plugin-detail__help">{prompt.help}</small>
+                            <small className="plugin-detail__help">{credPrompt.help}</small>
                             {auth.status === 'error' && (
                                 <small className="plugin-detail__help plugin-detail__help--bad">
                                     {auth.message}
@@ -137,7 +160,7 @@ export function PluginDetailPage() {
                                 </button>
                             </div>
                         </div>
-                    )}
+                    ) : null}
                 </section>
 
                 {plugin.getCapabilities().some((c) => c.type === 'llm-inference') && (

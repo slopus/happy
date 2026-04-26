@@ -35,20 +35,33 @@ export function ModelEffortPicker() {
     const currentEffort = EFFORTS.find((e) => e.id === effort) ?? EFFORTS[2]
     const groups = Array.from(new Set(inferenceModels.map(({ model: m }) => m.group)))
 
+    const empty = inferenceModels.length === 0
     return (
         <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
                 <button
                     type="button"
-                    className="composer-footer__btn composer-footer__btn--model-effort"
+                    className={
+                        empty
+                            ? 'composer-footer__btn composer-footer__btn--model-effort composer-footer__btn--empty'
+                            : 'composer-footer__btn composer-footer__btn--model-effort'
+                    }
                     aria-label="Model and reasoning effort"
                 >
-                    <span className="composer-footer__btn-text composer-footer__btn-text--strong">
-                        {currentModel?.label ?? 'No model'}
-                    </span>
-                    <span className="composer-footer__btn-text composer-footer__btn-text--muted">
-                        {currentEffort.label}
-                    </span>
+                    {empty ? (
+                        <span className="composer-footer__btn-text composer-footer__btn-text--muted">
+                            Pick a model
+                        </span>
+                    ) : (
+                        <>
+                            <span className="composer-footer__btn-text composer-footer__btn-text--strong">
+                                {currentModel?.label ?? 'No model'}
+                            </span>
+                            <span className="composer-footer__btn-text composer-footer__btn-text--muted">
+                                {currentEffort.label}
+                            </span>
+                        </>
+                    )}
                     <ChevronDown />
                 </button>
             </DropdownMenu.Trigger>

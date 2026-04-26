@@ -29,6 +29,23 @@ const win = {
     },
 }
 
+export interface CodexAuthSnapshot {
+    status: 'unconfigured' | 'connected'
+    email?: string
+    accountId?: string
+    accessToken?: string
+    expiresAt?: number
+}
+
+const codexAuth = {
+    status: (): Promise<CodexAuthSnapshot> =>
+        ipcRenderer.invoke('codex:auth:status'),
+    login: (): Promise<CodexAuthSnapshot> =>
+        ipcRenderer.invoke('codex:auth:login'),
+    logout: (): Promise<void> => ipcRenderer.invoke('codex:auth:logout'),
+    cancelLogin: () => ipcRenderer.send('codex:auth:cancel-login'),
+}
+
 const files = {
     pick: () =>
         ipcRenderer.invoke('files:pick') as Promise<
@@ -75,6 +92,7 @@ if (process.contextIsolated) {
         contextBridge.exposeInMainWorld('pty', pty)
         contextBridge.exposeInMainWorld('win', win)
         contextBridge.exposeInMainWorld('files', files)
+        contextBridge.exposeInMainWorld('codexAuth', codexAuth)
     } catch (error) {
         console.error(error)
     }
@@ -91,4 +109,6 @@ if (process.contextIsolated) {
     window.win = win
     // @ts-expect-error augmenting window
     window.files = files
+    // @ts-expect-error augmenting window
+    window.codexAuth = codexAuth
 }

@@ -23,7 +23,6 @@ import type {
 } from '../llm'
 
 const ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
-const JWT_CLAIM_PATH = 'https://api.openai.com/auth'
 
 export type CodexEffort = 'low' | 'medium' | 'high' | 'xhigh'
 
@@ -34,25 +33,9 @@ export interface CodexParameters {
     signal?: AbortSignal
 }
 
-interface JwtPayload {
-    [JWT_CLAIM_PATH]?: {
-        chatgpt_account_id?: string
-    }
-}
-
-export function extractAccountId(token: string): string {
-    const parts = token.split('.')
-    if (parts.length !== 3) throw new Error('Invalid session token')
-    const payload = JSON.parse(decodeBase64Url(parts[1]!)) as JwtPayload
-    const id = payload[JWT_CLAIM_PATH]?.chatgpt_account_id
-    if (!id) throw new Error('Account ID not found in token')
-    return id
-}
-
-function decodeBase64Url(s: string): string {
-    let str = s.replace(/-/g, '+').replace(/_/g, '/')
-    while (str.length % 4) str += '='
-    return atob(str)
+export interface CodexCredential {
+    accessToken: string
+    accountId: string
 }
 
 /** Convert our internal `Message[]` to the Responses API `input` shape. */
@@ -179,13 +162,12 @@ interface CodexEvent {
  * `response.completed.output` and we don't yet stream them incrementally.
  */
 export async function* runStream(
-    token: string,
+    cred: CodexCredential,
     modelId: string,
     ctx: InferenceContext,
     params: CodexParameters,
 ): AsyncGenerator<StreamEvent, void, unknown> {
-    const accountId = extractAccountId(token)
-    const headers = buildHeaders(token, accountId, params.sessionId)
+    const headers = buildHeaders(cred.accessToken, cred.accountId, params.sessionId)
     const body = JSON.stringify(buildBody(modelId, ctx, params))
 
     let response: Response
@@ -327,25 +309,22 @@ function parseFriendlyError(status: number, raw: string): string {
     return raw || `Codex returned ${status}`
 }
 
-/** Validate a session token by parsing the JWT and making a 1-token request. */
-export async function validateToken(token: string, signal?: AbortSignal): Promise<string | null> {
-    try { extractAccountId(token) } catch (err) {
-        return err instanceof Error ? err.message : 'Invalid token'
-    }
+/** Validate the OAuth credential by sending an empty Responses request. The
+ *  server replies 400 (bad input) on valid auth, 401/403 on expired auth. */
+export async function validateCredential(
+    cred: CodexCredential,
+    signal?: AbortSignal,
+): Promise<string | null> {
+    if (!cred.accessToken || !cred.accountId) return 'Missing credential'
     try {
-        const accountId = extractAccountId(token)
-        const headers = buildHeaders(token, accountId)
-        // The cheapest way to check auth: hit the endpoint with a no-input
-        // body and look at the response code. The server replies 400 on
-        // empty input but with valid auth — auth errors come back as 401.
         const res = await fetch(ENDPOINT, {
             method: 'POST',
-            headers,
+            headers: buildHeaders(cred.accessToken, cred.accountId),
             body: JSON.stringify({ model: 'gpt-5.5', store: false, stream: false, input: [] }),
             signal,
         })
         if (res.status === 401 || res.status === 403) {
-            return 'Authentication failed. Token may be expired.'
+            return 'Authentication failed. Sign in again.'
         }
         if (res.status === 200 || res.status === 400) return null
         const text = await res.text()

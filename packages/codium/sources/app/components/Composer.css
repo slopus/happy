@@ -116,6 +116,13 @@ html.electron-dark .composer__primary {
     max-width: none;
 }
 
+/* No-models state: the pill auto-sizes to fit the call-to-action label
+ * instead of clipping "No model" / "High" with ellipses. */
+.composer-footer__btn--empty {
+    width: auto;
+    padding: 0 10px;
+}
+
 .composer-footer__btn-text {
     white-space: nowrap;
     overflow: hidden;
