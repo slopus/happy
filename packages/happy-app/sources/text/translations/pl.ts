@@ -586,6 +586,7 @@ export const pl: TranslationStructure = {
         noChangesTitle: 'Brak zmian',
         noChangesSubtitle: 'Drzewo robocze jest czyste',
         deleted: 'Usunięty',
+        changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'zmieniony plik' : 'zmienionych plików'}`,
     },
 
     settingsVoice: {

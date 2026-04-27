@@ -569,6 +569,7 @@ export const pt: TranslationStructure = {
         noChangesTitle: 'Sem alterações',
         noChangesSubtitle: 'A árvore de trabalho está limpa',
         deleted: 'Excluído',
+        changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'arquivo modificado' : 'arquivos modificados'}`,
     },
 
     settingsVoice: {

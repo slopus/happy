@@ -571,6 +571,7 @@ export const ja: TranslationStructure = {
         noChangesTitle: '変更なし',
         noChangesSubtitle: 'ワーキングツリーはクリーンです',
         deleted: '削除済み',
+        changedFiles: ({ count }: { count: number }) => `${count}件の変更ファイル`,
     },
 
     settingsVoice: {

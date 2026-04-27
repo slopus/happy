@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
+import { Octicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { useHeaderHeight } from '@/utils/responsive';
@@ -8,7 +9,8 @@ import { useUnistyles } from 'react-native-unistyles';
 
 interface ChatHeaderViewProps {
     title: string;
-    subtitle?: string;
+    /** Project folder name (last path segment) */
+    folderName?: string;
     onTitlePress?: () => void;
     backgroundColor?: string;
     tintColor?: string;
@@ -17,7 +19,7 @@ interface ChatHeaderViewProps {
 
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     title,
-    subtitle,
+    folderName,
     onTitlePress,
     isConnected = true,
 }) => {
@@ -34,33 +36,31 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                         onPress={onTitlePress}
                         disabled={!onTitlePress}
                     >
-                        <Text
-                            numberOfLines={1}
-                            ellipsizeMode="tail"
-                            style={[
-                                styles.title,
-                                {
-                                    color: theme.colors.header.tint,
-                                    ...Typography.default('semiBold')
-                                }
-                            ]}
-                        >
-                            {title}
-                        </Text>
-                        {subtitle && (
+                        {folderName ? (
+                            <View style={styles.titleRow}>
+                                <Octicons name="file-directory" size={14} color={theme.colors.textSecondary} />
+                                <Text
+                                    numberOfLines={1}
+                                    style={[styles.folderName, { color: theme.colors.textSecondary, ...Typography.default() }]}
+                                >
+                                    {folderName}
+                                </Text>
+                                <Text style={[styles.separator, { color: theme.colors.textSecondary, ...Typography.default() }]}>/</Text>
+                                <Text
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                    style={[styles.title, { color: theme.colors.header.tint, ...Typography.default() }]}
+                                >
+                                    {title}
+                                </Text>
+                            </View>
+                        ) : (
                             <Text
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
-                                style={[
-                                    styles.subtitle,
-                                    {
-                                        color: theme.colors.header.tint,
-                                        opacity: 0.7,
-                                        ...Typography.default()
-                                    }
-                                ]}
+                                style={[styles.title, { color: theme.colors.header.tint, ...Typography.default() }]}
                             >
-                                {subtitle}
+                                {title}
                             </Text>
                         )}
                     </Pressable>
@@ -91,19 +91,22 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'flex-start',
     },
-    title: {
-        fontSize: Platform.select({
-            ios: 15,
-            android: 15,
-            default: 16
-        }),
-        fontWeight: '600',
-        marginBottom: 1,
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
         width: '100%',
     },
-    subtitle: {
-        fontSize: 12,
-        fontWeight: '400',
-        lineHeight: 14,
+    folderName: {
+        fontSize: 14,
+        flexShrink: 0,
+    },
+    separator: {
+        fontSize: 14,
+    },
+    title: {
+        fontSize: 14,
+        fontWeight: '600',
+        flexShrink: 1,
     },
 });

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
-import { useSessionProjectGitStatus } from '@/sync/storage';
+import { useSessionGitStatus } from '@/sync/storage';
 import { GitStatus } from '@/sync/storageTypes';
 import { StyleSheet } from 'react-native-unistyles';
 
@@ -65,7 +65,7 @@ interface ProjectGitStatusProps {
 
 export function ProjectGitStatus({ sessionId }: ProjectGitStatusProps) {
     const styles = stylesheet;
-    const gitStatus = useSessionProjectGitStatus(sessionId);
+    const gitStatus = useSessionGitStatus(sessionId);
 
     // Don't render if no git status (not a git repository)
     if (!gitStatus || gitStatus.lastUpdatedAt === 0) {

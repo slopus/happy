@@ -570,6 +570,7 @@ export const zhHant: TranslationStructure = {
         noChangesTitle: '沒有變更',
         noChangesSubtitle: '工作區是乾淨的',
         deleted: '已刪除',
+        changedFiles: ({ count }: { count: number }) => `${count} 個已變更的檔案`,
     },
 
     settingsVoice: {

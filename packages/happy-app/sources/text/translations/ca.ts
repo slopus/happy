@@ -570,6 +570,7 @@ export const ca: TranslationStructure = {
         noChangesTitle: 'Sense canvis',
         noChangesSubtitle: 'L\'arbre de treball està net',
         deleted: 'Eliminat',
+        changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'fitxer modificat' : 'fitxers modificats'}`,
     },
 
     settingsVoice: {

@@ -148,10 +148,12 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId, selected
 
     React.useEffect(() => {
         let cancelled = false;
+        const pathKey = storage.getState().getSessionPathKey(sessionId);
+        if (!pathKey) return;
         (async () => {
             const result = await getGitStatusFiles(sessionId);
             if (!cancelled && result) {
-                storage.getState().applyGitStatusFiles(sessionId, result);
+                storage.getState().applyGitStatusFiles(pathKey, result);
             }
         })();
         return () => { cancelled = true; };
@@ -203,11 +205,15 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId, selected
         <View style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.headerTitle} numberOfLines={1}>{t('files.changes')}</Text>
-                {hasFiles ? (
-                    <Pressable onPress={toggleAll} hitSlop={8} style={styles.headerCountWrap}>
-                        <Text style={styles.headerCount}>{totalCount}</Text>
-                        <AnimatedChevron collapsed={allCollapsed} color={theme.colors.textSecondary} size={14} />
-                    </Pressable>
+                {hasFiles && gitStatus && (gitStatus.linesAdded > 0 || gitStatus.linesRemoved > 0) ? (
+                    <View style={styles.headerLineChanges}>
+                        {gitStatus.linesAdded > 0 && (
+                            <Text style={styles.headerAdded}>+{gitStatus.linesAdded}</Text>
+                        )}
+                        {gitStatus.linesRemoved > 0 && (
+                            <Text style={styles.headerRemoved}>-{gitStatus.linesRemoved}</Text>
+                        )}
+                    </View>
                 ) : null}
             </View>
 
@@ -361,6 +367,23 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
         color: theme.colors.textSecondary,
         ...Typography.default(),
+    },
+    headerLineChanges: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    headerAdded: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: theme.colors.gitAddedText,
+        ...Typography.mono(),
+    },
+    headerRemoved: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: theme.colors.gitRemovedText,
+        ...Typography.mono(),
     },
     searchWrap: {
         flexDirection: 'row',

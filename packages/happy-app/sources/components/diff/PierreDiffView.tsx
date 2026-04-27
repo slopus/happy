@@ -18,6 +18,8 @@ export interface PierreDiffViewProps {
     theme?: 'dark' | 'light';
     /** Replace Pierre's default header with custom React content. Web-only. */
     renderCustomHeader?: (fileDiff: any) => React.ReactNode;
+    /** Allow expanding collapsed unchanged lines. Web-only (Pierre feature). */
+    expandUnchanged?: boolean;
 }
 
 export const PierreDiffView = React.memo(function PierreDiffView(props: PierreDiffViewProps) {
@@ -88,6 +90,7 @@ const PierreDiffViewWeb = React.memo(function PierreDiffViewWeb(props: PierreDif
         overflow: props.overflow,
         disableLineNumbers: props.disableLineNumbers,
         disableFileHeader: props.disableFileHeader,
+        expandUnchanged: props.expandUnchanged,
     };
 
     if (props.patch) {

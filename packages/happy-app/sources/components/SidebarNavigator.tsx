@@ -6,7 +6,7 @@ import { SidebarView } from './SidebarView';
 import { useWindowDimensions, View, Text, Pressable, Platform } from 'react-native';
 import { useLocalSetting, useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
@@ -17,6 +17,45 @@ import { isTauri } from '@/utils/isTauri';
 
 const TAURI_TRAFFIC_LIGHT_WIDTH = 72;
 
+/**
+ * Tracks navigation history to determine if back/forward is possible.
+ * We maintain our own stack + cursor because the web History API
+ * doesn't expose whether forward entries exist.
+ */
+function useNavHistory() {
+    const pathname = usePathname();
+    const historyRef = React.useRef<string[]>([pathname]);
+    const cursorRef = React.useRef(0);
+    const directionRef = React.useRef<'back' | 'forward' | null>(null);
+    const [canGoBack, setCanGoBack] = React.useState(false);
+    const [canGoForward, setCanGoForward] = React.useState(false);
+
+    React.useEffect(() => {
+        const dir = directionRef.current;
+        directionRef.current = null;
+
+        if (dir === 'back') {
+            cursorRef.current = Math.max(0, cursorRef.current - 1);
+        } else if (dir === 'forward') {
+            cursorRef.current = Math.min(historyRef.current.length - 1, cursorRef.current + 1);
+        } else {
+            // Regular navigation — trim forward entries and push
+            const cursor = cursorRef.current;
+            historyRef.current = historyRef.current.slice(0, cursor + 1);
+            historyRef.current.push(pathname);
+            cursorRef.current = historyRef.current.length - 1;
+        }
+
+        setCanGoBack(cursorRef.current > 0);
+        setCanGoForward(cursorRef.current < historyRef.current.length - 1);
+    }, [pathname]);
+
+    const markBack = React.useCallback(() => { directionRef.current = 'back'; }, []);
+    const markForward = React.useCallback(() => { directionRef.current = 'forward'; }, []);
+
+    return { canGoBack, canGoForward, markBack, markForward };
+}
+
 export const SidebarNavigator = React.memo(() => {
     const auth = useAuth();
     const isTablet = useIsTablet();
@@ -25,12 +64,12 @@ export const SidebarNavigator = React.memo(() => {
     const showSidebar = isDesktopLayout && !zenMode;
     const { width: windowWidth } = useWindowDimensions();
 
-    // Calculate drawer width only when needed
-    const drawerWidth = React.useMemo(() => {
+    // Calculate target drawer width
+    const fullDrawerWidth = React.useMemo(() => {
         if (!isDesktopLayout) return 280;
-        if (!showSidebar) return 0;
         return Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
-    }, [windowWidth, isDesktopLayout, showSidebar]);
+    }, [windowWidth, isDesktopLayout]);
+    const drawerWidth = showSidebar ? fullDrawerWidth : 0;
 
     const drawerNavigationOptions = React.useMemo(() => {
         if (!isDesktopLayout) {
@@ -57,7 +96,12 @@ export const SidebarNavigator = React.memo(() => {
                 borderRightWidth: 0,
                 width: drawerWidth,
                 overflow: 'hidden' as const,
-            },
+                ...(Platform.OS === 'web' ? {
+                    transitionProperty: 'width',
+                    transitionDuration: '250ms',
+                    transitionTimingFunction: 'cubic-bezier(0.33, 1, 0.68, 1)',
+                } : {}),
+            } as any,
             swipeEnabled: false,
             drawerActiveTintColor: 'transparent',
             drawerInactiveTintColor: 'transparent',
@@ -94,6 +138,7 @@ const PersistentHeader = React.memo(() => {
     const socketStatus = useSocketStatus();
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
     const inTauri = isTauri();
+    const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
 
     const connectionStatus = (() => {
         const { status } = socketStatus;
@@ -111,19 +156,23 @@ const PersistentHeader = React.memo(() => {
         }
     })();
 
+    const { canGoBack, canGoForward, markBack, markForward } = useNavHistory();
+
     const handleZenToggle = React.useCallback(() => {
         setZenMode(!zenMode);
     }, [zenMode, setZenMode]);
 
     const handleBack = React.useCallback(() => {
+        markBack();
         router.back();
-    }, [router]);
+    }, [router, markBack]);
 
     const handleForward = React.useCallback(() => {
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            markForward();
             window.history.forward();
         }
-    }, []);
+    }, [markForward]);
 
     return (
         <View
@@ -131,9 +180,9 @@ const PersistentHeader = React.memo(() => {
                 position: 'absolute',
                 top: 0,
                 left: 0,
-                right: zenMode ? undefined : undefined,
+                right: 0,
                 paddingTop: safeArea.top,
-                paddingLeft: inTauri ? TAURI_TRAFFIC_LIGHT_WIDTH + 16 : 16,
+                paddingLeft: isMacTauri ? TAURI_TRAFFIC_LIGHT_WIDTH + 16 : 16,
                 paddingRight: 16,
                 height: safeArea.top + headerHeight,
                 flexDirection: 'row',
@@ -143,19 +192,8 @@ const PersistentHeader = React.memo(() => {
             pointerEvents="box-none"
             {...(inTauri ? { dataSet: { tauriDragRegion: 'true' } } : {})}
         >
-            {/* Logo */}
-            {!inTauri && (
-                <View style={{ width: 32 }}>
-                    <Image
-                        source={theme.dark ? require('@/assets/images/logo-white.png') : require('@/assets/images/logo-black.png')}
-                        contentFit="contain"
-                        style={{ height: 24, width: 24 }}
-                    />
-                </View>
-            )}
-
             {/* Title + status */}
-            <View style={{ marginLeft: 8 }}>
+            <View>
                 <Text style={{
                     fontSize: 17,
                     fontWeight: '600',
@@ -191,11 +229,11 @@ const PersistentHeader = React.memo(() => {
                 pointerEvents="auto"
                 {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
             >
-                <Pressable onPress={handleBack} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
+                <Pressable onPress={handleBack} disabled={!canGoBack} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBack ? 1 : 0.3 }}>
                     <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
                 </Pressable>
                 {Platform.OS === 'web' && (
-                    <Pressable onPress={handleForward} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
+                    <Pressable onPress={handleForward} disabled={!canGoForward} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoForward ? 1 : 0.3 }}>
                         <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />
                     </Pressable>
                 )}

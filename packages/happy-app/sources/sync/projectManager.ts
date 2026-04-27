@@ -3,7 +3,7 @@
  * Groups sessions by machine ID and path to create project entities
  */
 
-import { Session, MachineMetadata, GitStatus } from "./storageTypes";
+import { Session, MachineMetadata } from "./storageTypes";
 
 /**
  * Unique project identifier based on machine ID and path
@@ -25,10 +25,6 @@ export interface Project {
     sessionIds: string[];
     /** Optional machine metadata */
     machineMetadata?: MachineMetadata | null;
-    /** Git status for this project (shared across all sessions) */
-    gitStatus?: GitStatus | null;
-    /** Timestamp when git status was last updated */
-    lastGitStatusUpdate?: number;
     /** Project creation timestamp */
     createdAt: number;
     /** Last update timestamp */
@@ -244,81 +240,6 @@ class ProjectManager {
                 ? machineMetadataMap?.get(session.metadata.machineId)
                 : undefined;
             this.addSession(session, machineMetadata);
-        }
-    }
-
-    /**
-     * Update git status for a project (identified by project key)
-     */
-    updateProjectGitStatus(projectKey: ProjectKey, gitStatus: GitStatus | null): void {
-        const keyString = this.getProjectKeyString(projectKey);
-        const projectId = this.projectKeyToId.get(keyString);
-        
-        if (!projectId) {
-            // No project exists for this key, skip update
-            return;
-        }
-
-        const project = this.projects.get(projectId);
-        if (!project) {
-            return;
-        }
-
-        // Update git status and timestamp
-        project.gitStatus = gitStatus;
-        project.lastGitStatusUpdate = Date.now();
-        project.updatedAt = Date.now();
-    }
-
-    /**
-     * Update git status for a project (identified by project ID)
-     */
-    updateProjectGitStatusById(projectId: string, gitStatus: GitStatus | null): void {
-        const project = this.projects.get(projectId);
-        if (!project) {
-            return;
-        }
-
-        project.gitStatus = gitStatus;
-        project.lastGitStatusUpdate = Date.now();
-        project.updatedAt = Date.now();
-    }
-
-    /**
-     * Get git status for a project
-     */
-    getProjectGitStatus(projectId: string): GitStatus | null {
-        const project = this.projects.get(projectId);
-        return project?.gitStatus || null;
-    }
-
-    /**
-     * Clear git status for a project
-     */
-    clearProjectGitStatus(projectId: string): void {
-        const project = this.projects.get(projectId);
-        if (project) {
-            project.gitStatus = null;
-            project.lastGitStatusUpdate = Date.now();
-            project.updatedAt = Date.now();
-        }
-    }
-
-    /**
-     * Get git status for a session via its project
-     */
-    getSessionProjectGitStatus(sessionId: string): GitStatus | null {
-        const project = this.getProjectForSession(sessionId);
-        return project?.gitStatus || null;
-    }
-
-    /**
-     * Update git status for a session's project
-     */
-    updateSessionProjectGitStatus(sessionId: string, gitStatus: GitStatus | null): void {
-        const project = this.getProjectForSession(sessionId);
-        if (project) {
-            this.updateProjectGitStatusById(project.id, gitStatus);
         }
     }
 

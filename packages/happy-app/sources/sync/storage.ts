@@ -147,8 +147,8 @@ interface StorageState {
     sessionsData: SessionListItem[] | null;  // Legacy - to be removed
     sessionListViewData: SessionListViewItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
-    sessionGitStatus: Record<string, GitStatus | null>;
-    sessionGitStatusFiles: Record<string, GitStatusFiles | null>;
+    pathGitStatus: Record<string, GitStatus | null>;        // keyed by "machineId:path"
+    pathGitStatusFiles: Record<string, GitStatusFiles | null>; // keyed by "machineId:path"
     sessionFileCache: Record<string, Record<string, { content: string | null; diff: string | null; isBinary: boolean; cachedAt: number }>>;
     machines: Record<string, Machine>;
     artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
@@ -180,8 +180,9 @@ interface StorageState {
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
     applyPurchases: (customerInfo: CustomerInfo) => void;
     applyProfile: (profile: Profile) => void;
-    applyGitStatus: (sessionId: string, status: GitStatus | null) => void;
-    applyGitStatusFiles: (sessionId: string, files: GitStatusFiles | null) => void;
+    applyGitStatus: (pathKey: string, status: GitStatus | null) => void;
+    applyGitStatusFiles: (pathKey: string, files: GitStatusFiles | null) => void;
+    getSessionPathKey: (sessionId: string) => string | null;
     applyFileCache: (sessionId: string, filePath: string, content: string | null, diff: string | null, isBinary: boolean) => void;
     applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
     isMutableToolCall: (sessionId: string, callId: string) => boolean;
@@ -206,10 +207,6 @@ interface StorageState {
     getProject: (projectId: string) => import('./projectManager').Project | null;
     getProjectForSession: (sessionId: string) => import('./projectManager').Project | null;
     getProjectSessions: (projectId: string) => string[];
-    // Project git status methods
-    getProjectGitStatus: (projectId: string) => import('./storageTypes').GitStatus | null;
-    getSessionProjectGitStatus: (sessionId: string) => import('./storageTypes').GitStatus | null;
-    updateSessionProjectGitStatus: (sessionId: string, status: import('./storageTypes').GitStatus | null) => void;
     // Friend management methods
     applyFriends: (friends: UserProfile[]) => void;
     applyRelationshipUpdate: (event: RelationshipUpdatedEvent) => void;
@@ -356,8 +353,8 @@ export const storage = create<StorageState>()((set, get) => {
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
         sessionMessages: {},
-        sessionGitStatus: {},
-        sessionGitStatusFiles: {},
+        pathGitStatus: {},
+        pathGitStatusFiles: {},
         sessionFileCache: {},
         realtimeStatus: 'disconnected',
         realtimeMode: 'idle',
@@ -549,14 +546,21 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             });
 
-            // Track unread: detect thinking → not-thinking transitions
+            // Track unread: detect when agent finishes all work for a request.
+            // "Was active" = thinking or had pending permission requests.
+            // "Now idle" = online, not thinking, no pending permissions.
             let unreadSessionIds = state.unreadSessionIds;
             sessions.forEach(session => {
                 const oldSession = state.sessions[session.id];
                 if (!oldSession) return;
-                const wasThinking = oldSession.thinking === true;
-                const isNowThinking = mergedSessions[session.id]?.thinking === true;
-                if (wasThinking && !isNowThinking && state.currentViewingSessionId !== session.id) {
+                const wasActive = oldSession.thinking === true
+                    || (oldSession.agentState?.requests && Object.keys(oldSession.agentState.requests).length > 0);
+                const newSession = mergedSessions[session.id];
+                if (!newSession || !wasActive) return;
+                const isNowIdle = newSession.thinking !== true
+                    && newSession.presence === 'online'
+                    && (!newSession.agentState?.requests || Object.keys(newSession.agentState.requests).length === 0);
+                if (isNowIdle && state.currentViewingSessionId !== session.id) {
                     if (!unreadSessionIds.has(session.id)) {
                         unreadSessionIds = new Set(unreadSessionIds);
                         unreadSessionIds.add(session.id);
@@ -827,23 +831,18 @@ export const storage = create<StorageState>()((set, get) => {
                 profile
             };
         }),
-        applyGitStatus: (sessionId: string, status: GitStatus | null) => set((state) => {
-            // Update project git status as well
-            projectManager.updateSessionProjectGitStatus(sessionId, status);
-
-            return {
-                ...state,
-                sessionGitStatus: {
-                    ...state.sessionGitStatus,
-                    [sessionId]: status
-                }
-            };
-        }),
-        applyGitStatusFiles: (sessionId: string, files: GitStatusFiles | null) => set((state) => ({
+        applyGitStatus: (pathKey: string, status: GitStatus | null) => set((state) => ({
             ...state,
-            sessionGitStatusFiles: {
-                ...state.sessionGitStatusFiles,
-                [sessionId]: files
+            pathGitStatus: {
+                ...state.pathGitStatus,
+                [pathKey]: status
+            }
+        })),
+        applyGitStatusFiles: (pathKey: string, files: GitStatusFiles | null) => set((state) => ({
+            ...state,
+            pathGitStatusFiles: {
+                ...state.pathGitStatusFiles,
+                [pathKey]: files
             }
         })),
         applyFileCache: (sessionId: string, filePath: string, content: string | null, diff: string | null, isBinary: boolean) => set((state) => ({
@@ -1037,13 +1036,10 @@ export const storage = create<StorageState>()((set, get) => {
         getProject: (projectId: string) => projectManager.getProject(projectId),
         getProjectForSession: (sessionId: string) => projectManager.getProjectForSession(sessionId),
         getProjectSessions: (projectId: string) => projectManager.getProjectSessions(projectId),
-        // Project git status methods
-        getProjectGitStatus: (projectId: string) => projectManager.getProjectGitStatus(projectId),
-        getSessionProjectGitStatus: (sessionId: string) => projectManager.getSessionProjectGitStatus(sessionId),
-        updateSessionProjectGitStatus: (sessionId: string, status: GitStatus | null) => {
-            projectManager.updateSessionProjectGitStatus(sessionId, status);
-            // Trigger a state update to notify hooks
-            set((state) => ({ ...state }));
+        getSessionPathKey: (sessionId: string): string | null => {
+            const session = get().sessions[sessionId];
+            if (!session?.metadata?.machineId || !session?.metadata?.path) return null;
+            return `${session.metadata.machineId}:${session.metadata.path}`;
         },
         applyMachines: (machines: Machine[], replace: boolean = false) => set((state) => {
             // Either replace all machines or merge updates
@@ -1136,9 +1132,6 @@ export const storage = create<StorageState>()((set, get) => {
             // Remove session messages if they exist
             const { [sessionId]: deletedMessages, ...remainingSessionMessages } = state.sessionMessages;
             
-            // Remove session git status if it exists
-            const { [sessionId]: deletedGitStatus, ...remainingGitStatus } = state.sessionGitStatus;
-            const { [sessionId]: _gitStatusFiles, ...remainingGitStatusFiles } = state.sessionGitStatusFiles;
             const { [sessionId]: _fileCache, ...remainingFileCache } = state.sessionFileCache;
 
             // Clear drafts, permission modes, model modes, effort levels from persistent storage
@@ -1165,8 +1158,6 @@ export const storage = create<StorageState>()((set, get) => {
                 ...state,
                 sessions: remainingSessions,
                 sessionMessages: remainingSessionMessages,
-                sessionGitStatus: remainingGitStatus,
-                sessionGitStatusFiles: remainingGitStatusFiles,
                 sessionFileCache: remainingFileCache,
                 sessionListViewData
             };
@@ -1435,13 +1426,6 @@ export function useProjectSessions(projectId: string | null) {
     return storage(useShallow((state) => projectId ? state.getProjectSessions(projectId) : []));
 }
 
-export function useProjectGitStatus(projectId: string | null) {
-    return storage(useShallow((state) => projectId ? state.getProjectGitStatus(projectId) : null));
-}
-
-export function useSessionProjectGitStatus(sessionId: string | null) {
-    return storage(useShallow((state) => sessionId ? state.getSessionProjectGitStatus(sessionId) : null));
-}
 
 export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSettings[K] {
     return storage(useShallow((state) => state.localSettings[name]));
@@ -1516,11 +1500,17 @@ export function useSocketStatus() {
 }
 
 export function useSessionGitStatus(sessionId: string): GitStatus | null {
-    return storage(useShallow((state) => state.sessionGitStatus[sessionId] ?? null));
+    return storage(useShallow((state) => {
+        const pathKey = state.getSessionPathKey(sessionId);
+        return pathKey ? state.pathGitStatus[pathKey] ?? null : null;
+    }));
 }
 
 export function useSessionGitStatusFiles(sessionId: string): GitStatusFiles | null {
-    return storage(useShallow((state) => state.sessionGitStatusFiles[sessionId] ?? null));
+    return storage(useShallow((state) => {
+        const pathKey = state.getSessionPathKey(sessionId);
+        return pathKey ? state.pathGitStatusFiles[pathKey] ?? null : null;
+    }));
 }
 
 export function useSessionFileCache(sessionId: string, filePath: string) {

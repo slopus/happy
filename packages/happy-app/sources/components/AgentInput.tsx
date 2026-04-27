@@ -840,7 +840,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Connection status, context warning, and permission mode */}
-                {(props.connectionStatus || contextWarning || (displayPermissionMode && permissionModeKey !== 'default')) && (
+                {(props.connectionStatus || contextWarning || (displayPermissionMode && permissionModeKey !== 'default' && !props.zenMode)) && (
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
@@ -947,7 +947,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             )}
                         </View>
                         {/* Permission badge — only shown when non-default */}
-                        {displayPermissionMode && permissionModeKey !== 'default' && (() => {
+                        {displayPermissionMode && permissionModeKey !== 'default' && !props.zenMode && (() => {
                             const permColor = isSandboxedYoloMode ? '#4169E1' :
                                 permissionModeKey === 'acceptEdits' ? theme.colors.permission.acceptEdits :
                                     permissionModeKey === 'bypassPermissions' ? theme.colors.permission.bypass :
@@ -1079,6 +1079,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
                             {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                {props.zenMode && <View style={{ flex: 1 }} />}
                                 {!props.zenMode && <View style={styles.actionButtonsLeft}>
 
                                 {/* Settings button */}

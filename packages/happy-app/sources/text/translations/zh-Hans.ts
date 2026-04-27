@@ -571,6 +571,7 @@ export const zhHans: TranslationStructure = {
         noChangesTitle: '没有更改',
         noChangesSubtitle: '工作区是干净的',
         deleted: '已删除',
+        changedFiles: ({ count }: { count: number }) => `${count} 个已更改的文件`,
     },
 
     settingsVoice: {

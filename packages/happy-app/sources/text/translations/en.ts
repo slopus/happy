@@ -584,6 +584,7 @@ export const en: TranslationStructure = {
         noChangesTitle: 'No changes',
         noChangesSubtitle: 'Working tree is clean',
         deleted: 'Deleted',
+        changedFiles: ({ count }: { count: number }) => `${count} changed ${count === 1 ? 'file' : 'files'}`,
     },
 
     settingsVoice: {
