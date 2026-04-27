@@ -89,9 +89,10 @@ export interface SessionRowData {
     homeDir: string | null;
     completedTodosCount: number;
     totalTodosCount: number;
+    hasUnread: boolean;
 }
 
-function buildSessionRowData(session: Session): SessionRowData {
+function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): SessionRowData {
     const isOnline = session.presence === "online";
     const hasPermissions = !!(session.agentState?.requests && Object.keys(session.agentState.requests).length > 0);
 
@@ -121,6 +122,7 @@ function buildSessionRowData(session: Session): SessionRowData {
         homeDir: session.metadata?.homeDir ?? null,
         completedTodosCount: session.todos?.filter(todo => todo.status === 'completed').length ?? 0,
         totalTodosCount: session.todos?.length ?? 0,
+        hasUnread: unreadSessionIds?.has(session.id) ?? false,
     };
 }
 
@@ -220,11 +222,18 @@ interface StorageState {
     // Feed methods
     applyFeedItems: (items: FeedItem[]) => void;
     clearFeed: () => void;
+    // Unread session tracking (memory-only)
+    unreadSessionIds: Set<string>;
+    currentViewingSessionId: string | null;
+    markSessionRead: (sessionId: string) => void;
+    markSessionUnread: (sessionId: string) => void;
+    setCurrentViewingSession: (sessionId: string | null) => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
 function buildSessionListViewData(
-    sessions: Record<string, Session>
+    sessions: Record<string, Session>,
+    unreadSessionIds?: Set<string>,
 ): SessionListViewItem[] {
     // Separate active and inactive sessions
     const activeSessions: Session[] = [];
@@ -247,7 +256,7 @@ function buildSessionListViewData(
 
     // Add active sessions as a single item at the top (if any)
     if (activeSessions.length > 0) {
-        listData.push({ type: 'active-sessions', sessions: activeSessions.map(buildSessionRowData) });
+        listData.push({ type: 'active-sessions', sessions: activeSessions.map(s => buildSessionRowData(s, unreadSessionIds)) });
     }
 
     // Group inactive sessions by date
@@ -281,7 +290,7 @@ function buildSessionListViewData(
 
                 listData.push({ type: 'header', title: headerTitle });
                 currentDateGroup.forEach(sess => {
-                    listData.push({ type: 'session', session: buildSessionRowData(sess) });
+                    listData.push({ type: 'session', session: buildSessionRowData(sess, unreadSessionIds) });
                 });
             }
 
@@ -311,7 +320,7 @@ function buildSessionListViewData(
 
         listData.push({ type: 'header', title: headerTitle });
         currentDateGroup.forEach(sess => {
-            listData.push({ type: 'session', session: buildSessionRowData(sess) });
+            listData.push({ type: 'session', session: buildSessionRowData(sess, unreadSessionIds) });
         });
     }
 
@@ -358,6 +367,8 @@ export const storage = create<StorageState>()((set, get) => {
         socketLastDisconnectedAt: null,
         isDataReady: false,
         nativeUpdateStatus: null,
+        unreadSessionIds: new Set<string>(),
+        currentViewingSessionId: null,
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -538,9 +549,25 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             });
 
+            // Track unread: detect thinking → not-thinking transitions
+            let unreadSessionIds = state.unreadSessionIds;
+            sessions.forEach(session => {
+                const oldSession = state.sessions[session.id];
+                if (!oldSession) return;
+                const wasThinking = oldSession.thinking === true;
+                const isNowThinking = mergedSessions[session.id]?.thinking === true;
+                if (wasThinking && !isNowThinking && state.currentViewingSessionId !== session.id) {
+                    if (!unreadSessionIds.has(session.id)) {
+                        unreadSessionIds = new Set(unreadSessionIds);
+                        unreadSessionIds.add(session.id);
+                    }
+                }
+            });
+
             // Build new unified list view data
             const sessionListViewData = buildSessionListViewData(
-                mergedSessions
+                mergedSessions,
+                unreadSessionIds,
             );
 
             // Update project manager with current sessions and machines
@@ -557,7 +584,8 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: mergedSessions,
                 sessionsData: listData,  // Legacy - to be removed
                 sessionListViewData,
-                sessionMessages: updatedSessionMessages
+                sessionMessages: updatedSessionMessages,
+                unreadSessionIds,
             };
         }),
         applyLoaded: () => set((state) => {
@@ -1266,6 +1294,41 @@ export const storage = create<StorageState>()((set, get) => {
             feedLoaded: false,  // Reset loading flag
             friendsLoaded: false  // Reset loading flag
         })),
+        markSessionRead: (sessionId: string) => set((state) => {
+            if (!state.unreadSessionIds.has(sessionId)) return state;
+            const next = new Set(state.unreadSessionIds);
+            next.delete(sessionId);
+            return {
+                ...state,
+                unreadSessionIds: next,
+                sessionListViewData: buildSessionListViewData(state.sessions, next),
+            };
+        }),
+        markSessionUnread: (sessionId: string) => set((state) => {
+            if (state.unreadSessionIds.has(sessionId)) return state;
+            const next = new Set(state.unreadSessionIds);
+            next.add(sessionId);
+            return {
+                ...state,
+                unreadSessionIds: next,
+                sessionListViewData: buildSessionListViewData(state.sessions, next),
+            };
+        }),
+        setCurrentViewingSession: (sessionId: string | null) => set((state) => {
+            if (state.currentViewingSessionId === sessionId) return state;
+            // If switching to a new session, mark it as read
+            const next = sessionId && state.unreadSessionIds.has(sessionId)
+                ? (() => { const s = new Set(state.unreadSessionIds); s.delete(sessionId); return s; })()
+                : state.unreadSessionIds;
+            return {
+                ...state,
+                currentViewingSessionId: sessionId,
+                unreadSessionIds: next,
+                ...(next !== state.unreadSessionIds ? {
+                    sessionListViewData: buildSessionListViewData(state.sessions, next),
+                } : {}),
+            };
+        }),
     }
 });
 
@@ -1382,6 +1445,10 @@ export function useSessionProjectGitStatus(sessionId: string | null) {
 
 export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSettings[K] {
     return storage(useShallow((state) => state.localSettings[name]));
+}
+
+export function useIsSessionUnread(sessionId: string): boolean {
+    return storage((state) => state.unreadSessionIds.has(sessionId));
 }
 
 // Artifact hooks

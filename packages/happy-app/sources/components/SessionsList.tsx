@@ -349,19 +349,25 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const styles = stylesheet;
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
-    const status = STATUS_CONFIG[session.state];
+    const baseStatus = STATUS_CONFIG[session.state];
+    // Override to solid blue when session has unread results
+    const status = session.hasUnread
+        ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
+        : baseStatus;
 
     const vibingMessage = React.useMemo(() => {
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
     }, [session.state]);
 
-    const statusText = session.state === 'thinking'
-        ? vibingMessage
-        : session.state === 'disconnected'
-            ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
-            : session.state === 'permission_required'
-                ? t('status.permissionRequired')
-                : t('status.online');
+    const statusText = session.hasUnread
+        ? t('status.unread')
+        : session.state === 'thinking'
+            ? vibingMessage
+            : session.state === 'disconnected'
+                ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
+                : session.state === 'permission_required'
+                    ? t('status.permissionRequired')
+                    : t('status.online');
 
     const handlePress = React.useCallback(() => {
         navigateToSession(session.id);

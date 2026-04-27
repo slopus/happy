@@ -77,6 +77,7 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
+    zenMode?: boolean;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -1078,7 +1079,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
                             {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <View style={styles.actionButtonsLeft}>
+                                {!props.zenMode && <View style={styles.actionButtonsLeft}>
 
                                 {/* Settings button */}
                                 {props.onPermissionModeChange && (
@@ -1176,7 +1177,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                                 {/* Git Status Badge */}
                                 <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
-                                </View>
+                                </View>}
 
                                 {/* Send/Voice button - aligned with first row */}
                                 <View

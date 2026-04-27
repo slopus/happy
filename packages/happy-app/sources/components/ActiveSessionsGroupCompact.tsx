@@ -275,7 +275,11 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: SessionRowData; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const status = STATUS_CONFIG[session.state];
+    const baseStatus = STATUS_CONFIG[session.state];
+    // Override to solid blue when session has unread results
+    const status = session.hasUnread
+        ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
+        : baseStatus;
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
@@ -327,6 +331,14 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
             <View style={styles.sessionContent}>
                 <View style={styles.sessionTitleRow}>
                     {(() => {
+                        if (session.hasUnread) {
+                            return (
+                                <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
+                                    <StatusDot color={status.dotColor} isPulsing={false} />
+                                </View>
+                            );
+                        }
+
                         if (session.state === 'waiting' && session.hasDraft) {
                             return (
                                 <Ionicons

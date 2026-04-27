@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, {
@@ -144,7 +144,6 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId, selected
     const gitStatusFiles = useSessionGitStatusFiles(sessionId);
     const gitStatus = useSessionGitStatus(sessionId);
 
-    const [query, setQuery] = React.useState('');
     const [collapsed, setCollapsed] = React.useState<Set<string>>(() => new Set());
 
     React.useEffect(() => {
@@ -175,10 +174,8 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId, selected
     }, [gitStatusFiles]);
 
     const tree = React.useMemo(() => buildTree(allFiles), [allFiles]);
-    const filteredTree = React.useMemo(() => filterTree(tree, query.trim()), [tree, query]);
-
-    // When filtering, auto-expand every dir so matches are visible regardless of collapse state.
-    const effectiveCollapsed = query.trim() ? new Set<string>() : collapsed;
+    const filteredTree = tree;
+    const effectiveCollapsed = collapsed;
 
     const hasFiles = allFiles.length > 0;
     const totalCount = React.useMemo(() => new Set(allFiles.map((f) => f.fullPath)).size, [allFiles]);
@@ -214,22 +211,6 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId, selected
                 ) : null}
             </View>
 
-            {hasFiles ? (
-                <View style={styles.searchWrap}>
-                    <Octicons name="search" size={14} color={theme.colors.textSecondary} style={styles.searchIcon} />
-                    <TextInput
-                        value={query}
-                        onChangeText={setQuery}
-                        placeholder={t('files.searchPlaceholder')}
-                        placeholderTextColor={theme.colors.textSecondary}
-                        style={styles.searchInput}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        spellCheck={false}
-                    />
-                </View>
-            ) : null}
-
             <ScrollView style={styles.list} showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
                 {!hasFiles ? (
                     <View style={styles.emptyState}>
@@ -238,10 +219,6 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId, selected
                         </View>
                         <Text style={styles.emptyTitle}>{t('files.noChangesTitle')}</Text>
                         <Text style={styles.emptySubtitle}>{t('files.noChangesSubtitle')}</Text>
-                    </View>
-                ) : filteredTree.length === 0 ? (
-                    <View style={styles.emptySearch}>
-                        <Text style={styles.emptySubtitle}>{t('files.noFilesFound')}</Text>
                     </View>
                 ) : (
                     <View style={styles.tree}>

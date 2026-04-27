@@ -387,6 +387,7 @@ export const ru: TranslationStructure = {
         permissionRequired: 'требуется разрешение',
         activeNow: 'Активен сейчас',
         unknown: 'неизвестно',
+        unread: 'новые результаты',
     },
 
     time: {
@@ -481,6 +482,11 @@ export const ru: TranslationStructure = {
         sessionsTitle: 'Happy',
         showArchived: 'Показать архив',
         hideArchived: 'Скрыть архив',
+        newSession: 'Новая сессия',
+    },
+
+    zen: {
+        toggle: 'Дзен-режим',
     },
 
     toolView: {

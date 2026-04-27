@@ -82,6 +82,7 @@ export const en = {
         permissionRequired: 'permission required',
         activeNow: 'Active now',
         unknown: 'unknown',
+        unread: 'new results',
     },
 
     time: {
@@ -463,6 +464,11 @@ export const en = {
         sessionsTitle: 'Happy',
         showArchived: 'Show archived',
         hideArchived: 'Hide archived',
+        newSession: 'New session',
+    },
+
+    zen: {
+        toggle: 'Zen mode',
     },
 
     toolView: {

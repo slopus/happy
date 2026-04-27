@@ -83,6 +83,7 @@ export const pt: TranslationStructure = {
         permissionRequired: 'permissão necessária',
         activeNow: 'Ativo agora',
         unknown: 'desconhecido',
+        unread: 'novos resultados',
     },
 
     time: {
@@ -464,6 +465,11 @@ export const pt: TranslationStructure = {
         sessionsTitle: 'Happy',
         showArchived: 'Mostrar arquivadas',
         hideArchived: 'Ocultar arquivadas',
+        newSession: 'Nova sessão',
+    },
+
+    zen: {
+        toggle: 'Modo zen',
     },
 
     toolView: {

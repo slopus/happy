@@ -94,6 +94,7 @@ export const pl: TranslationStructure = {
         permissionRequired: 'wymagane uprawnienie',
         activeNow: 'Aktywny teraz',
         unknown: 'nieznane',
+        unread: 'nowe wyniki',
     },
 
     time: {
@@ -481,6 +482,11 @@ export const pl: TranslationStructure = {
         sessionsTitle: 'Happy',
         showArchived: 'Pokaż zarchiwizowane',
         hideArchived: 'Ukryj zarchiwizowane',
+        newSession: 'Nowa sesja',
+    },
+
+    zen: {
+        toggle: 'Tryb zen',
     },
 
     toolView: {

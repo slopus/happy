@@ -85,6 +85,7 @@ export const zhHans: TranslationStructure = {
         permissionRequired: '需要权限',
         activeNow: '当前活跃',
         unknown: '未知',
+        unread: '新结果',
     },
 
     time: {
@@ -466,6 +467,11 @@ export const zhHans: TranslationStructure = {
         sessionsTitle: 'Happy',
         showArchived: '显示已归档',
         hideArchived: '隐藏已归档',
+        newSession: '新建会话',
+    },
+
+    zen: {
+        toggle: '禅模式',
     },
 
     toolView: {

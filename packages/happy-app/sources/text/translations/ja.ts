@@ -85,6 +85,7 @@ export const ja: TranslationStructure = {
         permissionRequired: '権限が必要です',
         activeNow: 'アクティブ',
         unknown: '不明',
+        unread: '新しい結果',
     },
 
     time: {
@@ -466,6 +467,11 @@ export const ja: TranslationStructure = {
         sessionsTitle: 'Happy',
         showArchived: 'アーカイブを表示',
         hideArchived: 'アーカイブを非表示',
+        newSession: '新しいセッション',
+    },
+
+    zen: {
+        toggle: 'Zenモード',
     },
 
     toolView: {
