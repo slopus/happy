@@ -12,9 +12,9 @@ interface ModelOption {
 const MODELS: ModelOption[] = [
     { id: 'gpt-5-5',            label: '5.5',         group: 'OpenAI' },
     { id: 'gpt-5-4',            label: '5.4',         group: 'OpenAI' },
+    { id: 'claude-opus-4-7',    label: 'Opus 4.7',    group: 'Anthropic' },
     { id: 'claude-sonnet-4-6',  label: 'Sonnet 4.6',  group: 'Anthropic' },
     { id: 'claude-opus-4-6',    label: 'Opus 4.6',    group: 'Anthropic' },
-    { id: 'claude-opus-4-7',    label: 'Opus 4.7',    group: 'Anthropic' },
 ]
 
 function ChevronDown() {
