@@ -3,10 +3,13 @@ import type { ChromeTheme, ThemeEntry, ThemeMode } from './types'
 const DEFAULT_FONT_UI = 'Geist, Inter'
 const DEFAULT_FONT_CODE = '"Geist Mono", ui-monospace, "SFMono-Regular"'
 
-/** Codex's shipped default light/dark themes (extracted from app.asar). */
+/** Codex's shipped default light/dark themes. Inputs match what the
+ *  current Codex Mac build (26.x) produces at runtime — verified by
+ *  attaching to its remote-debugging port and reading the live
+ *  `--codex-base-*` CSS vars. */
 export const CODEX_LIGHT_DEFAULT: ChromeTheme = {
-    accent: '#339cff',
-    ink: '#1a1c1f',
+    accent: '#0169cc',
+    ink: '#0d0d0d',
     surface: '#ffffff',
     contrast: 45,
     opaqueWindows: false,
@@ -19,7 +22,7 @@ export const CODEX_LIGHT_DEFAULT: ChromeTheme = {
 }
 
 export const CODEX_DARK_DEFAULT: ChromeTheme = {
-    accent: '#339cff',
+    accent: '#0169cc',
     ink: '#ffffff',
     surface: '#181818',
     contrast: 60,

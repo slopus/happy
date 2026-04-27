@@ -53,8 +53,8 @@ export interface Chat {
 
 /* ─────────── store ─────────── */
 
-const chatsAtom = atom<Record<string, Chat>>({})
-const chatOrderAtom = atom<string[]>([])
+export const chatsAtom = atom<Record<string, Chat>>({})
+export const chatOrderAtom = atom<string[]>([])
 
 /** All chats, newest-first. */
 export const chatListAtom = atom((get) => {
@@ -62,6 +62,30 @@ export const chatListAtom = atom((get) => {
     const order = get(chatOrderAtom)
     return order.map((id) => chats[id]).filter((c): c is Chat => Boolean(c))
 })
+
+/** Replace the entire store from a persisted snapshot (boot path). Strips
+ *  transient runtime fields so a chat that was streaming when the app died
+ *  reopens as idle, not stuck mid-stream. */
+export const hydrateChatsAtom = atom(
+    null,
+    (_get, set, snapshot: { chats: Record<string, Chat>; order: string[] }) => {
+        const sanitized: Record<string, Chat> = {}
+        for (const [id, c] of Object.entries(snapshot.chats)) {
+            if (!c) continue
+            sanitized[id] = {
+                ...c,
+                status: 'idle',
+                error: undefined,
+                messages: c.messages.map((m) => ({
+                    ...m,
+                    finished: m.finished ?? true,
+                })),
+            }
+        }
+        set(chatsAtom, sanitized)
+        set(chatOrderAtom, snapshot.order.filter((id) => id in sanitized))
+    },
+)
 
 /** A specific chat by id. */
 export const chatByIdAtomFamily = (id: string) =>
@@ -134,4 +158,19 @@ export const updateChatAtom = atom(
             return { ...prev, [args.chatId]: { ...c, ...args.patch, updatedAt: Date.now() } }
         })
     }
+)
+
+/** Drop a chat. The Agent SDK's session jsonl on disk is left alone — if
+ *  we ever re-create a chat with the same sessionId it'd resume there. */
+export const deleteChatAtom = atom(
+    null,
+    (_get, set, chatId: string) => {
+        set(chatsAtom, (prev) => {
+            if (!(chatId in prev)) return prev
+            const next = { ...prev }
+            delete next[chatId]
+            return next
+        })
+        set(chatOrderAtom, (prev) => prev.filter((id) => id !== chatId))
+    },
 )

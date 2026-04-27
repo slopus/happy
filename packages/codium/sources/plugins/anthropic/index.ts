@@ -10,9 +10,9 @@ import type {
 const STORAGE_KEY = 'codium.plugin.anthropic.apiKey'
 
 const MODELS: ModelDescriptor[] = [
-    { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', group: 'Anthropic', description: 'Balanced reasoning + speed.' },
-    { id: 'claude-opus-4-6',   label: 'Opus 4.6',   group: 'Anthropic', description: 'Deepest reasoning, slowest.' },
     { id: 'claude-opus-4-7',   label: 'Opus 4.7',   group: 'Anthropic', description: 'Latest Opus generation.' },
+    { id: 'claude-opus-4-6',   label: 'Opus 4.6',   group: 'Anthropic', description: 'Deepest reasoning, slowest.' },
+    { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', group: 'Anthropic', description: 'Balanced reasoning + speed.' },
 ]
 
 /**

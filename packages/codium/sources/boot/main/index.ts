@@ -19,8 +19,10 @@ import {
     logout as codexLogout,
 } from './codex-oauth'
 import { registerAgentIpc } from './agent-worker/host'
+import { registerChatStoreIpc } from './chat-store'
 
 registerAgentIpc()
+registerChatStoreIpc()
 
 if (is.dev) {
     app.commandLine.appendSwitch('remote-debugging-port', '9224')

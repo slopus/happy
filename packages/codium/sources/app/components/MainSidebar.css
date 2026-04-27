@@ -38,10 +38,10 @@ html.is-resizing-sidebar .app__toolbar {
 
 .app__sidebar-header,
 .app__sidebar-section-header {
-    padding: 8px 8px 4px;
-    font-size: var(--text-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    /* Match Codex: regular case 13px, no tracking, slight indent. */
+    padding: 8px 8px 2px;
+    font-size: var(--text-base);
+    line-height: 1.5;
     color: var(--color-text-foreground-tertiary);
 }
 
@@ -111,6 +111,14 @@ html.is-resizing-sidebar .app__toolbar {
 
 .app__sidebar-row-main {
     flex: 1;
+    min-width: 0;
+}
+
+/* Truncate long chat titles instead of wrapping. */
+.app__sidebar-row-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     min-width: 0;
 }
 

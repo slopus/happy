@@ -79,6 +79,19 @@ const agent = {
     },
 }
 
+/* ─────── Chats persistence (jotai store ↔ <userData>/codium-chats.json) ─────── */
+
+export interface PersistedChats {
+    chats: Record<string, unknown>
+    order: string[]
+}
+
+const chats = {
+    load: (): Promise<PersistedChats> => ipcRenderer.invoke('chats:load'),
+    save: (state: PersistedChats): Promise<void> =>
+        ipcRenderer.invoke('chats:save', state),
+}
+
 const codexAuth = {
     status: (): Promise<CodexAuthSnapshot> =>
         ipcRenderer.invoke('codex:auth:status'),
@@ -136,6 +149,7 @@ if (process.contextIsolated) {
         contextBridge.exposeInMainWorld('files', files)
         contextBridge.exposeInMainWorld('codexAuth', codexAuth)
         contextBridge.exposeInMainWorld('agent', agent)
+        contextBridge.exposeInMainWorld('chats', chats)
     } catch (error) {
         console.error(error)
     }
@@ -156,4 +170,6 @@ if (process.contextIsolated) {
     window.codexAuth = codexAuth
     // @ts-expect-error augmenting window
     window.agent = agent
+    // @ts-expect-error augmenting window
+    window.chats = chats
 }

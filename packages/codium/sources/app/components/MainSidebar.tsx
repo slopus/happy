@@ -1,11 +1,12 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useAtom, useSetAtom } from 'jotai'
+import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import {
     preSettingsPathAtom,
     searchOpenAtom,
     terminalsAtom,
     type TerminalEntry,
 } from '@/app/state'
+import { chatListAtom, deleteChatAtom } from '@/app/chat/store'
 import { SidebarResizer } from './SidebarResizer'
 import './MainSidebar.css'
 
@@ -54,6 +55,14 @@ function ComponentsIcon() {
     )
 }
 
+function ChatIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+    )
+}
+
 function TerminalIcon() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -96,6 +105,13 @@ export function MainSidebar() {
     const setPreSettings = useSetAtom(preSettingsPathAtom)
     const setSearchOpen = useSetAtom(searchOpenAtom)
     const [terminals, setTerminals] = useAtom(terminalsAtom)
+    const chats = useAtomValue(chatListAtom)
+    const deleteChat = useSetAtom(deleteChatAtom)
+
+    const removeChat = (chatId: string) => {
+        deleteChat(chatId)
+        if (location.pathname === `/chat/${chatId}`) navigate('/chat/new')
+    }
 
     const openSettings = () => {
         setPreSettings(location.pathname)
@@ -181,6 +197,35 @@ export function MainSidebar() {
                     <PlusIcon />
                     <span>New terminal</span>
                 </button>
+                {chats.length > 0 && (
+                    <div className="app__sidebar-section">
+                        <div className="app__sidebar-section-header">Chats</div>
+                        {chats.map((c) => (
+                            <div key={c.id} className="app__sidebar-row">
+                                <NavLink
+                                    to={`/chat/${c.id}`}
+                                    className={({ isActive }) =>
+                                        isActive
+                                            ? 'app__nav-item app__sidebar-row-main app__nav-item--active'
+                                            : 'app__nav-item app__sidebar-row-main'
+                                    }
+                                    title={c.title}
+                                >
+                                    <ChatIcon />
+                                    <span className="app__sidebar-row-label">{c.title}</span>
+                                </NavLink>
+                                <button
+                                    type="button"
+                                    className="app__sidebar-row-close"
+                                    aria-label={`Delete ${c.title}`}
+                                    onClick={() => removeChat(c.id)}
+                                >
+                                    <CloseIcon />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
                 {terminals.length > 0 && (
                     <div className="app__sidebar-section">
                         <div className="app__sidebar-section-header">Terminals</div>

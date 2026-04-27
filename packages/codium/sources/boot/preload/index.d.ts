@@ -71,6 +71,16 @@ export type AgentApi = {
     onClosed(sessionId: string, cb: () => void): () => void
 }
 
+export interface PersistedChats {
+    chats: Record<string, unknown>
+    order: string[]
+}
+
+export type ChatsApi = {
+    load(): Promise<PersistedChats>
+    save(state: PersistedChats): Promise<void>
+}
+
 declare global {
     interface Window {
         electron: ElectronAPI
@@ -81,5 +91,6 @@ declare global {
         files: FilesApi
         codexAuth: CodexAuthApi
         agent: AgentApi
+        chats: ChatsApi
     }
 }

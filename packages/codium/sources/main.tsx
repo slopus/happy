@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 import { router } from './app/routes'
+import { ChatsPersistence } from './app/chat/ChatsPersistence'
 import { bootPlugins } from './plugins'
 import { Providers } from './providers'
 import './index.css'
@@ -24,6 +25,7 @@ void bootPlugins()
 ReactDOM.createRoot(root).render(
     <React.StrictMode>
         <Providers>
+            <ChatsPersistence />
             <RouterProvider router={router} />
         </Providers>
     </React.StrictMode>

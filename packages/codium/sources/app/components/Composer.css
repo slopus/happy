@@ -112,7 +112,7 @@ html.electron-dark .composer__primary {
 }
 
 .composer-footer__btn--model-effort {
-    width: 86.93px;
+    width: auto;
     max-width: none;
 }
 
@@ -144,19 +144,20 @@ html.electron-dark .composer__primary {
 }
 
 /*
- * Permission mode (Auto-review) renders all of its content — shield icon,
- * label, and chevron — in the accent color, matching Codex's
- * `text-token-text-link-foreground` styling.
+ * Permission mode (Auto-review) — bordered pill, muted text, matching
+ * Codex's default state. Active/non-default permission modes can flip
+ * to accent later via a separate modifier.
  */
 .composer-footer__btn--accent {
-    width: 120.57px;
-    padding: 0 6px;
-    color: var(--color-text-accent);
+    width: auto;
+    padding: 0 8px;
+    color: var(--color-text-foreground-tertiary);
+    border-color: var(--color-token-border, var(--color-border));
 }
 .composer-footer__btn--accent:hover,
 .composer-footer__btn--accent[data-state='open'] {
-    color: var(--color-text-accent);
-    background: color-mix(in srgb, var(--color-text-accent) 8%, transparent);
+    color: var(--color-text-foreground);
+    background: var(--color-hover);
 }
 
 .composer-footer__btn:focus-visible {
