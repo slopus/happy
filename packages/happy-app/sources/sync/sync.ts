@@ -1676,7 +1676,7 @@ class Sync {
 
                 if (normalizedMessages.length > 0) {
                     totalNormalized += normalizedMessages.length;
-                    this.enqueueMessages(sessionId, normalizedMessages);
+                    this.applyMessages(sessionId, normalizedMessages);
                 }
 
                 this.sessionLastSeq.set(sessionId, maxSeq);
