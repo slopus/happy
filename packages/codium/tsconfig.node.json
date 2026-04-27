@@ -2,7 +2,8 @@
     "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
     "include": [
         "electron.vite.config.ts",
-        "sources/boot/**/*"
+        "sources/boot/**/*",
+        "sources/shared/**/*"
     ],
     "compilerOptions": {
         "composite": true,

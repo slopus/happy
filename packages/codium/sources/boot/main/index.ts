@@ -18,6 +18,9 @@ import {
     login as codexLogin,
     logout as codexLogout,
 } from './codex-oauth'
+import { registerAgentIpc } from './agent-worker/host'
+
+registerAgentIpc()
 
 if (is.dev) {
     app.commandLine.appendSwitch('remote-debugging-port', '9224')

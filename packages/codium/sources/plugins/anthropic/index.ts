@@ -1,9 +1,4 @@
 import type {
-    InferenceContext,
-    InferenceParameters,
-    StreamEvent,
-} from '../llm'
-import type {
     AuthState,
     Capability,
     LLMInferenceCapability,
@@ -11,12 +6,6 @@ import type {
     Plugin,
     PluginContext,
 } from '../types'
-import {
-    runStream,
-    validateApiKey,
-    type AnthropicEffort,
-    type AnthropicParameters,
-} from './provider'
 
 const STORAGE_KEY = 'codium.plugin.anthropic.apiKey'
 
@@ -26,12 +15,12 @@ const MODELS: ModelDescriptor[] = [
     { id: 'claude-opus-4-7',   label: 'Opus 4.7',   group: 'Anthropic', description: 'Latest Opus generation.' },
 ]
 
-function mapEffort(eff: InferenceParameters['effort']): AnthropicEffort | undefined {
-    if (!eff) return undefined
-    if (eff === 'xhigh') return 'xhigh'
-    return eff
-}
-
+/**
+ * Anthropic plugin — auth via API key from localStorage. Inference is
+ * driven by the chat runner against the worker-hosted Claude Agent SDK
+ * (see boot/main/agent-worker). The plugin itself just exposes models
+ * and lends out the API key to the runner.
+ */
 class AnthropicPlugin implements Plugin {
     id = 'anthropic'
     name = 'Anthropic'
@@ -42,14 +31,16 @@ class AnthropicPlugin implements Plugin {
 
     private auth: AuthState = { status: 'unconfigured' }
     private apiKey: string | null = null
-    private capabilities: Capability[] = []
+    /** Anthropic models are always exposed in the picker — even before
+     *  the user saves a key — because the worker can also pick up
+     *  ANTHROPIC_API_KEY from its own environment. */
+    private capabilities: Capability[] = [this.makeCapability()]
 
     async activate(_ctx: PluginContext) {
         const stored = readStored(STORAGE_KEY)
         if (stored) {
             this.apiKey = stored
             this.auth = { status: 'connected' }
-            this.capabilities = [this.makeCapability()]
         }
     }
 
@@ -60,15 +51,11 @@ class AnthropicPlugin implements Plugin {
             ctx.onAuthChanged()
             return this.auth
         }
-        this.auth = { status: 'connecting' }
-        ctx.onAuthChanged()
-        const errMsg = await validateApiKey(trimmed)
-        if (errMsg !== null) {
-            this.auth = { status: 'error', message: friendlyError(errMsg) }
-            this.apiKey = null
-            this.capabilities = []
+        // Light-weight format check — the Agent SDK will surface real auth
+        // failures on the first turn.
+        if (!/^sk-[A-Za-z0-9_-]+$/.test(trimmed)) {
+            this.auth = { status: 'error', message: 'API key looks malformed (expected sk-…)' }
             ctx.onAuthChanged()
-            ctx.onCapabilitiesChanged()
             return this.auth
         }
         this.apiKey = trimmed
@@ -96,29 +83,8 @@ class AnthropicPlugin implements Plugin {
         return {
             type: 'llm-inference',
             models: MODELS,
-            stream: (modelId, ctx, params) => this.streamImpl(modelId, ctx, params),
+            getApiKey: () => this.apiKey,
         }
-    }
-
-    private async *streamImpl(
-        modelId: string,
-        context: InferenceContext,
-        params?: InferenceParameters,
-    ): AsyncIterable<StreamEvent> {
-        if (!this.apiKey) {
-            yield {
-                type: 'error', reason: 'error',
-                message: { role: 'assistant', content: [] },
-                error: 'Anthropic plugin not connected',
-            }
-            return
-        }
-        const anthropicParams: AnthropicParameters = {
-            effort: mapEffort(params?.effort),
-            maxTokens: params?.maxTokens,
-            signal: params?.signal,
-        }
-        yield* runStream({ apiKey: this.apiKey }, modelId, context, anthropicParams)
     }
 }
 
@@ -133,15 +99,4 @@ function writeStored(key: string, value: string): void {
 }
 function clearStored(key: string): void {
     try { localStorage.removeItem(key) } catch {}
-}
-
-function friendlyError(raw: string): string {
-    const lower = raw.toLowerCase()
-    if (lower.includes('401') || lower.includes('invalid_api_key') || lower.includes('authentication')) {
-        return 'Invalid API key. Check it on console.anthropic.com.'
-    }
-    if (lower.includes('network') || lower.includes('fetch')) {
-        return 'Network error. Check your connection.'
-    }
-    return raw
 }

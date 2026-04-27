@@ -2,16 +2,14 @@ import { anthropicPlugin } from './anthropic'
 import { codexPlugin } from './codex'
 import { registerPlugin } from './host'
 
-export type { AuthState, Capability, ModelDescriptor, Plugin, PluginCategory } from './types'
 export type {
-    AssistantContent,
-    AssistantMessage,
-    InferenceContext,
-    InferenceParameters,
-    Message,
-    StreamEvent,
-    UserMessage,
-} from './llm'
+    AuthState,
+    Capability,
+    LLMInferenceCapability,
+    ModelDescriptor,
+    Plugin,
+    PluginCategory,
+} from './types'
 export {
     pluginHost,
     pluginsAtom,

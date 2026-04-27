@@ -1,4 +1,4 @@
-import type { InferenceContext, InferenceParameters, StreamGenerator } from './llm'
+/* (no llm.ts imports — inference now goes through the worker-hosted Agent SDK) */
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Plugin host types
@@ -28,8 +28,10 @@ export interface LLMInferenceCapability {
     type: 'llm-inference'
     /** Models this plugin exposes (shown in pickers). */
     models: ModelDescriptor[]
-    /** Stream a single inference call. */
-    stream(modelId: string, ctx: InferenceContext, params?: InferenceParameters): StreamGenerator
+    /** Returns the credential the agent worker needs to call this provider.
+     *  For now the worker only supports Anthropic, so this is just the API
+     *  key. Returns null when the plugin is not connected. */
+    getApiKey(): string | null
 }
 
 export interface ModelDescriptor {

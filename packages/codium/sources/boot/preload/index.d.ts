@@ -47,6 +47,30 @@ export type CodexAuthApi = {
     cancelLogin(): void
 }
 
+export type {
+    AgentEffort,
+    AgentEvent,
+    AgentPermissionMode,
+    AgentStartOptions,
+} from '../../shared/agent-protocol'
+
+export type AgentApi = {
+    start(args: {
+        sessionId: string
+        prompt: string
+        resume: boolean
+        options: import('../../shared/agent-protocol').AgentStartOptions
+    }): void
+    send(sessionId: string, text: string): void
+    interrupt(sessionId: string): void
+    stop(sessionId: string): void
+    onEvent(
+        sessionId: string,
+        cb: (ev: import('../../shared/agent-protocol').AgentEvent) => void,
+    ): () => void
+    onClosed(sessionId: string, cb: () => void): () => void
+}
+
 declare global {
     interface Window {
         electron: ElectronAPI
@@ -56,5 +80,6 @@ declare global {
         win: WinApi
         files: FilesApi
         codexAuth: CodexAuthApi
+        agent: AgentApi
     }
 }

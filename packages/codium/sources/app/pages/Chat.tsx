@@ -18,12 +18,14 @@ export function ChatPage() {
     const append = useSetAtom(appendMessageAtom)
     const model = useAtomValue(modelAtom)
     const effort = useAtomValue(effortAtom)
-    const { run, cancel } = useChatRunner()
+    const { run, interrupt } = useChatRunner()
     const scrollRef = useRef<HTMLDivElement>(null)
     /** Whether the user is "pinned" to the bottom — true when they've not
      *  manually scrolled up. We only auto-scroll while pinned, so that
      *  reading older content isn't interrupted by new tokens. */
     const pinnedRef = useRef(true)
+    /** Guards the auto-run effect so a re-render doesn't re-fire it. */
+    const initialRunFiredRef = useRef(false)
 
     useEffect(() => {
         const el = scrollRef.current
@@ -46,13 +48,26 @@ export function ChatPage() {
         el.scrollTop = el.scrollHeight
     }, [chat?.messages.length, chat?.messages[chat.messages.length - 1]?.text.length])
 
+    // Coming from /chat/new the chat already has the user's first message
+    // but no assistant response yet — kick off the initial turn here so
+    // NewChat doesn't have to know about session lifecycle.
+    useEffect(() => {
+        if (!chat || initialRunFiredRef.current) return
+        const lastMsg = chat.messages[chat.messages.length - 1]
+        const hasAssistant = chat.messages.some((m) => m.role === 'assistant')
+        if (!hasAssistant && lastMsg?.role === 'user' && chat.status === 'idle') {
+            initialRunFiredRef.current = true
+            run({ chatId: chat.id, prompt: lastMsg.text, modelId: model, effort })
+        }
+    }, [chat, run, model, effort])
+
     if (!chat) return <Navigate to="/chat/new" replace />
 
     const onSubmit = (text: string) => {
         const trimmed = text.trim()
         if (trimmed.length === 0) return
         if (chat.status === 'streaming') {
-            cancel()
+            interrupt()
         }
         const userMessage = {
             id: uuid(),
@@ -61,12 +76,9 @@ export function ChatPage() {
             finished: true,
         }
         append({ chatId: chat.id, message: userMessage })
-        // The runner reads history fresh — pass the current snapshot plus the
-        // new user turn so the assistant sees the full sequence.
-        const nextHistory = [...chat.messages, userMessage]
-        void run({
+        run({
             chatId: chat.id,
-            history: nextHistory,
+            prompt: trimmed,
             modelId: model,
             effort,
         })
@@ -84,10 +96,15 @@ export function ChatPage() {
                             const isLast = i === chat.messages.length - 1
                             const streaming = isLast && chat.status === 'streaming'
                             return (
-                                <AssistantMessage key={m.id} streaming={streaming}>
+                                <AssistantMessage
+                                    key={m.id}
+                                    streaming={streaming}
+                                    thinking={m.thinking}
+                                    tools={m.tools}
+                                >
                                     {m.error
                                         ? m.text || `⚠️ ${m.error}`
-                                        : m.text || (streaming ? '…' : '')}
+                                        : m.text || (streaming && !m.tools?.length ? '…' : '')}
                                 </AssistantMessage>
                             )
                         })}
@@ -101,7 +118,7 @@ export function ChatPage() {
                         <Composer
                             placeholder={
                                 chat.status === 'streaming'
-                                    ? 'Streaming reply… (sending will cancel)'
+                                    ? 'Streaming reply… (sending will interrupt)'
                                     : 'Reply to the assistant…'
                             }
                             onSubmit={onSubmit}
