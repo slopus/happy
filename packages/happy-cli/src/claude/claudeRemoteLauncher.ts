@@ -15,6 +15,8 @@ import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
+import { appendPromptToHistory, readFirstUserPrompt } from "./utils/historyJsonl";
+import { getProjectPath } from "./utils/path";
 
 interface PermissionsField {
     date: number;
@@ -125,6 +127,21 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
         // Write to message log
         formatClaudeMessageForInk(message, messageBuffer);
+
+        // Append user prompts to history.jsonl so /resume can discover remote sessions.
+        // Claude Code's interactive CLI writes to history.jsonl on every prompt via its
+        // internal Mb6() function, but in SDK mode (stream-json) that path is never hit.
+        // Skip when sessionId is not yet known — the first prompt is back-filled in onSessionFound.
+        if (message.type === 'user' && session.sessionId) {
+            const userMsg = message as SDKUserMessage;
+            if (userMsg.message.role === 'user' && typeof userMsg.message.content === 'string') {
+                appendPromptToHistory({
+                    sessionId: session.sessionId,
+                    project: session.path,
+                    display: userMsg.message.content,
+                });
+            }
+        }
 
         // Track active tool calls
         if (message.type === 'assistant') {
@@ -340,6 +357,19 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         // Update converter's session ID when new session is found
                         sdkToLogConverter.updateSessionId(sessionId);
                         session.onSessionFound(sessionId);
+
+                        // Back-fill the first user prompt into history.jsonl.
+                        // The first message arrives before sessionId is known (skipped in onMessage),
+                        // so we read it from the JSONL file that Claude Code has already written.
+                        const projectDir = getProjectPath(session.path);
+                        const firstPrompt = readFirstUserPrompt(projectDir, sessionId);
+                        if (firstPrompt) {
+                            appendPromptToHistory({
+                                sessionId,
+                                project: session.path,
+                                display: firstPrompt,
+                            });
+                        }
                     },
                     onSDKMetadata: (metadata) => {
                         logger.debug('[remote] SDK metadata received, updating session:', metadata);

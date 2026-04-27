@@ -83,6 +83,13 @@ export async function claudeRemote(opts: {
         });
     }
 
+    // Override CLAUDE_CODE_ENTRYPOINT so /resume can discover remote sessions.
+    // Can't use "cli" — Claude Code v2.1.119+ rewrites "cli" to "sdk-cli" in SDK mode.
+    // "happy-remote" is a custom value that passes both checks:
+    //   1. Ka8() only rewrites "cli", so "happy-remote" is preserved as-is
+    //   2. /resume only filters sdk-ts|sdk-py|sdk-cli|local-agent
+    process.env.CLAUDE_CODE_ENTRYPOINT = 'happy-remote';
+
     // Get initial message
     const initial = await opts.nextMessage();
     if (!initial) { // No initial message - exit
