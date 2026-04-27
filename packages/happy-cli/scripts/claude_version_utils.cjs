@@ -548,7 +548,28 @@ function runClaudeCli(cliPath) {
             stdio: 'inherit',
             env: process.env
         });
+        // Forward signals from launcher to child so the spawned claude binary
+        // exits when the launcher does. Without this, an interrupted launcher
+        // (terminal close, parent crash, kill -TERM) leaves the child running
+        // attached to the same TTY foreground process group; on the next
+        // launch in the same pane two claude processes share the pts and the
+        // kernel race-distributes keystrokes between them ("two cursors" /
+        // "characters alternating" symptom).
+        const forward = (sig) => { try { child.kill(sig); } catch (e) {} };
+        ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'].forEach((s) =>
+            process.on(s, () => forward(s))
+        );
+        process.on('exit', () => forward('SIGTERM'));
+        // Detect ungraceful parent death (e.g. happy crashed without sending
+        // a signal). When our parent dies, ppid is reset to 1; poll for that
+        // and clean up the child. Interval is unref'd so it doesn't keep the
+        // event loop alive past child exit.
+        const ppidWatch = setInterval(() => {
+            if (process.ppid === 1) { forward('SIGTERM'); process.exit(0); }
+        }, 1000);
+        ppidWatch.unref();
         child.on('exit', (code) => {
+            clearInterval(ppidWatch);
             process.exit(code || 0);
         });
     }
