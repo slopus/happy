@@ -115,6 +115,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         flavor: 'claude',
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
+        initialPermissionMode: initialPermissionMode ?? null,
     };
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)

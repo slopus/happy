@@ -71,4 +71,23 @@ describe('createSessionMetadata', () => {
 
         expect(metadata.dangerouslySkipPermissions).toBe(true);
     });
+
+    it('sets metadata.initialPermissionMode to null when not provided', () => {
+        const { metadata } = createSessionMetadata({
+            flavor: 'claude',
+            machineId: 'machine-6',
+        });
+
+        expect(metadata.initialPermissionMode).toBeNull();
+    });
+
+    it('sets metadata.initialPermissionMode when provided', () => {
+        const { metadata } = createSessionMetadata({
+            flavor: 'claude',
+            machineId: 'machine-7',
+            initialPermissionMode: 'acceptEdits',
+        });
+
+        expect(metadata.initialPermissionMode).toBe('acceptEdits');
+    });
 });

@@ -10,7 +10,7 @@
 import os from 'node:os';
 import { resolve } from 'node:path';
 
-import type { AgentState, Metadata } from '@/api/types';
+import type { AgentState, Metadata, PermissionMode } from '@/api/types';
 import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
 import type { SandboxConfig } from '@/persistence';
@@ -35,6 +35,8 @@ export interface CreateSessionMetadataOptions {
     sandbox?: SandboxConfig;
     /** Whether the backend runs with "dangerously skip permissions" behavior */
     dangerouslySkipPermissions?: boolean;
+    /** CLI-resolved initial permission mode — surfaced so mobile/web seed outgoing meta correctly */
+    initialPermissionMode?: PermissionMode;
 }
 
 /**
@@ -90,6 +92,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         flavor: opts.flavor,
         sandbox: opts.sandbox?.enabled ? opts.sandbox : null,
         dangerouslySkipPermissions: opts.dangerouslySkipPermissions ?? null,
+        initialPermissionMode: opts.initialPermissionMode ?? null,
     };
 
     return { state, metadata };
