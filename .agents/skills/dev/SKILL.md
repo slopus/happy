@@ -103,6 +103,21 @@ Variants:
     preview        com.slopus.happy.preview   # OTA / beta testing
     production     com.ex3ndr.happy           # App Store
 
+## happy-app-logs (remote log receiver)
+
+```bash
+pnpm --filter happy-app-logs dev       # starts on http://0.0.0.0:8787
+```
+
+Receives POST requests to `/logs` from the mobile app's patched console (see `consoleLogging.ts`).
+Logs to stdout and `~/.happy/app-logs/<timestamp>.log`.
+
+To connect: set the log server URL in the app's dev settings to `http://<LAN_IP>:8787`.
+The app's `consoleLogging.ts` sends all console.log/warn/error to this endpoint when configured.
+
+Console output must be enabled in the app (dev/preview variants default on, production defaults off,
+togglable from the dev settings screen).
+
 ## Cross-cutting
 
 - **Hoisted deps:** pnpm hoists node_modules to the repo root. `packages/*/node_modules/` is mostly empty. Node's resolution walks up, so imports work transparently.

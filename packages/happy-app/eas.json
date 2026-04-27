@@ -52,6 +52,20 @@
     }
   },
   "submit": {
+    "development-store": {
+      "ios": {
+        "appleId": "steve@bulkovo.com",
+        "ascAppId": "6748984254",
+        "appleTeamId": "466DQWDR8C"
+      }
+    },
+    "preview-store": {
+      "ios": {
+        "appleId": "steve@bulkovo.com",
+        "ascAppId": "6749025570",
+        "appleTeamId": "466DQWDR8C"
+      }
+    },
     "production": {
       "ios": {
         "appleId": "steve@bulkovo.com",

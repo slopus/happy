@@ -191,18 +191,25 @@ underlying `eas update` directly with `--message`:
   cd packages/happy-app && eas build --profile development --platform all --non-interactive
   ```
 
-- **TestFlight / Play Store builds** — use `-store` profiles for distribution via TestFlight and Play Store
+- **TestFlight / Play Store builds** — use `-store` profiles for distribution via TestFlight and Play Store.
+  **Always pass `--auto-submit`** so the build goes straight to TestFlight after completion.
   ```bash
   # Preview (TestFlight/internal testing)
-  cd packages/happy-app && eas build --profile preview-store --platform ios --non-interactive
+  cd packages/happy-app && eas build --profile preview-store --platform ios --non-interactive --auto-submit
+
+  # Dev (TestFlight, points to dev server)
+  cd packages/happy-app && eas build --profile development-store --platform ios --non-interactive --auto-submit
 
   # Production (App Store / Play Store submission)
-  pnpm --filter happy-app run release:build:appstore
+  cd packages/happy-app && eas build --profile production --platform ios --non-interactive --auto-submit
   ```
 
 **IMPORTANT:** Always pass `--non-interactive` to `eas build` commands. Without it,
 EAS prompts for Apple account login interactively which breaks in non-TTY contexts
 (Claude Code, CI). Remote credentials are already configured on EAS servers.
+
+**IMPORTANT:** Always pass `--auto-submit` to `-store` builds. Without it, the build
+finishes but never reaches TestFlight — you have to manually submit with `eas submit`.
 
 ### EAS Build Profiles
 
@@ -228,8 +235,12 @@ Runtime version "20" — bump when native code changes to invalidate OTA.
 ### App Store Connect
 
     Apple ID:    steve@bulkovo.com
-    ASC App ID:  126165711
     Team ID:     466DQWDR8C
+
+    App Store Connect App IDs:
+    Production:   6748571505  (com.ex3ndr.happy)
+    Preview:      6749025570  (com.slopus.happy.preview)
+    Development:  6748984254  (com.slopus.happy.dev)
 
 ---
 
