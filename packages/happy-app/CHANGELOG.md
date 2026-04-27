@@ -1,20 +1,17 @@
 # Changelog
 
-## Version 9 - 2026-04-15
+## Version 9 - 2026-04-26
 
-Clean up stale machines cluttering your settings and session picker. Offline machines are now hidden by default with a one-tap reveal, and you can permanently remove machines you no longer use.
+Voice reliability, better content rendering, and a new diff viewer.
 
-- Offline machines are now hidden from the Settings machine list by default, with a button to reveal them
-- Added a delete option in machine details to remove stale machines from your account
-- Session history is preserved when a machine is deleted
-
-## Version 8 - 2026-04-12
-
-This update migrates the monorepo from Yarn to pnpm, delivering dramatically faster dependency installs for developers and CI.
-
-- Migrated package manager from Yarn 1 to pnpm 10 for ~11x faster installs
-- Updated all CI workflows, Dockerfiles, and build scripts for pnpm compatibility
-- Improved dependency resolution with workspace protocol for internal packages
+- Fixed voice calls breaking on second session — works reliably every time now
+- Tables and code blocks scroll horizontally instead of overflowing
+- New diff viewer with syntax highlighting and unified/split toggle (desktop and web only)
+- Model and effort level choices now persist on mobile
+- Permission prompts (accept/reject) no longer get lost
+- Settings no longer randomly reset during sync
+- Added scroll-to-bottom button in chat
+- Delete machines you no longer use from settings
 
 ## Version 7 - 2026-04-08
 

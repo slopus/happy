@@ -2,25 +2,19 @@
   "entries": [
     {
       "version": 9,
-      "date": "2026-04-15",
-      "summary": "Clean up stale machines cluttering your settings and session picker. Offline machines are now hidden by default with a one-tap reveal, and you can permanently remove machines you no longer use.",
+      "date": "2026-04-26",
+      "summary": "Voice reliability, better content rendering, and a new diff viewer.",
       "changes": [
-        "Offline machines are now hidden from the Settings machine list by default, with a button to reveal them",
-        "Added a delete option in machine details to remove stale machines from your account",
-        "Session history is preserved when a machine is deleted"
+        "Fixed voice calls breaking on second session — works reliably every time now",
+        "Tables and code blocks scroll horizontally instead of overflowing",
+        "New diff viewer with syntax highlighting and unified/split toggle (desktop and web only)",
+        "Model and effort level choices now persist on mobile",
+        "Permission prompts (accept/reject) no longer get lost",
+        "Settings no longer randomly reset during sync",
+        "Added scroll-to-bottom button in chat",
+        "Delete machines you no longer use from settings"
       ],
-      "rawMarkdown": "## Version 9 - 2026-04-15\n\n\nClean up stale machines cluttering your settings and session picker. Offline machines are now hidden by default with a one-tap reveal, and you can permanently remove machines you no longer use.\n\n- Offline machines are now hidden from the Settings machine list by default, with a button to reveal them\n- Added a delete option in machine details to remove stale machines from your account\n- Session history is preserved when a machine is deleted"
-    },
-    {
-      "version": 8,
-      "date": "2026-04-12",
-      "summary": "This update migrates the monorepo from Yarn to pnpm, delivering dramatically faster dependency installs for developers and CI.",
-      "changes": [
-        "Migrated package manager from Yarn 1 to pnpm 10 for ~11x faster installs",
-        "Updated all CI workflows, Dockerfiles, and build scripts for pnpm compatibility",
-        "Improved dependency resolution with workspace protocol for internal packages"
-      ],
-      "rawMarkdown": "## Version 8 - 2026-04-12\n\n\nThis update migrates the monorepo from Yarn to pnpm, delivering dramatically faster dependency installs for developers and CI.\n\n- Migrated package manager from Yarn 1 to pnpm 10 for ~11x faster installs\n- Updated all CI workflows, Dockerfiles, and build scripts for pnpm compatibility\n- Improved dependency resolution with workspace protocol for internal packages"
+      "rawMarkdown": "## Version 9 - 2026-04-26\n\n\nVoice reliability, better content rendering, and a new diff viewer.\n\n- Fixed voice calls breaking on second session — works reliably every time now\n- Tables and code blocks scroll horizontally instead of overflowing\n- New diff viewer with syntax highlighting and unified/split toggle (desktop and web only)\n- Model and effort level choices now persist on mobile\n- Permission prompts (accept/reject) no longer get lost\n- Settings no longer randomly reset during sync\n- Added scroll-to-bottom button in chat\n- Delete machines you no longer use from settings"
     },
     {
       "version": 7,
