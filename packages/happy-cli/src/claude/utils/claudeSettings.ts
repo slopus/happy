@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { logger } from '@/ui/logger';
+import type { PermissionMode } from '@/api/types';
 
 export interface ClaudeSettings {
   includeCoAuthoredBy?: boolean;
@@ -66,4 +67,27 @@ export function shouldIncludeCoAuthoredBy(): boolean {
   }
   
   return settings.includeCoAuthoredBy;
+}
+
+const KNOWN_PERMISSION_MODES: ReadonlySet<string> = new Set([
+  'default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo',
+]);
+
+/**
+ * Get the default permission mode from Claude's settings.json
+ *
+ * Reads permissions.defaultMode and validates it against known PermissionMode values.
+ *
+ * @returns The permission mode string or null if not set or invalid
+ */
+export function getDefaultPermissionMode(): PermissionMode | null {
+  const settings = readClaudeSettings();
+  if (!settings) return null;
+
+  const mode = (settings as any).permissions?.defaultMode;
+  if (typeof mode === 'string' && KNOWN_PERMISSION_MODES.has(mode)) {
+    return mode as PermissionMode;
+  }
+
+  return null;
 }

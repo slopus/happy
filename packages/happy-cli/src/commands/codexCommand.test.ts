@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   mockExtractCodexResumeFlag: vi.fn(),
   mockExtractNoSandboxFlag: vi.fn(),
   mockEnsureDaemonRunning: vi.fn(),
+  mockGetDefaultPermissionMode: vi.fn(),
 }))
 
 vi.mock('@/ui/auth', () => ({
@@ -28,6 +29,10 @@ vi.mock('@/daemon/ensureDaemonRunning', () => ({
   ensureDaemonRunning: mocks.mockEnsureDaemonRunning,
 }))
 
+vi.mock('@/claude/utils/claudeSettings', () => ({
+  getDefaultPermissionMode: mocks.mockGetDefaultPermissionMode,
+}))
+
 import { handleCodexCommand } from './codexCommand'
 
 describe('handleCodexCommand', () => {
@@ -46,6 +51,7 @@ describe('handleCodexCommand', () => {
     }))
     mocks.mockEnsureDaemonRunning.mockResolvedValue(undefined)
     mocks.mockRunCodex.mockResolvedValue(undefined)
+    mocks.mockGetDefaultPermissionMode.mockReturnValue(null)
   })
 
   it('ensures the daemon is running before starting a codex session', async () => {
@@ -57,6 +63,7 @@ describe('handleCodexCommand', () => {
       startedBy: 'terminal',
       noSandbox: false,
       resumeThreadId: undefined,
+      permissionMode: undefined,
     })
     expect(
       mocks.mockEnsureDaemonRunning.mock.invocationCallOrder[0],
@@ -80,6 +87,7 @@ describe('handleCodexCommand', () => {
       startedBy: 'daemon',
       noSandbox: true,
       resumeThreadId: 'thread-123',
+      permissionMode: undefined,
     })
   })
 })

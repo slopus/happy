@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, writeFileSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readClaudeSettings, shouldIncludeCoAuthoredBy } from './claudeSettings';
+import { readClaudeSettings, shouldIncludeCoAuthoredBy, getDefaultPermissionMode } from './claudeSettings';
 
 describe('Claude Settings', () => {
   let testClaudeDir: string;
@@ -90,6 +90,55 @@ describe('Claude Settings', () => {
 
       const result = shouldIncludeCoAuthoredBy();
       expect(result).toBe(true);
+    });
+  });
+
+  describe('getDefaultPermissionMode', () => {
+    it('returns the permission mode from permissions.defaultMode when set', () => {
+      const settingsPath = join(testClaudeDir, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({
+        permissions: { defaultMode: 'bypassPermissions' }
+      }));
+
+      const result = getDefaultPermissionMode();
+      expect(result).toBe('bypassPermissions');
+    });
+
+    it('returns null when no settings file exists', () => {
+      const result = getDefaultPermissionMode();
+      expect(result).toBe(null);
+    });
+
+    it('returns null when permissions object is missing', () => {
+      const settingsPath = join(testClaudeDir, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({ includeCoAuthoredBy: true }));
+
+      const result = getDefaultPermissionMode();
+      expect(result).toBe(null);
+    });
+
+    it('returns null when defaultMode is not a valid permission mode string', () => {
+      const settingsPath = join(testClaudeDir, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({
+        permissions: { defaultMode: 'invalidMode' }
+      }));
+
+      const result = getDefaultPermissionMode();
+      expect(result).toBe(null);
+    });
+
+    it('validates against all known permission modes', () => {
+      const knownModes = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo'];
+
+      for (const mode of knownModes) {
+        const settingsPath = join(testClaudeDir, 'settings.json');
+        writeFileSync(settingsPath, JSON.stringify({
+          permissions: { defaultMode: mode }
+        }));
+
+        const result = getDefaultPermissionMode();
+        expect(result).toBe(mode);
+      }
     });
   });
 });
