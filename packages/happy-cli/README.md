@@ -107,7 +107,7 @@ export HTTPS_PROXY=http://127.0.0.1:5901
 export HTTP_PROXY=http://127.0.0.1:5901
 ```
 
-Happy also supports `ALL_PROXY` and lowercase variants such as `https_proxy`, `http_proxy`, and `all_proxy`.
+Happy also supports `ALL_PROXY`, `NO_PROXY`, and lowercase variants such as `https_proxy`, `http_proxy`, `all_proxy`, and `no_proxy`.
 
 This applies to both daemon machine connections and active session connections. It is useful for remote servers, containers, SSH reverse tunnels, corporate networks, or restricted outbound networks.
 

@@ -267,8 +267,8 @@ export class ApiMachineClient {
         const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
         logger.debug(`[API MACHINE] Connecting to ${serverUrl}`);
 
-        const proxyUrl = getProxyUrlFromEnv();
-        const proxyAgent = createProxyAgentFromEnv();
+        const proxyUrl = getProxyUrlFromEnv(serverUrl);
+        const proxyAgent = createProxyAgentFromEnv(serverUrl);
         if (proxyAgent && proxyUrl) {
             logger.debug(`[API MACHINE] Using proxy agent: ${maskProxyUrl(proxyUrl)}`);
         }

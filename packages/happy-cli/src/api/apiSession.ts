@@ -133,8 +133,8 @@ export class ApiSessionClient extends EventEmitter {
         // Create socket
         //
 
-        const proxyUrl = getProxyUrlFromEnv();
-        const proxyAgent = createProxyAgentFromEnv();
+        const proxyUrl = getProxyUrlFromEnv(configuration.serverUrl);
+        const proxyAgent = createProxyAgentFromEnv(configuration.serverUrl);
         if (proxyAgent && proxyUrl) {
             logger.debug(`[API] Using proxy agent: ${maskProxyUrl(proxyUrl)}`);
         }
