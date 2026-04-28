@@ -297,9 +297,18 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
         let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            messagePermissionMode = applySandboxPermissionPolicy(message.meta.permissionMode, sandboxEnabled);
-            currentPermissionMode = messagePermissionMode;
-            logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
+            const incomingMode = applySandboxPermissionPolicy(message.meta.permissionMode, sandboxEnabled);
+            // Don't let 'default' from mobile clobber a configured initial permission mode.
+            // Old mobile builds always send 'default' as a fallback — that shouldn't override
+            // the CLI's --permission-mode or config-based initial mode.
+            if (incomingMode === 'default' && initialPermissionMode && initialPermissionMode !== 'default') {
+                messagePermissionMode = currentPermissionMode;
+                logger.debug(`[loop] Ignoring 'default' permission mode from mobile — preserving current: ${currentPermissionMode}`);
+            } else {
+                messagePermissionMode = incomingMode;
+                currentPermissionMode = messagePermissionMode;
+                logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
+            }
         } else {
             logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
         }
