@@ -579,6 +579,7 @@ export const es: TranslationStructure = {
         fileConflict: 'Conflicto de archivo',
         fileConflictDescription: 'Este archivo fue modificado en el dispositivo mientras lo editabas. Recarga para ver la última versión.',
         reload: 'Recargar',
+        overwrite: 'Sobrescribir',
     },
 
     settingsVoice: {

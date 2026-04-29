@@ -595,6 +595,7 @@ export const ru: TranslationStructure = {
         fileConflict: 'Конфликт файла',
         fileConflictDescription: 'Файл был изменён на устройстве пока вы его редактировали. Перезагрузите чтобы увидеть актуальную версию.',
         reload: 'Перезагрузить',
+        overwrite: 'Перезаписать',
     },
 
     settingsVoice: {

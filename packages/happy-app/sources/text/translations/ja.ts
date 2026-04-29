@@ -580,6 +580,7 @@ export const ja: TranslationStructure = {
         fileConflict: 'ファイルの競合',
         fileConflictDescription: '編集中にデバイス上でファイルが変更されました。最新版を表示するには再読み込みしてください。',
         reload: '再読み込み',
+        overwrite: '上書き',
     },
 
     settingsVoice: {

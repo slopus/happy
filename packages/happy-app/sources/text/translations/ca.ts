@@ -579,6 +579,7 @@ export const ca: TranslationStructure = {
         fileConflict: 'Conflicte de fitxer',
         fileConflictDescription: 'Aquest fitxer s\'ha modificat al dispositiu mentre l\'editaves. Recarrega per veure la darrera versió.',
         reload: 'Recarregar',
+        overwrite: 'Sobreescriure',
     },
 
     settingsVoice: {

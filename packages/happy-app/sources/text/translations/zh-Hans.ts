@@ -580,6 +580,7 @@ export const zhHans: TranslationStructure = {
         fileConflict: '文件冲突',
         fileConflictDescription: '编辑期间文件已在设备上被修改。重新加载以查看最新版本。',
         reload: '重新加载',
+        overwrite: '覆盖',
     },
 
     settingsVoice: {

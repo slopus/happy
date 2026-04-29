@@ -595,6 +595,7 @@ export const pl: TranslationStructure = {
         fileConflict: 'Konflikt pliku',
         fileConflictDescription: 'Ten plik został zmodyfikowany na urządzeniu podczas edycji. Załaduj ponownie aby zobaczyć najnowszą wersję.',
         reload: 'Załaduj ponownie',
+        overwrite: 'Nadpisz',
     },
 
     settingsVoice: {

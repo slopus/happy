@@ -10,6 +10,7 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { FileIcon } from '@/components/FileIcon';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
+import { PierreDiffView } from '@/components/diff/PierreDiffView';
 import { sessionReadFile, sessionWriteFile } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -104,6 +105,17 @@ function encodeStringToBase64(str: string): string {
     return btoa(binary);
 }
 
+/** Read file and decode to string, returns null on failure */
+async function readFileContent(sessionId: string, filePath: string): Promise<string | null> {
+    const res = await sessionReadFile(sessionId, filePath);
+    if (!res.success || !res.content) return null;
+    try {
+        return decodeUtf8Bytes(decodeBase64ToBytes(res.content));
+    } catch {
+        return null;
+    }
+}
+
 /** Compute SHA-256 hash of a UTF-8 string (matches server's crypto.createHash('sha256').update(str).digest('hex')) */
 async function computeSHA256(content: string): Promise<string> {
     const data = new TextEncoder().encode(content);
@@ -123,6 +135,10 @@ export const FileViewPanel = React.memo(function FileViewPanel({
     const [isSaving, setIsSaving] = React.useState(false);
     const [displayMode, setDisplayMode] = React.useState<'edit' | 'preview'>('edit');
 
+    // External change detection
+    const [externalChange, setExternalChange] = React.useState<string | null>(null); // new content from device
+    const [showConflictDiff, setShowConflictDiff] = React.useState(false);
+
     const fileName = filePath.split('/').pop() || filePath;
     const language = getFileLanguage(filePath);
     const isMarkdown = language === 'markdown';
@@ -133,6 +149,8 @@ export const FileViewPanel = React.memo(function FileViewPanel({
     React.useEffect(() => {
         let cancelled = false;
         setFileState({ kind: 'loading' });
+        setExternalChange(null);
+        setShowConflictDiff(false);
 
         if (isBinaryExtension(filePath)) {
             setFileState({ kind: 'binary' });
@@ -183,6 +201,43 @@ export const FileViewPanel = React.memo(function FileViewPanel({
         return () => { cancelled = true; };
     }, [sessionId, filePath]);
 
+    // Poll for external changes every 5s
+    React.useEffect(() => {
+        if (fileState.kind !== 'loaded' || !fileState.originalHash) return;
+        const originalHash = fileState.originalHash;
+
+        const interval = setInterval(async () => {
+            const content = await readFileContent(sessionId, filePath);
+            if (!content) return;
+            const currentHash = await computeSHA256(content);
+            if (currentHash !== originalHash) {
+                setExternalChange(content);
+            }
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [sessionId, filePath, fileState]);
+
+    const handleReload = React.useCallback(() => {
+        if (!externalChange) return;
+        const reloaded = externalChange;
+        setExternalChange(null);
+        setShowConflictDiff(false);
+        (async () => {
+            const hash = await computeSHA256(reloaded);
+            setFileState({ kind: 'loaded', content: reloaded, originalHash: hash });
+            setEditContent(reloaded);
+        })();
+    }, [externalChange]);
+
+    const handleDismissWarning = React.useCallback(() => {
+        setExternalChange(null);
+    }, []);
+
+    const handleShowDiff = React.useCallback(() => {
+        setShowConflictDiff(true);
+    }, []);
+
     const handleSave = React.useCallback(async () => {
         if (fileState.kind !== 'loaded' || !hasChanges) return;
         setIsSaving(true);
@@ -198,16 +253,14 @@ export const FileViewPanel = React.memo(function FileViewPanel({
 
             if (!response.success) {
                 if (response.error?.includes('hash') || response.error?.includes('mismatch')) {
-                    Modal.alert(
-                        t('files.fileConflict'),
-                        t('files.fileConflictDescription'),
-                        [
-                            { text: t('files.reload'), onPress: () => {
-                                setFileState({ kind: 'loading' });
-                            }},
-                            { text: t('common.cancel'), style: 'cancel' },
-                        ]
-                    );
+                    // Fetch the current server content for diff
+                    const serverContent = await readFileContent(sessionId, filePath);
+                    if (serverContent) {
+                        setExternalChange(serverContent);
+                        setShowConflictDiff(true);
+                    } else {
+                        Modal.alert(t('files.fileConflict'), t('files.fileConflictDescription'));
+                    }
                 } else {
                     Modal.alert(t('common.error'), response.error || t('files.failedToSave'));
                 }
@@ -220,10 +273,41 @@ export const FileViewPanel = React.memo(function FileViewPanel({
                 content: editContent,
                 originalHash: response.hash ?? null,
             });
+            setExternalChange(null);
+            setShowConflictDiff(false);
         } finally {
             setIsSaving(false);
         }
     }, [sessionId, filePath, editContent, fileState, hasChanges]);
+
+    const handleForceSave = React.useCallback(async () => {
+        if (fileState.kind !== 'loaded') return;
+        setIsSaving(true);
+
+        try {
+            // Re-read to get current hash, then write
+            const serverContent = await readFileContent(sessionId, filePath);
+            const currentHash = serverContent ? await computeSHA256(serverContent) : undefined;
+
+            const base64 = encodeStringToBase64(editContent);
+            const response = await sessionWriteFile(sessionId, filePath, base64, currentHash);
+
+            if (!response.success) {
+                Modal.alert(t('common.error'), response.error || t('files.failedToSave'));
+                return;
+            }
+
+            setFileState({
+                kind: 'loaded',
+                content: editContent,
+                originalHash: response.hash ?? null,
+            });
+            setExternalChange(null);
+            setShowConflictDiff(false);
+        } finally {
+            setIsSaving(false);
+        }
+    }, [sessionId, filePath, editContent, fileState]);
 
     return (
         <View style={[styles.outer, { backgroundColor: theme.colors.surface }]}>
@@ -300,8 +384,61 @@ export const FileViewPanel = React.memo(function FileViewPanel({
                 </Pressable>
             </View>
 
-            {/* Content */}
-            {fileState.kind === 'loading' ? (
+            {/* External change warning bar */}
+            {externalChange && !showConflictDiff && (
+                <View style={[styles.warningBar, { backgroundColor: theme.colors.warning + '18', borderBottomColor: theme.colors.divider }]}>
+                    <Ionicons name="alert-circle" size={16} color={theme.colors.warning} />
+                    <Text style={[styles.warningText, { color: theme.colors.text }]}>
+                        {t('files.fileConflict')}
+                    </Text>
+                    <View style={{ flex: 1 }} />
+                    <Pressable onPress={handleShowDiff} style={[styles.warningAction, { borderColor: theme.colors.divider }]}>
+                        <Text style={[styles.warningActionText, { color: theme.colors.textLink }]}>Diff</Text>
+                    </Pressable>
+                    <Pressable onPress={handleReload} style={[styles.warningAction, { borderColor: theme.colors.divider }]}>
+                        <Text style={[styles.warningActionText, { color: theme.colors.textLink }]}>{t('files.reload')}</Text>
+                    </Pressable>
+                    <Pressable onPress={handleDismissWarning} hitSlop={8}>
+                        <Ionicons name="close" size={16} color={theme.colors.textSecondary} />
+                    </Pressable>
+                </View>
+            )}
+
+            {/* Conflict diff view */}
+            {showConflictDiff && externalChange && fileState.kind === 'loaded' ? (
+                <View style={{ flex: 1 }}>
+                    <View style={[styles.conflictHeader, { backgroundColor: theme.colors.surfaceHigh, borderBottomColor: theme.colors.divider }]}>
+                        <Text style={[styles.conflictTitle, { color: theme.colors.text }]}>
+                            {t('files.fileConflictDescription')}
+                        </Text>
+                        <View style={{ flex: 1 }} />
+                        <Pressable
+                            onPress={handleForceSave}
+                            disabled={isSaving}
+                            style={({ pressed }) => [styles.actionButton, { backgroundColor: theme.colors.textDestructive, opacity: isSaving ? 0.6 : pressed ? 0.8 : 1 }]}
+                        >
+                            <Text style={styles.actionButtonText}>{isSaving ? '...' : t('files.overwrite')}</Text>
+                        </Pressable>
+                        <Pressable
+                            onPress={handleReload}
+                            style={({ pressed }) => [styles.actionButton, { backgroundColor: theme.colors.textLink, opacity: pressed ? 0.8 : 1 }]}
+                        >
+                            <Text style={styles.actionButtonText}>{t('files.reload')}</Text>
+                        </Pressable>
+                        <Pressable onPress={() => setShowConflictDiff(false)} hitSlop={8} style={styles.closeButton}>
+                            <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
+                        </Pressable>
+                    </View>
+                    <ScrollView style={{ flex: 1 }}>
+                        <PierreDiffView
+                            oldFile={{ name: fileName + ' (your changes)', contents: editContent }}
+                            newFile={{ name: fileName + ' (on device)', contents: externalChange }}
+                            diffStyle="unified"
+                            disableFileHeader={false}
+                        />
+                    </ScrollView>
+                </View>
+            ) : fileState.kind === 'loading' ? (
                 <View style={styles.centered}>
                     <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                 </View>
@@ -473,6 +610,42 @@ const styles = StyleSheet.create((theme) => ({
         fontWeight: '600',
         color: theme.colors.text,
         ...Typography.default('semiBold'),
+    },
+    warningBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+    },
+    warningText: {
+        fontSize: 13,
+        ...Typography.default('semiBold'),
+    },
+    warningAction: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 4,
+        borderWidth: 1,
+        marginLeft: 4,
+    },
+    warningActionText: {
+        fontSize: 12,
+        ...Typography.default('semiBold'),
+    },
+    conflictHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+    },
+    conflictTitle: {
+        fontSize: 13,
+        ...Typography.default(),
+        flexShrink: 1,
     },
     centered: {
         flex: 1,

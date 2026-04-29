@@ -593,6 +593,7 @@ export const en: TranslationStructure = {
         fileConflict: 'File conflict',
         fileConflictDescription: 'This file was modified on the device while you were editing. Reload to see the latest version.',
         reload: 'Reload',
+        overwrite: 'Overwrite',
     },
 
     settingsVoice: {
