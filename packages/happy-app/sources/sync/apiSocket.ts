@@ -161,6 +161,14 @@ class ApiSocket {
         throw new Error(result.error || 'RPC call failed');
     }
 
+    /**
+     * Sends app focus state to server for push notification routing.
+     * Server uses this to suppress pushes when the mobile app is in foreground.
+     */
+    sendAppState(state: string) {
+        this.socket?.emit('app-state', { state });
+    }
+
     send(event: string, data: any) {
         this.socket!.emit(event, data);
         return true;

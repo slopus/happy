@@ -12,12 +12,14 @@ export interface SessionScopedConnection {
     socket: Socket;
     userId: string;
     sessionId: string;
+    happyClient?: string;
 }
 
 export interface UserScopedConnection {
     connectionType: 'user-scoped';
     socket: Socket;
     userId: string;
+    happyClient?: string;
 }
 
 export interface MachineScopedConnection {
@@ -25,6 +27,7 @@ export interface MachineScopedConnection {
     socket: Socket;
     userId: string;
     machineId: string;
+    happyClient?: string;
 }
 
 export type ClientConnection = SessionScopedConnection | UserScopedConnection | MachineScopedConnection;
@@ -266,6 +269,34 @@ class EventRouter {
             recipientFilter: params.recipientFilter || { type: 'all-user-authenticated-connections' },
             skipSenderConnection: params.skipSenderConnection
         });
+    }
+
+    // === PRESENCE QUERIES ===
+
+    /**
+     * Checks if the user has any active desktop or web socket connections.
+     * Uses fetchSockets() which works cross-replica via Redis streams adapter.
+     */
+    async hasActiveNonMobileConnection(userId: string): Promise<boolean> {
+        const sockets = await this.io.in(`user:${userId}`).fetchSockets();
+        return sockets.some(s => {
+            const client = s.data.happyClient as string | undefined;
+            return client?.startsWith('web/') || client?.startsWith('desktop/');
+        });
+    }
+
+    /**
+     * Returns socket IDs of all mobile connections for the user.
+     * Uses fetchSockets() which works cross-replica via Redis streams adapter.
+     */
+    async getMobileSocketIds(userId: string): Promise<string[]> {
+        const sockets = await this.io.in(`user:${userId}`).fetchSockets();
+        return sockets
+            .filter(s => {
+                const client = s.data.happyClient as string | undefined;
+                return client?.startsWith('ios/') || client?.startsWith('android/');
+            })
+            .map(s => s.id);
     }
 
     // === PRIVATE ROUTING LOGIC ===

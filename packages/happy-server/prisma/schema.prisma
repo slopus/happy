@@ -81,6 +81,7 @@ model AccountPushToken {
     accountId String
     account   Account  @relation(fields: [accountId], references: [id])
     token     String
+    platform  String?
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 

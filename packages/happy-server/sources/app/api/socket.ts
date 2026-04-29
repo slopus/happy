@@ -14,6 +14,7 @@ import { sessionUpdateHandler } from "./socket/sessionUpdateHandler";
 import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
+import { setFocusState, clearFocusState } from "@/app/push/focusTracker";
 
 export function startSocket(app: Fastify) {
     const io = new Server(app.server, {
@@ -131,26 +132,30 @@ export function startSocket(app: Fastify) {
 
         // Store connection based on type
         const metadata = { clientType: clientType || 'user-scoped', sessionId, machineId };
+        const happyClient = socket.data.happyClient as string | undefined;
         let connection: ClientConnection;
         if (metadata.clientType === 'session-scoped' && sessionId) {
             connection = {
                 connectionType: 'session-scoped',
                 socket,
                 userId,
-                sessionId
+                sessionId,
+                happyClient
             };
         } else if (metadata.clientType === 'machine-scoped' && machineId) {
             connection = {
                 connectionType: 'machine-scoped',
                 socket,
                 userId,
-                machineId
+                machineId,
+                happyClient
             };
         } else {
             connection = {
                 connectionType: 'user-scoped',
                 socket,
-                userId
+                userId,
+                happyClient
             };
         }
         eventRouter.addConnection(userId, connection);
@@ -167,11 +172,18 @@ export function startSocket(app: Fastify) {
             });
         }
 
+        // Track app focus state for push notification routing
+        socket.on('app-state', (data: { state: string }) => {
+            const state = data.state === 'active' ? 'active' : 'background';
+            setFocusState(socket.id, state);
+        });
+
         socket.on('disconnect', () => {
             websocketEventsCounter.inc({ event_type: 'disconnect', ...labels });
 
             // Cleanup connections
             eventRouter.removeConnection(userId, connection);
+            clearFocusState(socket.id);
             websocketConnectionsGauge.dec({ type: connection.connectionType, ...labels });
 
             log({ module: 'websocket' }, `User disconnected: ${userId}`);

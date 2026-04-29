@@ -141,6 +141,12 @@ class Sync {
         // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
             this.appState = nextAppState;
+
+            // Notify server of focus state for push notification routing (mobile only)
+            if (Platform.OS !== 'web') {
+                apiSocket.sendAppState(nextAppState);
+            }
+
             if (nextAppState === 'active') {
                 const shouldFailAfterResume = this.backgroundSendStartedAt !== null
                     && this.hasPendingOutboxMessages()
@@ -1718,6 +1724,12 @@ class Sync {
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {
             log.log('🔌 Socket reconnected');
+
+            // Send current app focus state on reconnect for push routing
+            if (Platform.OS !== 'web') {
+                apiSocket.sendAppState(this.appState);
+            }
+
             this.sessionsSync.invalidate();
             this.machinesSync.invalidate();
             log.log('🔌 Socket reconnected: Invalidating artifacts sync');

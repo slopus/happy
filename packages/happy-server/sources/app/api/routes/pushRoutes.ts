@@ -24,6 +24,10 @@ export function pushRoutes(app: Fastify) {
         const userId = request.userId;
         const { token } = request.body;
 
+        // Extract platform from X-Happy-Client header (e.g. "ios/2.1.0" → "ios")
+        const happyClient = request.headers['x-happy-client'] as string | undefined;
+        const platform = happyClient?.split('/')[0] || null;
+
         try {
             await db.accountPushToken.upsert({
                 where: {
@@ -33,11 +37,13 @@ export function pushRoutes(app: Fastify) {
                     }
                 },
                 update: {
-                    updatedAt: new Date()
+                    updatedAt: new Date(),
+                    platform
                 },
                 create: {
                     accountId: userId,
-                    token: token
+                    token: token,
+                    platform
                 }
             });
 

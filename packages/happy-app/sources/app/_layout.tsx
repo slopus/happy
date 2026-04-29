@@ -14,7 +14,7 @@ import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SidebarNavigator } from '@/components/SidebarNavigator';
 import sodium from '@/encryption/libsodium.lib';
-import { View, Platform } from 'react-native';
+import { View, Platform, AppState } from 'react-native';
 import { ModalProvider } from '@/modal';
 import { PostHogProvider } from 'posthog-react-native';
 import { tracking } from '@/track/tracking';
@@ -35,22 +35,31 @@ import { applyVoiceUpsellOverride } from '@/realtime/voiceExperiment';
 import { useTauriZoom } from '@/hooks/useTauriZoom';
 import { useTauriDrag } from '@/hooks/useTauriDrag';
 
-// Configure notification handler for foreground notifications
+// Configure notification handler — suppress push display when app is in foreground
 Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-    }),
+    handleNotification: async () => {
+        const isForeground = AppState.currentState === 'active';
+        return {
+            shouldShowAlert: !isForeground,
+            shouldPlaySound: !isForeground,
+            shouldSetBadge: true,
+            shouldShowBanner: !isForeground,
+            shouldShowList: true,
+        };
+    },
 });
 
-// Setup Android notification channel (required for Android 8.0+)
+// Setup Android notification channels (required for Android 8.0+)
 if (Platform.OS === 'android') {
     Notifications.setNotificationChannelAsync('default', {
         name: 'Default',
         importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+    });
+    Notifications.setNotificationChannelAsync('messages', {
+        name: 'Messages',
+        importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#FF231F7C',
     });
