@@ -572,6 +572,14 @@ export const zhHans: TranslationStructure = {
         noChangesSubtitle: '工作区是干净的',
         deleted: '已删除',
         changedFiles: ({ count }: { count: number }) => `${count} 个已更改的文件`,
+        allFiles: '所有文件',
+        editFile: '编辑',
+        saveFile: '保存',
+        failedToRead: '读取文件失败',
+        failedToSave: '保存文件失败',
+        fileConflict: '文件冲突',
+        fileConflictDescription: '编辑期间文件已在设备上被修改。重新加载以查看最新版本。',
+        reload: '重新加载',
     },
 
     settingsVoice: {

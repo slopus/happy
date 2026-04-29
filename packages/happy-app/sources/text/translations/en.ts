@@ -585,6 +585,14 @@ export const en: TranslationStructure = {
         noChangesSubtitle: 'Working tree is clean',
         deleted: 'Deleted',
         changedFiles: ({ count }: { count: number }) => `${count} changed ${count === 1 ? 'file' : 'files'}`,
+        allFiles: 'All Files',
+        editFile: 'Edit',
+        saveFile: 'Save',
+        failedToRead: 'Failed to read file',
+        failedToSave: 'Failed to save file',
+        fileConflict: 'File conflict',
+        fileConflictDescription: 'This file was modified on the device while you were editing. Reload to see the latest version.',
+        reload: 'Reload',
     },
 
     settingsVoice: {

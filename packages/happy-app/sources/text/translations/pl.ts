@@ -587,6 +587,14 @@ export const pl: TranslationStructure = {
         noChangesSubtitle: 'Drzewo robocze jest czyste',
         deleted: 'Usunięty',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'zmieniony plik' : 'zmienionych plików'}`,
+        allFiles: 'Wszystkie pliki',
+        editFile: 'Edytuj',
+        saveFile: 'Zapisz',
+        failedToRead: 'Nie udało się odczytać pliku',
+        failedToSave: 'Nie udało się zapisać pliku',
+        fileConflict: 'Konflikt pliku',
+        fileConflictDescription: 'Ten plik został zmodyfikowany na urządzeniu podczas edycji. Załaduj ponownie aby zobaczyć najnowszą wersję.',
+        reload: 'Załaduj ponownie',
     },
 
     settingsVoice: {

@@ -572,6 +572,14 @@ export const ja: TranslationStructure = {
         noChangesSubtitle: 'ワーキングツリーはクリーンです',
         deleted: '削除済み',
         changedFiles: ({ count }: { count: number }) => `${count}件の変更ファイル`,
+        allFiles: 'すべてのファイル',
+        editFile: '編集',
+        saveFile: '保存',
+        failedToRead: 'ファイルの読み取りに失敗しました',
+        failedToSave: 'ファイルの保存に失敗しました',
+        fileConflict: 'ファイルの競合',
+        fileConflictDescription: '編集中にデバイス上でファイルが変更されました。最新版を表示するには再読み込みしてください。',
+        reload: '再読み込み',
     },
 
     settingsVoice: {

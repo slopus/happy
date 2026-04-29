@@ -32,8 +32,9 @@ import { tracking } from '@/track';
 import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { FilesSidebar } from '@/components/FilesSidebar';
+import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
 import { AllFilesDiffView } from '@/components/AllFilesDiffView';
+import { FileViewPanel } from '@/components/FileViewPanel';
 import { prefetchPierreDiff } from '@/components/diff/PierreDiffView';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
@@ -106,22 +107,35 @@ export const SessionView = React.memo((props: { id: string }) => {
 
     const [diffViewOpen, setDiffViewOpen] = React.useState(false);
     const [scrollToFile, setScrollToFile] = React.useState<string | null>(null);
+    const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
+    const [fileViewPath, setFileViewPath] = React.useState<string | null>(null);
+
     const handleSidebarFilePress = React.useCallback((file: GitFileStatus) => {
         if (file.status === 'deleted') return;
+        setFileViewPath(null);
         setScrollToFile(file.fullPath);
         setDiffViewOpen(true);
+    }, []);
+    const handleAllFilesFilePress = React.useCallback((filePath: string) => {
+        setDiffViewOpen(false);
+        setScrollToFile(null);
+        setFileViewPath(filePath);
     }, []);
     const closeDiffView = React.useCallback(() => {
         setDiffViewOpen(false);
         setScrollToFile(null);
     }, []);
+    const closeFileView = React.useCallback(() => {
+        setFileViewPath(null);
+    }, []);
 
-    // When sidebar capability is lost (screen too narrow, disabled), close diff view.
-    // Don't close on zen mode toggle — keep the diff visible.
+    // When sidebar capability is lost (screen too narrow, disabled), close views.
+    // Don't close on zen mode toggle — keep the view visible.
     React.useEffect(() => {
         if (!canShowSidebar) {
             setDiffViewOpen(false);
             setScrollToFile(null);
+            setFileViewPath(null);
         }
     }, [canShowSidebar]);
 
@@ -245,13 +259,35 @@ export const SessionView = React.memo((props: { id: string }) => {
                         />
                     </View>
                 )}
+                {fileViewPath && canShowSidebar && (
+                    <View
+                        pointerEvents="box-none"
+                        style={{
+                            position: 'absolute',
+                            top: safeArea.top + headerHeight,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: theme.colors.surface,
+                        }}
+                    >
+                        <FileViewPanel
+                            sessionId={sessionId}
+                            filePath={fileViewPath}
+                            onClose={closeFileView}
+                        />
+                    </View>
+                )}
             </View>
             <Animated.View style={[{ minWidth: 0, alignSelf: 'stretch' }, animatedSidebarStyle]}>
                 <View style={{ width: sidebarWidth, flex: 1 }}>
                     <FilesSidebar
                         sessionId={sessionId}
-                        selectedPath={scrollToFile}
+                        selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
                         onFilePress={handleSidebarFilePress}
+                        mode={sidebarMode}
+                        onModeChange={setSidebarMode}
+                        onAllFilesFilePress={handleAllFilesFilePress}
                     />
                 </View>
             </Animated.View>

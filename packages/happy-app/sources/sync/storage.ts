@@ -11,6 +11,7 @@ function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageS
 }
 import { Session, Machine, GitStatus } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
+import type { ProjectFilesList } from "./projectFiles";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
@@ -149,6 +150,7 @@ interface StorageState {
     sessionMessages: Record<string, SessionMessages>;
     pathGitStatus: Record<string, GitStatus | null>;        // keyed by "machineId:path"
     pathGitStatusFiles: Record<string, GitStatusFiles | null>; // keyed by "machineId:path"
+    pathProjectFiles: Record<string, ProjectFilesList | null>;  // keyed by "machineId:path"
     sessionFileCache: Record<string, Record<string, { content: string | null; diff: string | null; isBinary: boolean; cachedAt: number }>>;
     machines: Record<string, Machine>;
     artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
@@ -182,6 +184,7 @@ interface StorageState {
     applyProfile: (profile: Profile) => void;
     applyGitStatus: (pathKey: string, status: GitStatus | null) => void;
     applyGitStatusFiles: (pathKey: string, files: GitStatusFiles | null) => void;
+    applyProjectFiles: (pathKey: string, files: ProjectFilesList | null) => void;
     getSessionPathKey: (sessionId: string) => string | null;
     applyFileCache: (sessionId: string, filePath: string, content: string | null, diff: string | null, isBinary: boolean) => void;
     applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
@@ -355,6 +358,7 @@ export const storage = create<StorageState>()((set, get) => {
         sessionMessages: {},
         pathGitStatus: {},
         pathGitStatusFiles: {},
+        pathProjectFiles: {},
         sessionFileCache: {},
         realtimeStatus: 'disconnected',
         realtimeMode: 'idle',
@@ -842,6 +846,13 @@ export const storage = create<StorageState>()((set, get) => {
             ...state,
             pathGitStatusFiles: {
                 ...state.pathGitStatusFiles,
+                [pathKey]: files
+            }
+        })),
+        applyProjectFiles: (pathKey: string, files: ProjectFilesList | null) => set((state) => ({
+            ...state,
+            pathProjectFiles: {
+                ...state.pathProjectFiles,
                 [pathKey]: files
             }
         })),
@@ -1510,6 +1521,13 @@ export function useSessionGitStatusFiles(sessionId: string): GitStatusFiles | nu
     return storage(useShallow((state) => {
         const pathKey = state.getSessionPathKey(sessionId);
         return pathKey ? state.pathGitStatusFiles[pathKey] ?? null : null;
+    }));
+}
+
+export function useSessionProjectFiles(sessionId: string): ProjectFilesList | null {
+    return storage(useShallow((state) => {
+        const pathKey = state.getSessionPathKey(sessionId);
+        return pathKey ? state.pathProjectFiles[pathKey] ?? null : null;
     }));
 }
 

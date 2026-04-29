@@ -571,6 +571,14 @@ export const es: TranslationStructure = {
         noChangesSubtitle: 'El árbol de trabajo está limpio',
         deleted: 'Eliminado',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'archivo modificado' : 'archivos modificados'}`,
+        allFiles: 'Todos los archivos',
+        editFile: 'Editar',
+        saveFile: 'Guardar',
+        failedToRead: 'Error al leer el archivo',
+        failedToSave: 'Error al guardar el archivo',
+        fileConflict: 'Conflicto de archivo',
+        fileConflictDescription: 'Este archivo fue modificado en el dispositivo mientras lo editabas. Recarga para ver la última versión.',
+        reload: 'Recargar',
     },
 
     settingsVoice: {

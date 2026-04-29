@@ -571,6 +571,14 @@ export const zhHant: TranslationStructure = {
         noChangesSubtitle: '工作區是乾淨的',
         deleted: '已刪除',
         changedFiles: ({ count }: { count: number }) => `${count} 個已變更的檔案`,
+        allFiles: '所有檔案',
+        editFile: '編輯',
+        saveFile: '儲存',
+        failedToRead: '讀取檔案失敗',
+        failedToSave: '儲存檔案失敗',
+        fileConflict: '檔案衝突',
+        fileConflictDescription: '編輯期間檔案已在裝置上被修改。重新載入以查看最新版本。',
+        reload: '重新載入',
     },
 
     settingsVoice: {

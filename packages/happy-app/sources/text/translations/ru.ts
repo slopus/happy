@@ -587,6 +587,14 @@ export const ru: TranslationStructure = {
         noChangesSubtitle: 'Рабочее дерево чистое',
         deleted: 'Удалён',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'изменённый файл' : count < 5 ? 'изменённых файла' : 'изменённых файлов'}`,
+        allFiles: 'Все файлы',
+        editFile: 'Редактировать',
+        saveFile: 'Сохранить',
+        failedToRead: 'Не удалось прочитать файл',
+        failedToSave: 'Не удалось сохранить файл',
+        fileConflict: 'Конфликт файла',
+        fileConflictDescription: 'Файл был изменён на устройстве пока вы его редактировали. Перезагрузите чтобы увидеть актуальную версию.',
+        reload: 'Перезагрузить',
     },
 
     settingsVoice: {

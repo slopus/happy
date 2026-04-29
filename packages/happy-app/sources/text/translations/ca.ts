@@ -571,6 +571,14 @@ export const ca: TranslationStructure = {
         noChangesSubtitle: 'L\'arbre de treball està net',
         deleted: 'Eliminat',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'fitxer modificat' : 'fitxers modificats'}`,
+        allFiles: 'Tots els fitxers',
+        editFile: 'Editar',
+        saveFile: 'Desar',
+        failedToRead: 'No s\'ha pogut llegir el fitxer',
+        failedToSave: 'No s\'ha pogut desar el fitxer',
+        fileConflict: 'Conflicte de fitxer',
+        fileConflictDescription: 'Aquest fitxer s\'ha modificat al dispositiu mentre l\'editaves. Recarrega per veure la darrera versió.',
+        reload: 'Recarregar',
     },
 
     settingsVoice: {
