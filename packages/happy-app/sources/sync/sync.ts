@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
-import { apiSocket, getHappyClientId } from '@/sync/apiSocket';
+import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
+import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
@@ -130,9 +131,6 @@ class Sync {
         this.feedSync = new InvalidateSync(this.fetchFeed);
 
         const registerPushToken = async () => {
-            if (__DEV__) {
-                return;
-            }
             await this.registerPushToken();
         }
         this.pushTokenSync = new InvalidateSync(registerPushToken);
@@ -142,10 +140,12 @@ class Sync {
         AppState.addEventListener('change', (nextAppState) => {
             this.appState = nextAppState;
 
-            // Notify server of focus state for push notification routing (mobile only)
-            if (Platform.OS !== 'web') {
-                apiSocket.sendAppState(nextAppState);
-            }
+            // Notify server of focus state for push notification routing.
+            // Mobile: AppState.currentState reflects fg/bg directly.
+            // Web/desktop: visibilitychange/focus listeners below drive this same path
+            // by updating this.appState too — re-derive via getCurrentAppState() so
+            // the wire value matches what the server uses for suppression.
+            apiSocket.sendAppState(getCurrentAppState());
 
             if (nextAppState === 'active') {
                 const shouldFailAfterResume = this.backgroundSendStartedAt !== null
@@ -174,6 +174,19 @@ class Sync {
                 this.maybeStartBackgroundSendWatchdog();
             }
         });
+
+        // Web/desktop: AppState alone doesn't capture tab focus/visibility.
+        // Notify server when the tab becomes hidden, regains visibility,
+        // or window focus changes — so push routing can suppress only when
+        // the user is actually looking at this client.
+        if (Platform.OS === 'web' && typeof document !== 'undefined') {
+            const broadcast = () => {
+                apiSocket.sendAppState(getCurrentAppState());
+            };
+            document.addEventListener('visibilitychange', broadcast);
+            window.addEventListener('focus', broadcast);
+            window.addEventListener('blur', broadcast);
+        }
     }
 
     async create(credentials: AuthCredentials, encryption: Encryption) {
@@ -1725,10 +1738,10 @@ class Sync {
         apiSocket.onReconnected(() => {
             log.log('🔌 Socket reconnected');
 
-            // Send current app focus state on reconnect for push routing
-            if (Platform.OS !== 'web') {
-                apiSocket.sendAppState(this.appState);
-            }
+            // Send current focus state on reconnect so the server's
+            // suppression rules pick up where we left off (handshake.auth.appState
+            // covers the very first connect; this covers reconnects).
+            apiSocket.sendAppState(getCurrentAppState());
 
             this.sessionsSync.invalidate();
             this.machinesSync.invalidate();
@@ -2249,6 +2262,13 @@ class Sync {
                 };
                 storage.getState().applyMachines([updatedMachine]);
             }
+        }
+
+        // Session-level lifecycle event (Claude finished, needs permission, asks question).
+        // This is the same signal that triggers the mobile push — bump browser-tab
+        // unread counter on these only, ignore the noisy per-message stream.
+        if (updateData.type === 'session-event') {
+            notifyUnreadMessage();
         }
 
         // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity

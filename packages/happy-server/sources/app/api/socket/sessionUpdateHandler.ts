@@ -242,7 +242,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 });
 
                 // Fire-and-forget push notification with smart routing
-                void dispatchNewMessagePush({ userId, sessionId: sid });
+                void dispatchNewMessagePush({ userId, sessionId: sid, senderHappyClient: connection.happyClient });
             } catch (error) {
                 log({ module: 'websocket', level: 'error' }, `Error in message handler: ${error}`);
             }

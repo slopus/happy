@@ -11,7 +11,7 @@ export interface PushMessage {
     to: string;
     title?: string;
     body?: string;
-    data?: Record<string, string>;
+    data?: Record<string, unknown>;
     sound?: 'default' | null;
     badge?: number;
     channelId?: string;

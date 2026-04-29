@@ -217,7 +217,8 @@ export function v3SessionRoutes(app: Fastify) {
 
         // Fire-and-forget push notification with smart routing
         if (txResult.createdMessages.length > 0) {
-            void dispatchNewMessagePush({ userId, sessionId });
+            const senderHappyClient = request.headers['x-happy-client'] as string | undefined;
+            void dispatchNewMessagePush({ userId, sessionId, senderHappyClient });
         }
 
         return reply.send({

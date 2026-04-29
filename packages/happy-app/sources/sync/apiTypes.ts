@@ -190,10 +190,20 @@ export const ApiEphemeralMachineActivityUpdateSchema = z.object({
     activeAt: z.number(),
 });
 
+export const ApiEphemeralSessionEventUpdateSchema = z.object({
+    type: z.literal('session-event'),
+    sessionId: z.string(),
+    kind: z.enum(['done', 'permission', 'question']),
+    title: z.string(),
+    body: z.string(),
+    timestamp: z.number(),
+});
+
 export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralActivityUpdateSchema,
     ApiEphemeralUsageUpdateSchema,
     ApiEphemeralMachineActivityUpdateSchema,
+    ApiEphemeralSessionEventUpdateSchema,
 ]);
 
 export type ApiEphemeralActivityUpdate = z.infer<typeof ApiEphemeralActivityUpdateSchema>;

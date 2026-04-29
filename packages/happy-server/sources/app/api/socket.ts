@@ -172,7 +172,14 @@ export function startSocket(app: Fastify) {
             });
         }
 
-        // Track app focus state for push notification routing
+        // Track app focus state for push notification routing.
+        // Read initial state from handshake to close the race window between
+        // connect and the first async app-state event.
+        const initialAppState = socket.handshake.auth.appState as string | undefined;
+        if (initialAppState) {
+            setFocusState(socket.id, initialAppState === 'active' ? 'active' : 'background');
+        }
+
         socket.on('app-state', (data: { state: string }) => {
             const state = data.state === 'active' ? 'active' : 'background';
             setFocusState(socket.id, state);

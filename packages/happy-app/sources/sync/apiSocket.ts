@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { Encryption } from './encryption/encryption';
@@ -12,6 +12,24 @@ export function getHappyClientId(): string {
     }
     const version = Constants.expoConfig?.version || '0.0.0';
     return `${platform}/${version}`;
+}
+
+/**
+ * Compute the current "active" or "background" state for the current platform.
+ * Mobile uses AppState. Web/desktop uses document.visibilityState + window focus —
+ * "active" means the tab is visible AND has focus, so a backgrounded tab or an
+ * unfocused window correctly counts as background and won't suppress mobile pushes.
+ */
+export function getCurrentAppState(): 'active' | 'background' {
+    if (Platform.OS === 'web') {
+        if (typeof document === 'undefined') {
+            return 'active';
+        }
+        const visible = document.visibilityState === 'visible';
+        const focused = typeof document.hasFocus === 'function' ? document.hasFocus() : true;
+        return visible && focused ? 'active' : 'background';
+    }
+    return AppState.currentState === 'active' ? 'active' : 'background';
 }
 
 //
@@ -72,7 +90,8 @@ class ApiSocket {
             auth: {
                 token: this.config.token,
                 clientType: 'user-scoped' as const,
-                happyClient: getHappyClientId()
+                happyClient: getHappyClientId(),
+                appState: getCurrentAppState(),
             },
             transports: ['websocket'],
             reconnection: true,
