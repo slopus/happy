@@ -287,6 +287,7 @@ export const zhHant: TranslationStructure = {
         inputPlaceholder: '輸入訊息...',
         inactiveArchived: '此會話處於非活動狀態。',
         resumeFromTerminal: '若要從終端恢復它：',
+        newChat: '新對話',
     },
 
     commandPalette: {

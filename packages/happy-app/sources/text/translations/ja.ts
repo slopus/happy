@@ -288,6 +288,7 @@ export const ja: TranslationStructure = {
         inputPlaceholder: 'メッセージを入力...',
         inactiveArchived: 'このセッションは非アクティブです。',
         resumeFromTerminal: 'ターミナルから再開するには:',
+        newChat: '新規チャット',
     },
 
     commandPalette: {

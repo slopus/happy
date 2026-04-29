@@ -288,6 +288,7 @@ export const zhHans: TranslationStructure = {
         inputPlaceholder: '输入消息...',
         inactiveArchived: '此会话处于非活动状态。',
         resumeFromTerminal: '要从终端恢复它：',
+        newChat: '新对话',
     },
 
     commandPalette: {

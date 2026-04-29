@@ -287,6 +287,7 @@ export const ca: TranslationStructure = {
         inputPlaceholder: 'Escriu un missatge...',
         inactiveArchived: 'Aquesta sessió està inactiva.',
         resumeFromTerminal: 'Per reprendre-la des del terminal:',
+        newChat: 'Nou xat',
     },
 
     commandPalette: {

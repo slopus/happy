@@ -304,6 +304,7 @@ export const pl: TranslationStructure = {
         inputPlaceholder: 'Wpisz wiadomość...',
         inactiveArchived: 'Ta sesja jest nieaktywna.',
         resumeFromTerminal: 'Aby wznowić ją z terminala:',
+        newChat: 'Nowy czat',
     },
 
     commandPalette: {

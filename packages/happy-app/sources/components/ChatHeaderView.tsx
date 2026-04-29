@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
-import { Octicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
-import { useHeaderHeight } from '@/utils/responsive';
+import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import { layout } from '@/components/layout';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -12,6 +12,7 @@ interface ChatHeaderViewProps {
     /** Project folder name (last path segment) */
     folderName?: string;
     onTitlePress?: () => void;
+    onBackPress?: () => void;
     backgroundColor?: string;
     tintColor?: string;
     isConnected?: boolean;
@@ -21,16 +22,28 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     title,
     folderName,
     onTitlePress,
+    onBackPress,
     isConnected = true,
 }) => {
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
+    const isTablet = useIsTablet();
+    const showBackButton = !isTablet && !!onBackPress;
 
     return (
         <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.header.background }]}>
             <View style={styles.contentWrapper}>
                 <View style={[styles.content, { height: headerHeight }]}>
+                    {showBackButton && (
+                        <Pressable onPress={onBackPress} hitSlop={15} style={styles.backButton}>
+                            <Ionicons
+                                name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                                size={24}
+                                color={theme.colors.header.tint}
+                            />
+                        </Pressable>
+                    )}
                     <Pressable
                         style={styles.titleContainer}
                         onPress={onTitlePress}
@@ -45,14 +58,18 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                                 >
                                     {folderName}
                                 </Text>
-                                <Text style={[styles.separator, { color: theme.colors.textSecondary, ...Typography.default() }]}>/</Text>
-                                <Text
-                                    numberOfLines={1}
-                                    ellipsizeMode="tail"
-                                    style={[styles.title, { color: theme.colors.header.tint, ...Typography.default() }]}
-                                >
-                                    {title}
-                                </Text>
+                                {title && title !== folderName && (
+                                    <>
+                                        <Text style={[styles.separator, { color: theme.colors.textSecondary, ...Typography.default() }]}>/</Text>
+                                        <Text
+                                            numberOfLines={1}
+                                            ellipsizeMode="tail"
+                                            style={[styles.title, { color: theme.colors.header.tint, ...Typography.default() }]}
+                                        >
+                                            {title}
+                                        </Text>
+                                    </>
+                                )}
                             </View>
                         ) : (
                             <Text
@@ -108,5 +125,9 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         flexShrink: 1,
+    },
+    backButton: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
     },
 });

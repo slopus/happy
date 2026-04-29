@@ -156,11 +156,9 @@ export const SessionView = React.memo((props: { id: string }) => {
         const pathSegments = session.metadata?.path?.split(/[/\\]/).filter(Boolean);
         const folderName = pathSegments?.[pathSegments.length - 1];
         const sessionName = getSessionName(session);
-        // If title is just the folder name (no summary), don't duplicate it
-        const title = sessionName === folderName ? sessionName : sessionName;
         return {
-            title,
-            folderName: sessionName !== folderName ? folderName : undefined,
+            title: sessionName,
+            folderName,
             isConnected,
         };
     }, [session, isDataReady]);
@@ -202,6 +200,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         folderName={headerProps.folderName}
                         isConnected={headerProps.isConnected}
                         onTitlePress={session ? () => router.push(`/session/${sessionId}/info`) : undefined}
+                        onBackPress={() => router.back()}
                     />
                     {/* Voice status bar below header - not on tablet (shown in sidebar) */}
                     {!isTablet && realtimeStatus !== 'disconnected' && (

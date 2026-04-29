@@ -285,6 +285,7 @@ export const it: TranslationStructure = {
         inputPlaceholder: 'Scrivi un messaggio ...',
         inactiveArchived: 'Questa sessione è inattiva.',
         resumeFromTerminal: 'Per riprenderla dal terminale:',
+        newChat: 'Nuova chat',
     },
 
     commandPalette: {
