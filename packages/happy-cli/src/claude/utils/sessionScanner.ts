@@ -23,8 +23,8 @@ export async function createSessionScanner(opts: {
     onMessage: (message: RawJSONLines) => void
 }) {
 
-    // Resolve project directory
-    const projectDir = getProjectPath(opts.workingDirectory);
+    // Resolve project directory (mutable — updated when worktree changes cwd)
+    let projectDir = getProjectPath(opts.workingDirectory);
 
     // Finished, pending finishing and current session
     let finishedSessions = new Set<string>();
@@ -117,6 +117,19 @@ export async function createSessionScanner(opts: {
             watchers.clear();
             await sync.invalidateAndAwait();
             sync.stop();
+        },
+        /**
+         * Update the working directory when Claude changes cwd (e.g. worktree).
+         * Stops old watchers pointing to the wrong directory and re-syncs.
+         */
+        updateWorkingDirectory: (newCwd: string) => {
+            const newProjectDir = getProjectPath(newCwd);
+            if (newProjectDir === projectDir) return;
+            logger.debug(`[SESSION_SCANNER] Working directory changed, updating projectDir: ${projectDir} -> ${newProjectDir}`);
+            for (const w of watchers.values()) w();
+            watchers.clear();
+            projectDir = newProjectDir;
+            sync.invalidate();
         },
         onNewSession: (sessionId: string) => {
             if (currentSessionId === sessionId) {

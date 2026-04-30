@@ -27,6 +27,12 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
     };
     session.addSessionFoundCallback(scannerSessionCallback);
 
+    // Register callback to update scanner when Claude changes cwd (e.g. worktree)
+    const scannerCwdCallback = (newCwd: string) => {
+        scanner.updateWorkingDirectory(newCwd);
+    };
+    session.addCwdChangeCallback(scannerCwdCallback);
+
 
     // Handle abort
     let exitReason: LauncherResult | null = null;
@@ -160,6 +166,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
         
         // Remove session found callback
         session.removeSessionFoundCallback(scannerSessionCallback);
+        session.removeCwdChangeCallback(scannerCwdCallback);
 
         // Cleanup
         await scanner.cleanup();

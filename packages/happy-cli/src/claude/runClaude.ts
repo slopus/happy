@@ -236,7 +236,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const hookServer = await startHookServer({
         onSessionHook: (sessionId, data) => {
             logger.debug(`[START] Session hook received: ${sessionId}`, data);
-            
+
             // Update session ID in the Session instance
             if (currentSession) {
                 const previousSessionId = currentSession.sessionId;
@@ -244,6 +244,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                     logger.debug(`[START] Claude session ID changed: ${previousSessionId} -> ${sessionId}`);
                     currentSession.onSessionFound(sessionId);
                 }
+            }
+
+            // Update working directory when Claude changes cwd (e.g. worktree)
+            if (data.cwd && data.cwd !== workingDirectory) {
+                logger.debug(`[START] Claude cwd changed: ${workingDirectory} -> ${data.cwd}`);
+                currentSession?.onCwdChange(data.cwd);
             }
         }
     });
