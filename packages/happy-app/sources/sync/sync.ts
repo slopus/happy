@@ -227,14 +227,15 @@ class Sync {
         this.feedSync.invalidate();
         log.log('🔄 #init: All syncs invalidated, including artifacts');
 
-        // Wait for both sessions and machines to load, then mark as ready
-        Promise.all([
-            this.sessionsSync.awaitQueue(),
-            this.machinesSync.awaitQueue()
-        ]).then(() => {
+        // Mark UI ready as soon as sessions load. Machines sync may hang
+        // when encryption keys are unavailable (e.g. V1 auth fallback) —
+        // let it resolve in the background instead of blocking the UI.
+        this.sessionsSync.awaitQueue().then(() => {
             storage.getState().applyReady();
         }).catch((error) => {
-            console.error('Failed to load initial data:', error);
+            console.error('Failed to load sessions:', error);
+            // Still mark ready so the UI doesn't stay on a blank screen forever
+            storage.getState().applyReady();
         });
     }
 
