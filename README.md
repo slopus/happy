@@ -39,6 +39,11 @@ Step 2: Install CLI on your computer
 npm install -g happy
 ```
 
+> **Note:** If you're using a third-party registry mirror, the package may not be available immediately due to sync delays. In that case, install directly from the official npm registry:
+> ```bash
+> npm install -g happy@latest --registry https://registry.npmjs.org/
+> ```
+
 > Migrated from the `happy-coder` package. Thanks to [@franciscop](https://github.com/franciscop) for donating the `happy` package name!
 
 <h3 align="center">
