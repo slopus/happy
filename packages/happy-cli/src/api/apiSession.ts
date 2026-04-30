@@ -20,6 +20,7 @@ import {
 } from '@/claude/utils/sessionProtocolMapper';
 import { InvalidateSync } from '@/utils/sync';
 import axios from 'axios';
+import { createProxyAgentFromEnv, getProxyUrlFromEnv, maskProxyUrl } from './proxy';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -132,7 +133,13 @@ export class ApiSessionClient extends EventEmitter {
         // Create socket
         //
 
-        this.socket = io(configuration.serverUrl, {
+        const proxyUrl = getProxyUrlFromEnv(configuration.serverUrl);
+        const proxyAgent = createProxyAgentFromEnv(configuration.serverUrl);
+        if (proxyAgent && proxyUrl) {
+            logger.debug(`[API] Using proxy agent: ${maskProxyUrl(proxyUrl)}`);
+        }
+
+        const socketOptions: NonNullable<Parameters<typeof io>[1]> = {
             auth: {
                 token: this.token,
                 clientType: 'session-scoped' as const,
@@ -144,7 +151,16 @@ export class ApiSessionClient extends EventEmitter {
             transports: ['websocket'],
             withCredentials: true,
             autoConnect: false
-        });
+        };
+        if (proxyAgent) {
+            socketOptions.transportOptions = {
+                websocket: {
+                    agent: proxyAgent,
+                },
+            };
+        }
+
+        this.socket = io(configuration.serverUrl, socketOptions);
 
         //
         // Handlers

@@ -169,6 +169,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
 
     afterEach(() => {
+        vi.unstubAllEnvs();
         vi.restoreAllMocks();
     });
 
@@ -179,6 +180,24 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('disconnect', expect.any(Function));
         expect(mockSocket.on).toHaveBeenCalledWith('update', expect.any(Function));
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes a websocket proxy agent when proxy env is configured', () => {
+        vi.stubEnv('HTTPS_PROXY', 'http://127.0.0.1:5901');
+
+        new ApiSessionClient('fake-token', session);
+
+        const socketOptions = mockIo.mock.calls[0][1];
+        expect(socketOptions.transportOptions.websocket.agent).toBeDefined();
+    });
+
+    it('does not pass a websocket proxy agent when proxy env is invalid', () => {
+        vi.stubEnv('HTTPS_PROXY', 'http://user:pass@%');
+
+        new ApiSessionClient('fake-token', session);
+
+        const socketOptions = mockIo.mock.calls[0][1];
+        expect(socketOptions.transportOptions).toBeUndefined();
     });
 
     it('queues codex message to v3 outbox, sends once, and drains outbox', async () => {
