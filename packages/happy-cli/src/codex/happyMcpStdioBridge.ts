@@ -43,18 +43,28 @@ async function main() {
   }
 
   let httpClient: Client | null = null;
+  let connectPromise: Promise<Client> | null = null;
 
   async function ensureHttpClient(): Promise<Client> {
     if (httpClient) return httpClient;
-    const client = new Client(
-      { name: 'happy-stdio-bridge', version: '1.0.0' },
-      { capabilities: {} }
-    );
+    if (connectPromise) return connectPromise;
 
-    const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
-    await client.connect(transport);
-    httpClient = client;
-    return client;
+    connectPromise = (async () => {
+      try {
+        const client = new Client(
+          { name: 'happy-stdio-bridge', version: '1.0.0' },
+          { capabilities: {} }
+        );
+        const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
+        await client.connect(transport);
+        httpClient = client;
+        return client;
+      } finally {
+        connectPromise = null;
+      }
+    })();
+
+    return connectPromise;
   }
 
   // Create STDIO MCP server
