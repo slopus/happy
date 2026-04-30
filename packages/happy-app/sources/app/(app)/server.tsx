@@ -85,17 +85,22 @@ export default function ServerConfigScreen() {
     const [isValidating, setIsValidating] = useState(false);
 
     const validateServer = async (url: string): Promise<boolean> => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
         try {
             setIsValidating(true);
             setError(null);
-            
+
             const response = await fetch(url, {
                 method: 'GET',
+                signal: controller.signal,
                 headers: {
-                    'Accept': 'text/plain'
+                    'Accept': 'text/plain',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
                 }
             });
-            
+
             if (!response.ok) {
                 setError(t('server.serverReturnedError'));
                 return false;
@@ -112,6 +117,7 @@ export default function ServerConfigScreen() {
             setError(t('server.failedToConnectToServer'));
             return false;
         } finally {
+            clearTimeout(timeout);
             setIsValidating(false);
         }
     };
