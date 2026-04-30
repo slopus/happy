@@ -12,6 +12,7 @@ import { parseStatusSummaryV2, getStatusCountsV2, isDirtyV2, getCurrentBranchV2,
 import { parseCurrentBranch } from './git-parsers/parseBranch';
 import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
 import { projectManager, createProjectKey } from './projectManager';
+import { normalizePathForKey } from '@/utils/normalizePathForKey';
 
 export class GitStatusSync {
     // Map project keys to sync instances
@@ -22,14 +23,15 @@ export class GitStatusSync {
     private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     /**
-     * Get project key string for a session
+     * Get project key string for a session.
+     * Uses normalized path to match Claude Code's .claude/projects folder naming convention.
      */
     private getProjectKeyForSession(sessionId: string): string | null {
         const session = storage.getState().sessions[sessionId];
         if (!session?.metadata?.machineId || !session?.metadata?.path) {
             return null;
         }
-        return `${session.metadata.machineId}:${session.metadata.path}`;
+        return `${session.metadata.machineId}:${normalizePathForKey(session.metadata.path)}`;
     }
 
     /**
