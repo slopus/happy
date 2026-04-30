@@ -22,7 +22,7 @@ function createMcpServer(handler: (title: string) => Promise<{ success: boolean;
     });
 
     mcp.registerTool('change_title', {
-        description: 'Change the title of the current chat session',
+        description: 'Set or update the chat session title. Titles should be short (under 50 chars) and action-oriented, e.g. "Fix auth token refresh".',
         title: 'Change Chat Title',
         inputSchema: {
             title: z.string().describe('The new title for the chat session'),
