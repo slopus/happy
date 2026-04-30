@@ -33,6 +33,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
 import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
 import { handleCodexCommand } from './commands/codexCommand'
+import { MINIMAX_API_KEY_ENV, MINIMAX_BASE_URL_ENV, DEFAULT_MINIMAX_BASE_URL, DEFAULT_MINIMAX_MODEL } from '@/minimax/constants'
 
 
 (async () => {
@@ -415,6 +416,59 @@ import { handleCodexCommand } from './commands/codexCommand'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'minimax') {
+    // Handle minimax command — runs OpenCode in ACP mode with MiniMax M2.7
+    try {
+      const { runAcp } = await import('@/agent/acp/runAcp');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let verbose = false;
+      let model: string = DEFAULT_MINIMAX_MODEL;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--verbose') {
+          verbose = true;
+        } else if (args[i] === '--model' && args[i + 1]) {
+          model = args[++i];
+        }
+      }
+
+      const minimaxApiKey = process.env[MINIMAX_API_KEY_ENV];
+      if (!minimaxApiKey) {
+        console.error(chalk.red(`Error: ${MINIMAX_API_KEY_ENV} environment variable is required.`));
+        console.error(`  Get your API key at https://platform.minimax.io`);
+        console.error(`  Then run: export ${MINIMAX_API_KEY_ENV}=<your-api-key>`);
+        process.exit(1);
+      }
+
+      const minimaxBaseUrl = process.env[MINIMAX_BASE_URL_ENV] ?? DEFAULT_MINIMAX_BASE_URL;
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning();
+
+      await runAcp({
+        credentials,
+        agentName: 'minimax',
+        command: 'opencode',
+        args: ['acp'],
+        env: {
+          MINIMAX_API_KEY: minimaxApiKey,
+          MINIMAX_BASE_URL: minimaxBaseUrl,
+          // OpenCode reads the model from its provider config; pass it via env for compatibility
+          OPENCODE_MODEL: `minimax/${model}`,
+        },
+        startedBy,
+        verbose,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'logout') {
     // Keep for backward compatibility - redirect to auth logout
     console.log(chalk.yellow('Note: "happy logout" is deprecated. Use "happy auth logout" instead.\n'));
@@ -655,6 +709,7 @@ ${chalk.bold('Usage:')}
   happy resume            Resume a previous Happy session by Happy session ID
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP)
+  happy minimax           Start MiniMax M2.7 mode (via OpenCode ACP)
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing
@@ -679,6 +734,9 @@ ${chalk.bold('Examples:')}
                            Start a custom ACP command
   happy acp opencode --verbose
                            Print raw ACP backend/envelope events
+  happy minimax            Start MiniMax M2.7 (requires MINIMAX_API_KEY + opencode)
+  happy minimax --model MiniMax-M2.7-highspeed
+                           Start with MiniMax M2.7 high-speed model
   happy auth login --force Authenticate
   happy doctor             Run diagnostics
 
