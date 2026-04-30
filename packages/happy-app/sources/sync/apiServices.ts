@@ -3,6 +3,57 @@ import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
 
+type RegisterSuccessResponse = { success: true };
+
+type RegisterTaskResponse = {
+    taskId: string;
+    state: 'accepted' | 'running' | 'succeeded' | 'failed';
+    stage: string;
+    pollAfterMs: number;
+    heartbeatAt: string;
+    updatedAt: string;
+    error?: string;
+};
+
+function isRegisterTaskResponse(data: unknown): data is RegisterTaskResponse {
+    return Boolean(
+        data &&
+        typeof data === 'object' &&
+        'taskId' in data &&
+        typeof (data as RegisterTaskResponse).taskId === 'string'
+    );
+}
+
+async function waitForRegisterTask(credentials: AuthCredentials, initialTask: RegisterTaskResponse, apiEndpoint: string): Promise<void> {
+    while (true) {
+        const response = await fetch(`${apiEndpoint}/v1/tasks/${initialTask.taskId}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.status === 404) {
+            throw new Error('Service connection task was lost before completion. Please retry.');
+        }
+
+        if (!response.ok) {
+            throw new Error(`Failed to poll service connection task: ${response.status}`);
+        }
+
+        const status = await response.json() as RegisterTaskResponse;
+        if (status.state === 'succeeded') {
+            return;
+        }
+        if (status.state === 'failed') {
+            throw new Error(status.error || 'Failed to connect service account');
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, status.pollAfterMs || 500));
+    }
+}
+
 /**
  * Connect a service to the user's account
  */
@@ -28,7 +79,12 @@ export async function connectService(
             throw new Error(`Failed to connect ${service}: ${response.status}`);
         }
 
-        const data = await response.json() as { success: true };
+        const data = await response.json() as RegisterSuccessResponse | RegisterTaskResponse;
+        if (isRegisterTaskResponse(data)) {
+            await waitForRegisterTask(credentials, data, API_ENDPOINT);
+            return;
+        }
+
         if (!data.success) {
             throw new Error(`Failed to connect ${service} account`);
         }

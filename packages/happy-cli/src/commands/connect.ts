@@ -71,6 +71,7 @@ ${chalk.bold('Examples:')}
 ${chalk.bold('Notes:')} 
   • You must be authenticated with Happy first (run 'happy auth login')
   • API keys are encrypted and stored securely in Happy cloud
+  • Registration may take a moment while Happy finishes persisting your token
   • You can manage your stored keys at app.happy.engineering
 `);
 }
@@ -90,22 +91,38 @@ async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini', displa
     const api = await ApiClient.create(credentials);
 
     // Handle vendor authentication
+    const stageLabels: Record<string, string> = {
+        accepted: 'Request accepted by Happy cloud',
+        encrypting: 'Encrypting token',
+        persisting: 'Persisting encrypted token',
+        succeeded: 'Registration complete'
+    };
+    const seenStages = new Set<string>();
+    const logRegisterProgress = (status: { stage: string }) => {
+        if (seenStages.has(status.stage)) {
+            return;
+        }
+        seenStages.add(status.stage);
+        const message = stageLabels[status.stage] ?? `Still processing (${status.stage})`;
+        console.log(chalk.gray(`  … ${message}`));
+    };
+
     if (vendor === 'codex') {
         console.log('🚀 Registering Codex token with server');
         const codexAuthTokens = await authenticateCodex();
-        await api.registerVendorToken('openai', { oauth: codexAuthTokens });
+        await api.registerVendorToken('openai', { oauth: codexAuthTokens }, { onProgress: logRegisterProgress });
         console.log('✅ Codex token registered with server');
         process.exit(0);
     } else if (vendor === 'claude') {
         console.log('🚀 Registering Anthropic token with server');
         const anthropicAuthTokens = await authenticateClaude();
-        await api.registerVendorToken('anthropic', { oauth: anthropicAuthTokens });
+        await api.registerVendorToken('anthropic', { oauth: anthropicAuthTokens }, { onProgress: logRegisterProgress });
         console.log('✅ Anthropic token registered with server');
         process.exit(0);
     } else if (vendor === 'gemini') {
         console.log('🚀 Registering Gemini token with server');
         const geminiAuthTokens = await authenticateGemini();
-        await api.registerVendorToken('gemini', { oauth: geminiAuthTokens });
+        await api.registerVendorToken('gemini', { oauth: geminiAuthTokens }, { onProgress: logRegisterProgress });
         console.log('✅ Gemini token registered with server');
         
         // Also update local Gemini config to keep tokens in sync
