@@ -4,7 +4,8 @@ import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
-import { DefaultTransport } from '@/agent/transport';
+import { DefaultTransport, CopilotTransport } from '@/agent/transport';
+import type { TransportHandler } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
@@ -436,14 +437,24 @@ type PendingTurn = {
   timeout: NodeJS.Timeout;
 };
 
-function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' {
+function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'copilot' | 'acp' {
   if (agentName === 'gemini') {
     return 'gemini';
   }
   if (agentName === 'opencode') {
     return 'opencode';
   }
+  if (agentName === 'copilot') {
+    return 'copilot';
+  }
   return 'acp';
+}
+
+function resolveTransportHandler(agentName: string): TransportHandler {
+  if (agentName === 'copilot') {
+    return new CopilotTransport();
+  }
+  return new DefaultTransport(agentName);
 }
 
 export async function runAcp(opts: {
@@ -539,7 +550,7 @@ export async function runAcp(opts: {
     args: opts.args,
     mcpServers,
     permissionHandler,
-    transportHandler: new DefaultTransport(opts.agentName),
+    transportHandler: resolveTransportHandler(opts.agentName),
     verbose,
   });
 
@@ -827,10 +838,6 @@ export async function runAcp(opts: {
   backend.onMessage(onBackendMessage);
 
   session.onUserMessage((message) => {
-    if (!message.content.text) {
-      return;
-    }
-
     if (typeof message.meta?.permissionMode === 'string') {
       currentPermissionMode = message.meta.permissionMode;
       logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
@@ -839,6 +846,17 @@ export async function runAcp(opts: {
     if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
       currentModel = message.meta.model ?? null;
       logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
+    }
+
+    if (!message.content.text) {
+      // Mode/model change only (no text prompt) — enqueue a config-only item so
+      // the main loop applies the change serially, after any in-flight turn and
+      // after startSession completes, preventing races.
+      messageQueue.push('', {
+        permissionMode: currentPermissionMode,
+        model: currentModel,
+      });
+      return;
     }
 
     messageQueue.push(message.content.text, {
@@ -916,8 +934,10 @@ export async function runAcp(opts: {
         if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
           await switchModelIfRequested(batch.mode.model);
         }
-        await backend.sendPrompt(acpSessionId, batch.message);
-        await turnEnded;
+        if (batch.message) {
+          await backend.sendPrompt(acpSessionId, batch.message);
+          await turnEnded;
+        }
         sendEnvelopes(sessionManager.endTurn('completed'));
         session.sendSessionEvent({ type: 'ready' });
         if (verbose) {

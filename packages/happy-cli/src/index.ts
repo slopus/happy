@@ -124,6 +124,33 @@ import { handleCodexCommand } from './commands/codexCommand'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'copilot') {
+    // Handle copilot command
+    try {
+      const { runCopilot, assertCopilotInstalled } = await import('@/copilot/runCopilot');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+        }
+      }
+
+      // Preflight: verify copilot binary before paying the cost of auth + daemon startup
+      assertCopilotInstalled();
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning();
+
+      await runCopilot({ credentials, startedBy });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'gemini') {
     // Handle gemini subcommands
     const geminiSubcommand = args[1];

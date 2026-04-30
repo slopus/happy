@@ -422,6 +422,7 @@ export const pl: TranslationStructure = {
             codex: 'Codex',
             gemini: 'Gemini',
             openclaw: 'OpenClaw',
+            copilot: 'Copilot',
         },
         model: {
             title: 'MODEL',

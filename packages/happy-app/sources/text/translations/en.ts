@@ -420,6 +420,7 @@ export const en: TranslationStructure = {
             codex: 'Codex',
             gemini: 'Gemini',
             openclaw: 'OpenClaw',
+            copilot: 'Copilot',
         },
         model: {
             title: 'MODEL',
