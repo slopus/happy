@@ -542,7 +542,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         claudeArgs: options.claudeArgs,
         sandboxConfig,
         hookSettingsPath,
-        jsRuntime: options.jsRuntime
+        jsRuntime: options.jsRuntime,
+        startedBy: options.startedBy
     });
 
     // Cleanup session resources (intervals, callbacks) - prevents memory leak
