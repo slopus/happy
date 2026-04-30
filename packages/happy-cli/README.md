@@ -40,6 +40,24 @@ happy acp opencode
 happy acp -- custom-agent --flag
 ```
 
+## Commands
+
+### Main Commands
+
+- `happy` – Start Claude Code session (default)
+- `happy gemini` – Start Gemini CLI session
+- `happy codex` – Start Codex mode
+- `happy droid` – Start Droid mode (ACP-compatible)
+- `happy acp` – Start a generic ACP-compatible agent
+
+### Utility Commands
+
+- `happy auth` – Manage authentication
+- `happy connect` – Store AI vendor API keys in Happy cloud
+- `happy sandbox` – Configure sandbox runtime restrictions
+- `happy notify` – Send a push notification to your devices
+- `happy daemon` – Manage background service
+- `happy doctor` – System diagnostics & troubleshooting
 ## Daemon
 
 The daemon is a background service that stays running on your machine. It lets you spawn and manage coding sessions remotely — from your phone or the web app — without needing an open terminal.
@@ -53,6 +71,18 @@ happy daemon list
 
 The daemon starts automatically when you run `happy`, so you usually don't need to manage it manually.
 
+```bash
+happy gemini                      # Start Gemini session
+happy gemini model set <model>    # Set default model
+happy gemini model get            # Show current model
+happy gemini project set <id>     # Set Google Cloud Project ID (for Workspace accounts)
+happy gemini project get          # Show current Google Cloud Project ID
+happy droid                       # Start Droid session (ACP-compatible)
+```
+
+**Available models:** `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+
+### Generic ACP Commands
 ## Authentication
 
 ```bash

@@ -50,6 +50,10 @@ Step 3: Start using `happy` instead of `claude` or `codex`
 happy claude
 # or
 happy codex
+
+# Droid (ACP-compatible)
+happy droid
+
 ```
 
 ## How does it work?
