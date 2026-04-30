@@ -21,6 +21,16 @@ export default defineConfig({
             {
                 extends: true,
                 test: {
+                    name: 'scripts',
+                    include: ['scripts/**/*.test.ts'],
+                    sequence: {
+                        groupOrder: 0,
+                    },
+                },
+            },
+            {
+                extends: true,
+                test: {
                     name: 'integration-empty',
                     fileParallelism: false,
                     hookTimeout: 120_000,
