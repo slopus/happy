@@ -38,7 +38,7 @@ export async function startApi() {
     });
     app.register(import('@fastify/cors'), {
         origin: '*',
-        allowedHeaders: '*',
+        allowedHeaders: ['Content-Type', 'Authorization', 'x-happy-client'],
         methods: ['GET', 'POST', 'DELETE']
     });
     app.get('/', function (request, reply) {

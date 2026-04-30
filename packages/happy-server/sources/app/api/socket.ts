@@ -21,7 +21,7 @@ export function startSocket(app: Fastify) {
             origin: "*",
             methods: ["GET", "POST", "OPTIONS"],
             credentials: true,
-            allowedHeaders: ["*"]
+            allowedHeaders: ["Content-Type", "Authorization", "x-happy-client"]
         },
         transports: ['websocket', 'polling'],
         pingTimeout: 45000,
