@@ -1770,27 +1770,35 @@ class Sync {
                             type?: string;
                             data?: {
                                 type?: string;
+                                isSidechain?: boolean;
                                 ev?: { t?: string };
+                                subagent?: string | null;
                             }
                         }
                     } | null;
                     const contentType = rawContent?.content?.type;
                     const dataType = rawContent?.content?.data?.type;
                     const sessionEventType = rawContent?.content?.data?.ev?.t;
-                    
+                    // Subagent turn-start/turn-end must NOT flip the main session's
+                    // thinking state — only top-level turns matter.
+                    const isSubagentEvent =
+                        rawContent?.content?.data?.subagent != null ||
+                        rawContent?.content?.data?.isSidechain === true;
+
                     // Debug logging to trace lifecycle events
                     if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started' || sessionEventType === 'turn-start' || sessionEventType === 'turn-end') {
-                        console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}, sessionEventType=${sessionEventType}`);
+                        console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}, sessionEventType=${sessionEventType}, isSubagent=${isSubagentEvent}`);
                     }
-                    
-                    const isTaskComplete = 
-                        ((contentType === 'acp' || contentType === 'codex') && 
-                            (dataType === 'task_complete' || dataType === 'turn_aborted')) ||
-                        (contentType === 'session' && sessionEventType === 'turn-end');
-                    
-                    const isTaskStarted = 
-                        ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started') ||
-                        (contentType === 'session' && sessionEventType === 'turn-start');
+
+                    const isTaskComplete =
+                        ((contentType === 'acp' || contentType === 'codex') &&
+                            (dataType === 'task_complete' || dataType === 'turn_aborted') &&
+                            !isSubagentEvent) ||
+                        (contentType === 'session' && sessionEventType === 'turn-end' && !isSubagentEvent);
+
+                    const isTaskStarted =
+                        ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started' && !isSubagentEvent) ||
+                        (contentType === 'session' && sessionEventType === 'turn-start' && !isSubagentEvent);
                     
                     if (isTaskComplete || isTaskStarted) {
                         console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
