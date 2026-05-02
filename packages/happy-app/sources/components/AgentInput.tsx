@@ -77,6 +77,9 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
+    images?: Array<{ base64: string; mediaType: string }>;
+    onImagePaste?: (image: { base64: string; mediaType: string }) => void;
+    onRemoveImage?: (index: number) => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -284,6 +287,30 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sendButtonIcon: {
         color: theme.colors.button.primary.tint,
     },
+    imagePreviewContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        paddingHorizontal: 8,
+        paddingTop: 8,
+        gap: 8,
+    },
+    imagePreviewWrapper: {
+        position: 'relative',
+    },
+    imagePreview: {
+        width: 80,
+        height: 80,
+        borderRadius: 8,
+    },
+    imageRemoveButton: {
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        borderRadius: 10,
+        width: 20,
+        height: 20,
+    },
 }));
 
 const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
@@ -307,7 +334,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const screenWidth = useWindowDimensions().width;
     const isSendBlocked = props.blockSend ?? false;
 
-    const hasText = props.value.trim().length > 0;
+    const hasText = props.value.trim().length > 0 || (props.images && props.images.length > 0);
     const canPressSendButton = !props.isSending
         && !props.isSendDisabled
         && (isSendBlocked ? hasText : (hasText || !!props.onMicPress));
@@ -529,7 +556,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             // to avoid false positives on Windows touch-screen laptops with keyboards.
             const isTouchDevice = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
             if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey && !isTouchDevice) {
-                if (props.value.trim()) {
+                if (props.value.trim() || (props.images && props.images.length > 0)) {
                     if (isSendBlocked) {
                         handleBlockedSendAttempt();
                     } else if (!props.isSendDisabled) {
@@ -1058,6 +1085,25 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 {/* Box 2: Action Area (Input + Send) */}
                 <Shaker ref={sendBlockShakerRef}>
                 <View style={styles.unifiedPanel}>
+                    {/* Image previews */}
+                    {props.images && props.images.length > 0 && (
+                        <View style={styles.imagePreviewContainer}>
+                            {props.images.map((img, index) => (
+                                <View key={index} style={styles.imagePreviewWrapper}>
+                                    <RNImage
+                                        source={{ uri: `data:${img.mediaType};base64,${img.base64}` }}
+                                        style={styles.imagePreview}
+                                    />
+                                    <Pressable
+                                        style={styles.imageRemoveButton}
+                                        onPress={() => props.onRemoveImage?.(index)}
+                                    >
+                                        <Ionicons name="close-circle" size={20} color="#fff" />
+                                    </Pressable>
+                                </View>
+                            ))}
+                        </View>
+                    )}
                     {/* Input field */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
                         <MultiTextInput
@@ -1070,6 +1116,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
                             maxHeight={120}
+                            onImagePaste={props.onImagePaste}
                         />
                     </View>
 

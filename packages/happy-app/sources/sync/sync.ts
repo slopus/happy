@@ -74,6 +74,7 @@ type OutboxMessage = {
 type SendMessageOptions = {
     displayText?: string;
     source?: MessageSentSource;
+    images?: Array<{ base64: string; mediaType: string }>;
 };
 
 class Sync {
@@ -471,7 +472,7 @@ class Sync {
         }
 
         const { permissionMode, model } = resolveMessageModeMeta(session);
-        const { displayText, source = 'chat' } = options ?? {};
+        const { displayText, source = 'chat', images } = options ?? {};
 
         // Generate local ID
         const localId = randomUUID();
@@ -500,7 +501,8 @@ class Sync {
             role: 'user',
             content: {
                 type: 'text',
-                text
+                text,
+                ...(images && images.length > 0 && { images }),
             },
             meta: {
                 sentFrom,
