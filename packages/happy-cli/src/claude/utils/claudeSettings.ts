@@ -12,6 +12,10 @@ import { logger } from '@/ui/logger';
 
 export interface ClaudeSettings {
   includeCoAuthoredBy?: boolean;
+  attribution?: {
+    commit?: string;
+    pr?: string;
+  };
   [key: string]: any;
 }
 
@@ -58,12 +62,23 @@ export function readClaudeSettings(): ClaudeSettings | null {
  */
 export function shouldIncludeCoAuthoredBy(): boolean {
   const settings = readClaudeSettings();
-  
-  // If no settings file or includeCoAuthoredBy is not explicitly set,
-  // default to true to maintain backward compatibility
+
+  // If user explicitly set includeCoAuthoredBy to false, respect it
+  if (settings?.includeCoAuthoredBy === false) {
+    return false;
+  }
+
+  // If user explicitly set attribution.commit to empty string, skip Happy attribution
+  // This is the standard Claude Code setting for disabling commit attribution
+  if (settings?.attribution?.commit === "") {
+    return false;
+  }
+
+  // If no settings file or includeCoAuthoredBy not explicitly set, default to true
+  // (maintains backward compatibility for existing Happy users)
   if (!settings || settings.includeCoAuthoredBy === undefined) {
     return true;
   }
-  
+
   return settings.includeCoAuthoredBy;
 }
