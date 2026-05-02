@@ -69,6 +69,7 @@ type V3PostSessionMessagesResponse = {
 type OutboxMessage = {
     localId: string;
     content: string;
+    expiresIn?: number;
 };
 
 type SendMessageOptions = {
@@ -88,6 +89,9 @@ class Sync {
     private sendSync = new Map<string, InvalidateSync>();
     private sendAbortControllers = new Map<string, AbortController>();
     private sessionLastSeq = new Map<string, number>();
+    private sessionOldestSeq = new Map<string, number>();
+    private sessionHasMoreOlder = new Map<string, boolean>();
+    private sessionLoadingOlder = new Set<string>();
     private pendingOutbox = new Map<string, OutboxMessage[]>();
     private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
     private sessionQueueProcessing = new Set<string>();
@@ -454,7 +458,7 @@ class Sync {
         this.backgroundSendStartedAt = null;
     }
 
-    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
+    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions, images?: Array<{ base64: string; mediaType: string }>) {
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -495,12 +499,39 @@ class Sync {
 
         const fallbackModel: string | null = null;
 
+        let pending = this.pendingOutbox.get(sessionId);
+        if (!pending) {
+            pending = [];
+            this.pendingOutbox.set(sessionId, pending);
+        }
+
+        // Send images as separate ephemeral message with TTL (deleted from server after 5 min)
+        const groupId = images && images.length > 0 ? randomUUID() : undefined;
+        if (images && images.length > 0 && groupId) {
+            const imageContent: RawRecord = {
+                role: 'user',
+                content: {
+                    type: 'images',
+                    groupId,
+                    images,
+                },
+                meta: { sentFrom }
+            };
+            const encryptedImageRecord = await encryption.encryptRawRecord(imageContent);
+            pending.push({
+                localId: randomUUID(),
+                content: encryptedImageRecord,
+                expiresIn: 259200
+            });
+        }
+
         // Create user message content with metadata
         const content: RawRecord = {
             role: 'user',
             content: {
                 type: 'text',
-                text
+                text,
+                ...(groupId && { imageGroupId: groupId }),
             },
             meta: {
                 sentFrom,
@@ -513,18 +544,18 @@ class Sync {
         };
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
-        // Add to messages - normalize the raw record
+        // Store images for UI display (keyed by message localId)
+        if (images && images.length > 0) {
+            messageImageStore.set(localId, images);
+        }
+
+        // Add to messages - normalize the raw record (show text message in UI)
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
         if (normalizedMessage) {
             this.enqueueMessages(sessionId, [normalizedMessage]);
         }
 
-        let pending = this.pendingOutbox.get(sessionId);
-        if (!pending) {
-            pending = [];
-            this.pendingOutbox.set(sessionId, pending);
-        }
         pending.push({
             localId,
             content: encryptedRawRecord
@@ -1590,7 +1621,8 @@ class Sync {
                 body: JSON.stringify({
                     messages: batch.map((message) => ({
                         localId: message.localId,
-                        content: message.content
+                        content: message.content,
+                        ...(message.expiresIn && { expiresIn: message.expiresIn })
                     }))
                 }),
                 headers: {
@@ -1647,8 +1679,14 @@ class Sync {
             let hasMore = true;
             let totalNormalized = 0;
 
+            // First load: fetch only the latest 50 messages for fast initial render
+            const isFirstLoad = afterSeq === 0;
+
             while (hasMore) {
-                const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
+                const url = isFirstLoad && afterSeq === 0
+                    ? `/v3/sessions/${sessionId}/messages?latest=true&limit=50`
+                    : `/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`;
+                const response = await apiSocket.request(url);
                 if (!response.ok) {
                     throw new Error(`Failed to fetch messages for ${sessionId}: ${response.status}`);
                 }
@@ -1656,9 +1694,13 @@ class Sync {
                 const messages = Array.isArray(data.messages) ? data.messages : [];
 
                 let maxSeq = afterSeq;
+                let minSeq = messages.length > 0 ? messages[0].seq : afterSeq;
                 for (const message of messages) {
                     if (message.seq > maxSeq) {
                         maxSeq = message.seq;
+                    }
+                    if (message.seq < minSeq) {
+                        minSeq = message.seq;
                     }
                 }
 
@@ -1681,6 +1723,19 @@ class Sync {
                 }
 
                 this.sessionLastSeq.set(sessionId, maxSeq);
+
+                // For first load with latest=true, stop after first page
+                // Track oldest seq for lazy loading of older messages
+                if (isFirstLoad && afterSeq === 0) {
+                    if (messages.length > 0) {
+                        this.sessionOldestSeq.set(sessionId, minSeq);
+                        this.sessionHasMoreOlder.set(sessionId, !!data.hasMore);
+                    }
+                    afterSeq = maxSeq;
+                    hasMore = false;
+                    break;
+                }
+
                 hasMore = !!data.hasMore;
                 if (hasMore && maxSeq === afterSeq) {
                     log.log(`💬 fetchMessages: pagination stalled for ${sessionId}, stopping to avoid infinite loop`);
@@ -1692,6 +1747,70 @@ class Sync {
             storage.getState().applyMessagesLoaded(sessionId);
             log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages`);
         });
+    }
+
+    /**
+     * Lazy-load older messages when user scrolls to the top of the chat.
+     * Uses `before_seq` to fetch messages older than the oldest currently loaded.
+     */
+    public loadOlderMessages = async (sessionId: string): Promise<boolean> => {
+        if (this.sessionLoadingOlder.has(sessionId)) {
+            return false;
+        }
+        if (this.sessionHasMoreOlder.get(sessionId) === false) {
+            return false;
+        }
+        const beforeSeq = this.sessionOldestSeq.get(sessionId);
+        if (beforeSeq === undefined) {
+            return false;
+        }
+
+        this.sessionLoadingOlder.add(sessionId);
+        try {
+            const encryption = this.encryption.getSessionEncryption(sessionId);
+            if (!encryption) {
+                return false;
+            }
+
+            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?before_seq=${beforeSeq}&limit=50`);
+            if (!response.ok) {
+                return false;
+            }
+            const data = await response.json() as V3GetSessionMessagesResponse;
+            const messages = Array.isArray(data.messages) ? data.messages : [];
+
+            if (messages.length === 0) {
+                this.sessionHasMoreOlder.set(sessionId, false);
+                return false;
+            }
+
+            let minSeq = messages[0].seq;
+            for (const message of messages) {
+                if (message.seq < minSeq) {
+                    minSeq = message.seq;
+                }
+            }
+
+            const decryptedMessages = await encryption.decryptMessages(messages);
+            const normalizedMessages: NormalizedMessage[] = [];
+            for (const decrypted of decryptedMessages) {
+                if (!decrypted) continue;
+                const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                if (normalized) {
+                    normalizedMessages.push(normalized);
+                }
+            }
+
+            if (normalizedMessages.length > 0) {
+                this.enqueueMessages(sessionId, normalizedMessages);
+            }
+
+            this.sessionOldestSeq.set(sessionId, minSeq);
+            this.sessionHasMoreOlder.set(sessionId, !!data.hasMore);
+            return true;
+        } finally {
+            this.sessionLoadingOlder.delete(sessionId);
+        }
     }
 
     private registerPushToken = async () => {
@@ -2292,6 +2411,9 @@ class Sync {
 
 // Global singleton instance
 export const sync = new Sync();
+
+// Ephemeral store for message images (keyed by message localId, used for UI rendering)
+export const messageImageStore = new Map<string, Array<{ base64: string; mediaType: string }>>();
 
 //
 // Init sequence

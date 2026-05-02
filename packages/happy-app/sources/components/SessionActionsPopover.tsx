@@ -121,6 +121,8 @@ export function SessionActionsPopover({
         onAfterDelete,
     });
 
+
+
     const position = React.useMemo(() => {
         if (!anchor) {
             return null;

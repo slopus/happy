@@ -7,13 +7,16 @@ import { type Fastify } from "../types";
 
 const getMessagesQuerySchema = z.object({
     after_seq: z.coerce.number().int().min(0).default(0),
-    limit: z.coerce.number().int().min(1).max(500).default(100)
+    before_seq: z.coerce.number().int().min(0).optional(),
+    limit: z.coerce.number().int().min(1).max(500).default(100),
+    latest: z.coerce.boolean().optional(),
 });
 
 const sendMessagesBodySchema = z.object({
     messages: z.array(z.object({
         content: z.string(),
-        localId: z.string().min(1)
+        localId: z.string().min(1),
+        expiresIn: z.number().int().min(1).optional()
     })).min(1).max(100)
 });
 
@@ -59,7 +62,7 @@ export function v3SessionRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
-        const { after_seq, limit } = request.query;
+        const { after_seq, before_seq, limit, latest } = request.query;
 
         const session = await db.session.findFirst({
             where: {
@@ -71,6 +74,35 @@ export function v3SessionRoutes(app: Fastify) {
 
         if (!session) {
             return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        if (latest || before_seq !== undefined) {
+            const where: { sessionId: string; seq?: { lt: number } } = { sessionId };
+            if (before_seq !== undefined) {
+                where.seq = { lt: before_seq };
+            }
+            const messages = await db.sessionMessage.findMany({
+                where,
+                orderBy: { seq: 'desc' },
+                take: limit + 1,
+                select: {
+                    id: true,
+                    seq: true,
+                    content: true,
+                    localId: true,
+                    createdAt: true,
+                    updatedAt: true
+                }
+            });
+
+            const hasMore = messages.length > limit;
+            const page = hasMore ? messages.slice(0, limit) : messages;
+            page.reverse();
+
+            return reply.send({
+                messages: page.map(toResponseMessage),
+                hasMore
+            });
         }
 
         const messages = await db.sessionMessage.findMany({
@@ -124,7 +156,7 @@ export function v3SessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
-        const firstMessageByLocalId = new Map<string, { localId: string; content: string }>();
+        const firstMessageByLocalId = new Map<string, { localId: string; content: string; expiresIn?: number }>();
         for (const message of messages) {
             if (!firstMessageByLocalId.has(message.localId)) {
                 firstMessageByLocalId.set(message.localId, message);
@@ -163,6 +195,9 @@ export function v3SessionRoutes(app: Fastify) {
             const createdMessages: Omit<SelectedMessage, 'content'>[] = [];
             for (let i = 0; i < newMessages.length; i += 1) {
                 const message = newMessages[i];
+                const expiresAt = message.expiresIn
+                    ? new Date(Date.now() + message.expiresIn * 1000)
+                    : undefined;
                 const createdMessage = await tx.sessionMessage.create({
                     data: {
                         sessionId,
@@ -171,7 +206,8 @@ export function v3SessionRoutes(app: Fastify) {
                             t: 'encrypted',
                             c: message.content
                         },
-                        localId: message.localId
+                        localId: message.localId,
+                        expiresAt
                     },
                     select: {
                         id: true,

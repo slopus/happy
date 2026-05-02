@@ -15,6 +15,7 @@ import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
+import { registerResumeSessionHandler } from "./registerResumeSessionHandler";
 
 interface PermissionsField {
     date: number;
@@ -94,6 +95,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     // When to abort
     session.client.rpcHandlerManager.registerHandler('abort', doAbort); // When abort clicked
     session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When switch clicked
+    registerResumeSessionHandler(session.client.rpcHandlerManager, session, abort); // When resume clicked
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
     // Create permission handler
@@ -264,6 +266,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     try {
         let pending: {
             message: string;
+            images?: import("@/utils/MessageQueue2").ImageAttachment[];
             mode: EnhancedMode;
         } | null = null;
 
@@ -295,9 +298,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             abortFuture = new Future<void>();
             let modeHash: string | null = null;
             let mode: EnhancedMode | null = null;
+            const pendingResumeId = session.consumePendingResume();
             try {
                 const remoteResult = await claudeRemote({
                     sessionId: session.sessionId,
+                    resumeFromSessionId: pendingResumeId,
                     path: session.path,
                     allowedTools: session.allowedTools ?? [],
                     mcpServers: session.mcpServers,
@@ -329,6 +334,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             permissionHandler.handleModeChange(mode.permissionMode);
                             return {
                                 message: msg.message,
+                                images: msg.images,
                                 mode: msg.mode
                             }
                         }

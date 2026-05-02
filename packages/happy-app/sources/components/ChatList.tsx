@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useSession, useSessionMessages } from "@/sync/storage";
-import { FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, View } from 'react-native';
-import { useCallback } from 'react';
+import { ActivityIndicator, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, View } from 'react-native';
+import { useCallback, useState } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
@@ -10,6 +10,7 @@ import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
 import { Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { sync } from '@/sync/sync';
 
 const SCROLL_THRESHOLD = 300;
 
@@ -37,6 +38,12 @@ const ListFooter = React.memo((props: { sessionId: string }) => {
     )
 });
 
+const LoadingOlderIndicator = React.memo(() => (
+    <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+        <ActivityIndicator size="small" />
+    </View>
+));
+
 const ChatListInternal = React.memo((props: {
     metadata: Metadata | null,
     sessionId: string,
@@ -46,6 +53,7 @@ const ChatListInternal = React.memo((props: {
     const flatListRef = React.useRef<FlatList>(null);
     const [showScrollButton, setShowScrollButton] = React.useState(false);
     const isNearBottom = React.useRef(true);
+    const [loadingOlder, setLoadingOlder] = useState(false);
     const keyExtractor = useCallback((item: any) => item.id, []);
     const renderItem = useCallback(({ item }: { item: any }) => (
         <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
@@ -69,6 +77,17 @@ const ChatListInternal = React.memo((props: {
     const scrollToBottom = useCallback(() => {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     }, []);
+
+    // In inverted FlatList, onEndReached fires when user scrolls to the OLDEST messages
+    const handleEndReached = useCallback(async () => {
+        if (loadingOlder) return;
+        setLoadingOlder(true);
+        try {
+            await sync.loadOlderMessages(props.sessionId);
+        } finally {
+            setLoadingOlder(false);
+        }
+    }, [props.sessionId, loadingOlder]);
 
     // On macOS/web, Shift+wheel swaps deltaX/deltaY — restore vertical scrolling
     React.useEffect(() => {
@@ -103,7 +122,9 @@ const ChatListInternal = React.memo((props: {
                 onContentSizeChange={onContentSizeChange}
                 scrollEventThrottle={16}
                 ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
-                ListFooterComponent={<ListHeader />}
+                ListFooterComponent={loadingOlder ? <LoadingOlderIndicator /> : <ListHeader />}
+                onEndReached={handleEndReached}
+                onEndReachedThreshold={0.5}
             />
             {showScrollButton && (
                 <View style={styles.scrollButtonContainer}>

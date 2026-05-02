@@ -297,14 +297,6 @@ const TABLE_CHAR_WIDTH = 8.5;  // approx px per char at 16px default font
 const TABLE_CELL_H_PADDING = 24;
 
 // Row-first layout with content-estimated column widths.
-//
-// - Each column's width is picked from the widest text in that column (header +
-//   rows), clamped to [MIN, MAX]. This gives column-alignment across rows and
-//   lets narrow columns (like "1, 2, 3") stay narrow.
-// - Each row is a flex row — default `alignItems: 'stretch'` makes all cells in
-//   a row match the tallest cell's height.
-// - Wrapped in a horizontal ScrollView so wide tables still scroll instead of
-//   being squashed unreadably.
 function RenderTableBlock(props: {
     headers: MarkdownSpan[][],
     rows: MarkdownSpan[][][],
