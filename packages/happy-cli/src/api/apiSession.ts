@@ -259,7 +259,28 @@ export class ApiSessionClient extends EventEmitter {
         };
     }
 
+    private imageBuffer = new Map<string, Array<{ base64: string; mediaType: string }>>();
+
     private routeIncomingMessage(message: unknown) {
+        const msg = message as any;
+
+        // Buffer ephemeral image messages (sent separately with TTL)
+        if (msg?.role === 'user' && msg?.content?.type === 'images' && msg?.content?.groupId) {
+            this.imageBuffer.set(msg.content.groupId, msg.content.images);
+            setTimeout(() => this.imageBuffer.delete(msg.content.groupId), 60000);
+            return;
+        }
+
+        // Attach buffered images to matching text message
+        if (msg?.role === 'user' && msg?.content?.type === 'text' && msg?.content?.imageGroupId) {
+            const images = this.imageBuffer.get(msg.content.imageGroupId);
+            if (images) {
+                msg.content.images = images;
+                this.imageBuffer.delete(msg.content.imageGroupId);
+            }
+            delete msg.content.imageGroupId;
+        }
+
         const userResult = UserMessageSchema.safeParse(message);
         if (userResult.success) {
             if (this.pendingMessageCallback) {

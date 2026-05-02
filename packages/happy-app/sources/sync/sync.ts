@@ -69,6 +69,7 @@ type V3PostSessionMessagesResponse = {
 type OutboxMessage = {
     localId: string;
     content: string;
+    expiresIn?: number;
 };
 
 type SendMessageOptions = {
@@ -495,12 +496,39 @@ class Sync {
 
         const fallbackModel: string | null = null;
 
+        let pending = this.pendingOutbox.get(sessionId);
+        if (!pending) {
+            pending = [];
+            this.pendingOutbox.set(sessionId, pending);
+        }
+
+        // Send images as separate ephemeral message with TTL (deleted from server after 5 min)
+        const groupId = images && images.length > 0 ? randomUUID() : undefined;
+        if (images && images.length > 0 && groupId) {
+            const imageContent: RawRecord = {
+                role: 'user',
+                content: {
+                    type: 'images',
+                    groupId,
+                    images,
+                },
+                meta: { sentFrom }
+            };
+            const encryptedImageRecord = await encryption.encryptRawRecord(imageContent);
+            pending.push({
+                localId: randomUUID(),
+                content: encryptedImageRecord,
+                expiresIn: 259200
+            });
+        }
+
         // Create user message content with metadata
         const content: RawRecord = {
             role: 'user',
             content: {
                 type: 'text',
-                text
+                text,
+                ...(groupId && { imageGroupId: groupId }),
             },
             meta: {
                 sentFrom,
@@ -513,18 +541,18 @@ class Sync {
         };
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
-        // Add to messages - normalize the raw record
+        // Store images for UI display (keyed by message localId)
+        if (images && images.length > 0) {
+            messageImageStore.set(localId, images);
+        }
+
+        // Add to messages - normalize the raw record (show text message in UI)
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
         if (normalizedMessage) {
             this.enqueueMessages(sessionId, [normalizedMessage]);
         }
 
-        let pending = this.pendingOutbox.get(sessionId);
-        if (!pending) {
-            pending = [];
-            this.pendingOutbox.set(sessionId, pending);
-        }
         pending.push({
             localId,
             content: encryptedRawRecord
@@ -1590,7 +1618,8 @@ class Sync {
                 body: JSON.stringify({
                     messages: batch.map((message) => ({
                         localId: message.localId,
-                        content: message.content
+                        content: message.content,
+                        ...(message.expiresIn && { expiresIn: message.expiresIn })
                     }))
                 }),
                 headers: {
@@ -2292,6 +2321,9 @@ class Sync {
 
 // Global singleton instance
 export const sync = new Sync();
+
+// Ephemeral store for message images (keyed by message localId, used for UI rendering)
+export const messageImageStore = new Map<string, Array<{ base64: string; mediaType: string }>>();
 
 //
 // Init sequence
