@@ -207,6 +207,8 @@ export const it: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pressione lunga apre la finestra di copia',
         hideInactiveSessions: 'Nascondi sessioni inattive',
         hideInactiveSessionsSubtitle: 'Mostra solo le chat attive nella tua lista',
+        archivedSortByValueStarted: 'Data di inizio',
+        archivedSortByValueLastSeen: 'Ultima attività',
         privacy: 'Privacy',
         privacyDescription: 'Disabilita completamente tutte le analisi e la telemetria. Nessun dato verrà inviato a PostHog o ad altri servizi di tracciamento.',
         disableAnalytics: 'Disabilita analisi',

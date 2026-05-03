@@ -190,6 +190,7 @@ describe('settings', () => {
 
                 agentInputEnterToSend: true,
                 hideInactiveSessions: false,
+                archivedSessionsSortBy: 'createdAt',
                 expResumeSession: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,

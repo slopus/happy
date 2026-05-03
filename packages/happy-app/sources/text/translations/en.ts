@@ -223,6 +223,8 @@ export const en: TranslationStructure = {
         markdownCopyV2Subtitle: 'Long press opens copy modal',
         hideInactiveSessions: 'Hide inactive sessions',
         hideInactiveSessionsSubtitle: 'Show only active chats in your list',
+        archivedSortByValueStarted: 'Started',
+        archivedSortByValueLastSeen: 'Last seen',
         privacy: 'Privacy',
         privacyDescription: 'Completely disables all analytics and telemetry. No data will be sent to PostHog or any other tracking service.',
         disableAnalytics: 'Disable Analytics',
