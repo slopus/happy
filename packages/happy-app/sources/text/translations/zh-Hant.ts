@@ -234,6 +234,8 @@ export const zhHant: TranslationStructure = {
         hideInactiveSessionsSubtitle: '僅在清單中顯示活躍的聊天',
         groupToolCalls: '分組工具呼叫',
         groupToolCallsSubtitle: '將連續的工具呼叫摺疊到單一容器中',
+        archivedSortByValueStarted: '開始時間',
+        archivedSortByValueLastSeen: '最近活躍',
         privacy: '隱私',
         privacyDescription: '完全停用所有分析和遙測。不會向 PostHog 或任何其他追蹤服務傳送資料。',
         disableAnalytics: '停用分析',

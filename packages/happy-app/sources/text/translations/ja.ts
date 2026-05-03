@@ -235,6 +235,8 @@ export const ja: TranslationStructure = {
         hideInactiveSessionsSubtitle: 'アクティブなチャットのみをリストに表示',
         groupToolCalls: 'ツール呼び出しをグループ化',
         groupToolCallsSubtitle: '連続するツール呼び出しを1つのコンテナにまとめる',
+        archivedSortByValueStarted: '開始日',
+        archivedSortByValueLastSeen: '最終アクセス',
         privacy: 'プライバシー',
         privacyDescription: 'すべての分析とテレメトリを完全に無効にします。PostHogやその他のトラッキングサービスにデータは送信されません。',
         disableAnalytics: '分析を無効化',

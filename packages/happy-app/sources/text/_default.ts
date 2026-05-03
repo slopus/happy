@@ -232,6 +232,8 @@ export const en = {
         hideInactiveSessionsSubtitle: 'Show only active chats in your list',
         groupToolCalls: 'Group Tool Calls',
         groupToolCallsSubtitle: 'Collapse consecutive tool calls into one container',
+        archivedSortByValueStarted: 'Started',
+        archivedSortByValueLastSeen: 'Last seen',
         privacy: 'Privacy',
         privacyDescription: 'Completely disables all analytics and telemetry. No data will be sent to PostHog or any other tracking service.',
         disableAnalytics: 'Disable Analytics',
