@@ -1995,4 +1995,191 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             expect(normalized).toBeNull();
         });
     });
+
+    describe('Hook system messages (subtype: hook_response)', () => {
+
+        const baseHook = {
+            role: 'agent' as const,
+            content: {
+                type: 'output' as const,
+                data: {
+                    type: 'system',
+                    subtype: 'hook_response',
+                    hook_id: 'h1',
+                    hook_name: 'UserPromptSubmit:workout',
+                    hook_event: 'UserPromptSubmit',
+                    uuid: 'hook-uuid-1',
+                    parentUuid: null,
+                    session_id: 's1',
+                }
+            }
+        };
+
+        it('surfaces systemMessage from a blocking hook (stderr + exit_code 2)', () => {
+            const stderrJson = JSON.stringify({
+                hookSpecificOutput: { decision: 'BLOCK' },
+                systemMessage: '⏰ Workout time! All sessions blocked until 06:40.'
+            });
+            const normalized = normalizeRawMessage('msg-hook-1', null, 1, {
+                ...baseHook,
+                content: {
+                    ...baseHook.content,
+                    data: {
+                        ...baseHook.content.data,
+                        output: stderrJson,
+                        stdout: '',
+                        stderr: stderrJson,
+                        exit_code: 2,
+                        outcome: 'error',
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeTruthy();
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content).toHaveLength(1);
+                expect(normalized.content[0]).toMatchObject({
+                    type: 'text',
+                    text: '⏰ Workout time! All sessions blocked until 06:40.',
+                    uuid: 'hook-uuid-1',
+                    parentUUID: null,
+                });
+            }
+        });
+
+        it('surfaces systemMessage from a passing hook (stdout + exit_code 0)', () => {
+            const stdoutJson = JSON.stringify({
+                continue: true,
+                systemMessage: '🚀 Session started'
+            });
+            const normalized = normalizeRawMessage('msg-hook-2', null, 2, {
+                ...baseHook,
+                content: {
+                    ...baseHook.content,
+                    data: {
+                        ...baseHook.content.data,
+                        hook_event: 'SessionStart',
+                        hook_name: 'SessionStart:summary',
+                        output: stdoutJson,
+                        stdout: stdoutJson,
+                        stderr: '',
+                        exit_code: 0,
+                        outcome: 'success',
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeTruthy();
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content[0]).toMatchObject({
+                    type: 'text',
+                    text: '🚀 Session started',
+                });
+            }
+        });
+
+        it('drops hook_response with no systemMessage (e.g. plain logging hooks)', () => {
+            const normalized = normalizeRawMessage('msg-hook-3', null, 3, {
+                ...baseHook,
+                content: {
+                    ...baseHook.content,
+                    data: {
+                        ...baseHook.content.data,
+                        output: 'Sync started in background\n',
+                        stdout: 'Sync started in background\n',
+                        stderr: '',
+                        exit_code: 0,
+                        outcome: 'success',
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeNull();
+        });
+
+        it('drops hook_response with non-JSON stderr', () => {
+            const normalized = normalizeRawMessage('msg-hook-4', null, 4, {
+                ...baseHook,
+                content: {
+                    ...baseHook.content,
+                    data: {
+                        ...baseHook.content.data,
+                        output: 'Error: command not found\n',
+                        stdout: '',
+                        stderr: 'Error: command not found\n',
+                        exit_code: 127,
+                        outcome: 'error',
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeNull();
+        });
+
+        it('drops hook_started / hook_progress (no systemMessage to show)', () => {
+            const started = normalizeRawMessage('msg-hook-5', null, 5, {
+                ...baseHook,
+                content: {
+                    ...baseHook.content,
+                    data: {
+                        ...baseHook.content.data,
+                        subtype: 'hook_started',
+                    }
+                }
+            } as any);
+            expect(started).toBeNull();
+
+            const progress = normalizeRawMessage('msg-hook-6', null, 6, {
+                ...baseHook,
+                content: {
+                    ...baseHook.content,
+                    data: {
+                        ...baseHook.content.data,
+                        subtype: 'hook_progress',
+                        stdout: 'progress',
+                        stderr: '',
+                        output: 'progress',
+                    }
+                }
+            } as any);
+            expect(progress).toBeNull();
+        });
+
+        it('drops other system subtypes (e.g. init) — they are not user-facing', () => {
+            const normalized = normalizeRawMessage('msg-hook-7', null, 7, {
+                ...baseHook,
+                content: {
+                    ...baseHook.content,
+                    data: {
+                        ...baseHook.content.data,
+                        subtype: 'init',
+                        cwd: '/tmp',
+                        model: 'claude-opus',
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeNull();
+        });
+
+        it('handles malformed JSON in stdout/stderr without throwing', () => {
+            const normalized = normalizeRawMessage('msg-hook-8', null, 8, {
+                ...baseHook,
+                content: {
+                    ...baseHook.content,
+                    data: {
+                        ...baseHook.content.data,
+                        output: '{not valid json',
+                        stdout: '{not valid json',
+                        stderr: '',
+                        exit_code: 0,
+                        outcome: 'success',
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeNull();
+        });
+    });
 });
