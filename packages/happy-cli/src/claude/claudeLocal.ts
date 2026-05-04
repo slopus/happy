@@ -187,6 +187,25 @@ export async function claudeLocal(opts: {
     try {
         // Start the interactive process
         process.stdin.pause();
+
+        // Force blocking I/O on the inherited stdin fd. Node leaves O_NONBLOCK
+        // set after libuv-mode reads (which Ink and our drain helper both do
+        // upstream of this spawn). When the child claude code inherits the fd
+        // and tries to read in blocking mode, EAGAIN comes back instead of
+        // bytes — the visible symptom is duplicated cursors and garbled echo
+        // on macOS/Linux right after a remote→local switch (slopus/happy#301
+        // family). Setting setBlocking(true) here clears O_NONBLOCK before
+        // crossSpawn dups the fd into the child.
+        const stdinHandle = (process.stdin as any)._handle;
+        if (stdinHandle && typeof stdinHandle.setBlocking === 'function') {
+            try {
+                stdinHandle.setBlocking(true);
+                logger.debug('[ClaudeLocal] forced stdin to blocking mode before spawn');
+            } catch (err) {
+                logger.debug('[ClaudeLocal] setBlocking(true) failed: ' + String(err));
+            }
+        }
+
         await new Promise<void>((r, reject) => {
             const args: string[] = []
 

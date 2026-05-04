@@ -436,9 +436,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         permissionHandler.reset();
 
         // Reset Terminal
+        const t0 = Date.now();
+        logger.debug(`[remote]: cleanup begin exitReason=${exitReason} hasInk=${!!inkInstance} rawMode=${(process.stdin as any).isRaw}`);
         if (inkInstance) {
             inkInstance.unmount();
         }
+        logger.debug(`[remote]: ink.unmount() done +${Date.now() - t0}ms rawMode=${(process.stdin as any).isRaw}`);
+
         // Drain any keystrokes that landed in stdin while Ink owned it (e.g.
         // extra spaces from the double-space switch confirmation, or anything
         // typed before the user perceives that the switch has completed) so
@@ -450,9 +454,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             stdin: process.stdin,
             drainMs: 150,
             onDebug: (event) => {
-                logger.debug(`[remote]: stdin drain ${event.bytes}B / ${event.chunks} chunk(s)`);
+                logger.debug(`[remote]: stdin drain ${event.bytes}B / ${event.chunks} chunk(s) +${Date.now() - t0}ms`);
             },
         });
+        logger.debug(`[remote]: cleanup done +${Date.now() - t0}ms rawMode=${(process.stdin as any).isRaw}`);
         messageBuffer.clear();
 
         // Resolve abort future
