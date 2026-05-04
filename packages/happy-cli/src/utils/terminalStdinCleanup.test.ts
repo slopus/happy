@@ -30,13 +30,16 @@ function createFakeStdin() {
         },
         __calls: calls,
         __listenerCount: (event: string) => listeners.get(event)?.size ?? 0,
+        __emit: (event: string, payload: unknown) => {
+            for (const fn of listeners.get(event) ?? []) fn(payload);
+        },
     };
 
     return api;
 }
 
 describe('cleanupStdinAfterInk', () => {
-    it('drains buffered input and pauses stdin', async () => {
+    it('keeps raw mode enabled during the drain window and pauses stdin', async () => {
         vi.useFakeTimers();
         const stdin = createFakeStdin();
 
@@ -44,10 +47,30 @@ describe('cleanupStdinAfterInk', () => {
         await vi.advanceTimersByTimeAsync(60);
         await promise;
 
-        expect(stdin.__calls.some((c) => c.name === 'setRawMode' && c.args[0] === false)).toBe(true);
+        // Raw mode is asserted true at the start.
+        const setRawModeCalls = stdin.__calls.filter((c) => c.name === 'setRawMode');
+        expect(setRawModeCalls[0]?.args[0]).toBe(true);
+        // No setRawMode(false) by default — next consumer (claude) takes over.
+        expect(setRawModeCalls.some((c) => c.args[0] === false)).toBe(false);
+
         expect(stdin.__calls.some((c) => c.name === 'resume')).toBe(true);
         expect(stdin.__calls.some((c) => c.name === 'pause')).toBe(true);
         expect(stdin.__listenerCount('data')).toBe(0);
+
+        vi.useRealTimers();
+    });
+
+    it('restores raw mode to cooked when leaveRawMode is false', async () => {
+        vi.useFakeTimers();
+        const stdin = createFakeStdin();
+
+        const promise = cleanupStdinAfterInk({ stdin: stdin as any, drainMs: 20, leaveRawMode: false });
+        await vi.advanceTimersByTimeAsync(30);
+        await promise;
+
+        const setRawModeCalls = stdin.__calls.filter((c) => c.name === 'setRawMode');
+        expect(setRawModeCalls[0]?.args[0]).toBe(true);
+        expect(setRawModeCalls.at(-1)?.args[0]).toBe(false);
 
         vi.useRealTimers();
     });
@@ -56,10 +79,29 @@ describe('cleanupStdinAfterInk', () => {
         const stdin = createFakeStdin();
         await cleanupStdinAfterInk({ stdin: stdin as any, drainMs: 0 });
 
-        expect(stdin.__calls.some((c) => c.name === 'setRawMode' && c.args[0] === false)).toBe(true);
         expect(stdin.__calls.some((c) => c.name === 'pause')).toBe(true);
         expect(stdin.__calls.some((c) => c.name === 'resume')).toBe(false);
         expect(stdin.__calls.some((c) => c.name === 'on')).toBe(false);
+    });
+
+    it('reports drained byte count to onDebug', async () => {
+        vi.useFakeTimers();
+        const stdin = createFakeStdin();
+        const events: any[] = [];
+
+        const promise = cleanupStdinAfterInk({
+            stdin: stdin as any,
+            drainMs: 30,
+            onDebug: (e) => events.push(e),
+        });
+
+        // Simulate user typing during the drain window.
+        stdin.__emit('data', Buffer.from('  abc'));
+        await vi.advanceTimersByTimeAsync(40);
+        await promise;
+
+        expect(events).toEqual([{ kind: 'drain-byte-count', bytes: 5, chunks: 1 }]);
+        vi.useRealTimers();
     });
 
     it('is a no-op when stdin is not a TTY', async () => {

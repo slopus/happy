@@ -440,10 +440,19 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             inkInstance.unmount();
         }
         // Drain any keystrokes that landed in stdin while Ink owned it (e.g.
-        // extra spaces from the double-space switch confirmation) so they
-        // don't leak into the next interactive child process when local mode
-        // takes stdin back via stdio: 'inherit'.
-        await cleanupStdinAfterInk({ stdin: process.stdin, drainMs: 80 });
+        // extra spaces from the double-space switch confirmation, or anything
+        // typed before the user perceives that the switch has completed) so
+        // they don't leak into the next interactive child process when local
+        // mode takes stdin back via stdio: 'inherit'. Raw mode stays on for
+        // the whole window so the kernel does not echo any in-flight bytes
+        // at whatever screen position Ink last left the cursor.
+        await cleanupStdinAfterInk({
+            stdin: process.stdin,
+            drainMs: 150,
+            onDebug: (event) => {
+                logger.debug(`[remote]: stdin drain ${event.bytes}B / ${event.chunks} chunk(s)`);
+            },
+        });
         messageBuffer.clear();
 
         // Resolve abort future
