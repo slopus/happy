@@ -15,6 +15,7 @@ import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
+import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
 
 interface PermissionsField {
     date: number;
@@ -435,13 +436,14 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         permissionHandler.reset();
 
         // Reset Terminal
-        process.stdin.off('data', abort);
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
-        }
         if (inkInstance) {
             inkInstance.unmount();
         }
+        // Drain any keystrokes that landed in stdin while Ink owned it (e.g.
+        // extra spaces from the double-space switch confirmation) so they
+        // don't leak into the next interactive child process when local mode
+        // takes stdin back via stdio: 'inherit'.
+        await cleanupStdinAfterInk({ stdin: process.stdin, drainMs: 80 });
         messageBuffer.clear();
 
         // Resolve abort future
