@@ -699,6 +699,29 @@ function normalizeSessionEnvelope(
     return null;
 }
 
+/**
+ * Extract a `systemMessage` value from a Claude SDK `hook_response` payload.
+ * Hooks emit JSON on either stdout (typical) or stderr (when exiting non-zero
+ * to block, e.g. exit code 2). The SDK forwards both verbatim. Try `output`
+ * first since the SDK populates it with whichever stream the hook used, then
+ * fall back to stdout/stderr.
+ */
+function extractHookSystemMessage(data: { output?: unknown; stdout?: unknown; stderr?: unknown }): string | null {
+    const candidates = [data.output, data.stdout, data.stderr];
+    for (const candidate of candidates) {
+        if (typeof candidate !== 'string' || candidate.length === 0) continue;
+        try {
+            const parsed = JSON.parse(candidate);
+            if (parsed && typeof parsed === 'object' && typeof parsed.systemMessage === 'string' && parsed.systemMessage.length > 0) {
+                return parsed.systemMessage;
+            }
+        } catch {
+            // Not JSON — hooks can also print plain text. Skip.
+        }
+    }
+    return null;
+}
+
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
     // Zod transform handles normalization during validation
     let parsed = rawRecordSchema.safeParse(raw);
@@ -759,6 +782,34 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                         isSidechain: false,
                         meta: raw.meta,
                     } satisfies NormalizedMessage;
+                }
+                return null;
+            }
+
+            // Handle System messages — surface hook `systemMessage` so users see
+            // hook-generated notes (e.g. UserPromptSubmit/SessionStart hooks that
+            // set `systemMessage` in their JSON output). Claude Code's own UI
+            // shows these; without this branch they were silently dropped.
+            if (raw.content.data.type === 'system') {
+                const data = raw.content.data as any;
+                if (data.subtype === 'hook_response') {
+                    const systemMessage = extractHookSystemMessage(data);
+                    if (systemMessage) {
+                        return {
+                            id,
+                            localId,
+                            createdAt,
+                            role: 'agent',
+                            content: [{
+                                type: 'text' as const,
+                                text: systemMessage,
+                                uuid: data.uuid ?? id,
+                                parentUUID: data.parentUuid ?? null,
+                            }],
+                            isSidechain: false,
+                            meta: raw.meta,
+                        } satisfies NormalizedMessage;
+                    }
                 }
                 return null;
             }
