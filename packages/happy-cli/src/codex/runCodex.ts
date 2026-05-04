@@ -33,6 +33,14 @@ import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
+import type { ReasoningEffort } from './codexAppServerTypes';
+import {
+    createCodexModeState,
+    resolveCodexMessageMode,
+    type CodexMode,
+    type CodexModeState,
+    type CodexPermissionMode,
+} from './modeState';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -57,6 +65,9 @@ export async function runCodex(opts: {
     startedBy?: 'daemon' | 'terminal';
     noSandbox?: boolean;
     resumeThreadId?: string;
+    startupModel?: string;
+    startupEffort?: ReasoningEffort;
+    startupPermissionMode?: CodexPermissionMode;
 }): Promise<void> {
     // Early check: ensure Codex CLI is installed before proceeding
     try {
@@ -71,13 +82,6 @@ export async function runCodex(opts: {
         console.error('Alternatively, use Claude Code:');
         console.error('  \x1b[36mhappy claude\x1b[0m\n');
         process.exit(1);
-    }
-
-    // Use shared PermissionMode type for cross-agent compatibility
-    type PermissionMode = import('@/api/types').PermissionMode;
-    interface EnhancedMode {
-        permissionMode: PermissionMode;
-        model?: string;
     }
 
     //
@@ -203,63 +207,26 @@ export async function runCodex(opts: {
         }
     }
 
-    const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
+    const messageQueue = new MessageQueue2<CodexMode>((mode) => hashObject({
         permissionMode: mode.permissionMode,
         model: mode.model,
+        effort: mode.effort,
     }));
 
-    // Track current overrides to apply per message
-    // Use shared PermissionMode type from api/types for cross-agent compatibility
-    let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
-    let currentModel: string | undefined = undefined;
-
-    // Valid Codex permission modes from remote messages. Matches the modes
-    // the mobile UI exposes for Codex sessions (see modelModeOptions.ts:
-    // getCodexPermissionModes) and mirrors the Gemini validation pattern at
-    // runGemini.ts:222. Anything outside this set is silently ignored — the
-    // previous code blindly cast `message.meta.permissionMode as PermissionMode`
-    // at runtime, meaning a crafted value like `'totally_unsafe'` would be
-    // accepted and then fall through to the `default` branch in
-    // resolveCodexExecutionPolicy() — or worse, an attacker-chosen valid value
-    // could escalate sandbox scope (issue #1092).
-    const VALID_REMOTE_PERMISSION_MODES: readonly PermissionMode[] = [
-        'default',
-        'read-only',
-        'safe-yolo',
-        'yolo',
-    ];
+    let modeState: CodexModeState = createCodexModeState({
+        permissionMode: opts.startupPermissionMode,
+        model: opts.startupModel,
+        effort: opts.startupEffort,
+    });
 
     session.onUserMessage((message) => {
-        // Resolve permission mode (validate against Codex-native modes)
-        let messagePermissionMode = currentPermissionMode;
-        if (message.meta?.permissionMode) {
-            const incoming = message.meta.permissionMode as PermissionMode;
-            if (VALID_REMOTE_PERMISSION_MODES.includes(incoming)) {
-                messagePermissionMode = incoming;
-                currentPermissionMode = messagePermissionMode;
-                logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
-            } else {
-                logger.debug(`[Codex] Ignoring invalid permission mode from user message: ${String(message.meta.permissionMode)}`);
-            }
-        } else {
-            logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
+        const resolved = resolveCodexMessageMode(modeState, message.meta);
+        modeState = resolved.state;
+        if (resolved.ignoredPermissionMode) {
+            logger.debug(`[Codex] Ignoring invalid permission mode from user message: ${resolved.ignoredPermissionMode}`);
         }
-
-        // Resolve model; explicit null resets to default (undefined)
-        let messageModel = currentModel;
-        if (message.meta?.hasOwnProperty('model')) {
-            messageModel = message.meta.model || undefined;
-            currentModel = messageModel;
-            logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
-        } else {
-            logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
-        }
-
-        const enhancedMode: EnhancedMode = {
-            permissionMode: messagePermissionMode || 'default',
-            model: messageModel,
-        };
-        messageQueue.push(message.content.text, enhancedMode);
+        logger.debug(`[Codex] Resolved message mode: permission=${resolved.mode.permissionMode}, model=${resolved.mode.model ?? 'default'}, effort=${resolved.mode.effort ?? 'default'}`);
+        messageQueue.push(message.content.text, resolved.mode);
     });
     let thinking = false;
     let currentTurnId: string | null = null;
@@ -629,22 +596,30 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect done');
 
         if (opts.resumeThreadId) {
+            const startupExecutionPolicy = resolveCodexExecutionPolicy(
+                modeState.currentPermissionMode ?? 'default',
+                client.sandboxEnabled,
+            );
             await resumeExistingThread({
                 client,
                 session,
                 messageBuffer,
                 threadId: opts.resumeThreadId,
                 cwd: process.cwd(),
+                model: modeState.currentModel,
+                approvalPolicy: startupExecutionPolicy.approvalPolicy,
+                sandbox: startupExecutionPolicy.sandbox,
+                effort: modeState.effort,
                 mcpServers,
             });
             first = false;
         }
 
-        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
+        let pending: { message: string; mode: CodexMode; isolate: boolean; hash: string } | null = null;
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
-            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = pending;
+            let message: { message: string; mode: CodexMode; isolate: boolean; hash: string } | null = pending;
             pending = null;
             if (!message) {
                 // Capture the current signal to distinguish idle-abort from queue close
@@ -686,6 +661,7 @@ export async function runCodex(opts: {
                         cwd: process.cwd(),
                         approvalPolicy: executionPolicy.approvalPolicy,
                         sandbox: executionPolicy.sandbox,
+                        effort: message.mode.effort,
                         mcpServers,
                     });
                     session.updateMetadata((currentMetadata) => ({
@@ -702,6 +678,7 @@ export async function runCodex(opts: {
                     model: message.mode.model,
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,
+                    effort: message.mode.effort,
                 });
                 first = false;
 
