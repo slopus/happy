@@ -23,6 +23,29 @@ type ClaudeMapperResult = {
     envelopes: SessionEnvelope[];
 };
 
+/**
+ * Extract a `systemMessage` value from a Claude SDK `hook_response` payload.
+ * Hooks emit JSON on either stdout (typical) or stderr (when exiting non-zero
+ * to block, e.g. exit code 2). The SDK forwards both verbatim. Try `output`
+ * first since the SDK populates it with whichever stream the hook used, then
+ * fall back to stdout/stderr.
+ */
+function extractHookSystemMessage(data: { output?: unknown; stdout?: unknown; stderr?: unknown }): string | null {
+    const candidates = [data.output, data.stdout, data.stderr];
+    for (const candidate of candidates) {
+        if (typeof candidate !== 'string' || candidate.length === 0) continue;
+        try {
+            const parsed = JSON.parse(candidate);
+            if (parsed && typeof parsed === 'object' && typeof parsed.systemMessage === 'string' && parsed.systemMessage.length > 0) {
+                return parsed.systemMessage;
+            }
+        } catch {
+            // Not JSON — hooks can also print plain text. Skip.
+        }
+    }
+    return null;
+}
+
 function isSubagentTool(name: string): boolean {
     return name === 'Task' || name === 'Agent';
 }
@@ -466,6 +489,20 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     }
 
     if (message.type === 'system') {
+        // Surface a hook's `systemMessage` to the chat (e.g. UserPromptSubmit
+        // hook that exits non-zero with `{"systemMessage": "..."}` to block,
+        // or SessionStart hook with a startup banner). The SDK delivers the
+        // JSON in `output`/`stdout` (success) or `stderr` (when the hook
+        // exits non-zero). Emit it as a `service` envelope so the existing
+        // app-side normalizer renders it as agent text.
+        const sysAny = message as any;
+        if (sysAny.subtype === 'hook_response') {
+            const systemMessage = extractHookSystemMessage(sysAny);
+            if (systemMessage) {
+                const turnId = ensureTurn(state, envelopes);
+                envelopes.push(createEnvelope('agent', { t: 'service', text: systemMessage }, { turn: turnId }));
+            }
+        }
         return {
             currentTurnId: state.currentTurnId,
             envelopes,
