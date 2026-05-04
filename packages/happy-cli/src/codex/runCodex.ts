@@ -294,6 +294,7 @@ export async function runCodex(opts: {
                 cwd: process.cwd(),
                 codexHomeDir: process.env.CODEX_HOME,
                 codexThreadId,
+                sandboxConfig,
                 model: modeState.currentModel,
                 effort: modeState.effort,
                 permissionMode: modeState.currentPermissionMode,
@@ -336,6 +337,14 @@ export async function runCodex(opts: {
                     }));
                 }
             }
+        } catch (error) {
+            exitCode = 1;
+            const message = error instanceof Error ? error.message : String(error);
+            session.sendSessionEvent({
+                type: 'message',
+                message: `Codex local launch failed: ${message}`,
+            });
+            logger.warn('[codex]: Local Codex launch failed', error);
         } finally {
             localHandoff = null;
             localTerminate = null;

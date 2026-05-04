@@ -660,8 +660,8 @@ function normalizeSessionEnvelope(
             content: [{
                 type: 'tool-result',
                 tool_use_id: envelope.ev.call,
-                content: result?.content ?? null,
-                is_error: result?.status === 'error',
+                content: null,
+                is_error: false,
                 ...(result ? { result } : {}),
                 uuid: contentUUID,
                 parentUUID

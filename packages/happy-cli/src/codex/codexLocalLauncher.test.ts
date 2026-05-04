@@ -128,6 +128,82 @@ describe('launchNativeCodex', () => {
         });
     });
 
+    it('returns the native exit code when a fresh launch exits before discovery', async () => {
+        const result = await launchNativeCodex({
+            cwd: '/tmp/project',
+            codexHomeDir: '/tmp/codex-home',
+            discoverThreadId: () => new Promise<string>((_resolve, reject) => {
+                setTimeout(() => reject(new Error('Could not discover Codex thread id')), 0);
+            }),
+            spawn: (() => ({
+                once: (event: string, callback: (value: unknown) => void) => {
+                    if (event === 'exit') {
+                        callback(7);
+                    }
+                    return undefined;
+                },
+            })) as never,
+        });
+
+        expect(result).toEqual({ type: 'exit', code: 7 });
+    });
+
+    it('wraps native Codex in the configured Happy sandbox', async () => {
+        const spawnCalls: unknown[] = [];
+        const cleanupCalls: string[] = [];
+
+        const result = await launchNativeCodex({
+            cwd: '/tmp/project',
+            codexThreadId: 'thread-existing',
+            sandboxConfig: {
+                enabled: true,
+                workspaceRoot: '/tmp/project',
+                sessionIsolation: 'workspace',
+                customWritePaths: [],
+                denyReadPaths: [],
+                extraWritePaths: [],
+                denyWritePaths: [],
+                networkMode: 'blocked',
+                allowedDomains: [],
+                deniedDomains: [],
+                allowLocalBinding: false,
+            },
+            initializeSandbox: async (sandboxConfig, cwd) => {
+                expect(sandboxConfig.enabled).toBe(true);
+                expect(cwd).toBe('/tmp/project');
+                return async () => {
+                    cleanupCalls.push('cleanup');
+                };
+            },
+            wrapForSandbox: async (command, args) => ({
+                command: 'sh',
+                args: ['-c', `sandboxed ${command} ${args.join(' ')}`],
+            }),
+            spawn: ((command: string, args: string[], options: Record<string, unknown>) => {
+                spawnCalls.push({ command, args, options });
+                return {
+                    once: (event: string, callback: (value: unknown) => void) => {
+                        if (event === 'exit') {
+                            callback(0);
+                        }
+                        return undefined;
+                    },
+                };
+            }) as never,
+        });
+
+        expect(result).toEqual({ type: 'exit', code: 0, codexThreadId: 'thread-existing' });
+        expect(spawnCalls).toEqual([{
+            command: 'sh',
+            args: ['-c', 'sandboxed codex resume thread-existing'],
+            options: expect.objectContaining({
+                cwd: '/tmp/project',
+                stdio: 'inherit',
+            }),
+        }]);
+        expect(cleanupCalls).toEqual(['cleanup']);
+    });
+
     it('publishes a discovered Codex thread id before the native process exits', async () => {
         const exitCallback: { current: ((value: unknown) => void) | null } = { current: null };
         const discovered: string[] = [];

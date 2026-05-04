@@ -31,8 +31,8 @@ describe('normalizeRawMessage session envelopes', () => {
         expect(normalized?.content).toEqual([expect.objectContaining({
             type: 'tool-result',
             tool_use_id: 'call-1',
-            content: 'stdout text',
-            is_error: true,
+            content: null,
+            is_error: false,
             result: {
                 content: 'stdout text',
                 status: 'error',

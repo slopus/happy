@@ -192,6 +192,7 @@ describe('runCodex local start', () => {
             cwd: process.cwd(),
             codexHomeDir: undefined,
             codexThreadId: 'thread-123',
+            sandboxConfig: undefined,
             model: 'gpt-5.5',
             effort: 'medium',
             permissionMode: 'yolo',
@@ -202,6 +203,51 @@ describe('runCodex local start', () => {
         expect(mocks.session.flush).toHaveBeenCalled();
         expect(mocks.session.close).toHaveBeenCalled();
         expect(exit).toHaveBeenCalledWith(4);
+
+        exit.mockRestore();
+    });
+
+    it('passes configured Happy sandbox settings to native Codex', async () => {
+        const exit = vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+            throw new Error(`exit:${code}`);
+        }) as never);
+        const sandboxConfig = {
+            enabled: true,
+            network: { enabled: false },
+            filesystem: { read: [], write: [] },
+        };
+        mocks.readSettings.mockResolvedValue({ machineId: 'machine-1', sandboxConfig });
+
+        await expect(runCodex({
+            credentials: { token: 'token' } as never,
+            startedBy: 'terminal',
+            startingMode: 'local',
+        })).rejects.toThrow('exit:4');
+
+        expect(mocks.launchNativeCodex).toHaveBeenCalledWith(expect.objectContaining({
+            sandboxConfig,
+        }));
+
+        exit.mockRestore();
+    });
+
+    it('surfaces native Codex discovery failures as Happy session messages', async () => {
+        const exit = vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+            throw new Error(`exit:${code}`);
+        }) as never);
+        mocks.launchNativeCodex.mockRejectedValue(new Error('Ambiguous Codex thread discovery for cwd /tmp/project: one, two'));
+
+        await expect(runCodex({
+            credentials: { token: 'token' } as never,
+            startedBy: 'terminal',
+            startingMode: 'local',
+        })).rejects.toThrow('exit:1');
+
+        expect(mocks.session.sendSessionEvent).toHaveBeenCalledWith({
+            type: 'message',
+            message: expect.stringContaining('Ambiguous Codex thread discovery'),
+        });
+        expect(exit).toHaveBeenCalledWith(1);
 
         exit.mockRestore();
     });
