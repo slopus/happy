@@ -196,6 +196,7 @@ describe('runCodex local start', () => {
             effort: 'medium',
             permissionMode: 'yolo',
             onThreadIdDiscovered: expect.any(Function),
+            onTerminateReady: expect.any(Function),
         }));
         expect(mocks.session.sendSessionDeath).toHaveBeenCalled();
         expect(mocks.session.flush).toHaveBeenCalled();

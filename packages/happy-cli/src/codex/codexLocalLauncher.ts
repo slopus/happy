@@ -102,6 +102,7 @@ export async function launchNativeCodex(opts: {
     discoveryPollMs?: number;
     onThreadIdDiscovered?: (threadId: string) => void;
     onLocalHandoffReady?: (handoff: () => void) => void;
+    onTerminateReady?: (terminate: () => void) => void;
 }): Promise<CodexLauncherResult> {
     const spawn = opts.spawn ?? nodeSpawn;
     const now = opts.now ?? (() => new Date());
@@ -113,6 +114,9 @@ export async function launchNativeCodex(opts: {
     });
     let discoveredThreadId = opts.codexThreadId;
     let handoffRequested = false;
+    opts.onTerminateReady?.(() => {
+        child.kill('SIGTERM');
+    });
     opts.onLocalHandoffReady?.(() => {
         handoffRequested = true;
         if (discoveredThreadId) {

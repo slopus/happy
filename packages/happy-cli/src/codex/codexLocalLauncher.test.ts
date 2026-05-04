@@ -264,4 +264,37 @@ describe('launchNativeCodex', () => {
         await expect(launch).resolves.toEqual({ type: 'switch', codexThreadId: 'thread-discovered' });
         expect(killCalls).toEqual(['SIGTERM']);
     });
+
+    it('exposes a termination callback that kills native Codex without switching modes', async () => {
+        const terminate: { current: (() => void) | null } = { current: null };
+        const exitCallback: { current: ((value: unknown) => void) | null } = { current: null };
+        const killCalls: Array<string | undefined> = [];
+
+        const launch = launchNativeCodex({
+            cwd: '/tmp/project',
+            codexThreadId: 'thread-existing',
+            onTerminateReady: (terminateNative) => {
+                terminate.current = terminateNative;
+            },
+            spawn: (() => ({
+                once: (event: string, callback: (value: unknown) => void) => {
+                    if (event === 'exit') {
+                        exitCallback.current = callback;
+                    }
+                    return undefined;
+                },
+                kill: (signal?: string) => {
+                    killCalls.push(signal);
+                    exitCallback.current?.(null);
+                    return true;
+                },
+            })) as never,
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        terminate.current?.();
+
+        await expect(launch).resolves.toEqual({ type: 'exit', code: 1, codexThreadId: 'thread-existing' });
+        expect(killCalls).toEqual(['SIGTERM']);
+    });
 });

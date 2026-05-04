@@ -224,6 +224,7 @@ export async function runCodex(opts: {
     });
 
     let localHandoff: (() => void) | null = null;
+    let localTerminate: (() => void) | null = null;
     let localHandoffRequested = false;
     let currentRunMode = resolveCodexStartingMode({
         startedBy: opts.startedBy,
@@ -309,8 +310,12 @@ export async function runCodex(opts: {
                         handoff();
                     }
                 },
+                onTerminateReady: (terminate) => {
+                    localTerminate = terminate;
+                },
             });
             localHandoff = null;
+            localTerminate = null;
             if (result.type === 'switch') {
                 switchToRemote = true;
                 localHandoffRequested = false;
@@ -333,6 +338,7 @@ export async function runCodex(opts: {
             }
         } finally {
             localHandoff = null;
+            localTerminate = null;
             if (!switchToRemote) {
                 if (reconnectionHandle) {
                     reconnectionHandle.cancel();
@@ -349,13 +355,6 @@ export async function runCodex(opts: {
         }
         return switchToRemote ? { type: 'switch-to-remote' } : { type: 'exit', code: exitCode };
     };
-
-    if (currentRunMode === 'local') {
-        const localResult = await launchLocalCodexSession(activeCodexThreadId);
-        if (localResult.type === 'exit') {
-            process.exit(localResult.code);
-        }
-    }
 
     // Debug helper: log active handles/requests if DEBUG is enabled
     function logActiveHandles(tag: string) {
@@ -467,6 +466,7 @@ export async function runCodex(opts: {
      */
     const handleKillSession = async () => {
         logger.debug('[Codex] Kill session requested - terminating process');
+        localTerminate?.();
         await handleAbort();
         logger.debug('[Codex] Abort completed, proceeding with termination');
 
@@ -509,6 +509,13 @@ export async function runCodex(opts: {
     session.rpcHandlerManager.registerHandler('abort', handleAbort);
 
     registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
+
+    if (currentRunMode === 'local') {
+        const localResult = await launchLocalCodexSession(activeCodexThreadId);
+        if (localResult.type === 'exit') {
+            process.exit(localResult.code);
+        }
+    }
 
     while (currentRunMode === 'remote') {
         shouldExit = false;
