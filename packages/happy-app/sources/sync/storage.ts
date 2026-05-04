@@ -129,6 +129,7 @@ export type SessionListViewItem =
     | { type: 'header'; title: string }
     | { type: 'active-sessions'; sessions: SessionRowData[] }
     | { type: 'archive-toggle'; hidden: boolean }
+    | { type: 'archive-sort'; current: 'createdAt' | 'lastSeenAt' }
     | { type: 'project-group'; displayPath: string; machine: Machine }
     | { type: 'session'; session: SessionRowData };
 

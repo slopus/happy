@@ -209,6 +209,8 @@ export const ca: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
         hideInactiveSessions: 'Amaga les sessions inactives',
         hideInactiveSessionsSubtitle: 'Mostra només els xats actius a la llista',
+        archivedSortByValueStarted: 'Data d\'inici',
+        archivedSortByValueLastSeen: 'Última activitat',
         privacy: 'Privadesa',
         privacyDescription: 'Desactiva completament tota l\'analítica i telemetria. No s\'enviaran dades a PostHog ni a cap altre servei de seguiment.',
         disableAnalytics: 'Desactivar analítica',
