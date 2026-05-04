@@ -41,6 +41,9 @@ import {
     type CodexModeState,
     type CodexPermissionMode,
 } from './modeState';
+import type { CodexStartingMode } from './cliArgs';
+import { launchNativeCodex } from './codexLocalLauncher';
+import { resolveCodexStartingMode } from './modeLoop';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -68,6 +71,7 @@ export async function runCodex(opts: {
     startupModel?: string;
     startupEffort?: ReasoningEffort;
     startupPermissionMode?: CodexPermissionMode;
+    startingMode?: CodexStartingMode;
 }): Promise<void> {
     // Early check: ensure Codex CLI is installed before proceeding
     try {
@@ -233,10 +237,18 @@ export async function runCodex(opts: {
     let codexStartedSubagents = new Set<string>();
     let codexActiveSubagents = new Set<string>();
     let codexProviderSubagentToSessionSubagent = new Map<string, string>();
-    session.keepAlive(thinking, 'remote');
+    const currentRunMode = resolveCodexStartingMode({
+        startedBy: opts.startedBy,
+        requestedMode: opts.startingMode,
+    });
+    session.updateAgentState((currentState) => ({
+        ...currentState,
+        controlledByUser: currentRunMode === 'local',
+    }));
+    session.keepAlive(thinking, currentRunMode);
     // Periodic keep-alive; store handle so we can clear on exit
     const keepAliveInterval = setInterval(() => {
-        session.keepAlive(thinking, 'remote');
+        session.keepAlive(thinking, currentRunMode);
     }, 2000);
 
     const sendReady = () => {
@@ -255,6 +267,35 @@ export async function runCodex(opts: {
             logger.debug('[Codex] Failed to send ready push', pushError);
         }
     };
+
+    if (currentRunMode === 'local') {
+        let exitCode = 0;
+        try {
+            const result = await launchNativeCodex({
+                cwd: process.cwd(),
+                codexThreadId: opts.resumeThreadId,
+                model: modeState.currentModel,
+                effort: modeState.effort,
+                permissionMode: modeState.currentPermissionMode,
+            });
+            if (result.type === 'exit') {
+                exitCode = result.code;
+            }
+        } finally {
+            if (reconnectionHandle) {
+                reconnectionHandle.cancel();
+            }
+            try {
+                session.sendSessionDeath();
+                await session.flush();
+                await session.close();
+            } catch (e) {
+                logger.debug('[codex]: Error while closing local session', e);
+            }
+            clearInterval(keepAliveInterval);
+        }
+        process.exit(exitCode);
+    }
 
     // Debug helper: log active handles/requests if DEBUG is enabled
     function logActiveHandles(tag: string) {

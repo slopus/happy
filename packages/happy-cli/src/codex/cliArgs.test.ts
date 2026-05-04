@@ -49,6 +49,11 @@ describe('parseCodexStartupArgs', () => {
         expect(parseCodexStartupArgs(['--yolo']).permissionMode).toBe('yolo');
     });
 
+    it('parses happy starting mode with separate and equals syntax', () => {
+        expect(parseCodexStartupArgs(['--happy-starting-mode', 'remote']).startingMode).toBe('remote');
+        expect(parseCodexStartupArgs(['--happy-starting-mode=local']).startingMode).toBe('local');
+    });
+
     it('parses resume combined with model, effort, and permission flags', () => {
         const parsed = parseCodexStartupArgs([
             '--resume',
@@ -58,6 +63,8 @@ describe('parseCodexStartupArgs', () => {
             'high',
             '--permission-mode',
             'safe-yolo',
+            '--happy-starting-mode',
+            'remote',
             '--started-by',
             'daemon',
         ]);
@@ -67,6 +74,7 @@ describe('parseCodexStartupArgs', () => {
             model: 'gpt-5.5',
             effort: 'high',
             permissionMode: 'safe-yolo',
+            startingMode: 'remote',
             args: ['--started-by', 'daemon'],
         });
     });
@@ -87,11 +95,20 @@ describe('parseCodexStartupArgs', () => {
         expect(() => parseCodexStartupArgs(['--permission-mode='])).toThrow(
             'Codex permission mode requires a value: happy codex --permission-mode <mode>',
         );
+        expect(() => parseCodexStartupArgs(['--happy-starting-mode='])).toThrow(
+            'Codex starting mode requires a value: happy codex --happy-starting-mode <local|remote>',
+        );
     });
 
     it('throws for invalid permission mode', () => {
         expect(() => parseCodexStartupArgs(['--permission-mode', 'bypassPermissions'])).toThrow(
             'Invalid Codex permission mode "bypassPermissions". Expected one of: default, read-only, safe-yolo, yolo.',
+        );
+    });
+
+    it('throws for invalid happy starting mode', () => {
+        expect(() => parseCodexStartupArgs(['--happy-starting-mode', 'background'])).toThrow(
+            'Invalid Codex starting mode "background". Expected one of: local, remote.',
         );
     });
 

@@ -57,6 +57,10 @@ describe('handleCodexCommand', () => {
       startedBy: 'terminal',
       noSandbox: false,
       resumeThreadId: undefined,
+      startupModel: undefined,
+      startupEffort: undefined,
+      startupPermissionMode: undefined,
+      startingMode: undefined,
     })
     expect(
       mocks.mockEnsureDaemonRunning.mock.invocationCallOrder[0],
@@ -80,6 +84,10 @@ describe('handleCodexCommand', () => {
       startedBy: 'daemon',
       noSandbox: true,
       resumeThreadId: 'thread-123',
+      startupModel: undefined,
+      startupEffort: undefined,
+      startupPermissionMode: undefined,
+      startingMode: undefined,
     })
   })
 
@@ -102,6 +110,28 @@ describe('handleCodexCommand', () => {
       startupModel: 'gpt-5.5',
       startupEffort: 'medium',
       startupPermissionMode: 'yolo',
+      startingMode: undefined,
+    })
+  })
+
+  it('passes parsed starting mode through to runCodex', async () => {
+    mocks.mockExtractCodexResumeFlag.mockReturnValue({
+      resumeThreadId: null,
+      startingMode: 'remote',
+      args: ['--started-by', 'terminal'],
+    })
+
+    await handleCodexCommand(['--happy-starting-mode', 'remote', '--started-by', 'terminal'])
+
+    expect(mocks.mockRunCodex).toHaveBeenCalledWith({
+      credentials: { token: 'token' },
+      startedBy: 'terminal',
+      noSandbox: false,
+      resumeThreadId: undefined,
+      startupModel: undefined,
+      startupEffort: undefined,
+      startupPermissionMode: undefined,
+      startingMode: 'remote',
     })
   })
 })

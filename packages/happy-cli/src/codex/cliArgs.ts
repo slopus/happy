@@ -3,12 +3,16 @@ import type { CodexPermissionMode } from './modeState';
 
 const VALID_CODEX_EFFORTS: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 const VALID_CODEX_PERMISSION_MODES: readonly CodexPermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+const VALID_CODEX_STARTING_MODES = ['local', 'remote'] as const;
+
+export type CodexStartingMode = typeof VALID_CODEX_STARTING_MODES[number];
 
 export type CodexStartupArgs = {
     resumeThreadId: string | null;
     model?: string;
     effort?: ReasoningEffort;
     permissionMode?: CodexPermissionMode;
+    startingMode?: CodexStartingMode;
     args: string[];
 };
 
@@ -47,6 +51,14 @@ function parsePermissionMode(value: string): CodexPermissionMode {
     throw new Error(`Invalid Codex permission mode "${value}". Expected one of: ${VALID_CODEX_PERMISSION_MODES.join(', ')}.`);
 }
 
+function parseStartingMode(value: string): CodexStartingMode {
+    if (VALID_CODEX_STARTING_MODES.includes(value as CodexStartingMode)) {
+        return value as CodexStartingMode;
+    }
+
+    throw new Error(`Invalid Codex starting mode "${value}". Expected one of: ${VALID_CODEX_STARTING_MODES.join(', ')}.`);
+}
+
 function setPermissionMode(current: CodexPermissionMode | undefined, next: CodexPermissionMode): CodexPermissionMode {
     if (current !== undefined) {
         throw new Error('Codex permission mode can only be provided once.');
@@ -60,6 +72,7 @@ export function parseCodexStartupArgs(args: string[]): CodexStartupArgs {
     let model: string | undefined = undefined;
     let effort: ReasoningEffort | undefined = undefined;
     let permissionMode: CodexPermissionMode | undefined = undefined;
+    let startingMode: CodexStartingMode | undefined = undefined;
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
@@ -114,6 +127,13 @@ export function parseCodexStartupArgs(args: string[]): CodexStartupArgs {
             continue;
         }
 
+        if (arg === '--happy-starting-mode' || arg.startsWith('--happy-starting-mode=')) {
+            const parsed = readFlagValue(args, i, '--happy-starting-mode', 'Codex starting mode requires a value: happy codex --happy-starting-mode <local|remote>');
+            startingMode = parseStartingMode(parsed.value);
+            i = parsed.nextIndex;
+            continue;
+        }
+
         if (arg === '--yolo') {
             permissionMode = setPermissionMode(permissionMode, 'yolo');
             continue;
@@ -127,6 +147,7 @@ export function parseCodexStartupArgs(args: string[]): CodexStartupArgs {
         ...(model !== undefined ? { model } : {}),
         ...(effort !== undefined ? { effort } : {}),
         ...(permissionMode !== undefined ? { permissionMode } : {}),
+        ...(startingMode !== undefined ? { startingMode } : {}),
         args: remainingArgs,
     };
 }

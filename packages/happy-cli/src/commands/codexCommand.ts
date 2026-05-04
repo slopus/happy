@@ -26,5 +26,6 @@ export async function handleCodexCommand(args: string[]): Promise<void> {
     startupModel: codexArgs.model,
     startupEffort: codexArgs.effort,
     startupPermissionMode: codexArgs.permissionMode,
+    startingMode: codexArgs.startingMode,
   })
 }
