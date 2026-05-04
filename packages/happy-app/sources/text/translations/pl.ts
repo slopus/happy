@@ -231,6 +231,8 @@ export const pl: TranslationStructure = {
         disableAnalytics: 'Wyłącz analitykę',
         analyticsDisabled: 'Wszystkie śledzenie i telemetria wyłączone',
         analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
+        imageUpload: 'Przesyłanie obrazów',
+        imageUploadSubtitle: 'Dołącz obrazy do wiadomości, aby Claude mógł je przeanalizować',
     },
 
     errors: {
@@ -945,6 +947,15 @@ export const pl: TranslationStructure = {
         usageOverTime: 'Użycie w czasie',
         byModel: 'Według modelu',
         noData: 'Brak danych o użyciu',
+    },
+
+    imageUpload: {
+        permissionTitle: 'Dostęp do biblioteki zdjęć',
+        permissionMessage: 'Zezwól na dostęp do biblioteki zdjęć, aby załączać obrazy do wiadomości.',
+        limitTitle: 'Osiągnięto limit obrazów',
+        limitMessage: ({ max }: { max: number }) => `Możesz dołączyć maksymalnie ${max} obrazów na wiadomość.`,
+        fileTooLargeTitle: 'Plik zbyt duży',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" przekracza limit ${maxMb}MB i nie został dodany.`,
     },
 
     feed: {

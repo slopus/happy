@@ -214,6 +214,8 @@ export const zhHant: TranslationStructure = {
         disableAnalytics: '停用分析',
         analyticsDisabled: '所有追蹤和遙測已停用',
         analyticsEnabled: '匿名使用分析已啟用',
+        imageUpload: '圖片上傳',
+        imageUploadSubtitle: '將圖片附加到訊息中讓 Claude 分析',
     },
 
     errors: {
@@ -915,6 +917,15 @@ export const zhHant: TranslationStructure = {
         usageOverTime: '使用趨勢',
         byModel: '按模型',
         noData: '暫無使用資料',
+    },
+
+    imageUpload: {
+        permissionTitle: '存取照片圖庫',
+        permissionMessage: '允許存取您的照片圖庫以在訊息中附加圖片。',
+        limitTitle: '已達到圖片限制',
+        limitMessage: ({ max }: { max: number }) => `每則訊息最多可附加 ${max} 張圖片。`,
+        fileTooLargeTitle: '檔案太大',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}"超過了 ${maxMb}MB 的限制，未能新增。`,
     },
 
     feed: {

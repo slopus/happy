@@ -22,24 +22,30 @@ export class Encryption {
         // Derive anonymous ID
         const anonID = encodeHex((await deriveKey(masterSecret, 'Happy Coder', ['analytics', 'id']))).slice(0, 16).toLowerCase();
 
+        // Derive master blob key for legacy sessions (those with no per-session dataKey)
+        const masterBlobKey = await deriveKey(masterSecret, 'Happy Blobs', ['master']);
+
         // Create encryption
-        return new Encryption(anonID, masterSecret, contentKeyPair);
+        return new Encryption(anonID, masterSecret, contentKeyPair, masterBlobKey);
     }
 
     private readonly legacyEncryption: SecretBoxEncryption;
     private readonly contentKeyPair: sodium.KeyPair;
+    private readonly masterBlobKey: Uint8Array;
     readonly anonID: string;
     readonly contentDataKey: Uint8Array;
 
     // Session and machine encryption management
     private sessionEncryptions = new Map<string, SessionEncryption>();
     private machineEncryptions = new Map<string, MachineEncryption>();
+    private sessionBlobKeys = new Map<string, Uint8Array>();
     private cache: EncryptionCache;
 
-    private constructor(anonID: string, masterSecret: Uint8Array, contentKeyPair: sodium.KeyPair) {
+    private constructor(anonID: string, masterSecret: Uint8Array, contentKeyPair: sodium.KeyPair, masterBlobKey: Uint8Array) {
         this.anonID = anonID;
         this.contentKeyPair = contentKeyPair;
         this.legacyEncryption = new SecretBoxEncryption(masterSecret);
+        this.masterBlobKey = masterBlobKey;
         this.cache = new EncryptionCache();
         this.contentDataKey = contentKeyPair.publicKey;
     }
@@ -80,6 +86,15 @@ export class Encryption {
                 this.cache
             );
             this.sessionEncryptions.set(sessionId, sessionEnc);
+
+            // Derive blob key for this session.
+            // Legacy sessions (null dataKey) use the master blob key.
+            // Newer sessions derive a subkey from their own dataKey so blobs
+            // are cryptographically isolated from message encryption.
+            const blobKey = dataKey
+                ? await deriveKey(dataKey, 'Happy Blobs', ['session'])
+                : this.masterBlobKey;
+            this.sessionBlobKeys.set(sessionId, blobKey);
         }
     }
 
@@ -96,8 +111,19 @@ export class Encryption {
      */
     removeSessionEncryption(sessionId: string): void {
         this.sessionEncryptions.delete(sessionId);
+        this.sessionBlobKeys.delete(sessionId);
         // Also clear any cached data for this session
         this.cache.clearSessionCache(sessionId);
+    }
+
+    /**
+     * Get the 32-byte NaCl secretbox key for encrypting binary blobs
+     * (image attachments) in a session. Distinct from the message encryption
+     * key to maintain cryptographic separation.
+     * Returns null if the session has not been initialized.
+     */
+    getSessionBlobKey(sessionId: string): Uint8Array | null {
+        return this.sessionBlobKeys.get(sessionId) ?? null;
     }
 
     //

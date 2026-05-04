@@ -230,6 +230,36 @@ export const UserMessageSchema = z.object({
 
 export type UserMessage = z.infer<typeof UserMessageSchema>
 
+/**
+ * File event message — sent by the app as a session envelope before the text message.
+ * Contains a ref pointing to the encrypted blob on the server.
+ */
+export const FileEventMessageSchema = z.object({
+  role: z.literal('session'),
+  content: z.object({
+    type: z.literal('session'),
+    data: z.object({
+      id: z.string(),
+      time: z.number(),
+      role: z.literal('user'),
+      ev: z.object({
+        t: z.literal('file'),
+        ref: z.string(),
+        name: z.string(),
+        size: z.number(),
+        mimeType: z.string().optional(),
+        image: z.object({
+          width: z.number(),
+          height: z.number(),
+          thumbhash: z.string(),
+        }).optional(),
+      }),
+    }),
+  }),
+})
+
+export type FileEventMessage = z.infer<typeof FileEventMessageSchema>
+
 export const AgentMessageSchema = z.object({
   role: z.literal('agent'),
   content: z.object({
