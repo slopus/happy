@@ -21,7 +21,7 @@ import { getIntegrationEnv } from "@/testing/currentIntegrationEnv";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const DEFAULT_MODEL = "gpt-5.2-codex";
+const DEFAULT_MODEL = process.env.CODEX_INTEGRATION_MODEL;
 const integrationEnv = getIntegrationEnv();
 
 type PermissionPolicy = "approve" | "deny" | "cancel" | "hold";
