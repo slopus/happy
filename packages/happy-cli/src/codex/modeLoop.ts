@@ -1,6 +1,8 @@
 import type { CodexStartingMode } from './cliArgs';
 
-export type CodexLauncherResult = { type: 'switch' } | { type: 'exit'; code: number };
+export type CodexLauncherResult =
+    | { type: 'switch' }
+    | { type: 'exit'; code: number; codexThreadId?: string };
 export type CodexRemoteLauncherResult = 'switch' | 'exit';
 
 export function resolveCodexStartingMode(opts: {

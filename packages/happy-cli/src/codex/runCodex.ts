@@ -271,15 +271,34 @@ export async function runCodex(opts: {
     if (currentRunMode === 'local') {
         let exitCode = 0;
         try {
+            if (opts.resumeThreadId) {
+                session.updateMetadata((currentMetadata) => ({
+                    ...currentMetadata,
+                    codexThreadId: opts.resumeThreadId,
+                }));
+            }
             const result = await launchNativeCodex({
                 cwd: process.cwd(),
+                codexHomeDir: process.env.CODEX_HOME,
                 codexThreadId: opts.resumeThreadId,
                 model: modeState.currentModel,
                 effort: modeState.effort,
                 permissionMode: modeState.currentPermissionMode,
+                onThreadIdDiscovered: (codexThreadId) => {
+                    session.updateMetadata((currentMetadata) => ({
+                        ...currentMetadata,
+                        codexThreadId,
+                    }));
+                },
             });
             if (result.type === 'exit') {
                 exitCode = result.code;
+                if (result.codexThreadId) {
+                    session.updateMetadata((currentMetadata) => ({
+                        ...currentMetadata,
+                        codexThreadId: result.codexThreadId,
+                    }));
+                }
             }
         } finally {
             if (reconnectionHandle) {

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     session: {
         onUserMessage: vi.fn(),
         keepAlive: vi.fn(),
+        updateMetadata: vi.fn(),
         updateAgentState: vi.fn(),
         sendSessionDeath: vi.fn(),
         flush: vi.fn(),
@@ -71,6 +72,7 @@ describe('runCodex local start', () => {
         mocks.notifyDaemonSessionStarted.mockResolvedValue({});
         mocks.launchNativeCodex.mockResolvedValue({ type: 'exit', code: 4 });
         mocks.session.updateAgentState.mockImplementation((updater) => updater({}));
+        mocks.session.updateMetadata.mockImplementation((updater) => updater({}));
         mocks.session.flush.mockResolvedValue(undefined);
         mocks.session.close.mockResolvedValue(undefined);
     });
@@ -92,17 +94,44 @@ describe('runCodex local start', () => {
 
         expect(mocks.session.keepAlive).toHaveBeenCalledWith(false, 'local');
         expect(mocks.session.updateAgentState).toHaveBeenCalled();
-        expect(mocks.launchNativeCodex).toHaveBeenCalledWith({
+        expect(mocks.session.updateMetadata).toHaveBeenCalledWith(expect.any(Function));
+        expect(mocks.launchNativeCodex).toHaveBeenCalledWith(expect.objectContaining({
             cwd: process.cwd(),
+            codexHomeDir: undefined,
             codexThreadId: 'thread-123',
             model: 'gpt-5.5',
             effort: 'medium',
             permissionMode: 'yolo',
-        });
+            onThreadIdDiscovered: expect.any(Function),
+        }));
         expect(mocks.session.sendSessionDeath).toHaveBeenCalled();
         expect(mocks.session.flush).toHaveBeenCalled();
         expect(mocks.session.close).toHaveBeenCalled();
         expect(exit).toHaveBeenCalledWith(4);
+
+        exit.mockRestore();
+    });
+
+    it('persists a discovered Codex thread id after a fresh local session', async () => {
+        const exit = vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+            throw new Error(`exit:${code}`);
+        }) as never);
+        mocks.launchNativeCodex.mockResolvedValue({
+            type: 'exit',
+            code: 0,
+            codexThreadId: 'thread-discovered',
+        });
+
+        await expect(runCodex({
+            credentials: { token: 'token' } as never,
+            startedBy: 'terminal',
+            startingMode: 'local',
+        })).rejects.toThrow('exit:0');
+
+        const metadataUpdater = mocks.session.updateMetadata.mock.calls
+            .map((call) => call[0])
+            .find((updater) => typeof updater === 'function' && updater({}).codexThreadId === 'thread-discovered');
+        expect(metadataUpdater).toBeDefined();
 
         exit.mockRestore();
     });

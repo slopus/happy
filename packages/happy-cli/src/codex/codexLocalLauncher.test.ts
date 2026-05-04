@@ -63,6 +63,7 @@ describe('launchNativeCodex', () => {
 
         const result = await launchNativeCodex({
             cwd: '/tmp/project',
+            codexThreadId: 'thread-existing',
             model: 'gpt-5.5',
             effort: 'medium',
             permissionMode: 'yolo',
@@ -79,10 +80,12 @@ describe('launchNativeCodex', () => {
             }) as never,
         });
 
-        expect(result).toEqual({ type: 'exit', code: 0 });
+        expect(result).toEqual({ type: 'exit', code: 0, codexThreadId: 'thread-existing' });
         expect(spawnCalls).toEqual([{
             command: 'codex',
             args: [
+                'resume',
+                'thread-existing',
                 '--model',
                 'gpt-5.5',
                 '-c',
@@ -94,5 +97,98 @@ describe('launchNativeCodex', () => {
                 stdio: 'inherit',
             }),
         }]);
+    });
+
+    it('returns a discovered Codex thread id for fresh local sessions', async () => {
+        const result = await launchNativeCodex({
+            cwd: '/tmp/project',
+            codexHomeDir: '/tmp/codex-home',
+            now: () => new Date('2026-05-04T11:00:00.000Z'),
+            discoverThreadId: async ({ startedAt, finishedAt }) => {
+                expect(startedAt).toEqual(new Date('2026-05-04T11:00:00.000Z'));
+                expect(finishedAt).toEqual(new Date('2026-05-04T11:00:00.000Z'));
+                return 'thread-discovered';
+            },
+            spawn: ((command: string, args: string[], options: Record<string, unknown>) => {
+                return {
+                    once: (event: string, callback: (value: unknown) => void) => {
+                        if (event === 'exit') {
+                            callback(0);
+                        }
+                        return undefined;
+                    },
+                };
+            }) as never,
+        });
+
+        expect(result).toEqual({
+            type: 'exit',
+            code: 0,
+            codexThreadId: 'thread-discovered',
+        });
+    });
+
+    it('publishes a discovered Codex thread id before the native process exits', async () => {
+        const exitCallback: { current: ((value: unknown) => void) | null } = { current: null };
+        const discovered: string[] = [];
+        const launch = launchNativeCodex({
+            cwd: '/tmp/project',
+            codexHomeDir: '/tmp/codex-home',
+            now: () => new Date('2026-05-04T11:00:00.000Z'),
+            discoverThreadId: async () => 'thread-discovered',
+            onThreadIdDiscovered: (threadId) => {
+                discovered.push(threadId);
+            },
+            spawn: (() => ({
+                once: (event: string, callback: (value: unknown) => void) => {
+                    if (event === 'exit') {
+                        exitCallback.current = callback;
+                    }
+                    return undefined;
+                },
+            })) as never,
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(discovered).toEqual(['thread-discovered']);
+
+        if (!exitCallback.current) {
+            throw new Error('exit callback was not registered');
+        }
+        exitCallback.current(0);
+        await expect(launch).resolves.toEqual({
+            type: 'exit',
+            code: 0,
+            codexThreadId: 'thread-discovered',
+        });
+    });
+
+    it('terminates the native process when discovery rejects while it is still running', async () => {
+        const exitCallback: { current: ((value: unknown) => void) | null } = { current: null };
+        const killCalls: Array<string | undefined> = [];
+        const launch = launchNativeCodex({
+            cwd: '/tmp/project',
+            codexHomeDir: '/tmp/codex-home',
+            now: () => new Date('2026-05-04T11:00:00.000Z'),
+            discoverThreadId: async () => {
+                throw new Error('Ambiguous Codex thread discovery for cwd /tmp/project: one, two');
+            },
+            spawn: (() => ({
+                once: (event: string, callback: (value: unknown) => void) => {
+                    if (event === 'exit') {
+                        exitCallback.current = callback;
+                    }
+                    return undefined;
+                },
+                kill: (signal?: string) => {
+                    killCalls.push(signal);
+                    exitCallback.current?.(null);
+                    return true;
+                },
+            })) as never,
+        });
+
+        await expect(launch).rejects.toThrow('Ambiguous Codex thread discovery');
+        expect(killCalls).toEqual(['SIGTERM']);
     });
 });
