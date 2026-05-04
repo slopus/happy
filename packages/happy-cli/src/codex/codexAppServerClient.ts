@@ -126,6 +126,7 @@ export class CodexAppServerClient {
         cwd?: string;
         approvalPolicy?: ApprovalPolicy;
         sandbox?: SandboxMode;
+        effort?: ReasoningEffort;
         mcpServers?: Record<string, unknown>;
     } | null = null;
 
@@ -549,8 +550,18 @@ export class CodexAppServerClient {
         await this.disconnectInternal();
     }
 
-    private buildThreadConfig(mcpServers?: Record<string, unknown>): Record<string, unknown> | null {
-        return mcpServers ? { mcp_servers: mcpServers } : null;
+    private buildThreadConfig(opts?: {
+        mcpServers?: Record<string, unknown>;
+        effort?: ReasoningEffort;
+    }): Record<string, unknown> | null {
+        const config: Record<string, unknown> = {};
+        if (opts?.mcpServers) {
+            config.mcp_servers = opts.mcpServers;
+        }
+        if (opts?.effort) {
+            config.model_reasoning_effort = opts.effort;
+        }
+        return Object.keys(config).length > 0 ? config : null;
     }
 
     private rememberThreadDefaults(opts: {
@@ -558,6 +569,7 @@ export class CodexAppServerClient {
         cwd?: string;
         approvalPolicy?: ApprovalPolicy;
         sandbox?: SandboxMode;
+        effort?: ReasoningEffort;
         mcpServers?: Record<string, unknown>;
     }): void {
         this.threadDefaults = {
@@ -565,6 +577,7 @@ export class CodexAppServerClient {
             cwd: opts.cwd,
             approvalPolicy: opts.approvalPolicy,
             sandbox: opts.sandbox,
+            effort: opts.effort,
             mcpServers: opts.mcpServers,
         };
     }
@@ -576,6 +589,7 @@ export class CodexAppServerClient {
         cwd?: string;
         approvalPolicy?: ApprovalPolicy;
         sandbox?: SandboxMode;
+        effort?: ReasoningEffort;
         mcpServers?: Record<string, unknown>;
     }): Promise<{ threadId: string; model: string }> {
         const params: NewConversationParams = {
@@ -585,7 +599,7 @@ export class CodexAppServerClient {
             cwd: opts.cwd ?? process.cwd(),
             approvalPolicy: opts.approvalPolicy ?? null,
             sandbox: opts.sandbox ?? null,
-            config: this.buildThreadConfig(opts.mcpServers),
+            config: this.buildThreadConfig({ mcpServers: opts.mcpServers, effort: opts.effort }),
             baseInstructions: null,
             developerInstructions: null,
             compactPrompt: null,
@@ -608,6 +622,7 @@ export class CodexAppServerClient {
         cwd?: string;
         approvalPolicy?: ApprovalPolicy;
         sandbox?: SandboxMode;
+        effort?: ReasoningEffort;
         mcpServers?: Record<string, unknown>;
     }): Promise<{ threadId: string; model: string }> {
         const threadId = opts?.threadId ?? this._threadId;
@@ -623,7 +638,10 @@ export class CodexAppServerClient {
             cwd: opts?.cwd ?? defaults.cwd ?? process.cwd(),
             approvalPolicy: opts?.approvalPolicy ?? defaults.approvalPolicy ?? null,
             sandbox: opts?.sandbox ?? defaults.sandbox ?? null,
-            config: this.buildThreadConfig(opts?.mcpServers ?? defaults.mcpServers),
+            config: this.buildThreadConfig({
+                mcpServers: opts?.mcpServers ?? defaults.mcpServers,
+                effort: opts?.effort ?? defaults.effort,
+            }),
             baseInstructions: null,
             developerInstructions: null,
             persistExtendedHistory: true,
@@ -637,6 +655,7 @@ export class CodexAppServerClient {
             cwd: opts?.cwd ?? defaults.cwd,
             approvalPolicy: opts?.approvalPolicy ?? defaults.approvalPolicy,
             sandbox: opts?.sandbox ?? defaults.sandbox,
+            effort: opts?.effort ?? defaults.effort,
             mcpServers: opts?.mcpServers ?? defaults.mcpServers,
         });
         logger.debug('[CodexAppServer] Thread resumed:', this._threadId);

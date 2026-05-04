@@ -1,7 +1,8 @@
 import type { ApprovalPolicy, SandboxMode } from './codexAppServerTypes';
+import type { CodexPermissionMode } from './modeState';
 
 export function resolveCodexExecutionPolicy(
-    permissionMode: import('@/api/types').PermissionMode,
+    permissionMode: import('@/api/types').PermissionMode | CodexPermissionMode,
     sandboxManagedByHappy: boolean,
 ): { approvalPolicy: ApprovalPolicy; sandbox: SandboxMode } {
     if (sandboxManagedByHappy) {
@@ -17,7 +18,7 @@ export function resolveCodexExecutionPolicy(
             case 'default': return 'untrusted';                    // Ask for non-trusted commands
             case 'read-only': return 'never';                      // Never ask, read-only enforced by sandbox
             case 'safe-yolo': return 'on-failure';                 // Auto-run, ask only on failure
-            case 'yolo': return 'on-failure';                      // Auto-run, ask only on failure
+            case 'yolo': return 'never';                           // Native dangerous bypass
             // Defensive fallback for Claude-specific modes (backward compatibility)
             case 'bypassPermissions': return 'on-failure';         // Full access: map to yolo behavior
             case 'acceptEdits': return 'on-request';               // Let model decide (closest to auto-approve edits)

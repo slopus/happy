@@ -17,7 +17,7 @@ vi.mock('@/codex/runCodex', () => ({
 }))
 
 vi.mock('@/codex/cliArgs', () => ({
-  extractCodexResumeFlag: mocks.mockExtractCodexResumeFlag,
+  parseCodexStartupArgs: mocks.mockExtractCodexResumeFlag,
 }))
 
 vi.mock('@/utils/sandboxFlags', () => ({
@@ -80,6 +80,28 @@ describe('handleCodexCommand', () => {
       startedBy: 'daemon',
       noSandbox: true,
       resumeThreadId: 'thread-123',
+    })
+  })
+
+  it('passes parsed codex startup defaults through to runCodex', async () => {
+    mocks.mockExtractCodexResumeFlag.mockReturnValue({
+      resumeThreadId: null,
+      model: 'gpt-5.5',
+      effort: 'medium',
+      permissionMode: 'yolo',
+      args: ['--started-by', 'terminal'],
+    })
+
+    await handleCodexCommand(['--model', 'gpt-5.5', '--effort', 'medium', '--yolo', '--started-by', 'terminal'])
+
+    expect(mocks.mockRunCodex).toHaveBeenCalledWith({
+      credentials: { token: 'token' },
+      startedBy: 'terminal',
+      noSandbox: false,
+      resumeThreadId: undefined,
+      startupModel: 'gpt-5.5',
+      startupEffort: 'medium',
+      startupPermissionMode: 'yolo',
     })
   })
 })

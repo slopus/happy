@@ -603,9 +603,10 @@ describe('CodexAppServerClient sandbox integration', () => {
             cwd: '/tmp/project',
             approvalPolicy: 'never',
             sandbox: 'danger-full-access',
+            effort: 'medium',
         });
 
-        await expect(client.sendTurnAndWait('patch the file')).resolves.toEqual({ aborted: false });
+        await expect(client.sendTurnAndWait('patch the file', { effort: 'medium' })).resolves.toEqual({ aborted: false });
 
         expect(events).toEqual(expect.arrayContaining([
             expect.objectContaining({
@@ -709,6 +710,120 @@ describe('CodexAppServerClient sandbox integration', () => {
                 },
             },
             reason: null,
+        }));
+
+        await client.disconnect();
+    });
+
+    it('passes reasoning effort through thread config and turn start requests', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3005,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-effort', path: '/tmp/thread-effort' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: 'medium',
+                            },
+                        });
+                    }, 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: { turn: { id: 'turn-effort' } },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-effort',
+                                turnId: 'turn-effort',
+                                usage: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+            effort: 'medium',
+        });
+        await expect(client.sendTurnAndWait('hello', { effort: 'medium' })).resolves.toEqual({ aborted: false });
+
+        expect(requests.find((msg) => msg.method === 'thread/start')?.params).toEqual(expect.objectContaining({
+            config: expect.objectContaining({
+                model_reasoning_effort: 'medium',
+            }),
+        }));
+        expect(requests.find((msg) => msg.method === 'turn/start')?.params).toEqual(expect.objectContaining({
+            effort: 'medium',
+        }));
+
+        await client.disconnect();
+    });
+
+    it('passes reasoning effort through resume thread config', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3006,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-effort-resume', path: '/tmp/thread-effort-resume' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: 'medium',
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.resumeThread({
+            threadId: 'thread-effort-resume',
+            effort: 'medium',
+            mcpServers: { happy: { command: 'happy-mcp' } },
+        });
+
+        expect(requests.find((msg) => msg.method === 'thread/resume')?.params).toEqual(expect.objectContaining({
+            config: expect.objectContaining({
+                mcp_servers: { happy: { command: 'happy-mcp' } },
+                model_reasoning_effort: 'medium',
+            }),
         }));
 
         await client.disconnect();
