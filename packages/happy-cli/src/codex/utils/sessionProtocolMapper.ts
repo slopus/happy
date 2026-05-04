@@ -31,6 +31,7 @@ type LegacyToolLikeMessage = {
 };
 
 type TurnEndStatus = 'completed' | 'failed' | 'cancelled';
+type ToolCallResultStatus = 'completed' | 'error' | 'canceled';
 
 function getStartedSubagents(state: CodexTurnState): Set<string> {
     return state.startedSubagents ?? new Set<string>();
@@ -146,6 +147,51 @@ function patchDescription(changes: unknown): string {
         return 'Applying patch to 1 file';
     }
     return `Applying patch to ${fileCount} files`;
+}
+
+function pickNumber(value: unknown): number | null | undefined {
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function pickString(value: unknown): string | undefined {
+    return typeof value === 'string' ? value : undefined;
+}
+
+function mapCommandResultStatus(status: unknown, exitCode: number | null | undefined): ToolCallResultStatus {
+    if (status === 'failed' || status === 'error') {
+        return 'error';
+    }
+    if (status === 'cancelled' || status === 'canceled') {
+        return 'canceled';
+    }
+    if (typeof exitCode === 'number' && exitCode !== 0) {
+        return 'error';
+    }
+    return 'completed';
+}
+
+function buildCommandResult(message: Record<string, unknown>): {
+    content?: string | null;
+    status: ToolCallResultStatus;
+    exitCode?: number | null;
+    durationMs?: number | null;
+    cwd?: string;
+    command?: string;
+} {
+    const exitCode = pickNumber(message.exit_code ?? message.exitCode);
+    const durationMs = pickNumber(message.duration_ms ?? message.durationMs);
+    const output = pickString(message.output);
+    const cwd = pickString(message.cwd);
+    const command = summarizeCommand(message.command);
+
+    return {
+        ...(output !== undefined ? { content: output } : {}),
+        status: mapCommandResultStatus(message.status, exitCode),
+        ...(exitCode !== undefined ? { exitCode } : {}),
+        ...(durationMs !== undefined ? { durationMs } : {}),
+        ...(cwd !== undefined ? { cwd } : {}),
+        ...(command !== null ? { command } : {}),
+    };
 }
 
 function pickTurnEndStatus(message: Record<string, unknown>, type: unknown): TurnEndStatus {
@@ -325,7 +371,11 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         const call = pickCallId(message);
         const envelopes: SessionEnvelope[] = [];
         maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
-        envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, opts));
+        envelopes.push(createEnvelope('agent', {
+            t: 'tool-call-end',
+            call,
+            result: buildCommandResult(message),
+        }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,

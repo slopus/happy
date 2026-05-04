@@ -108,6 +108,65 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         }
     });
 
+    it('maps successful exec command end with output and metadata', () => {
+        const result = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'exec_command_end',
+                call_id: 'call-1',
+                output: 'hello\n',
+                exit_code: 0,
+                duration_ms: 123,
+                status: 'completed',
+                cwd: '/tmp/project',
+                command: '/bin/zsh -lc "echo hello"',
+            },
+            { currentTurnId: 'turn-1' }
+        );
+
+        expect(result.envelopes).toHaveLength(1);
+        expect(result.envelopes[0].ev).toEqual({
+            t: 'tool-call-end',
+            call: 'call-1',
+            result: {
+                content: 'hello\n',
+                status: 'completed',
+                exitCode: 0,
+                durationMs: 123,
+                cwd: '/tmp/project',
+                command: '/bin/zsh -lc "echo hello"',
+            },
+        });
+    });
+
+    it('maps failed exec command end as an error result', () => {
+        const result = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'exec_command_end',
+                callId: 'call-2',
+                output: 'not found\n',
+                exit_code: 127,
+                duration_ms: 45,
+                status: 'failed',
+                cwd: '/tmp/project',
+                command: 'missing-command',
+            },
+            { currentTurnId: 'turn-1' }
+        );
+
+        expect(result.envelopes[0].ev).toEqual({
+            t: 'tool-call-end',
+            call: 'call-2',
+            result: {
+                content: 'not found\n',
+                status: 'error',
+                exitCode: 127,
+                durationMs: 45,
+                cwd: '/tmp/project',
+                command: 'missing-command',
+            },
+        });
+    });
+
     it('skips token_count messages', () => {
         const result = mapCodexMcpMessageToSessionEnvelopes(
             { type: 'token_count', total_tokens: 10 },
