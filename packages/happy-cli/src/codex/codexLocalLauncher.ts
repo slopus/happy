@@ -101,6 +101,7 @@ export async function launchNativeCodex(opts: {
     discoveryTimeoutMs?: number;
     discoveryPollMs?: number;
     onThreadIdDiscovered?: (threadId: string) => void;
+    onLocalHandoffReady?: (handoff: () => void) => void;
 }): Promise<CodexLauncherResult> {
     const spawn = opts.spawn ?? nodeSpawn;
     const now = opts.now ?? (() => new Date());
@@ -109,6 +110,14 @@ export async function launchNativeCodex(opts: {
         cwd: opts.cwd,
         stdio: 'inherit',
         env: process.env,
+    });
+    let discoveredThreadId = opts.codexThreadId;
+    let handoffRequested = false;
+    opts.onLocalHandoffReady?.(() => {
+        handoffRequested = true;
+        if (discoveredThreadId) {
+            child.kill('SIGTERM');
+        }
     });
 
     if (opts.codexThreadId) {
@@ -128,7 +137,11 @@ export async function launchNativeCodex(opts: {
             timeoutMs: opts.discoveryTimeoutMs ?? 10_000,
             pollMs: opts.discoveryPollMs ?? 250,
         }).then((threadId) => {
+            discoveredThreadId = threadId;
             opts.onThreadIdDiscovered?.(threadId);
+            if (handoffRequested) {
+                child.kill('SIGTERM');
+            }
             return threadId;
         }))
         .then(
@@ -161,6 +174,9 @@ export async function launchNativeCodex(opts: {
     }
     if (exit.status === 'rejected') {
         throw exit.error;
+    }
+    if (handoffRequested) {
+        return { type: 'switch', codexThreadId: discovery.threadId };
     }
 
     return { type: 'exit', code: exit.code, codexThreadId: discovery.threadId };

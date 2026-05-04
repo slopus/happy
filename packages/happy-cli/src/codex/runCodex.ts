@@ -223,6 +223,14 @@ export async function runCodex(opts: {
         effort: opts.startupEffort,
     });
 
+    let localHandoff: (() => void) | null = null;
+    let localHandoffRequested = false;
+    let currentRunMode = resolveCodexStartingMode({
+        startedBy: opts.startedBy,
+        requestedMode: opts.startingMode,
+    });
+    let activeCodexThreadId = opts.resumeThreadId;
+
     session.onUserMessage((message) => {
         const resolved = resolveCodexMessageMode(modeState, message.meta);
         modeState = resolved.state;
@@ -231,16 +239,16 @@ export async function runCodex(opts: {
         }
         logger.debug(`[Codex] Resolved message mode: permission=${resolved.mode.permissionMode}, model=${resolved.mode.model ?? 'default'}, effort=${resolved.mode.effort ?? 'default'}`);
         messageQueue.push(message.content.text, resolved.mode);
+        if (currentRunMode === 'local') {
+            localHandoffRequested = true;
+            localHandoff?.();
+        }
     });
     let thinking = false;
     let currentTurnId: string | null = null;
     let codexStartedSubagents = new Set<string>();
     let codexActiveSubagents = new Set<string>();
     let codexProviderSubagentToSessionSubagent = new Map<string, string>();
-    const currentRunMode = resolveCodexStartingMode({
-        startedBy: opts.startedBy,
-        requestedMode: opts.startingMode,
-    });
     session.updateAgentState((currentState) => ({
         ...currentState,
         controlledByUser: currentRunMode === 'local',
@@ -270,6 +278,7 @@ export async function runCodex(opts: {
 
     if (currentRunMode === 'local') {
         let exitCode = 0;
+        let switchToRemote = false;
         try {
             if (opts.resumeThreadId) {
                 session.updateMetadata((currentMetadata) => ({
@@ -285,15 +294,34 @@ export async function runCodex(opts: {
                 effort: modeState.effort,
                 permissionMode: modeState.currentPermissionMode,
                 onThreadIdDiscovered: (codexThreadId) => {
+                    activeCodexThreadId = codexThreadId;
                     session.updateMetadata((currentMetadata) => ({
                         ...currentMetadata,
                         codexThreadId,
                     }));
                 },
+                onLocalHandoffReady: (handoff) => {
+                    localHandoff = handoff;
+                    if (localHandoffRequested) {
+                        handoff();
+                    }
+                },
             });
-            if (result.type === 'exit') {
+            localHandoff = null;
+            if (result.type === 'switch') {
+                switchToRemote = true;
+                localHandoffRequested = false;
+                currentRunMode = 'remote';
+                activeCodexThreadId = result.codexThreadId ?? activeCodexThreadId;
+                session.keepAlive(thinking, 'remote');
+                session.updateAgentState((currentMetadata) => ({
+                    ...currentMetadata,
+                    controlledByUser: false,
+                }));
+            } else {
                 exitCode = result.code;
                 if (result.codexThreadId) {
+                    activeCodexThreadId = result.codexThreadId;
                     session.updateMetadata((currentMetadata) => ({
                         ...currentMetadata,
                         codexThreadId: result.codexThreadId,
@@ -301,19 +329,24 @@ export async function runCodex(opts: {
                 }
             }
         } finally {
-            if (reconnectionHandle) {
-                reconnectionHandle.cancel();
+            localHandoff = null;
+            if (!switchToRemote) {
+                if (reconnectionHandle) {
+                    reconnectionHandle.cancel();
+                }
+                try {
+                    session.sendSessionDeath();
+                    await session.flush();
+                    await session.close();
+                } catch (e) {
+                    logger.debug('[codex]: Error while closing local session', e);
+                }
+                clearInterval(keepAliveInterval);
             }
-            try {
-                session.sendSessionDeath();
-                await session.flush();
-                await session.close();
-            } catch (e) {
-                logger.debug('[codex]: Error while closing local session', e);
-            }
-            clearInterval(keepAliveInterval);
         }
-        process.exit(exitCode);
+        if (!switchToRemote) {
+            process.exit(exitCode);
+        }
     }
 
     // Debug helper: log active handles/requests if DEBUG is enabled
@@ -655,7 +688,7 @@ export async function runCodex(opts: {
         await client.connect();
         logger.debug('[codex]: client.connect done');
 
-        if (opts.resumeThreadId) {
+        if (activeCodexThreadId) {
             const startupExecutionPolicy = resolveCodexExecutionPolicy(
                 modeState.currentPermissionMode ?? 'default',
                 client.sandboxEnabled,
@@ -664,7 +697,7 @@ export async function runCodex(opts: {
                 client,
                 session,
                 messageBuffer,
-                threadId: opts.resumeThreadId,
+                threadId: activeCodexThreadId,
                 cwd: process.cwd(),
                 model: modeState.currentModel,
                 approvalPolicy: startupExecutionPolicy.approvalPolicy,

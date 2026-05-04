@@ -191,4 +191,77 @@ describe('launchNativeCodex', () => {
         await expect(launch).rejects.toThrow('Ambiguous Codex thread discovery');
         expect(killCalls).toEqual(['SIGTERM']);
     });
+
+    it('switches to remote mode when a local handoff is requested', async () => {
+        const requestHandoff: { current: (() => void) | null } = { current: null };
+        const exitCallback: { current: ((value: unknown) => void) | null } = { current: null };
+        const killCalls: Array<string | undefined> = [];
+
+        const launch = launchNativeCodex({
+            cwd: '/tmp/project',
+            codexThreadId: 'thread-existing',
+            onLocalHandoffReady: (handoff) => {
+                requestHandoff.current = handoff;
+            },
+            spawn: (() => ({
+                once: (event: string, callback: (value: unknown) => void) => {
+                    if (event === 'exit') {
+                        exitCallback.current = callback;
+                    }
+                    return undefined;
+                },
+                kill: (signal?: string) => {
+                    killCalls.push(signal);
+                    exitCallback.current?.(null);
+                    return true;
+                },
+            })) as never,
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        requestHandoff.current?.();
+
+        await expect(launch).resolves.toEqual({ type: 'switch', codexThreadId: 'thread-existing' });
+        expect(killCalls).toEqual(['SIGTERM']);
+    });
+
+    it('waits for discovery before terminating native Codex for early fresh handoff', async () => {
+        const requestHandoff: { current: (() => void) | null } = { current: null };
+        const exitCallback: { current: ((value: unknown) => void) | null } = { current: null };
+        const resolveDiscovery: { current: ((threadId: string) => void) | null } = { current: null };
+        const killCalls: Array<string | undefined> = [];
+
+        const launch = launchNativeCodex({
+            cwd: '/tmp/project',
+            codexHomeDir: '/tmp/codex-home',
+            discoverThreadId: () => new Promise<string>((resolve) => {
+                resolveDiscovery.current = resolve;
+            }),
+            onLocalHandoffReady: (handoff) => {
+                requestHandoff.current = handoff;
+            },
+            spawn: (() => ({
+                once: (event: string, callback: (value: unknown) => void) => {
+                    if (event === 'exit') {
+                        exitCallback.current = callback;
+                    }
+                    return undefined;
+                },
+                kill: (signal?: string) => {
+                    killCalls.push(signal);
+                    exitCallback.current?.(null);
+                    return true;
+                },
+            })) as never,
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        requestHandoff.current?.();
+        expect(killCalls).toEqual([]);
+
+        resolveDiscovery.current?.('thread-discovered');
+
+        await expect(launch).resolves.toEqual({ type: 'switch', codexThreadId: 'thread-discovered' });
+        expect(killCalls).toEqual(['SIGTERM']);
+    });
 });
