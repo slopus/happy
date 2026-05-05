@@ -215,6 +215,8 @@ export const ca: TranslationStructure = {
         disableAnalytics: 'Desactivar analítica',
         analyticsDisabled: 'Tot el seguiment i telemetria desactivats',
         analyticsEnabled: 'Analítica anònima d\'ús activa',
+        imageUpload: 'Pujada d\'imatges',
+        imageUploadSubtitle: 'Adjunta imatges als missatges perquè Claude les analitzi',
     },
 
     errors: {
@@ -932,6 +934,15 @@ export const ca: TranslationStructure = {
         usageOverTime: 'Ús al llarg del temps',
         byModel: 'Per model',
         noData: "No hi ha dades d'ús disponibles",
+    },
+
+    imageUpload: {
+        permissionTitle: 'Accés a la biblioteca de fotos',
+        permissionMessage: "Permet l'accés a la teva biblioteca de fotos per adjuntar imatges als missatges.",
+        limitTitle: "Límit d'imatges assolit",
+        limitMessage: ({ max }: { max: number }) => `Pots adjuntar fins a ${max} imatges per missatge.`,
+        fileTooLargeTitle: 'Fitxer massa gran',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" supera el límit de ${maxMb}MB i no s'ha afegit.`,
     },
 
     feed: {

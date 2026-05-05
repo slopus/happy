@@ -4,6 +4,7 @@ import { eventRouter, buildDeleteSessionUpdate } from "@/app/events/eventRouter"
 import { allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { log } from "@/utils/log";
+import { deleteSessionAttachments } from "@/storage/files";
 
 /**
  * Delete a session and all its related data.
@@ -83,11 +84,11 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
             sessionId 
         }, `Session deleted successfully`);
 
-        // Send notification after transaction commits
+        // Send notification and clean up storage after transaction commits
         afterTx(tx, async () => {
             const updSeq = await allocateUserSeq(ctx.uid);
             const updatePayload = buildDeleteSessionUpdate(sessionId, updSeq, randomKeyNaked(12));
-            
+
             log({
                 module: 'session-delete',
                 userId: ctx.uid,
@@ -101,6 +102,14 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
                 payload: updatePayload,
                 recipientFilter: { type: 'user-scoped-only' }
             });
+
+            // Delete attachment blobs (local dir or S3 prefix)
+            try {
+                await deleteSessionAttachments(sessionId);
+                log({ module: 'session-delete', userId: ctx.uid, sessionId }, `Attachment blobs deleted`);
+            } catch (err) {
+                log({ module: 'session-delete', userId: ctx.uid, sessionId, err }, `Failed to delete attachment blobs (non-fatal)`);
+            }
         });
 
         return true;

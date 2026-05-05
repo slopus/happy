@@ -213,6 +213,17 @@ export const en = {
         disableAnalytics: 'Disable Analytics',
         analyticsDisabled: 'All tracking and telemetry disabled',
         analyticsEnabled: 'Anonymous usage analytics active',
+        imageUpload: 'Image Upload',
+        imageUploadSubtitle: 'Attach images to messages for Claude to analyze',
+    },
+
+    imageUpload: {
+        permissionTitle: 'Photo Library Access',
+        permissionMessage: 'Allow access to your photo library to attach images to messages.',
+        limitTitle: 'Image Limit Reached',
+        limitMessage: ({ max }: { max: number }) => `You can attach up to ${max} images per message.`,
+        fileTooLargeTitle: 'File Too Large',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" exceeds the ${maxMb}MB limit and was not added.`,
     },
 
     errors: {

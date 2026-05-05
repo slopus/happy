@@ -61,6 +61,35 @@ export async function putLocalFile(filePath: string, data: Buffer) {
     fs.writeFileSync(fullPath, data);
 }
 
+/**
+ * Delete all attachments for a session.
+ * Local: removes the session attachments directory.
+ * S3: deletes all objects with prefix "sessions/{sessionId}/attachments/".
+ */
+export async function deleteSessionAttachments(sessionId: string): Promise<void> {
+    const prefix = `sessions/${sessionId}/attachments`;
+    if (useLocalStorage) {
+        const dir = path.join(localFilesDir, prefix);
+        if (fs.existsSync(dir)) {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+        return;
+    }
+
+    // S3: list and delete all objects under the prefix
+    const stream = s3client.listObjects(s3bucket, prefix + '/', true);
+    const keys: string[] = await new Promise((resolve, reject) => {
+        const collected: string[] = [];
+        stream.on('data', (obj: { name: string }) => { if (obj.name) collected.push(obj.name); });
+        stream.on('end', () => resolve(collected));
+        stream.on('error', reject);
+    });
+
+    if (keys.length > 0) {
+        await s3client.removeObjects(s3bucket, keys);
+    }
+}
+
 export type ImageRef = {
     width: number;
     height: number;

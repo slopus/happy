@@ -18,6 +18,7 @@ import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
+import { useImagePicker } from '@/hooks/useImagePicker';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
@@ -366,6 +367,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
 
+    // Image attachment state (expImageUpload feature flag)
+    const expImageUpload = useSetting('expImageUpload');
+    const { selectedImages, pickImages, removeImage, clearImages, addImages } = useImagePicker();
+
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
         if (machineId && cliVersion) {
@@ -515,10 +520,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }}
             blockSend={false}
             onSend={() => {
-                if (message.trim()) {
+                if (message.trim() || (expImageUpload && selectedImages.length > 0)) {
+                    const attachments = expImageUpload ? selectedImages : undefined;
                     setMessage('');
                     clearDraft();
-                    sync.sendMessage(sessionId, message, { source: 'chat' });
+                    if (expImageUpload) clearImages();
+                    sync.sendMessage(sessionId, message, { source: 'chat', attachments });
                 }
             }}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
@@ -526,6 +533,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onAbort={isDisconnected ? undefined : () => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments && !isTablet ? () => router.push(`/session/${sessionId}/files`) : undefined}
+            selectedImages={expImageUpload ? selectedImages : undefined}
+            onPickImages={expImageUpload ? pickImages : undefined}
+            onRemoveImage={expImageUpload ? removeImage : undefined}
+            onAddImages={expImageUpload ? addImages : undefined}
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
             usageData={sessionUsage ? {

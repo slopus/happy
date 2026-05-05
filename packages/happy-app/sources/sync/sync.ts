@@ -51,6 +51,10 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
+import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
+import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
+import { encryptBlob } from '@/encryption/blob';
+import { readFileBytes } from '@/utils/readFileBytes';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -75,6 +79,8 @@ type OutboxMessage = {
 type SendMessageOptions = {
     displayText?: string;
     source?: MessageSentSource;
+    /** Optional image attachments to send before the text message. */
+    attachments?: AttachmentPreview[];
 };
 
 class Sync {
@@ -473,6 +479,57 @@ class Sync {
         this.backgroundSendStartedAt = null;
     }
 
+    /**
+     * Upload image attachments for a session: read bytes → encrypt → upload to server.
+     * Returns UploadedAttachment records to embed as file events before the text message.
+     * Failures are logged and skipped rather than aborting the whole message send.
+     */
+    private async uploadAttachmentsForSession(
+        sessionId: string,
+        attachments: AttachmentPreview[],
+    ): Promise<UploadedAttachment[]> {
+        if (!this.credentials) return [];
+
+        const blobKey = this.encryption.getSessionBlobKey(sessionId);
+        if (!blobKey) {
+            console.error(`[attachments] No blob key for session ${sessionId}`);
+            return [];
+        }
+
+        const uploaded: UploadedAttachment[] = [];
+
+        for (const attachment of attachments) {
+            try {
+                const bytes = await readFileBytes(attachment.uri);
+                const encrypted = encryptBlob(bytes, blobKey);
+
+                const { ref, uploadUrl } = await requestAttachmentUpload(
+                    this.credentials,
+                    sessionId,
+                    attachment.name,
+                    encrypted.length,
+                    attachment.mimeType,
+                );
+
+                await uploadEncryptedBlob(uploadUrl, encrypted, this.credentials);
+
+                uploaded.push({
+                    ref,
+                    name: attachment.name,
+                    size: attachment.size,
+                    width: attachment.width,
+                    height: attachment.height,
+                    thumbhash: attachment.thumbhash,
+                });
+            } catch (err) {
+                console.error(`[attachments] Failed to upload ${attachment.name}:`, err);
+                // Skip this attachment; do not abort the whole message send.
+            }
+        }
+
+        return uploaded;
+    }
+
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
 
         // Get encryption
@@ -490,7 +547,50 @@ class Sync {
         }
 
         const { permissionMode, model } = resolveMessageModeMeta(session);
-        const { displayText, source = 'chat' } = options ?? {};
+        const { displayText, source = 'chat', attachments } = options ?? {};
+
+        // Upload attachments and queue file events before the text message.
+        if (attachments && attachments.length > 0) {
+            const uploaded = await this.uploadAttachmentsForSession(sessionId, attachments);
+
+            if (uploaded.length > 0) {
+                let pending = this.pendingOutbox.get(sessionId);
+                if (!pending) {
+                    pending = [];
+                    this.pendingOutbox.set(sessionId, pending);
+                }
+
+                for (const att of uploaded) {
+                    const fileRecord: RawRecord = {
+                        role: 'session',
+                        content: {
+                            type: 'session',
+                            data: {
+                                id: randomUUID(),
+                                time: Date.now(),
+                                role: 'user',
+                                ev: {
+                                    t: 'file',
+                                    ref: att.ref,
+                                    name: att.name,
+                                    size: att.size,
+                                    ...(att.width > 0 && att.height > 0 && att.thumbhash
+                                        ? { image: { width: att.width, height: att.height, thumbhash: att.thumbhash } }
+                                        : {}),
+                                },
+                            },
+                        },
+                    };
+                    const encryptedFileRecord = await encryption.encryptRawRecord(fileRecord);
+                    const fileLocalId = randomUUID();
+                    const fileNormalized = normalizeRawMessage(fileLocalId, fileLocalId, Date.now(), fileRecord);
+                    if (fileNormalized) {
+                        this.enqueueMessages(sessionId, [fileNormalized]);
+                    }
+                    pending.push({ localId: fileLocalId, content: encryptedFileRecord });
+                }
+            }
+        }
 
         // Generate local ID
         const localId = randomUUID();

@@ -16,6 +16,7 @@ import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
+import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
 
 interface PermissionsField {
     date: number;
@@ -264,7 +265,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     try {
         let pending: {
-            message: string;
+            message: MessageParam['content'];
             mode: EnhancedMode;
         } | null = null;
 
@@ -328,6 +329,38 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             modeHash = msg.hash;
                             mode = msg.mode;
                             permissionHandler.handleModeChange(mode.permissionMode);
+
+                            // Wait for any in-flight attachment downloads before checking
+                            await session.client.waitForPendingDownloads();
+
+                            // Combine pending image attachments with text into multi-modal content
+                            const attachments = session.client.pendingAttachments;
+                            const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+                            if (attachments.length > 0) {
+                                const contentBlocks: ContentBlockParam[] = [];
+                                for (const att of attachments) {
+                                    if (!SUPPORTED_IMAGE_TYPES.has(att.mimeType)) {
+                                        logger.debug(`[remote] Skipping unsupported attachment type: ${att.mimeType} (${att.name})`);
+                                        continue;
+                                    }
+                                    contentBlocks.push({
+                                        type: 'image' as const,
+                                        source: {
+                                            type: 'base64' as const,
+                                            media_type: att.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                                            data: Buffer.from(att.data).toString('base64'),
+                                        },
+                                    });
+                                }
+                                contentBlocks.push({ type: 'text' as const, text: msg.message });
+                                attachments.length = 0; // Clear buffer
+                                logger.debug(`[remote] Combined ${contentBlocks.length - 1} image(s) with text message`);
+                                return {
+                                    message: contentBlocks,
+                                    mode: msg.mode,
+                                };
+                            }
+
                             return {
                                 message: msg.message,
                                 mode: msg.mode

@@ -216,6 +216,8 @@ export const ja: TranslationStructure = {
         disableAnalytics: '分析を無効化',
         analyticsDisabled: 'すべてのトラッキングとテレメトリが無効',
         analyticsEnabled: '匿名の使用状況分析がアクティブ',
+        imageUpload: '画像アップロード',
+        imageUploadSubtitle: 'メッセージに画像を添付してClaudeに分析させる',
     },
 
     errors: {
@@ -934,6 +936,15 @@ export const ja: TranslationStructure = {
         usageOverTime: '使用量の推移',
         byModel: 'モデル別',
         noData: '使用データがありません',
+    },
+
+    imageUpload: {
+        permissionTitle: 'フォトライブラリへのアクセス',
+        permissionMessage: 'メッセージに画像を添付するには、フォトライブラリへのアクセスを許可してください。',
+        limitTitle: '画像の上限に達しました',
+        limitMessage: ({ max }: { max: number }) => `1メッセージに添付できる画像は最大${max}枚です。`,
+        fileTooLargeTitle: 'ファイルが大きすぎます',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}"は${maxMb}MBの制限を超えているため追加されませんでした。`,
     },
 
     feed: {

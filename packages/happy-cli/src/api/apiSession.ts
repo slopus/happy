@@ -1,13 +1,14 @@
 import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
-import { AgentState, ClientToServerEvents, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
-import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
+import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSchema, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
+import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff, delay } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
 import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
+import { deriveKey } from '@/utils/deriveKey';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
@@ -82,6 +83,13 @@ export class ApiSessionClient extends EventEmitter {
     private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
     private pendingMessages: UserMessage[] = [];
     private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
+    private pendingFileEvents: FileEventMessage[] = [];
+    private pendingFileEventCallback: ((data: FileEventMessage) => void) | null = null;
+    private blobKey: Uint8Array | null = null;
+    /** Buffered decoded image attachments awaiting the next text message */
+    readonly pendingAttachments: Array<{ data: Uint8Array; mimeType: string; name: string }> = [];
+    /** Tracks in-flight attachment downloads so text messages can wait for them */
+    private attachmentDownloads: Promise<void>[] = [];
     readonly rpcHandlerManager: RpcHandlerManager;
     private agentStateLock = new AsyncLock();
     private metadataLock = new AsyncLock();
@@ -251,6 +259,75 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    onFileEvent(callback: (data: FileEventMessage) => void) {
+        this.pendingFileEventCallback = callback;
+        while (this.pendingFileEvents.length > 0) {
+            callback(this.pendingFileEvents.shift()!);
+        }
+    }
+
+    /**
+     * Derive (and cache) the blob decryption key for this session.
+     * Legacy sessions use deriveKey(masterSecret, 'Happy Blobs', ['master']).
+     * DataKey sessions use deriveKey(dataKey, 'Happy Blobs', ['session']).
+     */
+    async getBlobKey(): Promise<Uint8Array> {
+        if (!this.blobKey) {
+            const path = this.encryptionVariant === 'dataKey' ? ['session'] : ['master'];
+            this.blobKey = await deriveKey(this.encryptionKey, 'Happy Blobs', path);
+        }
+        return this.blobKey;
+    }
+
+    /**
+     * Download an encrypted attachment blob from the server.
+     */
+    async downloadAttachment(ref: string): Promise<Uint8Array> {
+        // ref format: "sessions/{sessionId}/attachments/{file}"
+        const parts = ref.split('/');
+        const attachmentFile = parts[parts.length - 1];
+        if (!attachmentFile || /[^a-zA-Z0-9._-]/.test(attachmentFile)) {
+            throw new Error(`Invalid attachment reference: ${ref}`);
+        }
+        const url = `${configuration.serverUrl}/v1/sessions/${this.sessionId}/attachments/${encodeURIComponent(attachmentFile)}`;
+        const response = await axios.get(url, {
+            headers: { 'Authorization': `Bearer ${this.token}` },
+            responseType: 'arraybuffer',
+            timeout: 60000,
+            maxRedirects: 5,
+            maxContentLength: 10 * 1024 * 1024, // 10MB limit matching server
+        });
+        return new Uint8Array(response.data);
+    }
+
+    /**
+     * Download and decrypt an attachment blob.
+     * Returns the decrypted binary data or null if decryption fails.
+     */
+    async downloadAndDecryptAttachment(ref: string): Promise<Uint8Array | null> {
+        const encrypted = await this.downloadAttachment(ref);
+        const key = await this.getBlobKey();
+        return decryptBlob(encrypted, key);
+    }
+
+    /**
+     * Track an in-flight attachment download so text messages can wait for it.
+     */
+    trackAttachmentDownload(promise: Promise<void>): void {
+        this.attachmentDownloads.push(promise);
+    }
+
+    /**
+     * Wait for all in-flight attachment downloads to complete.
+     * Called before consuming a text message to avoid race conditions.
+     */
+    async waitForPendingDownloads(): Promise<void> {
+        if (this.attachmentDownloads.length > 0) {
+            await Promise.allSettled(this.attachmentDownloads);
+            this.attachmentDownloads = [];
+        }
+    }
+
     private authHeaders() {
         return {
             'Authorization': `Bearer ${this.token}`,
@@ -269,6 +346,19 @@ export class ApiSessionClient extends EventEmitter {
             }
             return;
         }
+
+        // Check for file events (image attachments from app)
+        const fileResult = FileEventMessageSchema.safeParse(message);
+        if (fileResult.success) {
+            logger.debug(`[API] Received file event: ${fileResult.data.content.data.ev.name} (ref: ${fileResult.data.content.data.ev.ref})`);
+            if (this.pendingFileEventCallback) {
+                this.pendingFileEventCallback(fileResult.data);
+            } else {
+                this.pendingFileEvents.push(fileResult.data);
+            }
+            return;
+        }
+
         this.emit('message', message);
     }
 
