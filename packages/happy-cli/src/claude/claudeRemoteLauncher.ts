@@ -15,6 +15,7 @@ import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
+import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
 
 interface PermissionsField {
     date: number;
@@ -435,13 +436,28 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         permissionHandler.reset();
 
         // Reset Terminal
-        process.stdin.off('data', abort);
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
-        }
+        const t0 = Date.now();
+        logger.debug(`[remote]: cleanup begin exitReason=${exitReason} hasInk=${!!inkInstance} rawMode=${(process.stdin as any).isRaw}`);
         if (inkInstance) {
             inkInstance.unmount();
         }
+        logger.debug(`[remote]: ink.unmount() done +${Date.now() - t0}ms rawMode=${(process.stdin as any).isRaw}`);
+
+        // Drain any keystrokes that landed in stdin while Ink owned it (e.g.
+        // extra spaces from the double-space switch confirmation, or anything
+        // typed before the user perceives that the switch has completed) so
+        // they don't leak into the next interactive child process when local
+        // mode takes stdin back via stdio: 'inherit'. Raw mode stays on for
+        // the whole window so the kernel does not echo any in-flight bytes
+        // at whatever screen position Ink last left the cursor.
+        await cleanupStdinAfterInk({
+            stdin: process.stdin,
+            drainMs: 150,
+            onDebug: (event) => {
+                logger.debug(`[remote]: stdin drain ${event.bytes}B / ${event.chunks} chunk(s) +${Date.now() - t0}ms`);
+            },
+        });
+        logger.debug(`[remote]: cleanup done +${Date.now() - t0}ms rawMode=${(process.stdin as any).isRaw}`);
         messageBuffer.clear();
 
         // Resolve abort future
