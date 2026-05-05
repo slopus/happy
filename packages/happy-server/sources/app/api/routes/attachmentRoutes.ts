@@ -19,6 +19,35 @@ import { s3client, s3bucket, isLocalStorage, getLocalFilesDir, putLocalFile } fr
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const PRESIGNED_TTL_SECONDS = 15 * 60; // 15 minutes (design spec)
 
+// Per-user, per-process token bucket for request-upload. Best-effort flood
+// protection — on a multi-process deploy each instance counts independently,
+// so an attacker with N processes gets N×limit. Adequate as a backstop
+// against a single-client loop generating presigned URLs forever.
+const UPLOAD_RATE_WINDOW_MS = 60_000;
+const UPLOAD_RATE_MAX = 60;
+const uploadRateState = new Map<string, { count: number; windowStart: number }>();
+
+function checkUploadRate(userId: string): boolean {
+    const now = Date.now();
+    const entry = uploadRateState.get(userId);
+    if (!entry || now - entry.windowStart >= UPLOAD_RATE_WINDOW_MS) {
+        uploadRateState.set(userId, { count: 1, windowStart: now });
+        // Opportunistic prune so the map cannot grow forever from one-shot
+        // users churning through the system.
+        if (uploadRateState.size > 10_000) {
+            for (const [k, v] of uploadRateState) {
+                if (now - v.windowStart >= UPLOAD_RATE_WINDOW_MS) {
+                    uploadRateState.delete(k);
+                }
+            }
+        }
+        return true;
+    }
+    if (entry.count >= UPLOAD_RATE_MAX) return false;
+    entry.count++;
+    return true;
+}
+
 export function attachmentRoutes(app: Fastify) {
 
     /**
@@ -41,6 +70,7 @@ export function attachmentRoutes(app: Fastify) {
                 }),
                 404: z.object({ error: z.string() }),
                 413: z.object({ error: z.string() }),
+                429: z.object({ error: z.string() }),
             },
         },
         preHandler: app.authenticate,
@@ -48,6 +78,10 @@ export function attachmentRoutes(app: Fastify) {
         const { sessionId } = request.params;
         const { size } = request.body;
         const userId = request.userId;
+
+        if (!checkUploadRate(userId)) {
+            return reply.code(429).send({ error: 'Too many upload requests. Try again in a minute.' });
+        }
 
         // Verify session ownership
         const session = await db.session.findFirst({
