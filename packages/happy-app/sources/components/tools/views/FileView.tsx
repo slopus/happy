@@ -6,13 +6,14 @@
  * Falls back to a compact thumb+filename row when image metadata is missing.
  */
 import * as React from 'react';
-import { View, Text, Platform } from 'react-native';
+import { View, Text } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolViewProps } from './_all';
 import { z } from 'zod';
 import { useAttachmentImage } from '@/hooks/useAttachmentImage';
+import { thumbhashToDataUri } from '@/utils/thumbhash';
 
 const fileInputSchema = z.object({
     ref: z.string(),
@@ -38,14 +39,9 @@ export const FileView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
     const { name, size, image, ref } = parsed.data;
 
     const placeholder = React.useMemo(() => {
-        if (!image?.thumbhash || Platform.OS !== 'web') return undefined;
-        try {
-            const { thumbHashToDataURL } = require('thumbhash');
-            const bytes = Uint8Array.from(atob(image.thumbhash), (c) => c.charCodeAt(0));
-            return { uri: thumbHashToDataURL(bytes) };
-        } catch {
-            return undefined;
-        }
+        if (!image?.thumbhash) return undefined;
+        const uri = thumbhashToDataUri(image.thumbhash);
+        return uri ? { uri } : undefined;
     }, [image?.thumbhash]);
 
     const { uri, error } = useAttachmentImage(sessionId ?? '', sessionId ? ref : undefined);

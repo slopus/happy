@@ -4,11 +4,12 @@
  * Uses thumbhash as a blurry placeholder while the full image loads.
  */
 import * as React from 'react';
-import { ScrollView, View, Pressable, Platform } from 'react-native';
+import { ScrollView, View, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { AttachmentPreview } from '@/sync/attachmentTypes';
+import { thumbhashToDataUri } from '@/utils/thumbhash';
 
 const THUMB_SIZE = 64;
 const BORDER_RADIUS = 8;
@@ -55,17 +56,8 @@ function AttachmentThumbnail({
     // Build placeholder from thumbhash if available
     const placeholder = React.useMemo(() => {
         if (!image.thumbhash) return undefined;
-        try {
-            if (Platform.OS === 'web') {
-                // thumbhashToDataURL only works on web (needs ArrayBuffer / binary)
-                const { thumbHashToDataURL } = require('thumbhash');
-                const bytes = Uint8Array.from(atob(image.thumbhash), (c) => c.charCodeAt(0));
-                return { uri: thumbHashToDataURL(bytes) };
-            }
-        } catch {
-            // fall through to no placeholder
-        }
-        return undefined;
+        const uri = thumbhashToDataUri(image.thumbhash);
+        return uri ? { uri } : undefined;
     }, [image.thumbhash]);
 
     return (

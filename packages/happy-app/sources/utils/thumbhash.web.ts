@@ -9,7 +9,7 @@
  * require CORS headers. If called with remote http(s) URIs lacking CORS
  * headers, image loading will fail (caught and returns undefined).
  */
-import { rgbaToThumbHash } from 'thumbhash';
+import { rgbaToThumbHash, thumbHashToDataURL } from 'thumbhash';
 
 const THUMB_SIZE = 100; // max dimension; thumbhash works best ≤100px
 const LOAD_TIMEOUT_MS = 5000;
@@ -71,6 +71,15 @@ export async function generateThumbhash(
         if (__DEV__) {
             console.warn('[thumbhash] generation failed:', e);
         }
+        return undefined;
+    }
+}
+
+export function thumbhashToDataUri(thumbhashBase64: string): string | undefined {
+    try {
+        const bytes = Uint8Array.from(atob(thumbhashBase64), (c) => c.charCodeAt(0));
+        return thumbHashToDataURL(bytes);
+    } catch {
         return undefined;
     }
 }
