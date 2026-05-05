@@ -131,12 +131,21 @@ export async function uploadEncryptedBlob(
         headers['Authorization'] = `Bearer ${credentials.token}`;
     }
 
+    // Wrap in a Blob to guarantee the body length matches encryptedData.length
+    // exactly. Sending `encryptedData.buffer` directly is unsafe — if the
+    // Uint8Array is a view onto a larger ArrayBuffer (which native libsodium
+    // is known to return on iOS), fetch will upload the *parent* buffer's
+    // bytes, including unrelated trailing data. The receiver then has a
+    // padded ciphertext that cannot decrypt.
+    const body = new Blob([encryptedData as BlobPart], { type: 'application/octet-stream' });
+    console.log(`[attachments] PUT ${encryptedData.length} bytes (buf=${encryptedData.buffer.byteLength}, off=${encryptedData.byteOffset}) → ${upload.uploadUrl}`);
+
     let response: Response;
     try {
         response = await fetch(upload.uploadUrl, {
             method: 'PUT',
             headers,
-            body: encryptedData.buffer as ArrayBuffer,
+            body,
         });
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

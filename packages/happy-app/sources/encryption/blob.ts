@@ -15,10 +15,22 @@ import { getRandomBytes } from 'expo-crypto';
  */
 export function encryptBlob(data: Uint8Array, key: Uint8Array): Uint8Array {
     const nonce = getRandomBytes(sodium.crypto_secretbox_NONCEBYTES);
-    const encrypted = sodium.crypto_secretbox_easy(data, nonce, key);
-    const result = new Uint8Array(nonce.length + encrypted.length);
+    // Defensive copies: the native libsodium TurboModule on iOS reads
+    // arguments via getArrayBuffer().length(runtime), which returns the
+    // *underlying ArrayBuffer's* byteLength rather than the view length.
+    // If a caller passes in a Uint8Array view onto a larger buffer, the
+    // native side can either reject it ("invalid key length") or read
+    // the wrong bytes. Materializing standalone copies for data/key
+    // makes those checks see exactly the bytes we intended to pass in.
+    const dataStandalone = data.byteOffset === 0 && data.buffer.byteLength === data.length ? data : data.slice();
+    const keyStandalone = key.byteOffset === 0 && key.buffer.byteLength === key.length ? key : key.slice();
+    const encrypted = sodium.crypto_secretbox_easy(dataStandalone, nonce, keyStandalone);
+    const encryptedStandalone = encrypted.byteOffset === 0 && encrypted.buffer.byteLength === encrypted.length
+        ? encrypted
+        : encrypted.slice();
+    const result = new Uint8Array(nonce.length + encryptedStandalone.length);
     result.set(nonce, 0);
-    result.set(encrypted, nonce.length);
+    result.set(encryptedStandalone, nonce.length);
     return result;
 }
 
@@ -32,8 +44,14 @@ export function decryptBlob(bundle: Uint8Array, key: Uint8Array): Uint8Array | n
     }
     const nonce = bundle.slice(0, sodium.crypto_secretbox_NONCEBYTES);
     const ciphertext = bundle.slice(sodium.crypto_secretbox_NONCEBYTES);
+    // Same defensive standalone copy as in encryptBlob — the native iOS
+    // libsodium TurboModule validates the key by reading the underlying
+    // ArrayBuffer length, and rejects the operation if it sees anything
+    // other than 32 bytes. A subarray view onto a 64-byte HMAC output
+    // slips through length === 32 in JS land but fails this check.
+    const keyStandalone = key.byteOffset === 0 && key.buffer.byteLength === key.length ? key : key.slice();
     try {
-        return sodium.crypto_secretbox_open_easy(ciphertext, nonce, key);
+        return sodium.crypto_secretbox_open_easy(ciphertext, nonce, keyStandalone);
     } catch {
         return null;
     }

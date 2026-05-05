@@ -64,7 +64,10 @@ const sessionFileEventSchema = z.object({
     image: z.object({
         width: z.number(),
         height: z.number(),
-        thumbhash: z.string(),
+        // Optional — native iOS image-picker has no Canvas to compute it.
+        // FileView falls back to no blurry placeholder; the real picture
+        // is decrypted on render anyway.
+        thumbhash: z.string().optional(),
     }).optional(),
 });
 

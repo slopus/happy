@@ -602,8 +602,20 @@ class Sync {
                                     ref: att.ref,
                                     name: att.name,
                                     size: att.size,
-                                    ...(att.width > 0 && att.height > 0 && att.thumbhash
-                                        ? { image: { width: att.width, height: att.height, thumbhash: att.thumbhash } }
+                                    // Include image metadata when we have dimensions; thumbhash is
+                                    // optional. The native iOS picker can't generate a thumbhash
+                                    // without Canvas, so requiring it here would reduce the chat
+                                    // bubble to a compact filename row instead of an inline picture.
+                                    // FileView only needs w/h to size the inline render — placeholder
+                                    // is absent, but the real image is decrypted on mount.
+                                    ...(att.width > 0 && att.height > 0
+                                        ? {
+                                            image: {
+                                                width: att.width,
+                                                height: att.height,
+                                                ...(att.thumbhash ? { thumbhash: att.thumbhash } : {}),
+                                            },
+                                        }
                                         : {}),
                                 },
                             },
