@@ -131,14 +131,19 @@ export async function uploadEncryptedBlob(
         headers['Authorization'] = `Bearer ${credentials.token}`;
     }
 
-    // Wrap in a Blob to guarantee the body length matches encryptedData.length
-    // exactly. Sending `encryptedData.buffer` directly is unsafe — if the
-    // Uint8Array is a view onto a larger ArrayBuffer (which native libsodium
-    // is known to return on iOS), fetch will upload the *parent* buffer's
-    // bytes, including unrelated trailing data. The receiver then has a
-    // padded ciphertext that cannot decrypt.
-    const body = new Blob([encryptedData as BlobPart], { type: 'application/octet-stream' });
-    console.log(`[attachments] PUT ${encryptedData.length} bytes (buf=${encryptedData.buffer.byteLength}, off=${encryptedData.byteOffset}) → ${upload.uploadUrl}`);
+    // Build a standalone ArrayBuffer of exactly encryptedData.length bytes.
+    // RN's iOS Blob polyfill rejects Uint8Array/ArrayBuffer constructors
+    // ("Creating blobs from 'ArrayBuffer' and 'ArrayBufferView' are not
+    // supported"), so we can't use a Blob body cross-platform — and
+    // sending `encryptedData.buffer` raw is unsafe if the Uint8Array is
+    // a view onto a larger parent ArrayBuffer (we'd upload the parent's
+    // trailing bytes too, padding the ciphertext into something the
+    // receiver can't decrypt). new Uint8Array(...) copies into a fresh
+    // 32-byte-aligned buffer of exactly the right length, and .buffer
+    // is then guaranteed safe to send directly.
+    const standalone = new Uint8Array(encryptedData);
+    const body = standalone.buffer;
+    console.log(`[attachments] PUT ${standalone.length} bytes (origBuf=${encryptedData.buffer.byteLength}, origOff=${encryptedData.byteOffset}, origLen=${encryptedData.length}) → ${upload.uploadUrl}`);
 
     let response: Response;
     try {
