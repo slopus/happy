@@ -12,9 +12,10 @@
         "Permission prompts (accept/reject) no longer get lost",
         "Settings no longer randomly reset during sync",
         "Added scroll-to-bottom button in chat",
-        "Delete machines you no longer use from settings"
+        "Delete machines you no longer use from settings",
+        "Rename sessions from the session actions menu, with names synced across devices"
       ],
-      "rawMarkdown": "## Version 9 - 2026-04-26\n\n\nVoice reliability, better content rendering, and a new diff viewer.\n\n- Fixed voice calls breaking on second session — works reliably every time now\n- Tables and code blocks scroll horizontally instead of overflowing\n- New diff viewer with syntax highlighting and unified/split toggle (desktop and web only)\n- Model and effort level choices now persist on mobile\n- Permission prompts (accept/reject) no longer get lost\n- Settings no longer randomly reset during sync\n- Added scroll-to-bottom button in chat\n- Delete machines you no longer use from settings"
+      "rawMarkdown": "## Version 9 - 2026-04-26\n\n\nVoice reliability, better content rendering, and a new diff viewer.\n\n- Fixed voice calls breaking on second session — works reliably every time now\n- Tables and code blocks scroll horizontally instead of overflowing\n- New diff viewer with syntax highlighting and unified/split toggle (desktop and web only)\n- Model and effort level choices now persist on mobile\n- Permission prompts (accept/reject) no longer get lost\n- Settings no longer randomly reset during sync\n- Added scroll-to-bottom button in chat\n- Delete machines you no longer use from settings\n- Rename sessions from the session actions menu, with names synced across devices"
     },
     {
       "version": 7,

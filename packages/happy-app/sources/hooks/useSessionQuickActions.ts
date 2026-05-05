@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionKill } from '@/sync/ops';
+import { machineResumeSession, sessionArchive, sessionKill, sessionRename } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -10,7 +10,7 @@ import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
 import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
-import { useSessionStatus } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/sync/storage';
@@ -195,12 +195,57 @@ export function useSessionQuickActions(
         performResume();
     }, [performResume]);
 
+    const renameSession = React.useCallback(() => {
+        void (async () => {
+            if (!session.metadata) {
+                Modal.alert(t('common.error'), t('sessionInfo.failedToRenameSession'));
+                return;
+            }
+
+            const newName = await Modal.prompt(
+                t('sessionInfo.renameSessionPromptTitle'),
+                t('sessionInfo.renameSessionPromptMessage'),
+                {
+                    defaultValue: session.metadata.name ?? '',
+                    placeholder: getSessionName(session),
+                    cancelText: t('common.cancel'),
+                    confirmText: t('common.rename')
+                }
+            );
+
+            if (newName === null) {
+                return;
+            }
+
+            try {
+                await sessionRename(
+                    session.id,
+                    session.metadata,
+                    newName.trim() || undefined,
+                    session.metadataVersion
+                );
+                await sync.refreshSessions();
+                Modal.alert(t('common.success'), t('sessionInfo.sessionRenamed'));
+            } catch (error) {
+                Modal.alert(
+                    t('common.error'),
+                    error instanceof Error ? error.message : t('sessionInfo.failedToRenameSession')
+                );
+                await sync.refreshSessions();
+            }
+        })();
+    }, [session]);
+
     const canCopySessionMetadata = __DEV__ || devModeEnabled;
 
     const actionItems = React.useMemo<SessionActionItem[]>(() => {
         const items: SessionActionItem[] = [
             { id: 'details', icon: 'information-circle-outline', label: t('profile.details'), onPress: openDetails },
         ];
+
+        if (session.metadata) {
+            items.unshift({ id: 'rename', icon: 'pencil-outline', label: t('sessionInfo.renameSession'), onPress: renameSession });
+        }
 
         if (resumeAvailability.canShowResume) {
             items.push({ id: 'resume', icon: 'play-circle-outline', label: t('sessionInfo.resumeSession'), onPress: resumeSession });
@@ -220,8 +265,10 @@ export function useSessionQuickActions(
         copySessionMetadata,
         copySessionMetadataAndLogs,
         openDetails,
+        renameSession,
         resumeAvailability.canShowResume,
         resumeSession,
+        session.metadata,
     ]);
 
     const showActionAlert = React.useCallback(() => {

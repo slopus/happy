@@ -12,6 +12,7 @@ Voice reliability, better content rendering, and a new diff viewer.
 - Settings no longer randomly reset during sync
 - Added scroll-to-bottom button in chat
 - Delete machines you no longer use from settings
+- Rename sessions from the session actions menu, with names synced across devices
 
 ## Version 7 - 2026-04-08
 
