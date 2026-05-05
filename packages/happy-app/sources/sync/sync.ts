@@ -508,7 +508,6 @@ class Sync {
                     sessionId,
                     attachment.name,
                     encrypted.length,
-                    attachment.mimeType,
                 );
 
                 await uploadEncryptedBlob(uploadUrl, encrypted, this.credentials);

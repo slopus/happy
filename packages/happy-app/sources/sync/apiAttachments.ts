@@ -29,7 +29,6 @@ export async function requestAttachmentUpload(
     sessionId: string,
     filename: string,
     size: number,
-    mimeType?: string,
 ): Promise<RequestUploadResult> {
     const API_ENDPOINT = getServerUrl();
 
@@ -39,7 +38,7 @@ export async function requestAttachmentUpload(
             'Authorization': `Bearer ${credentials.token}`,
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ filename, size, mimeType }),
+        body: JSON.stringify({ filename, size }),
     });
 
     if (!response.ok) {

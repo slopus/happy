@@ -17,6 +17,7 @@ import { db } from '@/storage/db';
 import { s3client, s3bucket, isLocalStorage, getLocalFilesDir, putLocalFile } from '@/storage/files';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const PRESIGNED_TTL_SECONDS = 15 * 60; // 15 minutes (design spec)
 
 export function attachmentRoutes(app: Fastify) {
 
@@ -32,7 +33,6 @@ export function attachmentRoutes(app: Fastify) {
             body: z.object({
                 filename: z.string(),
                 size: z.number().max(MAX_FILE_SIZE),
-                mimeType: z.string().optional(),
             }),
             response: {
                 200: z.object({
@@ -46,7 +46,7 @@ export function attachmentRoutes(app: Fastify) {
         preHandler: app.authenticate,
     }, async (request, reply) => {
         const { sessionId } = request.params;
-        const { filename, size } = request.body;
+        const { size } = request.body;
         const userId = request.userId;
 
         // Verify session ownership
@@ -61,19 +61,19 @@ export function attachmentRoutes(app: Fastify) {
             return reply.code(413).send({ error: 'File too large (max 10MB)' });
         }
 
-        // Generate unique ref
+        // Always .enc — encrypted opaque blobs, never trust client filename for path.
         const attachmentId = crypto.randomUUID();
-        const ext = path.extname(filename) || '.enc';
-        const ref = `sessions/${sessionId}/attachments/${attachmentId}${ext}`;
+        const attachmentFile = `${attachmentId}.enc`;
+        const ref = `sessions/${sessionId}/attachments/${attachmentFile}`;
 
         if (isLocalStorage()) {
             // Local mode: client uploads to our own PUT endpoint
             const baseUrl = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || '3005'}`;
-            const uploadUrl = `${baseUrl}/v1/sessions/${sessionId}/attachments/${attachmentId}${ext}`;
+            const uploadUrl = `${baseUrl}/v1/sessions/${sessionId}/attachments/${attachmentFile}`;
             return reply.send({ ref, uploadUrl });
         } else {
-            // S3 mode: return presigned PUT URL
-            const uploadUrl = await s3client.presignedPutObject(s3bucket, ref, 3600);
+            // S3 mode: return presigned PUT URL (15 min, per design).
+            const uploadUrl = await s3client.presignedPutObject(s3bucket, ref, PRESIGNED_TTL_SECONDS);
             return reply.send({ ref, uploadUrl });
         }
     });
@@ -166,8 +166,8 @@ export function attachmentRoutes(app: Fastify) {
             reply.header('Content-Type', 'application/octet-stream');
             return reply.type('application/octet-stream').send(fs.readFileSync(fullPath));
         } else {
-            // S3 mode: redirect to presigned GET URL
-            const url = await s3client.presignedGetObject(s3bucket, ref, 3600);
+            // S3 mode: redirect to presigned GET URL (15 min, per design).
+            const url = await s3client.presignedGetObject(s3bucket, ref, PRESIGNED_TTL_SECONDS);
             return reply.redirect(url);
         }
     });
