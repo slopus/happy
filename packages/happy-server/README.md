@@ -72,6 +72,62 @@ To use external Postgres or Redis instead of the embedded defaults, set:
 | `REDIS_URL` | Redis connection URL |
 | `S3_HOST` | S3/MinIO host (bypasses local file storage) |
 
+### S3 bucket configuration (when self-hosting with S3)
+
+When `S3_HOST` is set, image attachments and other blobs land in S3 under
+`sessions/<sessionId>/attachments/<id>.enc`. Two bucket-level settings are
+not configured by the server itself and must be applied once at deploy
+time:
+
+**1. Lifecycle rule for attachment TTL.** Encrypted blobs are deleted when
+their session is deleted, but a long-lived session would otherwise keep
+its blobs forever. Add a lifecycle rule on the attachments prefix so
+objects age out automatically. Pick a TTL that matches your retention
+policy (30 days is a reasonable default).
+
+```bash
+# AWS CLI
+aws s3api put-bucket-lifecycle-configuration --bucket happy-blobs \
+  --lifecycle-configuration '{
+    "Rules": [{
+      "ID": "session-attachments-ttl",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "sessions/" },
+      "Expiration": { "Days": 30 }
+    }]
+  }'
+
+# MinIO
+mc ilm rule add myminio/happy-blobs \
+  --expire-days 30 \
+  --prefix "sessions/"
+```
+
+**2. Server-side encryption (defense-in-depth).** Blobs are already
+end-to-end encrypted by the client, but enabling AES-256 SSE on the
+bucket protects against an attacker who somehow obtains raw object
+storage access without the keys.
+
+```bash
+# AWS CLI
+aws s3api put-bucket-encryption --bucket happy-blobs \
+  --server-side-encryption-configuration '{
+    "Rules": [{
+      "ApplyServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+      }
+    }]
+  }'
+
+# MinIO
+mc encrypt set sse-s3 myminio/happy-blobs
+```
+
+Local-storage mode (no `S3_HOST`) writes blobs under
+`<DATA_DIR>/files/sessions/<sessionId>/attachments/`. There is no
+lifecycle equivalent — clean up old session directories on a cron if
+you want a TTL story.
+
 ## License
 
 MIT - Use it, modify it, deploy it anywhere.
