@@ -113,27 +113,44 @@ export async function uploadEncryptedBlob(
 }
 
 /**
- * Download an encrypted attachment blob from the server. The server
- * responds directly in local-storage mode and redirects to a presigned S3
- * GET URL otherwise; both are followed transparently by fetch.
+ * Download an encrypted attachment blob.
+ *
+ * Two-step protocol mirroring the design spec:
+ *   1. POST /request-download with the ref → server returns a downloadUrl
+ *      (server-relative URL with auth in local mode; presigned S3 GET
+ *      otherwise).
+ *   2. GET that URL — local mode requires the Bearer header, S3 presigned
+ *      URLs reject extra headers.
  */
 export async function downloadEncryptedAttachment(
     credentials: AuthCredentials,
     sessionId: string,
     ref: string,
 ): Promise<Uint8Array> {
-    const parts = ref.split('/');
-    const attachmentFile = parts[parts.length - 1];
-    if (!attachmentFile || /[^a-zA-Z0-9._-]/.test(attachmentFile)) {
-        throw new Error(`Invalid attachment reference: ${ref}`);
-    }
-    const url = `${getServerUrl()}/v1/sessions/${sessionId}/attachments/${encodeURIComponent(attachmentFile)}`;
-    const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${credentials.token}` },
+    const API_ENDPOINT = getServerUrl();
+
+    const requestRes = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/attachments/request-download`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ref }),
     });
-    if (!response.ok) {
-        throw new Error(`Attachment download failed: ${response.status}`);
+    if (!requestRes.ok) {
+        throw new Error(`request-download failed: ${requestRes.status}`);
     }
-    const buffer = await response.arrayBuffer();
+    const { downloadUrl } = await requestRes.json() as { downloadUrl: string };
+
+    const isServerUrl = downloadUrl.startsWith(API_ENDPOINT);
+    const headers: Record<string, string> = {};
+    if (isServerUrl) {
+        headers['Authorization'] = `Bearer ${credentials.token}`;
+    }
+    const blobRes = await fetch(downloadUrl, { headers });
+    if (!blobRes.ok) {
+        throw new Error(`Attachment download failed: ${blobRes.status}`);
+    }
+    const buffer = await blobRes.arrayBuffer();
     return new Uint8Array(buffer);
 }

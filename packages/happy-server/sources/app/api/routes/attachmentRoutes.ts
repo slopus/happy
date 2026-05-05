@@ -179,8 +179,65 @@ export function attachmentRoutes(app: Fastify) {
     });
 
     /**
+     * Request a download URL for an attachment by ref. The client follows the
+     * returned URL with a normal HTTP GET — in local mode it points back at
+     * this server (auth-required), in S3 mode it is a presigned GET URL.
+     * Pairs with /request-upload as the design-spec endpoint.
+     */
+    app.post('/v1/sessions/:sessionId/attachments/request-download', {
+        schema: {
+            params: z.object({
+                sessionId: z.string(),
+            }),
+            body: z.object({
+                ref: z.string(),
+            }),
+            response: {
+                200: z.object({
+                    downloadUrl: z.string(),
+                }),
+                400: z.object({ error: z.string() }),
+                404: z.object({ error: z.string() }),
+            },
+        },
+        preHandler: app.authenticate,
+    }, async (request, reply) => {
+        const { sessionId } = request.params;
+        const { ref } = request.body;
+        const userId = request.userId;
+
+        const session = await db.session.findFirst({
+            where: { id: sessionId, accountId: userId },
+        });
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        // ref must live strictly under this session's attachments prefix —
+        // otherwise a member of session A could craft a ref pointing into
+        // session B and ride this endpoint's auth to read it.
+        const expectedPrefix = `sessions/${sessionId}/attachments/`;
+        if (!ref.startsWith(expectedPrefix)) {
+            return reply.code(400).send({ error: 'Ref does not belong to this session' });
+        }
+        const attachmentFile = ref.slice(expectedPrefix.length);
+        if (!attachmentFile || attachmentFile.includes('/') || attachmentFile.includes('..')) {
+            return reply.code(400).send({ error: 'Invalid attachment ref' });
+        }
+
+        if (isLocalStorage()) {
+            const baseUrl = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || '3005'}`;
+            const downloadUrl = `${baseUrl}/v1/sessions/${sessionId}/attachments/${attachmentFile}`;
+            return reply.send({ downloadUrl });
+        }
+        const downloadUrl = await s3client.presignedGetObject(s3bucket, ref, PRESIGNED_TTL_SECONDS);
+        return reply.send({ downloadUrl });
+    });
+
+    /**
      * Download an attachment. Returns the encrypted blob directly (local)
-     * or a presigned GET URL redirect (S3).
+     * or a presigned GET URL redirect (S3). Backs the URL returned by
+     * /request-download in local mode; clients can also call this directly.
      */
     app.get('/v1/sessions/:sessionId/attachments/:attachmentFile', {
         schema: {

@@ -283,22 +283,37 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * Download an encrypted attachment blob from the server.
+     * Download an encrypted attachment blob via the request-download flow:
+     * POST /request-download → { downloadUrl } → GET downloadUrl. Local mode
+     * downloadUrl points back at our server (Bearer required); S3 mode is a
+     * presigned URL that does not accept extra headers.
      */
     async downloadAttachment(ref: string): Promise<Uint8Array> {
-        // ref format: "sessions/{sessionId}/attachments/{file}"
-        const parts = ref.split('/');
-        const attachmentFile = parts[parts.length - 1];
-        if (!attachmentFile || /[^a-zA-Z0-9._-]/.test(attachmentFile)) {
-            throw new Error(`Invalid attachment reference: ${ref}`);
+        const requestUrl = `${configuration.serverUrl}/v1/sessions/${this.sessionId}/attachments/request-download`;
+        const requestRes = await axios.post(
+            requestUrl,
+            { ref },
+            {
+                headers: { 'Authorization': `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+                timeout: 30000,
+            },
+        );
+        const downloadUrl = requestRes.data?.downloadUrl;
+        if (typeof downloadUrl !== 'string') {
+            throw new Error('request-download returned no downloadUrl');
         }
-        const url = `${configuration.serverUrl}/v1/sessions/${this.sessionId}/attachments/${encodeURIComponent(attachmentFile)}`;
-        const response = await axios.get(url, {
-            headers: { 'Authorization': `Bearer ${this.token}` },
+
+        const isServerUrl = downloadUrl.startsWith(configuration.serverUrl);
+        const headers: Record<string, string> = {};
+        if (isServerUrl) {
+            headers['Authorization'] = `Bearer ${this.token}`;
+        }
+        const response = await axios.get(downloadUrl, {
+            headers,
             responseType: 'arraybuffer',
             timeout: 60000,
             maxRedirects: 5,
-            maxContentLength: 10 * 1024 * 1024, // 10MB limit matching server
+            maxContentLength: 10 * 1024 * 1024,
         });
         return new Uint8Array(response.data);
     }

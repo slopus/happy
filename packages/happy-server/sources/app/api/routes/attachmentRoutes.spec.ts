@@ -273,6 +273,101 @@ describe("attachmentRoutes — PUT (local-mode upload)", () => {
     });
 });
 
+describe("attachmentRoutes — POST request-download", () => {
+    let app: Fastify;
+    beforeEach(() => { resetState(); });
+    afterEach(async () => { if (app) await app.close(); });
+
+    it("returns a server-relative downloadUrl for the session owner in local mode", async () => {
+        seedSession("s1", "u1");
+        state.useLocalStorage = true;
+        app = await createApp();
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v1/sessions/s1/attachments/request-download",
+            headers: { "x-user-id": "u1" },
+            payload: { ref: "sessions/s1/attachments/abc.enc" },
+        });
+
+        expect(res.statusCode).toBe(200);
+        const body = res.json();
+        expect(body.downloadUrl).toContain("/v1/sessions/s1/attachments/abc.enc");
+    });
+
+    it("returns a presigned S3 GET URL in S3 mode", async () => {
+        seedSession("s1", "u1");
+        state.useLocalStorage = false;
+        app = await createApp();
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v1/sessions/s1/attachments/request-download",
+            headers: { "x-user-id": "u1" },
+            payload: { ref: "sessions/s1/attachments/abc.enc" },
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.json().downloadUrl).toBe("https://s3.test/get-url");
+    });
+
+    it("rejects a ref that does not belong to the requested session (cross-session attack)", async () => {
+        seedSession("s1", "u1");
+        seedSession("s2", "u1");
+        app = await createApp();
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v1/sessions/s1/attachments/request-download",
+            headers: { "x-user-id": "u1" },
+            payload: { ref: "sessions/s2/attachments/abc.enc" },
+        });
+
+        expect(res.statusCode).toBe(400);
+    });
+
+    it("rejects path traversal inside the ref", async () => {
+        seedSession("s1", "u1");
+        app = await createApp();
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v1/sessions/s1/attachments/request-download",
+            headers: { "x-user-id": "u1" },
+            payload: { ref: "sessions/s1/attachments/../escape" },
+        });
+
+        expect(res.statusCode).toBe(400);
+    });
+
+    it("returns 404 for a non-owner of the session", async () => {
+        seedSession("s1", "u1");
+        app = await createApp();
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v1/sessions/s1/attachments/request-download",
+            headers: { "x-user-id": "u2" },
+            payload: { ref: "sessions/s1/attachments/abc.enc" },
+        });
+
+        expect(res.statusCode).toBe(404);
+    });
+
+    it("returns 401 when unauthenticated", async () => {
+        seedSession("s1", "u1");
+        app = await createApp();
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v1/sessions/s1/attachments/request-download",
+            payload: { ref: "sessions/s1/attachments/abc.enc" },
+        });
+
+        expect(res.statusCode).toBe(401);
+    });
+});
+
 describe("attachmentRoutes — GET (download)", () => {
     let app: Fastify;
     beforeEach(() => { resetState(); });
