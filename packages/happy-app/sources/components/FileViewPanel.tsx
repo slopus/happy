@@ -15,6 +15,7 @@ import { sessionReadFile, sessionWriteFile } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { layout } from '@/components/layout';
 
 interface FileViewPanelProps {
     sessionId: string;
@@ -429,7 +430,10 @@ export const FileViewPanel = React.memo(function FileViewPanel({
                             <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
                         </Pressable>
                     </View>
-                    <ScrollView style={{ flex: 1 }}>
+                    <ScrollView
+                        style={{ flex: 1 }}
+                        contentContainerStyle={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}
+                    >
                         <PierreDiffView
                             oldFile={{ name: fileName + ' (your changes)', contents: editContent }}
                             newFile={{ name: fileName + ' (on device)', contents: externalChange }}
@@ -459,7 +463,7 @@ export const FileViewPanel = React.memo(function FileViewPanel({
             ) : isMarkdown && displayMode === 'preview' ? (
                 <ScrollView
                     style={{ flex: 1, backgroundColor: theme.dark ? '#1e1e1e' : '#ffffff' }}
-                    contentContainerStyle={{ padding: 16 }}
+                    contentContainerStyle={{ padding: 16, maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}
                 >
                     {Platform.OS === 'web' && <EditorPreviewStyles />}
                     <View {...(Platform.OS === 'web' ? { className: 'editor-preview-wrap' } as any : {})}>
@@ -467,11 +471,13 @@ export const FileViewPanel = React.memo(function FileViewPanel({
                     </View>
                 </ScrollView>
             ) : (
-                <EditorView
-                    value={editContent}
-                    onChange={setEditContent}
-                    language={language}
-                />
+                <View style={{ flex: 1, maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
+                    <EditorView
+                        value={editContent}
+                        onChange={setEditContent}
+                        language={language}
+                    />
+                </View>
             )}
         </View>
     );
