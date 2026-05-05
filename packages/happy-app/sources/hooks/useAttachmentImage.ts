@@ -46,12 +46,34 @@ function detectImageMime(bytes: Uint8Array): string {
 
 async function loadAttachmentDataUri(sessionId: string, ref: string): Promise<string | null> {
     const credentials = sync.getCredentials();
-    if (!credentials) return null;
+    if (!credentials) {
+        console.warn(`[attachment-image] no credentials for ${ref}`);
+        return null;
+    }
     const blobKey = sync.encryption.getSessionBlobKey(sessionId);
-    if (!blobKey) return null;
-    const encrypted = await downloadEncryptedAttachment(credentials, sessionId, ref);
+    if (!blobKey) {
+        console.warn(`[attachment-image] no blobKey for session ${sessionId} (ref=${ref})`);
+        return null;
+    }
+    if (blobKey.length !== 32) {
+        console.warn(`[attachment-image] blobKey wrong length: ${blobKey.length} (ref=${ref})`);
+        return null;
+    }
+    let encrypted: Uint8Array;
+    try {
+        encrypted = await downloadEncryptedAttachment(credentials, sessionId, ref);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[attachment-image] download failed for ${ref}: ${message}`);
+        return null;
+    }
+    console.log(`[attachment-image] downloaded ${encrypted.length} bytes for ${ref} (key.length=${blobKey.length}, key.buf=${blobKey.buffer.byteLength}, key.off=${blobKey.byteOffset})`);
     const decrypted = decryptBlob(encrypted, blobKey);
-    if (!decrypted) return null;
+    if (!decrypted) {
+        console.warn(`[attachment-image] decrypt returned null for ${ref} (encrypted.length=${encrypted.length})`);
+        return null;
+    }
+    console.log(`[attachment-image] decrypted ${decrypted.length} bytes for ${ref}`);
     const mime = detectImageMime(decrypted);
     return `data:${mime};base64,${encodeBase64(decrypted)}`;
 }
