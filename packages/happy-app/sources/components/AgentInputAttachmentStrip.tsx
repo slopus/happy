@@ -76,7 +76,7 @@ function AttachmentThumbnail({
             <Image
                 source={{ uri: image.uri }}
                 placeholder={placeholder}
-                style={styles.thumb}
+                style={[{ width: THUMB_SIZE, height: THUMB_SIZE }, styles.thumb]}
                 contentFit="cover"
                 transition={150}
             />
@@ -114,8 +114,6 @@ const styles = StyleSheet.create(() => ({
         position: 'relative',
     },
     thumb: {
-        width: THUMB_SIZE,
-        height: THUMB_SIZE,
         borderRadius: BORDER_RADIUS,
     },
     removeButton: {
