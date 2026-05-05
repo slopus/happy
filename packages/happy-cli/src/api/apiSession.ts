@@ -325,7 +325,10 @@ export class ApiSessionClient extends EventEmitter {
     async downloadAndDecryptAttachment(ref: string): Promise<Uint8Array | null> {
         const encrypted = await this.downloadAttachment(ref);
         const key = await this.getBlobKey();
-        return decryptBlob(encrypted, key);
+        console.log(`[downloadAndDecrypt] ref=${ref} encrypted=${encrypted.length} key=${key.length}`);
+        const decrypted = decryptBlob(encrypted, key);
+        console.log(`[downloadAndDecrypt] decrypted=${decrypted ? decrypted.length : 'null'}`);
+        return decrypted;
     }
 
     /**

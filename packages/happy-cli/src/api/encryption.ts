@@ -118,12 +118,17 @@ export function decryptLegacy(data: Uint8Array, secret: Uint8Array): any | null 
  */
 export function decryptBlob(bundle: Uint8Array, key: Uint8Array): Uint8Array | null {
   if (bundle.length < tweetnacl.secretbox.nonceLength + 16) {
+    console.warn(`[decryptBlob] bundle too short: ${bundle.length}`);
     return null;
   }
   const nonce = bundle.slice(0, tweetnacl.secretbox.nonceLength);
   const ciphertext = bundle.slice(tweetnacl.secretbox.nonceLength);
   const decrypted = tweetnacl.secretbox.open(ciphertext, nonce, key);
-  return decrypted ? new Uint8Array(decrypted) : null;
+  if (!decrypted) {
+    console.warn(`[decryptBlob] tweetnacl.secretbox.open returned null. bundle=${bundle.length}, nonce=${nonce.length}, ct=${ciphertext.length}, key=${key.length}`);
+    return null;
+  }
+  return new Uint8Array(decrypted);
 }
 
 /**

@@ -31,6 +31,7 @@ export function encryptBlob(data: Uint8Array, key: Uint8Array): Uint8Array {
     const result = new Uint8Array(nonce.length + encryptedStandalone.length);
     result.set(nonce, 0);
     result.set(encryptedStandalone, nonce.length);
+    console.log(`[encryptBlob] data=${data.length} (buf=${data.buffer.byteLength},off=${data.byteOffset}) key=${key.length}(buf=${key.buffer.byteLength}) nonce=${nonce.length} sodiumOut=${encrypted.length}(buf=${encrypted.buffer.byteLength},off=${encrypted.byteOffset}) result=${result.length}`);
     return result;
 }
 
