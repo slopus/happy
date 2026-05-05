@@ -1,8 +1,0 @@
-67e0823d test(cli): use configured Codex integration model
-68c50206 fix(cli): harden Codex local handoff lifecycle
-627511c6 feat(cli): switch Codex remote back to local
-0bee9e61 feat(cli): hand off local Codex to remote
-9d5d09d1 feat(cli): persist Codex native thread ids
-061c5d20 feat(cli): add Codex native start mode
-14b9ca30 feat(cli): preserve Codex command results
-15b7b5e6 feat(cli): add Codex startup defaults
