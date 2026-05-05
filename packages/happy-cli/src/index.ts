@@ -53,6 +53,18 @@ import { handleCodexCommand } from './commands/codexCommand'
   if (subcommand === 'doctor') {
     // Check for clean subcommand
     if (args[1] === 'clean') {
+      if (args.slice(2).some(a => a === '--help' || a === '-h')) {
+        console.log(`
+${chalk.bold('happy doctor clean')} - Kill all happy-related processes (daemon + sessions)
+
+${chalk.bold('Usage:')}
+  happy doctor clean
+
+${chalk.bold('Warning:')} This is destructive — it terminates the daemon and every running session.
+Conversation history is preserved on the server, but in-flight tool calls are interrupted.
+`)
+        process.exit(0)
+      }
       const result = await killRunawayHappyProcesses()
       console.log(`Cleaned up ${result.killed} runaway processes`)
       if (result.errors.length > 0) {
