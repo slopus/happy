@@ -492,10 +492,116 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(events).toEqual(expect.arrayContaining([
             expect.objectContaining({ type: 'task_started', turn_id: 'turn-raw-1' }),
             expect.objectContaining({ type: 'exec_command_begin', callId: 'call-1' }),
-            expect.objectContaining({ type: 'exec_command_end', callId: 'call-1', output: '/tmp/project\n' }),
+            expect.objectContaining({
+                type: 'exec_command_end',
+                callId: 'call-1',
+                output: '/tmp/project\n',
+                exit_code: 0,
+                duration_ms: 1,
+                status: 'completed',
+                cwd: '/tmp/project',
+                command: '/bin/zsh -lc pwd',
+            }),
             expect.objectContaining({ type: 'agent_message', message: 'done' }),
         ]));
         expect(events.filter((event) => event.type === 'task_complete')).toHaveLength(1);
+
+        await client.disconnect();
+    });
+
+    it('maps failed command executions with output and exit metadata', async () => {
+        const proc = createMockProcess({
+            pid: 3007,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-raw-fail', path: '/tmp/thread-raw-fail' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: { turn: { id: 'turn-raw-fail' } },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/started',
+                            params: {
+                                threadId: 'thread-raw-fail',
+                                turn: { id: 'turn-raw-fail', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-raw-fail',
+                                turnId: 'turn-raw-fail',
+                                item: {
+                                    type: 'commandExecution',
+                                    id: 'call-fail',
+                                    command: 'missing-command',
+                                    cwd: '/tmp/project',
+                                    aggregatedOutput: 'missing-command: command not found\n',
+                                    exitCode: 127,
+                                    durationMs: 45,
+                                    status: 'failed',
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-raw-fail',
+                                turn: { id: 'turn-raw-fail', items: [], status: 'completed', error: null },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await expect(client.sendTurnAndWait('run failing command')).resolves.toEqual({ aborted: false });
+
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'exec_command_end',
+                callId: 'call-fail',
+                output: 'missing-command: command not found\n',
+                exit_code: 127,
+                duration_ms: 45,
+                status: 'failed',
+                cwd: '/tmp/project',
+                command: 'missing-command',
+            }),
+        ]));
 
         await client.disconnect();
     });
@@ -603,9 +709,10 @@ describe('CodexAppServerClient sandbox integration', () => {
             cwd: '/tmp/project',
             approvalPolicy: 'never',
             sandbox: 'danger-full-access',
+            effort: 'medium',
         });
 
-        await expect(client.sendTurnAndWait('patch the file')).resolves.toEqual({ aborted: false });
+        await expect(client.sendTurnAndWait('patch the file', { effort: 'medium' })).resolves.toEqual({ aborted: false });
 
         expect(events).toEqual(expect.arrayContaining([
             expect.objectContaining({
@@ -709,6 +816,120 @@ describe('CodexAppServerClient sandbox integration', () => {
                 },
             },
             reason: null,
+        }));
+
+        await client.disconnect();
+    });
+
+    it('passes reasoning effort through thread config and turn start requests', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3005,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-effort', path: '/tmp/thread-effort' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: 'medium',
+                            },
+                        });
+                    }, 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: { turn: { id: 'turn-effort' } },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-effort',
+                                turnId: 'turn-effort',
+                                usage: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+            effort: 'medium',
+        });
+        await expect(client.sendTurnAndWait('hello', { effort: 'medium' })).resolves.toEqual({ aborted: false });
+
+        expect(requests.find((msg) => msg.method === 'thread/start')?.params).toEqual(expect.objectContaining({
+            config: expect.objectContaining({
+                model_reasoning_effort: 'medium',
+            }),
+        }));
+        expect(requests.find((msg) => msg.method === 'turn/start')?.params).toEqual(expect.objectContaining({
+            effort: 'medium',
+        }));
+
+        await client.disconnect();
+    });
+
+    it('passes reasoning effort through resume thread config', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3006,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-effort-resume', path: '/tmp/thread-effort-resume' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: 'medium',
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.resumeThread({
+            threadId: 'thread-effort-resume',
+            effort: 'medium',
+            mcpServers: { happy: { command: 'happy-mcp' } },
+        });
+
+        expect(requests.find((msg) => msg.method === 'thread/resume')?.params).toEqual(expect.objectContaining({
+            config: expect.objectContaining({
+                mcp_servers: { happy: { command: 'happy-mcp' } },
+                model_reasoning_effort: 'medium',
+            }),
         }));
 
         await client.disconnect();

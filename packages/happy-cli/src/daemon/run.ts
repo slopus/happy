@@ -28,6 +28,7 @@ import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
+import { normalizeCodexResumeOptions } from './codexResumeOptions';
 
 // Prepare initial metadata
 // Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon
@@ -654,11 +655,21 @@ export async function startDaemon(): Promise<void> {
           { startedBy: 'daemon', claudeStartingMode: 'remote' },
         );
 
-        if (options?.model) {
-          launch.args.push('--model', options.model);
-        }
-        if (options?.permissionMode) {
-          launch.args.push('--permission-mode', options.permissionMode);
+        if (metadata.flavor === 'codex' || metadata.codexThreadId) {
+          const codexOptions = normalizeCodexResumeOptions(options);
+          if (codexOptions.model) {
+            launch.args.push('--model', codexOptions.model);
+          }
+          if (codexOptions.permissionMode) {
+            launch.args.push('--permission-mode', codexOptions.permissionMode);
+          }
+        } else {
+          if (options?.model) {
+            launch.args.push('--model', options.model);
+          }
+          if (options?.permissionMode) {
+            launch.args.push('--permission-mode', options.permissionMode);
+          }
         }
 
         await fs.access(launch.cwd);

@@ -1,15 +1,9 @@
 /**
- * ⚠️ UNDER REVIEW — LIKELY NEEDS MORE CAREFUL DESIGN
+ * Structured session event envelopes used by newer agent integrations.
  *
- * This session protocol is not used in production and should NOT be used in dev
- * environments either until we revisit the design. The legacy protocol
- * (role: 'user' / role: 'agent') is the active code path everywhere.
- *
- * Before investing more here, look at how pi.dev standardizes their agent
- * protocol — we may want to align with or build on that approach instead of
- * rolling our own envelope format.
- *
- * Types are kept here for reference but are frozen. Do not add new consumers.
+ * The mobile app still normalizes these envelopes into the legacy message
+ * shape for compact rendering. Keep changes additive and backward-compatible
+ * until the app renderer consumes this protocol directly.
  */
 
 import { createId, isCuid } from '@paralleldrive/cuid2';
@@ -41,6 +35,14 @@ export const sessionToolCallStartEventSchema = z.object({
 export const sessionToolCallEndEventSchema = z.object({
   t: z.literal('tool-call-end'),
   call: z.string(),
+  result: z.object({
+    content: z.string().nullable().optional(),
+    status: z.enum(['completed', 'error', 'canceled']).optional(),
+    exitCode: z.number().nullable().optional(),
+    durationMs: z.number().nullable().optional(),
+    cwd: z.string().optional(),
+    command: z.string().optional(),
+  }).optional(),
 });
 
 export const sessionFileEventSchema = z.object({

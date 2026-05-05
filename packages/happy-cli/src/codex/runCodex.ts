@@ -33,6 +33,17 @@ import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
+import type { ReasoningEffort } from './codexAppServerTypes';
+import {
+    createCodexModeState,
+    resolveCodexMessageMode,
+    type CodexMode,
+    type CodexModeState,
+    type CodexPermissionMode,
+} from './modeState';
+import type { CodexStartingMode } from './cliArgs';
+import { launchNativeCodex } from './codexLocalLauncher';
+import { resolveCodexStartingMode } from './modeLoop';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -57,6 +68,10 @@ export async function runCodex(opts: {
     startedBy?: 'daemon' | 'terminal';
     noSandbox?: boolean;
     resumeThreadId?: string;
+    startupModel?: string;
+    startupEffort?: ReasoningEffort;
+    startupPermissionMode?: CodexPermissionMode;
+    startingMode?: CodexStartingMode;
 }): Promise<void> {
     // Early check: ensure Codex CLI is installed before proceeding
     try {
@@ -71,13 +86,6 @@ export async function runCodex(opts: {
         console.error('Alternatively, use Claude Code:');
         console.error('  \x1b[36mhappy claude\x1b[0m\n');
         process.exit(1);
-    }
-
-    // Use shared PermissionMode type for cross-agent compatibility
-    type PermissionMode = import('@/api/types').PermissionMode;
-    interface EnhancedMode {
-        permissionMode: PermissionMode;
-        model?: string;
     }
 
     //
@@ -203,73 +211,53 @@ export async function runCodex(opts: {
         }
     }
 
-    const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
+    const messageQueue = new MessageQueue2<CodexMode>((mode) => hashObject({
         permissionMode: mode.permissionMode,
         model: mode.model,
+        effort: mode.effort,
     }));
 
-    // Track current overrides to apply per message
-    // Use shared PermissionMode type from api/types for cross-agent compatibility
-    let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
-    let currentModel: string | undefined = undefined;
+    let modeState: CodexModeState = createCodexModeState({
+        permissionMode: opts.startupPermissionMode,
+        model: opts.startupModel,
+        effort: opts.startupEffort,
+    });
 
-    // Valid Codex permission modes from remote messages. Matches the modes
-    // the mobile UI exposes for Codex sessions (see modelModeOptions.ts:
-    // getCodexPermissionModes) and mirrors the Gemini validation pattern at
-    // runGemini.ts:222. Anything outside this set is silently ignored — the
-    // previous code blindly cast `message.meta.permissionMode as PermissionMode`
-    // at runtime, meaning a crafted value like `'totally_unsafe'` would be
-    // accepted and then fall through to the `default` branch in
-    // resolveCodexExecutionPolicy() — or worse, an attacker-chosen valid value
-    // could escalate sandbox scope (issue #1092).
-    const VALID_REMOTE_PERMISSION_MODES: readonly PermissionMode[] = [
-        'default',
-        'read-only',
-        'safe-yolo',
-        'yolo',
-    ];
+    let localHandoff: (() => void) | null = null;
+    let localTerminate: (() => void) | null = null;
+    let localHandoffRequested = false;
+    let currentRunMode = resolveCodexStartingMode({
+        startedBy: opts.startedBy,
+        requestedMode: opts.startingMode,
+    });
+    let activeCodexThreadId = opts.resumeThreadId;
 
     session.onUserMessage((message) => {
-        // Resolve permission mode (validate against Codex-native modes)
-        let messagePermissionMode = currentPermissionMode;
-        if (message.meta?.permissionMode) {
-            const incoming = message.meta.permissionMode as PermissionMode;
-            if (VALID_REMOTE_PERMISSION_MODES.includes(incoming)) {
-                messagePermissionMode = incoming;
-                currentPermissionMode = messagePermissionMode;
-                logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
-            } else {
-                logger.debug(`[Codex] Ignoring invalid permission mode from user message: ${String(message.meta.permissionMode)}`);
-            }
-        } else {
-            logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
+        const resolved = resolveCodexMessageMode(modeState, message.meta);
+        modeState = resolved.state;
+        if (resolved.ignoredPermissionMode) {
+            logger.debug(`[Codex] Ignoring invalid permission mode from user message: ${resolved.ignoredPermissionMode}`);
         }
-
-        // Resolve model; explicit null resets to default (undefined)
-        let messageModel = currentModel;
-        if (message.meta?.hasOwnProperty('model')) {
-            messageModel = message.meta.model || undefined;
-            currentModel = messageModel;
-            logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
-        } else {
-            logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
+        logger.debug(`[Codex] Resolved message mode: permission=${resolved.mode.permissionMode}, model=${resolved.mode.model ?? 'default'}, effort=${resolved.mode.effort ?? 'default'}`);
+        messageQueue.push(message.content.text, resolved.mode);
+        if (currentRunMode === 'local') {
+            localHandoffRequested = true;
+            localHandoff?.();
         }
-
-        const enhancedMode: EnhancedMode = {
-            permissionMode: messagePermissionMode || 'default',
-            model: messageModel,
-        };
-        messageQueue.push(message.content.text, enhancedMode);
     });
     let thinking = false;
     let currentTurnId: string | null = null;
     let codexStartedSubagents = new Set<string>();
     let codexActiveSubagents = new Set<string>();
     let codexProviderSubagentToSessionSubagent = new Map<string, string>();
-    session.keepAlive(thinking, 'remote');
+    session.updateAgentState((currentState) => ({
+        ...currentState,
+        controlledByUser: currentRunMode === 'local',
+    }));
+    session.keepAlive(thinking, currentRunMode);
     // Periodic keep-alive; store handle so we can clear on exit
     const keepAliveInterval = setInterval(() => {
-        session.keepAlive(thinking, 'remote');
+        session.keepAlive(thinking, currentRunMode);
     }, 2000);
 
     const sendReady = () => {
@@ -287,6 +275,94 @@ export async function runCodex(opts: {
         } catch (pushError) {
             logger.debug('[Codex] Failed to send ready push', pushError);
         }
+    };
+
+    const launchLocalCodexSession = async (codexThreadId: string | undefined): Promise<
+        | { type: 'exit'; code: number }
+        | { type: 'switch-to-remote' }
+    > => {
+        let exitCode = 0;
+        let switchToRemote = false;
+        try {
+            if (codexThreadId) {
+                session.updateMetadata((currentMetadata) => ({
+                    ...currentMetadata,
+                    codexThreadId,
+                }));
+            }
+            const result = await launchNativeCodex({
+                cwd: process.cwd(),
+                codexHomeDir: process.env.CODEX_HOME,
+                codexThreadId,
+                sandboxConfig,
+                model: modeState.currentModel,
+                effort: modeState.effort,
+                permissionMode: modeState.currentPermissionMode,
+                onThreadIdDiscovered: (codexThreadId) => {
+                    activeCodexThreadId = codexThreadId;
+                    session.updateMetadata((currentMetadata) => ({
+                        ...currentMetadata,
+                        codexThreadId,
+                    }));
+                },
+                onLocalHandoffReady: (handoff) => {
+                    localHandoff = handoff;
+                    if (localHandoffRequested) {
+                        handoff();
+                    }
+                },
+                onTerminateReady: (terminate) => {
+                    localTerminate = terminate;
+                },
+            });
+            localHandoff = null;
+            localTerminate = null;
+            if (result.type === 'switch') {
+                switchToRemote = true;
+                localHandoffRequested = false;
+                currentRunMode = 'remote';
+                activeCodexThreadId = result.codexThreadId ?? activeCodexThreadId;
+                session.keepAlive(thinking, 'remote');
+                session.updateAgentState((currentMetadata) => ({
+                    ...currentMetadata,
+                    controlledByUser: false,
+                }));
+            } else {
+                exitCode = result.code;
+                if (result.codexThreadId) {
+                    activeCodexThreadId = result.codexThreadId;
+                    session.updateMetadata((currentMetadata) => ({
+                        ...currentMetadata,
+                        codexThreadId: result.codexThreadId,
+                    }));
+                }
+            }
+        } catch (error) {
+            exitCode = 1;
+            const message = error instanceof Error ? error.message : String(error);
+            session.sendSessionEvent({
+                type: 'message',
+                message: `Codex local launch failed: ${message}`,
+            });
+            logger.warn('[codex]: Local Codex launch failed', error);
+        } finally {
+            localHandoff = null;
+            localTerminate = null;
+            if (!switchToRemote) {
+                if (reconnectionHandle) {
+                    reconnectionHandle.cancel();
+                }
+                try {
+                    session.sendSessionDeath();
+                    await session.flush();
+                    await session.close();
+                } catch (e) {
+                    logger.debug('[codex]: Error while closing local session', e);
+                }
+                clearInterval(keepAliveInterval);
+            }
+        }
+        return switchToRemote ? { type: 'switch-to-remote' } : { type: 'exit', code: exitCode };
     };
 
     // Debug helper: log active handles/requests if DEBUG is enabled
@@ -318,6 +394,7 @@ export async function runCodex(opts: {
     // Turn cancellation uses client.interruptTurn() — no AbortController hack needed.
     let abortController = new AbortController();
     let shouldExit = false;
+    let switchToLocalRequested = false;
 
     /**
      * Handles aborting the current task/inference without exiting the process.
@@ -373,6 +450,23 @@ export async function runCodex(opts: {
         abortInProgress = null;
     }
 
+    const handleSwitchToLocal = async () => {
+        if (switchToLocalRequested) {
+            return;
+        }
+        switchToLocalRequested = true;
+        currentRunMode = 'local';
+        shouldExit = true;
+        session.keepAlive(thinking, 'local');
+        session.updateAgentState((currentState) => ({
+            ...currentState,
+            controlledByUser: true,
+        }));
+        await handleAbort();
+    };
+
+    let happyServer: Awaited<ReturnType<typeof startHappyServer>> | null = null;
+
     /**
      * Handles session termination and process exit.
      * This is called when the session needs to be completely killed (not just aborted).
@@ -381,6 +475,7 @@ export async function runCodex(opts: {
      */
     const handleKillSession = async () => {
         logger.debug('[Codex] Kill session requested - terminating process');
+        localTerminate?.();
         await handleAbort();
         logger.debug('[Codex] Abort completed, proceeding with termination');
 
@@ -409,7 +504,7 @@ export async function runCodex(opts: {
             }
 
             // Stop Happy MCP server
-            happyServer.stop();
+            happyServer?.stop();
 
             logger.debug('[Codex] Session termination complete, exiting');
             process.exit(0);
@@ -423,6 +518,19 @@ export async function runCodex(opts: {
     session.rpcHandlerManager.registerHandler('abort', handleAbort);
 
     registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
+
+    if (currentRunMode === 'local') {
+        const localResult = await launchLocalCodexSession(activeCodexThreadId);
+        if (localResult.type === 'exit') {
+            process.exit(localResult.code);
+        }
+    }
+
+    while (currentRunMode === 'remote') {
+        shouldExit = false;
+        switchToLocalRequested = false;
+        abortController = new AbortController();
+        let shouldRestartRemote = false;
 
     //
     // Initialize Ink UI
@@ -442,7 +550,8 @@ export async function runCodex(opts: {
                 logger.debug('[codex]: Exiting agent via Ctrl-C');
                 shouldExit = true;
                 await handleAbort();
-            }
+            },
+            onSwitchToLocal: handleSwitchToLocal,
         }), {
             exitOnCtrlC: false,
             patchConsole: false
@@ -609,7 +718,7 @@ export async function runCodex(opts: {
     });
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
-    const happyServer = await startHappyServer(session);
+    happyServer = await startHappyServer(session);
     // Launch the bridge via `node <path>` (rather than relying on the .mjs shebang)
     // so it works on Windows, where Windows can't execute shebang scripts directly.
     // codex would otherwise fail to start the MCP server, the change_title tool would
@@ -628,23 +737,31 @@ export async function runCodex(opts: {
         await client.connect();
         logger.debug('[codex]: client.connect done');
 
-        if (opts.resumeThreadId) {
+        if (activeCodexThreadId) {
+            const startupExecutionPolicy = resolveCodexExecutionPolicy(
+                modeState.currentPermissionMode ?? 'default',
+                client.sandboxEnabled,
+            );
             await resumeExistingThread({
                 client,
                 session,
                 messageBuffer,
-                threadId: opts.resumeThreadId,
+                threadId: activeCodexThreadId,
                 cwd: process.cwd(),
+                model: modeState.currentModel,
+                approvalPolicy: startupExecutionPolicy.approvalPolicy,
+                sandbox: startupExecutionPolicy.sandbox,
+                effort: modeState.effort,
                 mcpServers,
             });
             first = false;
         }
 
-        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
+        let pending: { message: string; mode: CodexMode; isolate: boolean; hash: string } | null = null;
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
-            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = pending;
+            let message: { message: string; mode: CodexMode; isolate: boolean; hash: string } | null = pending;
             pending = null;
             if (!message) {
                 // Capture the current signal to distinguish idle-abort from queue close
@@ -686,8 +803,10 @@ export async function runCodex(opts: {
                         cwd: process.cwd(),
                         approvalPolicy: executionPolicy.approvalPolicy,
                         sandbox: executionPolicy.sandbox,
+                        effort: message.mode.effort,
                         mcpServers,
                     });
+                    activeCodexThreadId = startedThread.threadId;
                     session.updateMetadata((currentMetadata) => ({
                         ...currentMetadata,
                         codexThreadId: startedThread.threadId,
@@ -702,6 +821,7 @@ export async function runCodex(opts: {
                     model: message.mode.model,
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,
+                    effort: message.mode.effort,
                 });
                 first = false;
 
@@ -733,34 +853,38 @@ export async function runCodex(opts: {
         }
 
     } finally {
+        const switchingToLocal = switchToLocalRequested;
         // Clean up resources when main loop exits
         logger.debug('[codex]: Final cleanup start');
         logActiveHandles('cleanup-start');
 
         // Cancel offline reconnection if still running
-        if (reconnectionHandle) {
+        if (reconnectionHandle && !switchingToLocal) {
             logger.debug('[codex]: Cancelling offline reconnection');
             reconnectionHandle.cancel();
         }
 
-        try {
-            logger.debug('[codex]: sendSessionDeath');
-            session.sendSessionDeath();
-            logger.debug('[codex]: flush begin');
-            await session.flush();
-            logger.debug('[codex]: flush done');
-            logger.debug('[codex]: session.close begin');
-            await session.close();
-            logger.debug('[codex]: session.close done');
-        } catch (e) {
-            logger.debug('[codex]: Error while closing session', e);
+        if (!switchingToLocal) {
+            try {
+                logger.debug('[codex]: sendSessionDeath');
+                session.sendSessionDeath();
+                logger.debug('[codex]: flush begin');
+                await session.flush();
+                logger.debug('[codex]: flush done');
+                logger.debug('[codex]: session.close begin');
+                await session.close();
+                logger.debug('[codex]: session.close done');
+            } catch (e) {
+                logger.debug('[codex]: Error while closing session', e);
+            }
         }
         logger.debug('[codex]: client.disconnect begin');
         await client.disconnect();
         logger.debug('[codex]: client.disconnect done');
         // Stop Happy MCP server
         logger.debug('[codex]: happyServer.stop');
-        happyServer.stop();
+        happyServer?.stop();
+        happyServer = null;
 
         // Clean up ink UI
         if (process.stdin.isTTY) {
@@ -768,13 +892,15 @@ export async function runCodex(opts: {
             try { process.stdin.setRawMode(false); } catch { }
         }
         // Stop reading from stdin so the process can exit
-        if (hasTTY) {
+        if (hasTTY && !switchingToLocal) {
             logger.debug('[codex]: stdin.pause()');
             try { process.stdin.pause(); } catch { }
         }
         // Clear periodic keep-alive to avoid keeping event loop alive
-        logger.debug('[codex]: clearInterval(keepAlive)');
-        clearInterval(keepAliveInterval);
+        if (!switchingToLocal) {
+            logger.debug('[codex]: clearInterval(keepAlive)');
+            clearInterval(keepAliveInterval);
+        }
         if (inkInstance) {
             logger.debug('[codex]: inkInstance.unmount()');
             inkInstance.unmount();
@@ -783,5 +909,18 @@ export async function runCodex(opts: {
 
         logActiveHandles('cleanup-end');
         logger.debug('[codex]: Final cleanup completed');
+
+        if (switchingToLocal) {
+            const localResult = await launchLocalCodexSession(activeCodexThreadId);
+            if (localResult.type === 'exit') {
+                process.exit(localResult.code);
+            }
+            shouldRestartRemote = true;
+        }
+    }
+
+        if (!shouldRestartRemote) {
+            break;
+        }
     }
 }

@@ -22,6 +22,18 @@ describe('session protocol schemas', () => {
                 args: { command: 'ls -la' },
             },
             { t: 'tool-call-end', call: 'call-1' },
+            {
+                t: 'tool-call-end',
+                call: 'call-2',
+                result: {
+                    content: 'hello\n',
+                    status: 'completed',
+                    exitCode: 0,
+                    durationMs: 123,
+                    cwd: '/tmp/project',
+                    command: 'echo hello',
+                },
+            },
             { t: 'file', ref: 'upload-1', name: 'report.txt', size: 1024, mimeType: 'text/plain' },
             {
                 t: 'file',

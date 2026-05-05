@@ -17,7 +17,7 @@ vi.mock('@/codex/runCodex', () => ({
 }))
 
 vi.mock('@/codex/cliArgs', () => ({
-  extractCodexResumeFlag: mocks.mockExtractCodexResumeFlag,
+  parseCodexStartupArgs: mocks.mockExtractCodexResumeFlag,
 }))
 
 vi.mock('@/utils/sandboxFlags', () => ({
@@ -57,6 +57,10 @@ describe('handleCodexCommand', () => {
       startedBy: 'terminal',
       noSandbox: false,
       resumeThreadId: undefined,
+      startupModel: undefined,
+      startupEffort: undefined,
+      startupPermissionMode: undefined,
+      startingMode: undefined,
     })
     expect(
       mocks.mockEnsureDaemonRunning.mock.invocationCallOrder[0],
@@ -80,6 +84,54 @@ describe('handleCodexCommand', () => {
       startedBy: 'daemon',
       noSandbox: true,
       resumeThreadId: 'thread-123',
+      startupModel: undefined,
+      startupEffort: undefined,
+      startupPermissionMode: undefined,
+      startingMode: undefined,
+    })
+  })
+
+  it('passes parsed codex startup defaults through to runCodex', async () => {
+    mocks.mockExtractCodexResumeFlag.mockReturnValue({
+      resumeThreadId: null,
+      model: 'gpt-5.5',
+      effort: 'medium',
+      permissionMode: 'yolo',
+      args: ['--started-by', 'terminal'],
+    })
+
+    await handleCodexCommand(['--model', 'gpt-5.5', '--effort', 'medium', '--yolo', '--started-by', 'terminal'])
+
+    expect(mocks.mockRunCodex).toHaveBeenCalledWith({
+      credentials: { token: 'token' },
+      startedBy: 'terminal',
+      noSandbox: false,
+      resumeThreadId: undefined,
+      startupModel: 'gpt-5.5',
+      startupEffort: 'medium',
+      startupPermissionMode: 'yolo',
+      startingMode: undefined,
+    })
+  })
+
+  it('passes parsed starting mode through to runCodex', async () => {
+    mocks.mockExtractCodexResumeFlag.mockReturnValue({
+      resumeThreadId: null,
+      startingMode: 'remote',
+      args: ['--started-by', 'terminal'],
+    })
+
+    await handleCodexCommand(['--happy-starting-mode', 'remote', '--started-by', 'terminal'])
+
+    expect(mocks.mockRunCodex).toHaveBeenCalledWith({
+      credentials: { token: 'token' },
+      startedBy: 'terminal',
+      noSandbox: false,
+      resumeThreadId: undefined,
+      startupModel: undefined,
+      startupEffort: undefined,
+      startupPermissionMode: undefined,
+      startingMode: 'remote',
     })
   })
 })
