@@ -284,6 +284,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
+    let currentEffort: 'low' | 'medium' | 'high' | 'max' | undefined = undefined; // Track current Claude effort (thinking depth)
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
     // Exit when session is archived from web/mobile
     session.on('archived', () => {
@@ -391,6 +392,28 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
         }
 
+        // Resolve effort — pass through to Claude SDK as the `effort` option.
+        // Validate against the SDK's accepted set so a stale/garbage value
+        // from the wire doesn't poison the session.
+        let messageEffort = currentEffort;
+        const VALID_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'max']);
+        if (message.meta?.hasOwnProperty('effort')) {
+            const incoming = (message.meta as Record<string, unknown>).effort;
+            if (incoming === null || incoming === undefined) {
+                messageEffort = undefined;
+                currentEffort = undefined;
+                logger.debug(`[loop] Effort reset to default`);
+            } else if (typeof incoming === 'string' && VALID_EFFORTS.has(incoming)) {
+                messageEffort = incoming as 'low' | 'medium' | 'high' | 'max';
+                currentEffort = messageEffort;
+                logger.debug(`[loop] Effort updated from user message: ${messageEffort}`);
+            } else {
+                logger.debug(`[loop] Ignoring invalid effort from user message: ${String(incoming)}`);
+            }
+        } else {
+            logger.debug(`[loop] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
+        }
+
         // Check for special commands before processing
         const specialCommand = parseSpecialCommand(message.content.text);
 
@@ -403,7 +426,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 customSystemPrompt: messageCustomSystemPrompt,
                 appendSystemPrompt: messageAppendSystemPrompt,
                 allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools
+                disallowedTools: messageDisallowedTools,
+                effort: messageEffort,
             };
             messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
@@ -419,7 +443,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 customSystemPrompt: messageCustomSystemPrompt,
                 appendSystemPrompt: messageAppendSystemPrompt,
                 allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools
+                disallowedTools: messageDisallowedTools,
+                effort: messageEffort,
             };
             messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
@@ -476,7 +501,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             customSystemPrompt: messageCustomSystemPrompt,
             appendSystemPrompt: messageAppendSystemPrompt,
             allowedTools: messageAllowedTools,
-            disallowedTools: messageDisallowedTools
+            disallowedTools: messageDisallowedTools,
+            effort: messageEffort,
         };
         messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage);
         logger.debugLargeJson('User message pushed to queue:', message)

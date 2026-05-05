@@ -44,6 +44,12 @@ export interface QueryOptions {
     canCallTool?: CanCallToolCallback
     /** Path to a settings JSON file to pass to Claude via --settings */
     settingsPath?: string
+    /**
+     * Effort level passed straight through to the Claude Agent SDK option
+     * of the same name — controls how much thinking/reasoning Claude
+     * applies on each turn ('low' | 'medium' | 'high' | 'max').
+     */
+    effort?: 'low' | 'medium' | 'high' | 'max'
 }
 
 /**

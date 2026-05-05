@@ -13,6 +13,8 @@ import type { SandboxConfig } from "@/persistence"
 export type { PermissionMode } from "@/api/types"
 import type { PermissionMode } from "@/api/types"
 
+export type ClaudeEffort = 'low' | 'medium' | 'high' | 'max';
+
 export interface EnhancedMode {
     permissionMode: PermissionMode;
     model?: string;
@@ -21,6 +23,8 @@ export interface EnhancedMode {
     appendSystemPrompt?: string;
     allowedTools?: string[];
     disallowedTools?: string[];
+    /** Effort level passed through to the Claude Agent SDK as the `effort` option. */
+    effort?: ClaudeEffort;
 }
 
 interface LoopOptions {
