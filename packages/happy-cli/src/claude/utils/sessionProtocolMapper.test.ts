@@ -75,10 +75,91 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(ended.envelopes).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
-                    ev: { t: 'tool-call-end', call: 'tool-1' },
+                    ev: { t: 'tool-call-end', call: 'tool-1', output: 'ok' },
                 }),
             ]),
         );
+    });
+
+    it('forwards tool_result content as output on tool-call-end', () => {
+        const stringResult = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user',
+            uuid: 'u-output-string',
+            message: {
+                role: 'user',
+                content: [
+                    { type: 'tool_result', tool_use_id: 'tool-string', content: 'src/auth/index.ts' },
+                ],
+            },
+        } as any, { currentTurnId: 'turn-output' });
+
+        expect(stringResult.envelopes.find((e) => e.ev.t === 'tool-call-end')?.ev).toEqual({
+            t: 'tool-call-end',
+            call: 'tool-string',
+            output: 'src/auth/index.ts',
+        });
+
+        const arrayResult = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user',
+            uuid: 'u-output-array',
+            message: {
+                role: 'user',
+                content: [
+                    {
+                        type: 'tool_result',
+                        tool_use_id: 'tool-array',
+                        content: [
+                            { type: 'text', text: 'line one' },
+                            { type: 'text', text: 'line two' },
+                        ],
+                    },
+                ],
+            },
+        } as any, { currentTurnId: 'turn-output' });
+
+        expect(arrayResult.envelopes.find((e) => e.ev.t === 'tool-call-end')?.ev).toEqual({
+            t: 'tool-call-end',
+            call: 'tool-array',
+            output: 'line one\nline two',
+        });
+    });
+
+    it('marks isError on tool-call-end when tool_result is an error', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user',
+            uuid: 'u-err',
+            message: {
+                role: 'user',
+                content: [
+                    { type: 'tool_result', tool_use_id: 'tool-err', content: 'boom', is_error: true },
+                ],
+            },
+        } as any, { currentTurnId: 'turn-err' });
+
+        expect(result.envelopes.find((e) => e.ev.t === 'tool-call-end')?.ev).toEqual({
+            t: 'tool-call-end',
+            call: 'tool-err',
+            output: 'boom',
+            isError: true,
+        });
+    });
+
+    it('omits output when tool_result content is empty', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user',
+            uuid: 'u-empty',
+            message: {
+                role: 'user',
+                content: [
+                    { type: 'tool_result', tool_use_id: 'tool-empty', content: '' },
+                ],
+            },
+        } as any, { currentTurnId: 'turn-empty' });
+
+        expect(result.envelopes.find((e) => e.ev.t === 'tool-call-end')?.ev).toEqual({
+            t: 'tool-call-end',
+            call: 'tool-empty',
+        });
     });
 
     it('exposes the generated session subagent id on Agent tool calls', () => {
