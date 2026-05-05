@@ -67,6 +67,8 @@ export function attachmentRoutes(app: Fastify) {
                 200: z.object({
                     ref: z.string(),
                     uploadUrl: z.string(),
+                    method: z.enum(['PUT', 'POST']),
+                    formFields: z.record(z.string(), z.string()).optional(),
                 }),
                 404: z.object({ error: z.string() }),
                 413: z.object({ error: z.string() }),
@@ -101,14 +103,29 @@ export function attachmentRoutes(app: Fastify) {
         const ref = `sessions/${sessionId}/attachments/${attachmentFile}`;
 
         if (isLocalStorage()) {
-            // Local mode: client uploads to our own PUT endpoint
+            // Local mode: client uploads to our own PUT endpoint (the server
+            // enforces the size limit by inspecting the request body before
+            // it hits disk, so PUT is fine here).
             const baseUrl = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || '3005'}`;
             const uploadUrl = `${baseUrl}/v1/sessions/${sessionId}/attachments/${attachmentFile}`;
-            return reply.send({ ref, uploadUrl });
+            return reply.send({ ref, uploadUrl, method: 'PUT' });
         } else {
-            // S3 mode: return presigned PUT URL (15 min, per design).
-            const uploadUrl = await s3client.presignedPutObject(s3bucket, ref, PRESIGNED_TTL_SECONDS);
-            return reply.send({ ref, uploadUrl });
+            // S3 mode: presigned POST policy with content-length-range so S3
+            // itself rejects oversize uploads — a presigned PUT cannot enforce
+            // size and would let a client honest about size in the auth call
+            // PUT 500MB at the URL afterwards.
+            const policy = s3client.newPostPolicy();
+            policy.setBucket(s3bucket);
+            policy.setKey(ref);
+            policy.setExpires(new Date(Date.now() + PRESIGNED_TTL_SECONDS * 1000));
+            policy.setContentLengthRange(0, MAX_FILE_SIZE);
+            const { postURL, formData } = await s3client.presignedPostPolicy(policy);
+            return reply.send({
+                ref,
+                uploadUrl: postURL,
+                method: 'POST',
+                formFields: formData as Record<string, string>,
+            });
         }
     });
 

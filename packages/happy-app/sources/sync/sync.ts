@@ -506,14 +506,15 @@ class Sync {
                 const bytes = await readFileBytes(attachment.uri);
                 const encrypted = encryptBlob(bytes, blobKey);
 
-                const { ref, uploadUrl } = await requestAttachmentUpload(
+                const upload = await requestAttachmentUpload(
                     this.credentials,
                     sessionId,
                     attachment.name,
                     encrypted.length,
                 );
 
-                await uploadEncryptedBlob(uploadUrl, encrypted, this.credentials);
+                await uploadEncryptedBlob(upload, encrypted, this.credentials);
+                const { ref } = upload;
 
                 uploaded.push({
                     ref,

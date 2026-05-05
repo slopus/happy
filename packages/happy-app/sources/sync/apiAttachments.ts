@@ -18,6 +18,9 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 export type RequestUploadResult = {
     ref: string;
     uploadUrl: string;
+    method: 'PUT' | 'POST';
+    /** Required form fields when method is POST (S3 presigned POST policy). */
+    formFields?: Record<string, string>;
 };
 
 /**
@@ -56,26 +59,49 @@ export async function requestAttachmentUpload(
 
 /**
  * Upload an encrypted blob to the URL returned by requestAttachmentUpload.
- * For local-storage mode the URL is on the happy-server; for S3 it is a
- * presigned PUT URL (no Authorization header needed or allowed).
+ *
+ * Two transport modes are supported, picked by the server:
+ * - PUT: local-storage mode (our own server) — raw octet-stream body with
+ *   Bearer auth so the server can verify session membership before writing.
+ * - POST: S3-presigned POST policy — multipart/form-data with the policy's
+ *   formFields plus the file. S3 enforces the content-length-range from the
+ *   policy, so the client cannot upload more than the agreed limit.
  */
 export async function uploadEncryptedBlob(
-    uploadUrl: string,
+    upload: { uploadUrl: string; method: 'PUT' | 'POST'; formFields?: Record<string, string> },
     encryptedData: Uint8Array,
     credentials: AuthCredentials,
 ): Promise<void> {
-    const serverUrl = getServerUrl();
-    const isServerUrl = uploadUrl.startsWith(serverUrl);
+    if (upload.method === 'POST') {
+        const formData = new FormData();
+        if (upload.formFields) {
+            for (const [k, v] of Object.entries(upload.formFields)) {
+                formData.append(k, v);
+            }
+        }
+        const blob = new Blob([encryptedData.buffer as ArrayBuffer], { type: 'application/octet-stream' });
+        formData.append('file', blob);
+        const response = await fetch(upload.uploadUrl, {
+            method: 'POST',
+            body: formData,
+        });
+        if (!response.ok) {
+            throw new Error(`Blob upload failed: ${response.status}`);
+        }
+        return;
+    }
 
+    // PUT (local-storage mode): direct upload to our server.
+    const serverUrl = getServerUrl();
+    const isServerUrl = upload.uploadUrl.startsWith(serverUrl);
     const headers: Record<string, string> = {
         'Content-Type': 'application/octet-stream',
     };
-    // Only send auth header for our own server; S3 presigned URLs reject extra headers.
     if (isServerUrl) {
         headers['Authorization'] = `Bearer ${credentials.token}`;
     }
 
-    const response = await fetch(uploadUrl, {
+    const response = await fetch(upload.uploadUrl, {
         method: 'PUT',
         headers,
         body: encryptedData.buffer as ArrayBuffer,
