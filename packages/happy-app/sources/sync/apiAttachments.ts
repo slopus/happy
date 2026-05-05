@@ -81,12 +81,18 @@ export async function uploadEncryptedBlob(
         }
         const blob = new Blob([encryptedData.buffer as ArrayBuffer], { type: 'application/octet-stream' });
         formData.append('file', blob);
-        const response = await fetch(upload.uploadUrl, {
-            method: 'POST',
-            body: formData,
-        });
+        let response: Response;
+        try {
+            response = await fetch(upload.uploadUrl, {
+                method: 'POST',
+                body: formData,
+            });
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            throw new Error(`Blob upload (POST) network error to ${upload.uploadUrl}: ${message}`);
+        }
         if (!response.ok) {
-            throw new Error(`Blob upload failed: ${response.status}`);
+            throw new Error(`Blob upload (POST) failed: ${response.status} ${response.statusText} at ${upload.uploadUrl}`);
         }
         return;
     }
@@ -101,14 +107,24 @@ export async function uploadEncryptedBlob(
         headers['Authorization'] = `Bearer ${credentials.token}`;
     }
 
-    const response = await fetch(upload.uploadUrl, {
-        method: 'PUT',
-        headers,
-        body: encryptedData.buffer as ArrayBuffer,
-    });
+    let response: Response;
+    try {
+        response = await fetch(upload.uploadUrl, {
+            method: 'PUT',
+            headers,
+            body: encryptedData.buffer as ArrayBuffer,
+        });
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // Surface the URL we actually tried to hit — without this, a generic
+        // "Network request failed" gives no hint whether the server returned
+        // a localhost URL the phone can't resolve, an HTTP URL that ATS
+        // blocked, or a real connectivity issue.
+        throw new Error(`Blob upload (PUT) network error to ${upload.uploadUrl}: ${message}`);
+    }
 
     if (!response.ok) {
-        throw new Error(`Blob upload failed: ${response.status}`);
+        throw new Error(`Blob upload (PUT) failed: ${response.status} ${response.statusText} at ${upload.uploadUrl}`);
     }
 }
 
@@ -147,9 +163,15 @@ export async function downloadEncryptedAttachment(
     if (isServerUrl) {
         headers['Authorization'] = `Bearer ${credentials.token}`;
     }
-    const blobRes = await fetch(downloadUrl, { headers });
+    let blobRes: Response;
+    try {
+        blobRes = await fetch(downloadUrl, { headers });
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`Attachment download network error from ${downloadUrl}: ${message}`);
+    }
     if (!blobRes.ok) {
-        throw new Error(`Attachment download failed: ${blobRes.status}`);
+        throw new Error(`Attachment download failed: ${blobRes.status} ${blobRes.statusText} from ${downloadUrl}`);
     }
     const buffer = await blobRes.arrayBuffer();
     return new Uint8Array(buffer);
