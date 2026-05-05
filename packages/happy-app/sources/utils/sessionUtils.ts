@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Session } from '@/sync/storageTypes';
+import type { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
 
@@ -78,6 +78,11 @@ export function useSessionStatus(session: Session): SessionStatus {
  * Returns the last segment of the path, or 'unknown' if no path is available.
  */
 export function getSessionName(session: Session): string {
+    const customName = session.metadata?.name?.trim();
+    if (customName) {
+        return customName;
+    }
+
     if (session.metadata?.summary) {
         return session.metadata.summary.text;
     } else if (session.metadata) {
