@@ -25,13 +25,10 @@ async function waitForDiscoveredThreadId(opts: {
     cwd: string;
     startedAt: Date;
     now: () => Date;
-    timeoutMs: number;
     pollMs: number;
+    signal: AbortSignal;
 }): Promise<string> {
-    const deadline = opts.startedAt.getTime() + opts.timeoutMs;
-    let lastError: unknown = null;
-
-    while (opts.now().getTime() <= deadline) {
+    while (!opts.signal.aborted) {
         try {
             return await opts.discoverThreadId({
                 codexHomeDir: opts.codexHomeDir,
@@ -40,7 +37,6 @@ async function waitForDiscoveredThreadId(opts: {
                 finishedAt: opts.now(),
             });
         } catch (error) {
-            lastError = error;
             if (error instanceof Error && error.message.startsWith('Ambiguous Codex thread discovery')) {
                 throw error;
             }
@@ -48,10 +44,7 @@ async function waitForDiscoveredThreadId(opts: {
         await delay(opts.pollMs);
     }
 
-    if (lastError instanceof Error) {
-        throw lastError;
-    }
-    throw new Error(`Could not discover Codex thread id for cwd ${opts.cwd} in launch window.`);
+    throw new Error(`Codex thread discovery cancelled for cwd ${opts.cwd}.`);
 }
 
 export function buildCodexNativeArgs(opts: {
@@ -105,7 +98,6 @@ export async function launchNativeCodex(opts: {
     wrapForSandbox?: WrapForSandboxFn;
     now?: () => Date;
     discoverThreadId?: DiscoverThreadIdFn;
-    discoveryTimeoutMs?: number;
     discoveryPollMs?: number;
     onThreadIdDiscovered?: (threadId: string) => void;
     onLocalHandoffReady?: (handoff: () => void) => void;
@@ -151,6 +143,7 @@ export async function launchNativeCodex(opts: {
 
         const codexHomeDir = opts.codexHomeDir ?? process.env.CODEX_HOME ?? join(homedir(), '.codex');
         const discoverThreadId = opts.discoverThreadId ?? discoverCodexThreadId;
+        const discoveryAbort = new AbortController();
         const discoveryPromise: Promise<{ kind: 'discovery'; status: 'fulfilled'; threadId: string } | { kind: 'discovery'; status: 'rejected'; error: unknown }> = (opts.codexThreadId
             ? Promise.resolve(opts.codexThreadId)
             : waitForDiscoveredThreadId({
@@ -159,8 +152,8 @@ export async function launchNativeCodex(opts: {
                 cwd: opts.cwd,
                 startedAt,
                 now,
-                timeoutMs: opts.discoveryTimeoutMs ?? 10_000,
                 pollMs: opts.discoveryPollMs ?? 250,
+                signal: discoveryAbort.signal,
             }).then((threadId) => {
                 discoveredThreadId = threadId;
                 opts.onThreadIdDiscovered?.(threadId);
@@ -177,9 +170,11 @@ export async function launchNativeCodex(opts: {
         const exitPromise = new Promise<{ kind: 'exit'; status: 'fulfilled'; code: number } | { kind: 'exit'; status: 'rejected'; error: unknown }>((resolve) => {
             child.once('error', reject);
             child.once('exit', (code) => {
+                discoveryAbort.abort();
                 resolve({ kind: 'exit', status: 'fulfilled', code: typeof code === 'number' ? code : 1 });
             });
             function reject(error: unknown): void {
+                discoveryAbort.abort();
                 resolve({ kind: 'exit', status: 'rejected', error });
             }
         });

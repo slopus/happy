@@ -239,6 +239,51 @@ describe('launchNativeCodex', () => {
         });
     });
 
+    it('keeps native Codex running while fresh thread discovery is temporarily unavailable', async () => {
+        const exitCallback: { current: ((value: unknown) => void) | null } = { current: null };
+        const killCalls: Array<string | undefined> = [];
+        const discovered: string[] = [];
+        let attempts = 0;
+
+        const launch = launchNativeCodex({
+            cwd: '/tmp/project',
+            codexHomeDir: '/tmp/codex-home',
+            discoveryPollMs: 1,
+            discoverThreadId: async () => {
+                attempts++;
+                if (attempts < 3) {
+                    throw new Error('Could not discover Codex thread id for cwd /tmp/project in launch window.');
+                }
+                return 'thread-slow';
+            },
+            onThreadIdDiscovered: (threadId) => {
+                discovered.push(threadId);
+                exitCallback.current?.(0);
+            },
+            spawn: (() => ({
+                once: (event: string, callback: (value: unknown) => void) => {
+                    if (event === 'exit') {
+                        exitCallback.current = callback;
+                    }
+                    return undefined;
+                },
+                kill: (signal?: string) => {
+                    killCalls.push(signal);
+                    exitCallback.current?.(null);
+                    return true;
+                },
+            })) as never,
+        });
+
+        await expect(launch).resolves.toEqual({
+            type: 'exit',
+            code: 0,
+            codexThreadId: 'thread-slow',
+        });
+        expect(discovered).toEqual(['thread-slow']);
+        expect(killCalls).toEqual([]);
+    });
+
     it('terminates the native process when discovery rejects while it is still running', async () => {
         const exitCallback: { current: ((value: unknown) => void) | null } = { current: null };
         const killCalls: Array<string | undefined> = [];
