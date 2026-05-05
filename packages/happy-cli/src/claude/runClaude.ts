@@ -291,31 +291,35 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         cleanup();
     });
 
-    // Handle file events — download and decrypt attachment blobs, buffer on session
+    // Handle file events — each download promise resolves to its own decoded
+    // attachment (or null). drainAttachmentsForUserMessage on the next text
+    // claims the in-flight set atomically; later file events go into a fresh
+    // bucket bound to the next message — no shared push-array between batches.
     session.onFileEvent((fileEvent) => {
         const ev = fileEvent.content.data.ev;
         logger.debug(`[loop] File event received: ${ev.name} (${ev.size} bytes, ref: ${ev.ref})`);
-        const downloadPromise = (async () => {
+        const downloadPromise = (async (): Promise<{ data: Uint8Array; mimeType: string; name: string } | null> => {
             try {
                 const decrypted = await session.downloadAndDecryptAttachment(ev.ref);
-                if (decrypted) {
-                    session.pendingAttachments.push({
-                        data: decrypted,
-                        mimeType: ev.mimeType ?? 'image/jpeg',
-                        name: ev.name,
-                    });
-                    logger.debug(`[loop] Attachment decrypted and buffered: ${ev.name} (${decrypted.length} bytes)`);
-                } else {
+                if (!decrypted) {
                     logger.debug(`[loop] Failed to decrypt attachment: ${ev.name}`);
+                    return null;
                 }
+                logger.debug(`[loop] Attachment decrypted: ${ev.name} (${decrypted.length} bytes)`);
+                return { data: decrypted, mimeType: ev.mimeType ?? 'image/jpeg', name: ev.name };
             } catch (error) {
                 logger.debug(`[loop] Failed to download attachment: ${ev.name}`, { error });
+                return null;
             }
         })();
         session.trackAttachmentDownload(downloadPromise);
     });
 
-    session.onUserMessage((message) => {
+    session.onUserMessage(async (message) => {
+
+        // Claim every file attachment that arrived strictly before this text.
+        // New file events from this point on belong to the next user message.
+        const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
         let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
@@ -401,7 +405,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 allowedTools: messageAllowedTools,
                 disallowedTools: messageDisallowedTools
             };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
@@ -417,7 +421,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 allowedTools: messageAllowedTools,
                 disallowedTools: messageDisallowedTools
             };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
@@ -474,7 +478,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             allowedTools: messageAllowedTools,
             disallowedTools: messageDisallowedTools
         };
-        messageQueue.push(message.content.text, enhancedMode);
+        messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 

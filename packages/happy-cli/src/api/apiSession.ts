@@ -86,10 +86,13 @@ export class ApiSessionClient extends EventEmitter {
     private pendingFileEvents: FileEventMessage[] = [];
     private pendingFileEventCallback: ((data: FileEventMessage) => void) | null = null;
     private blobKey: Uint8Array | null = null;
-    /** Buffered decoded image attachments awaiting the next text message */
-    readonly pendingAttachments: Array<{ data: Uint8Array; mimeType: string; name: string }> = [];
-    /** Tracks in-flight attachment downloads so text messages can wait for them */
-    private attachmentDownloads: Promise<void>[] = [];
+    /**
+     * In-flight attachment download promises that belong to the *current*
+     * (not-yet-drained) batch. Each promise resolves to the decoded blob (or
+     * null on failure), so per-message ownership is intrinsic — there is no
+     * shared push-array between batches that a late download could leak into.
+     */
+    private pendingDownloads: Promise<{ data: Uint8Array; mimeType: string; name: string } | null>[] = [];
     readonly rpcHandlerManager: RpcHandlerManager;
     private agentStateLock = new AsyncLock();
     private metadataLock = new AsyncLock();
@@ -311,21 +314,27 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * Track an in-flight attachment download so text messages can wait for it.
+     * Track an attachment download whose promise resolves to the decoded blob
+     * (or null on failure). The download stays in the current batch until the
+     * next drainAttachmentsForUserMessage call swaps the bucket out — file
+     * events that arrive after the swap go into a fresh bucket bound to the
+     * next user-text message.
      */
-    trackAttachmentDownload(promise: Promise<void>): void {
-        this.attachmentDownloads.push(promise);
+    trackAttachmentDownload(promise: Promise<{ data: Uint8Array; mimeType: string; name: string } | null>): void {
+        this.pendingDownloads.push(promise);
     }
 
     /**
-     * Wait for all in-flight attachment downloads to complete.
-     * Called before consuming a text message to avoid race conditions.
+     * Atomically claim every download started before this call, wait for them
+     * to resolve, and return the successful ones. The swap-then-await order
+     * guarantees that a late-arriving file event cannot leak into this batch.
      */
-    async waitForPendingDownloads(): Promise<void> {
-        if (this.attachmentDownloads.length > 0) {
-            await Promise.allSettled(this.attachmentDownloads);
-            this.attachmentDownloads = [];
-        }
+    async drainAttachmentsForUserMessage(): Promise<Array<{ data: Uint8Array; mimeType: string; name: string }>> {
+        const downloads = this.pendingDownloads;
+        this.pendingDownloads = [];
+        if (downloads.length === 0) return [];
+        const results = await Promise.all(downloads);
+        return results.filter((x): x is { data: Uint8Array; mimeType: string; name: string } => x !== null);
     }
 
     private authHeaders() {

@@ -330,11 +330,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             mode = msg.mode;
                             permissionHandler.handleModeChange(mode.permissionMode);
 
-                            // Wait for any in-flight attachment downloads before checking
-                            await session.client.waitForPendingDownloads();
-
-                            // Combine pending image attachments with text into multi-modal content
-                            const attachments = session.client.pendingAttachments;
+                            // Per-message attachments are already claimed by the message
+                            // when it was pushed onto the queue, so there is no race window
+                            // to wait out here — just consume what travelled with the batch.
+                            const attachments = msg.attachments ?? [];
                             const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
                             if (attachments.length > 0) {
                                 const contentBlocks: ContentBlockParam[] = [];
@@ -353,7 +352,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                     });
                                 }
                                 contentBlocks.push({ type: 'text' as const, text: msg.message });
-                                attachments.length = 0; // Clear buffer
                                 logger.debug(`[remote] Combined ${contentBlocks.length - 1} image(s) with text message`);
                                 return {
                                     message: contentBlocks,
