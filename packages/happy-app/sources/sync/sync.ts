@@ -55,6 +55,8 @@ import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
+import { Modal } from '@/modal';
+import { t } from '@/text';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -487,16 +489,17 @@ class Sync {
     private async uploadAttachmentsForSession(
         sessionId: string,
         attachments: AttachmentPreview[],
-    ): Promise<UploadedAttachment[]> {
-        if (!this.credentials) return [];
+    ): Promise<{ uploaded: UploadedAttachment[]; failed: number }> {
+        if (!this.credentials) return { uploaded: [], failed: attachments.length };
 
         const blobKey = this.encryption.getSessionBlobKey(sessionId);
         if (!blobKey) {
             console.error(`[attachments] No blob key for session ${sessionId}`);
-            return [];
+            return { uploaded: [], failed: attachments.length };
         }
 
         const uploaded: UploadedAttachment[] = [];
+        let failed = 0;
 
         for (const attachment of attachments) {
             try {
@@ -522,11 +525,12 @@ class Sync {
                 });
             } catch (err) {
                 console.error(`[attachments] Failed to upload ${attachment.name}:`, err);
+                failed++;
                 // Skip this attachment; do not abort the whole message send.
             }
         }
 
-        return uploaded;
+        return { uploaded, failed };
     }
 
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
@@ -550,7 +554,15 @@ class Sync {
 
         // Upload attachments and queue file events before the text message.
         if (attachments && attachments.length > 0) {
-            const uploaded = await this.uploadAttachmentsForSession(sessionId, attachments);
+            const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, attachments);
+
+            if (failed > 0) {
+                Modal.alert(
+                    t('imageUpload.uploadFailedTitle'),
+                    t('imageUpload.uploadFailedMessage', { count: failed }),
+                    [{ text: t('common.ok'), style: 'cancel' }],
+                );
+            }
 
             if (uploaded.length > 0) {
                 let pending = this.pendingOutbox.get(sessionId);

@@ -382,6 +382,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         if (Platform.OS !== 'web' || !props.onAddImages) return;
 
         const handlePaste = async (e: ClipboardEvent) => {
+            // Only handle pastes targeted at a focused text-editable element.
+            // The listener is attached to document, so without this guard a
+            // paste in the URL bar, another modal, or any focused-elsewhere
+            // input would steal images intended for somewhere else.
+            const active = document.activeElement;
+            const isEditableTarget = active instanceof HTMLInputElement
+                || active instanceof HTMLTextAreaElement
+                || (active instanceof HTMLElement && active.isContentEditable);
+            if (!isEditableTarget) return;
+
             const { getImagesFromClipboard, fileToAttachmentPreview } = await import('@/utils/pasteImages.web');
             const files = getImagesFromClipboard(e);
             if (!files.length) return;

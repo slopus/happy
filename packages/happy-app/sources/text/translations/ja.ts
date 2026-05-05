@@ -945,6 +945,10 @@ export const ja: TranslationStructure = {
         limitMessage: ({ max }: { max: number }) => `1メッセージに添付できる画像は最大${max}枚です。`,
         fileTooLargeTitle: 'ファイルが大きすぎます',
         fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}"は${maxMb}MBの制限を超えているため追加されませんでした。`,
+        uploadFailedTitle: 'アップロードに失敗しました',
+        uploadFailedMessage: ({ count }: { count: number }) => count === 1
+            ? '1枚の画像をアップロードできず、送信されませんでした。'
+            : `${count}枚の画像をアップロードできず、送信されませんでした。`,
     },
 
     feed: {

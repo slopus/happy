@@ -973,6 +973,10 @@ export const pl: TranslationStructure = {
         limitMessage: ({ max }: { max: number }) => `Możesz dołączyć maksymalnie ${max} obrazów na wiadomość.`,
         fileTooLargeTitle: 'Plik zbyt duży',
         fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" przekracza limit ${maxMb}MB i nie został dodany.`,
+        uploadFailedTitle: 'Przesyłanie nieudane',
+        uploadFailedMessage: ({ count }: { count: number }) => count === 1
+            ? 'Nie udało się przesłać jednego zdjęcia i nie zostało wysłane.'
+            : `Nie udało się przesłać ${count} zdjęć i nie zostały wysłane.`,
     },
 
     feed: {
