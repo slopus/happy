@@ -22,6 +22,8 @@ describe('session protocol schemas', () => {
         args: { command: 'ls -la' },
       },
       { t: 'tool-call-end', call: 'call-1' },
+      { t: 'tool-call-end', call: 'call-2', output: 'src/auth/index.ts' },
+      { t: 'tool-call-end', call: 'call-3', output: 'boom', isError: true },
       { t: 'file', ref: 'upload-1', name: 'report.txt', size: 1024, mimeType: 'text/plain' },
       {
         t: 'file',
@@ -51,6 +53,8 @@ describe('session protocol schemas', () => {
     expect(sessionEventSchema.safeParse({ t: 'start', title: 1 }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'service' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'not-real' }).success).toBe(false);
+    expect(sessionEventSchema.safeParse({ t: 'tool-call-end', call: 'c', output: 1 }).success).toBe(false);
+    expect(sessionEventSchema.safeParse({ t: 'tool-call-end', call: 'c', isError: 'yes' }).success).toBe(false);
   });
 
   it('validates envelopes that include turn/subagent', () => {
