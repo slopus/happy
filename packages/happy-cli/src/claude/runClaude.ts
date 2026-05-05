@@ -284,6 +284,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
+    let currentEffort: 'low' | 'medium' | 'high' | 'max' | undefined = undefined; // Track current Claude effort (thinking depth)
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
     // Exit when session is archived from web/mobile
     session.on('archived', () => {
@@ -291,7 +292,35 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         cleanup();
     });
 
-    session.onUserMessage((message) => {
+    // Handle file events — each download promise resolves to its own decoded
+    // attachment (or null). drainAttachmentsForUserMessage on the next text
+    // claims the in-flight set atomically; later file events go into a fresh
+    // bucket bound to the next message — no shared push-array between batches.
+    session.onFileEvent((fileEvent) => {
+        const ev = fileEvent.content.data.ev;
+        logger.debug(`[loop] File event received: ${ev.name} (${ev.size} bytes, ref: ${ev.ref})`);
+        const downloadPromise = (async (): Promise<{ data: Uint8Array; mimeType: string; name: string } | null> => {
+            try {
+                const decrypted = await session.downloadAndDecryptAttachment(ev.ref);
+                if (!decrypted) {
+                    logger.debug(`[loop] Failed to decrypt attachment: ${ev.name}`);
+                    return null;
+                }
+                logger.debug(`[loop] Attachment decrypted: ${ev.name} (${decrypted.length} bytes)`);
+                return { data: decrypted, mimeType: ev.mimeType ?? 'image/jpeg', name: ev.name };
+            } catch (error) {
+                logger.debug(`[loop] Failed to download attachment: ${ev.name}`, { error });
+                return null;
+            }
+        })();
+        session.trackAttachmentDownload(downloadPromise);
+    });
+
+    session.onUserMessage(async (message) => {
+
+        // Claim every file attachment that arrived strictly before this text.
+        // New file events from this point on belong to the next user message.
+        const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
         let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
@@ -363,6 +392,28 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
         }
 
+        // Resolve effort — pass through to Claude SDK as the `effort` option.
+        // Validate against the SDK's accepted set so a stale/garbage value
+        // from the wire doesn't poison the session.
+        let messageEffort = currentEffort;
+        const VALID_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'max']);
+        if (message.meta?.hasOwnProperty('effort')) {
+            const incoming = (message.meta as Record<string, unknown>).effort;
+            if (incoming === null || incoming === undefined) {
+                messageEffort = undefined;
+                currentEffort = undefined;
+                logger.debug(`[loop] Effort reset to default`);
+            } else if (typeof incoming === 'string' && VALID_EFFORTS.has(incoming)) {
+                messageEffort = incoming as 'low' | 'medium' | 'high' | 'max';
+                currentEffort = messageEffort;
+                logger.debug(`[loop] Effort updated from user message: ${messageEffort}`);
+            } else {
+                logger.debug(`[loop] Ignoring invalid effort from user message: ${String(incoming)}`);
+            }
+        } else {
+            logger.debug(`[loop] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
+        }
+
         // Check for special commands before processing
         const specialCommand = parseSpecialCommand(message.content.text);
 
@@ -375,9 +426,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 customSystemPrompt: messageCustomSystemPrompt,
                 appendSystemPrompt: messageAppendSystemPrompt,
                 allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools
+                disallowedTools: messageDisallowedTools,
+                effort: messageEffort,
             };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
@@ -391,9 +443,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 customSystemPrompt: messageCustomSystemPrompt,
                 appendSystemPrompt: messageAppendSystemPrompt,
                 allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools
+                disallowedTools: messageDisallowedTools,
+                effort: messageEffort,
             };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
@@ -448,9 +501,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             customSystemPrompt: messageCustomSystemPrompt,
             appendSystemPrompt: messageAppendSystemPrompt,
             allowedTools: messageAllowedTools,
-            disallowedTools: messageDisallowedTools
+            disallowedTools: messageDisallowedTools,
+            effort: messageEffort,
         };
-        messageQueue.push(message.content.text, enhancedMode);
+        messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 

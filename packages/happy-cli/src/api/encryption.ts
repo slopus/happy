@@ -112,6 +112,26 @@ export function decryptLegacy(data: Uint8Array, secret: Uint8Array): any | null 
 }
 
 /**
+ * Decrypt a binary blob encrypted with NaCl crypto_secretbox (XSalsa20-Poly1305).
+ * Wire format: [nonce (24 bytes)] [ciphertext + auth tag (16 bytes + data)]
+ * Matches the app-side encryptBlob() in packages/happy-app/sources/encryption/blob.ts.
+ */
+export function decryptBlob(bundle: Uint8Array, key: Uint8Array): Uint8Array | null {
+  if (bundle.length < tweetnacl.secretbox.nonceLength + 16) {
+    console.warn(`[decryptBlob] bundle too short: ${bundle.length}`);
+    return null;
+  }
+  const nonce = bundle.slice(0, tweetnacl.secretbox.nonceLength);
+  const ciphertext = bundle.slice(tweetnacl.secretbox.nonceLength);
+  const decrypted = tweetnacl.secretbox.open(ciphertext, nonce, key);
+  if (!decrypted) {
+    console.warn(`[decryptBlob] tweetnacl.secretbox.open returned null. bundle=${bundle.length}, nonce=${nonce.length}, ct=${ciphertext.length}, key=${key.length}`);
+    return null;
+  }
+  return new Uint8Array(decrypted);
+}
+
+/**
  * Encrypt data using AES-256-GCM with the data encryption key
  * @param data - The data to encrypt
  * @param dataKey - The 32-byte AES-256 key

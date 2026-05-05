@@ -12,12 +12,14 @@ export interface SessionScopedConnection {
     socket: Socket;
     userId: string;
     sessionId: string;
+    happyClient?: string;
 }
 
 export interface UserScopedConnection {
     connectionType: 'user-scoped';
     socket: Socket;
     userId: string;
+    happyClient?: string;
 }
 
 export interface MachineScopedConnection {
@@ -25,6 +27,7 @@ export interface MachineScopedConnection {
     socket: Socket;
     userId: string;
     machineId: string;
+    happyClient?: string;
 }
 
 export type ClientConnection = SessionScopedConnection | UserScopedConnection | MachineScopedConnection;
@@ -183,6 +186,13 @@ export type EphemeralEvent = {
     machineId: string;
     online: boolean;
     timestamp: number;
+} | {
+    type: 'session-event';
+    sessionId: string;
+    kind: 'done' | 'permission' | 'question';
+    title: string;
+    body: string;
+    timestamp: number;
 };
 
 // === EVENT PAYLOAD TYPES ===
@@ -266,6 +276,37 @@ class EventRouter {
             recipientFilter: params.recipientFilter || { type: 'all-user-authenticated-connections' },
             skipSenderConnection: params.skipSenderConnection
         });
+    }
+
+    // === PRESENCE QUERIES ===
+
+    /**
+     * Returns socketIds of every web/desktop connection (whether focused or not).
+     * Caller decides whether to filter by focus state.
+     * Uses fetchSockets() which works cross-replica via Redis streams adapter.
+     */
+    async getNonMobileSocketIds(userId: string): Promise<string[]> {
+        const sockets = await this.io.in(`user:${userId}`).fetchSockets();
+        return sockets
+            .filter(s => {
+                const client = s.data.happyClient as string | undefined;
+                return client?.startsWith('web/') || client?.startsWith('desktop/');
+            })
+            .map(s => s.id);
+    }
+
+    /**
+     * Returns socket IDs of all mobile connections for the user.
+     * Uses fetchSockets() which works cross-replica via Redis streams adapter.
+     */
+    async getMobileSocketIds(userId: string): Promise<string[]> {
+        const sockets = await this.io.in(`user:${userId}`).fetchSockets();
+        return sockets
+            .filter(s => {
+                const client = s.data.happyClient as string | undefined;
+                return client?.startsWith('ios/') || client?.startsWith('android/');
+            })
+            .map(s => s.id);
     }
 
     // === PRIVATE ROUTING LOGIC ===
@@ -502,6 +543,22 @@ export function buildMachineStatusEphemeral(machineId: string, online: boolean):
         type: 'machine-status',
         machineId,
         online,
+        timestamp: Date.now()
+    };
+}
+
+/**
+ * Session-level lifecycle event (Claude finished, needs permission, asks question).
+ * Emitted alongside the mobile push so other clients (e.g. web) can surface a
+ * tab-title counter or inline indicator without parsing every encrypted message.
+ */
+export function buildSessionEventEphemeral(sessionId: string, kind: 'done' | 'permission' | 'question', title: string, body: string): EphemeralPayload {
+    return {
+        type: 'session-event',
+        sessionId,
+        kind,
+        title,
+        body,
         timestamp: Date.now()
     };
 }

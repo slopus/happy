@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
-import { apiSocket, getHappyClientId } from '@/sync/apiSocket';
+import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
+import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
@@ -50,6 +51,12 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
+import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
+import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
+import { encryptBlob } from '@/encryption/blob';
+import { readFileBytes } from '@/utils/readFileBytes';
+import { Modal } from '@/modal';
+import { t } from '@/text';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -74,6 +81,8 @@ type OutboxMessage = {
 type SendMessageOptions = {
     displayText?: string;
     source?: MessageSentSource;
+    /** Optional image attachments to send before the text message. */
+    attachments?: AttachmentPreview[];
 };
 
 class Sync {
@@ -130,9 +139,6 @@ class Sync {
         this.feedSync = new InvalidateSync(this.fetchFeed);
 
         const registerPushToken = async () => {
-            if (__DEV__) {
-                return;
-            }
             await this.registerPushToken();
         }
         this.pushTokenSync = new InvalidateSync(registerPushToken);
@@ -141,6 +147,14 @@ class Sync {
         // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
             this.appState = nextAppState;
+
+            // Notify server of focus state for push notification routing.
+            // Mobile: AppState.currentState reflects fg/bg directly.
+            // Web/desktop: visibilitychange/focus listeners below drive this same path
+            // by updating this.appState too — re-derive via getCurrentAppState() so
+            // the wire value matches what the server uses for suppression.
+            apiSocket.sendAppState(getCurrentAppState());
+
             if (nextAppState === 'active') {
                 const shouldFailAfterResume = this.backgroundSendStartedAt !== null
                     && this.hasPendingOutboxMessages()
@@ -168,6 +182,19 @@ class Sync {
                 this.maybeStartBackgroundSendWatchdog();
             }
         });
+
+        // Web/desktop: AppState alone doesn't capture tab focus/visibility.
+        // Notify server when the tab becomes hidden, regains visibility,
+        // or window focus changes — so push routing can suppress only when
+        // the user is actually looking at this client.
+        if (Platform.OS === 'web' && typeof document !== 'undefined') {
+            const broadcast = () => {
+                apiSocket.sendAppState(getCurrentAppState());
+            };
+            document.addEventListener('visibilitychange', broadcast);
+            window.addEventListener('focus', broadcast);
+            window.addEventListener('blur', broadcast);
+        }
     }
 
     async create(credentials: AuthCredentials, encryption: Encryption) {
@@ -454,6 +481,59 @@ class Sync {
         this.backgroundSendStartedAt = null;
     }
 
+    /**
+     * Upload image attachments for a session: read bytes → encrypt → upload to server.
+     * Returns UploadedAttachment records to embed as file events before the text message.
+     * Failures are logged and skipped rather than aborting the whole message send.
+     */
+    private async uploadAttachmentsForSession(
+        sessionId: string,
+        attachments: AttachmentPreview[],
+    ): Promise<{ uploaded: UploadedAttachment[]; failed: number }> {
+        if (!this.credentials) return { uploaded: [], failed: attachments.length };
+
+        const blobKey = this.encryption.getSessionBlobKey(sessionId);
+        if (!blobKey) {
+            console.error(`[attachments] No blob key for session ${sessionId}`);
+            return { uploaded: [], failed: attachments.length };
+        }
+
+        const uploaded: UploadedAttachment[] = [];
+        let failed = 0;
+
+        for (const attachment of attachments) {
+            try {
+                const bytes = await readFileBytes(attachment.uri);
+                const encrypted = encryptBlob(bytes, blobKey);
+
+                const upload = await requestAttachmentUpload(
+                    this.credentials,
+                    sessionId,
+                    attachment.name,
+                    encrypted.length,
+                );
+
+                await uploadEncryptedBlob(upload, encrypted, this.credentials);
+                const { ref } = upload;
+
+                uploaded.push({
+                    ref,
+                    name: attachment.name,
+                    size: attachment.size,
+                    width: attachment.width,
+                    height: attachment.height,
+                    thumbhash: attachment.thumbhash,
+                });
+            } catch (err) {
+                console.error(`[attachments] Failed to upload ${attachment.name}:`, err);
+                failed++;
+                // Skip this attachment; do not abort the whole message send.
+            }
+        }
+
+        return { uploaded, failed };
+    }
+
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
 
         // Get encryption
@@ -470,8 +550,87 @@ class Sync {
             return;
         }
 
-        const { permissionMode, model } = resolveMessageModeMeta(session);
-        const { displayText, source = 'chat' } = options ?? {};
+        const { permissionMode, model, effort } = resolveMessageModeMeta(session);
+        const { displayText, source = 'chat', attachments } = options ?? {};
+
+        // Image attachments are wired into the Claude pipeline only; Codex /
+        // Gemini / OpenClaw runners read message.content.text and ignore
+        // file events, so dropping attachments silently would leave the user
+        // wondering why the image was skipped. Warn and send text only.
+        const flavor = session.metadata?.flavor;
+        const supportsAttachments = !flavor || flavor === 'claude';
+        const effectiveAttachments = supportsAttachments ? attachments : undefined;
+
+        if (attachments && attachments.length > 0 && !supportsAttachments) {
+            Modal.alert(
+                t('imageUpload.notSupportedTitle'),
+                t('imageUpload.notSupportedMessage'),
+                [{ text: t('common.ok'), style: 'cancel' }],
+            );
+        }
+
+        // Upload attachments and queue file events before the text message.
+        if (effectiveAttachments && effectiveAttachments.length > 0) {
+            const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, effectiveAttachments);
+
+            if (failed > 0) {
+                Modal.alert(
+                    t('imageUpload.uploadFailedTitle'),
+                    t('imageUpload.uploadFailedMessage', { count: failed }),
+                    [{ text: t('common.ok'), style: 'cancel' }],
+                );
+            }
+
+            if (uploaded.length > 0) {
+                let pending = this.pendingOutbox.get(sessionId);
+                if (!pending) {
+                    pending = [];
+                    this.pendingOutbox.set(sessionId, pending);
+                }
+
+                for (const att of uploaded) {
+                    const fileRecord: RawRecord = {
+                        role: 'session',
+                        content: {
+                            type: 'session',
+                            data: {
+                                id: randomUUID(),
+                                time: Date.now(),
+                                role: 'user',
+                                ev: {
+                                    t: 'file',
+                                    ref: att.ref,
+                                    name: att.name,
+                                    size: att.size,
+                                    // Include image metadata when we have dimensions; thumbhash is
+                                    // optional. The native iOS picker can't generate a thumbhash
+                                    // without Canvas, so requiring it here would reduce the chat
+                                    // bubble to a compact filename row instead of an inline picture.
+                                    // FileView only needs w/h to size the inline render — placeholder
+                                    // is absent, but the real image is decrypted on mount.
+                                    ...(att.width > 0 && att.height > 0
+                                        ? {
+                                            image: {
+                                                width: att.width,
+                                                height: att.height,
+                                                ...(att.thumbhash ? { thumbhash: att.thumbhash } : {}),
+                                            },
+                                        }
+                                        : {}),
+                                },
+                            },
+                        },
+                    };
+                    const encryptedFileRecord = await encryption.encryptRawRecord(fileRecord);
+                    const fileLocalId = randomUUID();
+                    const fileNormalized = normalizeRawMessage(fileLocalId, fileLocalId, Date.now(), fileRecord);
+                    if (fileNormalized) {
+                        this.enqueueMessages(sessionId, [fileNormalized]);
+                    }
+                    pending.push({ localId: fileLocalId, content: encryptedFileRecord });
+                }
+            }
+        }
 
         // Generate local ID
         const localId = randomUUID();
@@ -508,6 +667,7 @@ class Sync {
                 model,
                 fallbackModel,
                 appendSystemPrompt: systemPrompt,
+                ...(effort && { effort }), // Forward effort (low/medium/high/max for Claude, low/medium/high/xhigh for Codex)
                 ...(displayText && { displayText }) // Add displayText if provided
             }
         };
@@ -1677,7 +1837,7 @@ class Sync {
 
                 if (normalizedMessages.length > 0) {
                     totalNormalized += normalizedMessages.length;
-                    this.enqueueMessages(sessionId, normalizedMessages);
+                    this.applyMessages(sessionId, normalizedMessages);
                 }
 
                 this.sessionLastSeq.set(sessionId, maxSeq);
@@ -1719,6 +1879,12 @@ class Sync {
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {
             log.log('🔌 Socket reconnected');
+
+            // Send current focus state on reconnect so the server's
+            // suppression rules pick up where we left off (handshake.auth.appState
+            // covers the very first connect; this covers reconnects).
+            apiSocket.sendAppState(getCurrentAppState());
+
             this.sessionsSync.invalidate();
             this.machinesSync.invalidate();
             log.log('🔌 Socket reconnected: Invalidating artifacts sync');
@@ -2238,6 +2404,13 @@ class Sync {
                 };
                 storage.getState().applyMachines([updatedMachine]);
             }
+        }
+
+        // Session-level lifecycle event (Claude finished, needs permission, asks question).
+        // This is the same signal that triggers the mobile push — bump browser-tab
+        // unread counter on these only, ignore the noisy per-message stream.
+        if (updateData.type === 'session-event') {
+            notifyUnreadMessage();
         }
 
         // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity

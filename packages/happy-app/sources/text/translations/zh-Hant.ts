@@ -84,6 +84,7 @@ export const zhHant: TranslationStructure = {
         permissionRequired: '需要權限',
         activeNow: '目前活躍',
         unknown: '未知',
+        unread: '新結果',
     },
 
     time: {
@@ -214,6 +215,8 @@ export const zhHant: TranslationStructure = {
         disableAnalytics: '停用分析',
         analyticsDisabled: '所有追蹤和遙測已停用',
         analyticsEnabled: '匿名使用分析已啟用',
+        imageUpload: '圖片上傳',
+        imageUploadSubtitle: '將圖片附加到訊息中讓 Claude 分析',
     },
 
     errors: {
@@ -286,6 +289,7 @@ export const zhHant: TranslationStructure = {
         inputPlaceholder: '輸入訊息...',
         inactiveArchived: '此會話處於非活動狀態。',
         resumeFromTerminal: '若要從終端恢復它：',
+        newChat: '新對話',
     },
 
     commandPalette: {
@@ -465,6 +469,11 @@ export const zhHant: TranslationStructure = {
         sessionsTitle: 'Happy',
         showArchived: '顯示已封存',
         hideArchived: '隱藏已封存',
+        newSession: '新建對話',
+    },
+
+    zen: {
+        toggle: '禪模式',
     },
 
     toolView: {
@@ -564,6 +573,16 @@ export const zhHant: TranslationStructure = {
         noChangesTitle: '沒有變更',
         noChangesSubtitle: '工作區是乾淨的',
         deleted: '已刪除',
+        changedFiles: ({ count }: { count: number }) => `${count} 個已變更的檔案`,
+        allFiles: '所有檔案',
+        editFile: '編輯',
+        saveFile: '儲存',
+        failedToRead: '讀取檔案失敗',
+        failedToSave: '儲存檔案失敗',
+        fileConflict: '檔案衝突',
+        fileConflictDescription: '編輯期間檔案已在裝置上被修改。重新載入以查看最新版本。',
+        reload: '重新載入',
+        overwrite: '覆蓋',
     },
 
     settingsVoice: {
@@ -915,6 +934,21 @@ export const zhHant: TranslationStructure = {
         usageOverTime: '使用趨勢',
         byModel: '按模型',
         noData: '暫無使用資料',
+    },
+
+    imageUpload: {
+        permissionTitle: '存取照片圖庫',
+        permissionMessage: '允許存取您的照片圖庫以在訊息中附加圖片。',
+        limitTitle: '已達到圖片限制',
+        limitMessage: ({ max }: { max: number }) => `每則訊息最多可附加 ${max} 張圖片。`,
+        fileTooLargeTitle: '檔案太大',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}"超過了 ${maxMb}MB 的限制，未能新增。`,
+        uploadFailedTitle: '上傳失敗',
+        uploadFailedMessage: ({ count }: { count: number }) => count === 1
+            ? '一張圖片上傳失敗，未傳送。'
+            : `${count} 張圖片上傳失敗，未傳送。`,
+        notSupportedTitle: '不支援圖片',
+        notSupportedMessage: '此代理不支援圖片附件。僅傳送了文字。',
     },
 
     feed: {

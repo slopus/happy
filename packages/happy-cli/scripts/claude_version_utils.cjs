@@ -531,7 +531,7 @@ function getClaudeCliPath() {
 function runClaudeCli(cliPath) {
     const { pathToFileURL } = require('url');
     const { spawn } = require('child_process');
-    
+
     // Check if it's a JavaScript file (.js or .cjs) or a binary file
     const isJsFile = cliPath.endsWith('.js') || cliPath.endsWith('.cjs');
 
@@ -539,19 +539,66 @@ function runClaudeCli(cliPath) {
         // JavaScript file - use import to keep interceptors working
         const importUrl = pathToFileURL(cliPath).href;
         import(importUrl);
-    } else {
-        // Binary file (e.g., Homebrew installation) - spawn directly
-        // Note: Interceptors won't work with binary files, but that's acceptable
-        // as binary files are self-contained and don't need interception
-        const args = process.argv.slice(2);
-        const child = spawn(cliPath, args, {
-            stdio: 'inherit',
-            env: process.env
-        });
-        child.on('exit', (code) => {
-            process.exit(code || 0);
-        });
+        return;
     }
+
+    // Binary file (e.g., native installer >= 2.1.113, Homebrew). Spawn it as a
+    // child of the launcher and act as a signal trampoline.
+    //
+    // CRITICAL: when happy-cli aborts the launcher (terminal→remote switch),
+    // Node sends SIGTERM only to the immediate child (this launcher). Without
+    // signal forwarding, the spawned binary becomes an orphan adopted by init
+    // and *keeps reading the inherited TTY*. After a remote→local switch a
+    // fresh launcher + binary is spawned, so two claude binaries end up
+    // sharing the same stdin/stdout — visibly two cursors and garbled echo.
+    // (Investigation: ps showed orphan claude.exe with parent pid 1 still
+    // attached to the same pts as the live one.)
+    const args = process.argv.slice(2);
+    const child = spawn(cliPath, args, {
+        stdio: 'inherit',
+        env: process.env
+    });
+
+    let forwarded = false;
+    const forwardAndDetach = (sig) => {
+        if (forwarded) return;
+        forwarded = true;
+        try { child.kill(sig); } catch (_) { /* child may already be gone */ }
+    };
+
+    // Forward common termination signals to the spawned binary.
+    const signalsToForward = ['SIGTERM', 'SIGINT', 'SIGHUP', 'SIGQUIT'];
+    for (const sig of signalsToForward) {
+        process.on(sig, () => forwardAndDetach(sig));
+    }
+
+    // Best-effort: if the launcher process is exiting for any reason and the
+    // child is still alive, take it down too instead of leaving an orphan.
+    process.on('exit', () => {
+        if (child.exitCode === null && !child.killed) {
+            try { child.kill('SIGTERM'); } catch (_) { /* ignore */ }
+        }
+    });
+
+    child.on('exit', (code, signal) => {
+        // Mirror the binary's exit so happy-cli sees the same status. If the
+        // child exited because of a signal, re-raise it on ourselves so the
+        // parent's child.on('exit') reports a signal exit and not a clean code.
+        if (signal) {
+            try {
+                process.kill(process.pid, signal);
+                return;
+            } catch (_) {
+                // Fall through to plain exit if re-raise fails.
+            }
+        }
+        process.exit(code ?? 0);
+    });
+
+    child.on('error', (err) => {
+        console.error(err);
+        process.exit(1);
+    });
 }
 
 module.exports = {

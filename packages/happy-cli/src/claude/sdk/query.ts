@@ -42,6 +42,7 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         settings: opts?.settingsPath,
         strictMcpConfig: opts?.strictMcpConfig,
         sessionId: undefined,
+        effort: opts?.effort,
     }
 
     // Map abort signal -> AbortController

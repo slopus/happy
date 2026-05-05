@@ -83,6 +83,7 @@ export const ca: TranslationStructure = {
         permissionRequired: 'permís requerit',
         activeNow: 'Actiu ara',
         unknown: 'desconegut',
+        unread: 'nous resultats',
     },
 
     time: {
@@ -214,6 +215,8 @@ export const ca: TranslationStructure = {
         disableAnalytics: 'Desactivar analítica',
         analyticsDisabled: 'Tot el seguiment i telemetria desactivats',
         analyticsEnabled: 'Analítica anònima d\'ús activa',
+        imageUpload: 'Pujada d\'imatges',
+        imageUploadSubtitle: 'Adjunta imatges als missatges perquè Claude les analitzi',
     },
 
     errors: {
@@ -286,6 +289,7 @@ export const ca: TranslationStructure = {
         inputPlaceholder: 'Escriu un missatge...',
         inactiveArchived: 'Aquesta sessió està inactiva.',
         resumeFromTerminal: 'Per reprendre-la des del terminal:',
+        newChat: 'Nou xat',
     },
 
     commandPalette: {
@@ -465,6 +469,11 @@ export const ca: TranslationStructure = {
         sessionsTitle: 'Happy',
         showArchived: 'Mostra arxivades',
         hideArchived: 'Amaga arxivades',
+        newSession: 'Nova sessió',
+    },
+
+    zen: {
+        toggle: 'Mode zen',
     },
 
     toolView: {
@@ -564,6 +573,16 @@ export const ca: TranslationStructure = {
         noChangesTitle: 'Sense canvis',
         noChangesSubtitle: 'L\'arbre de treball està net',
         deleted: 'Eliminat',
+        changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'fitxer modificat' : 'fitxers modificats'}`,
+        allFiles: 'Tots els fitxers',
+        editFile: 'Editar',
+        saveFile: 'Desar',
+        failedToRead: 'No s\'ha pogut llegir el fitxer',
+        failedToSave: 'No s\'ha pogut desar el fitxer',
+        fileConflict: 'Conflicte de fitxer',
+        fileConflictDescription: 'Aquest fitxer s\'ha modificat al dispositiu mentre l\'editaves. Recarrega per veure la darrera versió.',
+        reload: 'Recarregar',
+        overwrite: 'Sobreescriure',
     },
 
     settingsVoice: {
@@ -915,6 +934,21 @@ export const ca: TranslationStructure = {
         usageOverTime: 'Ús al llarg del temps',
         byModel: 'Per model',
         noData: "No hi ha dades d'ús disponibles",
+    },
+
+    imageUpload: {
+        permissionTitle: 'Accés a la biblioteca de fotos',
+        permissionMessage: "Permet l'accés a la teva biblioteca de fotos per adjuntar imatges als missatges.",
+        limitTitle: "Límit d'imatges assolit",
+        limitMessage: ({ max }: { max: number }) => `Pots adjuntar fins a ${max} imatges per missatge.`,
+        fileTooLargeTitle: 'Fitxer massa gran',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" supera el límit de ${maxMb}MB i no s'ha afegit.`,
+        uploadFailedTitle: 'Error en la càrrega',
+        uploadFailedMessage: ({ count }: { count: number }) => count === 1
+            ? 'No s\'ha pogut pujar una imatge i no s\'ha enviat.'
+            : `No s'han pogut pujar ${count} imatges i no s'han enviat.`,
+        notSupportedTitle: 'Imatges no compatibles',
+        notSupportedMessage: 'Aquest agent no admet imatges adjuntes. Només s\'ha enviat el text.',
     },
 
     feed: {

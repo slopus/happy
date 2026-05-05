@@ -16,15 +16,15 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
-import { SessionActionsAnchor, SessionActionsPopover } from '@/components/SessionActionsPopover';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
+import { useImagePicker } from '@/hooks/useImagePicker';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -33,11 +33,12 @@ import { tracking } from '@/track';
 import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { FilesSidebar } from '@/components/FilesSidebar';
-import { InlineFileDiff } from '@/components/InlineFileDiff';
+import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
+import { AllFilesDiffView } from '@/components/AllFilesDiffView';
+import { FileViewPanel } from '@/components/FileViewPanel';
 import { prefetchPierreDiff } from '@/components/diff/PierreDiffView';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
-import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome, getResumeCommandBlock, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import * as Clipboard from 'expo-clipboard';
@@ -64,47 +65,80 @@ export const SessionView = React.memo((props: { id: string }) => {
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
     const { width: windowWidth } = useWindowDimensions();
-    const [sessionActionsAnchor, setSessionActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
+    const zenMode = useLocalSetting('zenMode');
 
-    const showSidebar = fileDiffsSidebarEnabled
+    // Escape key exits zen mode (web only)
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || !zenMode) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                storage.getState().applyLocalSettings({ zenMode: false });
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [zenMode]);
+
+    // Base condition: can we show the diff sidebar at all?
+    const canShowSidebar = fileDiffsSidebarEnabled
         && (isRunningOnMac() || Platform.OS === 'web')
         && windowWidth >= SIDEBAR_MIN_WINDOW_WIDTH
         && isDataReady && !!session;
 
+    const showSidebar = canShowSidebar && !zenMode;
+
     // Match left sidebar width: 30% of window, clamped to 250–360px
     const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
 
-    const [sidebarCollapsed, setSidebarCollapsed] = useLocalSettingMutable('sidebarCollapsed');
-    const sidebarAnim = useSharedValue(sidebarCollapsed ? 0 : 1);
-
+    // Animate diff sidebar width
+    const sidebarAnim = useSharedValue(showSidebar ? 1 : 0);
     React.useEffect(() => {
-        sidebarAnim.value = withTiming(sidebarCollapsed ? 0 : 1, {
+        sidebarAnim.value = withTiming(showSidebar ? 1 : 0, {
             duration: 250,
             easing: Easing.out(Easing.cubic),
         });
-    }, [sidebarCollapsed]);
-
+    }, [showSidebar]);
     const animatedSidebarStyle = useAnimatedStyle(() => ({
         width: sidebarAnim.value * sidebarWidth,
         opacity: sidebarAnim.value,
         overflow: 'hidden' as const,
     }));
 
-    const toggleSidebar = React.useCallback(() => {
-        setSidebarCollapsed(!sidebarCollapsed);
-    }, [sidebarCollapsed, setSidebarCollapsed]);
+    const [diffViewOpen, setDiffViewOpen] = React.useState(false);
+    const [scrollToFile, setScrollToFile] = React.useState<string | null>(null);
+    const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
+    const [fileViewPath, setFileViewPath] = React.useState<string | null>(null);
 
-    const [selectedFile, setSelectedFile] = React.useState<GitFileStatus | null>(null);
     const handleSidebarFilePress = React.useCallback((file: GitFileStatus) => {
-        setSelectedFile((current) => (current?.fullPath === file.fullPath ? null : file));
+        if (file.status === 'deleted') return;
+        setFileViewPath(null);
+        setScrollToFile(file.fullPath);
+        setDiffViewOpen(true);
     }, []);
-    const clearSelectedFile = React.useCallback(() => setSelectedFile(null), []);
+    const handleAllFilesFilePress = React.useCallback((filePath: string) => {
+        setDiffViewOpen(false);
+        setScrollToFile(null);
+        setFileViewPath(filePath);
+    }, []);
+    const closeDiffView = React.useCallback(() => {
+        setDiffViewOpen(false);
+        setScrollToFile(null);
+    }, []);
+    const closeFileView = React.useCallback(() => {
+        setFileViewPath(null);
+    }, []);
 
-    // When sidebar is hidden or disabled, don't keep a stale selection.
+    // When sidebar capability is lost (screen too narrow, disabled), close views.
+    // Don't close on zen mode toggle — keep the view visible.
     React.useEffect(() => {
-        if (!showSidebar || sidebarCollapsed) setSelectedFile(null);
-    }, [showSidebar, sidebarCollapsed]);
+        if (!canShowSidebar) {
+            setDiffViewOpen(false);
+            setScrollToFile(null);
+            setFileViewPath(null);
+        }
+    }, [canShowSidebar]);
 
     // Warm Pierre's lazy web chunks while the user is still reading chat.
     React.useEffect(() => {
@@ -114,38 +148,21 @@ export const SessionView = React.memo((props: { id: string }) => {
     // Compute header props based on session state
     const headerProps = useMemo(() => {
         if (!isDataReady) {
-            return {
-                title: '',
-                subtitle: undefined,
-                avatarId: undefined,
-                onAvatarPress: undefined,
-                isConnected: false,
-                flavor: null
-            };
+            return { title: '', folderName: undefined, isConnected: false };
         }
-
         if (!session) {
-            return {
-                title: t('errors.sessionDeleted'),
-                subtitle: undefined,
-                avatarId: undefined,
-                onAvatarPress: undefined,
-                isConnected: false,
-                flavor: null
-            };
+            return { title: t('errors.sessionDeleted'), folderName: undefined, isConnected: false };
         }
-
         const isConnected = session.presence === 'online';
+        const pathSegments = session.metadata?.path?.split(/[/\\]/).filter(Boolean);
+        const folderName = pathSegments?.[pathSegments.length - 1];
+        const sessionName = getSessionName(session);
         return {
-            title: getSessionName(session),
-            subtitle: session.metadata?.path ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir) : undefined,
-            avatarId: getSessionAvatarId(session),
-            onAvatarPress: () => router.push(`/session/${sessionId}/info`),
-            isConnected: isConnected,
-            flavor: session.metadata?.flavor || null,
-            tintColor: isConnected ? '#000' : '#8E8E93'
+            title: sessionName,
+            folderName,
+            isConnected,
         };
-    }, [session, isDataReady, sessionId, router]);
+    }, [session, isDataReady]);
 
     const mainContent = (
         <>
@@ -180,29 +197,11 @@ export const SessionView = React.memo((props: { id: string }) => {
                     zIndex: 1000
                 }}>
                     <ChatHeaderView
-                        {...headerProps}
-                        onBackPress={() => {
-                            // If a sidebar file is currently shown inline, first
-                            // close the diff; only leave the session on the next press.
-                            if (selectedFile) {
-                                setSelectedFile(null);
-                                return;
-                            }
-                            router.back();
-                        }}
-                        avatarMenuExpanded={Platform.OS === 'web' && !!sessionActionsAnchor}
-                        avatarMenuSession={session}
-                        onAfterAvatarArchive={() => {
-                            setSessionActionsAnchor(null);
-                            router.replace('/');
-                        }}
-                        onAfterAvatarDelete={() => {
-                            setSessionActionsAnchor(null);
-                            router.replace('/');
-                        }}
-                        onAvatarMenuRequest={Platform.OS === 'web' && session ? setSessionActionsAnchor : undefined}
-                        onSidebarTogglePress={showSidebar ? toggleSidebar : undefined}
-                        sidebarCollapsed={sidebarCollapsed}
+                        title={headerProps.title}
+                        folderName={headerProps.folderName}
+                        isConnected={headerProps.isConnected}
+                        onTitlePress={session ? () => router.push(`/session/${sessionId}/info`) : undefined}
+                        onBackPress={() => router.back()}
                     />
                     {/* Voice status bar below header - not on tablet (shown in sidebar) */}
                     {!isTablet && realtimeStatus !== 'disconnected' && (
@@ -227,37 +226,21 @@ export const SessionView = React.memo((props: { id: string }) => {
                     <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
                 )}
             </View>
-            {Platform.OS === 'web' && session && (
-                <SessionActionsPopover
-                    anchor={sessionActionsAnchor}
-                    onAfterArchive={() => {
-                        setSessionActionsAnchor(null);
-                        router.replace('/');
-                    }}
-                    onAfterDelete={() => {
-                        setSessionActionsAnchor(null);
-                        router.replace('/');
-                    }}
-                    onClose={() => setSessionActionsAnchor(null)}
-                    sessionId={session.id}
-                    visible={!!sessionActionsAnchor}
-                />
-            )}
         </>
     );
 
-    if (!showSidebar) {
+    if (!canShowSidebar) {
         return mainContent;
     }
 
-    // Desktop layout: chat + sidebar at the same level (full height).
+    // Desktop layout: chat + animated sidebar at the same level (full height).
     // When a sidebar file is selected, InlineFileDiff overlays the main content
     // (chat stays mounted underneath so state is preserved).
     return (
         <View style={{ flex: 1, flexDirection: 'row' }}>
             <View style={{ flex: 1 }}>
                 {mainContent}
-                {selectedFile && !sidebarCollapsed && (
+                {diffViewOpen && canShowSidebar && (
                     <View
                         pointerEvents="box-none"
                         style={{
@@ -269,11 +252,29 @@ export const SessionView = React.memo((props: { id: string }) => {
                             backgroundColor: theme.colors.surface,
                         }}
                     >
-                        <InlineFileDiff
+                        <AllFilesDiffView
                             sessionId={sessionId}
-                            fullPath={selectedFile.fullPath}
-                            status={selectedFile.status}
-                            onClose={clearSelectedFile}
+                            scrollToFile={scrollToFile}
+                            onClose={closeDiffView}
+                        />
+                    </View>
+                )}
+                {fileViewPath && canShowSidebar && (
+                    <View
+                        pointerEvents="box-none"
+                        style={{
+                            position: 'absolute',
+                            top: safeArea.top + headerHeight,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: theme.colors.surface,
+                        }}
+                    >
+                        <FileViewPanel
+                            sessionId={sessionId}
+                            filePath={fileViewPath}
+                            onClose={closeFileView}
                         />
                     </View>
                 )}
@@ -282,8 +283,11 @@ export const SessionView = React.memo((props: { id: string }) => {
                 <View style={{ width: sidebarWidth, flex: 1 }}>
                     <FilesSidebar
                         sessionId={sessionId}
-                        selectedPath={selectedFile?.fullPath ?? null}
+                        selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
                         onFilePress={handleSidebarFilePress}
+                        mode={sidebarMode}
+                        onModeChange={setSidebarMode}
+                        onAllFilesFilePress={handleAllFilesFilePress}
                     />
                 </View>
             </Animated.View>
@@ -304,6 +308,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
+    const zenMode = useLocalSetting('zenMode');
     const sessionInputHorizontalPadding = Platform.OS === 'web' || isRunningOnMac() || isTablet ? 12 : 8;
 
     // Check if CLI version is outdated and not already acknowledged
@@ -361,6 +366,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
+
+    // Image attachment state (expImageUpload feature flag)
+    const expImageUpload = useSetting('expImageUpload');
+    const { selectedImages, pickImages, removeImage, clearImages, addImages } = useImagePicker();
 
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
@@ -453,9 +462,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         // Trigger session sync
         sync.onSessionVisible(sessionId);
 
+        // Mark session as currently being viewed (clears unread)
+        storage.getState().setCurrentViewingSession(sessionId);
 
         // Initialize git status sync for this session
         gitStatusSync.getSync(sessionId);
+
+        return () => {
+            // Clear viewing session on unmount
+            const current = storage.getState().currentViewingSessionId;
+            if (current === sessionId) {
+                storage.getState().setCurrentViewingSession(null);
+            }
+        };
     }, [sessionId, realtimeStatus]);
 
     let content = (
@@ -501,17 +520,23 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }}
             blockSend={false}
             onSend={() => {
-                if (message.trim()) {
+                if (message.trim() || (expImageUpload && selectedImages.length > 0)) {
+                    const attachments = expImageUpload ? selectedImages : undefined;
                     setMessage('');
                     clearDraft();
-                    sync.sendMessage(sessionId, message, { source: 'chat' });
+                    if (expImageUpload) clearImages();
+                    sync.sendMessage(sessionId, message, { source: 'chat', attachments });
                 }
             }}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
             isMicActive={isDisconnected ? false : micButtonState.isMicActive}
             onAbort={isDisconnected ? undefined : () => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
-            onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
+            onFileViewerPress={experiments && !isTablet ? () => router.push(`/session/${sessionId}/files`) : undefined}
+            selectedImages={expImageUpload ? selectedImages : undefined}
+            onPickImages={expImageUpload ? pickImages : undefined}
+            onRemoveImage={expImageUpload ? removeImage : undefined}
+            onAddImages={expImageUpload ? addImages : undefined}
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
             usageData={sessionUsage ? {
@@ -528,6 +553,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 contextSize: session.latestUsage.contextSize
             } : undefined}
             alwaysShowContextSize={alwaysShowContextSize}
+            zenMode={zenMode}
         />
     );
 

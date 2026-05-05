@@ -43,11 +43,21 @@ export async function startMetricsServer(): Promise<void> {
 
     const port = process.env.METRICS_PORT ? parseInt(process.env.METRICS_PORT, 10) : 9090;
     const app = await createMetricsServer();
-    
+
     try {
         await app.listen({ port, host: '0.0.0.0' });
         log({ module: 'metrics' }, `Metrics server listening on port ${port}`);
     } catch (error) {
+        // Don't take the whole API down if the metrics port is taken — that's
+        // a common dev situation (orphaned process, another tool on 9090,
+        // multiple checkouts running side by side). The main API is what
+        // users actually need; metrics is best-effort observability.
+        const code = (error as NodeJS.ErrnoException)?.code;
+        if (code === 'EADDRINUSE') {
+            log({ module: 'metrics', level: 'warn' }, `Metrics port ${port} already in use — continuing without metrics. Set METRICS_PORT or METRICS_ENABLED=false to silence.`);
+            try { await app.close(); } catch { /* noop */ }
+            return;
+        }
         log({ module: 'metrics', level: 'error' }, `Failed to start metrics server: ${error}`);
         throw error;
     }

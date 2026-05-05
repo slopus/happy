@@ -1,13 +1,14 @@
 import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
-import { AgentState, ClientToServerEvents, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
-import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
+import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSchema, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
+import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff, delay } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
 import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
+import { deriveKey } from '@/utils/deriveKey';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
@@ -82,6 +83,16 @@ export class ApiSessionClient extends EventEmitter {
     private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
     private pendingMessages: UserMessage[] = [];
     private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
+    private pendingFileEvents: FileEventMessage[] = [];
+    private pendingFileEventCallback: ((data: FileEventMessage) => void) | null = null;
+    private blobKey: Uint8Array | null = null;
+    /**
+     * In-flight attachment download promises that belong to the *current*
+     * (not-yet-drained) batch. Each promise resolves to the decoded blob (or
+     * null on failure), so per-message ownership is intrinsic — there is no
+     * shared push-array between batches that a late download could leak into.
+     */
+    private pendingDownloads: Promise<{ data: Uint8Array; mimeType: string; name: string } | null>[] = [];
     readonly rpcHandlerManager: RpcHandlerManager;
     private agentStateLock = new AsyncLock();
     private metadataLock = new AsyncLock();
@@ -251,6 +262,99 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    onFileEvent(callback: (data: FileEventMessage) => void) {
+        this.pendingFileEventCallback = callback;
+        while (this.pendingFileEvents.length > 0) {
+            callback(this.pendingFileEvents.shift()!);
+        }
+    }
+
+    /**
+     * Derive (and cache) the blob decryption key for this session.
+     * Legacy sessions use deriveKey(masterSecret, 'Happy Blobs', ['master']).
+     * DataKey sessions use deriveKey(dataKey, 'Happy Blobs', ['session']).
+     */
+    async getBlobKey(): Promise<Uint8Array> {
+        if (!this.blobKey) {
+            const path = this.encryptionVariant === 'dataKey' ? ['session'] : ['master'];
+            this.blobKey = await deriveKey(this.encryptionKey, 'Happy Blobs', path);
+        }
+        return this.blobKey;
+    }
+
+    /**
+     * Download an encrypted attachment blob via the request-download flow:
+     * POST /request-download → { downloadUrl } → GET downloadUrl. Local mode
+     * downloadUrl points back at our server (Bearer required); S3 mode is a
+     * presigned URL that does not accept extra headers.
+     */
+    async downloadAttachment(ref: string): Promise<Uint8Array> {
+        const requestUrl = `${configuration.serverUrl}/v1/sessions/${this.sessionId}/attachments/request-download`;
+        const requestRes = await axios.post(
+            requestUrl,
+            { ref },
+            {
+                headers: { 'Authorization': `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+                timeout: 30000,
+            },
+        );
+        const downloadUrl = requestRes.data?.downloadUrl;
+        if (typeof downloadUrl !== 'string') {
+            throw new Error('request-download returned no downloadUrl');
+        }
+
+        const isServerUrl = downloadUrl.startsWith(configuration.serverUrl);
+        const headers: Record<string, string> = {};
+        if (isServerUrl) {
+            headers['Authorization'] = `Bearer ${this.token}`;
+        }
+        const response = await axios.get(downloadUrl, {
+            headers,
+            responseType: 'arraybuffer',
+            timeout: 60000,
+            maxRedirects: 5,
+            maxContentLength: 10 * 1024 * 1024,
+        });
+        return new Uint8Array(response.data);
+    }
+
+    /**
+     * Download and decrypt an attachment blob.
+     * Returns the decrypted binary data or null if decryption fails.
+     */
+    async downloadAndDecryptAttachment(ref: string): Promise<Uint8Array | null> {
+        const encrypted = await this.downloadAttachment(ref);
+        const key = await this.getBlobKey();
+        console.log(`[downloadAndDecrypt] ref=${ref} encrypted=${encrypted.length} key=${key.length}`);
+        const decrypted = decryptBlob(encrypted, key);
+        console.log(`[downloadAndDecrypt] decrypted=${decrypted ? decrypted.length : 'null'}`);
+        return decrypted;
+    }
+
+    /**
+     * Track an attachment download whose promise resolves to the decoded blob
+     * (or null on failure). The download stays in the current batch until the
+     * next drainAttachmentsForUserMessage call swaps the bucket out — file
+     * events that arrive after the swap go into a fresh bucket bound to the
+     * next user-text message.
+     */
+    trackAttachmentDownload(promise: Promise<{ data: Uint8Array; mimeType: string; name: string } | null>): void {
+        this.pendingDownloads.push(promise);
+    }
+
+    /**
+     * Atomically claim every download started before this call, wait for them
+     * to resolve, and return the successful ones. The swap-then-await order
+     * guarantees that a late-arriving file event cannot leak into this batch.
+     */
+    async drainAttachmentsForUserMessage(): Promise<Array<{ data: Uint8Array; mimeType: string; name: string }>> {
+        const downloads = this.pendingDownloads;
+        this.pendingDownloads = [];
+        if (downloads.length === 0) return [];
+        const results = await Promise.all(downloads);
+        return results.filter((x): x is { data: Uint8Array; mimeType: string; name: string } => x !== null);
+    }
+
     private authHeaders() {
         return {
             'Authorization': `Bearer ${this.token}`,
@@ -269,6 +373,19 @@ export class ApiSessionClient extends EventEmitter {
             }
             return;
         }
+
+        // Check for file events (image attachments from app)
+        const fileResult = FileEventMessageSchema.safeParse(message);
+        if (fileResult.success) {
+            logger.debug(`[API] Received file event: ${fileResult.data.content.data.ev.name} (ref: ${fileResult.data.content.data.ev.ref})`);
+            if (this.pendingFileEventCallback) {
+                this.pendingFileEventCallback(fileResult.data);
+            } else {
+                this.pendingFileEvents.push(fileResult.data);
+            }
+            return;
+        }
+
         this.emit('message', message);
     }
 

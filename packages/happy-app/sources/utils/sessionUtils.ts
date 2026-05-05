@@ -80,15 +80,8 @@ export function useSessionStatus(session: Session): SessionStatus {
 export function getSessionName(session: Session): string {
     if (session.metadata?.summary) {
         return session.metadata.summary.text;
-    } else if (session.metadata) {
-        const segments = session.metadata.path.split('/').filter(Boolean);
-        const lastSegment = segments.pop();
-        if (!lastSegment) {
-            return t('status.unknown');
-        }
-        return lastSegment;
     }
-    return t('status.unknown');
+    return t('session.newChat');
 }
 
 /**

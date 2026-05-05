@@ -9,11 +9,7 @@ export function navigateToSession(router: Router, sessionId: string) {
         trackSessionSwitched(session);
     }
 
-    router.navigate(`/session/${encodeURIComponent(sessionId)}`, {
-        dangerouslySingular() {
-            return 'session'
-        },
-    });
+    router.push(`/session/${encodeURIComponent(sessionId)}`);
 }
 
 export function useNavigateToSession() {

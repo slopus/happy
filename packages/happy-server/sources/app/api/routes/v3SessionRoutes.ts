@@ -1,4 +1,5 @@
 import { buildNewMessageUpdate, eventRouter } from "@/app/events/eventRouter";
+import { dispatchNewMessagePush } from "@/app/push/pushDispatch";
 import { db } from "@/storage/db";
 import { allocateSessionSeqBatch, allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
@@ -212,6 +213,12 @@ export function v3SessionRoutes(app: Fastify) {
                 payload: updatePayload,
                 recipientFilter: { type: 'all-interested-in-session', sessionId }
             });
+        }
+
+        // Fire-and-forget push notification with smart routing
+        if (txResult.createdMessages.length > 0) {
+            const senderHappyClient = request.headers['x-happy-client'] as string | undefined;
+            void dispatchNewMessagePush({ userId, sessionId, senderHappyClient });
         }
 
         return reply.send({

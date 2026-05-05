@@ -1,16 +1,13 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
-import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
+import { useSessionGitStatus } from '@/sync/storage';
 import { GitStatus } from '@/sync/storageTypes';
 import { useUnistyles } from 'react-native-unistyles';
 
 // Custom hook to check if git status should be shown (always true if git repo exists)
 export function useHasMeaningfulGitStatus(sessionId: string): boolean {
-    // Use project git status first, fallback to session git status for backward compatibility
-    const projectGitStatus = useSessionProjectGitStatus(sessionId);
-    const sessionGitStatus = useSessionGitStatus(sessionId);
-    const gitStatus = projectGitStatus || sessionGitStatus;
+    const gitStatus = useSessionGitStatus(sessionId);
     return gitStatus ? gitStatus.lastUpdatedAt > 0 : false;
 }
 
@@ -19,10 +16,7 @@ interface GitStatusBadgeProps {
 }
 
 export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
-    // Use project git status first, fallback to session git status for backward compatibility
-    const projectGitStatus = useSessionProjectGitStatus(sessionId);
-    const sessionGitStatus = useSessionGitStatus(sessionId);
-    const gitStatus = projectGitStatus || sessionGitStatus;
+    const gitStatus = useSessionGitStatus(sessionId);
     const { theme } = useUnistyles();
 
     // Always show if git repository exists, even without changes

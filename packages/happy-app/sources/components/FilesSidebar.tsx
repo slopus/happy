@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, TextInput, ActivityIndicator } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, {
@@ -8,34 +8,43 @@ import Animated, {
     withTiming,
     Easing,
 } from 'react-native-reanimated';
-import { storage, useSessionGitStatus, useSessionGitStatusFiles } from '@/sync/storage';
+import { storage, useSessionGitStatus, useSessionGitStatusFiles, useSessionProjectFiles } from '@/sync/storage';
 import { getGitStatusFiles, GitFileStatus } from '@/sync/gitStatusFiles';
+import { getProjectFiles, ProjectFile } from '@/sync/projectFiles';
 import { FileIcon } from '@/components/FileIcon';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 
+export type SidebarMode = 'changes' | 'allFiles';
+
 interface FilesSidebarProps {
     sessionId: string;
     selectedPath?: string | null;
     onFilePress?: (file: GitFileStatus) => void;
+    mode?: SidebarMode;
+    onModeChange?: (mode: SidebarMode) => void;
+    onAllFilesFilePress?: (filePath: string) => void;
 }
 
-type FileNode = {
+type FileNode<T = GitFileStatus> = {
     kind: 'file';
     name: string;
     path: string;
-    file: GitFileStatus;
+    file: T;
 };
 
-type DirNode = {
+type DirNode<T = GitFileStatus> = {
     kind: 'dir';
     name: string;
     path: string;
-    children: TreeNode[];
+    children: AnyTreeNode<T>[];
 };
 
-type TreeNode = FileNode | DirNode;
+type AnyTreeNode<T = GitFileStatus> = FileNode<T> | DirNode<T>;
+
+// Legacy alias for existing code
+type TreeNode = AnyTreeNode<GitFileStatus>;
 
 const PATH_SEPARATOR = ' / ';
 const INDENT_PX = 14;
@@ -43,22 +52,23 @@ const INDENT_PX = 14;
 // Build a nested tree from a flat file list, then path-compress any dir chain
 // where every intermediate dir has a single directory child. So a/b/c/file.ts
 // where a and b each have only one dir child becomes a single "a / b / c" node.
-function buildTree(files: GitFileStatus[]): TreeNode[] {
+function buildTree<T extends { fullPath: string }>(files: T[]): AnyTreeNode<T>[] {
     // De-dup files by fullPath (a file can appear in both staged and unstaged).
-    const uniq = new Map<string, GitFileStatus>();
+    const uniq = new Map<string, T>();
     for (const file of files) {
         if (!uniq.has(file.fullPath)) uniq.set(file.fullPath, file);
     }
 
-    const root: DirNode = { kind: 'dir', name: '', path: '', children: [] };
+    const root: DirNode<T> = { kind: 'dir', name: '', path: '', children: [] };
 
     for (const file of uniq.values()) {
-        const parts = file.fullPath.split('/').filter(Boolean);
+        // Support both forward and back slashes (Windows paths)
+        const parts = file.fullPath.split(/[/\\]/).filter(Boolean);
         let cursor = root;
         for (let i = 0; i < parts.length - 1; i++) {
             const segment = parts[i];
             const nextPath = cursor.path ? `${cursor.path}/${segment}` : segment;
-            let child = cursor.children.find((c) => c.kind === 'dir' && c.name === segment) as DirNode | undefined;
+            let child = cursor.children.find((c) => c.kind === 'dir' && c.name === segment) as DirNode<T> | undefined;
             if (!child) {
                 child = { kind: 'dir', name: segment, path: nextPath, children: [] };
                 cursor.children.push(child);
@@ -79,7 +89,7 @@ function buildTree(files: GitFileStatus[]): TreeNode[] {
     return root.children;
 }
 
-function sortTree(node: DirNode) {
+function sortTree<T>(node: DirNode<T>) {
     node.children.sort((a, b) => {
         if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1;
         return a.name.localeCompare(b.name);
@@ -89,20 +99,17 @@ function sortTree(node: DirNode) {
     }
 }
 
-function compressTree(node: DirNode) {
+function compressTree<T>(node: DirNode<T>) {
     for (const child of node.children) {
         if (child.kind === 'dir') compressTree(child);
     }
-    // Merge this node's name with its single dir child — only when that child
-    // itself has no further compression to do (recursion above already compressed it).
-    // We keep repeating while the compression condition holds.
     while (
         node !== undefined &&
         node.kind === 'dir' &&
         node.children.length === 1 &&
         node.children[0].kind === 'dir'
     ) {
-        const only = node.children[0] as DirNode;
+        const only = node.children[0] as DirNode<T>;
         node.name = node.name ? `${node.name}${PATH_SEPARATOR}${only.name}` : only.name;
         node.path = only.path;
         node.children = only.children;
@@ -111,10 +118,10 @@ function compressTree(node: DirNode) {
 
 // Depth-first walk that returns the filtered tree. A dir is kept if any of its
 // descendants match; a file is kept if its path contains the query.
-function filterTree(nodes: TreeNode[], query: string): TreeNode[] {
+function filterTree<T>(nodes: AnyTreeNode<T>[], query: string): AnyTreeNode<T>[] {
     if (!query) return nodes;
     const q = query.toLowerCase();
-    const result: TreeNode[] = [];
+    const result: AnyTreeNode<T>[] = [];
     for (const node of nodes) {
         if (node.kind === 'file') {
             if (node.path.toLowerCase().includes(q)) result.push(node);
@@ -128,7 +135,7 @@ function filterTree(nodes: TreeNode[], query: string): TreeNode[] {
     return result;
 }
 
-function collectDirPaths(nodes: TreeNode[], acc: string[] = []): string[] {
+function collectDirPaths<T>(nodes: AnyTreeNode<T>[], acc: string[] = []): string[] {
     for (const node of nodes) {
         if (node.kind === 'dir') {
             acc.push(node.path);
@@ -138,21 +145,29 @@ function collectDirPaths(nodes: TreeNode[], acc: string[] = []): string[] {
     return acc;
 }
 
-export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId, selectedPath, onFilePress }) => {
+export const FilesSidebar = React.memo<FilesSidebarProps>(({
+    sessionId,
+    selectedPath,
+    onFilePress,
+    mode = 'changes',
+    onModeChange,
+    onAllFilesFilePress,
+}) => {
     const router = useRouter();
     const { theme } = useUnistyles();
     const gitStatusFiles = useSessionGitStatusFiles(sessionId);
     const gitStatus = useSessionGitStatus(sessionId);
 
-    const [query, setQuery] = React.useState('');
     const [collapsed, setCollapsed] = React.useState<Set<string>>(() => new Set());
 
     React.useEffect(() => {
         let cancelled = false;
+        const pathKey = storage.getState().getSessionPathKey(sessionId);
+        if (!pathKey) return;
         (async () => {
             const result = await getGitStatusFiles(sessionId);
             if (!cancelled && result) {
-                storage.getState().applyGitStatusFiles(sessionId, result);
+                storage.getState().applyGitStatusFiles(pathKey, result);
             }
         })();
         return () => { cancelled = true; };
@@ -175,23 +190,10 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId, selected
     }, [gitStatusFiles]);
 
     const tree = React.useMemo(() => buildTree(allFiles), [allFiles]);
-    const filteredTree = React.useMemo(() => filterTree(tree, query.trim()), [tree, query]);
-
-    // When filtering, auto-expand every dir so matches are visible regardless of collapse state.
-    const effectiveCollapsed = query.trim() ? new Set<string>() : collapsed;
+    const filteredTree = tree;
+    const effectiveCollapsed = collapsed;
 
     const hasFiles = allFiles.length > 0;
-    const totalCount = React.useMemo(() => new Set(allFiles.map((f) => f.fullPath)).size, [allFiles]);
-
-    const allDirPaths = React.useMemo(() => collectDirPaths(tree), [tree]);
-    const allCollapsed = allDirPaths.length > 0 && allDirPaths.every((p) => collapsed.has(p));
-
-    const toggleAll = React.useCallback(() => {
-        setCollapsed((prev) => {
-            if (prev.size === 0) return new Set(allDirPaths);
-            return new Set();
-        });
-    }, [allDirPaths]);
 
     const toggleDir = React.useCallback((path: string) => {
         setCollapsed((prev) => {
@@ -204,54 +206,188 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId, selected
 
     return (
         <View style={styles.container}>
+            {/* Tab selector */}
             <View style={styles.header}>
-                <Text style={styles.headerTitle} numberOfLines={1}>{t('files.changes')}</Text>
-                {hasFiles ? (
-                    <Pressable onPress={toggleAll} hitSlop={8} style={styles.headerCountWrap}>
-                        <Text style={styles.headerCount}>{totalCount}</Text>
-                        <AnimatedChevron collapsed={allCollapsed} color={theme.colors.textSecondary} size={14} />
-                    </Pressable>
+                {onModeChange ? (
+                    <View style={styles.tabRow}>
+                        <Pressable
+                            onPress={() => onModeChange('changes')}
+                            style={[
+                                styles.tab,
+                                mode === 'changes' && { backgroundColor: theme.colors.surface },
+                            ]}
+                        >
+                            <Text style={[
+                                styles.tabText,
+                                mode === 'changes' && styles.tabTextActive,
+                            ]} numberOfLines={1}>
+                                {t('files.changes')}
+                            </Text>
+                        </Pressable>
+                        <Pressable
+                            onPress={() => onModeChange('allFiles')}
+                            style={[
+                                styles.tab,
+                                mode === 'allFiles' && { backgroundColor: theme.colors.surface },
+                            ]}
+                        >
+                            <Text style={[
+                                styles.tabText,
+                                mode === 'allFiles' && styles.tabTextActive,
+                            ]} numberOfLines={1}>
+                                {t('files.allFiles')}
+                            </Text>
+                        </Pressable>
+                    </View>
+                ) : (
+                    <Text style={styles.headerTitle} numberOfLines={1}>{t('files.changes')}</Text>
+                )}
+                {mode === 'changes' && hasFiles && gitStatus && (gitStatus.linesAdded > 0 || gitStatus.linesRemoved > 0) ? (
+                    <View style={styles.headerLineChanges}>
+                        {gitStatus.linesAdded > 0 && (
+                            <Text style={styles.headerAdded}>+{gitStatus.linesAdded}</Text>
+                        )}
+                        {gitStatus.linesRemoved > 0 && (
+                            <Text style={styles.headerRemoved}>-{gitStatus.linesRemoved}</Text>
+                        )}
+                    </View>
                 ) : null}
             </View>
 
-            {hasFiles ? (
-                <View style={styles.searchWrap}>
-                    <Octicons name="search" size={14} color={theme.colors.textSecondary} style={styles.searchIcon} />
-                    <TextInput
-                        value={query}
-                        onChangeText={setQuery}
-                        placeholder={t('files.searchPlaceholder')}
-                        placeholderTextColor={theme.colors.textSecondary}
-                        style={styles.searchInput}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        spellCheck={false}
-                    />
-                </View>
-            ) : null}
+            {mode === 'changes' ? (
+                <ScrollView style={styles.list} showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
+                    {!hasFiles ? (
+                        <View style={styles.emptyState}>
+                            <View style={styles.emptyIconWrap}>
+                                <Octicons name="check" size={28} style={styles.emptyIcon} />
+                            </View>
+                            <Text style={styles.emptyTitle}>{t('files.noChangesTitle')}</Text>
+                            <Text style={styles.emptySubtitle}>{t('files.noChangesSubtitle')}</Text>
+                        </View>
+                    ) : (
+                        <View style={styles.tree}>
+                            {filteredTree.map((node) => (
+                                <TreeNodeRow
+                                    key={node.path}
+                                    node={node}
+                                    depth={0}
+                                    selectedPath={selectedPath ?? null}
+                                    collapsed={effectiveCollapsed}
+                                    onToggleDir={toggleDir}
+                                    onFilePress={handleFilePress}
+                                />
+                            ))}
+                        </View>
+                    )}
+                </ScrollView>
+            ) : (
+                <AllFilesTab
+                    sessionId={sessionId}
+                    selectedPath={selectedPath ?? null}
+                    onFilePress={onAllFilesFilePress}
+                />
+            )}
+        </View>
+    );
+});
+
+/** All-files tab: reads from Zustand store, fetches on mount */
+const AllFilesTab = React.memo(function AllFilesTab({
+    sessionId,
+    selectedPath,
+    onFilePress,
+}: {
+    sessionId: string;
+    selectedPath: string | null;
+    onFilePress?: (filePath: string) => void;
+}) {
+    const { theme } = useUnistyles();
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [isLoading, setIsLoading] = React.useState(false);
+
+    const projectFiles = useSessionProjectFiles(sessionId);
+    const allFiles = projectFiles?.files ?? [];
+
+    // Fetch project files into Zustand on mount
+    React.useEffect(() => {
+        let cancelled = false;
+        const pathKey = storage.getState().getSessionPathKey(sessionId);
+        if (!pathKey) return;
+
+        // Only fetch if not cached
+        const existing = storage.getState().pathProjectFiles[pathKey];
+        if (existing && existing.files.length > 0) return;
+
+        setIsLoading(true);
+        (async () => {
+            const result = await getProjectFiles(sessionId);
+            if (!cancelled) {
+                storage.getState().applyProjectFiles(pathKey, result);
+                setIsLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [sessionId]);
+
+    const tree = React.useMemo(() => buildTree(allFiles), [allFiles]);
+    const filteredTree = React.useMemo(
+        () => searchQuery.trim() ? filterTree(tree, searchQuery) : tree,
+        [tree, searchQuery]
+    );
+
+    const [collapsed, setCollapsed] = React.useState<Set<string>>(() => new Set());
+    const toggleDir = React.useCallback((path: string) => {
+        setCollapsed((prev) => {
+            const next = new Set(prev);
+            if (next.has(path)) next.delete(path);
+            else next.add(path);
+            return next;
+        });
+    }, []);
+
+    const handleFilePress = React.useCallback((file: ProjectFile) => {
+        onFilePress?.(file.fullPath);
+    }, [onFilePress]);
+
+    return (
+        <View style={{ flex: 1 }}>
+            {/* Search input */}
+            <View style={styles.searchWrap}>
+                <Octicons name="search" size={14} color={theme.colors.textSecondary} style={styles.searchIcon} />
+                <TextInput
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder={t('files.searchPlaceholder')}
+                    placeholderTextColor={theme.colors.input.placeholder}
+                    style={[styles.searchInput, { color: theme.colors.text }]}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                />
+            </View>
 
             <ScrollView style={styles.list} showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
-                {!hasFiles ? (
+                {isLoading && allFiles.length === 0 ? (
                     <View style={styles.emptyState}>
-                        <View style={styles.emptyIconWrap}>
-                            <Octicons name="check" size={28} style={styles.emptyIcon} />
-                        </View>
-                        <Text style={styles.emptyTitle}>{t('files.noChangesTitle')}</Text>
-                        <Text style={styles.emptySubtitle}>{t('files.noChangesSubtitle')}</Text>
+                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     </View>
                 ) : filteredTree.length === 0 ? (
-                    <View style={styles.emptySearch}>
-                        <Text style={styles.emptySubtitle}>{t('files.noFilesFound')}</Text>
+                    <View style={styles.emptyState}>
+                        <View style={styles.emptyIconWrap}>
+                            <Octicons name="file" size={28} color={theme.colors.textSecondary} />
+                        </View>
+                        <Text style={styles.emptyTitle}>
+                            {searchQuery ? t('files.noFilesFound') : t('files.noFilesInProject')}
+                        </Text>
                     </View>
                 ) : (
                     <View style={styles.tree}>
                         {filteredTree.map((node) => (
-                            <TreeNodeRow
+                            <ProjectTreeNodeRow
                                 key={node.path}
                                 node={node}
                                 depth={0}
-                                selectedPath={selectedPath ?? null}
-                                collapsed={effectiveCollapsed}
+                                selectedPath={selectedPath}
+                                collapsed={collapsed}
                                 onToggleDir={toggleDir}
                                 onFilePress={handleFilePress}
                             />
@@ -260,6 +396,70 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({ sessionId, selected
                 )}
             </ScrollView>
         </View>
+    );
+});
+
+/** Tree row for project files (no status badges, clickable) */
+const ProjectTreeNodeRow = React.memo(function ProjectTreeNodeRow({
+    node, depth, selectedPath, collapsed, onToggleDir, onFilePress,
+}: {
+    node: AnyTreeNode<ProjectFile>;
+    depth: number;
+    selectedPath: string | null;
+    collapsed: Set<string>;
+    onToggleDir: (path: string) => void;
+    onFilePress: (file: ProjectFile) => void;
+}) {
+    const { theme } = useUnistyles();
+    const leftPad = 8 + depth * INDENT_PX;
+
+    if (node.kind === 'dir') {
+        const isCollapsed = collapsed.has(node.path);
+        return (
+            <View>
+                <Pressable
+                    onPress={() => onToggleDir(node.path)}
+                    style={({ pressed }) => [styles.row, { paddingLeft: leftPad }, pressed && styles.rowPressed]}
+                >
+                    <View style={styles.chevron}>
+                        <AnimatedChevron collapsed={isCollapsed} color={theme.colors.textSecondary} />
+                    </View>
+                    <Text style={styles.dirName} numberOfLines={1}>{node.name}</Text>
+                </Pressable>
+                {!isCollapsed
+                    ? node.children.map((child) => (
+                        <ProjectTreeNodeRow
+                            key={child.path}
+                            node={child}
+                            depth={depth + 1}
+                            selectedPath={selectedPath}
+                            collapsed={collapsed}
+                            onToggleDir={onToggleDir}
+                            onFilePress={onFilePress}
+                        />
+                    ))
+                    : null}
+            </View>
+        );
+    }
+
+    const isSelected = selectedPath === node.path;
+    return (
+        <Pressable
+            onPress={() => onFilePress(node.file)}
+            style={({ pressed }) => [
+                styles.row,
+                { paddingLeft: leftPad },
+                pressed && styles.rowPressed,
+                isSelected && styles.rowSelected,
+            ]}
+        >
+            <View style={styles.chevronGutter} />
+            <FileIcon fileName={node.name} size={16} />
+            <Text style={styles.fileName} numberOfLines={1}>
+                {node.name}
+            </Text>
+        </Pressable>
     );
 });
 
@@ -385,6 +585,23 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         ...Typography.default(),
     },
+    headerLineChanges: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    headerAdded: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: theme.colors.gitAddedText,
+        ...Typography.mono(),
+    },
+    headerRemoved: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: theme.colors.gitRemovedText,
+        ...Typography.mono(),
+    },
     searchWrap: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -498,5 +715,35 @@ const styles = StyleSheet.create((theme) => ({
     emptySearch: {
         paddingTop: 24,
         alignItems: 'center',
+    },
+    tabRow: {
+        flexDirection: 'row',
+        gap: 2,
+        padding: 2,
+        borderRadius: 8,
+        backgroundColor: theme.colors.groupped.background,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+    },
+    tab: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 6,
+    },
+    tabText: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
+    tabTextActive: {
+        fontWeight: '600',
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    fileSubpath: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+        marginTop: 1,
     },
 }));

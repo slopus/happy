@@ -82,6 +82,7 @@ export const it: TranslationStructure = {
         permissionRequired: 'permesso richiesto',
         activeNow: 'Attivo ora',
         unknown: 'sconosciuto',
+        unread: 'nuovi risultati',
     },
 
     time: {
@@ -212,6 +213,8 @@ export const it: TranslationStructure = {
         disableAnalytics: 'Disabilita analisi',
         analyticsDisabled: 'Tutto il tracciamento e la telemetria disabilitati',
         analyticsEnabled: 'Analisi anonime di utilizzo attive',
+        imageUpload: 'Caricamento immagini',
+        imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare da Claude',
     },
 
     errors: {
@@ -284,6 +287,7 @@ export const it: TranslationStructure = {
         inputPlaceholder: 'Scrivi un messaggio ...',
         inactiveArchived: 'Questa sessione è inattiva.',
         resumeFromTerminal: 'Per riprenderla dal terminale:',
+        newChat: 'Nuova chat',
     },
 
     commandPalette: {
@@ -463,6 +467,11 @@ export const it: TranslationStructure = {
         sessionsTitle: 'Happy',
         showArchived: 'Mostra archiviate',
         hideArchived: 'Nascondi archiviate',
+        newSession: 'Nuova sessione',
+    },
+
+    zen: {
+        toggle: 'Modalità zen',
     },
 
     toolView: {
@@ -562,6 +571,16 @@ export const it: TranslationStructure = {
         noChangesTitle: 'Nessuna modifica',
         noChangesSubtitle: 'L\'albero di lavoro è pulito',
         deleted: 'Eliminato',
+        changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'file modificato' : 'file modificati'}`,
+        allFiles: 'Tutti i file',
+        editFile: 'Modifica',
+        saveFile: 'Salva',
+        failedToRead: 'Impossibile leggere il file',
+        failedToSave: 'Impossibile salvare il file',
+        fileConflict: 'Conflitto file',
+        fileConflictDescription: 'Questo file è stato modificato sul dispositivo mentre lo stavi modificando. Ricarica per vedere l\'ultima versione.',
+        reload: 'Ricarica',
+        overwrite: 'Sovrascrivi',
     },
 
     settingsVoice: {
@@ -914,6 +933,21 @@ export const it: TranslationStructure = {
         usageOverTime: 'Utilizzo nel tempo',
         byModel: 'Per modello',
         noData: 'Nessun dato di utilizzo disponibile',
+    },
+
+    imageUpload: {
+        permissionTitle: 'Accesso alla libreria foto',
+        permissionMessage: "Consenti l'accesso alla tua libreria foto per allegare immagini ai messaggi.",
+        limitTitle: 'Limite immagini raggiunto',
+        limitMessage: ({ max }: { max: number }) => `Puoi allegare fino a ${max} immagini per messaggio.`,
+        fileTooLargeTitle: 'File troppo grande',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" supera il limite di ${maxMb}MB e non è stato aggiunto.`,
+        uploadFailedTitle: 'Caricamento non riuscito',
+        uploadFailedMessage: ({ count }: { count: number }) => count === 1
+            ? 'Un\'immagine non è stata caricata e non è stata inviata.'
+            : `Non è stato possibile caricare ${count} immagini e non sono state inviate.`,
+        notSupportedTitle: 'Immagini non supportate',
+        notSupportedMessage: 'Questo agente non supporta gli allegati immagine. È stato inviato solo il testo.',
     },
 
     feed: {

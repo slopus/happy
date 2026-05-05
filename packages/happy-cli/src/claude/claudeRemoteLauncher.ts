@@ -15,6 +15,8 @@ import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
+import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
+import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
 
 interface PermissionsField {
     date: number;
@@ -263,7 +265,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     try {
         let pending: {
-            message: string;
+            message: MessageParam['content'];
             mode: EnhancedMode;
         } | null = null;
 
@@ -327,6 +329,43 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             modeHash = msg.hash;
                             mode = msg.mode;
                             permissionHandler.handleModeChange(mode.permissionMode);
+
+                            // Per-message attachments are already claimed by the message
+                            // when it was pushed onto the queue, so there is no race window
+                            // to wait out here — just consume what travelled with the batch.
+                            const attachments = msg.attachments ?? [];
+                            if (attachments.length > 0) {
+                                const contentBlocks: ContentBlockParam[] = [];
+                                for (const att of attachments) {
+                                    // Detect media type from the decrypted bytes' magic header
+                                    // rather than trusting the wire-supplied mimeType. iOS image
+                                    // pickers happily report things like "image/heic" or no
+                                    // mimeType at all, which the Anthropic API rejects with a
+                                    // strict enum validation error. If the bytes look like one
+                                    // of the four formats Claude accepts, send that label —
+                                    // otherwise skip the attachment with a debug log.
+                                    const detected = detectClaudeImageMime(att.data);
+                                    if (!detected) {
+                                        logger.debug(`[remote] Skipping unsupported attachment (no magic-byte match): ${att.name}, claimed mimeType=${att.mimeType}`);
+                                        continue;
+                                    }
+                                    contentBlocks.push({
+                                        type: 'image' as const,
+                                        source: {
+                                            type: 'base64' as const,
+                                            media_type: detected,
+                                            data: Buffer.from(att.data).toString('base64'),
+                                        },
+                                    });
+                                }
+                                contentBlocks.push({ type: 'text' as const, text: msg.message });
+                                logger.debug(`[remote] Combined ${contentBlocks.length - 1} image(s) with text message`);
+                                return {
+                                    message: contentBlocks,
+                                    mode: msg.mode,
+                                };
+                            }
+
                             return {
                                 message: msg.message,
                                 mode: msg.mode
@@ -435,13 +474,28 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         permissionHandler.reset();
 
         // Reset Terminal
-        process.stdin.off('data', abort);
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
-        }
+        const t0 = Date.now();
+        logger.debug(`[remote]: cleanup begin exitReason=${exitReason} hasInk=${!!inkInstance} rawMode=${(process.stdin as any).isRaw}`);
         if (inkInstance) {
             inkInstance.unmount();
         }
+        logger.debug(`[remote]: ink.unmount() done +${Date.now() - t0}ms rawMode=${(process.stdin as any).isRaw}`);
+
+        // Drain any keystrokes that landed in stdin while Ink owned it (e.g.
+        // extra spaces from the double-space switch confirmation, or anything
+        // typed before the user perceives that the switch has completed) so
+        // they don't leak into the next interactive child process when local
+        // mode takes stdin back via stdio: 'inherit'. Raw mode stays on for
+        // the whole window so the kernel does not echo any in-flight bytes
+        // at whatever screen position Ink last left the cursor.
+        await cleanupStdinAfterInk({
+            stdin: process.stdin,
+            drainMs: 150,
+            onDebug: (event) => {
+                logger.debug(`[remote]: stdin drain ${event.bytes}B / ${event.chunks} chunk(s) +${Date.now() - t0}ms`);
+            },
+        });
+        logger.debug(`[remote]: cleanup done +${Date.now() - t0}ms rawMode=${(process.stdin as any).isRaw}`);
         messageBuffer.clear();
 
         // Resolve abort future
@@ -451,4 +505,33 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     }
 
     return exitReason || 'exit';
+}
+
+/**
+ * Detect the image media type Claude accepts from the decrypted blob's
+ * magic-byte header. The wire-supplied mimeType is unreliable (iOS picker
+ * reports things like "image/heic" or no value at all), and the Anthropic
+ * API enforces a strict enum on `image.source.base64.media_type`. Returning
+ * null when the bytes don't match a supported format causes the caller to
+ * drop the attachment instead of shipping an invalid request that the API
+ * rejects with HTTP 400.
+ */
+function detectClaudeImageMime(bytes: Uint8Array): 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | null {
+    if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+        return 'image/png';
+    }
+    if (bytes.length >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+        return 'image/jpeg';
+    }
+    if (bytes.length >= 4 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+        return 'image/gif';
+    }
+    if (
+        bytes.length >= 12 &&
+        bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+        bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+    ) {
+        return 'image/webp';
+    }
+    return null;
 }

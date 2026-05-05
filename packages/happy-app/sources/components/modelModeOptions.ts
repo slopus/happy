@@ -236,9 +236,12 @@ export function getDefaultEffortKey(flavor: AgentFlavor): string | null {
 }
 
 // Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
-export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string): EffortLevel[] {
+export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string): EffortLevel[] {
+    // Claude and Codex expose effort/thought levels regardless of which
+    // specific model is picked — the same low/medium/high/max scale applies
+    // to the whole flavor (mirrors how Codex already worked, which the user
+    // asked Claude to match).
     if (flavor === 'claude') {
-        if (modelKey === 'default') return [];
         return getClaudeEffortLevels();
     }
     if (flavor === 'codex') {

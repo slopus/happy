@@ -2,6 +2,7 @@ import { render } from "ink";
 import React from "react";
 import { ApiClient } from '@/api/api';
 import { CodexAppServerClient } from './codexAppServerClient';
+import type { ReasoningEffort } from './codexAppServerTypes';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
@@ -78,6 +79,8 @@ export async function runCodex(opts: {
     interface EnhancedMode {
         permissionMode: PermissionMode;
         model?: string;
+        /** Reasoning effort passed through to Codex's sendTurnAndWait. */
+        effort?: ReasoningEffort;
     }
 
     //
@@ -206,12 +209,14 @@ export async function runCodex(opts: {
     const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
         permissionMode: mode.permissionMode,
         model: mode.model,
+        effort: mode.effort,
     }));
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
     let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
+    let currentEffort: ReasoningEffort | undefined = undefined;
 
     // Valid Codex permission modes from remote messages. Matches the modes
     // the mobile UI exposes for Codex sessions (see modelModeOptions.ts:
@@ -227,6 +232,10 @@ export async function runCodex(opts: {
         'read-only',
         'safe-yolo',
         'yolo',
+    ];
+
+    const VALID_REMOTE_EFFORTS: readonly ReasoningEffort[] = [
+        'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
     ];
 
     session.onUserMessage((message) => {
@@ -255,9 +264,31 @@ export async function runCodex(opts: {
             logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
         }
 
+        // Resolve effort — passed straight to sendTurnAndWait. Validate the
+        // incoming value against ReasoningEffort so a stale/garbage entry on
+        // the wire doesn't poison the per-turn options.
+        let messageEffort = currentEffort;
+        if (message.meta?.hasOwnProperty('effort')) {
+            const incoming = (message.meta as Record<string, unknown>).effort;
+            if (incoming === null || incoming === undefined) {
+                messageEffort = undefined;
+                currentEffort = undefined;
+                logger.debug(`[Codex] Effort reset to default`);
+            } else if (typeof incoming === 'string' && (VALID_REMOTE_EFFORTS as readonly string[]).includes(incoming)) {
+                messageEffort = incoming as ReasoningEffort;
+                currentEffort = messageEffort;
+                logger.debug(`[Codex] Effort updated from user message: ${messageEffort}`);
+            } else {
+                logger.debug(`[Codex] Ignoring invalid effort from user message: ${String(incoming)}`);
+            }
+        } else {
+            logger.debug(`[Codex] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
+        }
+
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode || 'default',
             model: messageModel,
+            effort: messageEffort,
         };
         messageQueue.push(message.content.text, enhancedMode);
     });
@@ -702,6 +733,7 @@ export async function runCodex(opts: {
                     model: message.mode.model,
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,
+                    effort: message.mode.effort,
                 });
                 first = false;
 
