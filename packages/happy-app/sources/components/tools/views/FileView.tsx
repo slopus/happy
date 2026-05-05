@@ -1,7 +1,9 @@
 /**
  * View for 'file' tool calls (image attachments sent by user).
- * Phase 6: shows thumbhash placeholder + filename.
- * Phase 7 will add actual decryption and full image display.
+ * Downloads and decrypts the encrypted blob via apiAttachments + sessionBlobKey,
+ * then renders the full image inline with the thumbhash as placeholder.
+ *
+ * Falls back to a compact thumb+filename row when image metadata is missing.
  */
 import * as React from 'react';
 import { View, Text, Platform } from 'react-native';
@@ -10,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolViewProps } from './_all';
 import { z } from 'zod';
+import { useAttachmentImage } from '@/hooks/useAttachmentImage';
 
 const fileInputSchema = z.object({
     ref: z.string(),
@@ -22,57 +25,83 @@ const fileInputSchema = z.object({
     }).optional(),
 });
 
-const THUMB_SIZE = 80;
+const COMPACT_THUMB_SIZE = 80;
 const BORDER_RADIUS = 8;
+const MAX_IMAGE_WIDTH = 280;
+const MAX_IMAGE_HEIGHT = 360;
 
-export const FileView = React.memo<ToolViewProps>(({ tool }) => {
+export const FileView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
     const { theme } = useUnistyles();
     const parsed = fileInputSchema.safeParse(tool.input);
     if (!parsed.success) return null;
 
-    const { name, size, image } = parsed.data;
+    const { name, size, image, ref } = parsed.data;
 
     const placeholder = React.useMemo(() => {
-        if (!image?.thumbhash) return undefined;
+        if (!image?.thumbhash || Platform.OS !== 'web') return undefined;
         try {
-            if (Platform.OS === 'web') {
-                const { thumbHashToDataURL } = require('thumbhash');
-                const bytes = Uint8Array.from(atob(image.thumbhash), (c) => c.charCodeAt(0));
-                return { uri: thumbHashToDataURL(bytes) };
-            }
+            const { thumbHashToDataURL } = require('thumbhash');
+            const bytes = Uint8Array.from(atob(image.thumbhash), (c) => c.charCodeAt(0));
+            return { uri: thumbHashToDataURL(bytes) };
         } catch {
-            // fall through
+            return undefined;
         }
-        return undefined;
     }, [image?.thumbhash]);
 
-    const sizeLabel = size != null ? formatBytes(size) : null;
-    const dimsLabel = image ? `${image.width}×${image.height}` : null;
+    const { uri, error } = useAttachmentImage(sessionId ?? '', sessionId ? ref : undefined);
 
+    // Inline render with original aspect ratio when we have image dimensions.
+    if (image && image.width > 0 && image.height > 0) {
+        const aspect = image.width / image.height;
+        let displayW = Math.min(image.width, MAX_IMAGE_WIDTH);
+        let displayH = displayW / aspect;
+        if (displayH > MAX_IMAGE_HEIGHT) {
+            displayH = MAX_IMAGE_HEIGHT;
+            displayW = displayH * aspect;
+        }
+
+        return (
+            <View style={styles.inlineContainer}>
+                <View style={[styles.inlineWrapper, { borderColor: theme.colors.divider }]}>
+                    <Image
+                        source={uri ? { uri } : undefined}
+                        placeholder={placeholder}
+                        style={[{ width: displayW, height: displayH }, styles.inlineImage]}
+                        contentFit="cover"
+                        transition={150}
+                    />
+                    {error && !uri && (
+                        <View style={[styles.errorOverlay, { backgroundColor: theme.colors.surfaceHigh }]}>
+                            <Ionicons name="alert-circle-outline" size={20} color={theme.colors.textSecondary} />
+                        </View>
+                    )}
+                </View>
+                <Text style={[styles.filename, { color: theme.colors.textSecondary }]} numberOfLines={1}>{name}</Text>
+            </View>
+        );
+    }
+
+    // Compact fallback: no image metadata, just a thumbhash placeholder + meta row.
+    const sizeLabel = size != null ? formatBytes(size) : null;
     return (
-        <View style={styles.container}>
-            {/* Thumbnail (thumbhash placeholder; full image rendered in Phase 7) */}
-            <View style={[styles.thumbContainer, { borderColor: theme.colors.divider }]}>
+        <View style={styles.compactContainer}>
+            <View style={[styles.compactThumb, { borderColor: theme.colors.divider }]}>
                 {placeholder ? (
                     <Image
                         source={placeholder}
-                        style={styles.thumb}
+                        style={[{ width: COMPACT_THUMB_SIZE, height: COMPACT_THUMB_SIZE }, styles.compactThumbImage]}
                         contentFit="cover"
                     />
                 ) : (
-                    <View style={[styles.thumb, styles.thumbFallback, { backgroundColor: theme.colors.surfaceHigh }]}>
+                    <View style={[styles.compactThumbFallback, { backgroundColor: theme.colors.surfaceHigh, width: COMPACT_THUMB_SIZE, height: COMPACT_THUMB_SIZE }]}>
                         <Ionicons name="image-outline" size={28} color={theme.colors.textSecondary} />
                     </View>
                 )}
             </View>
-
-            {/* File metadata */}
             <View style={styles.meta}>
                 <Text style={[styles.filename, { color: theme.colors.text }]} numberOfLines={1}>{name}</Text>
-                {(sizeLabel || dimsLabel) && (
-                    <Text style={[styles.details, { color: theme.colors.textSecondary }]}>
-                        {[dimsLabel, sizeLabel].filter(Boolean).join(' · ')}
-                    </Text>
+                {sizeLabel && (
+                    <Text style={[styles.details, { color: theme.colors.textSecondary }]}>{sizeLabel}</Text>
                 )}
             </View>
         </View>
@@ -85,27 +114,48 @@ function formatBytes(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const styles = StyleSheet.create((theme) => ({
-    container: {
+const styles = StyleSheet.create(() => ({
+    inlineContainer: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        gap: 4,
+    },
+    inlineWrapper: {
+        borderRadius: BORDER_RADIUS,
+        borderWidth: 1,
+        overflow: 'hidden',
+        alignSelf: 'flex-start',
+        position: 'relative',
+    },
+    inlineImage: {
+        borderRadius: BORDER_RADIUS,
+    },
+    errorOverlay: {
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    compactContainer: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 12,
         paddingVertical: 8,
         gap: 12,
     },
-    thumbContainer: {
-        width: THUMB_SIZE,
-        height: THUMB_SIZE,
+    compactThumb: {
         borderRadius: BORDER_RADIUS,
         borderWidth: 1,
         overflow: 'hidden',
     },
-    thumb: {
-        width: THUMB_SIZE,
-        height: THUMB_SIZE,
+    compactThumbImage: {
         borderRadius: BORDER_RADIUS,
     },
-    thumbFallback: {
+    compactThumbFallback: {
         alignItems: 'center',
         justifyContent: 'center',
     },

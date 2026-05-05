@@ -86,3 +86,29 @@ export async function uploadEncryptedBlob(
         throw new Error(`Blob upload failed: ${response.status}`);
     }
 }
+
+/**
+ * Download an encrypted attachment blob from the server. The server
+ * responds directly in local-storage mode and redirects to a presigned S3
+ * GET URL otherwise; both are followed transparently by fetch.
+ */
+export async function downloadEncryptedAttachment(
+    credentials: AuthCredentials,
+    sessionId: string,
+    ref: string,
+): Promise<Uint8Array> {
+    const parts = ref.split('/');
+    const attachmentFile = parts[parts.length - 1];
+    if (!attachmentFile || /[^a-zA-Z0-9._-]/.test(attachmentFile)) {
+        throw new Error(`Invalid attachment reference: ${ref}`);
+    }
+    const url = `${getServerUrl()}/v1/sessions/${sessionId}/attachments/${encodeURIComponent(attachmentFile)}`;
+    const response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${credentials.token}` },
+    });
+    if (!response.ok) {
+        throw new Error(`Attachment download failed: ${response.status}`);
+    }
+    const buffer = await response.arrayBuffer();
+    return new Uint8Array(buffer);
+}
