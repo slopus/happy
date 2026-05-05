@@ -946,6 +946,8 @@ export const it: TranslationStructure = {
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? 'Un\'immagine non è stata caricata e non è stata inviata.'
             : `Non è stato possibile caricare ${count} immagini e non sono state inviate.`,
+        notSupportedTitle: 'Immagini non supportate',
+        notSupportedMessage: 'Questo agente non supporta gli allegati immagine. È stato inviato solo il testo.',
     },
 
     feed: {

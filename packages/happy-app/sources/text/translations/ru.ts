@@ -976,6 +976,8 @@ export const ru: TranslationStructure = {
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? 'Одно изображение не удалось загрузить — оно не было отправлено.'
             : `${count} изображений не удалось загрузить — они не были отправлены.`,
+        notSupportedTitle: 'Изображения не поддерживаются',
+        notSupportedMessage: 'Этот агент не поддерживает изображения. Отправлен только текст.',
     },
 
     feed: {

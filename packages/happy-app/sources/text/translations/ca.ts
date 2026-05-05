@@ -947,6 +947,8 @@ export const ca: TranslationStructure = {
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? 'No s\'ha pogut pujar una imatge i no s\'ha enviat.'
             : `No s'han pogut pujar ${count} imatges i no s'han enviat.`,
+        notSupportedTitle: 'Imatges no compatibles',
+        notSupportedMessage: 'Aquest agent no admet imatges adjuntes. Només s\'ha enviat el text.',
     },
 
     feed: {

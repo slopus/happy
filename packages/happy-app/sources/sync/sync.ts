@@ -552,9 +552,25 @@ class Sync {
         const { permissionMode, model } = resolveMessageModeMeta(session);
         const { displayText, source = 'chat', attachments } = options ?? {};
 
+        // Image attachments are wired into the Claude pipeline only; Codex /
+        // Gemini / OpenClaw runners read message.content.text and ignore
+        // file events, so dropping attachments silently would leave the user
+        // wondering why the image was skipped. Warn and send text only.
+        const flavor = session.metadata?.flavor;
+        const supportsAttachments = !flavor || flavor === 'claude';
+        const effectiveAttachments = supportsAttachments ? attachments : undefined;
+
+        if (attachments && attachments.length > 0 && !supportsAttachments) {
+            Modal.alert(
+                t('imageUpload.notSupportedTitle'),
+                t('imageUpload.notSupportedMessage'),
+                [{ text: t('common.ok'), style: 'cancel' }],
+            );
+        }
+
         // Upload attachments and queue file events before the text message.
-        if (attachments && attachments.length > 0) {
-            const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, attachments);
+        if (effectiveAttachments && effectiveAttachments.length > 0) {
+            const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, effectiveAttachments);
 
             if (failed > 0) {
                 Modal.alert(

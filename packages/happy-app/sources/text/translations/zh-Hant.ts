@@ -947,6 +947,8 @@ export const zhHant: TranslationStructure = {
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? '一張圖片上傳失敗，未傳送。'
             : `${count} 張圖片上傳失敗，未傳送。`,
+        notSupportedTitle: '不支援圖片',
+        notSupportedMessage: '此代理不支援圖片附件。僅傳送了文字。',
     },
 
     feed: {

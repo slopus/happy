@@ -946,6 +946,8 @@ export const pt: TranslationStructure = {
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? 'Não foi possível enviar uma imagem e não foi enviada.'
             : `Não foi possível enviar ${count} imagens e não foram enviadas.`,
+        notSupportedTitle: 'Imagens não suportadas',
+        notSupportedMessage: 'Este agente não suporta anexos de imagem. Apenas o texto foi enviado.',
     },
 
     feed: {

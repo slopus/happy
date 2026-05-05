@@ -948,6 +948,8 @@ export const zhHans: TranslationStructure = {
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? '一张图片上传失败，未发送。'
             : `${count} 张图片上传失败，未发送。`,
+        notSupportedTitle: '不支持图片',
+        notSupportedMessage: '该代理不支持图片附件。仅发送了文本。',
     },
 
     feed: {

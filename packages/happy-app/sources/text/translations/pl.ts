@@ -977,6 +977,8 @@ export const pl: TranslationStructure = {
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? 'Nie udało się przesłać jednego zdjęcia i nie zostało wysłane.'
             : `Nie udało się przesłać ${count} zdjęć i nie zostały wysłane.`,
+        notSupportedTitle: 'Obrazy nieobsługiwane',
+        notSupportedMessage: 'Ten agent nie obsługuje załączników obrazów. Wysłano tylko tekst.',
     },
 
     feed: {
