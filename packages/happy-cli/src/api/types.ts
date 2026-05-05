@@ -251,7 +251,11 @@ export const FileEventMessageSchema = z.object({
         image: z.object({
           width: z.number(),
           height: z.number(),
-          thumbhash: z.string(),
+          // Optional — native iOS picker has no Canvas to compute thumbhash.
+          // App-side schema relaxed this in the same commit; keeping CLI in
+          // sync so the file event isn't silently rejected by Zod and the
+          // attachment never reaches Claude.
+          thumbhash: z.string().optional(),
         }).optional(),
       }),
     }),
