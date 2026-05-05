@@ -27,6 +27,26 @@ const UPLOAD_RATE_WINDOW_MS = 60_000;
 const UPLOAD_RATE_MAX = 60;
 const uploadRateState = new Map<string, { count: number; windowStart: number }>();
 
+/**
+ * Build the base URL the client should use to reach our local-mode upload /
+ * download endpoints. Prefer an explicit PUBLIC_URL, then x-forwarded-* (for
+ * deployments behind a proxy), then the Host header the request itself
+ * arrived on. Falling back to localhost would make any non-localhost client
+ * (a phone, another LAN device, a desktop pointing at a dev IP) fail with a
+ * generic Network request failed when it tries to follow the URL.
+ */
+function resolveBaseUrl(request: { headers: Record<string, string | string[] | undefined> }): string {
+    if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL;
+    const xfHost = request.headers['x-forwarded-host'];
+    const xfProto = request.headers['x-forwarded-proto'];
+    const host = (Array.isArray(xfHost) ? xfHost[0] : xfHost) ?? request.headers.host;
+    const proto = (Array.isArray(xfProto) ? xfProto[0] : xfProto) ?? 'http';
+    if (typeof host === 'string' && host.length > 0) {
+        return `${proto}://${host}`;
+    }
+    return `http://localhost:${process.env.PORT || '3005'}`;
+}
+
 function checkUploadRate(userId: string): boolean {
     const now = Date.now();
     const entry = uploadRateState.get(userId);
@@ -106,7 +126,7 @@ export function attachmentRoutes(app: Fastify) {
             // Local mode: client uploads to our own PUT endpoint (the server
             // enforces the size limit by inspecting the request body before
             // it hits disk, so PUT is fine here).
-            const baseUrl = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || '3005'}`;
+            const baseUrl = resolveBaseUrl(request);
             const uploadUrl = `${baseUrl}/v1/sessions/${sessionId}/attachments/${attachmentFile}`;
             return reply.send({ ref, uploadUrl, method: 'PUT' });
         } else {
@@ -226,7 +246,7 @@ export function attachmentRoutes(app: Fastify) {
         }
 
         if (isLocalStorage()) {
-            const baseUrl = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || '3005'}`;
+            const baseUrl = resolveBaseUrl(request);
             const downloadUrl = `${baseUrl}/v1/sessions/${sessionId}/attachments/${attachmentFile}`;
             return reply.send({ downloadUrl });
         }
