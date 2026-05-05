@@ -1774,6 +1774,18 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     },
                     description: 'Attached file: report.pdf'
                 });
+                // The paired tool-result is what closes out the spinner — without
+                // it the chat bubble would show the running indicator forever
+                // because the reducer only flips a tool-call to "completed"
+                // when it sees a matching tool_use_id in a tool-result.
+                expect(fileOnly.content).toHaveLength(2);
+                const toolCall = fileOnly.content[0] as { type: 'tool-call'; id: string };
+                expect(fileOnly.content[1]).toMatchObject({
+                    type: 'tool-result',
+                    tool_use_id: toolCall.id,
+                    content: null,
+                    is_error: false,
+                });
             }
 
             const imageFile = normalizeRawMessage('db-file-2', null, 1, {

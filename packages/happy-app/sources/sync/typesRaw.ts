@@ -670,28 +670,44 @@ function normalizeSessionEnvelope(
             }
             : {};
 
+        // File events carry no separate "completed" wire signal — the upload
+        // is already finished by the time the event is sent. Emit the
+        // tool-call AND a paired tool-result in the same message so the
+        // reducer's Phase 2 + Phase 3 see both halves and the tool flips
+        // straight to "completed". Without this the chat bubble shows a
+        // forever-spinning indicator next to the attachment.
         return {
             id: messageId,
             localId,
             createdAt: messageCreatedAt,
             role: 'agent',
             isSidechain,
-            content: [{
-                type: 'tool-call',
-                id: messageId,
-                name: 'file',
-                input: {
-                    ref: envelope.ev.ref,
-                    name: envelope.ev.name,
-                    size: envelope.ev.size,
-                    ...maybeImageMetadata
+            content: [
+                {
+                    type: 'tool-call',
+                    id: messageId,
+                    name: 'file',
+                    input: {
+                        ref: envelope.ev.ref,
+                        name: envelope.ev.name,
+                        size: envelope.ev.size,
+                        ...maybeImageMetadata
+                    },
+                    description: envelope.ev.image
+                        ? `Attached image: ${envelope.ev.name} (${envelope.ev.image.width}x${envelope.ev.image.height})`
+                        : `Attached file: ${envelope.ev.name}`,
+                    uuid: contentUUID,
+                    parentUUID
                 },
-                description: envelope.ev.image
-                    ? `Attached image: ${envelope.ev.name} (${envelope.ev.image.width}x${envelope.ev.image.height})`
-                    : `Attached file: ${envelope.ev.name}`,
-                uuid: contentUUID,
-                parentUUID
-            }],
+                {
+                    type: 'tool-result',
+                    tool_use_id: messageId,
+                    content: null,
+                    is_error: false,
+                    uuid: `${contentUUID}:result`,
+                    parentUUID: contentUUID
+                }
+            ],
             meta
         } satisfies NormalizedMessage;
     }
