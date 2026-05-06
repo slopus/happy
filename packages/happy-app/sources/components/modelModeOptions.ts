@@ -99,6 +99,18 @@ export function getGeminiModelModes(): ModelMode[] {
     return GEMINI_MODEL_FALLBACKS;
 }
 
+export function getOpenCodePermissionModes(translate: Translate): PermissionMode[] {
+    return [
+        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
+    ];
+}
+
+export function getOpenCodeModelModes(): ModelMode[] {
+    return [
+        { key: 'default', name: 'default model', description: null },
+    ];
+}
+
 export function getOpenClawPermissionModes(translate: Translate): PermissionMode[] {
     return [
         { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
@@ -107,6 +119,9 @@ export function getOpenClawPermissionModes(translate: Translate): PermissionMode
 }
 
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
+    if (flavor === 'opencode') {
+        return getOpenCodePermissionModes(translate);
+    }
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
     }
@@ -126,6 +141,9 @@ export function getOpenClawModelModes(): ModelMode[] {
 }
 
 export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translate): ModelMode[] {
+    if (flavor === 'opencode') {
+        return getOpenCodeModelModes();
+    }
     if (flavor === 'codex') {
         return getCodexModelModes();
     }
@@ -145,7 +163,7 @@ export function getAvailableModels(
 ): ModelMode[] {
     const metadataModels = mapMetadataOptions(metadata?.models);
     if (metadataModels.length > 0) {
-        if (flavor === 'codex' && !metadataModels.some((model) => model.key === 'default')) {
+        if ((flavor === 'codex' || flavor === 'opencode') && !metadataModels.some((model) => model.key === 'default')) {
             return [{ key: 'default', name: 'default model', description: null }, ...metadataModels];
         }
         return metadataModels;
@@ -225,17 +243,18 @@ export function getCodexEffortLevels(): EffortLevel[] {
 }
 
 export function getHardcodedEffortLevels(flavor: AgentFlavor): EffortLevel[] {
+    if (flavor === 'opencode') return [];
     if (flavor === 'claude') return getClaudeEffortLevels();
     if (flavor === 'codex') return getCodexEffortLevels();
     return [];
 }
 
 export function getDefaultEffortKey(flavor: AgentFlavor): string | null {
+    if (flavor === 'opencode') return null;
     if (flavor === 'claude' || flavor === 'codex') return 'high';
     return null;
 }
 
-// Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
 export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string): EffortLevel[] {
     if (flavor === 'claude') {
         if (modelKey === 'default') return [];
@@ -243,6 +262,9 @@ export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string): 
     }
     if (flavor === 'codex') {
         return getCodexEffortLevels();
+    }
+    if (flavor === 'opencode') {
+        return [];
     }
     return [];
 }

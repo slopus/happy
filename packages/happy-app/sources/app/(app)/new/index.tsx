@@ -45,7 +45,7 @@ import { Modal } from '@/modal';
 import type { Machine, Session } from '@/sync/storageTypes';
 import {
     getHardcodedPermissionModes,
-    getHardcodedModelModes,
+    getAvailableModels,
     getEffortLevelsForModel,
     getDefaultEffortKeyForModel,
     getDefaultPermissionModeKey,
@@ -56,6 +56,7 @@ import {
     type EffortLevel,
 } from '@/components/modelModeOptions';
 import { isRunningOnMac } from '@/utils/platform';
+import { ALL_AGENTS, getAvailableNewSessionAgents, type AgentKey } from '@/components/newSessionAgents';
 
 // Agent icon assets
 const agentIcons = {
@@ -63,15 +64,8 @@ const agentIcons = {
     codex: require('@/assets/images/icon-gpt.png'),
     openclaw: require('@/assets/images/icon-openclaw.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
+    opencode: require('@/assets/images/icon-opencode.png'),
 };
-
-type AgentKey = NewSessionAgentType;
-const ALL_AGENTS: { key: AgentKey; label: string }[] = [
-    { key: 'claude', label: 'claude code' },
-    { key: 'codex', label: 'codex' },
-    { key: 'openclaw', label: 'openclaw' },
-    { key: 'gemini', label: 'gemini' },
-];
 
 type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean };
 
@@ -616,9 +610,7 @@ function NewSessionScreen() {
 
     // Filter available agents based on CLI availability from machine metadata
     const availableAgents = React.useMemo(() => {
-        const availability = selectedMachine?.metadata?.cliAvailability;
-        if (!availability) return ALL_AGENTS;
-        return ALL_AGENTS.filter(a => availability[a.key]);
+        return getAvailableNewSessionAgents(selectedMachine?.metadata?.cliAvailability);
     }, [selectedMachine]);
 
     // If current agent not available on this machine, switch to first available
@@ -628,14 +620,30 @@ function NewSessionScreen() {
         }
     }, [availableAgents, selectedAgent, setSelectedAgent]);
 
+    const recentAgentMetadata = React.useMemo(() => {
+        if (!selectedMachineId || !sessions) return null;
+        let latest: Session | null = null;
+        for (const s of sessions) {
+            if (typeof s === 'string') continue;
+            const session = s as Session;
+            if (session.metadata?.machineId !== selectedMachineId) continue;
+            if (session.metadata?.flavor !== selectedAgent) continue;
+            if (!session.metadata?.models || session.metadata.models.length === 0) continue;
+            if (!latest || session.activeAt > latest.activeAt) {
+                latest = session;
+            }
+        }
+        return latest?.metadata ?? null;
+    }, [selectedAgent, selectedMachineId, sessions]);
+
     // Derive options from agent type
     const permissionModes = React.useMemo<PermissionMode[]>(
         () => getHardcodedPermissionModes(selectedAgent, t),
         [selectedAgent],
     );
     const modelModes = React.useMemo<ModelMode[]>(
-        () => getHardcodedModelModes(selectedAgent, t),
-        [selectedAgent],
+        () => getAvailableModels(selectedAgent, recentAgentMetadata, t),
+        [recentAgentMetadata, selectedAgent],
     );
 
     const currentModel = modelModes[modelIndex] ?? modelModes[0];
@@ -647,7 +655,7 @@ function NewSessionScreen() {
     );
 
     const supportsWorktree = getSupportsWorktree(selectedAgent);
-    const showModel = modelModes.length > 1;
+    const showModel = selectedAgent === 'opencode' || modelModes.length > 1;
     const showEffort = effortLevels.length > 0;
     const showPermission = permissionModes.length > 1;
 

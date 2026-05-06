@@ -118,6 +118,12 @@ vi.mock('@/ui/logger', () => ({
   },
 }));
 
+vi.mock('@/configuration', () => ({
+  configuration: {
+    happyHomeDir: '/private/tmp/happy-cli-test-home',
+  },
+}));
+
 vi.mock('./AcpBackend', () => ({
   AcpBackend: class MockAcpBackend {
     constructor(args: any) {
@@ -265,6 +271,76 @@ describe('runAcp', () => {
       'Tool: ReadFile completed (callId=tool-1)',
       'Status: idle',
     ]));
+  });
+
+  it('routes opencode through a Happy-dev sidecar binary when configured', async () => {
+    const previousBin = process.env.HAPPY_OPENCODE_BIN;
+    const previousDb = process.env.OPENCODE_DB;
+    process.env.HAPPY_OPENCODE_BIN = '/tmp/happy-opencode/.opencode';
+    delete process.env.OPENCODE_DB;
+
+    try {
+      const runPromise = runAcp({
+        credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+        agentName: 'opencode',
+        command: 'opencode',
+        args: ['acp'],
+      });
+
+      await vi.waitFor(() => {
+        expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+      });
+
+      await mocks.getKillHandler()!();
+      await runPromise;
+
+      expect(mocks.backendState.constructorArgs.command).toBe('opencode');
+      expect(mocks.backendState.constructorArgs.env).toEqual(expect.objectContaining({
+        OPENCODE_BIN_PATH: '/tmp/happy-opencode/.opencode',
+      }));
+      expect(mocks.backendState.constructorArgs.env.OPENCODE_DB).toMatch(/\/opencode\/sessions\/[^/]+\/opencode\.db$/);
+    } finally {
+      if (previousBin === undefined) {
+        delete process.env.HAPPY_OPENCODE_BIN;
+      } else {
+        process.env.HAPPY_OPENCODE_BIN = previousBin;
+      }
+      if (previousDb === undefined) {
+        delete process.env.OPENCODE_DB;
+      } else {
+        process.env.OPENCODE_DB = previousDb;
+      }
+    }
+  });
+
+  it('respects an explicitly configured OpenCode database path', async () => {
+    const previousDb = process.env.OPENCODE_DB;
+    delete process.env.OPENCODE_DB;
+
+    try {
+      const runPromise = runAcp({
+        credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+        agentName: 'opencode',
+        command: 'opencode',
+        args: ['acp'],
+        env: { OPENCODE_DB: '/tmp/custom-opencode.db' },
+      });
+
+      await vi.waitFor(() => {
+        expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+      });
+
+      await mocks.getKillHandler()!();
+      await runPromise;
+
+      expect(mocks.backendState.constructorArgs.env.OPENCODE_DB).toBe('/tmp/custom-opencode.db');
+    } finally {
+      if (previousDb === undefined) {
+        delete process.env.OPENCODE_DB;
+      } else {
+        process.env.OPENCODE_DB = previousDb;
+      }
+    }
   });
 
   it('registers abort handler that cancels the ACP backend session', async () => {

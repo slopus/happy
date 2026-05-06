@@ -19,6 +19,15 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
+import { ALL_AGENTS } from '@/components/newSessionAgents';
+
+const CLI_AVAILABILITY_LABELS = {
+    claude: 'Claude',
+    codex: 'Codex',
+    openclaw: 'OpenClaw',
+    gemini: 'Gemini',
+    opencode: 'OpenCode',
+} as const;
 
 const styles = StyleSheet.create((theme) => ({
     pathInputContainer: {
@@ -518,42 +527,21 @@ export default function MachineDetailScreen() {
                 {/* CLI Availability */}
                 {metadata?.cliAvailability && (
                     <ItemGroup title={t('machine.cliAvailability')}>
-                        <Item
-                            title="Claude"
-                            showChevron={false}
-                            rightElement={
-                                <Text style={{ color: metadata.cliAvailability.claude ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>
-                                    {metadata.cliAvailability.claude ? t('machine.cliInstalled') : t('machine.cliNotFound')}
-                                </Text>
-                            }
-                        />
-                        <Item
-                            title="Codex"
-                            showChevron={false}
-                            rightElement={
-                                <Text style={{ color: metadata.cliAvailability.codex ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>
-                                    {metadata.cliAvailability.codex ? t('machine.cliInstalled') : t('machine.cliNotFound')}
-                                </Text>
-                            }
-                        />
-                        <Item
-                            title="Gemini"
-                            showChevron={false}
-                            rightElement={
-                                <Text style={{ color: metadata.cliAvailability.gemini ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>
-                                    {metadata.cliAvailability.gemini ? t('machine.cliInstalled') : t('machine.cliNotFound')}
-                                </Text>
-                            }
-                        />
-                        <Item
-                            title="OpenClaw"
-                            showChevron={false}
-                            rightElement={
-                                <Text style={{ color: metadata.cliAvailability.openclaw ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>
-                                    {metadata.cliAvailability.openclaw ? t('machine.cliInstalled') : t('machine.cliNotFound')}
-                                </Text>
-                            }
-                        />
+                        {ALL_AGENTS.map((agent) => {
+                            const isInstalled = metadata.cliAvailability?.[agent.key] === true;
+                            return (
+                                <Item
+                                    key={agent.key}
+                                    title={CLI_AVAILABILITY_LABELS[agent.key]}
+                                    showChevron={false}
+                                    rightElement={
+                                        <Text style={{ color: isInstalled ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>
+                                            {isInstalled ? t('machine.cliInstalled') : t('machine.cliNotFound')}
+                                        </Text>
+                                    }
+                                />
+                            );
+                        })}
                         <Item
                             title={t('machine.lastDetected')}
                             subtitle={new Date(metadata.cliAvailability.detectedAt).toLocaleString()}

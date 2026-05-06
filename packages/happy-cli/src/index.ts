@@ -33,6 +33,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
 import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
 import { handleCodexCommand } from './commands/codexCommand'
+import { parseAcpCliArgs, parseOpenCodeCliArgs } from './agent/acp/acpCliArgs'
 
 
 (async () => {
@@ -319,7 +320,9 @@ import { handleCodexCommand } from './commands/codexCommand'
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
+      if (startedBy !== 'daemon') {
+        await ensureDaemonRunning()
+      }
 
       await runGemini({credentials, startedBy});
     } catch (error) {
@@ -334,28 +337,41 @@ import { handleCodexCommand } from './commands/codexCommand'
     try {
       const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
 
-      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
-      let verbose = false;
-      const acpArgs: string[] = [];
-      let customCommandMode = false;
-      for (let i = 1; i < args.length; i++) {
-        if (!customCommandMode && args[i] === '--started-by') {
-          startedBy = args[++i] as 'daemon' | 'terminal';
-          continue;
-        }
-        if (!customCommandMode && args[i] === '--verbose') {
-          verbose = true;
-          continue;
-        }
-        if (args[i] === '--') {
-          customCommandMode = true;
-        }
-        acpArgs.push(args[i]);
-      }
+      const { startedBy, verbose, acpArgs } = parseAcpCliArgs(args.slice(1));
 
       const resolved = resolveAcpAgentConfig(acpArgs);
       const { credentials } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
+      if (startedBy !== 'daemon') {
+        await ensureDaemonRunning()
+      }
+
+      await runAcp({
+        credentials,
+        startedBy,
+        verbose,
+        agentName: resolved.agentName,
+        command: resolved.command,
+        args: resolved.args,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'opencode') {
+    // Handle opencode subcommands
+    try {
+      const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
+
+      const { startedBy, verbose, acpArgs } = parseOpenCodeCliArgs(args.slice(1));
+      const resolved = resolveAcpAgentConfig(acpArgs);
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      if (startedBy !== 'daemon') {
+        await ensureDaemonRunning()
+      }
 
       await runAcp({
         credentials,
@@ -397,7 +413,9 @@ import { handleCodexCommand } from './commands/codexCommand'
       }
 
       const { credentials } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
+      if (startedBy !== 'daemon') {
+        await ensureDaemonRunning()
+      }
 
       await runOpenClaw({
         credentials,
@@ -655,6 +673,7 @@ ${chalk.bold('Usage:')}
   happy resume            Resume a previous Happy session by Happy session ID
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP)
+  happy opencode          Start OpenCode mode (ACP)
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing
@@ -675,6 +694,8 @@ ${chalk.bold('Examples:')}
   happy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
                            Use a custom API endpoint (e.g., claude-code-router)
   happy acp gemini         Start Gemini via generic ACP runner
+  happy acp opencode       Start OpenCode via generic ACP runner
+  happy opencode --verbose Start OpenCode with verbose output
   happy acp -- opencode --acp
                            Start a custom ACP command
   happy acp opencode --verbose
@@ -713,7 +734,9 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     const {
       credentials
     } = await authAndSetupMachineIfNeeded();
-    await ensureDaemonRunning()
+    if (options.startedBy !== 'daemon') {
+      await ensureDaemonRunning()
+    }
 
     // Start the CLI
     try {

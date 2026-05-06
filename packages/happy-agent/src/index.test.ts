@@ -125,6 +125,7 @@ describe('happy-agent CLI', () => {
             expect(stdout).toContain('--machine');
             expect(stdout).toContain('--path');
             expect(stdout).toContain('--agent');
+            expect(stdout).toContain('opencode');
             expect(stdout).toContain('--json');
         });
 

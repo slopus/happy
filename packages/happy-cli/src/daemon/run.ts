@@ -45,6 +45,24 @@ export const initialMachineMetadata: MachineMetadata = {
   resumeSupport: { ...detectResumeSupport(), rpcAvailable: true },
 };
 
+export function resolveDaemonAgentCommand(agent?: SpawnSessionOptions['agent']): 'claude' | 'codex' | 'gemini' | 'openclaw' | 'opencode' {
+  switch (agent) {
+    case 'claude':
+    case undefined:
+      return 'claude';
+    case 'codex':
+      return 'codex';
+    case 'gemini':
+      return 'gemini';
+    case 'openclaw':
+      return 'openclaw';
+    case 'opencode':
+      return 'opencode';
+    default:
+      throw new Error(`Unsupported agent type: '${agent}'. Please update your CLI to the latest version.`);
+  }
+}
+
 export async function startDaemon(): Promise<void> {
   // We don't have cleanup function at the time of server construction
   // Control flow is:
@@ -380,8 +398,7 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : 'claude'));
+          const agent = resolveDaemonAgentCommand(options.agent);
           const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
 
           // Spawn in tmux with environment variables
@@ -464,27 +481,14 @@ export async function startDaemon(): Promise<void> {
         if (!useTmux) {
           logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
-          // Construct arguments for the CLI - support claude, codex, and gemini
           let agentCommand: string;
-          switch (options.agent) {
-            case 'claude':
-            case undefined:
-              agentCommand = 'claude';
-              break;
-            case 'codex':
-              agentCommand = 'codex';
-              break;
-            case 'gemini':
-              agentCommand = 'gemini';
-              break;
-            case 'openclaw':
-              agentCommand = 'openclaw';
-              break;
-            default:
-              return {
-                type: 'error',
-                errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
-              };
+          try {
+            agentCommand = resolveDaemonAgentCommand(options.agent);
+          } catch (error) {
+            return {
+              type: 'error',
+              errorMessage: error instanceof Error ? error.message : 'Unsupported agent type. Please update your CLI to the latest version.'
+            };
           }
           const args = [
             agentCommand,

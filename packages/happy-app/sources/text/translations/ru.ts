@@ -422,6 +422,7 @@ export const ru: TranslationStructure = {
             codex: 'Codex',
             gemini: 'Gemini',
             openclaw: 'OpenClaw',
+            opencode: "OpenCode",
         },
         model: {
             title: 'МОДЕЛЬ',

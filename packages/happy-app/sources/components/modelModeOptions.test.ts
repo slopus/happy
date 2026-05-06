@@ -4,6 +4,8 @@ import {
     getAvailablePermissionModes,
     getCodexModelModes,
     getClaudePermissionModes,
+    getOpenCodeModelModes,
+    getOpenCodePermissionModes,
     mapMetadataOptions,
     resolveCurrentOption,
 } from './modelModeOptions';
@@ -23,14 +25,27 @@ describe('modelModeOptions', () => {
 
     it('builds claude permission fallbacks with translated names', () => {
         const modes = getClaudePermissionModes(translate);
-        expect(modes.map((mode) => mode.key)).toEqual(['default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions']);
+        expect(modes.map((mode) => mode.key)).toEqual(['default', 'plan', 'dontAsk', 'acceptEdits', 'bypassPermissions']);
         expect(modes[0].name).toBe('tr:agentInput.permissionMode.default');
+    });
+
+    it('builds opencode permission fallbacks with translated names', () => {
+        const modes = getOpenCodePermissionModes(translate);
+        expect(modes.map((mode) => mode.key)).toEqual(['default']);
+        expect(modes[0].name).toBe('tr:agentInput.permissionMode.default');
+    });
+
+    it('builds opencode model fallbacks', () => {
+        const models = getOpenCodeModelModes();
+        expect(models.map((model) => model.key)).toEqual(['default']);
+        expect(models[0].name).toBe('default model');
     });
 
     it('builds codex model fallbacks', () => {
         const models = getCodexModelModes();
         expect(models.map((model) => model.key)).toEqual([
             'default',
+            'gpt-5.5',
             'gpt-5.4',
             'gpt-5.3-codex',
             'gpt-5.2-codex',
@@ -39,7 +54,7 @@ describe('modelModeOptions', () => {
             'gpt-5.1-codex-mini',
         ]);
         expect(models[0].name).toBe('default model');
-        expect(models[1].name).toBe('gpt-5.4');
+        expect(models[1].name).toBe('gpt-5.5');
     });
 
     it('prefers metadata models over hardcoded fallbacks', () => {
@@ -64,6 +79,19 @@ describe('modelModeOptions', () => {
         expect(models).toEqual([
             { key: 'default', name: 'default model', description: null },
             { key: 'gpt-5.4', name: 'gpt-5.4', description: 'Latest' },
+        ]);
+    });
+
+    it('adds opencode default model option when metadata models are present', () => {
+        const models = getAvailableModels('opencode', {
+            models: [
+                { code: 'openai/gpt-5.5', value: 'GPT 5.5', description: 'From OpenCode' },
+            ],
+        } as any, translate);
+
+        expect(models).toEqual([
+            { key: 'default', name: 'default model', description: null },
+            { key: 'openai/gpt-5.5', name: 'GPT 5.5', description: 'From OpenCode' },
         ]);
     });
 

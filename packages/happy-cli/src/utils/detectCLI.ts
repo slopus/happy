@@ -8,7 +8,28 @@ export interface CLIAvailability {
   codex: boolean;
   gemini: boolean;
   openclaw: boolean;
+  opencode: boolean;
   detectedAt: number;
+}
+
+function commandExists(command: string): boolean {
+  try {
+    execSync(`command -v ${command} >/dev/null 2>&1`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return commandExistsInCommonUserPaths(command);
+  }
+}
+
+function commandExistsInCommonUserPaths(command: string): boolean {
+  const home = os.homedir();
+  const candidates = [
+    join(home, '.bun', 'bin', command),
+    join(home, '.local', 'bin', command),
+    join(home, '.npm-global', 'bin', command),
+  ];
+
+  return candidates.some((candidate) => existsSync(candidate));
 }
 
 /**
@@ -24,27 +45,19 @@ export function detectCLIAvailability(): CLIAvailability {
   return detectPosix();
 }
 
-function commandExists(command: string): boolean {
-  try {
-    execSync(`command -v ${command} >/dev/null 2>&1`, { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function detectPosix(): CLIAvailability {
   const claude = commandExists('claude');
   const codex = commandExists('codex');
   const gemini = commandExists('gemini');
-
-  // OpenClaw: check command, config file, or env var
   const openclawCommand = commandExists('openclaw');
   const openclawConfig = existsSync(join(os.homedir(), '.openclaw', 'openclaw.json'));
   const openclawEnv = !!process.env.OPENCLAW_GATEWAY_URL;
   const openclaw = openclawCommand || openclawConfig || openclawEnv;
 
-  return { claude, codex, gemini, openclaw, detectedAt: Date.now() };
+  // OpenCode: check command
+  const opencode = commandExists('opencode');
+
+  return { claude, codex, gemini, openclaw, opencode, detectedAt: Date.now() };
 }
 
 function detectWindows(): CLIAvailability {
@@ -64,8 +77,10 @@ function detectWindows(): CLIAvailability {
   // OpenClaw: check command, config file, or env var
   const openclawCommand = checkCommand('openclaw');
   const openclawConfig = existsSync(join(process.env.USERPROFILE || os.homedir(), '.openclaw', 'openclaw.json'));
-  const openclawEnv = !!process.env.OPENCLAW_GATEWAY_URL;
-  const openclaw = openclawCommand || openclawConfig || openclawEnv;
+  const openclaw = openclawCommand || openclawConfig || !!process.env.OPENCLAW_GATEWAY_URL;
 
-  return { claude, codex, gemini, openclaw, detectedAt: Date.now() };
+  // OpenCode: check command
+  const opencode = checkCommand('opencode');
+
+  return { claude, codex, gemini, openclaw, opencode, detectedAt: Date.now() };
 }
