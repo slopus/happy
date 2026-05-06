@@ -24,7 +24,7 @@ import { trimIdent } from "@/utils/trimIdent";
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
-import type { Session as ApiSession } from '@/api/types';
+import type { Session as ApiSession, PermissionMode } from '@/api/types';
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -57,6 +57,7 @@ export async function runCodex(opts: {
     startedBy?: 'daemon' | 'terminal';
     noSandbox?: boolean;
     resumeThreadId?: string;
+    permissionMode?: PermissionMode;
 }): Promise<void> {
     // Early check: ensure Codex CLI is installed before proceeding
     try {
@@ -74,7 +75,6 @@ export async function runCodex(opts: {
     }
 
     // Use shared PermissionMode type for cross-agent compatibility
-    type PermissionMode = import('@/api/types').PermissionMode;
     interface EnhancedMode {
         permissionMode: PermissionMode;
         model?: string;
@@ -120,6 +120,7 @@ export async function runCodex(opts: {
         machineId,
         startedBy: opts.startedBy,
         sandbox: sandboxConfig,
+        initialPermissionMode: opts.permissionMode,
     });
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
@@ -209,8 +210,7 @@ export async function runCodex(opts: {
     }));
 
     // Track current overrides to apply per message
-    // Use shared PermissionMode type from api/types for cross-agent compatibility
-    let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
+    let currentPermissionMode: PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
 
     // Valid Codex permission modes from remote messages. Matches the modes

@@ -59,6 +59,7 @@ import { ConversationHistory } from '@/gemini/utils/conversationHistory';
 export async function runGemini(opts: {
   credentials: Credentials;
   startedBy?: 'daemon' | 'terminal';
+  permissionMode?: PermissionMode;
 }): Promise<void> {
   //
   // Define session
@@ -130,6 +131,7 @@ export async function runGemini(opts: {
     machineId,
     startedBy: opts.startedBy,
     sandbox: sandboxConfig,
+    initialPermissionMode: opts.permissionMode,
   });
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 

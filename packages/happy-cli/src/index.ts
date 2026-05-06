@@ -33,6 +33,8 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
 import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
 import { handleCodexCommand } from './commands/codexCommand'
+import { getDefaultPermissionMode } from '@/claude/utils/claudeSettings'
+import type { PermissionMode } from '@/api/types'
 
 
 (async () => {
@@ -307,21 +309,30 @@ import { handleCodexCommand } from './commands/codexCommand'
     // Handle gemini command (ACP-based agent)
     try {
       const { runGemini } = await import('@/gemini/runGemini');
-      
-      // Parse startedBy argument
+
+      // Parse startedBy and permissionMode arguments
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let permissionMode: string | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--permission-mode') {
+          permissionMode = args[++i];
         }
       }
-      
+
+      // Read config default if no explicit mode
+      if (!permissionMode) {
+        const configDefault = getDefaultPermissionMode()
+        if (configDefault) permissionMode = configDefault
+      }
+
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
       await ensureDaemonRunning()
 
-      await runGemini({credentials, startedBy});
+      await runGemini({credentials, startedBy, permissionMode: permissionMode as PermissionMode | undefined});
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
@@ -622,6 +633,11 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
         console.warn(chalk.yellow(`   Your settings file "${settingsValue}" will be ignored.`))
         console.warn(chalk.yellow(`   To configure Claude, edit ~/.claude/settings.json instead.`))
         // Don't pass through to claudeArgs
+      } else if (arg === '--permission-mode') {
+        const mode = args[++i]
+        if (mode) {
+          options.permissionMode = mode as StartOptions['permissionMode']
+        }
       } else {
         // Pass unknown arguments through to claude
         unknownArgs.push(arg)
@@ -642,6 +658,14 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
     const chromeEnabled = chromeOverride ?? settings.chromeMode ?? false
     if (chromeEnabled) {
       options.claudeArgs = [...(options.claudeArgs || []), '--chrome']
+    }
+
+    // Resolve default permission mode from Claude settings if not explicitly set
+    if (!options.permissionMode) {
+      const configDefault = getDefaultPermissionMode()
+      if (configDefault) {
+        options.permissionMode = configDefault
+      }
     }
 
     // Show help
