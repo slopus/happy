@@ -3,7 +3,7 @@ import type { Config } from './config';
 import type { DecryptedMachine } from './api';
 import { decodeBase64, encodeBase64, encrypt, decrypt } from './encryption';
 
-export type SupportedAgent = 'claude' | 'codex' | 'gemini' | 'openclaw';
+export type SupportedAgent = 'claude' | 'codex' | 'gemini' | 'openclaw' | 'opencode';
 
 export type SpawnMachineSessionResult =
     | { type: 'success'; sessionId: string }

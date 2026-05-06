@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { mkdirSync } from 'node:fs';
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { AgentMessage } from '@/agent/core';
@@ -19,6 +20,7 @@ import { encodeBase64 } from '@/api/encryption';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { projectPath } from '@/projectPath';
+import { configuration } from '@/configuration';
 import { BasePermissionHandler, type PermissionResult } from '@/utils/BasePermissionHandler';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import {
@@ -446,6 +448,30 @@ function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' 
   return 'acp';
 }
 
+function resolveAcpChildEnv(agentName: string, sessionTag: string, explicitEnv?: Record<string, string>): Record<string, string> | undefined {
+  const env = { ...explicitEnv };
+
+  if (agentName !== 'opencode') {
+    return Object.keys(env).length > 0 ? env : undefined;
+  }
+
+  if (env.OPENCODE_BIN_PATH === undefined) {
+    const happyOpencodeBin = process.env.HAPPY_OPENCODE_BIN?.trim();
+    if (happyOpencodeBin) {
+      env.OPENCODE_BIN_PATH = happyOpencodeBin;
+    }
+  }
+
+  const inheritedOpenCodeDb = process.env.OPENCODE_DB?.trim();
+  if (env.OPENCODE_DB === undefined && !inheritedOpenCodeDb) {
+    const dbDir = join(configuration.happyHomeDir, 'opencode', 'sessions', sessionTag);
+    mkdirSync(dbDir, { recursive: true });
+    env.OPENCODE_DB = join(dbDir, 'opencode.db');
+  }
+
+  return Object.keys(env).length > 0 ? env : undefined;
+}
+
 export async function runAcp(opts: {
   credentials: Credentials;
   agentName: string;
@@ -453,6 +479,7 @@ export async function runAcp(opts: {
   args: string[];
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
+  env?: Record<string, string>;
 }): Promise<void> {
   const verbose = opts.verbose === true;
   const sessionTag = randomUUID();
@@ -537,6 +564,7 @@ export async function runAcp(opts: {
     cwd: process.cwd(),
     command: opts.command,
     args: opts.args,
+    env: resolveAcpChildEnv(opts.agentName, sessionTag, opts.env),
     mcpServers,
     permissionHandler,
     transportHandler: new DefaultTransport(opts.agentName),

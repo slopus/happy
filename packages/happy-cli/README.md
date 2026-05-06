@@ -34,6 +34,7 @@ This will:
 happy codex
 happy gemini
 happy openclaw
+happy opencode
 
 # or any ACP-compatible CLI
 happy acp opencode
@@ -79,6 +80,7 @@ happy connect status
 | `happy codex` | Start Codex mode |
 | `happy gemini` | Start Gemini CLI session |
 | `happy openclaw` | Start OpenClaw session |
+| `happy opencode` | Start OpenCode mode through ACP |
 | `happy acp` | Start any ACP-compatible agent |
 | `happy resume <id>` | Resume a previous session |
 | `happy notify` | Send push notification to your devices |
