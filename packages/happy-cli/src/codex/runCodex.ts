@@ -20,8 +20,6 @@ import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
-import { trimIdent } from "@/utils/trimIdent";
-import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
@@ -33,6 +31,7 @@ import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
+import { applyInitialCodexSessionTitle, buildInitialCodexTurnPrompt } from './initialTitle';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -57,6 +56,7 @@ export async function runCodex(opts: {
     startedBy?: 'daemon' | 'terminal';
     noSandbox?: boolean;
     resumeThreadId?: string;
+    initialName?: string;
 }): Promise<void> {
     // Early check: ensure Codex CLI is installed before proceeding
     try {
@@ -170,6 +170,8 @@ export async function runCodex(opts: {
         }
     });
     session = initialSession;
+
+    const initialName = applyInitialCodexSessionTitle(session, opts.initialName);
 
     // On reconnect, un-archive the session and skip replaying old messages.
     if (reconnectSessionId) {
@@ -695,7 +697,7 @@ export async function runCodex(opts: {
                 }
 
                 const turnPrompt = first
-                    ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION
+                    ? buildInitialCodexTurnPrompt(message.message, initialName)
                     : message.message;
 
                 const result = await client.sendTurnAndWait(turnPrompt, {

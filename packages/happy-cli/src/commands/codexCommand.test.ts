@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   mockAuthAndSetupMachineIfNeeded: vi.fn(),
   mockRunCodex: vi.fn(),
   mockExtractCodexResumeFlag: vi.fn(),
+  mockExtractCodexNameFlag: vi.fn(),
   mockExtractNoSandboxFlag: vi.fn(),
   mockEnsureDaemonRunning: vi.fn(),
 }))
@@ -18,6 +19,7 @@ vi.mock('@/codex/runCodex', () => ({
 
 vi.mock('@/codex/cliArgs', () => ({
   extractCodexResumeFlag: mocks.mockExtractCodexResumeFlag,
+  extractCodexNameFlag: mocks.mockExtractCodexNameFlag,
 }))
 
 vi.mock('@/utils/sandboxFlags', () => ({
@@ -44,6 +46,10 @@ describe('handleCodexCommand', () => {
       resumeThreadId: null,
       args,
     }))
+    mocks.mockExtractCodexNameFlag.mockImplementation((args: string[]) => ({
+      initialName: null,
+      args,
+    }))
     mocks.mockEnsureDaemonRunning.mockResolvedValue(undefined)
     mocks.mockRunCodex.mockResolvedValue(undefined)
   })
@@ -57,6 +63,7 @@ describe('handleCodexCommand', () => {
       startedBy: 'terminal',
       noSandbox: false,
       resumeThreadId: undefined,
+      initialName: undefined,
     })
     expect(
       mocks.mockEnsureDaemonRunning.mock.invocationCallOrder[0],
@@ -70,16 +77,21 @@ describe('handleCodexCommand', () => {
     })
     mocks.mockExtractCodexResumeFlag.mockReturnValue({
       resumeThreadId: 'thread-123',
+      args: ['--name', 'release prep', '--started-by', 'daemon'],
+    })
+    mocks.mockExtractCodexNameFlag.mockReturnValue({
+      initialName: 'release prep',
       args: ['--started-by', 'daemon'],
     })
 
-    await handleCodexCommand(['--no-sandbox', '--resume', 'thread-123', '--started-by', 'daemon'])
+    await handleCodexCommand(['--no-sandbox', '--resume', 'thread-123', '--name', 'release prep', '--started-by', 'daemon'])
 
     expect(mocks.mockRunCodex).toHaveBeenCalledWith({
       credentials: { token: 'token' },
       startedBy: 'daemon',
       noSandbox: true,
       resumeThreadId: 'thread-123',
+      initialName: 'release prep',
     })
   })
 })
