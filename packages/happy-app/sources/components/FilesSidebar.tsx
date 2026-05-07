@@ -255,7 +255,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
             </View>
 
             {mode === 'changes' ? (
-                <ScrollView style={styles.list} showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
+                <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
                     {!hasFiles ? (
                         <View style={styles.emptyState}>
                             <View style={styles.emptyIconWrap}>
@@ -365,7 +365,7 @@ const AllFilesTab = React.memo(function AllFilesTab({
                 />
             </View>
 
-            <ScrollView style={styles.list} showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
+            <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
                 {isLoading && allFiles.length === 0 ? (
                     <View style={styles.emptyState}>
                         <ActivityIndicator size="small" color={theme.colors.textSecondary} />
