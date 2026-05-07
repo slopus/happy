@@ -124,6 +124,59 @@ import { handleCodexCommand } from './commands/codexCommand'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'droid') {
+    // Handle droid command via generic ACP runner
+    try {
+      const { runAcp } = await import('@/agent/acp');
+
+      // Parse startedBy and --verbose flags
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let verbose = false;
+      const droidArgs: string[] = [];
+
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+          continue;
+        }
+        if (args[i] === '--verbose') {
+          verbose = true;
+          continue;
+        }
+        droidArgs.push(args[i]);
+      }
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+
+      logger.debug('Ensuring Happy background service is running & matches our version...');
+      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
+        logger.debug('Starting Happy background service...');
+        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env
+        });
+        daemonProcess.unref();
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      // Alias for: happy acp droid [args...]
+      await runAcp({
+        credentials,
+        startedBy,
+        verbose,
+        agentName: 'droid',
+        command: 'droid',
+        args: droidArgs,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'gemini') {
     // Handle gemini subcommands
     const geminiSubcommand = args[1];
@@ -655,6 +708,7 @@ ${chalk.bold('Usage:')}
   happy resume            Resume a previous Happy session by Happy session ID
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP)
+  happy droid             Start Droid mode (ACP)
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing
@@ -675,6 +729,7 @@ ${chalk.bold('Examples:')}
   happy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
                            Use a custom API endpoint (e.g., claude-code-router)
   happy acp gemini         Start Gemini via generic ACP runner
+  happy droid              Start Droid via ACP runner
   happy acp -- opencode --acp
                            Start a custom ACP command
   happy acp opencode --verbose
