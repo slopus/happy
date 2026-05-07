@@ -18,7 +18,8 @@ interface AllFilesDiffViewProps {
     sessionId: string;
     /** When set, auto-scroll to this file */
     scrollToFile?: string | null;
-    onClose: () => void;
+    /** Publishes the right-side controls (file count + diff style toggle) into the chat header. */
+    onHeaderRightSlotChange: (slot: React.ReactNode) => void;
 }
 
 type DiffContent =
@@ -38,7 +39,7 @@ type FileDiffResult = {
 export const AllFilesDiffView = React.memo(function AllFilesDiffView({
     sessionId,
     scrollToFile,
-    onClose,
+    onHeaderRightSlotChange,
 }: AllFilesDiffViewProps) {
     const { theme } = useUnistyles();
     const gitStatusFiles = useSessionGitStatusFiles(sessionId);
@@ -125,27 +126,55 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
         return () => { cancelled = true; };
     }, [sessionId, files]);
 
-    // Scroll to the target file after content renders
+    // Scroll to the target file after content renders.
+    //
+    // Two race conditions to defeat:
+    //   1. Initial mount — diffs are still fetching, sections aren't laid out yet,
+    //      so the offset map is empty.
+    //   2. Re-renders triggered by back / forward navigation — the prop changes
+    //      while sections are already mounted; we want the scroll to happen on
+    //      the next frame, not after a fixed delay.
+    //
+    // Strategy: try on the next animation frame; if the offset isn't recorded
+    // yet, retry up to a few times.
     React.useEffect(() => {
         if (loading || !scrollToFile) return;
-        const timer = setTimeout(() => {
+        let cancelled = false;
+        let rafId = 0;
+        let attempt = 0;
+        const tryScroll = () => {
+            if (cancelled) return;
             const offset = fileOffsets.current.get(scrollToFile);
-            if (offset !== undefined) {
-                scrollRef.current?.scrollTo({ y: offset, animated: true });
+            if (offset !== undefined && scrollRef.current) {
+                scrollRef.current.scrollTo({ y: offset, animated: true });
+                return;
             }
-        }, 50);
-        return () => clearTimeout(timer);
+            if (attempt++ < 8) {
+                rafId = requestAnimationFrame(tryScroll);
+            }
+        };
+        rafId = requestAnimationFrame(tryScroll);
+        return () => {
+            cancelled = true;
+            cancelAnimationFrame(rafId);
+        };
     }, [scrollToFile, loading]);
+
+    // Publish header right-slot controls (file count + diff style toggle) into the chat header.
+    React.useEffect(() => {
+        onHeaderRightSlotChange(
+            <DiffHeaderRight
+                fileCount={files.length}
+                diffStyle={diffStyle}
+                onDiffStyleChange={setDiffStyle}
+            />
+        );
+        return () => onHeaderRightSlotChange(null);
+    }, [files.length, diffStyle, setDiffStyle, onHeaderRightSlotChange]);
 
     if (files.length === 0 && !loading) {
         return (
             <View style={[styles.outer, { backgroundColor: theme.colors.surface }]}>
-                <TopBar
-                    diffStyle={diffStyle}
-                    onDiffStyleChange={setDiffStyle}
-                    onClose={onClose}
-                    fileCount={0}
-                />
                 <View style={styles.centered}>
                     <Text style={{ color: theme.colors.textSecondary, ...Typography.default() }}>
                         {t('files.noChanges')}
@@ -157,12 +186,6 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
 
     return (
         <View style={[styles.outer, { backgroundColor: theme.colors.surface }]}>
-            <TopBar
-                diffStyle={diffStyle}
-                onDiffStyleChange={setDiffStyle}
-                onClose={onClose}
-                fileCount={files.length}
-            />
             {loading ? (
                 <View style={styles.centered}>
                     <ActivityIndicator size="small" color={theme.colors.textSecondary} />
@@ -188,32 +211,26 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
     );
 });
 
-/** Top toolbar with file count, diff style toggle, and close button */
-const TopBar = React.memo(function TopBar({
+/** Right-side header controls for the diff overlay: file count + (web-only) Unified | Split toggle. */
+const DiffHeaderRight = React.memo(function DiffHeaderRight({
+    fileCount,
     diffStyle,
     onDiffStyleChange,
-    onClose,
-    fileCount,
 }: {
+    fileCount: number;
     diffStyle: 'unified' | 'split';
     onDiffStyleChange: (v: 'unified' | 'split') => void;
-    onClose: () => void;
-    fileCount: number;
 }) {
     const { theme } = useUnistyles();
     return (
-        <View style={[styles.topBar, { backgroundColor: theme.colors.surfaceHigh, borderBottomColor: theme.colors.divider }]}>
-            <Text style={[styles.topBarTitle, { color: theme.colors.text }]}>
+        <>
+            <Text style={[styles.headerRightCount, { color: theme.colors.textSecondary }]}>
                 {t('files.changedFiles', { count: fileCount })}
             </Text>
-            <View style={{ flex: 1 }} />
             {Platform.OS === 'web' && (
                 <DiffStyleToggle value={diffStyle} onChange={onDiffStyleChange} />
             )}
-            <Pressable onPress={onClose} hitSlop={15} style={styles.closeButton}>
-                <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
-            </Pressable>
-        </View>
+        </>
     );
 });
 
@@ -357,20 +374,9 @@ const styles = StyleSheet.create({
     outer: {
         flex: 1,
     },
-    topBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderBottomWidth: 1,
-    },
-    topBarTitle: {
-        fontSize: 14,
-        ...Typography.default('semiBold'),
-    },
-    closeButton: {
-        padding: 4,
+    headerRightCount: {
+        fontSize: 13,
+        ...Typography.default(),
     },
     centered: {
         flex: 1,

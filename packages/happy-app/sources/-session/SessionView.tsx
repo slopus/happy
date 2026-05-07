@@ -38,6 +38,7 @@ import { AllFilesDiffView } from '@/components/AllFilesDiffView';
 import { FileViewPanel } from '@/components/FileViewPanel';
 import { prefetchPierreDiff } from '@/components/diff/PierreDiffView';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
+import { useOverlayNav } from '@/-session/sessionOverlayNav';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
@@ -113,39 +114,75 @@ export const SessionView = React.memo((props: { id: string }) => {
         overflow: 'hidden' as const,
     }));
 
-    const [diffViewOpen, setDiffViewOpen] = React.useState(false);
-    const [scrollToFile, setScrollToFile] = React.useState<string | null>(null);
     const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
-    const [fileViewPath, setFileViewPath] = React.useState<string | null>(null);
+
+    // Overlay state is managed as a browser-style history stack so the
+    // sidebar's back / forward arrows can navigate between chat ↔ diff ↔ file
+    // without a per-overlay close button. Stack + cursor live in one piece
+    // of state so functional updates stay coordinated.
+    type OverlayEntry =
+        | { kind: 'none' }
+        | { kind: 'diff'; file: string }
+        | { kind: 'file'; path: string };
+    const [overlayHistory, setOverlayHistory] = React.useState<{ stack: OverlayEntry[]; cursor: number }>(
+        { stack: [{ kind: 'none' }], cursor: 0 }
+    );
+    const overlayCurrent = overlayHistory.stack[overlayHistory.cursor] ?? { kind: 'none' };
+    const diffViewOpen = overlayCurrent.kind === 'diff';
+    const fileViewPath = overlayCurrent.kind === 'file' ? overlayCurrent.path : null;
+    const scrollToFile = overlayCurrent.kind === 'diff' ? overlayCurrent.file : null;
+
+    const pushOverlay = React.useCallback((entry: OverlayEntry) => {
+        setOverlayHistory((prev) => {
+            const truncated = prev.stack.slice(0, prev.cursor + 1);
+            truncated.push(entry);
+            return { stack: truncated, cursor: truncated.length - 1 };
+        });
+    }, []);
 
     const handleSidebarFilePress = React.useCallback((file: GitFileStatus) => {
         if (file.status === 'deleted') return;
-        setFileViewPath(null);
-        setScrollToFile(file.fullPath);
-        setDiffViewOpen(true);
-    }, []);
+        pushOverlay({ kind: 'diff', file: file.fullPath });
+    }, [pushOverlay]);
     const handleAllFilesFilePress = React.useCallback((filePath: string) => {
-        setDiffViewOpen(false);
-        setScrollToFile(null);
-        setFileViewPath(filePath);
-    }, []);
-    const closeDiffView = React.useCallback(() => {
-        setDiffViewOpen(false);
-        setScrollToFile(null);
-    }, []);
-    const closeFileView = React.useCallback(() => {
-        setFileViewPath(null);
-    }, []);
+        pushOverlay({ kind: 'file', path: filePath });
+    }, [pushOverlay]);
 
     // When sidebar capability is lost (screen too narrow, disabled), close views.
     // Don't close on zen mode toggle — keep the view visible.
     React.useEffect(() => {
         if (!canShowSidebar) {
-            setDiffViewOpen(false);
-            setScrollToFile(null);
-            setFileViewPath(null);
+            setOverlayHistory({ stack: [{ kind: 'none' }], cursor: 0 });
         }
     }, [canShowSidebar]);
+
+    // Right-side header content published by the active overlay (diff toggle / save button).
+    const [headerRightSlot, setHeaderRightSlot] = React.useState<React.ReactNode>(null);
+
+    // Wire intra-session back / forward into the global SidebarNavigator arrows.
+    const canOverlayBack = overlayHistory.cursor > 0;
+    const canOverlayForward = overlayHistory.cursor < overlayHistory.stack.length - 1;
+    React.useEffect(() => {
+        useOverlayNav.getState().publish({
+            canBack: canOverlayBack,
+            canForward: canOverlayForward,
+            back: () => {
+                if (!canOverlayBack) return false;
+                setOverlayHistory((prev) => (
+                    prev.cursor <= 0 ? prev : { ...prev, cursor: prev.cursor - 1 }
+                ));
+                return true;
+            },
+            forward: () => {
+                if (!canOverlayForward) return false;
+                setOverlayHistory((prev) => (
+                    prev.cursor >= prev.stack.length - 1 ? prev : { ...prev, cursor: prev.cursor + 1 }
+                ));
+                return true;
+            },
+        });
+        return () => useOverlayNav.getState().reset();
+    }, [canOverlayBack, canOverlayForward]);
 
     // Warm Pierre's lazy web chunks while the user is still reading chat.
     React.useEffect(() => {
@@ -207,6 +244,8 @@ export const SessionView = React.memo((props: { id: string }) => {
                         title={headerProps.title}
                         folderName={headerProps.folderName}
                         isConnected={headerProps.isConnected}
+                        extraPathSegment={fileViewPath ?? undefined}
+                        rightSlot={(diffViewOpen || !!fileViewPath) ? headerRightSlot : null}
                         onTitlePress={session ? () => router.push(`/session/${sessionId}/info`) : undefined}
                         onBackPress={() => router.back()}
                     />
@@ -272,7 +311,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         <AllFilesDiffView
                             sessionId={sessionId}
                             scrollToFile={scrollToFile}
-                            onClose={closeDiffView}
+                            onHeaderRightSlotChange={setHeaderRightSlot}
                         />
                     </View>
                 )}
@@ -291,7 +330,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         <FileViewPanel
                             sessionId={sessionId}
                             filePath={fileViewPath}
-                            onClose={closeFileView}
+                            onHeaderRightSlotChange={setHeaderRightSlot}
                         />
                     </View>
                 )}

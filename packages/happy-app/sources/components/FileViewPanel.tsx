@@ -8,7 +8,6 @@ import { View, ScrollView, ActivityIndicator, Pressable, Platform } from 'react-
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
-import { FileIcon } from '@/components/FileIcon';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { PierreDiffView } from '@/components/diff/PierreDiffView';
 import { sessionReadFile, sessionWriteFile } from '@/sync/ops';
@@ -20,7 +19,8 @@ import { layout } from '@/components/layout';
 interface FileViewPanelProps {
     sessionId: string;
     filePath: string;
-    onClose: () => void;
+    /** Publishes the right-side controls (edit/preview toggle, save button) into the chat header. */
+    onHeaderRightSlotChange: (slot: React.ReactNode) => void;
 }
 
 type FileState =
@@ -128,7 +128,7 @@ async function computeSHA256(content: string): Promise<string> {
 export const FileViewPanel = React.memo(function FileViewPanel({
     sessionId,
     filePath,
-    onClose,
+    onHeaderRightSlotChange,
 }: FileViewPanelProps) {
     const { theme } = useUnistyles();
     const [fileState, setFileState] = React.useState<FileState>({ kind: 'loading' });
@@ -310,81 +310,25 @@ export const FileViewPanel = React.memo(function FileViewPanel({
         }
     }, [sessionId, filePath, editContent, fileState]);
 
+    // Publish right-slot controls (edit/preview toggle, save button) into the chat header.
+    const isLoaded = fileState.kind === 'loaded';
+    React.useEffect(() => {
+        onHeaderRightSlotChange(
+            <FileHeaderRight
+                isMarkdown={isMarkdown}
+                isLoaded={isLoaded}
+                displayMode={displayMode}
+                onDisplayModeChange={setDisplayMode}
+                hasChanges={hasChanges}
+                isSaving={isSaving}
+                onSave={handleSave}
+            />
+        );
+        return () => onHeaderRightSlotChange(null);
+    }, [isMarkdown, isLoaded, displayMode, hasChanges, isSaving, handleSave, onHeaderRightSlotChange]);
+
     return (
         <View style={[styles.outer, { backgroundColor: theme.colors.surface }]}>
-            {/* Top bar */}
-            <View style={[styles.topBar, { backgroundColor: theme.colors.surfaceHigh, borderBottomColor: theme.colors.divider }]}>
-                <FileIcon fileName={fileName} size={18} />
-                <Text
-                    numberOfLines={1}
-                    ellipsizeMode="middle"
-                    style={[styles.topBarPath, { color: theme.colors.text }]}
-                >
-                    {filePath}
-                </Text>
-                <View style={{ flex: 1 }} />
-                {/* Edit/Preview toggle for markdown */}
-                {isMarkdown && fileState.kind === 'loaded' && (
-                    <View style={styles.toggleRow}>
-                        <Pressable
-                            onPress={() => setDisplayMode('edit')}
-                            style={[
-                                styles.toggleButton,
-                                displayMode === 'edit' && { backgroundColor: theme.colors.surface },
-                            ]}
-                        >
-                            <Text style={[
-                                styles.toggleText,
-                                displayMode === 'edit' && styles.toggleTextActive,
-                            ]}>
-                                {t('files.editFile')}
-                            </Text>
-                        </Pressable>
-                        <Pressable
-                            onPress={() => setDisplayMode('preview')}
-                            style={[
-                                styles.toggleButton,
-                                displayMode === 'preview' && { backgroundColor: theme.colors.surface },
-                            ]}
-                        >
-                            <Text style={[
-                                styles.toggleText,
-                                displayMode === 'preview' && styles.toggleTextActive,
-                            ]}>
-                                Preview
-                            </Text>
-                        </Pressable>
-                    </View>
-                )}
-                {fileState.kind === 'loaded' && (
-                    <Pressable
-                        onPress={handleSave}
-                        disabled={!hasChanges || isSaving}
-                        style={({ pressed }) => [
-                            styles.actionButton,
-                            {
-                                backgroundColor: hasChanges ? theme.colors.textLink : theme.colors.input.background,
-                                opacity: !hasChanges ? 0.4 : isSaving ? 0.6 : pressed ? 0.8 : 1,
-                            },
-                        ]}
-                    >
-                        {isSaving ? (
-                            <ActivityIndicator size="small" color="white" />
-                        ) : (
-                            <Text style={[
-                                hasChanges ? styles.actionButtonText : styles.actionButtonTextSecondary,
-                                !hasChanges && { color: theme.colors.textSecondary },
-                            ]}>
-                                {t('files.saveFile')}
-                            </Text>
-                        )}
-                    </Pressable>
-                )}
-                <Pressable onPress={onClose} hitSlop={15} style={styles.closeButton}>
-                    <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
-                </Pressable>
-            </View>
-
             {/* External change warning bar */}
             {externalChange && !showConflictDiff && (
                 <View style={[styles.warningBar, { backgroundColor: theme.colors.warning + '18', borderBottomColor: theme.colors.divider }]}>
@@ -426,7 +370,7 @@ export const FileViewPanel = React.memo(function FileViewPanel({
                         >
                             <Text style={styles.actionButtonText}>{t('files.reload')}</Text>
                         </Pressable>
-                        <Pressable onPress={() => setShowConflictDiff(false)} hitSlop={8} style={styles.closeButton}>
+                        <Pressable onPress={() => setShowConflictDiff(false)} hitSlop={8} style={{ padding: 4 }}>
                             <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
                         </Pressable>
                     </View>
@@ -480,6 +424,91 @@ export const FileViewPanel = React.memo(function FileViewPanel({
                 </View>
             )}
         </View>
+    );
+});
+
+/** Right-side header controls for the file-view overlay. */
+const FileHeaderRight = React.memo(function FileHeaderRight({
+    isMarkdown,
+    isLoaded,
+    displayMode,
+    onDisplayModeChange,
+    hasChanges,
+    isSaving,
+    onSave,
+}: {
+    isMarkdown: boolean;
+    isLoaded: boolean;
+    displayMode: 'edit' | 'preview';
+    onDisplayModeChange: (mode: 'edit' | 'preview') => void;
+    hasChanges: boolean;
+    isSaving: boolean;
+    onSave: () => void;
+}) {
+    const { theme } = useUnistyles();
+    return (
+        <>
+            {isMarkdown && isLoaded && (
+                <View style={[styles.toggleRow, { backgroundColor: theme.colors.groupped.background, borderColor: theme.colors.divider }]}>
+                    <Pressable
+                        onPress={() => onDisplayModeChange('edit')}
+                        style={[
+                            styles.toggleButton,
+                            displayMode === 'edit' && { backgroundColor: theme.colors.surface },
+                        ]}
+                    >
+                        <Text style={[
+                            styles.toggleText,
+                            { color: theme.colors.textSecondary },
+                            displayMode === 'edit' && styles.toggleTextActive,
+                            displayMode === 'edit' && { color: theme.colors.text },
+                        ]}>
+                            {t('files.editFile')}
+                        </Text>
+                    </Pressable>
+                    <Pressable
+                        onPress={() => onDisplayModeChange('preview')}
+                        style={[
+                            styles.toggleButton,
+                            displayMode === 'preview' && { backgroundColor: theme.colors.surface },
+                        ]}
+                    >
+                        <Text style={[
+                            styles.toggleText,
+                            { color: theme.colors.textSecondary },
+                            displayMode === 'preview' && styles.toggleTextActive,
+                            displayMode === 'preview' && { color: theme.colors.text },
+                        ]}>
+                            Preview
+                        </Text>
+                    </Pressable>
+                </View>
+            )}
+            {isLoaded && (
+                <Pressable
+                    onPress={onSave}
+                    disabled={!hasChanges || isSaving}
+                    style={({ pressed }) => [
+                        styles.actionButton,
+                        {
+                            backgroundColor: hasChanges ? theme.colors.textLink : theme.colors.input.background,
+                            opacity: !hasChanges ? 0.4 : isSaving ? 0.6 : pressed ? 0.8 : 1,
+                        },
+                    ]}
+                >
+                    {isSaving ? (
+                        <ActivityIndicator size="small" color="white" />
+                    ) : (
+                        <Text style={[
+                            hasChanges ? styles.actionButtonText : styles.actionButtonTextSecondary,
+                            !hasChanges && { color: theme.colors.textSecondary },
+                        ]}>
+                            {t('files.saveFile')}
+                        </Text>
+                    )}
+                </Pressable>
+            )}
+        </>
     );
 });
 
@@ -558,19 +587,6 @@ const styles = StyleSheet.create((theme) => ({
     outer: {
         flex: 1,
     },
-    topBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderBottomWidth: 1,
-    },
-    topBarPath: {
-        fontSize: 13,
-        maxWidth: '50%',
-        ...Typography.mono(),
-    },
     actionButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -589,17 +605,12 @@ const styles = StyleSheet.create((theme) => ({
         fontWeight: '600',
         ...Typography.default('semiBold'),
     },
-    closeButton: {
-        padding: 4,
-    },
     toggleRow: {
         flexDirection: 'row',
         gap: 2,
         padding: 2,
         borderRadius: 8,
-        backgroundColor: theme.colors.groupped.background,
         borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.divider,
         marginRight: 4,
     },
     toggleButton: {
