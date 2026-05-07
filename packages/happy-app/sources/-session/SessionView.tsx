@@ -297,6 +297,9 @@ export const SessionView = React.memo((props: { id: string }) => {
 
 const SIDEBAR_MIN_WINDOW_WIDTH = 1100;
 
+// Hoisted so AgentInput's React.memo doesn't see a new array ref on every keystroke
+const AGENT_INPUT_AUTOCOMPLETE_PREFIXES = ['@', '/'];
+
 function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session }) {
     const { theme } = useUnistyles();
     const router = useRouter();
@@ -369,6 +372,14 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const expImageUpload = useSetting('expImageUpload');
     const { selectedImages, pickImages, removeImage, clearImages, addImages } = useImagePicker();
 
+    // Refs for hot-path values so memoized AgentInput callbacks stay stable
+    // across keystrokes / image-picker updates. Without this, onSend would
+    // re-create on every character typed, defeating React.memo on AgentInput.
+    const messageRef = React.useRef(message);
+    messageRef.current = message;
+    const selectedImagesRef = React.useRef(selectedImages);
+    selectedImagesRef.current = selectedImages;
+
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
         if (machineId && cliVersion) {
@@ -403,6 +414,51 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             marginTop: 0 // No marginTop needed since header is handled by parent
         },
     }), []);
+
+    // Stable AgentInput callbacks. Read live values via refs so the callbacks
+    // themselves don't change on every keystroke / image pick.
+    const handleSend = React.useCallback(() => {
+        const liveMessage = messageRef.current;
+        const liveImages = selectedImagesRef.current;
+        if (liveMessage.trim() || (expImageUpload && liveImages.length > 0)) {
+            const attachments = expImageUpload ? liveImages : undefined;
+            setMessage('');
+            clearDraft();
+            if (expImageUpload) clearImages();
+            sync.sendMessage(sessionId, liveMessage, { source: 'chat', attachments });
+        }
+    }, [sessionId, expImageUpload, clearDraft, clearImages]);
+
+    const handleAbort = React.useCallback(() => {
+        sessionAbort(sessionId);
+    }, [sessionId]);
+
+    const handleFileViewerPress = React.useCallback(() => {
+        router.push(`/session/${sessionId}/files`);
+    }, [router, sessionId]);
+
+    const handleAutocompleteSuggestions = React.useCallback((query: string) => (
+        getSuggestions(sessionId, query)
+    ), [sessionId]);
+
+    const connectionStatus = React.useMemo(() => ({
+        text: sessionStatus.statusText,
+        color: sessionStatus.statusColor,
+        dotColor: sessionStatus.statusDotColor,
+        isPulsing: sessionStatus.isPulsing,
+    }), [sessionStatus.statusText, sessionStatus.statusColor, sessionStatus.statusDotColor, sessionStatus.isPulsing]);
+
+    const usageData = React.useMemo(() => {
+        const source = sessionUsage ?? session.latestUsage;
+        if (!source) return undefined;
+        return {
+            inputTokens: source.inputTokens,
+            outputTokens: source.outputTokens,
+            cacheCreation: source.cacheCreation,
+            cacheRead: source.cacheRead,
+            contextSize: source.contextSize,
+        };
+    }, [sessionUsage, session.latestUsage]);
 
 
     // Handle microphone button press - memoized to prevent button flashing
@@ -510,46 +566,21 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             availableEffortLevels={availableEffortLevels}
             onEffortLevelChange={updateEffortLevel}
             metadata={session.metadata}
-            connectionStatus={{
-                text: sessionStatus.statusText,
-                color: sessionStatus.statusColor,
-                dotColor: sessionStatus.statusDotColor,
-                isPulsing: sessionStatus.isPulsing
-            }}
+            connectionStatus={connectionStatus}
             blockSend={false}
-            onSend={() => {
-                if (message.trim() || (expImageUpload && selectedImages.length > 0)) {
-                    const attachments = expImageUpload ? selectedImages : undefined;
-                    setMessage('');
-                    clearDraft();
-                    if (expImageUpload) clearImages();
-                    sync.sendMessage(sessionId, message, { source: 'chat', attachments });
-                }
-            }}
+            onSend={handleSend}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
             isMicActive={isDisconnected ? false : micButtonState.isMicActive}
-            onAbort={isDisconnected ? undefined : () => sessionAbort(sessionId)}
+            onAbort={isDisconnected ? undefined : handleAbort}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
-            onFileViewerPress={experiments && !isTablet ? () => router.push(`/session/${sessionId}/files`) : undefined}
+            onFileViewerPress={experiments && !isTablet ? handleFileViewerPress : undefined}
             selectedImages={expImageUpload ? selectedImages : undefined}
             onPickImages={expImageUpload ? pickImages : undefined}
             onRemoveImage={expImageUpload ? removeImage : undefined}
             onAddImages={expImageUpload ? addImages : undefined}
-            autocompletePrefixes={['@', '/']}
-            autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
-            usageData={sessionUsage ? {
-                inputTokens: sessionUsage.inputTokens,
-                outputTokens: sessionUsage.outputTokens,
-                cacheCreation: sessionUsage.cacheCreation,
-                cacheRead: sessionUsage.cacheRead,
-                contextSize: sessionUsage.contextSize
-            } : session.latestUsage ? {
-                inputTokens: session.latestUsage.inputTokens,
-                outputTokens: session.latestUsage.outputTokens,
-                cacheCreation: session.latestUsage.cacheCreation,
-                cacheRead: session.latestUsage.cacheRead,
-                contextSize: session.latestUsage.contextSize
-            } : undefined}
+            autocompletePrefixes={AGENT_INPUT_AUTOCOMPLETE_PREFIXES}
+            autocompleteSuggestions={handleAutocompleteSuggestions}
+            usageData={usageData}
             alwaysShowContextSize={alwaysShowContextSize}
             zenMode={zenMode}
         />
