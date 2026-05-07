@@ -649,8 +649,6 @@ const styles = StyleSheet.create((theme) => ({
     },
     rowSelected: {
         backgroundColor: theme.colors.surfaceSelected,
-        borderWidth: 1,
-        borderColor: theme.colors.textLink,
     },
     rowDeleted: {
         opacity: 0.5,

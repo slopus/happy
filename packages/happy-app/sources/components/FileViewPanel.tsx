@@ -328,7 +328,7 @@ export const FileViewPanel = React.memo(function FileViewPanel({
     }, [isMarkdown, isLoaded, displayMode, hasChanges, isSaving, handleSave, onHeaderRightSlotChange]);
 
     return (
-        <View style={[styles.outer, { backgroundColor: theme.colors.surface }]}>
+        <View style={styles.outer}>
             {/* External change warning bar */}
             {externalChange && !showConflictDiff && (
                 <View style={[styles.warningBar, { backgroundColor: theme.colors.warning + '18', borderBottomColor: theme.colors.divider }]}>

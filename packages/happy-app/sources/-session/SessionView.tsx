@@ -324,7 +324,6 @@ export const SessionView = React.memo((props: { id: string }) => {
                             left: 0,
                             right: 0,
                             bottom: 0,
-                            backgroundColor: theme.colors.surface,
                         }}
                     >
                         <FileViewPanel
