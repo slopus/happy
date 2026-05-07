@@ -376,6 +376,10 @@ describe('HAPPY_CLAUDE_PATH env var', () => {
 });
 
 describe('resolveShimTarget', () => {
+  const FIXTURE_VERSION = '1.0.0';
+  const FIXTURE_PKG_SLUG = `@anthropic-ai+claude-code@${FIXTURE_VERSION}`;
+  const FIXTURE_PNPM_REL = `global/5/.pnpm/${FIXTURE_PKG_SLUG}/node_modules/@anthropic-ai/claude-code`;
+
   let tmpDir: string;
 
   beforeEach(() => {
@@ -387,9 +391,7 @@ describe('resolveShimTarget', () => {
   });
 
   it('should extract binary path from pnpm POSIX shim', () => {
-    const binDir = path.join(tmpDir, 'global', '5', '.pnpm',
-      '@anthropic-ai+claude-code@2.1.131', 'node_modules',
-      '@anthropic-ai', 'claude-code', 'bin');
+    const binDir = path.join(tmpDir, FIXTURE_PNPM_REL, 'bin');
     fs.mkdirSync(binDir, { recursive: true });
     fs.writeFileSync(path.join(binDir, 'claude.exe'), 'binary-placeholder');
 
@@ -405,7 +407,7 @@ describe('resolveShimTarget', () => {
       '    ;;',
       'esac',
       '',
-      '"$basedir/global/5/.pnpm/@anthropic-ai+claude-code@2.1.131/node_modules/@anthropic-ai/claude-code/bin/claude.exe"   "$@"',
+      `"$basedir/${FIXTURE_PNPM_REL}/bin/claude.exe"   "$@"`,
       'exit $?',
     ].join('\n');
 
@@ -413,9 +415,7 @@ describe('resolveShimTarget', () => {
     fs.writeFileSync(shimPath, shimContent);
 
     const result = resolveShimTarget(shimPath);
-    expect(result).toBe(
-      path.join(binDir, 'claude.exe')
-    );
+    expect(result).toBe(path.join(binDir, 'claude.exe'));
   });
 
   it('should return null for non-shell-script files', () => {
@@ -441,7 +441,7 @@ describe('resolveShimTarget', () => {
     const shimContent = [
       '#!/bin/sh',
       'basedir=$(dirname "$(echo "$0" | sed -e \'s,\\\\,/,g\')")',
-      '"$basedir/global/5/.pnpm/@anthropic-ai+claude-code@9.9.9/node_modules/@anthropic-ai/claude-code/bin/claude.exe"   "$@"',
+      `"$basedir/${FIXTURE_PNPM_REL}/bin/claude.exe"   "$@"`,
       'exit $?',
     ].join('\n');
 
@@ -477,21 +477,21 @@ describe('resolveShimTarget', () => {
 describe('detectSourceFromPath - pnpm installations', () => {
   it('should detect pnpm global installation with .pnpm store', () => {
     const result = detectSourceFromPath(
-      '/Users/test/Library/pnpm/global/5/.pnpm/@anthropic-ai+claude-code@2.1.131/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
+      '/Users/test/Library/pnpm/global/5/.pnpm/@anthropic-ai+claude-code@1.0.0/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
     );
     expect(result).toBe('pnpm');
   });
 
   it('should detect pnpm on Linux', () => {
     const result = detectSourceFromPath(
-      '/home/user/.local/share/pnpm/global/5/.pnpm/@anthropic-ai+claude-code@2.1.131/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
+      '/home/user/.local/share/pnpm/global/5/.pnpm/@anthropic-ai+claude-code@1.0.0/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
     );
     expect(result).toBe('pnpm');
   });
 
   it('should detect pnpm on Windows', () => {
     const result = detectSourceFromPath(
-      'C:\\Users\\test\\AppData\\Local\\pnpm\\global\\5\\.pnpm\\@anthropic-ai+claude-code@2.1.131\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe'
+      'C:\\Users\\test\\AppData\\Local\\pnpm\\global\\5\\.pnpm\\@anthropic-ai+claude-code@1.0.0\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe'
     );
     expect(result).toBe('pnpm');
   });
@@ -512,17 +512,17 @@ describe('getVersion - binary in bin/ subdirectory', () => {
     const binDir = path.join(tmpDir, 'bin');
     fs.mkdirSync(binDir);
     fs.writeFileSync(path.join(binDir, 'claude.exe'), 'binary');
-    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ version: '2.1.131' }));
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ version: '1.0.0' }));
 
     const version = getVersion(path.join(binDir, 'claude.exe'));
-    expect(version).toBe('2.1.131');
+    expect(version).toBe('1.0.0');
   });
 
   it('should still find version when binary is at package root', () => {
     fs.writeFileSync(path.join(tmpDir, 'cli.js'), '// cli');
-    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ version: '2.1.112' }));
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ version: '0.9.0' }));
 
     const version = getVersion(path.join(tmpDir, 'cli.js'));
-    expect(version).toBe('2.1.112');
+    expect(version).toBe('0.9.0');
   });
 });
