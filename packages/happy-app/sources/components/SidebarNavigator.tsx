@@ -86,7 +86,13 @@ export const SidebarNavigator = React.memo(() => {
             };
         }
 
-        // Tablet: always permanent, just collapse width in zen mode
+        // Tablet: always permanent, just collapse width in zen mode.
+        //
+        // We deliberately do NOT animate `width` on web. A CSS transition on
+        // the drawer width re-flowed the chat flex-1 sibling on every frame,
+        // re-measuring the entire FlatList tree at ~15fps. Snapping the
+        // width change makes the chat reflow exactly once. Native already
+        // snaps because RN doesn't honor CSS transition properties.
         return {
             lazy: false,
             headerShown: false,
@@ -96,11 +102,6 @@ export const SidebarNavigator = React.memo(() => {
                 borderRightWidth: 0,
                 width: drawerWidth,
                 overflow: 'hidden' as const,
-                ...(Platform.OS === 'web' ? {
-                    transitionProperty: 'width',
-                    transitionDuration: '250ms',
-                    transitionTimingFunction: 'cubic-bezier(0.33, 1, 0.68, 1)',
-                } : {}),
             } as any,
             swipeEnabled: false,
             drawerActiveTintColor: 'transparent',

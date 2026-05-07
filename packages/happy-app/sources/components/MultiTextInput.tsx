@@ -45,7 +45,7 @@ interface MultiTextInputProps {
     onStateChange?: (state: TextInputState) => void;
 }
 
-export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
+export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
     const {
         value,
         onChangeText,
@@ -237,6 +237,6 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
             )}
         </View>
     );
-});
+}));
 
 MultiTextInput.displayName = 'MultiTextInput';

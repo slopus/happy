@@ -92,11 +92,18 @@ export const SessionView = React.memo((props: { id: string }) => {
     // Match left sidebar width: 30% of window, clamped to 250–360px
     const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
 
-    // Animate diff sidebar width
+    // Animate diff sidebar width.
+    //
+    // On web we snap the value (duration: 0). The animated `width` change
+    // triggers a flex-row reflow on every frame, which in turn re-measures
+    // the entire chat tree (FlatList rows, message blocks). At ~60fps that
+    // grinds to ~15fps on dev builds. Snapping skips the layout thrash —
+    // the chat reflows once instead of 60 times. Native keeps the smooth
+    // animation because it runs on Reanimated's UI thread.
     const sidebarAnim = useSharedValue(showSidebar ? 1 : 0);
     React.useEffect(() => {
         sidebarAnim.value = withTiming(showSidebar ? 1 : 0, {
-            duration: 250,
+            duration: Platform.OS === 'web' ? 0 : 250,
             easing: Easing.out(Easing.cubic),
         });
     }, [showSidebar]);
@@ -238,7 +245,17 @@ export const SessionView = React.memo((props: { id: string }) => {
     // (chat stays mounted underneath so state is preserved).
     return (
         <View style={{ flex: 1, flexDirection: 'row' }}>
-            <View style={{ flex: 1 }}>
+            <View
+                style={{
+                    flex: 1,
+                    // Web-only: isolate the chat subtree's layout from the
+                    // parent flex-row. If we ever bring back a width
+                    // animation on the right sidebar, `contain` prevents
+                    // layout work from leaking up to the chat tree on
+                    // every frame.
+                    ...(Platform.OS === 'web' ? { contain: 'layout style paint' as any } : {}),
+                }}
+            >
                 {mainContent}
                 {diffViewOpen && canShowSidebar && (
                     <View
@@ -300,6 +317,51 @@ const SIDEBAR_MIN_WINDOW_WIDTH = 1100;
 // Hoisted so AgentInput's React.memo doesn't see a new array ref on every keystroke
 const AGENT_INPUT_AUTOCOMPLETE_PREFIXES = ['@', '/'];
 
+// Imperative handle exposed by ChatComposer so SessionViewLoaded can read /
+// clear the message text without subscribing to it (which would re-render
+// the whole loaded screen on every keystroke).
+type ChatComposerHandle = {
+    getMessage: () => string;
+    clearMessage: () => void;
+};
+
+type ChatComposerProps = Omit<
+    React.ComponentProps<typeof AgentInput>,
+    'value' | 'onChangeText'
+> & {
+    sessionId: string;
+    composerHandleRef: React.RefObject<ChatComposerHandle | null>;
+};
+
+// Owns the chat-message state and the useDraft autosave subscription so
+// that typing only re-renders this subtree — SessionViewLoaded stays
+// stable on every keystroke. The parent reads/clears the message via
+// composerHandleRef on send.
+const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) {
+    const { sessionId, composerHandleRef, ...rest } = props;
+    const [message, setMessage] = React.useState('');
+    const messageRef = React.useRef(message);
+    messageRef.current = message;
+    const { clearDraft } = useDraft(sessionId, message, setMessage);
+
+    React.useImperativeHandle(composerHandleRef, () => ({
+        getMessage: () => messageRef.current,
+        clearMessage: () => {
+            setMessage('');
+            clearDraft();
+        },
+    }), [clearDraft]);
+
+    return (
+        <AgentInput
+            {...rest}
+            sessionId={sessionId}
+            value={message}
+            onChangeText={setMessage}
+        />
+    );
+});
+
 function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session }) {
     const { theme } = useUnistyles();
     const router = useRouter();
@@ -307,7 +369,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const isTablet = useIsTablet();
-    const [message, setMessage] = React.useState('');
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
@@ -365,20 +426,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const isDisconnected = !sessionStatus.isConnected;
     const resumeCommandBlock = getResumeCommandBlock(session);
 
-    // Use draft hook for auto-saving message drafts
-    const { clearDraft } = useDraft(sessionId, message, setMessage);
-
     // Image attachment state (expImageUpload feature flag)
     const expImageUpload = useSetting('expImageUpload');
     const { selectedImages, pickImages, removeImage, clearImages, addImages } = useImagePicker();
 
-    // Refs for hot-path values so memoized AgentInput callbacks stay stable
-    // across keystrokes / image-picker updates. Without this, onSend would
-    // re-create on every character typed, defeating React.memo on AgentInput.
-    const messageRef = React.useRef(message);
-    messageRef.current = message;
-    const selectedImagesRef = React.useRef(selectedImages);
-    selectedImagesRef.current = selectedImages;
+    // ChatComposer owns the message state + useDraft subscription. We only
+    // hold an imperative handle so handleSend can read the live text and
+    // clear it without subscribing to it (which would re-render the whole
+    // SessionViewLoaded tree on every keystroke).
+    const composerHandleRef = React.useRef<ChatComposerHandle | null>(null);
 
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
@@ -415,19 +471,17 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         },
     }), []);
 
-    // Stable AgentInput callbacks. Read live values via refs so the callbacks
-    // themselves don't change on every keystroke / image pick.
+    // handleSend reads the live message via the composer ref, so it doesn't
+    // need to re-create on every keystroke.
     const handleSend = React.useCallback(() => {
-        const liveMessage = messageRef.current;
-        const liveImages = selectedImagesRef.current;
-        if (liveMessage.trim() || (expImageUpload && liveImages.length > 0)) {
-            const attachments = expImageUpload ? liveImages : undefined;
-            setMessage('');
-            clearDraft();
+        const liveMessage = composerHandleRef.current?.getMessage() ?? '';
+        if (liveMessage.trim() || (expImageUpload && selectedImages.length > 0)) {
+            const attachments = expImageUpload ? selectedImages : undefined;
+            composerHandleRef.current?.clearMessage();
             if (expImageUpload) clearImages();
             sync.sendMessage(sessionId, liveMessage, { source: 'chat', attachments });
         }
-    }, [sessionId, expImageUpload, clearDraft, clearImages]);
+    }, [sessionId, expImageUpload, selectedImages, clearImages]);
 
     const handleAbort = React.useCallback(() => {
         sessionAbort(sessionId);
@@ -551,10 +605,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     ) : null;
 
     const composer = (
-        <AgentInput
+        <ChatComposer
+            composerHandleRef={composerHandleRef}
             placeholder={t('session.inputPlaceholder')}
-            value={message}
-            onChangeText={setMessage}
             sessionId={sessionId}
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
