@@ -10,6 +10,16 @@ export default defineConfig({
             {
                 extends: true,
                 test: {
+                    name: 'scripts',
+                    include: ['scripts/**/*.test.ts'],
+                    sequence: {
+                        groupOrder: 0,
+                    },
+                },
+            },
+            {
+                extends: true,
+                test: {
                     name: 'unit',
                     include: ['src/**/*.test.ts'],
                     exclude: ['src/**/*.integration.test.ts'],

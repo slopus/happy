@@ -33,6 +33,39 @@ function resolvePathSafe(filePath) {
 }
 
 /**
+ * Parse a shell script shim (e.g. created by pnpm) and extract the binary it
+ * invokes. Returns the resolved absolute path if the binary exists on disk,
+ * or null otherwise.
+ *
+ * @param {string} shimPath - Path to the shim file
+ * @returns {string|null} Resolved binary path or null
+ */
+function resolveShimTarget(shimPath) {
+    try {
+        if (!fs.existsSync(shimPath)) return null;
+
+        const content = fs.readFileSync(shimPath, 'utf8');
+        if (!content.startsWith('#!') || !(/\bsh\b/.test(content.split('\n')[0]))) {
+            return null;
+        }
+
+        const shimDir = path.dirname(shimPath);
+        for (const line of content.split('\n')) {
+            if (!line.includes('claude-code')) continue;
+
+            const match = line.match(/"\$basedir\/([^"]+)"/);
+            if (match) {
+                const resolved = path.join(shimDir, match[1]);
+                if (fs.existsSync(resolved)) return resolved;
+            }
+        }
+    } catch (e) {
+        // File read or parse failure
+    }
+    return null;
+}
+
+/**
  * Resolve the Claude Code entrypoint inside a package directory.
  *
  * Prior to @anthropic-ai/claude-code@2.1.113 the package shipped a JS
@@ -121,7 +154,12 @@ function findClaudeInPath() {
                 if (entrypoint) {
                     return { path: entrypoint, source: 'npm' };
                 }
-                // Shim found but no resolvable entrypoint — skip and let other finders handle it
+
+                const shimTarget = resolveShimTarget(claudePath);
+                if (shimTarget) {
+                    return { path: shimTarget, source: detectSourceFromPath(shimTarget) };
+                }
+
                 return null;
             }
 
@@ -170,6 +208,11 @@ function detectSourceFromPath(resolvedPath) {
     // Must check before general Homebrew paths to distinguish from npm-through-Homebrew
     if (normalizedPath.includes('@anthropic-ai') && normalizedPath.includes('.claude-code-')) {
         return 'Homebrew';
+    }
+
+    // pnpm: virtual store layout with .pnpm directory
+    if (normalizedPath.includes('.pnpm') && normalizedPath.includes('claude-code')) {
+        return 'pnpm';
     }
 
     // npm: clean claude-code directory (even through Homebrew's npm)
@@ -469,9 +512,15 @@ function findGlobalClaudeCliPath() {
  */
 function getVersion(cliPath) {
     try {
-        const pkgPath = path.join(path.dirname(cliPath), 'package.json');
+        let dir = path.dirname(cliPath);
+        const pkgPath = path.join(dir, 'package.json');
         if (fs.existsSync(pkgPath)) {
             const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            return pkg.version;
+        }
+        const parentPkgPath = path.join(path.dirname(dir), 'package.json');
+        if (fs.existsSync(parentPkgPath)) {
+            const pkg = JSON.parse(fs.readFileSync(parentPkgPath, 'utf8'));
             return pkg.version;
         }
     } catch (e) {}
@@ -609,6 +658,7 @@ module.exports = {
     findBunGlobalCliPath,
     findHomebrewCliPath,
     findNativeInstallerCliPath,
+    resolveShimTarget,
     getVersion,
     compareVersions,
     getClaudeCliPath,

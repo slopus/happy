@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import {
   findGlobalClaudeCliPath,
   findClaudeInPath,
@@ -9,7 +11,8 @@ import {
   findHomebrewCliPath,
   findNativeInstallerCliPath,
   getVersion,
-  compareVersions
+  compareVersions,
+  resolveShimTarget,
 } from '../scripts/claude_version_utils.cjs';
 
 describe('Claude Version Utils - Cross-Platform Detection', () => {
@@ -369,5 +372,157 @@ describe('HAPPY_CLAUDE_PATH env var', () => {
     process.env.HAPPY_CLAUDE_PATH = '/nonexistent/path/claude';
     const result = findGlobalClaudeCliPath();
     expect(result?.source).not.toBe('HAPPY_CLAUDE_PATH');
+  });
+});
+
+describe('resolveShimTarget', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'happy-shim-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should extract binary path from pnpm POSIX shim', () => {
+    const binDir = path.join(tmpDir, 'global', '5', '.pnpm',
+      '@anthropic-ai+claude-code@2.1.131', 'node_modules',
+      '@anthropic-ai', 'claude-code', 'bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(path.join(binDir, 'claude.exe'), 'binary-placeholder');
+
+    const shimContent = [
+      '#!/bin/sh',
+      'basedir=$(dirname "$(echo "$0" | sed -e \'s,\\\\,/,g\')")',
+      '',
+      'case `uname` in',
+      '    *CYGWIN*|*MINGW*|*MSYS*)',
+      '        if command -v cygpath > /dev/null 2>&1; then',
+      '            basedir=`cygpath -w "$basedir"`',
+      '        fi',
+      '    ;;',
+      'esac',
+      '',
+      '"$basedir/global/5/.pnpm/@anthropic-ai+claude-code@2.1.131/node_modules/@anthropic-ai/claude-code/bin/claude.exe"   "$@"',
+      'exit $?',
+    ].join('\n');
+
+    const shimPath = path.join(tmpDir, 'claude');
+    fs.writeFileSync(shimPath, shimContent);
+
+    const result = resolveShimTarget(shimPath);
+    expect(result).toBe(
+      path.join(binDir, 'claude.exe')
+    );
+  });
+
+  it('should return null for non-shell-script files', () => {
+    const filePath = path.join(tmpDir, 'claude');
+    fs.writeFileSync(filePath, 'not a shell script');
+    expect(resolveShimTarget(filePath)).toBeNull();
+  });
+
+  it('should return null when shim does not reference claude-code', () => {
+    const shimContent = [
+      '#!/bin/sh',
+      'basedir=$(dirname "$(echo "$0" | sed -e \'s,\\\\,/,g\')")',
+      '"$basedir/some-other-tool/bin/other"   "$@"',
+      'exit $?',
+    ].join('\n');
+
+    const shimPath = path.join(tmpDir, 'other');
+    fs.writeFileSync(shimPath, shimContent);
+    expect(resolveShimTarget(shimPath)).toBeNull();
+  });
+
+  it('should return null when resolved binary does not exist on disk', () => {
+    const shimContent = [
+      '#!/bin/sh',
+      'basedir=$(dirname "$(echo "$0" | sed -e \'s,\\\\,/,g\')")',
+      '"$basedir/global/5/.pnpm/@anthropic-ai+claude-code@9.9.9/node_modules/@anthropic-ai/claude-code/bin/claude.exe"   "$@"',
+      'exit $?',
+    ].join('\n');
+
+    const shimPath = path.join(tmpDir, 'claude');
+    fs.writeFileSync(shimPath, shimContent);
+    expect(resolveShimTarget(shimPath)).toBeNull();
+  });
+
+  it('should return null for non-existent file', () => {
+    expect(resolveShimTarget('/nonexistent/file')).toBeNull();
+  });
+
+  it('should handle shim with #!/usr/bin/env sh shebang', () => {
+    const binDir = path.join(tmpDir, 'store', '@anthropic-ai', 'claude-code', 'bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(path.join(binDir, 'claude.exe'), 'binary-placeholder');
+
+    const shimContent = [
+      '#!/usr/bin/env sh',
+      'basedir=$(dirname "$(echo "$0" | sed -e \'s,\\\\,/,g\')")',
+      '"$basedir/store/@anthropic-ai/claude-code/bin/claude.exe"   "$@"',
+      'exit $?',
+    ].join('\n');
+
+    const shimPath = path.join(tmpDir, 'claude');
+    fs.writeFileSync(shimPath, shimContent);
+
+    const result = resolveShimTarget(shimPath);
+    expect(result).toBe(path.join(binDir, 'claude.exe'));
+  });
+});
+
+describe('detectSourceFromPath - pnpm installations', () => {
+  it('should detect pnpm global installation with .pnpm store', () => {
+    const result = detectSourceFromPath(
+      '/Users/test/Library/pnpm/global/5/.pnpm/@anthropic-ai+claude-code@2.1.131/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
+    );
+    expect(result).toBe('pnpm');
+  });
+
+  it('should detect pnpm on Linux', () => {
+    const result = detectSourceFromPath(
+      '/home/user/.local/share/pnpm/global/5/.pnpm/@anthropic-ai+claude-code@2.1.131/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
+    );
+    expect(result).toBe('pnpm');
+  });
+
+  it('should detect pnpm on Windows', () => {
+    const result = detectSourceFromPath(
+      'C:\\Users\\test\\AppData\\Local\\pnpm\\global\\5\\.pnpm\\@anthropic-ai+claude-code@2.1.131\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe'
+    );
+    expect(result).toBe('pnpm');
+  });
+});
+
+describe('getVersion - binary in bin/ subdirectory', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'happy-ver-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should find version when binary is in bin/ subdirectory', () => {
+    const binDir = path.join(tmpDir, 'bin');
+    fs.mkdirSync(binDir);
+    fs.writeFileSync(path.join(binDir, 'claude.exe'), 'binary');
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ version: '2.1.131' }));
+
+    const version = getVersion(path.join(binDir, 'claude.exe'));
+    expect(version).toBe('2.1.131');
+  });
+
+  it('should still find version when binary is at package root', () => {
+    fs.writeFileSync(path.join(tmpDir, 'cli.js'), '// cli');
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ version: '2.1.112' }));
+
+    const version = getVersion(path.join(tmpDir, 'cli.js'));
+    expect(version).toBe('2.1.112');
   });
 });
