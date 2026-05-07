@@ -41,6 +41,8 @@ import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
+import { useShallow } from 'zustand/react/shallow';
+import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { Modal } from '@/modal';
 import type { Machine, Session } from '@/sync/storageTypes';
 import {
@@ -466,6 +468,34 @@ function getMachineName(machine: Machine): string {
     return machine.metadata?.displayName || machine.metadata?.host || 'unknown';
 }
 
+// Owns the `input` subscription so the parent screen can stay decoupled from
+// keystroke-rate state changes. Memoized: parent re-renders (e.g. when
+// `canSend` flips or a picker opens) won't force the input to re-render
+// because all of its props are stable.
+type PromptInputProps = {
+    placeholder: string;
+    onKeyPress?: (e: KeyPressEvent) => boolean;
+};
+const PromptInput = React.memo(React.forwardRef<MultiTextInputHandle, PromptInputProps>(
+    function PromptInput(props, ref) {
+        const value = useNewSessionDraft((s) => s.input);
+        const onChangeText = useNewSessionDraft((s) => s.setInput);
+        return (
+            <MultiTextInput
+                ref={ref}
+                value={value}
+                onChangeText={onChangeText}
+                placeholder={props.placeholder}
+                lineHeight={MULTI_TEXT_INPUT_LINE_HEIGHT}
+                paddingTop={COMPOSER_INPUT_VERTICAL_PADDING}
+                paddingBottom={COMPOSER_INPUT_VERTICAL_PADDING}
+                maxHeight={240}
+                onKeyPress={props.onKeyPress}
+            />
+        );
+    },
+));
+
 function NewSessionScreen() {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
@@ -478,10 +508,32 @@ function NewSessionScreen() {
     const sessions = useSessions();
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
-    // Persisted draft state (survives navigation)
-    const draft = useNewSessionDraft();
-    const prompt = draft.input;
-    const setPrompt = draft.setInput;
+    // Persisted draft state (survives navigation).
+    //
+    // We deliberately do NOT subscribe to `input` at the parent level here:
+    // typing flips `input` on every keystroke, and a parent re-render would
+    // cascade through the whole config box, machine/path pickers, and all
+    // the heavy `useMemo`s below. Instead, the input subtree (PromptInput)
+    // owns the subscription, the parent only listens to a derived
+    // `hasText` boolean for the auto-collapse effect, and `handleSend`
+    // reads the live value via `useNewSessionDraft.getState()` on demand.
+    const draft = useNewSessionDraft(useShallow((s) => ({
+        selectedMachineId: s.selectedMachineId,
+        setMachineId: s.setMachineId,
+        selectedPath: s.selectedPath,
+        setPath: s.setPath,
+        agentType: s.agentType,
+        setAgentType: s.setAgentType,
+        permissionMode: s.permissionMode,
+        setPermissionMode: s.setPermissionMode,
+        modelMode: s.modelMode,
+        setModelMode: s.setModelMode,
+        sessionType: s.sessionType,
+        setSessionType: s.setSessionType,
+        worktreeKey: s.worktreeKey,
+        setWorktreeKey: s.setWorktreeKey,
+    })));
+    const hasText = useNewSessionDraft((s) => s.input.trim().length > 0);
     const selectedAgent = draft.agentType;
     const setSelectedAgent = draft.setAgentType;
     const selectedMachineId = draft.selectedMachineId;
@@ -675,8 +727,6 @@ function NewSessionScreen() {
         }
     }, [selectedAgent, currentModelKey, effortLevels]);
 
-    const hasText = prompt.trim().length > 0;
-
     // Auto collapse config once when user starts typing (mobile only)
     // On desktop (web / Mac Catalyst) the panel stays expanded
     // Also skip collapsing on the initial render when draft text is restored
@@ -840,12 +890,16 @@ function NewSessionScreen() {
                     storage.getState().updateSessionPermissionMode(result.sessionId, currentPermission.key);
                     storage.getState().updateSessionModelMode(result.sessionId, currentModelKey);
 
-                    // Clear input text so draft doesn't repeat the sent message
-                    setPrompt('');
+                    // Pull live prompt and clear it. We read via getState() so this
+                    // callback doesn't have to subscribe to `input` (which would
+                    // re-render the screen on every keystroke).
+                    const draftState = useNewSessionDraft.getState();
+                    const trimmedPrompt = draftState.input.trim();
+                    draftState.setInput('');
 
                     // Send initial message if provided
-                    if (prompt.trim()) {
-                        await sync.sendMessage(result.sessionId, prompt.trim(), { source: 'new_session' });
+                    if (trimmedPrompt) {
+                        await sync.sendMessage(result.sessionId, trimmedPrompt, { source: 'new_session' });
                     }
 
                     router.back();
@@ -874,7 +928,7 @@ function NewSessionScreen() {
         } finally {
             setIsSpawning(false);
         }
-    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, prompt, router, navigateToSession, currentPermission.key, currentModelKey, worktreeKey]);
+    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession, currentPermission.key, currentModelKey, worktreeKey]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
 
@@ -1166,15 +1220,9 @@ function NewSessionScreen() {
                     <View style={styles.inputBox}>
                         <View style={styles.inputField}>
                             <View style={{ flex: 1 }}>
-                                <MultiTextInput
+                                <PromptInput
                                     ref={composerInputRef}
-                                    value={prompt}
-                                    onChangeText={setPrompt}
                                     placeholder="What would you like to work on?"
-                                    lineHeight={MULTI_TEXT_INPUT_LINE_HEIGHT}
-                                    paddingTop={COMPOSER_INPUT_VERTICAL_PADDING}
-                                    paddingBottom={COMPOSER_INPUT_VERTICAL_PADDING}
-                                    maxHeight={240}
                                     onKeyPress={handleKeyPress}
                                 />
                             </View>
