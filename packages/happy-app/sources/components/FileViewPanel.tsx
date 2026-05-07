@@ -406,7 +406,7 @@ export const FileViewPanel = React.memo(function FileViewPanel({
                 </View>
             ) : isMarkdown && displayMode === 'preview' ? (
                 <ScrollView
-                    style={{ flex: 1, backgroundColor: theme.dark ? '#1e1e1e' : '#ffffff' }}
+                    style={{ flex: 1 }}
                     contentContainerStyle={{ padding: 16, maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}
                 >
                     {Platform.OS === 'web' && <EditorPreviewStyles />}
