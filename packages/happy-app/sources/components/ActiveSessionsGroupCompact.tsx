@@ -4,7 +4,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { Machine } from '@/sync/storageTypes';
 import { SessionRowData } from '@/sync/storage';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons, Octicons } from '@expo/vector-icons';
 import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLastSeen } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
@@ -67,6 +67,7 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRo
     const repoDisplayPath = isWorktree
         ? formatPathRelativeToHome(repoPath, session.homeDir ?? undefined)
         : displayPath;
+    const repoFolderName = repoPath.split(/[/\\]/).filter(Boolean).pop() || repoDisplayPath;
     const worktreeName = isWorktree ? getWorktreeName(sessionPath) : null;
 
     const gitInfo = useSectionGitInfo(session.id);
@@ -102,9 +103,16 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRo
 
             {/* Path + branch */}
             <View style={styles.sectionHeaderContent}>
-                <Text style={styles.sectionHeaderPath} numberOfLines={1}>
-                    {repoDisplayPath}
-                </Text>
+                <View style={styles.sectionHeaderPathRow}>
+                    <Octicons
+                        name="file-directory"
+                        size={11}
+                        color={styles.sectionHeaderPathIcon.color as string}
+                    />
+                    <Text style={styles.sectionHeaderPath} numberOfLines={1}>
+                        {repoFolderName}
+                    </Text>
+                </View>
                 {hasBranch && (
                     <View style={styles.branchRow}>
                         <Text style={styles.branchText} numberOfLines={1}>
@@ -448,6 +456,14 @@ const stylesheet = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         minWidth: 0,
     },
+    sectionHeaderPathRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    sectionHeaderPathIcon: {
+        color: theme.colors.groupped.sectionTitle,
+    },
     sectionHeaderPath: {
         ...Typography.default('regular'),
         color: theme.colors.groupped.sectionTitle,
@@ -455,6 +471,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         lineHeight: Platform.select({ ios: 18, default: 20 }),
         letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
         fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+        flexShrink: 1,
     },
     branchRow: {
         flexDirection: 'row',
