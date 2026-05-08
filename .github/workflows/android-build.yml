@@ -2,9 +2,7 @@ name: Build Android APK
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch: # 手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -12,25 +10,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'yarn'
+
+      # 修复 Corepack + 启用正确的包管理器
+      - name: Enable Corepack & fix package manager
+        run: |
+          corepack enable
+          yarn set version 10.11.0
+          npm uninstall -g pnpm
+          corepack prepare yarn@10.11.0 --activate
 
       - name: Install dependencies
-        run: yarn install
+        run: yarn install --immutable
 
-      - name: Expo prebuild（生成安卓原生工程）
+      - name: Expo prebuild
         run: yarn workspace happy-app prebuild --platform android
 
-      - name: Build Release APK
+      - name: Build Android Release APK
         run: |
           cd packages/happy-app/android
+          chmod +x gradlew
           ./gradlew assembleRelease
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: happy-app-apk
+          name: happy-app-android-apk
           path: packages/happy-app/android/app/build/outputs/apk/release/app-release.apk
