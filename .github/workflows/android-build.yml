@@ -1,0 +1,36 @@
+name: Build Android APK
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: # 手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Expo prebuild（生成安卓原生工程）
+        run: yarn workspace happy-app prebuild --platform android
+
+      - name: Build Release APK
+        run: |
+          cd packages/happy-app/android
+          ./gradlew assembleRelease
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: happy-app-apk
+          path: packages/happy-app/android/app/build/outputs/apk/release/app-release.apk
