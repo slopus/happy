@@ -14,6 +14,15 @@ on:
       - 'pnpm-lock.yaml'
       - '.github/workflows/android-build.yml'
   workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Build variant'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
 
 env:
   APP_ENV: preview
@@ -72,54 +81,79 @@ jobs:
         run: pnpm prebuild
 
       - name: Decode Keystore
-        if: env.HAS_KEYSTORE == 'true'
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
-          HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > packages/happy-app/android/app/release.keystore
 
-      - name: Create gradle.properties for signing
-        if: env.HAS_KEYSTORE == 'true'
+      - name: Configure Android signing
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
-          HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           cat >> packages/happy-app/android/gradle.properties << EOF
+
           MYAPP_UPLOAD_STORE_FILE=release.keystore
           MYAPP_UPLOAD_KEY_ALIAS=$ANDROID_KEY_ALIAS
           MYAPP_UPLOAD_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD
           MYAPP_UPLOAD_KEY_PASSWORD=$ANDROID_KEY_PASSWORD
           EOF
 
-      - name: Build Android Release APK
+          python3 << 'PYEOF'
+          import re
+
+          build_gradle_path = 'packages/happy-app/android/app/build.gradle'
+          with open(build_gradle_path, 'r') as f:
+              content = f.read()
+
+          if 'MYAPP_UPLOAD_STORE_FILE' not in content:
+              signing_config = '''    release {
+                  if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
+                      storeFile file(MYAPP_UPLOAD_STORE_FILE)
+                      storePassword MYAPP_UPLOAD_STORE_PASSWORD
+                      keyAlias MYAPP_UPLOAD_KEY_ALIAS
+                      keyPassword MYAPP_UPLOAD_KEY_PASSWORD
+                  }
+              }'''
+
+              content = re.sub(
+                  r'(signingConfigs\s*\{[^}]*debug\s*\{[^}]*\})',
+                  r'\1\n' + signing_config,
+                  content
+              )
+
+              content = re.sub(
+                  r'(release\s*\{[^}]*)\s*signingConfig\s+signingConfigs\.debug',
+                  r'\1\n            signingConfig signingConfigs.release',
+                  content
+              )
+
+              with open(build_gradle_path, 'w') as f:
+                  f.write(content)
+
+          print('Android signing configured successfully')
+          PYEOF
+
+      - name: Build Android APK
         working-directory: packages/happy-app/android
-        env:
-          HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         run: |
           chmod +x gradlew
-          if [ "$HAS_KEYSTORE" = "true" ]; then
-            ./gradlew assembleRelease
-          else
-            echo "No keystore configured, building unsigned APK..."
-            ./gradlew assembleRelease -x validateSigningRelease
-          fi
+          ./gradlew assembleRelease
 
-      - name: Rename APK with version
+      - name: Rename APK
         run: |
           VERSION=$(node -e "console.log(require('./packages/happy-app/app.config.js').default.expo.version)")
           BUILD_NUMBER=$(date +%Y%m%d%H%M)
-          APK_PATH="packages/happy-app/android/app/build/outputs/apk/release"
-          if [ -f "$APK_PATH/app-release.apk" ]; then
-            mv "$APK_PATH/app-release.apk" "$APK_PATH/happy-app-${VERSION}-${BUILD_NUMBER}.apk"
-          fi
+          mkdir -p packages/happy-app/dist
+          cp packages/happy-app/android/app/build/outputs/apk/release/app-release.apk \
+             "packages/happy-app/dist/happy-app-${VERSION}-${BUILD_NUMBER}.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: happy-app-android-apk
-          path: packages/happy-app/android/app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
+          path: packages/happy-app/dist/*.apk
           retention-days: 30
