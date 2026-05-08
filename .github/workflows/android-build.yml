@@ -15,19 +15,16 @@ jobs:
         with:
           node-version: 20
 
-      # 修复 Corepack + 启用正确的包管理器
-      - name: Enable Corepack & fix package manager
-        run: |
-          corepack enable
-          yarn set version 10.11.0
-          npm uninstall -g pnpm
-          corepack prepare yarn@10.11.0 --activate
+      # 启用 Corepack（必须，项目强制要求）
+      - name: Enable Corepack
+        run: corepack enable
 
+      # 直接用项目指定的 pnpm 安装依赖
       - name: Install dependencies
-        run: yarn install --immutable
+        run: pnpm install
 
       - name: Expo prebuild
-        run: yarn workspace happy-app prebuild --platform android
+        run: pnpm run --filter happy-app prebuild --platform android
 
       - name: Build Android Release APK
         run: |
