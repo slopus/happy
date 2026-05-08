@@ -63,29 +63,69 @@ jobs:
         working-directory: packages/happy-app
         run: pnpm prebuild
 
-      - name: Configure Gradle memory
+      - name: Configure production-like build
         run: |
-          echo "org.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8" >> packages/happy-app/android/gradle.properties
-          echo "org.gradle.daemon=false" >> packages/happy-app/android/gradle.properties
-          echo "org.gradle.parallel=true" >> packages/happy-app/android/gradle.properties
-          echo "org.gradle.configureondemand=true" >> packages/happy-app/android/gradle.properties
+          cat >> packages/happy-app/android/gradle.properties << EOF
 
-      - name: Build Debug APK
+          org.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=true
+          org.gradle.configureondemand=true
+          EOF
+
+          python3 << 'PYEOF'
+          import re
+
+          build_gradle_path = 'packages/happy-app/android/app/build.gradle'
+          with open(build_gradle_path, 'r') as f:
+              content = f.read()
+
+          if 'minifyEnabled' not in content:
+              content = re.sub(
+                  r'release\s*\{',
+                  '''release {
+              minifyEnabled true
+              shrinkResources true
+              proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"''',
+                  content
+              )
+
+              content = re.sub(
+                  r'getJsBundleFromDir\(\)\s*\n\s*\}',
+                  '''getJsBundleFromDir()
+            }
+            bundleInRelease true
+            bundleInDebug true''',
+                  content
+              )
+
+              with open(build_gradle_path, 'w') as f:
+                  f.write(content)
+
+          print('Production-like build configured successfully')
+          PYEOF
+
+      - name: Build Release APK
         working-directory: packages/happy-app/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon -x lint
+          ./gradlew assembleRelease --no-daemon -x lint
 
-      - name: Find APK
-        id: find-apk
+      - name: Rename APK
+        id: rename
         run: |
-          APK_PATH=$(find packages/happy-app/android -name "*.apk" -type f 2>/dev/null | head -1)
-          echo "APK_PATH=$APK_PATH" >> $GITHUB_OUTPUT
+          VERSION=$(node -e "console.log(require('./packages/happy-app/app.config.js').default.expo.version)")
+          BUILD_NUMBER=$(date +%Y%m%d%H%M)
+          APK_PATH="packages/happy-app/android/app/build/outputs/apk/release"
+          mkdir -p "$APK_PATH"
+          cp "$APK_PATH/app-release.apk" "$APK_PATH/happy-app-${VERSION}-${BUILD_NUMBER}.apk" 2>/dev/null || true
+          FINAL_APK=$(find "$APK_PATH" -name "*.apk" -type f | head -1)
+          echo "APK_PATH=$FINAL_APK" >> $GITHUB_OUTPUT
 
       - name: Upload APK
-        if: steps.find-apk.outputs.APK_PATH != ''
+        if: steps.rename.outputs.APK_PATH != ''
         uses: actions/upload-artifact@v4
         with:
-          name: happy-app-android-debug-apk
-          path: ${{ steps.find-apk.outputs.APK_PATH }}
+          name: happy-app-android-release-unsigned-apk
+          path: ${{ steps.rename.outputs.APK_PATH }}
           retention-days: 7
