@@ -17,6 +17,7 @@ on:
 
 env:
   APP_ENV: preview
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError"
 
 jobs:
   build:
@@ -62,11 +63,18 @@ jobs:
         working-directory: packages/happy-app
         run: pnpm prebuild
 
+      - name: Configure Gradle memory
+        run: |
+          echo "org.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8" >> packages/happy-app/android/gradle.properties
+          echo "org.gradle.daemon=false" >> packages/happy-app/android/gradle.properties
+          echo "org.gradle.parallel=true" >> packages/happy-app/android/gradle.properties
+          echo "org.gradle.configureondemand=true" >> packages/happy-app/android/gradle.properties
+
       - name: Build Debug APK
         working-directory: packages/happy-app/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon -x lint
 
       - name: Find APK
         id: find-apk
