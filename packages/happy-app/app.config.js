@@ -100,6 +100,7 @@ export default {
         },
         plugins: [
             require("./plugins/withEinkCompatibility.js"),
+            require("./plugins/withAndroidSigning.js"),
             [
                 "expo-router",
                 {
