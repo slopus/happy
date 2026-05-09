@@ -61,7 +61,10 @@ jobs:
 
       - name: Expo prebuild
         working-directory: packages/happy-app
-        run: pnpm prebuild
+        run: |
+          pnpm prebuild
+          rm -rf android/.gradle android/app/build
+          rm -rf node_modules/.cache
 
       - name: Configure production-like build
         run: |
