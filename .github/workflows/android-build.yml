@@ -64,7 +64,12 @@ jobs:
         run: |
           pnpm prebuild
           rm -rf android/.gradle android/app/build
-          rm -rf node_modules/.cache
+
+      - name: Run codegen
+        working-directory: packages/happy-app
+        run: |
+          npx expo-export:embed --platform android --dev false 2>/dev/null || \
+          npx react-native codegen --platform android 2>/dev/null || true
 
       - name: Configure production-like build
         run: |
