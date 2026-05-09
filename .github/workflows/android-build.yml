@@ -2,17 +2,28 @@ name: Build Android APK
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   repository_dispatch:
     types: [upstream-tag]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., v1.1.6)'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  check-tag:
     runs-on: ubuntu-latest
+    outputs:
+      is_upstream: ${{ steps.check.outputs.is_upstream }}
+      version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,51 +34,56 @@ jobs:
           git remote add upstream https://github.com/slopus/happy.git
           git fetch upstream tags --depth=1
 
-      - name: Check if this is an upstream tag
-        id: check_tag
+      - name: Determine version
+        id: check
         run: |
-          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
-          echo "Current tag: $CURRENT_TAG"
-
-          UPSTREAM_TAGS=$(git ls-remote --tags upstream 2>/dev/null | awk '{print $2}' | sed 's|refs/tags/||' | head -20)
-          echo "Upstream tags: $UPSTREAM_TAGS"
-
-          if echo "$UPSTREAM_TAGS" | grep -q "^${CURRENT_TAG}$"; then
-            echo "IS_UPSTREAM_TAG=true" >> $GITHUB_OUTPUT
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
           else
-            echo "IS_UPSTREAM_TAG=false" >> $GITHUB_OUTPUT
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          UPSTREAM_TAGS=$(git ls-remote --tags upstream 2>/dev/null | awk '{print $2}' | sed 's|refs/tags/||')
+          if echo "$UPSTREAM_TAGS" | grep -q "^${VERSION}$"; then
+            echo "is_upstream=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_upstream=false" >> $GITHUB_OUTPUT
           fi
 
+  build:
+    needs: check-tag
+    if: needs.check-tag.outputs.is_upstream == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
       - name: Setup Java 17
-        if: steps.check_tag.outputs.IS_UPSTREAM_TAG == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Setup Android SDK
-        if: steps.check_tag.outputs.IS_UPSTREAM_TAG == 'true'
         uses: android-actions/setup-android@v3
 
       - name: Setup Node.js 20
-        if: steps.check_tag.outputs.IS_UPSTREAM_TAG == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Enable Corepack
-        if: steps.check_tag.outputs.IS_UPSTREAM_TAG == 'true'
         run: corepack enable
 
       - name: Get pnpm store directory
-        if: steps.check_tag.outputs.IS_UPSTREAM_TAG == 'true'
         shell: bash
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
         id: pnpm-cache
 
       - name: Setup pnpm cache
-        if: steps.check_tag.outputs.IS_UPSTREAM_TAG == 'true'
         uses: actions/cache@v4
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
@@ -76,15 +92,12 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        if: steps.check_tag.outputs.IS_UPSTREAM_TAG == 'true'
         run: pnpm install
 
       - name: Expo prebuild
-        if: steps.check_tag.outputs.IS_UPSTREAM_TAG == 'true'
         run: pnpm run --filter happy-app prebuild
 
       - name: Configure Gradle
-        if: steps.check_tag.outputs.IS_UPSTREAM_TAG == 'true'
         run: |
           cat >> packages/happy-app/android/gradle.properties << EOF
 
@@ -94,27 +107,46 @@ jobs:
           EOF
 
       - name: Build Release APK
-        if: steps.check_tag.outputs.IS_UPSTREAM_TAG == 'true'
         working-directory: packages/happy-app/android
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon -x lint
 
-      - name: Get version
-        if: steps.check_tag.outputs.IS_UPSTREAM_TAG == 'true'
-        id: version
-        run: |
-          VERSION="${GITHUB_REF#refs/tags/}"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: packages/happy-app/android/app/build/outputs/apk/release/app-release.apk
 
-      - name: Upload to Release
-        if: steps.check_tag.outputs.IS_UPSTREAM_TAG == 'true'
+  create-tag-and-release:
+    needs: [check-tag, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+
+      - name: Create Android tag
+        run: |
+          VERSION="${{ needs.check-tag.outputs.version }}"
+          ANDROID_TAG="${VERSION}-android"
+          git config user.email "ci@github.com"
+          git config user.name "CI"
+          git tag -a "$ANDROID_TAG" -m "Android APK build for $VERSION"
+          git push origin "$ANDROID_TAG"
+
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
-          files: packages/happy-app/android/app/build/outputs/apk/release/app-release.apk
-          name: Android APK ${{ steps.version.outputs.VERSION }}
+          tag_name: ${{ needs.check-tag.outputs.version }}-android
+          files: app-release.apk
+          name: Android APK ${{ needs.check-tag.outputs.version }}
           draft: false
-          prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
+          prerelease: ${{ contains(needs.check-tag.outputs.version, 'beta') || contains(needs.check-tag.outputs.version, 'alpha') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
