@@ -1,8 +1,22 @@
 name: Build Android APK
+
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+    paths:
+      - 'packages/happy-app/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/android-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/happy-app/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/android-build.yml'
   workflow_dispatch:
+
+env:
+  APP_ENV: preview
 
 jobs:
   build:
@@ -10,30 +24,61 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 启用 Corepack（必须，项目强制要求）
       - name: Enable Corepack
         run: corepack enable
 
-      # 直接用项目指定的 pnpm 安装依赖
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+        id: pnpm-cache
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
       - name: Install dependencies
         run: pnpm install
 
       - name: Expo prebuild
-        run: pnpm run --filter happy-app prebuild --platform android
+        run: pnpm run --filter happy-app prebuild
 
-      - name: Build Android Release APK
+      - name: Configure Gradle
         run: |
-          cd packages/happy-app/android
+          cat >> packages/happy-app/android/gradle.properties << EOF
+
+          org.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=true
+          EOF
+
+      - name: Build Release APK
+        working-directory: packages/happy-app/android
+        run: |
           chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --no-daemon -x lint
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: happy-app-android-apk
           path: packages/happy-app/android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 7
