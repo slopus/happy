@@ -61,15 +61,7 @@ jobs:
 
       - name: Expo prebuild
         working-directory: packages/happy-app
-        run: |
-          pnpm prebuild
-          rm -rf android/.gradle android/app/build
-
-      - name: Run codegen
-        working-directory: packages/happy-app
-        run: |
-          npx expo-export:embed --platform android --dev false 2>/dev/null || \
-          npx react-native codegen --platform android 2>/dev/null || true
+        run: pnpm prebuild
 
       - name: Configure production-like build
         run: |
