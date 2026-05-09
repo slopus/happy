@@ -536,18 +536,27 @@ class Sync {
 
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
 
-        // Get encryption
-        const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) { // Should never happen
-            console.error(`Session ${sessionId} not found`);
-            return;
+        // Get encryption — may not be ready yet if sessions are still syncing
+        let encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            // Wait for sessions sync to complete (initializes encryption keys)
+            await this.sessionsSync.awaitQueue();
+            encryption = this.encryption.getSessionEncryption(sessionId);
+            if (!encryption) {
+                console.error(`Session ${sessionId} not found after sync`);
+                return;
+            }
         }
 
         // Get session data from storage
-        const session = storage.getState().sessions[sessionId];
+        let session = storage.getState().sessions[sessionId];
         if (!session) {
-            console.error(`Session ${sessionId} not found in storage`);
-            return;
+            await this.sessionsSync.awaitQueue();
+            session = storage.getState().sessions[sessionId];
+            if (!session) {
+                console.error(`Session ${sessionId} not found in storage after sync`);
+                return;
+            }
         }
 
         const { permissionMode, model, effort } = resolveMessageModeMeta(session);
@@ -1913,12 +1922,16 @@ class Sync {
 
         if (updateData.body.t === 'new-message') {
 
-            // Get encryption
-            const encryption = this.encryption.getSessionEncryption(updateData.body.sid);
-            if (!encryption) { // Should never happen
-                console.error(`Session ${updateData.body.sid} not found`);
-                this.fetchSessions(); // Just fetch sessions again
-                return;
+            // Get encryption — may not be ready if sessions are still syncing
+            let encryption = this.encryption.getSessionEncryption(updateData.body.sid);
+            if (!encryption) {
+                await this.sessionsSync.awaitQueue();
+                encryption = this.encryption.getSessionEncryption(updateData.body.sid);
+                if (!encryption) {
+                    console.error(`Session ${updateData.body.sid} not found after sync`);
+                    this.fetchSessions();
+                    return;
+                }
             }
 
             // Decrypt message

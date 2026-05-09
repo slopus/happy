@@ -3,19 +3,18 @@ import * as React from 'react';
 import { Drawer } from 'expo-router/drawer';
 import { useIsTablet, useHeaderHeight } from '@/utils/responsive';
 import { SidebarView } from './SidebarView';
-import { useWindowDimensions, View, Text, Pressable, Platform } from 'react-native';
-import { useLocalSetting, useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
+import { useWindowDimensions, View, Pressable, Platform } from 'react-native';
+import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
-import { Typography } from '@/constants/Typography';
-import { StatusDot } from './StatusDot';
 import { t } from '@/text';
 import { isTauri } from '@/utils/isTauri';
+import { DEFAULT_APP_ZOOM } from '@/hooks/useTauriZoom';
 
-const TAURI_TRAFFIC_LIGHT_WIDTH = 72;
+const TAURI_HEADER_CONTROL_LEFT = Math.ceil(92 / DEFAULT_APP_ZOOM);
 
 /**
  * Tracks navigation history to determine if back/forward is possible.
@@ -135,26 +134,9 @@ const PersistentHeader = React.memo(() => {
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
     const router = useRouter();
-    const socketStatus = useSocketStatus();
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
-
-    const connectionStatus = (() => {
-        const { status } = socketStatus;
-        switch (status) {
-            case 'connected':
-                return { color: theme.colors.status.connected, isPulsing: false, text: t('status.connected'), textColor: theme.colors.status.connected };
-            case 'connecting':
-                return { color: theme.colors.status.connecting, isPulsing: true, text: t('status.connecting'), textColor: theme.colors.status.connecting };
-            case 'disconnected':
-                return { color: theme.colors.status.disconnected, isPulsing: false, text: t('status.disconnected'), textColor: theme.colors.status.disconnected };
-            case 'error':
-                return { color: theme.colors.status.error, isPulsing: false, text: t('status.error'), textColor: theme.colors.status.error };
-            default:
-                return { color: theme.colors.status.default, isPulsing: false, text: '', textColor: theme.colors.status.default };
-        }
-    })();
 
     const { canGoBack, canGoForward, markBack, markForward } = useNavHistory();
 
@@ -182,7 +164,7 @@ const PersistentHeader = React.memo(() => {
                 left: 0,
                 right: 0,
                 paddingTop: safeArea.top,
-                paddingLeft: isMacTauri ? TAURI_TRAFFIC_LIGHT_WIDTH + 16 : 16,
+                paddingLeft: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
                 paddingRight: 16,
                 height: safeArea.top + headerHeight,
                 flexDirection: 'row',
@@ -192,51 +174,12 @@ const PersistentHeader = React.memo(() => {
             pointerEvents="box-none"
             {...(inTauri ? { dataSet: { tauriDragRegion: 'true' } } : {})}
         >
-            {/* Title + status */}
-            <View>
-                <Text style={{
-                    fontSize: 17,
-                    fontWeight: '600',
-                    color: theme.colors.header.tint,
-                    ...Typography.default('semiBold'),
-                }}>
-                    {t('sidebar.sessionsTitle')}
-                </Text>
-                {connectionStatus.text ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -2 }}>
-                        <StatusDot
-                            color={connectionStatus.color}
-                            isPulsing={connectionStatus.isPulsing}
-                            size={6}
-                            style={{ marginRight: 4 }}
-                        />
-                        <Text style={{
-                            fontSize: 11,
-                            fontWeight: '500',
-                            lineHeight: 16,
-                            color: connectionStatus.textColor,
-                            ...Typography.default(),
-                        }}>
-                            {connectionStatus.text}
-                        </Text>
-                    </View>
-                ) : null}
-            </View>
-
-            {/* Back / Forward / Zen buttons */}
+            {/* Zen / Back / Forward buttons */}
             <View
-                style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8, gap: 4 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                 pointerEvents="auto"
                 {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
             >
-                <Pressable onPress={handleBack} disabled={!canGoBack} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBack ? 1 : 0.3 }}>
-                    <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
-                </Pressable>
-                {Platform.OS === 'web' && (
-                    <Pressable onPress={handleForward} disabled={!canGoForward} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoForward ? 1 : 0.3 }}>
-                        <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />
-                    </Pressable>
-                )}
                 <Pressable
                     onPress={handleZenToggle}
                     hitSlop={10}
@@ -250,6 +193,14 @@ const PersistentHeader = React.memo(() => {
                         tintColor={zenMode ? theme.colors.textLink : theme.colors.header.tint}
                     />
                 </Pressable>
+                <Pressable onPress={handleBack} disabled={!canGoBack} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBack ? 1 : 0.3 }}>
+                    <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
+                </Pressable>
+                {Platform.OS === 'web' && (
+                    <Pressable onPress={handleForward} disabled={!canGoForward} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoForward ? 1 : 0.3 }}>
+                        <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />
+                    </Pressable>
+                )}
             </View>
         </View>
     );

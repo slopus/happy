@@ -13,13 +13,17 @@
     "windows": [
       {
         "title": "Happy",
-        "width": 1280,
-        "height": 800,
+        "width": 1680,
+        "height": 1050,
         "minWidth": 720,
         "minHeight": 480,
         "resizable": true,
         "fullscreen": false,
         "titleBarStyle": "Overlay",
+        "trafficLightPosition": {
+          "x": 22,
+          "y": 22
+        },
         "hiddenTitle": true
       }
     ],

@@ -47,7 +47,7 @@ type AnyTreeNode<T = GitFileStatus> = FileNode<T> | DirNode<T>;
 type TreeNode = AnyTreeNode<GitFileStatus>;
 
 const PATH_SEPARATOR = ' / ';
-const INDENT_PX = 14;
+const INDENT_PX = 10;
 
 // Build a nested tree from a flat file list, then path-compress any dir chain
 // where every intermediate dir has a single directory child. So a/b/c/file.ts
@@ -454,7 +454,6 @@ const ProjectTreeNodeRow = React.memo(function ProjectTreeNodeRow({
                 isSelected && styles.rowSelected,
             ]}
         >
-            <View style={styles.chevronGutter} />
             <FileIcon fileName={node.name} size={16} />
             <Text style={styles.fileName} numberOfLines={1}>
                 {node.name}
@@ -523,8 +522,6 @@ const TreeNodeRow = React.memo(function TreeNodeRow({ node, depth, selectedPath,
                 isDeleted && styles.rowDeleted,
             ]}
         >
-            {/* Gutter where chevron sits for dir rows — keeps file names aligned with folder labels. */}
-            <View style={styles.chevronGutter} />
             <FileIcon fileName={node.name} size={16} />
             <Text
                 style={[styles.fileName, isDeleted && styles.fileNameDeleted]}
@@ -648,9 +645,6 @@ const styles = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.surfaceSelected,
     },
     rowSelected: {
-        backgroundColor: theme.colors.surfaceSelected,
-        borderWidth: 1,
-        borderColor: theme.colors.textLink,
     },
     rowDeleted: {
         opacity: 0.5,
@@ -659,14 +653,11 @@ const styles = StyleSheet.create((theme) => ({
         width: 14,
         textAlign: 'center',
     },
-    chevronGutter: {
-        width: 14,
-    },
     dirName: {
         flex: 1,
         fontSize: 13,
         color: theme.colors.text,
-        ...Typography.default('semiBold'),
+        ...Typography.default(),
     },
     fileName: {
         flex: 1,
@@ -736,9 +727,7 @@ const styles = StyleSheet.create((theme) => ({
         ...Typography.default(),
     },
     tabTextActive: {
-        fontWeight: '600',
         color: theme.colors.text,
-        ...Typography.default('semiBold'),
     },
     fileSubpath: {
         fontSize: 11,

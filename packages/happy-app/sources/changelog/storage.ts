@@ -2,17 +2,16 @@ import { MMKV } from 'react-native-mmkv';
 
 const mmkv = new MMKV();
 
-const LAST_VIEWED_VERSION_KEY = 'changelog-last-viewed-version';
+const LAST_VIEWED_KEY = 'changelog-last-viewed-title';
 
-export function getLastViewedVersion(): number {
-    return mmkv.getNumber(LAST_VIEWED_VERSION_KEY) ?? 0;
+export function getLastViewedTitle(): string {
+    return mmkv.getString(LAST_VIEWED_KEY) ?? '';
 }
 
-export function setLastViewedVersion(version: number): void {
-    mmkv.set(LAST_VIEWED_VERSION_KEY, version);
+export function setLastViewedTitle(title: string): void {
+    mmkv.set(LAST_VIEWED_KEY, title);
 }
 
-export function hasUnreadChangelog(latestVersion: number): boolean {
-    const lastViewed = getLastViewedVersion();
-    return latestVersion > lastViewed;
+export function hasUnreadChangelog(latestTitle: string): boolean {
+    return latestTitle !== '' && latestTitle !== getLastViewedTitle();
 }

@@ -25,55 +25,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Production
 - `pnpm ota` - Deploy over-the-air updates via EAS Update to production branch
 
-## Changelog Management
-
-The app includes an in-app changelog feature that displays version history to users. When making changes:
-
-### Adding Changelog Entries
-
-1. **Always update the latest version** in `/CHANGELOG.md` when adding new features or fixes
-2. **Format**: Each version follows this structure:
-   ```markdown
-   ## Version [NUMBER] - YYYY-MM-DD
-   - Brief description of change/feature/fix
-   - Another change description
-   - Keep descriptions user-friendly and concise
-   ```
-
-3. **Version numbering**: Increment the version number for each release (1, 2, 3, etc.)
-4. **Date format**: Use ISO date format (YYYY-MM-DD)
-
-### Regenerating Changelog Data
-
-After updating CHANGELOG.md, run:
-```bash
-npx tsx sources/scripts/parseChangelog.ts
-```
-
-This generates `sources/changelog/changelog.json` which is used by the app.
-
-### Best Practices
-
-- Write changelog entries from the user's perspective
-- Start each entry with a verb (Added, Fixed, Improved, Updated, Removed)
-- Group related changes together
-- Keep descriptions concise but informative
-- Focus on what changed, not technical implementation details
-- The changelog is automatically parsed during `pnpm ota` and `pnpm ota:production`
-- Always improve and expand basic changelog descriptions to be more user-friendly and informative
-- Include a brief summary paragraph before bullet points for each version explaining the theme of the update
-
-### Example Entry
-
-```markdown
-## Version 4 - 2025-01-26
-- Added dark mode support across all screens
-- Fixed navigation issues on tablet devices  
-- Improved app startup performance by 30%
-- Updated authentication flow for better security
-- Removed deprecated API endpoints
-```
-
 ## Architecture Overview
 
 ### Core Technology Stack
