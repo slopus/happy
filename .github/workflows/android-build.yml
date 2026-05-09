@@ -1,13 +1,6 @@
 name: Build Android APK
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - 'v*'
-  repository_dispatch:
-    types: [upstream-tag]
   workflow_dispatch:
     inputs:
       version:
@@ -19,46 +12,10 @@ permissions:
   contents: write
 
 jobs:
-  check-tag:
-    runs-on: ubuntu-latest
-    outputs:
-      is_upstream: ${{ steps.check.outputs.is_upstream }}
-      version: ${{ steps.check.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Fetch upstream tags
-        run: |
-          git remote add upstream https://github.com/slopus/happy.git
-          git fetch upstream tags --depth=1
-
-      - name: Determine version
-        id: check
-        run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF#refs/tags/}"
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-          UPSTREAM_TAGS=$(git ls-remote --tags upstream 2>/dev/null | awk '{print $2}' | sed 's|refs/tags/||')
-          if echo "$UPSTREAM_TAGS" | grep -q "^${VERSION}$"; then
-            echo "is_upstream=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_upstream=false" >> $GITHUB_OUTPUT
-          fi
-
   build:
-    needs: check-tag
-    if: needs.check-tag.outputs.is_upstream == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -115,38 +72,17 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk
+          name: android-apk-${{ github.event.inputs.version }}
           path: packages/happy-app/android/app/build/outputs/apk/release/app-release.apk
-
-  create-tag-and-release:
-    needs: [check-tag, build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
-
-      - name: Download APK
-        uses: actions/download-artifact@v4
-        with:
-          name: android-apk
-
-      - name: Create Android tag
-        run: |
-          VERSION="${{ needs.check-tag.outputs.version }}"
-          ANDROID_TAG="${VERSION}-android"
-          git config user.email "ci@github.com"
-          git config user.name "CI"
-          git tag -a "$ANDROID_TAG" -m "Android APK build for $VERSION"
-          git push origin "$ANDROID_TAG"
+          retention-days: 7
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.check-tag.outputs.version }}-android
-          files: app-release.apk
-          name: Android APK ${{ needs.check-tag.outputs.version }}
+          tag_name: ${{ github.event.inputs.version }}-android
+          files: packages/happy-app/android/app/build/outputs/apk/release/app-release.apk
+          name: Android APK ${{ github.event.inputs.version }}
           draft: false
-          prerelease: ${{ contains(needs.check-tag.outputs.version, 'beta') || contains(needs.check-tag.outputs.version, 'alpha') }}
+          prerelease: ${{ contains(github.event.inputs.version, 'beta') || contains(github.event.inputs.version, 'alpha') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
