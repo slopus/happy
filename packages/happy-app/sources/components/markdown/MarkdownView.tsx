@@ -137,23 +137,31 @@ function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: Markdow
     return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>;
 }
 
-function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
+const BULLETS = ['•', '◦', '▪'] as const;
+
+function RenderListBlock(props: { items: { depth: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
     const listStyle = [style.text, style.list];
     return (
-        <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
+        <View style={{ flexDirection: 'column', marginBottom: 8, gap: 6 }}>
             {props.items.map((item, index) => (
-                <Text selectable={props.selectable} style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>
+                <View key={index} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingLeft: item.depth * 16 }}>
+                    <Text selectable={false} style={[listStyle, { marginRight: 8, marginTop: 1 }]}>{BULLETS[Math.min(item.depth, BULLETS.length - 1)]}</Text>
+                    <Text selectable={props.selectable} style={[listStyle, { flex: 1 }]}><RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>
+                </View>
             ))}
         </View>
     );
 }
 
-function RenderNumberedListBlock(props: { items: { number: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
+function RenderNumberedListBlock(props: { items: { number: number, depth: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
     const listStyle = [style.text, style.list];
     return (
-        <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
+        <View style={{ flexDirection: 'column', marginBottom: 8, gap: 6 }}>
             {props.items.map((item, index) => (
-                <Text selectable={props.selectable} style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>
+                <View key={index} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingLeft: item.depth * 16 }}>
+                    <Text selectable={false} style={[listStyle, { marginRight: 8, marginTop: 1 }]}>{item.number}.</Text>
+                    <Text selectable={props.selectable} style={[listStyle, { flex: 1 }]}><RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>
+                </View>
             ))}
         </View>
     );

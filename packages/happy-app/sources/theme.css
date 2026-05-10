@@ -4,6 +4,28 @@ html, body {
     overscroll-behavior: none;
 }
 
+html.happy-app-zoomed {
+    overflow: hidden;
+}
+
+html.happy-app-zoomed body {
+    width: calc(100vw / var(--happy-app-zoom));
+    height: calc(100vh / var(--happy-app-zoom));
+    transform-origin: top left;
+}
+
+@supports (zoom: 1) {
+    html.happy-app-zoomed body {
+        zoom: var(--happy-app-zoom);
+    }
+}
+
+@supports not (zoom: 1) {
+    html.happy-app-zoomed body {
+        transform: scale(var(--happy-app-zoom));
+    }
+}
+
 /* Theme-aware scrollbar styles using Unistyles CSS variables.
    Use text-secondary for the thumb so it stays visible on all
    surface colors (divider == surfaceHighest in dark theme). */

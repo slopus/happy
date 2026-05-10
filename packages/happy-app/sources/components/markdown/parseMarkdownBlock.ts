@@ -146,32 +146,38 @@ export function parseMarkdownBlock(markdown: string) {
         // If it is a numbered list
         const numberedListMatch = trimmed.match(/^(\d+)\.\s+/);
         if (numberedListMatch) {
-            let allLines = [{ number: parseInt(numberedListMatch[1]), content: trimmed.slice(numberedListMatch[0].length) }];
+            const indent = line.length - line.trimStart().length;
+            let allLines = [{ number: parseInt(numberedListMatch[1]), indent, content: trimmed.slice(numberedListMatch[0].length) }];
             while (index < lines.length) {
-                const nextLine = lines[index].trim();
-                const nextMatch = nextLine.match(/^(\d+)\.\s+/);
+                const nextRaw = lines[index];
+                const nextTrimmed = nextRaw.trim();
+                const nextMatch = nextTrimmed.match(/^(\d+)\.\s+/);
                 if (!nextMatch) break;
-                allLines.push({ number: parseInt(nextMatch[1]), content: nextLine.slice(nextMatch[0].length) });
+                const nextIndent = nextRaw.length - nextRaw.trimStart().length;
+                allLines.push({ number: parseInt(nextMatch[1]), indent: nextIndent, content: nextTrimmed.slice(nextMatch[0].length) });
                 index++;
             }
-            blocks.push({ type: 'numbered-list', items: allLines.map((l) => ({ number: l.number, spans: parseMarkdownSpans(l.content, false) })) });
+            const baseIndent = allLines[0].indent;
+            blocks.push({ type: 'numbered-list', items: allLines.map((l) => ({ number: l.number, depth: Math.floor((l.indent - baseIndent) / 2), spans: parseMarkdownSpans(l.content, false) })) });
             continue;
         }
 
         // If it is a list
         const listMatch = trimmed.match(/^([-*+])\s+/);
         if (listMatch) {
-            let allLines = [trimmed.slice(listMatch[0].length)];
+            const indent = line.length - line.trimStart().length;
+            let allLines = [{ indent, content: trimmed.slice(listMatch[0].length) }];
             while (index < lines.length) {
-                const nextLine = lines[index].trim();
-                const nextMatch = nextLine.match(/^([-*+])\s+/);
-                if (!nextMatch) {
-                    break;
-                }
-                allLines.push(nextLine.slice(nextMatch[0].length));
+                const nextRaw = lines[index];
+                const nextTrimmed = nextRaw.trim();
+                const nextMatch = nextTrimmed.match(/^([-*+])\s+/);
+                if (!nextMatch) break;
+                const nextIndent = nextRaw.length - nextRaw.trimStart().length;
+                allLines.push({ indent: nextIndent, content: nextTrimmed.slice(nextMatch[0].length) });
                 index++;
             }
-            blocks.push({ type: 'list', items: allLines.map((l) => parseMarkdownSpans(l, false)) });
+            const baseIndent = allLines[0].indent;
+            blocks.push({ type: 'list', items: allLines.map((l) => ({ depth: Math.floor((l.indent - baseIndent) / 2), spans: parseMarkdownSpans(l.content, false) })) });
             continue;
         }
 

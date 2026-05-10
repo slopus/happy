@@ -1,152 +1,50 @@
 {
   "entries": [
     {
-      "version": 11,
-      "date": "2026-05-07",
-      "summary": "A major desktop refresh, built-in file editing, and the ability to fork or rewind any Claude session.",
-      "changes": [
-        "Added — Codex-style sidebar with persistent header, logo, navigation buttons, and settings at the bottom. Chat header simplified with clickable title and folder name.",
-        "Added — Zen mode: hide all sidebars for a distraction-free view. Press Escape to exit on desktop.",
-        "Added — All Files tab in the sidebar — browse your project's file tree, search files, and open them inline.",
-        "Added — Built-in file viewer and editor with syntax highlighting for 22 languages. Detects on-disk conflicts while you edit and shows a diff before overwriting.",
-        "Added — All-files diff view: see every changed file's diff at a glance from the sidebar.",
-        "Added — Unread session indicators — a blue dot appears when a session finishes while you're looking elsewhere.",
-        "Added — Image attachments: paste or pick images to attach to Claude messages. End-to-end encrypted upload, inline rendering in chat. Enable in Settings → Experiments. (Off by default.)",
-        "Added — Session fork and duplicate: branch an active or disconnected session into a fresh conversation with the same context, or rewind to any earlier message and try again. Long-press a user message for a shortcut. Enable in Settings → Experiments. (Off by default.)",
-        "Added — Effort selector now actually changes how the model thinks — previously it was a UI-only knob.",
-        "Added — Smarter push notifications: suppressed when you're actively using the desktop or mobile app.",
-        "Fixed — Old sessions that refused to load due to a sync deadlock.",
-        "Fixed — Blank screen on launch when machine sync hangs.",
-        "Fixed — \"Two cursors\" bug when switching from remote to local mode in the terminal.",
-        "Fixed — `claude --resume` picker now shows sessions launched from Happy.",
-        "Fixed — Ctrl-C in the terminal keeps the session visible and resumable instead of archiving it."
-      ],
-      "rawMarkdown": "## Version 11 - 2026-05-07\n\n\nA major desktop refresh, built-in file editing, and the ability to fork or rewind any Claude session.\n\n- Added — Codex-style sidebar with persistent header, logo, navigation buttons, and settings at the bottom. Chat header simplified with clickable title and folder name.\n- Added — Zen mode: hide all sidebars for a distraction-free view. Press Escape to exit on desktop.\n- Added — All Files tab in the sidebar — browse your project's file tree, search files, and open them inline.\n- Added — Built-in file viewer and editor with syntax highlighting for 22 languages. Detects on-disk conflicts while you edit and shows a diff before overwriting.\n- Added — All-files diff view: see every changed file's diff at a glance from the sidebar.\n- Added — Unread session indicators — a blue dot appears when a session finishes while you're looking elsewhere.\n- Added — Image attachments: paste or pick images to attach to Claude messages. End-to-end encrypted upload, inline rendering in chat. Enable in Settings → Experiments. (Off by default.)\n- Added — Session fork and duplicate: branch an active or disconnected session into a fresh conversation with the same context, or rewind to any earlier message and try again. Long-press a user message for a shortcut. Enable in Settings → Experiments. (Off by default.)\n- Added — Effort selector now actually changes how the model thinks — previously it was a UI-only knob.\n- Added — Smarter push notifications: suppressed when you're actively using the desktop or mobile app.\n- Fixed — Old sessions that refused to load due to a sync deadlock.\n- Fixed — Blank screen on launch when machine sync hangs.\n- Fixed — \"Two cursors\" bug when switching from remote to local mode in the terminal.\n- Fixed — `claude --resume` picker now shows sessions launched from Happy.\n- Fixed — Ctrl-C in the terminal keeps the session visible and resumable instead of archiving it."
+      "title": "May 7 — New sidebar, code editor, session branching",
+      "summary": "Desktop got a full refresh with a file browser, built-in editor, and zen mode. Sessions can now be branched or rewound.",
+      "markdown": "- Thinking effort selection bug fixed.\n- Smarter push notifications — suppressed when you're already in the app.\n- Unread dots persist on sessions until you open them.\n- Redesigned sidebar with file browser, code editor, and zen mode.\n- Fixed stale sessions refusing to load, blank screen on launch, dual cursors in remote mode, `claude --resume` not finding Happy sessions.\n\nExperimental — enable in Settings → Features:\n- File diffs sidebar — see git changes next to chat on desktop.\n- Session fork & rewind — branch off any session or roll back to any message."
     },
     {
-      "version": 10,
-      "date": "2026-05-06",
-      "summary": "Branch a Claude session, rewind to any earlier message, and never lose context to a flaky session again.",
-      "changes": [
-        "Added — Fork a session to continue with the same context in a fresh session row, on the same machine.",
-        "Added — Duplicate from message: pick a user message as the rewind point and start a new session truncated to everything before it. Works from a bottom-sheet picker on the session-info screen, and via long-press on any user message in chat.",
-        "Added — Forked-from link on session-info, so you can jump back to the parent session of any branch.",
-        "Hard-fail when the chosen rewind point is no longer present on disk — no more silent untruncated copies pretending to honour the cut."
-      ],
-      "rawMarkdown": "## Version 10 - 2026-05-06\n\n\nBranch a Claude session, rewind to any earlier message, and never lose context to a flaky session again.\n\n- Added — Fork a session to continue with the same context in a fresh session row, on the same machine.\n- Added — Duplicate from message: pick a user message as the rewind point and start a new session truncated to everything before it. Works from a bottom-sheet picker on the session-info screen, and via long-press on any user message in chat.\n- Added — Forked-from link on session-info, so you can jump back to the parent session of any branch.\n- Hard-fail when the chosen rewind point is no longer present on disk — no more silent untruncated copies pretending to honour the cut."
+      "title": "April 26 — Voice fixes, diffs, scroll",
+      "summary": "Voice actually works reliably now, plus better content rendering.",
+      "markdown": "- Voice calls no longer break on second session.\n- Tables and code blocks scroll horizontally.\n- New diff viewer with syntax highlighting and unified/split toggle.\n- Model and effort choices persist on mobile.\n- Permission prompts no longer get lost.\n- Settings stop randomly resetting during sync.\n- Scroll-to-bottom button in chat.\n- Delete machines from settings."
     },
     {
-      "version": 9,
-      "date": "2026-04-26",
-      "summary": "Voice reliability, better content rendering, and a new diff viewer.",
-      "changes": [
-        "Fixed voice calls breaking on second session — works reliably every time now",
-        "Tables and code blocks scroll horizontally instead of overflowing",
-        "New diff viewer with syntax highlighting and unified/split toggle (desktop and web only)",
-        "Model and effort level choices now persist on mobile",
-        "Permission prompts (accept/reject) no longer get lost",
-        "Settings no longer randomly reset during sync",
-        "Added scroll-to-bottom button in chat",
-        "Delete machines you no longer use from settings"
-      ],
-      "rawMarkdown": "## Version 9 - 2026-04-26\n\n\nVoice reliability, better content rendering, and a new diff viewer.\n\n- Fixed voice calls breaking on second session — works reliably every time now\n- Tables and code blocks scroll horizontally instead of overflowing\n- New diff viewer with syntax highlighting and unified/split toggle (desktop and web only)\n- Model and effort level choices now persist on mobile\n- Permission prompts (accept/reject) no longer get lost\n- Settings no longer randomly reset during sync\n- Added scroll-to-bottom button in chat\n- Delete machines you no longer use from settings"
+      "title": "April 8 — Gemini models, voice onboarding, CLI fixes",
+      "summary": "New models, smoother onboarding, fewer CLI hangs.",
+      "markdown": "- Latest Gemini models in the picker.\n- Better voice onboarding — clearer first-run prompts.\n- CLI plan approval buttons actually show up now.\n- CLI background tasks and Codex turns no longer hang."
     },
     {
-      "version": 7,
-      "date": "2026-04-08",
-      "summary": "This preview release expands the current update with the latest Gemini models, a smarter voice onboarding flow, and more reliable Happy CLI sessions for plan approvals and Codex turns.",
-      "changes": [
-        "Update Happy CLI with `npm i -g happy`",
-        "Added the latest Gemini models to the picker",
-        "Improved voice onboarding with smarter first-run prompts and clearer upgrade guidance for free users",
-        "Fixed Happy CLI plan approval flows so Accept and Reject buttons show up reliably in plan mode",
-        "Fixed Happy CLI background task updates and Codex turns that could sometimes hang or fail to complete"
-      ],
-      "rawMarkdown": "## Version 7 - 2026-04-08\n\n\nThis preview release expands the current update with the latest Gemini models, a smarter voice onboarding flow, and more reliable Happy CLI sessions for plan approvals and Codex turns.\n\n- Update Happy CLI with `npm i -g happy`\n- Added the latest Gemini models to the picker\n- Improved voice onboarding with smarter first-run prompts and clearer upgrade guidance for free users\n- Fixed Happy CLI plan approval flows so Accept and Reject buttons show up reliably in plan mode\n- Fixed Happy CLI background task updates and Codex turns that could sometimes hang or fail to complete"
+      "title": "March 19 — New session screen, git worktrees, more agents",
+      "summary": "Completely new way to start sessions, plus worktree support and more agents.",
+      "markdown": "- New session composer — pick machine, worktree, draft persists.\n- Git worktree management from the app. Auto-cleanup on delete.\n- Auto plan mode when your agent enters planning.\n- OpenClaw as a selectable agent.\n- Session quick actions, resume, delete from info screen.\n- \"Bypass\" renamed to \"yolo\"."
     },
     {
-      "version": 6,
-      "date": "2026-03-19",
-      "summary": "This is the biggest update since launch — a redesigned session creation experience, Git worktree management, expanded agent support.",
-      "changes": [
-        "New session composer screen with machine selection, worktree picker, draft persistence, and offline machine visibility.",
-        "Git worktree management — list, create, and select worktrees from the app. Worktrees auto-cleanup on session delete.",
-        "Automatic plan mode switching when your agent enters planning mode.",
-        "OpenClaw added as a selectable AI agent alongside Claude Code and Codex.",
-        "Session quick actions for faster interaction with active sessions.",
-        "Session resume support — pick up where you left off.",
-        "Delete sessions directly from the session info screen.",
-        "Renamed \"bypass\" permission mode to \"yolo\" with updated styling.",
-        "Improved markdown rendering and message formatting.",
-        "Improved message sync reliability with edge case fixes.",
-        "Various UI polish: send spinner, hidden internal tool calls, improved spacing."
-      ],
-      "rawMarkdown": "## Version 6 - 2026-03-19\n\n\nThis is the biggest update since launch — a redesigned session creation experience, Git worktree management, expanded agent support.\n\n- New session composer screen with machine selection, worktree picker, draft persistence, and offline machine visibility.\n- Git worktree management — list, create, and select worktrees from the app. Worktrees auto-cleanup on session delete.\n- Automatic plan mode switching when your agent enters planning mode.\n- OpenClaw added as a selectable AI agent alongside Claude Code and Codex.\n- Session quick actions for faster interaction with active sessions.\n- Session resume support — pick up where you left off.\n- Delete sessions directly from the session info screen.\n- Renamed \"bypass\" permission mode to \"yolo\" with updated styling.\n- Improved markdown rendering and message formatting.\n- Improved message sync reliability with edge case fixes.\n- Various UI polish: send spinner, hidden internal tool calls, improved spacing."
+      "title": "December 22 — Agent updates, voice changes, tables",
+      "summary": "Agent config changes and voice pricing heads-up.",
+      "markdown": "- Gemini support coming via ACP.\n- Model config removed from app — use CLI defaults.\n- Voice going subscription after 3 free trials.\n- Markdown tables render properly now."
     },
     {
-      "version": 5,
-      "date": "2025-12-22",
-      "summary": "This release expands AI agent support and refines the voice experience, while improving markdown rendering for a better chat experience.",
-      "changes": [
-        "We are working on adding Gemini support using ACP and hopefully fixing codex stability issues using the same approach soon! Stay tuned.",
-        "Removed model configurations from agents. We were not able to keep up with the models so for now we are removing the configuration from the mobile app. You can still configure it through your CLIs, happy will simply use defaults.",
-        "Elevenlabs ... is epxensive. Voice conversations will soon require a subscription after 3 free trials - we'll soon allow connecting your own ElevenLabs agent if you want to manage your own spendings.",
-        "Improved markdown table rendering in chat - no more ASCII pipes `|--|`, actual formatted tables (layout still needs work, but much better!)"
-      ],
-      "rawMarkdown": "## Version 5 - 2025-12-22\n\n\nThis release expands AI agent support and refines the voice experience, while improving markdown rendering for a better chat experience.\n\n- We are working on adding Gemini support using ACP and hopefully fixing codex stability issues using the same approach soon! Stay tuned.\n- Removed model configurations from agents. We were not able to keep up with the models so for now we are removing the configuration from the mobile app. You can still configure it through your CLIs, happy will simply use defaults.\n- Elevenlabs ... is epxensive. Voice conversations will soon require a subscription after 3 free trials - we'll soon allow connecting your own ElevenLabs agent if you want to manage your own spendings.\n- Improved markdown table rendering in chat - no more ASCII pipes `|--|`, actual formatted tables (layout still needs work, but much better!)"
+      "title": "September 12 — Codex, daemon mode, one-tap launch",
+      "summary": "Sessions start instantly now. No more manual CLI startup.",
+      "markdown": "- Codex support for code completion and generation.\n- Daemon mode — sessions start instantly without manual CLI startup.\n- One-tap launch from mobile.\n- Connect Anthropic and GPT accounts."
     },
     {
-      "version": 4,
-      "date": "2025-09-12",
-      "summary": "This release revolutionizes remote development with Codex integration and Daemon Mode, enabling instant AI assistance from anywhere. Start coding sessions with a single tap while maintaining complete control over your development environment.",
-      "changes": [
-        "Introduced Codex support for advanced AI-powered code completion and generation capabilities.",
-        "Implemented Daemon Mode as the new default, enabling instant remote session initiation without manual CLI startup.",
-        "Added one-click session launch from mobile devices, automatically connecting to your development machine.",
-        "Added ability to connect anthropic and gpt accounts to account"
-      ],
-      "rawMarkdown": "## Version 4 - 2025-09-12\n\n\nThis release revolutionizes remote development with Codex integration and Daemon Mode, enabling instant AI assistance from anywhere. Start coding sessions with a single tap while maintaining complete control over your development environment.\n\n- Introduced Codex support for advanced AI-powered code completion and generation capabilities.\n- Implemented Daemon Mode as the new default, enabling instant remote session initiation without manual CLI startup.\n- Added one-click session launch from mobile devices, automatically connecting to your development machine.\n- Added ability to connect anthropic and gpt accounts to account"
+      "title": "August 29 — GitHub integration",
+      "summary": "Your GitHub identity in Happy.",
+      "markdown": "- Connect your GitHub account via OAuth.\n- Avatar, name, and bio sync to the app.\n- Encrypted token storage."
     },
     {
-      "version": 3,
-      "date": "2025-08-29",
-      "summary": "This update introduces seamless GitHub integration, bringing your developer identity directly into Happy while maintaining our commitment to privacy and security.",
-      "changes": [
-        "Added GitHub account connection through secure OAuth authentication flow",
-        "Integrated profile synchronization displaying your GitHub avatar, name, and bio",
-        "Implemented encrypted token storage on our backend for additional security protection",
-        "Enhanced settings interface with personalized profile display when connected",
-        "Added one-tap GitHub disconnect functionality with confirmation protection",
-        "Improved account management with clear connection status indicators"
-      ],
-      "rawMarkdown": "## Version 3 - 2025-08-29\n\n\nThis update introduces seamless GitHub integration, bringing your developer identity directly into Happy while maintaining our commitment to privacy and security.\n\n- Added GitHub account connection through secure OAuth authentication flow\n- Integrated profile synchronization displaying your GitHub avatar, name, and bio\n- Implemented encrypted token storage on our backend for additional security protection\n- Enhanced settings interface with personalized profile display when connected\n- Added one-tap GitHub disconnect functionality with confirmation protection\n- Improved account management with clear connection status indicators"
+      "title": "June 26 — QR login, dark mode, voice",
+      "summary": "Link devices instantly, look good doing it.",
+      "markdown": "- QR code auth for instant device linking.\n- Dark theme with system preference detection.\n- Faster voice responses.\n- Modified file indicators in session list.\n- 15+ languages for voice."
     },
     {
-      "version": 2,
-      "date": "2025-06-26",
-      "summary": "This update focuses on seamless device connectivity, visual refinements, and intelligent voice interactions for an enhanced user experience.",
-      "changes": [
-        "Added QR code authentication for instant and secure device linking across platforms",
-        "Introduced comprehensive dark theme with automatic system preference detection",
-        "Improved voice assistant performance with faster response times and reduced latency",
-        "Added visual indicators for modified files directly in the session list",
-        "Implemented preferred language selection for voice assistant supporting 15+ languages"
-      ],
-      "rawMarkdown": "## Version 2 - 2025-06-26\n\n\nThis update focuses on seamless device connectivity, visual refinements, and intelligent voice interactions for an enhanced user experience.\n\n- Added QR code authentication for instant and secure device linking across platforms\n- Introduced comprehensive dark theme with automatic system preference detection\n- Improved voice assistant performance with faster response times and reduced latency\n- Added visual indicators for modified files directly in the session list\n- Implemented preferred language selection for voice assistant supporting 15+ languages"
-    },
-    {
-      "version": 1,
-      "date": "2025-05-12",
-      "summary": "Welcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.",
-      "changes": [
-        "Implemented end-to-end encrypted session management ensuring complete privacy",
-        "Integrated intelligent voice assistant with natural conversation capabilities",
-        "Added experimental file manager with syntax highlighting and tree navigation",
-        "Built seamless real-time synchronization across all your devices",
-        "Established native support for iOS, Android, and responsive web interfaces"
-      ],
-      "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
+      "title": "May 12 — Hello world",
+      "summary": "First release. Everything is new.",
+      "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],
-  "latestVersion": 11
+  "latestTitle": "May 7 — New sidebar, code editor, session branching"
 }
