@@ -191,14 +191,6 @@ const PersistentHeader = React.memo(() => {
                 pointerEvents="auto"
                 {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
             >
-                <Pressable onPress={handleBack} disabled={!canGoBackEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBackEffective ? 1 : 0.3 }}>
-                    <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
-                </Pressable>
-                {Platform.OS === 'web' && (
-                    <Pressable onPress={handleForward} disabled={!canGoForwardEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoForwardEffective ? 1 : 0.3 }}>
-                        <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />
-                    </Pressable>
-                )}
                 <Pressable
                     onPress={handleZenToggle}
                     hitSlop={10}
@@ -212,11 +204,11 @@ const PersistentHeader = React.memo(() => {
                         tintColor={zenMode ? theme.colors.textLink : theme.colors.header.tint}
                     />
                 </Pressable>
-                <Pressable onPress={handleBack} disabled={!canGoBack} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBack ? 1 : 0.3 }}>
+                <Pressable onPress={handleBack} disabled={!canGoBackEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBackEffective ? 1 : 0.3 }}>
                     <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
                 </Pressable>
                 {Platform.OS === 'web' && (
-                    <Pressable onPress={handleForward} disabled={!canGoForward} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoForward ? 1 : 0.3 }}>
+                    <Pressable onPress={handleForward} disabled={!canGoForwardEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoForwardEffective ? 1 : 0.3 }}>
                         <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />
                     </Pressable>
                 )}
