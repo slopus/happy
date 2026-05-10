@@ -43,6 +43,17 @@ export const sessionToolCallEndEventSchema = z.object({
   call: z.string(),
 });
 
+// chat-tool-output-streaming Phase 3 — daemon-emitted incremental
+// stdout/stderr chunks for long-running Bash MCP tool calls. Batched and
+// throttled by the daemon (e.g. flush every 200ms or 32 lines) so the wire
+// stays cheap. Each line is plain text (no ANSI parsing on this layer).
+export const sessionToolCallProgressEventSchema = z.object({
+  t: z.literal('tool-call-progress'),
+  call: z.string(),
+  stream: z.enum(['stdout', 'stderr']),
+  lines: z.array(z.string()),
+});
+
 export const sessionFileEventSchema = z.object({
   t: z.literal('file'),
   ref: z.string(),
@@ -84,6 +95,7 @@ export const sessionEventSchema = z.discriminatedUnion('t', [
   sessionServiceMessageEventSchema,
   sessionToolCallStartEventSchema,
   sessionToolCallEndEventSchema,
+  sessionToolCallProgressEventSchema,
   sessionFileEventSchema,
   sessionTurnStartEventSchema,
   sessionStartEventSchema,

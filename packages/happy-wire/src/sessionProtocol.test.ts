@@ -22,6 +22,10 @@ describe('session protocol schemas', () => {
         args: { command: 'ls -la' },
       },
       { t: 'tool-call-end', call: 'call-1' },
+      // chat-tool-output-streaming Phase 3 — daemon streams stdout/stderr
+      // chunks while a long-running Bash MCP call is in flight.
+      { t: 'tool-call-progress', call: 'call-1', stream: 'stdout', lines: ['build started', '...'] },
+      { t: 'tool-call-progress', call: 'call-1', stream: 'stderr', lines: ['warning: deprecated API'] },
       { t: 'file', ref: 'upload-1', name: 'report.txt', size: 1024, mimeType: 'text/plain' },
       {
         t: 'file',
@@ -51,6 +55,10 @@ describe('session protocol schemas', () => {
     expect(sessionEventSchema.safeParse({ t: 'start', title: 1 }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'service' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'not-real' }).success).toBe(false);
+    // tool-call-progress: stream restricted to stdout/stderr; lines required
+    expect(sessionEventSchema.safeParse({ t: 'tool-call-progress', call: 'c1', stream: 'mixed', lines: ['x'] }).success).toBe(false);
+    expect(sessionEventSchema.safeParse({ t: 'tool-call-progress', call: 'c1', stream: 'stdout' }).success).toBe(false);
+    expect(sessionEventSchema.safeParse({ t: 'tool-call-progress', stream: 'stdout', lines: ['x'] }).success).toBe(false);
   });
 
   it('validates envelopes that include turn/subagent', () => {
