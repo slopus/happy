@@ -16,7 +16,7 @@ import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
-import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { startHappyServer, BASH_STREAM_AGENT_TOOL_NAME } from '@/claude/utils/startHappyServer';
 import { projectPath } from '@/projectPath';
 import { BasePermissionHandler, type PermissionResult } from '@/utils/BasePermissionHandler';
 import { connectionState } from '@/utils/serverConnectionErrors';
@@ -517,7 +517,23 @@ export async function runAcp(opts: {
   let sawModes = false;
   let sawModels = false;
 
-  const happyServer = await startHappyServer(session);
+  // chat-tool-output-streaming Phase 3 — bash_stream MCP tool runs in this
+  // process; we relay its line-by-line stdout/stderr batches as
+  // tool-call-progress envelopes addressed to the live tool call. The
+  // dispatcher returns [] when no matching call is active, so dropped
+  // chunks (e.g. between tool-result and the next tool-call) are silent.
+  const happyServer = await startHappyServer(session, {
+    onBashStreamProgress: (progress) => {
+      const envelopes = sessionManager.emitProgress(
+        BASH_STREAM_AGENT_TOOL_NAME,
+        progress.stream,
+        progress.lines,
+      );
+      for (const envelope of envelopes) {
+        session.sendSessionProtocolMessage(envelope);
+      }
+    },
+  });
   const mcpServers = {
     happy: {
       command: join(projectPath(), 'bin', 'happy-mcp.mjs'),

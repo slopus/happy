@@ -32,6 +32,17 @@ export class AcpSessionManager {
   private currentTurnId: string | null = null;
   private readonly acpCallToSessionCall = new Map<string, string>();
 
+  /**
+   * chat-tool-output-streaming Phase 3 — tracks live tool calls keyed by
+   * tool name (e.g. `mcp__happy__bash_stream`). The in-process MCP handler
+   * for bash_stream calls `emitProgress(toolName, …)` to fan stdout/stderr
+   * lines back out as `tool-call-progress` envelopes addressed to the same
+   * call id that tool-call-start used. Last-in-wins on overlapping calls of
+   * the same tool name; cleared on tool-result so post-completion progress
+   * is silently dropped.
+   */
+  private readonly activeCallByName = new Map<string, string>();
+
   /** Monotonic clock: max(lastTime + 1, Date.now()) */
   private lastTime = 0;
 
@@ -145,6 +156,11 @@ export class AcpSessionManager {
     if (msg.type === 'tool-call') {
       const flushed = this.flush();
       const call = this.ensureSessionCallId(msg.callId);
+      // Last-in-wins for overlapping calls of the same tool name. Claude
+      // typically runs tool calls sequentially within a turn, but if a fresh
+      // bash_stream starts before the previous one's tool-result arrives we
+      // want progress to address the new call.
+      this.activeCallByName.set(msg.toolName, call);
       return [
         ...flushed,
         createEnvelope('agent', {
@@ -161,6 +177,12 @@ export class AcpSessionManager {
     if (msg.type === 'tool-result') {
       const flushed = this.flush();
       const call = this.ensureSessionCallId(msg.callId);
+      // Only clear the per-name slot if the most recent active call for
+      // this tool is the one being completed, so a stale result for an
+      // older overlapping call doesn't yank ownership from a fresh one.
+      if (this.activeCallByName.get(msg.toolName) === call) {
+        this.activeCallByName.delete(msg.toolName);
+      }
       return [
         ...flushed,
         createEnvelope('agent', { t: 'tool-call-end', call }, turnOptions(this.currentTurnId, this.nextTime())),
@@ -168,5 +190,29 @@ export class AcpSessionManager {
     }
 
     return [];
+  }
+
+  /**
+   * chat-tool-output-streaming Phase 3 — invoked by the in-process MCP
+   * handler (bash_stream) to relay buffered stdout/stderr chunks as a
+   * tool-call-progress envelope. Returns [] when no live call matches the
+   * tool name or when there are no lines to flush, so the caller can
+   * cheaply pre-flush even when nothing has accumulated yet.
+   */
+  emitProgress(toolName: string, stream: 'stdout' | 'stderr', lines: string[]): SessionEnvelope[] {
+    if (lines.length === 0) {
+      return [];
+    }
+    const call = this.activeCallByName.get(toolName);
+    if (!call) {
+      return [];
+    }
+    return [
+      createEnvelope(
+        'agent',
+        { t: 'tool-call-progress', call, stream, lines },
+        turnOptions(this.currentTurnId, this.nextTime()),
+      ),
+    ];
   }
 }

@@ -393,3 +393,132 @@ describe('AcpSessionManager id consistency', () => {
     expect(isCuid(secondStart.turn!)).toBe(true);
   });
 });
+
+describe('AcpSessionManager tool-call-progress dispatch', () => {
+  // chat-tool-output-streaming Phase 3 — when a Bash MCP tool call is in
+  // flight, the in-process bash_stream handler asks the session manager to
+  // emit incremental stdout/stderr envelopes addressed to the same call id
+  // that tool-call-start used. That preserves callId correlation on the
+  // wire so the web-ui's BashView log panel finds the matching tool entry.
+
+  it('returns no envelopes when there is no active matching tool call', () => {
+    const mapper = new AcpSessionManager();
+    mapper.startTurn();
+    expect(mapper.emitProgress('mcp__happy__bash_stream', 'stdout', ['hi'])).toHaveLength(0);
+  });
+
+  it('emits a tool-call-progress envelope tied to the live call id', () => {
+    const mapper = new AcpSessionManager();
+    mapper.startTurn();
+    const start = mapper.mapMessage({
+      type: 'tool-call',
+      callId: 'acp-call-1',
+      toolName: 'mcp__happy__bash_stream',
+      args: { command: 'npm install' },
+    })[0];
+    expect(start.ev.t).toBe('tool-call-start');
+
+    const envelopes = mapper.emitProgress('mcp__happy__bash_stream', 'stdout', ['npm warn ...']);
+    expect(envelopes).toHaveLength(1);
+    expect(envelopes[0].turn).toBe(start.turn);
+    expect(envelopes[0].ev.t).toBe('tool-call-progress');
+    if (envelopes[0].ev.t === 'tool-call-progress') {
+      expect(envelopes[0].ev.stream).toBe('stdout');
+      expect(envelopes[0].ev.lines).toEqual(['npm warn ...']);
+      if (start.ev.t === 'tool-call-start') {
+        expect(envelopes[0].ev.call).toBe(start.ev.call);
+      }
+    }
+  });
+
+  it('forwards stderr and arbitrary line counts unchanged', () => {
+    const mapper = new AcpSessionManager();
+    mapper.startTurn();
+    mapper.mapMessage({
+      type: 'tool-call',
+      callId: 'acp-call-1',
+      toolName: 'mcp__happy__bash_stream',
+      args: { command: 'pytest' },
+    });
+
+    const lines = ['E   AssertionError', '  expected 1', '  got 2'];
+    const envelopes = mapper.emitProgress('mcp__happy__bash_stream', 'stderr', lines);
+    expect(envelopes).toHaveLength(1);
+    if (envelopes[0].ev.t === 'tool-call-progress') {
+      expect(envelopes[0].ev.stream).toBe('stderr');
+      expect(envelopes[0].ev.lines).toEqual(lines);
+    }
+  });
+
+  it('returns nothing for empty line arrays so the dispatcher can pre-flush cheaply', () => {
+    const mapper = new AcpSessionManager();
+    mapper.startTurn();
+    mapper.mapMessage({
+      type: 'tool-call',
+      callId: 'acp-call-1',
+      toolName: 'mcp__happy__bash_stream',
+      args: {},
+    });
+    expect(mapper.emitProgress('mcp__happy__bash_stream', 'stdout', [])).toHaveLength(0);
+  });
+
+  it('stops dispatching after tool-result for the same call id', () => {
+    const mapper = new AcpSessionManager();
+    mapper.startTurn();
+    mapper.mapMessage({
+      type: 'tool-call',
+      callId: 'acp-call-1',
+      toolName: 'mcp__happy__bash_stream',
+      args: {},
+    });
+    mapper.mapMessage({
+      type: 'tool-result',
+      callId: 'acp-call-1',
+      toolName: 'mcp__happy__bash_stream',
+      result: {},
+    });
+    expect(mapper.emitProgress('mcp__happy__bash_stream', 'stdout', ['late'])).toHaveLength(0);
+  });
+
+  it('does not match progress emitted under a different tool name', () => {
+    const mapper = new AcpSessionManager();
+    mapper.startTurn();
+    mapper.mapMessage({
+      type: 'tool-call',
+      callId: 'acp-call-1',
+      toolName: 'mcp__happy__bash_stream',
+      args: {},
+    });
+    expect(mapper.emitProgress('Bash', 'stdout', ['x'])).toHaveLength(0);
+    expect(mapper.emitProgress('mcp__happy__change_title', 'stdout', ['x'])).toHaveLength(0);
+  });
+
+  it('routes progress to the most recent active call when several share a tool name', () => {
+    // Claude executes tool calls sequentially within a turn, but defensively
+    // we want last-in-wins so a freshly-spawned bash_stream takes ownership
+    // of the dispatcher even if the previous one's tool-result is in flight.
+    const mapper = new AcpSessionManager();
+    mapper.startTurn();
+    const first = mapper.mapMessage({
+      type: 'tool-call',
+      callId: 'acp-call-1',
+      toolName: 'mcp__happy__bash_stream',
+      args: {},
+    })[0];
+    const second = mapper.mapMessage({
+      type: 'tool-call',
+      callId: 'acp-call-2',
+      toolName: 'mcp__happy__bash_stream',
+      args: {},
+    })[0];
+
+    const envelopes = mapper.emitProgress('mcp__happy__bash_stream', 'stdout', ['hello']);
+    expect(envelopes).toHaveLength(1);
+    if (envelopes[0].ev.t === 'tool-call-progress'
+        && first.ev.t === 'tool-call-start'
+        && second.ev.t === 'tool-call-start') {
+      expect(envelopes[0].ev.call).toBe(second.ev.call);
+      expect(envelopes[0].ev.call).not.toBe(first.ev.call);
+    }
+  });
+});

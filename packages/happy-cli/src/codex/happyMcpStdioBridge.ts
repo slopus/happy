@@ -63,7 +63,7 @@ async function main() {
     version: '1.0.0',
   });
 
-  // Register the single tool and forward to HTTP MCP
+  // Register the tools and forward each to the in-process HTTP MCP.
   server.registerTool(
     'change_title',
     {
@@ -83,6 +83,37 @@ async function main() {
         return {
           content: [
             { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // chat-tool-output-streaming Phase 3 — bash_stream forwards through to
+  // the in-process HTTP server where the actual subprocess runs and where
+  // AcpSessionManager.emitProgress publishes line-by-line tool-call-progress
+  // envelopes back to happy-server. Stays a thin proxy here.
+  server.registerTool(
+    'bash_stream',
+    {
+      description:
+        'Run a shell command via `bash -c` and stream stdout/stderr live to the chat UI. Use this for long-running batch commands so the user sees output as it happens. For short read-only commands or anything with heredocs/multiline scripts, prefer the built-in Bash tool.',
+      title: 'Bash (streamed)',
+      inputSchema: {
+        command: z.string().describe('Shell command to execute via `bash -c`'),
+        cwd: z.string().optional().describe('Working directory (defaults to the daemon cwd)'),
+      },
+    },
+    async (args) => {
+      try {
+        const client = await ensureHttpClient();
+        const response = await client.callTool({ name: 'bash_stream', arguments: args });
+        return response as any;
+      } catch (error) {
+        return {
+          content: [
+            { type: 'text', text: `bash_stream bridge error: ${error instanceof Error ? error.message : String(error)}` },
           ],
           isError: true,
         };
