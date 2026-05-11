@@ -244,6 +244,22 @@ export function saveSessionEffortLevels(levels: Record<string, string>) {
     mmkv.set('session-effort-levels', JSON.stringify(levels));
 }
 
+export function loadStarredSessions(): Set<string> {
+    const raw = mmkv.getString('starred-sessions-v1');
+    if (raw) {
+        try {
+            return new Set(JSON.parse(raw));
+        } catch (e) {
+            return new Set();
+        }
+    }
+    return new Set();
+}
+
+export function saveStarredSessions(sessionIds: Set<string>) {
+    mmkv.set('starred-sessions-v1', JSON.stringify(Array.from(sessionIds)));
+}
+
 export function loadProfile(): Profile {
     const profile = mmkv.getString('profile');
     if (profile) {

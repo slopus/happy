@@ -245,9 +245,20 @@ export function useSessionQuickActions(
 
     const canCopySessionMetadata = __DEV__ || devModeEnabled;
 
+    const toggleStarred = React.useCallback(() => {
+        storage.getState().toggleSessionStarred(session.id);
+    }, [session.id]);
+
     const actionItems = React.useMemo<SessionActionItem[]>(() => {
+        const isStarred = !!session.starred;
         const items: SessionActionItem[] = [
             { id: 'details', icon: 'information-circle-outline', label: t('profile.details'), onPress: openDetails },
+            {
+                id: 'star',
+                icon: isStarred ? 'star' : 'star-outline',
+                label: isStarred ? 'Unstar' : 'Star',
+                onPress: toggleStarred,
+            },
         ];
 
         if (resumeAvailability.canShowResume) {
@@ -278,6 +289,8 @@ export function useSessionQuickActions(
         openDuplicateSheet,
         resumeAvailability.canShowResume,
         resumeSession,
+        session.starred,
+        toggleStarred,
     ]);
 
     const showActionAlert = React.useCallback(() => {

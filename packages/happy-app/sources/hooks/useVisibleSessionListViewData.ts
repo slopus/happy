@@ -42,7 +42,9 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
                 }
 
                 if (item.type === 'session') {
-                    if (!item.session.active) {
+                    // Starred sessions render as standalone rows even when active
+                    // (see buildSessionListViewData → Starred section).
+                    if (!item.session.active || item.session.starred) {
                         if (pendingProjectGroup) {
                             result.push(pendingProjectGroup);
                             pendingProjectGroup = null;
