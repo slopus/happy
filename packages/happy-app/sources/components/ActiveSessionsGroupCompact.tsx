@@ -4,7 +4,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { Machine } from '@/sync/storageTypes';
 import { SessionRowData } from '@/sync/storage';
-import { Ionicons, MaterialCommunityIcons, Octicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLastSeen } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
@@ -103,16 +103,9 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRo
 
             {/* Path + branch */}
             <View style={styles.sectionHeaderContent}>
-                <View style={styles.sectionHeaderPathRow}>
-                    <Octicons
-                        name="file-directory"
-                        size={11}
-                        color={styles.sectionHeaderPathIcon.color as string}
-                    />
-                    <Text style={styles.sectionHeaderPath} numberOfLines={1}>
-                        {repoFolderName}
-                    </Text>
-                </View>
+                <Text style={styles.sectionHeaderPath} numberOfLines={1}>
+                    {repoFolderName}
+                </Text>
                 {hasBranch && (
                     <View style={styles.branchRow}>
                         <Text style={styles.branchText} numberOfLines={1}>
@@ -455,14 +448,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         flex: 1,
         justifyContent: 'center',
         minWidth: 0,
-    },
-    sectionHeaderPathRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
-    sectionHeaderPathIcon: {
-        color: theme.colors.groupped.sectionTitle,
     },
     sectionHeaderPath: {
         ...Typography.default('regular'),

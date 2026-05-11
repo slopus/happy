@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
@@ -58,7 +58,6 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                     >
                         {folderName ? (
                             <View style={styles.titleRow}>
-                                <Octicons name="file-directory" size={14} color={theme.colors.textSecondary} />
                                 <Text
                                     numberOfLines={1}
                                     style={[styles.folderName, { color: theme.colors.textSecondary, ...Typography.default() }]}

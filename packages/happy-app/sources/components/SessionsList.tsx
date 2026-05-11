@@ -3,7 +3,7 @@ import { View, Pressable, FlatList, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem, SessionRowData } from '@/sync/storage';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
@@ -130,9 +130,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         alignItems: 'center',
         gap: 4,
         marginBottom: 4,
-    },
-    sessionSubtitleIcon: {
-        color: theme.colors.text,
     },
     sessionSubtitle: {
         fontSize: 13,
@@ -438,7 +435,6 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
 
                 {session.path ? (
                     <View style={styles.sessionSubtitleRow}>
-                        <Octicons name="file-directory" size={11} color={styles.sessionSubtitleIcon.color as string} />
                         <Text style={styles.sessionSubtitle} numberOfLines={1}>
                             {session.path.split(/[/\\]/).filter(Boolean).pop()}
                         </Text>
