@@ -16,7 +16,7 @@ import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
-import { startHappyServer, BASH_STREAM_AGENT_TOOL_NAME } from '@/claude/utils/startHappyServer';
+import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { projectPath } from '@/projectPath';
 import { BasePermissionHandler, type PermissionResult } from '@/utils/BasePermissionHandler';
 import { connectionState } from '@/utils/serverConnectionErrors';
@@ -518,22 +518,11 @@ export async function runAcp(opts: {
   let sawModels = false;
 
   // chat-tool-output-streaming Phase 3 — bash_stream MCP tool runs in this
-  // process; we relay its line-by-line stdout/stderr batches as
-  // tool-call-progress envelopes addressed to the live tool call. The
-  // dispatcher returns [] when no matching call is active, so dropped
-  // chunks (e.g. between tool-result and the next tool-call) are silent.
-  const happyServer = await startHappyServer(session, {
-    onBashStreamProgress: (progress) => {
-      const envelopes = sessionManager.emitProgress(
-        BASH_STREAM_AGENT_TOOL_NAME,
-        progress.stream,
-        progress.lines,
-      );
-      for (const envelope of envelopes) {
-        session.sendSessionProtocolMessage(envelope);
-      }
-    },
-  });
+  // process and looks up the active session call id via the shared
+  // bashStreamCallRegistry (which AcpSessionManager populates on
+  // tool-call-start). No per-runner wiring needed; the registry is the
+  // single source of truth across runClaude/runAcp/runCodex/runGemini.
+  const happyServer = await startHappyServer(session);
   const mcpServers = {
     happy: {
       command: join(projectPath(), 'bin', 'happy-mcp.mjs'),

@@ -1,6 +1,11 @@
 import { createId } from '@paralleldrive/cuid2';
 import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
 import type { AgentMessage } from '@/agent/core';
+import {
+  setActiveBashStreamCall,
+  clearActiveBashStreamCall,
+} from '@/claude/utils/bashStreamCallRegistry';
+import { BASH_STREAM_AGENT_TOOL_NAME } from '@/claude/utils/startHappyServer';
 
 function turnOptions(turnId: string | null, time: number): CreateEnvelopeOptions {
   return turnId ? { turn: turnId, time } : { time };
@@ -161,6 +166,12 @@ export class AcpSessionManager {
       // bash_stream starts before the previous one's tool-result arrives we
       // want progress to address the new call.
       this.activeCallByName.set(msg.toolName, call);
+      // chat-tool-output-streaming Phase 3 — populate the cross-runner
+      // registry so the in-process bash_stream MCP handler can resolve
+      // the live call id when it flushes a progress batch.
+      if (msg.toolName === BASH_STREAM_AGENT_TOOL_NAME) {
+        setActiveBashStreamCall(call);
+      }
       return [
         ...flushed,
         createEnvelope('agent', {
@@ -182,6 +193,9 @@ export class AcpSessionManager {
       // older overlapping call doesn't yank ownership from a fresh one.
       if (this.activeCallByName.get(msg.toolName) === call) {
         this.activeCallByName.delete(msg.toolName);
+      }
+      if (msg.toolName === BASH_STREAM_AGENT_TOOL_NAME) {
+        clearActiveBashStreamCall(call);
       }
       return [
         ...flushed,

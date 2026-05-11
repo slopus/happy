@@ -5,6 +5,11 @@ import {
     type SessionEnvelope,
     type SessionTurnEndStatus,
 } from '@slopus/happy-wire';
+import {
+    setActiveBashStreamCall,
+    clearActiveBashStreamCall,
+} from './bashStreamCallRegistry';
+import { BASH_STREAM_AGENT_TOOL_NAME } from './startHappyServer';
 
 export type ClaudeSessionProtocolState = {
     currentTurnId: string | null;
@@ -523,6 +528,12 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                     description: title,
                     args,
                 }, { turn: turnId, subagent }));
+                // chat-tool-output-streaming Phase 3 — track the live
+                // call id so the in-process bash_stream MCP handler can
+                // address its progress envelopes to it.
+                if (name === BASH_STREAM_AGENT_TOOL_NAME) {
+                    setActiveBashStreamCall(call);
+                }
                 const buffered = consumeBufferedSubagentMessages(state, call);
                 for (const bufferedMessage of buffered) {
                     const replay = mapClaudeLogMessageToSessionEnvelopesInternal(bufferedMessage, state);
@@ -585,6 +596,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                     t: 'tool-call-end',
                     call: block.tool_use_id,
                 }, { turn: turnId, subagent }));
+                clearActiveBashStreamCall(block.tool_use_id);
                 continue;
             }
 

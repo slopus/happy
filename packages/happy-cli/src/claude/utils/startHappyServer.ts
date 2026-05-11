@@ -14,16 +14,20 @@ import { z } from "zod";
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
-import { runBashStream, type BashStreamProgress } from "./bashStream";
+import { createId } from "@paralleldrive/cuid2";
+import type { SessionEnvelope } from "@slopus/happy-wire";
+import { runBashStream } from "./bashStream";
+import { getActiveBashStreamCall } from "./bashStreamCallRegistry";
 
 // chat-tool-output-streaming Phase 3 — bash_stream emits its agent-side
-// tool name via this constant so AcpSessionManager (which sees
-// `mcp__<server-name>__<tool-name>`) and the dispatcher key agree.
+// tool name via this constant so per-runner mappers (sessionProtocolMapper
+// for Claude, AcpSessionManager for ACP, …) consistently key the call
+// registry against the same name.
 export const BASH_STREAM_AGENT_TOOL_NAME = 'mcp__happy__bash_stream';
 
 export interface HappyServerHandlers {
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
-    onBashStreamProgress: (progress: BashStreamProgress) => void;
+    client: ApiSessionClient;
 }
 
 function createMcpServer(handlers: HappyServerHandlers): McpServer {
@@ -79,12 +83,43 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
             cwd: z.string().optional().describe('Working directory (defaults to the daemon cwd)'),
         },
     }, async (args) => {
+        logger.debug(`[bash_stream:tool] invoked command=${String(args.command).slice(0, 100)}`);
         try {
             const result = await runBashStream({
                 command: args.command,
                 cwd: args.cwd,
-                onProgress: handlers.onBashStreamProgress,
+                onProgress: (progress) => {
+                    const call = getActiveBashStreamCall();
+                    logger.debug(`[bash_stream:tool] flush stream=${progress.stream} lines=${progress.lines.length} call=${call ?? '(none)'}`);
+                    if (!call) return;
+                    // Build the envelope manually instead of calling
+                    // happy-wire's createEnvelope: the published
+                    // @slopus/happy-wire@^0.1.0 zod schema doesn't yet
+                    // know about `tool-call-progress`, and its
+                    // `.parse(...)` would throw a ZodError inside this
+                    // setTimeout callback. That unhandled exception
+                    // bubbles up through StreamLineBuffer.close() and
+                    // prevents runBashStream from ever resolving — the
+                    // tool then hangs forever from the agent's POV.
+                    const envelope: SessionEnvelope = {
+                        id: createId(),
+                        time: Date.now(),
+                        role: 'agent',
+                        ev: {
+                            t: 'tool-call-progress',
+                            call,
+                            stream: progress.stream,
+                            lines: progress.lines,
+                        } as SessionEnvelope['ev'],
+                    };
+                    try {
+                        handlers.client.sendSessionProtocolMessage(envelope);
+                    } catch (sendErr) {
+                        logger.debug(`[bash_stream:tool] envelope send failed: ${sendErr instanceof Error ? sendErr.message : String(sendErr)}`);
+                    }
+                },
             });
+            logger.debug(`[bash_stream:tool] done exit=${result.exitCode} stdoutBytes=${result.stdout.length}`);
             const tail = `\n[exit ${result.exitCode}]`;
             return {
                 content: [
@@ -111,10 +146,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
     return mcp;
 }
 
-export async function startHappyServer(
-    client: ApiSessionClient,
-    options?: { onBashStreamProgress?: (progress: BashStreamProgress) => void },
-) {
+export async function startHappyServer(client: ApiSessionClient) {
     logger.debug(`[happyMCP] server:start sessionId=${client.sessionId}`);
 
     const changeTitle = async (title: string) => {
@@ -131,13 +163,8 @@ export async function startHappyServer(
         }
     };
 
-    // Default to a no-op so callers that don't yet pass a dispatcher (e.g.
-    // tests) still get a working server; the MCP tool just won't surface
-    // streaming output to the chat in that mode.
-    const onBashStreamProgress = options?.onBashStreamProgress ?? (() => {});
-
     const server = createServer(async (req, res) => {
-        const mcp = createMcpServer({ changeTitle, onBashStreamProgress });
+        const mcp = createMcpServer({ changeTitle, client });
         try {
             const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: undefined
