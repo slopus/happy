@@ -11,6 +11,7 @@
     "core:window:allow-start-dragging",
     "core:window:allow-internal-toggle-maximize",
     "http:default",
+    "opener:default",
     {
       "identifier": "http:default",
       "allow": [

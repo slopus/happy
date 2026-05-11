@@ -7,7 +7,8 @@ import { useUpdates } from '@/hooks/useUpdates';
 import { useChangelog } from '@/hooks/useChangelog';
 import { useNativeUpdate } from '@/hooks/useNativeUpdate';
 import { useRouter } from 'expo-router';
-import { Linking, Platform } from 'react-native';
+import { Platform } from 'react-native';
+import { openExternalUrl } from '@/utils/openExternalUrl';
 import { t } from '@/text';
 
 export const UpdateBanner = React.memo(() => {
@@ -19,16 +20,7 @@ export const UpdateBanner = React.memo(() => {
 
     // Show native app update banner (highest priority)
     if (updateUrl) {
-        const handleOpenStore = async () => {
-            try {
-                const supported = await Linking.canOpenURL(updateUrl);
-                if (supported) {
-                    await Linking.openURL(updateUrl);
-                }
-            } catch (error) {
-                console.error('Error opening app store:', error);
-            }
-        };
+        const handleOpenStore = () => openExternalUrl(updateUrl);
 
         return (
             <ItemGroup>

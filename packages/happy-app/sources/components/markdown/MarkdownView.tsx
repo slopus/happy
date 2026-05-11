@@ -16,6 +16,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
 import { isHttpMarkdownLink } from './linkUtils';
+import { openExternalUrl } from '@/utils/openExternalUrl';
 
 // Option type for callback
 export type Option = {
@@ -43,14 +44,7 @@ export const MarkdownView = React.memo((props: {
             return;
         }
 
-        if (Platform.OS === 'web') {
-            if (typeof window !== 'undefined') {
-                window.open(url, '_blank', 'noopener,noreferrer');
-            }
-            return;
-        }
-
-        void WebBrowser.openBrowserAsync(url);
+        void openExternalUrl(url);
     }, []);
 
     const handleLongPress = React.useCallback(() => {
@@ -277,7 +271,7 @@ function RenderSpans(props: RenderSpanProps) {
                         selectable={props.selectable}
                         accessibilityRole={isExternalLink ? 'link' : undefined}
                         style={[props.baseStyle, isExternalLink && style.link, span.styles.map(s => style[s])]}
-                        {...(isExternalLink && Platform.OS === 'web' ? { onClick: () => { if (typeof window !== 'undefined') window.open(span.url!, '_blank', 'noopener,noreferrer'); } } as any : {})}
+                        {...(isExternalLink && Platform.OS === 'web' ? { onClick: () => props.onLinkPress(span.url!) } as any : {})}
                         onPress={isExternalLink && Platform.OS !== 'web'
                             ? () => props.onLinkPress(span.url!)
                             : undefined}
