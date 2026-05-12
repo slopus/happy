@@ -12,6 +12,7 @@
  */
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { getServerUrl } from './serverConfig';
+import { appendFormFile } from './uploadFormFile';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -103,8 +104,10 @@ export async function uploadEncryptedBlob(
                 formData.append(k, v);
             }
         }
-        const blob = new Blob([encryptedData.buffer as ArrayBuffer], { type: 'application/octet-stream' });
-        formData.append('file', blob);
+        // S3's content-type rule on presigned POST is satisfied by the
+        // policy's Content-Type form field; the per-part type just needs
+        // to be something multipart-valid. Filename is cosmetic.
+        const cleanup = await appendFormFile(formData, encryptedData, 'file', 'blob', 'application/octet-stream');
         let response: Response;
         try {
             response = await fetch(upload.uploadUrl, {
@@ -112,9 +115,11 @@ export async function uploadEncryptedBlob(
                 body: formData,
             });
         } catch (err) {
+            await cleanup();
             const message = err instanceof Error ? err.message : String(err);
             throw new Error(`Blob upload (POST) network error to ${upload.uploadUrl}: ${message}`);
         }
+        await cleanup();
         if (!response.ok) {
             throw new Error(`Blob upload (POST) failed: ${response.status} ${response.statusText} at ${upload.uploadUrl}`);
         }
