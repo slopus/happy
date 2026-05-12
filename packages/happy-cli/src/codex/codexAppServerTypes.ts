@@ -1,5 +1,5 @@
 /**
- * Cherry-picked types from `codex app-server generate-ts` (Codex 0.107.0).
+ * Cherry-picked types from `codex app-server generate-ts` (Codex 0.130.0).
  * Only the essential types needed for our integration.
  */
 
@@ -17,46 +17,40 @@ export type InitializeResponse = { userAgent: string };
 // --- Thread lifecycle ---
 
 export type NewConversationParams = {
-    model: string | null;
-    modelProvider: string | null;
-    profile: string | null;
-    cwd: string | null;
-    approvalPolicy: ApprovalPolicy | null;
-    sandbox: SandboxMode | null;
-    config: Record<string, unknown> | null;
-    baseInstructions: string | null;
-    developerInstructions: string | null;
-    compactPrompt: string | null;
-    includeApplyPatchTool: boolean | null;
-    experimentalRawEvents: boolean;
-    persistExtendedHistory: boolean;
+    model?: string | null;
+    modelProvider?: string | null;
+    cwd?: string | null;
+    approvalPolicy?: ApprovalPolicy | null;
+    sandbox?: SandboxMode | null;
+    config?: Record<string, unknown> | null;
+    baseInstructions?: string | null;
+    developerInstructions?: string | null;
 };
 
 export type NewConversationResponse = {
     thread: {
         id: ThreadId;
-        path: string;
+        path?: string;
         [key: string]: unknown;
     };
     model: string;
-    modelProvider: string;
-    cwd: string;
-    approvalPolicy: ApprovalPolicy;
-    sandbox: unknown;
-    reasoningEffort: ReasoningEffort | null;
+    modelProvider?: string;
+    cwd?: string;
+    approvalPolicy?: ApprovalPolicy;
+    sandbox?: unknown;
+    reasoningEffort?: ReasoningEffort | null;
 };
 
 export type ResumeConversationParams = {
     threadId: ThreadId;
-    model: string | null;
-    modelProvider: string | null;
-    cwd: string | null;
-    approvalPolicy: ApprovalPolicy | null;
-    sandbox: SandboxMode | null;
-    config: Record<string, unknown> | null;
-    baseInstructions: string | null;
-    developerInstructions: string | null;
-    persistExtendedHistory: boolean;
+    model?: string | null;
+    modelProvider?: string | null;
+    cwd?: string | null;
+    approvalPolicy?: ApprovalPolicy | null;
+    sandbox?: SandboxMode | null;
+    config?: Record<string, unknown> | null;
+    baseInstructions?: string | null;
+    developerInstructions?: string | null;
 };
 
 export type ResumeConversationResponse = NewConversationResponse;
@@ -131,10 +125,14 @@ export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "
 export type ReasoningSummary = "auto" | "concise" | "detailed" | "none";
 export type TurnAbortReason = "interrupted" | "replaced" | "review_ended";
 
+export type TurnStatus = "completed" | "interrupted" | "failed" | "inProgress";
+
 export type InputItem =
     | { type: "text"; text: string; text_elements?: unknown[] }
     | { type: "image"; url: string }
-    | { type: "localImage"; path: string };
+    | { type: "localImage"; path: string }
+    | { type: "skill"; name: string; path: string }
+    | { type: "mention"; name: string; path: string };
 
 export type SandboxPolicy =
     | { type: "dangerFullAccess" }
