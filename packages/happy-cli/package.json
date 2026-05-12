@@ -1,6 +1,6 @@
 {
   "name": "@namsangboy/happy-cli",
-  "version": "1.1.4-aplus.15",
+  "version": "1.1.4-aplus.16",
   "description": "A+ Dev Studio fork of slopus/happy — adds remote-preview-relay proxy-http RPC. Mobile and Web client for Claude Code and Codex.",
   "author": "Kirill Dubovitskiy (upstream), justinbuzzni (aplus fork)",
   "license": "MIT",
