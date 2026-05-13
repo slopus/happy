@@ -539,6 +539,18 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     }
 
     if (message.type === 'user') {
+        // SDK-injected synthetic user messages (e.g. the Skill tool feeds
+        // the skill prompt back to Claude as a 'user' message with
+        // isMeta=true so the model sees it but the human shouldn't).
+        // Without this skip the prompt body — easily 10–20k characters —
+        // gets emitted as an agent-text envelope and lands in the chat as
+        // a wall of text.
+        if (message.isMeta) {
+            return {
+                currentTurnId: state.currentTurnId,
+                envelopes,
+            };
+        }
         if (typeof message.message.content === 'string') {
             if (message.isSidechain) {
                 const turnId = ensureTurn(state, envelopes);
