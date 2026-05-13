@@ -354,7 +354,17 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Tell the remote scanner about this sessionId so it knows
             // which JSONL to watch (and so it can fire onNewSession for
             // claude --resume hand-offs that mint a fresh session id).
-            remoteScanner.onNewSession(sessionId);
+            //
+            // In remote mode every user prompt arrives via the SDK or the
+            // app channel — both of which already deliver their messages
+            // to the server before they hit disk. Anything the scanner
+            // finds in the JSONL at the moment it learns the session id
+            // is therefore already on the server; treating it as fresh
+            // (the previous behavior) replayed the whole history back to
+            // the chat on reconnect. The scanner's real job is forwarding
+            // *future* JSONL writes from a parallel `claude --resume`
+            // terminal, which the file watcher will pick up.
+            remoteScanner.onNewSession(sessionId, { treatExistingAsProcessed: true });
 
             // Update session ID in the Session instance
             if (currentSession) {
