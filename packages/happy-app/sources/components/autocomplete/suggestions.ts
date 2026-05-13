@@ -13,7 +13,7 @@ export async function getCommandSuggestions(sessionId: string, query: string): P
 
     try {
         // Use the command search cache with fuzzy matching
-        const commands = await searchCommands(sessionId, searchTerm, { limit: 5 });
+        const commands = await searchCommands(sessionId, searchTerm, { limit: 50 });
 
         // Convert CommandItem to suggestion format
         return commands.map((cmd: CommandItem) => ({
@@ -40,7 +40,7 @@ export async function getFileMentionSuggestions(sessionId: string, query: string
 
     try {
         // Use the file search cache with fuzzy matching
-        const files = await searchFiles(sessionId, searchTerm, { limit: 5 });
+        const files = await searchFiles(sessionId, searchTerm, { limit: 50 });
 
         // Convert FileItem to suggestion format
         return files.map((file: FileItem) => ({
