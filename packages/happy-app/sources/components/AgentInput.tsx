@@ -613,7 +613,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Forward ref to the MultiTextInput
     React.useImperativeHandle(ref, () => inputRef.current!, []);
 
-    // Web paste/drag — intercept image pastes and drops for the attachment feature
+    // Web paste/drag — intercept image pastes and file drops for the
+    // attachment feature. Both handlers funnel through props.onAddImages.
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !props.onAddImages) return;
 
@@ -643,8 +644,50 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             }
         };
 
+        // dragover must call preventDefault for drop to fire; we gate on
+        // `types.includes('Files')` so we don't hijack drag-text/HTML in the
+        // rest of the app.
+        const isFileDrag = (e: DragEvent) => {
+            const types = e.dataTransfer?.types;
+            if (!types) return false;
+            // DataTransferItemList vs DOMStringList — both expose .includes-ish.
+            for (let i = 0; i < types.length; i++) {
+                if (types[i] === 'Files') return true;
+            }
+            return false;
+        };
+
+        const handleDragOver = (e: DragEvent) => {
+            if (!isFileDrag(e)) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        };
+
+        const handleDrop = async (e: DragEvent) => {
+            if (!isFileDrag(e)) return;
+            e.preventDefault();
+            const { getImagesFromDrop, fileToAttachmentPreview } = await import('@/utils/pasteImages.web');
+            const files = getImagesFromDrop(e);
+            if (!files.length) return;
+            const previews = (await Promise.all(
+                files.map((f) => fileToAttachmentPreview(f, generateThumbhash))
+            )).filter(Boolean) as Omit<AttachmentPreview, 'id'>[];
+            if (previews.length) {
+                props.onAddImages!(previews.map((p) => ({
+                    ...p,
+                    id: `drop_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+                })));
+            }
+        };
+
         document.addEventListener('paste', handlePaste as any);
-        return () => document.removeEventListener('paste', handlePaste as any);
+        document.addEventListener('dragover', handleDragOver);
+        document.addEventListener('drop', handleDrop);
+        return () => {
+            document.removeEventListener('paste', handlePaste as any);
+            document.removeEventListener('dragover', handleDragOver);
+            document.removeEventListener('drop', handleDrop);
+        };
     }, [props.onAddImages]);
 
     // Autocomplete state — text + selection. Updated via startTransition so
