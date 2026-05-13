@@ -1,5 +1,6 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
+import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import {
     getAvailableModels,
@@ -366,26 +367,45 @@ type ChatComposerHandle = {
 
 type ChatComposerProps = Omit<
     React.ComponentProps<typeof AgentInput>,
-    'value' | 'onChangeText'
+    'initialValue' | 'onChangeText'
 > & {
     sessionId: string;
     composerHandleRef: React.RefObject<ChatComposerHandle | null>;
 };
 
-// Owns the chat-message state and the useDraft autosave subscription so
-// that typing only re-renders this subtree — SessionViewLoaded stays
-// stable on every keystroke. The parent reads/clears the message via
-// composerHandleRef on send.
+// Owns the chat-message draft autosave. The textarea itself is uncontrolled:
+// keystrokes never round-trip through React state, so the parent can stay
+// stable on every keystroke and deletion doesn't batch on a busy main thread.
+// `message` here is a low-priority mirror updated via startTransition; it's
+// only used to feed useDraft's debounced autosave. Reads/clears on send go
+// through the MultiTextInput handle imperatively.
 const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) {
     const { sessionId, composerHandleRef, ...rest } = props;
-    const [message, setMessage] = React.useState('');
-    const messageRef = React.useRef(message);
-    messageRef.current = message;
-    const { clearDraft } = useDraft(sessionId, message, setMessage);
+    // Synchronously hydrate the textarea with any saved draft so the user sees
+    // their work-in-progress on session open without an extra round-trip.
+    const initialDraft = React.useMemo(() => {
+        return storage.getState().sessions[sessionId]?.draft ?? '';
+    }, [sessionId]);
+    const inputHandleRef = React.useRef<MultiTextInputHandle>(null);
+    const [message, setMessage] = React.useState(initialDraft);
+
+    const applyDraft = React.useCallback((text: string) => {
+        inputHandleRef.current?.setTextAndSelection(text, { start: text.length, end: text.length });
+        setMessage(text);
+    }, []);
+
+    const { clearDraft } = useDraft(sessionId, message, applyDraft);
+
+    const handleChangeText = React.useCallback((text: string) => {
+        // Transition keeps the textarea responsive even when the draft
+        // autosave / re-render takes longer than a frame.
+        React.startTransition(() => setMessage(text));
+    }, []);
 
     React.useImperativeHandle(composerHandleRef, () => ({
-        getMessage: () => messageRef.current,
+        getMessage: () => inputHandleRef.current?.getText() ?? '',
         clearMessage: () => {
+            inputHandleRef.current?.setTextAndSelection('', { start: 0, end: 0 });
             setMessage('');
             clearDraft();
         },
@@ -394,9 +414,10 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
     return (
         <AgentInput
             {...rest}
+            ref={inputHandleRef}
             sessionId={sessionId}
-            value={message}
-            onChangeText={setMessage}
+            initialValue={initialDraft}
+            onChangeText={handleChangeText}
         />
     );
 });

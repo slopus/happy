@@ -28,9 +28,14 @@ import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 
 interface AgentInputProps {
-    value: string;
+    // `initialValue` seeds the uncontrolled textarea once; keystrokes never
+    // round-trip back into it via React, which is what keeps fast typing/
+    // deletion crisp. The parent reads the live text via the imperative ref.
+    initialValue: string;
     placeholder: string;
-    onChangeText: (text: string) => void;
+    // Fires on every keystroke so the parent can sync derived state (drafts,
+    // hasText) — typically wrapped in startTransition / debounce by the caller.
+    onChangeText?: (text: string) => void;
     sessionId?: string;
     onSend: () => void;
     sendIcon?: React.ReactNode;
@@ -310,13 +315,244 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
     return null; // No display needed
 };
 
+// Stable sub-trees extracted from AgentInput so they don't reconcile when
+// the input's keystroke-derived state (hasText / inputState) flips. Their
+// props are derived from session metadata, not from the textarea content,
+// so memo skips re-render on typing entirely.
+
+type StatusRowProps = {
+    connectionStatus?: AgentInputProps['connectionStatus'];
+    contextWarning: { text: string; color: string } | null;
+    displayPermissionMode: ReturnType<typeof hackMode> | null;
+    permissionModeKey: string;
+    isSandboxedYoloMode: boolean;
+    permissionLabel: string | null;
+    zenMode?: boolean;
+};
+
+const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRowProps) {
+    const { theme } = useUnistyles();
+    const showPermissionBadge = !!p.displayPermissionMode
+        && p.permissionModeKey !== 'default'
+        && !p.zenMode
+        && !!p.permissionLabel;
+    if (!p.connectionStatus && !p.contextWarning && !showPermissionBadge) {
+        return null;
+    }
+    return (
+        <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 16,
+            paddingBottom: 4,
+            minHeight: 20,
+        }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 11 }}>
+                {p.connectionStatus && (
+                    <>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <StatusDot
+                                color={p.connectionStatus.dotColor}
+                                isPulsing={p.connectionStatus.isPulsing}
+                                size={6}
+                            />
+                            <Text style={{
+                                fontSize: 11,
+                                color: p.connectionStatus.color,
+                                ...Typography.default()
+                            }}>
+                                {p.connectionStatus.text}
+                            </Text>
+                        </View>
+                        {p.connectionStatus.cliStatus && (
+                            <>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                    <Text style={{
+                                        fontSize: 11,
+                                        color: p.connectionStatus.cliStatus.claude ? theme.colors.success : theme.colors.textDestructive,
+                                        ...Typography.default()
+                                    }}>
+                                        {p.connectionStatus.cliStatus.claude ? '✓' : '✗'}
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 11,
+                                        color: p.connectionStatus.cliStatus.claude ? theme.colors.success : theme.colors.textDestructive,
+                                        ...Typography.default()
+                                    }}>
+                                        claude
+                                    </Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                    <Text style={{
+                                        fontSize: 11,
+                                        color: p.connectionStatus.cliStatus.codex ? theme.colors.success : theme.colors.textDestructive,
+                                        ...Typography.default()
+                                    }}>
+                                        {p.connectionStatus.cliStatus.codex ? '✓' : '✗'}
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 11,
+                                        color: p.connectionStatus.cliStatus.codex ? theme.colors.success : theme.colors.textDestructive,
+                                        ...Typography.default()
+                                    }}>
+                                        codex
+                                    </Text>
+                                </View>
+                                {p.connectionStatus.cliStatus.gemini !== undefined && (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                        <Text style={{
+                                            fontSize: 11,
+                                            color: p.connectionStatus.cliStatus.gemini ? theme.colors.success : theme.colors.textDestructive,
+                                            ...Typography.default()
+                                        }}>
+                                            {p.connectionStatus.cliStatus.gemini ? '✓' : '✗'}
+                                        </Text>
+                                        <Text style={{
+                                            fontSize: 11,
+                                            color: p.connectionStatus.cliStatus.gemini ? theme.colors.success : theme.colors.textDestructive,
+                                            ...Typography.default()
+                                        }}>
+                                            gemini
+                                        </Text>
+                                    </View>
+                                )}
+                            </>
+                        )}
+                    </>
+                )}
+                {p.contextWarning && (
+                    <Text style={{
+                        fontSize: 11,
+                        color: p.contextWarning.color,
+                        marginLeft: p.connectionStatus ? 8 : 0,
+                        ...Typography.default()
+                    }}>
+                        {p.connectionStatus ? '• ' : ''}{p.contextWarning.text}
+                    </Text>
+                )}
+            </View>
+            {showPermissionBadge && (() => {
+                const permColor = p.isSandboxedYoloMode ? '#4169E1' :
+                    p.permissionModeKey === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+                        p.permissionModeKey === 'bypassPermissions' ? theme.colors.permission.bypass :
+                            p.permissionModeKey === 'plan' ? theme.colors.permission.plan :
+                                p.permissionModeKey === 'read-only' ? theme.colors.permission.readOnly :
+                                    p.permissionModeKey === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                                        p.permissionModeKey === 'yolo' ? theme.colors.permission.yolo :
+                                            theme.colors.textSecondary;
+                const permIcon: 'play-forward' | 'pause' =
+                    p.permissionModeKey === 'plan' || p.permissionModeKey === 'read-only'
+                        ? 'pause' : 'play-forward';
+                return (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name={permIcon} size={11} color={permColor} />
+                        <Text style={{
+                            fontSize: 11,
+                            color: permColor,
+                            ...Typography.default()
+                        }}>
+                            {p.permissionLabel}
+                        </Text>
+                    </View>
+                );
+            })()}
+        </View>
+    );
+});
+
+type ContextChipsProps = {
+    machineName?: string | null;
+    onMachineClick?: () => void;
+    currentPath?: string | null;
+    onPathClick?: () => void;
+};
+
+const AgentInputContextChips = React.memo(function AgentInputContextChips(p: ContextChipsProps) {
+    const { theme } = useUnistyles();
+    if (p.machineName === undefined && !p.currentPath) {
+        return null;
+    }
+    return (
+        <View style={{
+            backgroundColor: theme.colors.surfacePressed,
+            borderRadius: 12,
+            padding: 8,
+            marginBottom: 8,
+            gap: 4,
+        }}>
+            {p.machineName !== undefined && p.onMachineClick && (
+                <Pressable
+                    onPress={() => {
+                        hapticsLight();
+                        p.onMachineClick?.();
+                    }}
+                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                    style={(s) => ({
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        borderRadius: Platform.select({ default: 16, android: 20 }),
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        height: 32,
+                        opacity: s.pressed ? 0.7 : 1,
+                        gap: 6,
+                    })}
+                >
+                    <Ionicons name="desktop-outline" size={14} color={theme.colors.textSecondary} />
+                    <Text style={{
+                        fontSize: 13,
+                        color: theme.colors.text,
+                        fontWeight: '600',
+                        ...Typography.default('semiBold'),
+                    }}>
+                        {p.machineName === null ? t('agentInput.noMachinesAvailable') : p.machineName}
+                    </Text>
+                </Pressable>
+            )}
+            {p.currentPath && p.onPathClick && (
+                <Pressable
+                    onPress={() => {
+                        hapticsLight();
+                        p.onPathClick?.();
+                    }}
+                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                    style={(s) => ({
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        borderRadius: Platform.select({ default: 16, android: 20 }),
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        height: 32,
+                        opacity: s.pressed ? 0.7 : 1,
+                        gap: 6,
+                    })}
+                >
+                    <Ionicons name="folder-outline" size={14} color={theme.colors.textSecondary} />
+                    <Text style={{
+                        fontSize: 13,
+                        color: theme.colors.text,
+                        fontWeight: '600',
+                        ...Typography.default('semiBold'),
+                    }}>
+                        {p.currentPath}
+                    </Text>
+                </Pressable>
+            )}
+        </View>
+    );
+});
+
 export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, AgentInputProps>((props, ref) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const screenWidth = useWindowDimensions().width;
     const isSendBlocked = props.blockSend ?? false;
 
-    const hasText = props.value.trim().length > 0;
+    // `hasText` drives only the send-button appearance/enabled state. It's
+    // updated via startTransition from the keystroke handler so a busy reducer
+    // never blocks the next character from landing in the textarea.
+    const [hasText, setHasText] = React.useState(() => props.initialValue.trim().length > 0);
     const hasImages = (props.selectedImages?.length ?? 0) > 0;
     const canPressSendButton = !props.isSending
         && !props.isSendDisabled
@@ -411,16 +647,26 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return () => document.removeEventListener('paste', handlePaste as any);
     }, [props.onAddImages]);
 
-    // Autocomplete state - track text and selection together
-    const [inputState, setInputState] = React.useState<TextInputState>({
-        text: props.value,
-        selection: { start: 0, end: 0 }
-    });
+    // Autocomplete state — text + selection. Updated via startTransition so
+    // typing renders the character immediately and the autocomplete pipeline
+    // catches up on the next idle frame instead of blocking input.
+    const [inputState, setInputState] = React.useState<TextInputState>(() => ({
+        text: props.initialValue,
+        selection: { start: props.initialValue.length, end: props.initialValue.length }
+    }));
 
-    // Handle combined text and selection state changes
+    const onChangeTextProp = props.onChangeText;
+    const handleTextChange = React.useCallback((text: string) => {
+        React.startTransition(() => {
+            setHasText(text.trim().length > 0);
+        });
+        onChangeTextProp?.(text);
+    }, [onChangeTextProp]);
+
     const handleInputStateChange = React.useCallback((newState: TextInputState) => {
-        // console.log('📝 Input state changed:', JSON.stringify(newState));
-        setInputState(newState);
+        React.startTransition(() => {
+            setInputState(newState);
+        });
     }, []);
 
     // Use the tracked selection from inputState
@@ -523,12 +769,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         if (props.isSendDisabled || props.isSending) return;
 
         hapticsLight();
-        if (hasText || hasImages) {
+        // Live read avoids stalling behind the transitioned `hasText`.
+        const liveHasText = (inputRef.current?.getText() ?? '').trim().length > 0;
+        if (liveHasText || hasImages) {
             props.onSend();
         } else {
             props.onMicPress?.();
         }
-    }, [handleBlockedSendAttempt, hasText, hasImages, isSendBlocked, props]);
+    }, [handleBlockedSendAttempt, hasImages, isSendBlocked, props.isSendDisabled, props.isSending, props.onSend, props.onMicPress]);
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
@@ -573,7 +821,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             // to avoid false positives on Windows touch-screen laptops with keyboards.
             const isTouchDevice = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
             if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey && !isTouchDevice) {
-                if (props.value.trim()) {
+                // Read live text from the textarea — `hasText` is debounced via
+                // startTransition and would lag behind a quick type-then-Enter.
+                const liveText = inputRef.current?.getText() ?? '';
+                if (liveText.trim()) {
                     if (isSendBlocked) {
                         handleBlockedSendAttempt();
                     } else if (!props.isSendDisabled) {
@@ -593,7 +844,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
 
 
 
@@ -882,222 +1133,22 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     </>
                 )}
 
-                {/* Connection status, context warning, and permission mode */}
-                {(props.connectionStatus || contextWarning || (displayPermissionMode && permissionModeKey !== 'default' && !props.zenMode)) && (
-                    <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        paddingHorizontal: 16,
-                        paddingBottom: 4,
-                        minHeight: 20, // Fixed minimum height to prevent jumping
-                    }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 11 }}>
-                            {props.connectionStatus && (
-                                <>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                        <StatusDot
-                                            color={props.connectionStatus.dotColor}
-                                            isPulsing={props.connectionStatus.isPulsing}
-                                            size={6}
-                                        />
-                                        <Text style={{
-                                            fontSize: 11,
-                                            color: props.connectionStatus.color,
-                                            ...Typography.default()
-                                        }}>
-                                            {props.connectionStatus.text}
-                                        </Text>
-                                    </View>
-                                    {/* CLI Status - only shown when provided (wizard only) */}
-                                    {props.connectionStatus.cliStatus && (
-                                        <>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.claude
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    {props.connectionStatus.cliStatus.claude ? '✓' : '✗'}
-                                                </Text>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.claude
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    claude
-                                                </Text>
-                                            </View>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.codex
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    {props.connectionStatus.cliStatus.codex ? '✓' : '✗'}
-                                                </Text>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.codex
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    codex
-                                                </Text>
-                                            </View>
-                                            {props.connectionStatus.cliStatus.gemini !== undefined && (
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                    <Text style={{
-                                                        fontSize: 11,
-                                                        color: props.connectionStatus.cliStatus.gemini
-                                                            ? theme.colors.success
-                                                            : theme.colors.textDestructive,
-                                                        ...Typography.default()
-                                                    }}>
-                                                        {props.connectionStatus.cliStatus.gemini ? '✓' : '✗'}
-                                                    </Text>
-                                                    <Text style={{
-                                                        fontSize: 11,
-                                                        color: props.connectionStatus.cliStatus.gemini
-                                                            ? theme.colors.success
-                                                            : theme.colors.textDestructive,
-                                                        ...Typography.default()
-                                                    }}>
-                                                        gemini
-                                                    </Text>
-                                                </View>
-                                            )}
-                                        </>
-                                    )}
-                                </>
-                            )}
-                            {contextWarning && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: contextWarning.color,
-                                    marginLeft: props.connectionStatus ? 8 : 0,
-                                    ...Typography.default()
-                                }}>
-                                    {props.connectionStatus ? '• ' : ''}{contextWarning.text}
-                                </Text>
-                            )}
-                        </View>
-                        {/* Permission badge — only shown when non-default */}
-                        {displayPermissionMode && permissionModeKey !== 'default' && !props.zenMode && (() => {
-                            const permColor = isSandboxedYoloMode ? '#4169E1' :
-                                permissionModeKey === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-                                    permissionModeKey === 'bypassPermissions' ? theme.colors.permission.bypass :
-                                        permissionModeKey === 'plan' ? theme.colors.permission.plan :
-                                            permissionModeKey === 'read-only' ? theme.colors.permission.readOnly :
-                                                permissionModeKey === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                                                    permissionModeKey === 'yolo' ? theme.colors.permission.yolo :
-                                                        theme.colors.textSecondary;
-                            const permIcon: 'play-forward' | 'pause' =
-                                permissionModeKey === 'plan' || permissionModeKey === 'read-only'
-                                    ? 'pause' : 'play-forward';
-                            return (
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                    <Ionicons name={permIcon} size={11} color={permColor} />
-                                    <Text style={{
-                                        fontSize: 11,
-                                        color: permColor,
-                                        ...Typography.default()
-                                    }}>
-                                        {withSandboxSuffix(displayPermissionMode.name, permissionModeKey)}
-                                    </Text>
-                                </View>
-                            );
-                        })()}
-                    </View>
-                )}
+                <AgentInputStatusRow
+                    connectionStatus={props.connectionStatus}
+                    contextWarning={contextWarning}
+                    displayPermissionMode={displayPermissionMode}
+                    permissionModeKey={permissionModeKey}
+                    isSandboxedYoloMode={isSandboxedYoloMode}
+                    permissionLabel={displayPermissionMode ? withSandboxSuffix(displayPermissionMode.name, permissionModeKey) : null}
+                    zenMode={props.zenMode}
+                />
 
-                {/* Box 1: Context Information (Machine + Path) - Only show if either exists */}
-                {(props.machineName !== undefined || props.currentPath) && (
-                    <View style={{
-                        backgroundColor: theme.colors.surfacePressed,
-                        borderRadius: 12,
-                        padding: 8,
-                        marginBottom: 8,
-                        gap: 4,
-                    }}>
-                        {/* Machine chip */}
-                        {props.machineName !== undefined && props.onMachineClick && (
-                            <Pressable
-                                onPress={() => {
-                                    hapticsLight();
-                                    props.onMachineClick?.();
-                                }}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                style={(p) => ({
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 6,
-                                    height: 32,
-                                    opacity: p.pressed ? 0.7 : 1,
-                                    gap: 6,
-                                })}
-                            >
-                                <Ionicons
-                                    name="desktop-outline"
-                                    size={14}
-                                    color={theme.colors.textSecondary}
-                                />
-                                <Text style={{
-                                    fontSize: 13,
-                                    color: theme.colors.text,
-                                    fontWeight: '600',
-                                    ...Typography.default('semiBold'),
-                                }}>
-                                    {props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName}
-                                </Text>
-                            </Pressable>
-                        )}
-
-                        {/* Path chip */}
-                        {props.currentPath && props.onPathClick && (
-                            <Pressable
-                                onPress={() => {
-                                    hapticsLight();
-                                    props.onPathClick?.();
-                                }}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                style={(p) => ({
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 6,
-                                    height: 32,
-                                    opacity: p.pressed ? 0.7 : 1,
-                                    gap: 6,
-                                })}
-                            >
-                                <Ionicons
-                                    name="folder-outline"
-                                    size={14}
-                                    color={theme.colors.textSecondary}
-                                />
-                                <Text style={{
-                                    fontSize: 13,
-                                    color: theme.colors.text,
-                                    fontWeight: '600',
-                                    ...Typography.default('semiBold'),
-                                }}>
-                                    {props.currentPath}
-                                </Text>
-                            </Pressable>
-                        )}
-                    </View>
-                )}
+                <AgentInputContextChips
+                    machineName={props.machineName}
+                    onMachineClick={props.onMachineClick}
+                    currentPath={props.currentPath}
+                    onPathClick={props.onPathClick}
+                />
 
                 {/* Box 2: Action Area (Input + Send) */}
                 <Shaker ref={sendBlockShakerRef}>
@@ -1113,10 +1164,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
                         <MultiTextInput
                             ref={inputRef}
-                            value={props.value}
+                            defaultValue={props.initialValue}
                             paddingTop={Platform.OS === 'web' ? 10 : 8}
                             paddingBottom={Platform.OS === 'web' ? 10 : 8}
-                            onChangeText={props.onChangeText}
+                            onChangeText={handleTextChange}
                             placeholder={props.placeholder}
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
