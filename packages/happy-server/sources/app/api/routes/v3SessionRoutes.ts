@@ -6,10 +6,24 @@ import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { z } from "zod";
 import { type Fastify } from "../types";
 
+// Pagination contract:
+//   - after_seq=N  → forward sync: messages with seq > N, ordered ASC.
+//                    Used by the client to pull anything new since the highest
+//                    seq it has already seen.
+//   - before_seq=N → backward paging: messages with seq < N, ordered DESC.
+//                    Used by the client to lazy-load older history when the
+//                    user scrolls up, so opening a long session does not block
+//                    on fetching the entire history first.
+// The two are mutually exclusive. With neither, the route defaults to
+// `after_seq=0` (forward from the start) for backward compatibility.
 const getMessagesQuerySchema = z.object({
-    after_seq: z.coerce.number().int().min(0).default(0),
+    after_seq: z.coerce.number().int().min(0).optional(),
+    before_seq: z.coerce.number().int().min(1).optional(),
     limit: z.coerce.number().int().min(1).max(500).default(100)
-});
+}).refine(
+    (data) => !(data.after_seq !== undefined && data.before_seq !== undefined),
+    { message: "after_seq and before_seq are mutually exclusive" }
+);
 
 const sendMessagesBodySchema = z.object({
     messages: z.array(z.object({
@@ -60,7 +74,7 @@ export function v3SessionRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
-        const { after_seq, limit } = request.query;
+        const { after_seq, before_seq, limit } = request.query;
 
         const session = await db.session.findFirst({
             where: {
@@ -74,12 +88,19 @@ export function v3SessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
+        // Backward direction is opt-in via `before_seq`; everything else (no
+        // params, or explicit `after_seq`) keeps the legacy forward semantics.
+        const isBackward = before_seq !== undefined;
+        const where = isBackward
+            ? { sessionId, seq: { lt: before_seq } }
+            : { sessionId, seq: { gt: after_seq ?? 0 } };
+        const orderBy = isBackward
+            ? { seq: 'desc' as const }
+            : { seq: 'asc' as const };
+
         const messages = await db.sessionMessage.findMany({
-            where: {
-                sessionId,
-                seq: { gt: after_seq }
-            },
-            orderBy: { seq: 'asc' },
+            where,
+            orderBy,
             take: limit + 1,
             select: {
                 id: true,

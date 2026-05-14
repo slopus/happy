@@ -530,7 +530,12 @@ function getClaudeCliPath() {
  */
 function runClaudeCli(cliPath) {
     const { pathToFileURL } = require('url');
-    const { spawn } = require('child_process');
+    // Use cross-spawn (already a dependency, used everywhere else in this repo
+    // for the same reason) so Windows handles `.cmd`/`.bat`/extensionless npm
+    // shims correctly instead of failing with `spawn UNKNOWN` / errno -4094.
+    // For a plain `.exe` path it behaves identically to child_process.spawn.
+    // See issue #551 and the CVE-2024-27980 hardening notes elsewhere.
+    const spawn = require('cross-spawn');
 
     // Check if it's a JavaScript file (.js or .cjs) or a binary file
     const isJsFile = cliPath.endsWith('.js') || cliPath.endsWith('.cjs');

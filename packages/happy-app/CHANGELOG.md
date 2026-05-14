@@ -1,6 +1,17 @@
-# May 7 — New sidebar, code editor, session branching
+# May 13 — Faster long chats
+
+Long sessions open instantly. Messages load latest-first with older history streaming in on scroll.
+
+- Parallel decryption — no more freezing on sessions with thousands of messages.
+- Backward pagination — scroll up to load history on demand.
+
+# May 7 — Session retention, new sidebar, code editor, session branching
 
 Desktop got a full refresh with a file browser, built-in editor, and zen mode. Sessions can now be branched or rewound.
+
+**Session retention: 2 months.** Older sessions are cleaned up automatically to keep storage costs manageable.
+
+## Features and fixes
 
 - Thinking effort selection bug fixed.
 - Smarter push notifications — suppressed when you're already in the app.
@@ -8,7 +19,10 @@ Desktop got a full refresh with a file browser, built-in editor, and zen mode. S
 - Redesigned sidebar with file browser, code editor, and zen mode.
 - Fixed stale sessions refusing to load, blank screen on launch, dual cursors in remote mode, `claude --resume` not finding Happy sessions.
 
-Experimental — enable in Settings → Features:
+## Experimental
+
+Enable in Settings → Features:
+
 - File diffs sidebar — see git changes next to chat on desktop.
 - Session fork & rewind — branch off any session or roll back to any message.
 

@@ -102,25 +102,25 @@ export class AES256Encryption implements Encryptor, Decryptor {
     }
 
     async decrypt(data: Uint8Array[]): Promise<(any | null)[]> {
-        // Process as batch, not Promise.all - more efficient
-        const results: (any | null)[] = [];
-        for (const item of data) {
+        // Decrypt items concurrently. The previous implementation used a
+        // sequential for-await loop, which serialised every AES-GCM call on
+        // the JS thread. For a 1000-message session that meant ~1000
+        // serialised crypto operations before the UI could display anything.
+        // Promise.all schedules them on the microtask queue, allowing the
+        // crypto subtle backend (and any native bridge work) to interleave.
+        return Promise.all(data.map(async (item) => {
             try {
                 if (item[0] !== 0) {
-                    results.push(null);
-                    continue;
+                    return null;
                 }
                 const decryptedString = await decryptAESGCMString(encodeBase64(item.slice(1)), this.secretKeyB64);
                 if (!decryptedString) {
-                    results.push(null);
-                } else {
-                    // Parse JSON string back to object
-                    results.push(JSON.parse(decryptedString));
+                    return null;
                 }
+                return JSON.parse(decryptedString);
             } catch (error) {
-                results.push(null);
+                return null;
             }
-        }
-        return results;
+        }));
     }
 }

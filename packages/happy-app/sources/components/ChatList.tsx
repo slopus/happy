@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useSession, useSessionMessages } from "@/sync/storage";
-import { FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, View } from 'react-native';
+import { sync } from '@/sync/sync';
+import { ActivityIndicator, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, View } from 'react-native';
 import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,20 +18,35 @@ import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 const SCROLL_THRESHOLD = 300;
 
 export const ChatList = React.memo((props: { session: Session }) => {
-    const { messages } = useSessionMessages(props.session.id);
+    const { messages, hasMoreOlder, isLoadingOlder } = useSessionMessages(props.session.id);
     return (
         <ChatListInternal
             metadata={props.session.metadata}
             sessionId={props.session.id}
             messages={messages}
+            hasMoreOlder={hasMoreOlder}
+            isLoadingOlder={isLoadingOlder}
         />
     )
 });
 
-const ListHeader = React.memo(() => {
+const ListHeader = React.memo((props: { isLoadingOlder: boolean }) => {
     const headerHeight = useHeaderHeight();
     const safeArea = useSafeAreaInsets();
-    return <View style={{ flexDirection: 'row', alignItems: 'center', height: headerHeight + safeArea.top + 32 }} />;
+    // ListFooterComponent on an inverted FlatList renders at the visual top
+    // — that is exactly where the spinner for "loading older messages"
+    // belongs. The spacer below keeps the header bar from clipping the
+    // oldest message.
+    return (
+        <View>
+            {props.isLoadingOlder && (
+                <View style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }}>
+                    <ActivityIndicator size="small" />
+                </View>
+            )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', height: headerHeight + safeArea.top + 32 }} />
+        </View>
+    );
 });
 
 const ListFooter = React.memo((props: { sessionId: string }) => {
@@ -44,6 +60,8 @@ const ChatListInternal = React.memo((props: {
     metadata: Metadata | null,
     sessionId: string,
     messages: Message[],
+    hasMoreOlder: boolean,
+    isLoadingOlder: boolean,
 }) => {
     const { theme } = useUnistyles();
     const flatListRef = React.useRef<FlatList>(null);
@@ -97,6 +115,18 @@ const ChatListInternal = React.memo((props: {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     }, []);
 
+    // In an inverted FlatList, `onEndReached` fires when the user scrolls
+    // past the visual top — i.e. when they want to see older history.
+    // Initial fetch only loads the latest 100 messages (see
+    // sync.fetchInitialLatestPage), so we lazy-load earlier pages here.
+    const sessionId = props.sessionId;
+    const hasMoreOlder = props.hasMoreOlder;
+    const isLoadingOlder = props.isLoadingOlder;
+    const handleLoadOlder = useCallback(() => {
+        if (!hasMoreOlder || isLoadingOlder) return;
+        void sync.loadOlderMessages(sessionId);
+    }, [sessionId, hasMoreOlder, isLoadingOlder]);
+
     // On macOS/web, Shift+wheel swaps deltaX/deltaY — restore vertical scrolling
     React.useEffect(() => {
         if (Platform.OS !== 'web') return;
@@ -130,7 +160,9 @@ const ChatListInternal = React.memo((props: {
                 onContentSizeChange={onContentSizeChange}
                 scrollEventThrottle={16}
                 ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
-                ListFooterComponent={<ListHeader />}
+                ListFooterComponent={<ListHeader isLoadingOlder={props.isLoadingOlder} />}
+                onEndReached={handleLoadOlder}
+                onEndReachedThreshold={0.5}
             />
             {showScrollButton && (
                 <View style={styles.scrollButtonContainer}>

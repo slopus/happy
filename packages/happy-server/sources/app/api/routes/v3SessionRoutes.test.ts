@@ -127,12 +127,18 @@ const {
         if (typeof args?.where?.seq?.gt === "number") {
             rows = rows.filter((message) => message.seq > args.where.seq.gt);
         }
+        if (typeof args?.where?.seq?.lt === "number") {
+            rows = rows.filter((message) => message.seq < args.where.seq.lt);
+        }
         if (Array.isArray(args?.where?.localId?.in)) {
             const localIds = new Set(args.where.localId.in);
             rows = rows.filter((message) => localIds.has(message.localId));
         }
         if (args?.orderBy?.seq === "asc") {
             rows.sort((a, b) => a.seq - b.seq);
+        }
+        if (args?.orderBy?.seq === "desc") {
+            rows.sort((a, b) => b.seq - a.seq);
         }
         if (args?.orderBy?.createdAt === "desc") {
             rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -311,6 +317,61 @@ describe("v3SessionRoutes", () => {
         const body3 = page3.json();
         expect(body3.messages.map((message: any) => message.seq)).toEqual([5]);
         expect(body3.hasMore).toBe(false);
+    });
+
+    it("supports backward pagination with before_seq returning newest first", async () => {
+        seedSession({ id: "session-1", accountId: "user-1" });
+        for (let seq = 1; seq <= 5; seq += 1) {
+            seedMessage({ sessionId: "session-1", seq, localId: `l${seq}`, content: { t: "encrypted", c: String(seq) } });
+        }
+
+        app = await createApp();
+        // No before_seq cursor → ask for the latest page.
+        // Use Number.MAX_SAFE_INTEGER as the upper bound so the server returns
+        // the newest messages first without the client needing to know the
+        // current max seq.
+        const latest = await app.inject({
+            method: "GET",
+            url: `/v3/sessions/session-1/messages?before_seq=${Number.MAX_SAFE_INTEGER}&limit=2`,
+            headers: { "x-user-id": "user-1" }
+        });
+        expect(latest.statusCode).toBe(200);
+        const body1 = latest.json();
+        expect(body1.messages.map((message: any) => message.seq)).toEqual([5, 4]);
+        expect(body1.hasMore).toBe(true);
+
+        // Cursor backward from the lowest seq returned in the previous page.
+        const older = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages?before_seq=4&limit=2",
+            headers: { "x-user-id": "user-1" }
+        });
+        const body2 = older.json();
+        expect(body2.messages.map((message: any) => message.seq)).toEqual([3, 2]);
+        expect(body2.hasMore).toBe(true);
+
+        // Final page: only seq=1 remains.
+        const oldest = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages?before_seq=2&limit=2",
+            headers: { "x-user-id": "user-1" }
+        });
+        const body3 = oldest.json();
+        expect(body3.messages.map((message: any) => message.seq)).toEqual([1]);
+        expect(body3.hasMore).toBe(false);
+    });
+
+    it("rejects requests that combine after_seq and before_seq", async () => {
+        seedSession({ id: "session-1", accountId: "user-1" });
+        seedMessage({ sessionId: "session-1", seq: 1, localId: "l1", content: { t: "encrypted", c: "a" } });
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages?after_seq=0&before_seq=10",
+            headers: { "x-user-id": "user-1" }
+        });
+        expect(response.statusCode).toBe(400);
     });
 
     it("returns empty results for empty sessions and after_seq beyond latest", async () => {

@@ -396,9 +396,11 @@ const style = StyleSheet.create((theme) => ({
         fontStyle: 'italic',
     },
     bold: {
-        fontWeight: 'bold',
+        ...Typography.default('semiBold'),
+        fontWeight: '700',
     },
     semibold: {
+        ...Typography.default('semiBold'),
         fontWeight: '600',
     },
     code: {

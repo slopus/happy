@@ -1,9 +1,14 @@
 {
   "entries": [
     {
-      "title": "May 7 — New sidebar, code editor, session branching",
+      "title": "May 13 — Faster long chats",
+      "summary": "Long sessions open instantly. Messages load latest-first with older history streaming in on scroll.",
+      "markdown": "- Parallel decryption — no more freezing on sessions with thousands of messages.\n- Backward pagination — scroll up to load history on demand."
+    },
+    {
+      "title": "May 7 — Session retention, new sidebar, code editor, session branching",
       "summary": "Desktop got a full refresh with a file browser, built-in editor, and zen mode. Sessions can now be branched or rewound.",
-      "markdown": "- Thinking effort selection bug fixed.\n- Smarter push notifications — suppressed when you're already in the app.\n- Unread dots persist on sessions until you open them.\n- Redesigned sidebar with file browser, code editor, and zen mode.\n- Fixed stale sessions refusing to load, blank screen on launch, dual cursors in remote mode, `claude --resume` not finding Happy sessions.\n\nExperimental — enable in Settings → Features:\n- File diffs sidebar — see git changes next to chat on desktop.\n- Session fork & rewind — branch off any session or roll back to any message."
+      "markdown": "**Session retention: 2 months.** Older sessions are cleaned up automatically to keep storage costs manageable.\n\n## Features and fixes\n\n- Thinking effort selection bug fixed.\n- Smarter push notifications — suppressed when you're already in the app.\n- Unread dots persist on sessions until you open them.\n- Redesigned sidebar with file browser, code editor, and zen mode.\n- Fixed stale sessions refusing to load, blank screen on launch, dual cursors in remote mode, `claude --resume` not finding Happy sessions.\n\n## Experimental\n\nEnable in Settings → Features:\n\n- File diffs sidebar — see git changes next to chat on desktop.\n- Session fork & rewind — branch off any session or roll back to any message."
     },
     {
       "title": "April 26 — Voice fixes, diffs, scroll",
@@ -46,5 +51,5 @@
       "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],
-  "latestTitle": "May 7 — New sidebar, code editor, session branching"
+  "latestTitle": "May 13 — Faster long chats"
 }

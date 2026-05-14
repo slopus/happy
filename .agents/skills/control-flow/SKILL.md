@@ -23,34 +23,38 @@ Read the relevant source code and produce ASCII tree diagrams inside ```txt bloc
 
 Example:
 
-    User taps "Archive"
-    │
-    ├─ handleActionPress(action: SessionActionItem)
-    │  └─ onClose() → setActionsAnchor(null)
-    │
-    ├─ sessionKill(sessionId: string)
-    │  ├─ POST /api/sessions/:id/kill
-    │  └─ → { success: boolean, message?: string }
-    │
-    └─ deleteSession(sessionId)
-       ├─ mutates: sessions, sessionMessages, gitStatus, fileCache
-       ├─ rebuilds: sessionListViewData
-       └─ re-renders: SessionsListWrapper (data ref changed)
+```txt
+User taps "Archive"
+│
+├─ handleActionPress(action: SessionActionItem)
+│  └─ onClose() → setActionsAnchor(null)
+│
+├─ sessionKill(sessionId: string)
+│  ├─ POST /api/sessions/:id/kill
+│  └─ → { success: boolean, message?: string }
+│
+└─ deleteSession(sessionId)
+   ├─ mutates: sessions, sessionMessages, gitStatus, fileCache
+   ├─ rebuilds: sessionListViewData
+   └─ re-renders: SessionsListWrapper (data ref changed)
+```
 
 For data structures, show the shape and what depends on it:
 
-    SessionRowData (flat primitives, cheap deep-equal)
-    ├─ id, name, subtitle, avatarId     ← identity + display
-    ├─ state: SessionState              ← collapsed from presence + agentState + thinking
-    ├─ hasDraft: boolean                ← collapsed from draft string
-    ├─ activeAt?: number                ← only inactive sessions (avoids heartbeat diffs)
-    ├─ machineId, path, homeDir         ← grouping in ActiveSessionsGroup
-    └─ completedTodosCount, totalTodosCount
-       │
-       consumed by:
-       ├─ SessionItem         → renders purely from props, no store hooks
-       ├─ ActiveSessionsGroup → groups by machineId + path
-       └─ useDeepEqual        → 12 primitive comparisons vs full Session tree
+```txt
+SessionRowData (flat primitives, cheap deep-equal)
+├─ id, name, subtitle, avatarId     ← identity + display
+├─ state: SessionState              ← collapsed from presence + agentState + thinking
+├─ hasDraft: boolean                ← collapsed from draft string
+├─ activeAt?: number                ← only inactive sessions (avoids heartbeat diffs)
+├─ machineId, path, homeDir         ← grouping in ActiveSessionsGroup
+└─ completedTodosCount, totalTodosCount
+   │
+   consumed by:
+   ├─ SessionItem         → renders purely from props, no store hooks
+   ├─ ActiveSessionsGroup → groups by machineId + path
+   └─ useDeepEqual        → 12 primitive comparisons vs full Session tree
+```
 
 ## Principles
 
