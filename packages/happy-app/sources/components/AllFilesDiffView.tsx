@@ -6,7 +6,7 @@ import { Typography } from '@/constants/Typography';
 import { FileIcon } from '@/components/FileIcon';
 import { PierreDiffView } from '@/components/diff/PierreDiffView';
 import { getPatchDiffStats } from '@/components/diff/calculateDiff';
-import { sessionBash } from '@/sync/ops';
+import { sessionBash, sessionReadFile } from '@/sync/ops';
 import { storage, useSessionGitStatusFiles, useSettingMutable } from '@/sync/storage';
 import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
@@ -60,46 +60,102 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
         );
     }, [gitStatusFiles]);
 
-    // Batch-load all diffs
-    const [results, setResults] = React.useState<FileDiffResult[]>([]);
-    const [loading, setLoading] = React.useState(true);
+    // Per-file diff cache keyed by fullPath. Reconciled incrementally as the
+    // file set changes so the rendered ScrollView keeps its scroll position and
+    // existing diff sections stay on screen while updated files refresh in the
+    // background.
+    const [resultsMap, setResultsMap] = React.useState<Map<string, FileDiffResult>>(() => new Map());
+    // Signature of the last fetched version per fullPath. If the signature
+    // (status + linesAdded + linesRemoved + isStaged) hasn't changed, the diff
+    // for that file doesn't need to be re-fetched.
+    const fetchedSignatures = React.useRef<Map<string, string>>(new Map());
+    const inFlight = React.useRef<Set<string>>(new Set());
+    // Track whether we've ever populated results — only show the global spinner
+    // on the very first load, not on subsequent file-set changes.
+    const [hasLoadedOnce, setHasLoadedOnce] = React.useState(false);
+
+    const fileSignature = (f: GitFileStatus) =>
+        `${f.status}|${f.isStaged ? 1 : 0}|${f.linesAdded}|${f.linesRemoved}`;
 
     React.useEffect(() => {
-        let cancelled = false;
-        setLoading(true);
-        setResults([]);
-
         if (files.length === 0) {
-            setLoading(false);
+            // Drop everything; nothing to fetch.
+            if (resultsMap.size > 0) setResultsMap(new Map());
+            fetchedSignatures.current.clear();
+            inFlight.current.clear();
+            setHasLoadedOnce(true);
             return;
         }
 
         const session = storage.getState().sessions[sessionId];
         const sessionPath = session?.metadata?.path ?? null;
 
+        // Reconcile keyed cache: drop files no longer present.
+        const nextKeys = new Set(files.map((f) => f.fullPath));
+        let mapChanged = false;
+        const reconciled = new Map(resultsMap);
+        for (const key of reconciled.keys()) {
+            if (!nextKeys.has(key)) {
+                reconciled.delete(key);
+                fetchedSignatures.current.delete(key);
+                inFlight.current.delete(key);
+                mapChanged = true;
+            }
+        }
+        if (mapChanged) setResultsMap(reconciled);
+
+        // Identify which files need a (re-)fetch.
+        const toFetch = files.filter((f) => {
+            if (inFlight.current.has(f.fullPath)) return false;
+            const prev = fetchedSignatures.current.get(f.fullPath);
+            return prev !== fileSignature(f);
+        });
+
+        if (toFetch.length === 0) {
+            if (!hasLoadedOnce) setHasLoadedOnce(true);
+            return;
+        }
+
+        let cancelled = false;
+
+        for (const file of toFetch) {
+            inFlight.current.add(file.fullPath);
+            fetchedSignatures.current.set(file.fullPath, fileSignature(file));
+        }
+
         (async () => {
             const fetched = await Promise.all(
-                files.map(async (file): Promise<FileDiffResult> => {
+                toFetch.map(async (file): Promise<FileDiffResult> => {
                     if (!sessionPath) {
                         return { file, content: null, error: 'No session path' };
                     }
                     const resolved = resolveSessionFilePath(file.fullPath, sessionPath);
                     const gitDiffPath = resolved?.withinSessionRoot ? resolved.relativePath : null;
-                    if (!gitDiffPath) {
+                    if (!gitDiffPath || !resolved) {
                         return { file, content: null, error: 'File is outside the session root.' };
                     }
 
                     try {
                         if (file.status === 'untracked') {
-                            const res = await sessionBash(sessionId, {
-                                command: `cat -- "${gitDiffPath}"`,
-                                cwd: sessionPath,
-                                timeout: 5000,
-                            });
-                            if (!res.success) {
+                            // Use the native sessionReadFile RPC instead of `cat`
+                            // — `cat` doesn't behave the same on Windows
+                            // (PowerShell aliases it to Get-Content which
+                            // doesn't accept `--`), and shelling out for a
+                            // plain read is slower anyway.
+                            const res = await sessionReadFile(sessionId, resolved.absolutePath);
+                            if (!res.success || !res.content) {
                                 return { file, content: null, error: res.error || 'Failed to read file' };
                             }
-                            return { file, content: { kind: 'newFile', contents: res.stdout ?? '' }, error: null };
+                            let contents: string;
+                            try {
+                                const binary = atob(res.content);
+                                const bytes = new Uint8Array(binary.length);
+                                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                                contents = new TextDecoder().decode(bytes);
+                            } catch {
+                                return { file, content: null, error: 'Failed to decode file' };
+                            }
+                            return { file, content: { kind: 'newFile', contents }, error: null };
                         }
 
                         const res = await sessionBash(sessionId, {
@@ -117,14 +173,46 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
                 })
             );
 
-            if (!cancelled) {
-                setResults(fetched);
-                setLoading(false);
+            if (cancelled) return;
+
+            setResultsMap((prev) => {
+                const next = new Map(prev);
+                for (const r of fetched) {
+                    next.set(r.file.fullPath, r);
+                }
+                return next;
+            });
+            for (const r of fetched) {
+                inFlight.current.delete(r.file.fullPath);
             }
+            setHasLoadedOnce(true);
         })();
 
         return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId, files]);
+
+    // Render in deterministic file order (same sort as `files`).
+    const results = React.useMemo<FileDiffResult[]>(() => {
+        const out: FileDiffResult[] = [];
+        for (const f of files) {
+            const r = resultsMap.get(f.fullPath);
+            if (r) out.push(r);
+        }
+        return out;
+    }, [files, resultsMap]);
+
+    // Initial-mount spinner: only show until results have ever been populated.
+    const loading = !hasLoadedOnce && results.length === 0 && files.length > 0;
+
+    // Whenever the file list changes (new file silently appears, an existing
+    // file disappears, a sort order shifts), all cached Y offsets are
+    // potentially stale: insertions push every section below them downward.
+    // Drop the cache so the scroll-to-file effect waits for fresh onLayout
+    // values rather than scrolling to a position the file no longer occupies.
+    React.useEffect(() => {
+        fileOffsets.current.clear();
+    }, [results]);
 
     // Scroll to the target file after content renders.
     //

@@ -66,7 +66,11 @@ const ChatListInternal = React.memo((props: {
     const { theme } = useUnistyles();
     const flatListRef = React.useRef<FlatList>(null);
     const [showScrollButton, setShowScrollButton] = React.useState(false);
-    const isNearBottom = React.useRef(true);
+    // Tracks whether the scroll-button is currently shown, so we only call
+    // setShowScrollButton when the threshold is actually crossed instead of
+    // on every scroll frame (60Hz). Without this guard, the entire list
+    // parent re-renders on every wheel tick.
+    const showScrollButtonRef = React.useRef(false);
     const keyExtractor = useCallback((item: any) => item.id, []);
 
     // Long-press → fork-from-this-message. Uses the same canFork gate as
@@ -98,16 +102,16 @@ const ChatListInternal = React.memo((props: {
 
     // In inverted FlatList, offset 0 = latest messages (visual bottom).
     // Offset increases as user scrolls up to see older messages.
+    // Auto-stick-to-bottom on new messages is handled natively by FlatList's
+    // maintainVisibleContentPosition.autoscrollToBottomThreshold — no JS-side
+    // scrollToOffset is needed (and running both produces a fight that drags
+    // the user's viewport when reading older messages mid-stream).
     const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
         const offsetY = e.nativeEvent.contentOffset.y;
-        setShowScrollButton(offsetY > SCROLL_THRESHOLD);
-        // Track near-bottom state for auto-scroll on new content
-        isNearBottom.current = offsetY < 100;
-    }, []);
-
-    const onContentSizeChange = useCallback(() => {
-        if (isNearBottom.current) {
-            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        const next = offsetY > SCROLL_THRESHOLD;
+        if (next !== showScrollButtonRef.current) {
+            showScrollButtonRef.current = next;
+            setShowScrollButton(next);
         }
     }, []);
 
@@ -150,14 +154,23 @@ const ChatListInternal = React.memo((props: {
                 inverted={true}
                 keyExtractor={keyExtractor}
                 maintainVisibleContentPosition={{
-                    minIndexForVisible: 0,
-                    autoscrollToTopThreshold: 10,
+                    // Anchor on the second-newest message (index 1), not the
+                    // newest. The newest slot (index 0) gets a brand-new item
+                    // each agent token, which would otherwise destabilise the
+                    // anchor and drag the viewport up.
+                    //
+                    // autoscrollToTopThreshold: for INVERTED lists this is
+                    // actually the auto-stick-to-visual-bottom threshold —
+                    // contentOffset 0 is at the visual bottom in an inverted
+                    // list, and this prop sticks the viewport to offset 0
+                    // when the user is within N units of it.
+                    minIndexForVisible: 1,
+                    autoscrollToTopThreshold: 50,
                 }}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
                 renderItem={renderItem}
                 onScroll={handleScroll}
-                onContentSizeChange={onContentSizeChange}
                 scrollEventThrottle={16}
                 ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
                 ListFooterComponent={<ListHeader isLoadingOlder={props.isLoadingOlder} />}
