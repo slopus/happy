@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
     getAvailableModels,
     getAvailablePermissionModes,
+    getClaudeEffortLevels,
+    getCodexEffortLevels,
     getCodexModelModes,
     getClaudePermissionModes,
     mapMetadataOptions,
@@ -97,5 +99,19 @@ describe('modelModeOptions', () => {
 
         expect(resolveCurrentOption(options, ['missing', 'b', 'a'])).toEqual({ key: 'b', name: 'B' });
         expect(resolveCurrentOption(options, ['missing'])).toBeNull();
+    });
+});
+
+describe('getClaudeEffortLevels', () => {
+    it('exposes 5 levels in low → max order with xhigh between high and max', () => {
+        const levels = getClaudeEffortLevels();
+        expect(levels).toHaveLength(5);
+        expect(levels.map((level) => level.key)).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+    });
+
+    it('keeps codex effort levels at 4 entries with xhigh as the top tier', () => {
+        const levels = getCodexEffortLevels();
+        expect(levels).toHaveLength(4);
+        expect(levels.map((level) => level.key)).toEqual(['low', 'medium', 'high', 'xhigh']);
     });
 });

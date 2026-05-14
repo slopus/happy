@@ -47,9 +47,9 @@ export interface QueryOptions {
     /**
      * Effort level passed straight through to the Claude Agent SDK option
      * of the same name — controls how much thinking/reasoning Claude
-     * applies on each turn ('low' | 'medium' | 'high' | 'max').
+     * applies on each turn ('low' | 'medium' | 'high' | 'xhigh' | 'max').
      */
-    effort?: 'low' | 'medium' | 'high' | 'max'
+    effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 }
 
 /**
