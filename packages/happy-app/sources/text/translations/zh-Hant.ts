@@ -499,6 +499,16 @@ export const zhHant: TranslationStructure = {
         output: '輸出',
     },
 
+    toolGroup: {
+        editedFiles: ({ count }: { count: number }) => `編輯了 ${count} 個檔案`,
+        readFiles: ({ count }: { count: number }) => `讀取了 ${count} 個檔案`,
+        ranCommands: ({ count }: { count: number }) => `執行了 ${count} 個指令`,
+        searched: ({ count }: { count: number }) => `搜尋了 ${count} 次`,
+        fetchedUrls: ({ count }: { count: number }) => `取得了 ${count} 個 URL`,
+        ranTasks: ({ count }: { count: number }) => `執行了 ${count} 個任務`,
+        usedTools: ({ count }: { count: number }) => `使用了 ${count} 個工具`,
+    },
+
     tools: {
         fullView: {
             description: '描述',

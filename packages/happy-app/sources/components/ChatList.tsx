@@ -6,10 +6,12 @@ import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
+import { ToolGroupView } from './ToolGroupView';
 import { DuplicateSheet } from './DuplicateSheet';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
+import { DisplayItem, ToolGroupItem, useGroupedMessages } from '@/hooks/useGroupedMessages';
 import { Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Modal } from '@/modal';
@@ -71,7 +73,42 @@ const ChatListInternal = React.memo((props: {
     // on every scroll frame (60Hz). Without this guard, the entire list
     // parent re-renders on every wheel tick.
     const showScrollButtonRef = React.useRef(false);
-    const keyExtractor = useCallback((item: any) => item.id, []);
+
+    // Group consecutive tool calls between text messages into collapsible containers
+    const displayItems = useGroupedMessages(props.messages);
+
+    // Track which groups the user has manually toggled (flips their default state)
+    const [toggledGroups, setToggledGroups] = React.useState<Set<string>>(new Set());
+
+    // Auto-collapse groups when they finish running: clear toggle state so
+    // they return to the default (collapsed for completed groups)
+    React.useEffect(() => {
+        setToggledGroups((prev) => {
+            let changed = false;
+            const next = new Set(prev);
+            for (const item of displayItems) {
+                if (item.type === 'tool-group' && !item.hasRunning && prev.has(item.id)) {
+                    next.delete(item.id);
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
+    }, [displayItems]);
+
+    const handleToggleGroup = useCallback((groupId: string) => {
+        setToggledGroups((prev) => {
+            const next = new Set(prev);
+            if (next.has(groupId)) {
+                next.delete(groupId);
+            } else {
+                next.add(groupId);
+            }
+            return next;
+        });
+    }, []);
+
+    const keyExtractor = useCallback((item: DisplayItem) => item.id, []);
 
     // Long-press → fork-from-this-message. Uses the same canFork gate as
     // the rest of the fork affordances: ridden by the expResumeSession
@@ -91,14 +128,29 @@ const ChatListInternal = React.memo((props: {
         } as any);
     }, [props.sessionId]);
 
-    const renderItem = useCallback(({ item }: { item: any }) => (
-        <MessageView
-            message={item}
-            metadata={props.metadata}
-            sessionId={props.sessionId}
-            onForkFromUserMessage={canFork ? handleForkFromMessage : undefined}
-        />
-    ), [props.metadata, props.sessionId, canFork, handleForkFromMessage]);
+    const renderItem = useCallback(({ item }: { item: DisplayItem }) => {
+        if (item.type === 'tool-group') {
+            const defaultExpanded = item.hasRunning;
+            const expanded = toggledGroups.has(item.id) ? !defaultExpanded : defaultExpanded;
+            return (
+                <ToolGroupView
+                    group={item}
+                    metadata={props.metadata}
+                    sessionId={props.sessionId}
+                    expanded={expanded}
+                    onToggle={() => handleToggleGroup(item.id)}
+                />
+            );
+        }
+        return (
+            <MessageView
+                message={item.message}
+                metadata={props.metadata}
+                sessionId={props.sessionId}
+                onForkFromUserMessage={canFork ? handleForkFromMessage : undefined}
+            />
+        );
+    }, [props.metadata, props.sessionId, canFork, handleForkFromMessage, toggledGroups, handleToggleGroup]);
 
     // In inverted FlatList, offset 0 = latest messages (visual bottom).
     // Offset increases as user scrolls up to see older messages.
@@ -150,7 +202,7 @@ const ChatListInternal = React.memo((props: {
         <View style={{ flex: 1 }}>
             <FlatList
                 ref={flatListRef}
-                data={props.messages}
+                data={displayItems}
                 inverted={true}
                 keyExtractor={keyExtractor}
                 maintainVisibleContentPosition={{

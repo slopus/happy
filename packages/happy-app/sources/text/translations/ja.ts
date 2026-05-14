@@ -500,6 +500,16 @@ export const ja: TranslationStructure = {
         output: '出力',
     },
 
+    toolGroup: {
+        editedFiles: ({ count }: { count: number }) => `${count}個のファイルを編集`,
+        readFiles: ({ count }: { count: number }) => `${count}個のファイルを読み取り`,
+        ranCommands: ({ count }: { count: number }) => `${count}個のコマンドを実行`,
+        searched: ({ count }: { count: number }) => `${count}回検索`,
+        fetchedUrls: ({ count }: { count: number }) => `${count}個のURLを取得`,
+        ranTasks: ({ count }: { count: number }) => `${count}個のタスクを実行`,
+        usedTools: ({ count }: { count: number }) => `${count}個のツールを使用`,
+    },
+
     tools: {
         fullView: {
             description: '説明',

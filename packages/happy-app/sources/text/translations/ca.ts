@@ -499,6 +499,16 @@ export const ca: TranslationStructure = {
         output: 'Sortida',
     },
 
+    toolGroup: {
+        editedFiles: ({ count }: { count: number }) => count === 1 ? 'S\'ha editat 1 fitxer' : `S'han editat ${count} fitxers`,
+        readFiles: ({ count }: { count: number }) => count === 1 ? 'S\'ha llegit 1 fitxer' : `S'han llegit ${count} fitxers`,
+        ranCommands: ({ count }: { count: number }) => count === 1 ? 'S\'ha executat 1 comanda' : `S'han executat ${count} comandes`,
+        searched: ({ count }: { count: number }) => count === 1 ? 'S\'ha cercat 1 vegada' : `S'ha cercat ${count} vegades`,
+        fetchedUrls: ({ count }: { count: number }) => count === 1 ? 'S\'ha obtingut 1 URL' : `S'han obtingut ${count} URLs`,
+        ranTasks: ({ count }: { count: number }) => count === 1 ? 'S\'ha executat 1 tasca' : `S'han executat ${count} tasques`,
+        usedTools: ({ count }: { count: number }) => count === 1 ? 'S\'ha usat 1 eina' : `S'han usat ${count} eines`,
+    },
+
     tools: {
         fullView: {
             description: 'Descripció',
