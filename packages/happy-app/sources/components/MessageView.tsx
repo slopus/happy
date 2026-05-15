@@ -10,7 +10,7 @@ import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 import { layout } from "./layout";
-import { parseLocalCommandMessage } from './parseLocalCommandMessage';
+import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
 
 
 export const MessageView = React.memo((props: {
@@ -55,6 +55,7 @@ function RenderBlock(props: {
       return (
         <UserTextBlock
           message={props.message}
+          metadata={props.metadata}
           sessionId={props.sessionId}
           onForkFromUserMessage={props.onForkFromUserMessage}
         />
@@ -84,6 +85,7 @@ function RenderBlock(props: {
 
 function UserTextBlock(props: {
   message: UserTextMessage;
+  metadata: Metadata | null;
   sessionId: string;
   onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
 }) {
@@ -105,6 +107,17 @@ function UserTextBlock(props: {
   // whenever a slash command runs. The plain MarkdownView renders these as
   // literal text, which looks broken. Collapse them into chips or hide
   // them entirely depending on what kind of wrapper this is.
+  // The user's own slash-command input is shown optimistically (carries a
+  // localId); the SDK then injects the canonical wrapper chip. Hide the raw
+  // echo so we don't render the command twice. Gated to Claude flavor only:
+  // Codex/Gemini don't reliably emit the <command-*> wrapper, so hiding the
+  // echo there would drop the command with nothing to replace it. (Absent
+  // flavor == Claude, matching the convention used elsewhere.)
+  const isClaudeFlavor = !props.metadata?.flavor || props.metadata.flavor === 'claude';
+  if (isClaudeFlavor && isUserSlashCommandEcho(props.message.text, props.message.localId != null)) {
+    return null;
+  }
+
   const parsed = parseLocalCommandMessage(props.message.displayText || props.message.text);
   if (parsed.kind === 'caveat') {
     return null;
