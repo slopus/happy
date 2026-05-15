@@ -1,3 +1,15 @@
+# May 15 — Cleaner, steadier chat
+
+Less clutter in the conversation, fewer stuck states, smoother scrolling.
+
+- Slash commands render as a clean chip — no more raw command markup or duplicated text.
+- Skill runs no longer dump a wall of raw instructions into the chat.
+- Chats pick up their real title instead of staying stuck on "New chat".
+- The view stays put while the agent streams — no more scroll jumps when you've scrolled up to read.
+- "Permission required" prompts clear properly after a session is interrupted.
+- Resumed sessions no longer replay your whole history as duplicate messages.
+- Slash-command and file autocomplete shows more results and keeps the highlighted item in view.
+
 # May 13 — Faster long chats
 
 Long sessions open instantly. Messages load latest-first with older history streaming in on scroll.
