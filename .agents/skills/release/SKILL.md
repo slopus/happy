@@ -104,14 +104,43 @@ pnpm publish --tag {channel} --no-git-checks --ignore-scripts
 - `--no-git-checks`: allows dirty working tree (we already verified state)
 - `--ignore-scripts`: skips `prepublishOnly` (we already built and tested)
 
+**MUST use `pnpm publish` — never `npm publish`.** This is a pnpm workspace; `npm
+publish` mis-resolves the workspace protocol and the `bin` entries and ships a
+broken tarball (a regression was reported for exactly this and the fix was to
+standardize on `pnpm publish`). `pnpm publish` is the only supported path. Do not
+"fall back" to `npm publish` if pnpm errors — diagnose the pnpm error instead.
+
+**Transient TLS upload failures are expected — retry, don't panic.** The tarball
+is large (~160 MB, ~1000 files). The upload to `registry.npmjs.org` frequently
+dies mid-stream with:
+
+```
+npm error code ERR_SSL_SSL/TLS_ALERT_BAD_RECORD_MAC
+npm error ... ssl3_read_bytes:ssl/tls alert bad record mac ...
+```
+
+This is network-layer corruption of a single TLS record on the long upload, **not**
+a code, auth, or version problem. A single bad record kills the whole stream, so
+each fresh attempt has an independent chance to complete. Just re-run the exact
+same `pnpm publish` command — it typically succeeds within 2–3 attempts (it took
+3 on the 1.1.10-beta.4 release). Before each retry, confirm it did NOT actually
+land (see Step 8); npm rejects re-publishing an already-published version, which
+would be a misleading error. A clean success prints `+ happy@X.Y.Z`.
+
 ### Step 8: Verify
 
 ```bash
-npm view happy dist-tags
+npm view happy@{version} version   # did the version actually publish?
+npm view happy dist-tags           # did the channel tag move?
 ```
 
-Confirm the new version appears under the correct tag.
-If `latest` doesn't move immediately, wait 10-15 seconds and check again; npm tag propagation is not always instant.
+Check `npm view happy@X.Y.Z version` first — it returns the version string if the
+publish landed (use this between TLS retries to avoid double-publishing, and to
+distinguish a real failure from a cosmetic upload error).
+
+Then confirm the new version appears under the correct dist-tag. The tag often
+lags the publish by 10–40s — poll a few times before concluding it failed; npm
+tag propagation is not instant.
 
 ### Step 9: Git tag + commit (latest only)
 
