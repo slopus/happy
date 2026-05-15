@@ -67,6 +67,7 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRo
     const repoDisplayPath = isWorktree
         ? formatPathRelativeToHome(repoPath, session.homeDir ?? undefined)
         : displayPath;
+    const repoFolderName = repoPath.split(/[/\\]/).filter(Boolean).pop() || repoDisplayPath;
     const worktreeName = isWorktree ? getWorktreeName(sessionPath) : null;
 
     const gitInfo = useSectionGitInfo(session.id);
@@ -103,7 +104,7 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRo
             {/* Path + branch */}
             <View style={styles.sectionHeaderContent}>
                 <Text style={styles.sectionHeaderPath} numberOfLines={1}>
-                    {repoDisplayPath}
+                    {repoFolderName}
                 </Text>
                 {hasBranch && (
                     <View style={styles.branchRow}>
@@ -455,6 +456,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         lineHeight: Platform.select({ ios: 18, default: 20 }),
         letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
         fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+        flexShrink: 1,
     },
     branchRow: {
         flexDirection: 'row',

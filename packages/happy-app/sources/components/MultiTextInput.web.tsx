@@ -25,14 +25,19 @@ export interface TextInputState {
 }
 
 export interface MultiTextInputHandle {
+    getText: () => string;
     setTextAndSelection: (text: string, selection: { start: number; end: number }) => void;
     focus: () => void;
     blur: () => void;
 }
 
+// Either `value` (controlled) or `defaultValue` (uncontrolled) must be set.
+// Uncontrolled mode keeps the DOM textarea content out of React's reconciliation
+// so keystrokes don't get batched and dropped on a busy main thread.
 interface MultiTextInputProps {
-    value: string;
-    onChangeText: (text: string) => void;
+    value?: string;
+    defaultValue?: string;
+    onChangeText?: (text: string) => void;
     placeholder?: string;
     maxHeight?: number;
     lineHeight?: number;
@@ -48,6 +53,7 @@ interface MultiTextInputProps {
 export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
     const {
         value,
+        defaultValue,
         onChangeText,
         placeholder,
         maxHeight = 120,
@@ -56,7 +62,8 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         onSelectionChange,
         onStateChange
     } = props;
-    
+
+    const isControlled = value !== undefined;
     const { theme } = useUnistyles();
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -114,13 +121,13 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
 
     const handleChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const text = e.target.value;
-        const selection = { 
-            start: e.target.selectionStart, 
-            end: e.target.selectionEnd 
+        const selection = {
+            start: e.target.selectionStart,
+            end: e.target.selectionEnd
         };
-        
-        onChangeText(text);
-        
+
+        onChangeText?.(text);
+
         if (onStateChange) {
             onStateChange({ text, selection });
         }
@@ -131,33 +138,34 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
 
     const handleSelect = React.useCallback((e: React.SyntheticEvent<HTMLTextAreaElement>) => {
         const target = e.target as HTMLTextAreaElement;
-        const selection = { 
-            start: target.selectionStart, 
-            end: target.selectionEnd 
+        const selection = {
+            start: target.selectionStart,
+            end: target.selectionEnd
         };
-        
+
         if (onSelectionChange) {
             onSelectionChange(selection);
         }
         if (onStateChange) {
-            onStateChange({ text: value, selection });
+            onStateChange({ text: target.value, selection });
         }
-    }, [value, onSelectionChange, onStateChange]);
+    }, [onSelectionChange, onStateChange]);
 
     // Imperative handle for direct control
     React.useImperativeHandle(ref, () => ({
+        getText: () => textareaRef.current?.value ?? '',
         setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
             if (textareaRef.current) {
                 // Directly set value and selection on DOM element
                 textareaRef.current.value = text;
                 textareaRef.current.setSelectionRange(selection.start, selection.end);
-                
+
                 // Trigger React's onChange by dispatching an input event
                 const event = new Event('input', { bubbles: true });
                 textareaRef.current.dispatchEvent(event);
-                
+
                 // Also call callbacks directly for immediate update
-                onChangeText(text);
+                onChangeText?.(text);
                 if (onStateChange) {
                     onStateChange({ text, selection });
                 }
@@ -196,7 +204,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     paddingRight: props.paddingRight,
                 }}
                 placeholder={placeholder}
-                value={value}
+                {...(isControlled ? { value } : { defaultValue })}
                 onChange={handleChange}
                 onSelect={handleSelect}
                 onKeyDown={handleKeyDown}

@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { isTauri } from '@/utils/isTauri';
+import { useOverlayNav } from '@/-session/sessionOverlayNav';
 import { DEFAULT_APP_ZOOM } from '@/hooks/useTauriZoom';
 
 const TAURI_HEADER_CONTROL_LEFT = Math.ceil(92 / DEFAULT_APP_ZOOM);
@@ -85,7 +86,13 @@ export const SidebarNavigator = React.memo(() => {
             };
         }
 
-        // Tablet: always permanent, just collapse width in zen mode
+        // Tablet: always permanent, just collapse width in zen mode.
+        //
+        // We deliberately do NOT animate `width` on web. A CSS transition on
+        // the drawer width re-flowed the chat flex-1 sibling on every frame,
+        // re-measuring the entire FlatList tree at ~15fps. Snapping the
+        // width change makes the chat reflow exactly once. Native already
+        // snaps because RN doesn't honor CSS transition properties.
         return {
             lazy: false,
             headerShown: false,
@@ -95,11 +102,6 @@ export const SidebarNavigator = React.memo(() => {
                 borderRightWidth: 0,
                 width: drawerWidth,
                 overflow: 'hidden' as const,
-                ...(Platform.OS === 'web' ? {
-                    transitionProperty: 'width',
-                    transitionDuration: '250ms',
-                    transitionTimingFunction: 'cubic-bezier(0.33, 1, 0.68, 1)',
-                } : {}),
             } as any,
             swipeEnabled: false,
             drawerActiveTintColor: 'transparent',
@@ -139,22 +141,31 @@ const PersistentHeader = React.memo(() => {
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
 
     const { canGoBack, canGoForward, markBack, markForward } = useNavHistory();
+    const overlayCanBack = useOverlayNav((s) => s.canBack);
+    const overlayCanForward = useOverlayNav((s) => s.canForward);
 
     const handleZenToggle = React.useCallback(() => {
         setZenMode(!zenMode);
     }, [zenMode, setZenMode]);
 
     const handleBack = React.useCallback(() => {
+        // Intra-session overlay (file diff / file view) consumes back first,
+        // so the chat → diff → file flow can be unwound without a close X.
+        if (useOverlayNav.getState().back()) return;
         markBack();
         router.back();
     }, [router, markBack]);
 
     const handleForward = React.useCallback(() => {
+        if (useOverlayNav.getState().forward()) return;
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
             markForward();
             window.history.forward();
         }
     }, [markForward]);
+
+    const canGoBackEffective = canGoBack || overlayCanBack;
+    const canGoForwardEffective = canGoForward || overlayCanForward;
 
     return (
         <View
@@ -193,11 +204,11 @@ const PersistentHeader = React.memo(() => {
                         tintColor={zenMode ? theme.colors.textLink : theme.colors.header.tint}
                     />
                 </Pressable>
-                <Pressable onPress={handleBack} disabled={!canGoBack} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBack ? 1 : 0.3 }}>
+                <Pressable onPress={handleBack} disabled={!canGoBackEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBackEffective ? 1 : 0.3 }}>
                     <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
                 </Pressable>
                 {Platform.OS === 'web' && (
-                    <Pressable onPress={handleForward} disabled={!canGoForward} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoForward ? 1 : 0.3 }}>
+                    <Pressable onPress={handleForward} disabled={!canGoForwardEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoForwardEffective ? 1 : 0.3 }}>
                         <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />
                     </Pressable>
                 )}

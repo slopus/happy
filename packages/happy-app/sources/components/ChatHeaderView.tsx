@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
@@ -11,6 +11,10 @@ interface ChatHeaderViewProps {
     title: string;
     /** Project folder name (last path segment) */
     folderName?: string;
+    /** Extra path segment appended to the title with a separator (used for the file-view overlay). */
+    extraPathSegment?: string;
+    /** Optional content rendered at the right edge of the header (used by file-view / diff overlays). */
+    rightSlot?: React.ReactNode;
     onTitlePress?: () => void;
     onBackPress?: () => void;
     backgroundColor?: string;
@@ -21,6 +25,8 @@ interface ChatHeaderViewProps {
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     title,
     folderName,
+    extraPathSegment,
+    rightSlot,
     onTitlePress,
     onBackPress,
     isConnected = true,
@@ -30,6 +36,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     const headerHeight = useHeaderHeight();
     const isTablet = useIsTablet();
     const showBackButton = !isTablet && !!onBackPress;
+    const hasExtra = !!extraPathSegment;
 
     return (
         <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.header.background }]}>
@@ -51,7 +58,6 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                     >
                         {folderName ? (
                             <View style={styles.titleRow}>
-                                <Octicons name="file-directory" size={14} color={theme.colors.textSecondary} />
                                 <Text
                                     numberOfLines={1}
                                     style={[styles.folderName, { color: theme.colors.textSecondary, ...Typography.default() }]}
@@ -64,9 +70,25 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                                         <Text
                                             numberOfLines={1}
                                             ellipsizeMode="tail"
-                                            style={[styles.title, { color: theme.colors.header.tint, ...Typography.default() }]}
+                                            style={[
+                                                styles.title,
+                                                hasExtra && styles.titleWithExtra,
+                                                { color: theme.colors.header.tint, ...Typography.default() },
+                                            ]}
                                         >
                                             {title}
+                                        </Text>
+                                    </>
+                                )}
+                                {hasExtra && (
+                                    <>
+                                        <Text style={[styles.separator, { color: theme.colors.textSecondary, ...Typography.default() }]}>/</Text>
+                                        <Text
+                                            numberOfLines={1}
+                                            ellipsizeMode="middle"
+                                            style={[styles.extraPath, { color: theme.colors.header.tint, ...Typography.mono() }]}
+                                        >
+                                            {extraPathSegment}
                                         </Text>
                                     </>
                                 )}
@@ -81,6 +103,11 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             </Text>
                         )}
                     </Pressable>
+                    {rightSlot ? (
+                        <View style={styles.rightSlot}>
+                            {rightSlot}
+                        </View>
+                    ) : null}
                 </View>
             </View>
         </View>
@@ -107,6 +134,7 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'flex-start',
+        minWidth: 0,
     },
     titleRow: {
         flexDirection: 'row',
@@ -120,11 +148,30 @@ const styles = StyleSheet.create({
     },
     separator: {
         fontSize: 14,
+        flexShrink: 0,
     },
     title: {
         fontSize: 14,
         fontWeight: '600',
         flexShrink: 1,
+    },
+    titleWithExtra: {
+        // When an extra path segment follows, let the chat name keep its
+        // intrinsic width and squeeze the path first.
+        flexShrink: 0.5,
+    },
+    extraPath: {
+        flex: 1,
+        minWidth: 0,
+        fontSize: 13,
+        flexShrink: 1,
+    },
+    rightSlot: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginLeft: 12,
+        flexShrink: 0,
     },
     backButton: {
         paddingHorizontal: 8,

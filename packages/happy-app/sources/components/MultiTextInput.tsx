@@ -24,14 +24,20 @@ export interface TextInputState {
 }
 
 export interface MultiTextInputHandle {
+    getText: () => string;
     setTextAndSelection: (text: string, selection: { start: number; end: number }) => void;
     focus: () => void;
     blur: () => void;
 }
 
+// Either `value` (controlled) or `defaultValue` (uncontrolled) must be set.
+// Uncontrolled mode keeps the textarea content owned by the platform; React
+// state never round-trips back into the input, which removes the keystroke
+// batching that makes deletion feel chunky on a busy main thread.
 interface MultiTextInputProps {
-    value: string;
-    onChangeText: (text: string) => void;
+    value?: string;
+    defaultValue?: string;
+    onChangeText?: (text: string) => void;
     placeholder?: string;
     editable?: boolean;
     maxHeight?: number;
@@ -45,9 +51,10 @@ interface MultiTextInputProps {
     onStateChange?: (state: TextInputState) => void;
 }
 
-export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
+export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
     const {
         value,
+        defaultValue,
         onChangeText,
         placeholder,
         editable = true,
@@ -58,10 +65,18 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         onStateChange
     } = props;
 
+    const isControlled = value !== undefined;
     const { theme } = useUnistyles();
     // Track latest selection in a ref
     const selectionRef = React.useRef({ start: 0, end: 0 });
     const inputRef = React.useRef<TextInput>(null);
+    // In uncontrolled mode the input owns the text. Mirror keystrokes here so
+    // imperative getText() and selection-change events can read the live value
+    // without taking a round-trip through React state.
+    const latestTextRef = React.useRef<string>(value ?? defaultValue ?? '');
+    if (isControlled) {
+        latestTextRef.current = value!;
+    }
     const textStyle = {
         width: '100%' as const,
         fontSize: MULTI_TEXT_INPUT_FONT_SIZE,
@@ -135,12 +150,13 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     }, [editable, onKeyPress]);
 
     const handleTextChange = React.useCallback((text: string) => {
+        latestTextRef.current = text;
         // When text changes, assume cursor moves to end
         const selection = { start: text.length, end: text.length };
         selectionRef.current = selection;
 
-        onChangeText(text);
-        
+        onChangeText?.(text);
+
         if (onStateChange) {
             onStateChange({ text, selection });
         }
@@ -153,7 +169,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         if (e.nativeEvent.selection) {
             const { start, end } = e.nativeEvent.selection;
             const selection = { start, end };
-            
+
             // Only update if selection actually changed
             if (selection.start !== selectionRef.current.start || selection.end !== selectionRef.current.end) {
                 selectionRef.current = selection;
@@ -162,14 +178,15 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     onSelectionChange(selection);
                 }
                 if (onStateChange) {
-                    onStateChange({ text: value, selection });
+                    onStateChange({ text: latestTextRef.current, selection });
                 }
             }
         }
-    }, [value, onSelectionChange, onStateChange]);
+    }, [onSelectionChange, onStateChange]);
 
     // Imperative handle for direct control
     React.useImperativeHandle(ref, () => ({
+        getText: () => latestTextRef.current,
         setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
             if (inputRef.current) {
                 // Use setNativeProps for direct manipulation
@@ -177,12 +194,12 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     text: text,
                     selection: selection
                 });
-                
-                // Update our ref
+
+                latestTextRef.current = text;
                 selectionRef.current = selection;
-                
+
                 // Notify through callbacks
-                onChangeText(text);
+                onChangeText?.(text);
                 if (onStateChange) {
                     onStateChange({ text, selection });
                 }
@@ -199,6 +216,8 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         }
     }), [onChangeText, onStateChange, onSelectionChange]);
 
+    const displayText = isControlled ? value! : latestTextRef.current;
+
     return (
         <View style={{ width: '100%' }}>
             {editable ? (
@@ -207,7 +226,8 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     style={textStyle}
                     placeholder={placeholder}
                     placeholderTextColor={theme.colors.input.placeholder}
-                    value={value}
+                    value={isControlled ? value : undefined}
+                    defaultValue={isControlled ? undefined : defaultValue}
                     editable={editable}
                     onChangeText={handleTextChange}
                     onKeyPress={handleKeyPress}
@@ -227,16 +247,16 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                         style={[
                             textStyle,
                             {
-                                color: value ? theme.colors.input.text : theme.colors.input.placeholder,
+                                color: displayText ? theme.colors.input.text : theme.colors.input.placeholder,
                             },
                         ]}
                     >
-                        {value || placeholder || ' '}
+                        {displayText || placeholder || ' '}
                     </Text>
                 </View>
             )}
         </View>
     );
-});
+}));
 
 MultiTextInput.displayName = 'MultiTextInput';

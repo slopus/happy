@@ -1,15 +1,17 @@
 import * as React from 'react';
-import { useSession, useSessionMessages } from "@/sync/storage";
+import { useSession, useSessionMessages, useSetting } from "@/sync/storage";
 import { sync } from '@/sync/sync';
 import { ActivityIndicator, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, View } from 'react-native';
 import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
+import { ToolGroupView } from './ToolGroupView';
 import { DuplicateSheet } from './DuplicateSheet';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
+import { DisplayItem, ToolGroupItem, useGroupedMessages } from '@/hooks/useGroupedMessages';
 import { Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Modal } from '@/modal';
@@ -66,8 +68,49 @@ const ChatListInternal = React.memo((props: {
     const { theme } = useUnistyles();
     const flatListRef = React.useRef<FlatList>(null);
     const [showScrollButton, setShowScrollButton] = React.useState(false);
-    const isNearBottom = React.useRef(true);
-    const keyExtractor = useCallback((item: any) => item.id, []);
+    // Tracks whether the scroll-button is currently shown, so we only call
+    // setShowScrollButton when the threshold is actually crossed instead of
+    // on every scroll frame (60Hz). Without this guard, the entire list
+    // parent re-renders on every wheel tick.
+    const showScrollButtonRef = React.useRef(false);
+
+    // Group consecutive tool calls between text messages into collapsible
+    // containers — unless the user disabled it in settings.
+    const groupToolCalls = useSetting('groupToolCalls');
+    const displayItems = useGroupedMessages(props.messages, groupToolCalls);
+
+    // Track which groups the user has manually toggled (flips their default state)
+    const [toggledGroups, setToggledGroups] = React.useState<Set<string>>(new Set());
+
+    // Auto-collapse groups when they finish running: clear toggle state so
+    // they return to the default (collapsed for completed groups)
+    React.useEffect(() => {
+        setToggledGroups((prev) => {
+            let changed = false;
+            const next = new Set(prev);
+            for (const item of displayItems) {
+                if (item.type === 'tool-group' && !item.hasRunning && prev.has(item.id)) {
+                    next.delete(item.id);
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
+    }, [displayItems]);
+
+    const handleToggleGroup = useCallback((groupId: string) => {
+        setToggledGroups((prev) => {
+            const next = new Set(prev);
+            if (next.has(groupId)) {
+                next.delete(groupId);
+            } else {
+                next.add(groupId);
+            }
+            return next;
+        });
+    }, []);
+
+    const keyExtractor = useCallback((item: DisplayItem) => item.id, []);
 
     // Long-press → fork-from-this-message. Uses the same canFork gate as
     // the rest of the fork affordances: ridden by the expResumeSession
@@ -87,27 +130,42 @@ const ChatListInternal = React.memo((props: {
         } as any);
     }, [props.sessionId]);
 
-    const renderItem = useCallback(({ item }: { item: any }) => (
-        <MessageView
-            message={item}
-            metadata={props.metadata}
-            sessionId={props.sessionId}
-            onForkFromUserMessage={canFork ? handleForkFromMessage : undefined}
-        />
-    ), [props.metadata, props.sessionId, canFork, handleForkFromMessage]);
+    const renderItem = useCallback(({ item }: { item: DisplayItem }) => {
+        if (item.type === 'tool-group') {
+            const defaultExpanded = item.hasRunning;
+            const expanded = toggledGroups.has(item.id) ? !defaultExpanded : defaultExpanded;
+            return (
+                <ToolGroupView
+                    group={item}
+                    metadata={props.metadata}
+                    sessionId={props.sessionId}
+                    expanded={expanded}
+                    onToggle={() => handleToggleGroup(item.id)}
+                />
+            );
+        }
+        return (
+            <MessageView
+                message={item.message}
+                metadata={props.metadata}
+                sessionId={props.sessionId}
+                onForkFromUserMessage={canFork ? handleForkFromMessage : undefined}
+            />
+        );
+    }, [props.metadata, props.sessionId, canFork, handleForkFromMessage, toggledGroups, handleToggleGroup]);
 
     // In inverted FlatList, offset 0 = latest messages (visual bottom).
     // Offset increases as user scrolls up to see older messages.
+    // Auto-stick-to-bottom on new messages is handled natively by FlatList's
+    // maintainVisibleContentPosition.autoscrollToBottomThreshold — no JS-side
+    // scrollToOffset is needed (and running both produces a fight that drags
+    // the user's viewport when reading older messages mid-stream).
     const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
         const offsetY = e.nativeEvent.contentOffset.y;
-        setShowScrollButton(offsetY > SCROLL_THRESHOLD);
-        // Track near-bottom state for auto-scroll on new content
-        isNearBottom.current = offsetY < 100;
-    }, []);
-
-    const onContentSizeChange = useCallback(() => {
-        if (isNearBottom.current) {
-            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        const next = offsetY > SCROLL_THRESHOLD;
+        if (next !== showScrollButtonRef.current) {
+            showScrollButtonRef.current = next;
+            setShowScrollButton(next);
         }
     }, []);
 
@@ -146,18 +204,27 @@ const ChatListInternal = React.memo((props: {
         <View style={{ flex: 1 }}>
             <FlatList
                 ref={flatListRef}
-                data={props.messages}
+                data={displayItems}
                 inverted={true}
                 keyExtractor={keyExtractor}
                 maintainVisibleContentPosition={{
-                    minIndexForVisible: 0,
-                    autoscrollToTopThreshold: 10,
+                    // Anchor on the second-newest message (index 1), not the
+                    // newest. The newest slot (index 0) gets a brand-new item
+                    // each agent token, which would otherwise destabilise the
+                    // anchor and drag the viewport up.
+                    //
+                    // autoscrollToTopThreshold: for INVERTED lists this is
+                    // actually the auto-stick-to-visual-bottom threshold —
+                    // contentOffset 0 is at the visual bottom in an inverted
+                    // list, and this prop sticks the viewport to offset 0
+                    // when the user is within N units of it.
+                    minIndexForVisible: 1,
+                    autoscrollToTopThreshold: 50,
                 }}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
                 renderItem={renderItem}
                 onScroll={handleScroll}
-                onContentSizeChange={onContentSizeChange}
                 scrollEventThrottle={16}
                 ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
                 ListFooterComponent={<ListHeader isLoadingOlder={props.isLoadingOlder} />}

@@ -107,7 +107,7 @@ export const CodeEditor = React.memo(function CodeEditor({
             style={{
                 flex: 1,
                 overflow: 'auto',
-                backgroundColor: darkMode ? '#1e1e1e' : '#ffffff',
+                backgroundColor: 'transparent',
             }}
         >
             <Editor

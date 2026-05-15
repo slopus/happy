@@ -899,13 +899,25 @@ export const storage = create<StorageState>()((set, get) => {
                 [pathKey]: status
             }
         })),
-        applyGitStatusFiles: (pathKey: string, files: GitStatusFiles | null) => set((state) => ({
-            ...state,
-            pathGitStatusFiles: {
-                ...state.pathGitStatusFiles,
-                [pathKey]: files
+        applyGitStatusFiles: (pathKey: string, files: GitStatusFiles | null) => set((state) => {
+            // Short-circuit on no-op writes. gitStatusSync.invalidate fires on every
+            // mutable-tool message and on every update-session, but most of those
+            // don't actually change the file set. Without this guard, every fetch
+            // produces a fresh object reference, the useSessionGitStatusFiles
+            // subscription fires, and AllFilesDiffView nukes its scroll position
+            // and re-runs every git diff. fast-deep-equal handles arrays + nested
+            // objects so we don't have to enumerate fields.
+            if (equal(state.pathGitStatusFiles[pathKey] ?? null, files)) {
+                return state;
             }
-        })),
+            return {
+                ...state,
+                pathGitStatusFiles: {
+                    ...state.pathGitStatusFiles,
+                    [pathKey]: files
+                }
+            };
+        }),
         applyProjectFiles: (pathKey: string, files: ProjectFilesList | null) => set((state) => ({
             ...state,
             pathProjectFiles: {

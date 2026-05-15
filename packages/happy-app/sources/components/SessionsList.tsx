@@ -3,7 +3,7 @@ import { View, Pressable, FlatList, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem, SessionRowData } from '@/sync/storage';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
@@ -131,9 +131,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         gap: 4,
         marginBottom: 4,
     },
-    sessionSubtitleIcon: {
-        color: theme.colors.text,
-    },
     sessionSubtitle: {
         fontSize: 13,
         color: theme.colors.textSecondary,
@@ -209,13 +206,15 @@ export function SessionsList() {
     const toggleArchived = React.useCallback(() => {
         setHideInactiveSessions(!hideInactiveSessions);
     }, [hideInactiveSessions, setHideInactiveSessions]);
-    const selectable = isTablet;
-    const dataWithSelected = selectable ? React.useMemo(() => {
-        return data?.map(item => ({
-            ...item,
-            selected: pathname.startsWith(`/session/${item.type === 'session' ? item.session.id : ''}`)
-        }));
-    }, [data, pathname]) : data;
+    // Selection is derived once from pathname so the data array stays stable
+    // across navigations. This keeps FlatList virtualization intact: only
+    // the previously- and newly-selected rows re-render, instead of the
+    // whole visible window.
+    const selectedSessionId = React.useMemo<string | undefined>(() => {
+        if (!isTablet) return undefined;
+        if (!pathname.startsWith('/session/')) return undefined;
+        return pathname.split('/')[2];
+    }, [isTablet, pathname]);
 
     // Request review
     React.useEffect(() => {
@@ -231,7 +230,7 @@ export function SessionsList() {
         );
     }
 
-    const keyExtractor = React.useCallback((item: SessionListViewItem & { selected?: boolean }, index: number) => {
+    const keyExtractor = React.useCallback((item: SessionListViewItem, index: number) => {
         switch (item.type) {
             case 'header': return `header-${item.title}-${index}`;
             case 'active-sessions': return 'active-sessions';
@@ -241,7 +240,7 @@ export function SessionsList() {
         }
     }, []);
 
-    const renderItem = React.useCallback(({ item, index }: { item: SessionListViewItem & { selected?: boolean }, index: number }) => {
+    const renderItem = React.useCallback(({ item, index }: { item: SessionListViewItem, index: number }) => {
         switch (item.type) {
             case 'header':
                 return (
@@ -264,17 +263,10 @@ export function SessionsList() {
                 );
 
             case 'active-sessions':
-                // Extract just the session ID from pathname (e.g., /session/abc123/file -> abc123)
-                let selectedId: string | undefined;
-                if (isTablet && pathname.startsWith('/session/')) {
-                    const parts = pathname.split('/');
-                    selectedId = parts[2]; // parts[0] is empty, parts[1] is 'session', parts[2] is the ID
-                }
-
                 return (
                     <ActiveSessionsGroupCompact
                         sessions={item.sessions}
-                        selectedSessionId={selectedId}
+                        selectedSessionId={selectedSessionId}
                     />
                 );
 
@@ -292,24 +284,25 @@ export function SessionsList() {
 
             case 'session':
                 // Determine card styling based on position within date group
-                const prevItem = index > 0 && dataWithSelected ? dataWithSelected[index - 1] : null;
-                const nextItem = index < (dataWithSelected?.length || 0) - 1 && dataWithSelected ? dataWithSelected[index + 1] : null;
+                const prevItem = index > 0 ? data[index - 1] : null;
+                const nextItem = index < data.length - 1 ? data[index + 1] : null;
 
                 const isFirst = prevItem?.type === 'header';
                 const isLast = nextItem?.type === 'header' || nextItem == null || nextItem?.type === 'active-sessions';
                 const isSingle = isFirst && isLast;
+                const selected = item.session.id === selectedSessionId;
 
                 return (
                     <SessionItem
                         session={item.session}
-                        selected={item.selected}
+                        selected={selected}
                         isFirst={isFirst}
                         isLast={isLast}
                         isSingle={isSingle}
                     />
                 );
         }
-    }, [pathname, dataWithSelected, toggleArchived]);
+    }, [selectedSessionId, data, toggleArchived]);
 
 
     // Remove this section as we'll use FlatList for all items now
@@ -327,9 +320,10 @@ export function SessionsList() {
         <View style={styles.container}>
             <View style={styles.contentContainer}>
                 <FlatList
-                    data={dataWithSelected}
+                    data={data}
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
+                    extraData={selectedSessionId}
                     contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
                     ListHeaderComponent={HeaderComponent}
                     windowSize={5}
@@ -441,7 +435,6 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
 
                 {session.path ? (
                     <View style={styles.sessionSubtitleRow}>
-                        <Octicons name="file-directory" size={11} color={styles.sessionSubtitleIcon.color as string} />
                         <Text style={styles.sessionSubtitle} numberOfLines={1}>
                             {session.path.split(/[/\\]/).filter(Boolean).pop()}
                         </Text>

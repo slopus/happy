@@ -212,6 +212,8 @@ export const ja: TranslationStructure = {
         markdownCopyV2Subtitle: '長押しでコピーモーダルを開く',
         hideInactiveSessions: '非アクティブセッションを非表示',
         hideInactiveSessionsSubtitle: 'アクティブなチャットのみをリストに表示',
+        groupToolCalls: 'ツール呼び出しをグループ化',
+        groupToolCallsSubtitle: '連続するツール呼び出しを1つのコンテナにまとめる',
         privacy: 'プライバシー',
         privacyDescription: 'すべての分析とテレメトリを完全に無効にします。PostHogやその他のトラッキングサービスにデータは送信されません。',
         disableAnalytics: '分析を無効化',
@@ -498,6 +500,16 @@ export const ja: TranslationStructure = {
     toolView: {
         input: '入力',
         output: '出力',
+    },
+
+    toolGroup: {
+        editedFiles: ({ count }: { count: number }) => `${count}個のファイルを編集`,
+        readFiles: ({ count }: { count: number }) => `${count}個のファイルを読み取り`,
+        ranCommands: ({ count }: { count: number }) => `${count}個のコマンドを実行`,
+        searched: ({ count }: { count: number }) => `${count}回検索`,
+        fetchedUrls: ({ count }: { count: number }) => `${count}個のURLを取得`,
+        ranTasks: ({ count }: { count: number }) => `${count}個のタスクを実行`,
+        usedTools: ({ count }: { count: number }) => `${count}個のツールを使用`,
     },
 
     tools: {

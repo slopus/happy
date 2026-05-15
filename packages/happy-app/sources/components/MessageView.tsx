@@ -1,18 +1,19 @@
 import * as React from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, Platform } from "react-native";
 import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
-import { layout } from "./layout";
 import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
+import { layout } from "./layout";
+import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
 
 
-export const MessageView = (props: {
+export const MessageView = React.memo((props: {
   message: Message;
   metadata: Metadata | null;
   sessionId: string;
@@ -24,7 +25,10 @@ export const MessageView = (props: {
   onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
 }) => {
   return (
-    <View style={styles.messageContainer} renderToHardwareTextureAndroid={true}>
+    <View
+      style={styles.messageContainer}
+      renderToHardwareTextureAndroid={Platform.OS !== 'web'}
+    >
       <View style={styles.messageContent}>
         <RenderBlock
           message={props.message}
@@ -36,7 +40,7 @@ export const MessageView = (props: {
       </View>
     </View>
   );
-};
+});
 
 // RenderBlock function that dispatches to the correct component based on message kind
 function RenderBlock(props: {
@@ -51,6 +55,7 @@ function RenderBlock(props: {
       return (
         <UserTextBlock
           message={props.message}
+          metadata={props.metadata}
           sessionId={props.sessionId}
           onForkFromUserMessage={props.onForkFromUserMessage}
         />
@@ -80,6 +85,7 @@ function RenderBlock(props: {
 
 function UserTextBlock(props: {
   message: UserTextMessage;
+  metadata: Metadata | null;
   sessionId: string;
   onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
 }) {
@@ -95,6 +101,37 @@ function UserTextBlock(props: {
     }
   }, [claudeUuid, props.message.id, props.onForkFromUserMessage]);
 
+  // Claude Agent SDK emits synthetic user messages wrapped in tags like
+  // <local-command-caveat>…</local-command-caveat> and
+  // <command-message>…</command-message><command-name>/foo</command-name>
+  // whenever a slash command runs. The plain MarkdownView renders these as
+  // literal text, which looks broken. Collapse them into chips or hide
+  // them entirely depending on what kind of wrapper this is.
+  // The user's own slash-command input is shown optimistically (carries a
+  // localId); the SDK then injects the canonical wrapper chip. Hide the raw
+  // echo so we don't render the command twice. Gated to Claude flavor only:
+  // Codex/Gemini don't reliably emit the <command-*> wrapper, so hiding the
+  // echo there would drop the command with nothing to replace it. (Absent
+  // flavor == Claude, matching the convention used elsewhere.)
+  const isClaudeFlavor = !props.metadata?.flavor || props.metadata.flavor === 'claude';
+  if (isClaudeFlavor && isUserSlashCommandEcho(props.message.text, props.message.localId != null)) {
+    return null;
+  }
+
+  const parsed = parseLocalCommandMessage(props.message.displayText || props.message.text);
+  if (parsed.kind === 'caveat') {
+    return null;
+  }
+  if (parsed.kind === 'command-run') {
+    return (
+      <View style={styles.userMessageContainer}>
+        <View style={styles.commandChip}>
+          <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.userMessageContainer}>
       <Pressable
@@ -102,7 +139,7 @@ function UserTextBlock(props: {
         delayLongPress={400}
         style={styles.userMessageBubble}
       >
-        <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+        <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
       </Pressable>
     </View>
   );
@@ -220,6 +257,20 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 12,
     marginBottom: 12,
     maxWidth: '100%',
+  },
+  commandChip: {
+    backgroundColor: theme.colors.userMessageBackground,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginBottom: 12,
+    maxWidth: '100%',
+    opacity: 0.65,
+  },
+  commandChipText: {
+    color: theme.colors.input.text,
+    fontSize: 13,
+    fontFamily: 'monospace',
   },
   agentMessageContainer: {
     marginHorizontal: 16,

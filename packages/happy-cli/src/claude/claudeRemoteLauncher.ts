@@ -101,6 +101,16 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     // Create permission handler
     const permissionHandler = new PermissionHandler(session);
 
+    // Drop any permission requests left over in agent state from a
+    // previous CLI process that died while a tool prompt was open. The
+    // in-memory pendingRequests map is fresh and empty, but the server
+    // still has `requests: { [id]: {...} }` and the app shows a spinner
+    // + "Permission required" banner that no click can clear — the
+    // previous process is gone and the new one has no record of the id.
+    // reset() moves any stale entries to completedRequests with status
+    // 'canceled' so the UI reflects what actually happened.
+    permissionHandler.reset('Previous CLI process exited before responding');
+
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(
         (logMessage) => session.client.sendClaudeSessionMessage(logMessage)

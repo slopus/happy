@@ -111,11 +111,19 @@ export class SDKToLogConverter {
         switch (sdkMessage.type) {
             case 'user': {
                 const userMsg = sdkMessage as SDKUserMessage
+                // The SDK marks context-only injections (e.g. Skill tool
+                // feeding the skill body back into the conversation) as
+                // `isSynthetic: true` in memory; on disk claude writes the
+                // equivalent flag as `isMeta`. The downstream mapper and
+                // happy-app both already short-circuit on `isMeta`, so
+                // forward the same signal whichever shape we received.
+                const meta = (userMsg as any).isSynthetic === true || (userMsg as any).isMeta === true
                 logMessage = {
                     ...baseFields,
                     type: 'user',
                     message: userMsg.message as any,
                     ...(userMsg.parent_tool_use_id ? { parent_tool_use_id: userMsg.parent_tool_use_id } : {}),
+                    ...(meta ? { isMeta: true } : {}),
                 }
 
                 // Check if this is a tool result and add mode if available

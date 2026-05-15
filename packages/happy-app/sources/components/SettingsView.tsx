@@ -1,4 +1,5 @@
-import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
+import { View, ScrollView, Pressable, Platform } from 'react-native';
+import { openExternalUrl } from '@/utils/openExternalUrl';
 import { Image } from 'expo-image';
 import * as React from 'react';
 import { Text } from '@/components/StyledText';
@@ -58,19 +59,11 @@ export const SettingsView = React.memo(function SettingsView() {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
 
     const handleGitHub = async () => {
-        const url = 'https://github.com/slopus/happy';
-        const supported = await Linking.canOpenURL(url);
-        if (supported) {
-            await Linking.openURL(url);
-        }
+        await openExternalUrl('https://github.com/slopus/happy');
     };
 
     const handleReportIssue = async () => {
-        const url = 'https://github.com/slopus/happy/issues';
-        const supported = await Linking.canOpenURL(url);
-        if (supported) {
-            await Linking.openURL(url);
-        }
+        await openExternalUrl('https://github.com/slopus/happy/issues');
     };
 
     const handleSubscribe = async () => {
@@ -104,7 +97,7 @@ export const SettingsView = React.memo(function SettingsView() {
     // GitHub connection
     const [connectingGitHub, connectGitHub] = useHappyAction(async () => {
         const params = await getGitHubOAuthParams(auth.credentials!);
-        await Linking.openURL(params.url);
+        await openExternalUrl(params.url);
     });
 
     // GitHub disconnection
@@ -392,36 +385,18 @@ export const SettingsView = React.memo(function SettingsView() {
                 <Item
                     title={t('settings.privacyPolicy')}
                     icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
-                    onPress={async () => {
-                        const url = 'https://happy.engineering/privacy/';
-                        const supported = await Linking.canOpenURL(url);
-                        if (supported) {
-                            await Linking.openURL(url);
-                        }
-                    }}
+                    onPress={() => openExternalUrl('https://happy.engineering/privacy/')}
                 />
                 <Item
                     title={t('settings.termsOfService')}
                     icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
-                    onPress={async () => {
-                        const url = 'https://github.com/slopus/happy/blob/main/TERMS.md';
-                        const supported = await Linking.canOpenURL(url);
-                        if (supported) {
-                            await Linking.openURL(url);
-                        }
-                    }}
+                    onPress={() => openExternalUrl('https://github.com/slopus/happy/blob/main/TERMS.md')}
                 />
                 {Platform.OS === 'ios' && (
                     <Item
                         title={t('settings.eula')}
                         icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
-                        onPress={async () => {
-                            const url = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
-                            const supported = await Linking.canOpenURL(url);
-                            if (supported) {
-                                await Linking.openURL(url);
-                            }
-                        }}
+                        onPress={() => openExternalUrl('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}
                     />
                 )}
                 <Item
