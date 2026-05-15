@@ -6,7 +6,6 @@ import { allocateSessionSeq, allocateUserSeq } from "@/storage/seq";
 import { AsyncLock } from "@/utils/lock";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
-import { dispatchNewMessagePush } from "@/app/push/pushDispatch";
 import { Socket } from "socket.io";
 
 export function sessionUpdateHandler(userId: string, socket: Socket, connection: ClientConnection) {
@@ -240,9 +239,6 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                     recipientFilter: { type: 'all-interested-in-session', sessionId: sid },
                     skipSenderConnection: connection
                 });
-
-                // Fire-and-forget push notification with smart routing
-                void dispatchNewMessagePush({ userId, sessionId: sid, senderHappyClient: connection.happyClient });
             } catch (error) {
                 log({ module: 'websocket', level: 'error' }, `Error in message handler: ${error}`);
             }

@@ -24,11 +24,12 @@ import { createPGlite } from "./storage/pgliteLoader";
 const dataDir = process.env.DATA_DIR || "./data";
 const pgliteDir = process.env.PGLITE_DIR || path.join(dataDir, "pglite");
 
-async function migrate() {
-    console.log(`Migrating database in ${pgliteDir}...`);
-    fs.mkdirSync(pgliteDir, { recursive: true });
+export async function runMigrations(opts: { pgliteDir: string; migrationsDir?: string } = { pgliteDir }) {
+    const targetPgliteDir = opts.pgliteDir;
+    console.log(`Migrating database in ${targetPgliteDir}...`);
+    fs.mkdirSync(targetPgliteDir, { recursive: true });
 
-    const pg = createPGlite(pgliteDir);
+    const pg = createPGlite(targetPgliteDir);
 
     // Create migrations tracking table
     await pg.exec(`
@@ -42,13 +43,15 @@ async function migrate() {
         );
     `);
 
-    // Find migrations directory - try multiple locations
+    // Find migrations directory - explicit arg wins; fall back to defaults.
     let migrationsDirResolved = "";
-    const candidates = [
+    const candidates: string[] = [];
+    if (opts.migrationsDir) candidates.push(opts.migrationsDir);
+    candidates.push(
         path.join(process.cwd(), "prisma", "migrations"),
         path.join(process.cwd(), "packages", "happy-server", "prisma", "migrations"),
         path.join(path.dirname(process.execPath), "prisma", "migrations"),
-    ];
+    );
     for (const candidate of candidates) {
         if (fs.existsSync(candidate)) {
             migrationsDirResolved = candidate;
@@ -56,8 +59,7 @@ async function migrate() {
         }
     }
     if (!migrationsDirResolved) {
-        console.error("Could not find prisma/migrations directory");
-        process.exit(1);
+        throw new Error(`Could not find prisma/migrations directory. Tried: ${candidates.join(", ")}`);
     }
 
     // Get all migration directories sorted
@@ -93,8 +95,7 @@ async function migrate() {
             );
             appliedCount++;
         } catch (e: any) {
-            console.error(`  Failed to apply ${dir}: ${e.message}`);
-            process.exit(1);
+            throw new Error(`Failed to apply ${dir}: ${e.message}`);
         }
     }
 
@@ -112,28 +113,65 @@ async function serve() {
     process.env.DB_PROVIDER = process.env.DB_PROVIDER || "pglite";
     process.env.PGLITE_DIR = process.env.PGLITE_DIR || pgliteDir;
 
-    // Import and run the main server
-    await import("./main");
+    const masterSecret = process.env.HANDY_MASTER_SECRET;
+    if (!masterSecret) {
+        throw new Error("HANDY_MASTER_SECRET is required");
+    }
+
+    const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
+    const host = process.env.HOST || "0.0.0.0";
+    const staticDir = process.env.HAPPY_STATIC_DIR || undefined;
+    let injectHtmlConfig: Record<string, unknown> | undefined;
+    if (process.env.HAPPY_INJECT_HTML_CONFIG) {
+        try {
+            injectHtmlConfig = JSON.parse(process.env.HAPPY_INJECT_HTML_CONFIG);
+        } catch {
+            // ignore malformed input
+        }
+    }
+
+    const { startServer } = await import("./index");
+    await startServer({
+        pgliteDir: process.env.PGLITE_DIR!,
+        masterSecret,
+        port,
+        host,
+        staticDir,
+        injectHtmlConfig,
+    });
+
+    // Block until shutdown so the process stays alive.
+    const { awaitShutdown } = await import("./utils/shutdown");
+    await awaitShutdown();
 }
 
-// CLI
-const command = process.argv[2];
+// CLI — only when this file is invoked directly, not when imported as a library.
+const invokedFile = process.argv[1] ? path.resolve(process.argv[1]) : "";
+const isDirectInvocation =
+    invokedFile.endsWith("/standalone.ts") ||
+    invokedFile.endsWith("/standalone.js") ||
+    invokedFile.endsWith("/standalone.mjs") ||
+    invokedFile.endsWith("/standalone.cjs") ||
+    invokedFile.endsWith("/happy-server");
 
-switch (command) {
-    case "migrate":
-        migrate().catch(e => {
-            console.error(e);
-            process.exit(1);
-        });
-        break;
-    case "serve":
-        serve().catch(e => {
-            console.error(e);
-            process.exit(1);
-        });
-        break;
-    default:
-        console.log(`happy-server - portable distribution
+if (isDirectInvocation) {
+    const command = process.argv[2];
+
+    switch (command) {
+        case "migrate":
+            runMigrations({ pgliteDir }).catch(e => {
+                console.error(e);
+                process.exit(1);
+            });
+            break;
+        case "serve":
+            serve().catch(e => {
+                console.error(e);
+                process.exit(1);
+            });
+            break;
+        default:
+            console.log(`happy-server - portable distribution
 
 Usage:
   happy-server migrate    Apply database migrations
@@ -147,5 +185,6 @@ Environment variables:
   PORT              Server port (default: 3005)
   HANDY_MASTER_SECRET  Required: master secret for auth/encryption
 `);
-        process.exit(command === "--help" || command === "-h" ? 0 : 1);
+            process.exit(command === "--help" || command === "-h" ? 0 : 1);
+    }
 }

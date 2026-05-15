@@ -69,4 +69,10 @@ docs/competition/opencode/traces/
 # scratch tooling
 .cdp-scripts/
 happy-workspaces/
+
+# local HAPPY_HOME_DIR for self-host testing
+.happy-fully-local/
+.happy-dev/
+
+# third party tools
 .supervibe/

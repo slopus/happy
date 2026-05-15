@@ -103,6 +103,45 @@ Variants:
     preview        com.slopus.happy.preview   # OTA / beta testing
     production     com.ex3ndr.happy           # App Store
 
+### Rebuild and reinstall the desktop .app
+
+When the user asks to "rebuild the desktop app", "kill the running one and reinstall", or anything in that shape — do all four steps in order, do not stop after building.
+
+Variants → product name → build script:
+
+    production    Happy.app           pnpm --filter happy-app tauri:build:production
+    preview       Happy (preview).app pnpm --filter happy-app tauri:build:preview
+    dev           Happy (dev).app     pnpm --filter happy-app tauri:build:dev
+
+Build output for all variants:
+
+    packages/happy-app/src-tauri/target/release/bundle/macos/<ProductName>.app
+
+If the variant is ambiguous, check what's running with `ps aux | grep "/Applications/.*Happy" | grep -v grep` and match. Production is the default.
+
+Steps (substitute `$NAME` with the product name, e.g. `Happy` or `Happy (dev)`):
+
+```bash
+# 1. build (slow: ~3–10 min, expo web export then cargo release build)
+pnpm --filter happy-app tauri:build:production
+
+# 2. quit the running app gracefully (no-op if not running)
+osascript -e 'tell application "$NAME" to quit' || true
+
+# 3. replace the installed bundle
+rm -rf "/Applications/$NAME.app"
+cp -R "packages/happy-app/src-tauri/target/release/bundle/macos/$NAME.app" /Applications/
+
+# 4. relaunch
+open -a "$NAME"
+```
+
+Notes:
+- Run the build in the background (`run_in_background: true` on Bash) and poll the output file. It prints `Finished \`release\` profile` near the end.
+- `osascript ... to quit` is graceful — it gives the app a chance to flush state. Only fall back to `pkill -f "/Applications/$NAME.app/Contents/MacOS/app"` if the quit hangs.
+- Do NOT skip the `rm -rf` before `cp` — `cp -R` over an existing `.app` merges directories and leaves stale files.
+- If macOS Gatekeeper complains on relaunch, `xattr -dr com.apple.quarantine "/Applications/$NAME.app"` clears it. Local builds are unsigned.
+
 ## happy-app-logs (remote log receiver)
 
 ```bash

@@ -43,6 +43,7 @@ interface Settings {
   daemonAutoStartWhenRunningHappy?: boolean
   chromeMode?: boolean
   sandboxConfig?: SandboxConfig
+  serverUrl?: string
 }
 
 const defaultSettings: Settings = {

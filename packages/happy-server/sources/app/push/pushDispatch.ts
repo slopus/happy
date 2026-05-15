@@ -1,9 +1,14 @@
 /**
  * Push notification dispatch.
  *
- * Two entry points:
- *   - dispatchNewMessagePush: "you have a new message" on session-message create
- *   - dispatchSessionEventPush: rich session-event ("It's ready!", permission, question)
+ * Single entry point: dispatchSessionEventPush — rich session-event
+ * ("It's ready!", permission, question) called by CLI/daemon clients.
+ *
+ * Generic per-message pushes were removed: the CLI streams every assistant
+ * chunk, tool_use, and tool_result as a session message, so notifying on each
+ * insert produced one buzz every 10s during a turn with no useful title.
+ * Connected clients still receive the realtime message update over socket;
+ * only the Expo push for "new message" went away.
  *
  * Suppression: if the user has ANY non-machine client that is active
  * (connected + not backgrounded), suppress the push — they can see in-app
@@ -13,17 +18,12 @@
  *   - Clients send `app-state: { state: 'active' | 'background' }` via socket.
  *   - Old clients that never send it are treated as active (connected = present).
  *   - On disconnect the socket (and its state) disappears automatically.
- *
- * Rate limit (10s/user) only applies to dispatchNewMessagePush.
  */
 
 import { db } from "@/storage/db";
 import { isUserActive } from "@/app/push/focusTracker";
 import { sendPushNotifications } from "@/app/push/pushSend";
 import { log } from "@/utils/log";
-
-const RATE_LIMIT_MS = 10_000;
-const lastPushAt = new Map<string, number>();
 
 async function fetchTokensAndSend(params: {
     userId: string;
@@ -74,44 +74,6 @@ async function fetchTokensAndSend(params: {
         log({ module: 'push' }, `Push sent for user ${params.userId} session ${params.sessionId}: ${okCount} token(s)`);
     } else {
         log({ module: 'push', level: 'warn' }, `Push partial for user ${params.userId} session ${params.sessionId}: ok=${okCount} errors=${JSON.stringify(errors)}`);
-    }
-}
-
-export async function dispatchNewMessagePush(params: {
-    userId: string;
-    sessionId: string;
-    senderHappyClient?: string | null;
-}): Promise<void> {
-    const { userId, sessionId } = params;
-
-    try {
-        const lastPush = lastPushAt.get(userId);
-        if (lastPush && Date.now() - lastPush < RATE_LIMIT_MS) {
-            log({ module: 'push' }, `Rate-limited push for user ${userId} session ${sessionId}`);
-            return;
-        }
-
-        try {
-            if (await isUserActive(userId)) {
-                log({ module: 'push' }, `Suppressed push for user ${userId} session ${sessionId}: user active`);
-                return;
-            }
-        } catch (presenceError) {
-            log({ module: 'push', level: 'error' }, `Presence check failed, sending push anyway: ${presenceError}`);
-        }
-
-        lastPushAt.set(userId, Date.now());
-
-        await fetchTokensAndSend({
-            userId,
-            sessionId,
-            title: 'New message',
-            body: 'You have a new message',
-            data: { sessionId },
-            channelId: 'messages'
-        });
-    } catch (error) {
-        log({ module: 'push', level: 'error' }, `Push dispatch failed: ${error}`);
     }
 }
 

@@ -85,8 +85,7 @@ export function pushRoutes(app: Fastify) {
 
     // Session-Event Push API
     // CLI/daemon clients call this instead of talking to Expo directly so the
-    // server can apply presence-based suppression (desktop/web active, mobile
-    // foreground) consistently with dispatchNewMessagePush.
+    // server can apply presence-based suppression (active desktop/web/mobile).
     app.post('/v1/sessions/:sessionId/push-event', {
         schema: {
             params: z.object({
