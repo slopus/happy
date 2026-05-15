@@ -98,7 +98,7 @@ export const settingsDefaults: Settings = {
     hideInactiveSessions: false,
     expResumeSession: false,
     fileDiffsSidebar: false,
-    groupToolCalls: true,
+    groupToolCalls: false,
     expImageUpload: false,
     reviewPromptAnswered: false,
     reviewPromptLikedApp: null,
