@@ -1111,6 +1111,9 @@ importers:
       pglite-prisma-adapter:
         specifier: ^0.7.2
         version: 0.7.2(@electric-sql/pglite@0.3.15)(@prisma/client@6.19.2(prisma@6.19.2(typescript@5.9.3))(typescript@5.9.3))
+      pino:
+        specifier: ^10.3.0
+        version: 10.3.0
       pino-pretty:
         specifier: ^13.0.0
         version: 13.1.3
