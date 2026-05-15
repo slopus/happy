@@ -82,6 +82,9 @@ type PickerType = 'machine' | 'path' | 'worktree';
 type PermissionStyle = { color: string; icon: 'play-forward' | 'pause' };
 
 const COMPOSER_INPUT_VERTICAL_PADDING = Platform.OS === 'web' ? 10 : 8;
+// Taller composer on web/desktop where vertical space is plentiful; keep the
+// compact cap on native mobile so the input doesn't dominate the screen.
+const COMPOSER_INPUT_MAX_HEIGHT = Platform.OS === 'web' ? 480 : 240;
 const COMPOSER_SEND_BUTTON_SIZE = 32;
 const COMPOSER_SEND_BUTTON_MARGIN_BOTTOM = Math.max(
     0,
@@ -489,7 +492,7 @@ const PromptInput = React.memo(React.forwardRef<MultiTextInputHandle, PromptInpu
                 lineHeight={MULTI_TEXT_INPUT_LINE_HEIGHT}
                 paddingTop={COMPOSER_INPUT_VERTICAL_PADDING}
                 paddingBottom={COMPOSER_INPUT_VERTICAL_PADDING}
-                maxHeight={240}
+                maxHeight={COMPOSER_INPUT_MAX_HEIGHT}
                 onKeyPress={props.onKeyPress}
             />
         );

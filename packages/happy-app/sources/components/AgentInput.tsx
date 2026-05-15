@@ -1214,7 +1214,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             placeholder={props.placeholder}
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
-                            maxHeight={120}
+                            maxHeight={Platform.OS === 'web' ? 480 : 120}
                         />
                     </View>
 
