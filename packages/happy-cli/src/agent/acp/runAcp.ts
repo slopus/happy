@@ -4,7 +4,8 @@ import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
-import { DefaultTransport } from '@/agent/transport';
+import { DefaultTransport, geminiTransport, kimiTransport } from '@/agent/transport';
+import type { TransportHandler } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
@@ -406,10 +407,19 @@ function resolveRequestedLegacyModelCode(models: SessionModelState, requested: s
 
 class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPermissionHandler {
   private readonly logPrefix: string;
+  private yolo: boolean;
 
-  constructor(session: ApiSessionClient, agentName: string) {
+  constructor(session: ApiSessionClient, agentName: string, yolo: boolean = false) {
     super(session);
     this.logPrefix = `[${agentName}]`;
+    this.yolo = yolo;
+  }
+
+  setYolo(yolo: boolean): void {
+    if (this.yolo !== yolo) {
+      logger.debug(`${this.logPrefix} YOLO mode -> ${yolo}`);
+    }
+    this.yolo = yolo;
   }
 
   protected getLogPrefix(): string {
@@ -417,6 +427,10 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
   }
 
   async handleToolCall(toolCallId: string, toolName: string, input: unknown): Promise<PermissionResult> {
+    if (this.yolo) {
+      logger.debug(`${this.logPrefix} [YOLO] Auto-approving tool: ${toolName} (${toolCallId})`);
+      return { decision: 'approved_for_session' };
+    }
     return new Promise<PermissionResult>((resolve, reject) => {
       this.pendingRequests.set(toolCallId, {
         resolve,
@@ -446,6 +460,13 @@ function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' 
   return 'acp';
 }
 
+
+function resolveTransport(agentName: string): TransportHandler {
+  if (agentName === 'gemini') return geminiTransport;
+  if (agentName === 'kimi') return kimiTransport;
+  return new DefaultTransport(agentName);
+}
+
 export async function runAcp(opts: {
   credentials: Credentials;
   agentName: string;
@@ -453,6 +474,7 @@ export async function runAcp(opts: {
   args: string[];
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
+  yolo?: boolean;
 }): Promise<void> {
   const verbose = opts.verbose === true;
   const sessionTag = randomUUID();
@@ -511,7 +533,7 @@ export async function runAcp(opts: {
     }
   }
 
-  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName);
+  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName, opts.yolo === true);
   const sessionManager = new AcpSessionManager();
   const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
   let currentPermissionMode: string | undefined;
@@ -539,7 +561,7 @@ export async function runAcp(opts: {
     args: opts.args,
     mcpServers,
     permissionHandler,
-    transportHandler: new DefaultTransport(opts.agentName),
+    transportHandler: resolveTransport(opts.agentName),
     verbose,
   });
 
@@ -831,9 +853,25 @@ export async function runAcp(opts: {
       return;
     }
 
+    const trimmed = message.content.text.trim().toLowerCase();
+    if (trimmed === '/bypass') {
+      permissionHandler.setYolo(true);
+      logger.debug('[acp] YOLO toggle');
+      return;
+    }
+    if (trimmed === '/ask') {
+      permissionHandler.setYolo(false);
+      logger.debug('[acp] YOLO toggle');
+      return;
+    }
+
     if (typeof message.meta?.permissionMode === 'string') {
       currentPermissionMode = message.meta.permissionMode;
       logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
+      const bypass = currentPermissionMode === 'bypassPermissions'
+        || currentPermissionMode === 'yolo'
+        || currentPermissionMode === 'acceptEdits';
+      permissionHandler.setYolo(bypass);
     }
 
     if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
