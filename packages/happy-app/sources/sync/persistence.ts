@@ -3,10 +3,12 @@ import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './set
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
+import { migrateNewSessionDraftAgentType } from './migrateNewSessionDraft';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
+const DRAFT_AGENT_TYPE_MIGRATION_V1_KEY = 'draft-agent-type-migration-v1';
 const REGISTERED_PUSH_TOKEN_KEY = 'registered-push-token-v1';
 const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
 const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-count';
@@ -179,6 +181,23 @@ export function saveNewSessionDraft(draft: NewSessionDraft) {
 
 export function clearNewSessionDraft() {
     mmkv.delete(NEW_SESSION_DRAFT_KEY);
+}
+
+/**
+ * One-shot migration: reset corrupted agentType values back to 'claude'.
+ * Should be called once at app startup before loading the draft into the store.
+ * Uses an MMKV flag to ensure it only runs once per device.
+ */
+export function runNewSessionDraftMigrations() {
+    if (mmkv.getBoolean(DRAFT_AGENT_TYPE_MIGRATION_V1_KEY)) {
+        return;
+    }
+    const draft = loadNewSessionDraft();
+    const migrated = migrateNewSessionDraftAgentType(draft);
+    if (migrated && migrated !== draft) {
+        saveNewSessionDraft(migrated);
+    }
+    mmkv.set(DRAFT_AGENT_TYPE_MIGRATION_V1_KEY, true);
 }
 
 export function loadRegisteredPushToken(): string | null {

@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import {
     loadNewSessionDraft,
     saveNewSessionDraft,
+    runNewSessionDraftMigrations,
     type NewSessionDraft,
     type NewSessionAgentType,
     type NewSessionSessionType,
@@ -47,6 +48,8 @@ function persist(state: NewSessionDraftState) {
     });
 }
 
+// Run one-shot migration to fix corrupted agentType values before loading the draft.
+runNewSessionDraftMigrations();
 const initial = loadNewSessionDraft();
 
 export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => ({

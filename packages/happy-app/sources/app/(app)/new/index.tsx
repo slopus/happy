@@ -56,6 +56,7 @@ import {
     type EffortLevel,
 } from '@/components/modelModeOptions';
 import { isRunningOnMac } from '@/utils/platform';
+import { resolveDisplayAgent } from './agentUtils';
 
 // Agent icon assets
 const agentIcons = {
@@ -621,59 +622,61 @@ function NewSessionScreen() {
         return ALL_AGENTS.filter(a => availability[a.key]);
     }, [selectedMachine]);
 
-    // If current agent not available on this machine, switch to first available
-    React.useEffect(() => {
-        if (availableAgents.length > 0 && !availableAgents.find(a => a.key === selectedAgent)) {
-            setSelectedAgent(availableAgents[0].key);
-        }
-    }, [availableAgents, selectedAgent, setSelectedAgent]);
+    // Resolve the agent to display (and use for spawning).
+    // When the stored preference is not available on this machine, fall back to the first
+    // available agent for display purposes ONLY — we must NOT write this fallback back to
+    // the draft store (MMKV), as doing so permanently corrupts the user's preference.
+    const displayAgent = React.useMemo(
+        () => resolveDisplayAgent(selectedAgent, availableAgents, ALL_AGENTS),
+        [selectedAgent, availableAgents],
+    );
 
-    // Derive options from agent type
+    // Derive options from the effective (display) agent type
     const permissionModes = React.useMemo<PermissionMode[]>(
-        () => getHardcodedPermissionModes(selectedAgent, t),
-        [selectedAgent],
+        () => getHardcodedPermissionModes(displayAgent, t),
+        [displayAgent],
     );
     const modelModes = React.useMemo<ModelMode[]>(
-        () => getHardcodedModelModes(selectedAgent, t),
-        [selectedAgent],
+        () => getHardcodedModelModes(displayAgent, t),
+        [displayAgent],
     );
 
     const currentModel = modelModes[modelIndex] ?? modelModes[0];
     const currentModelKey = currentModel?.key ?? 'default';
 
     const effortLevels = React.useMemo<EffortLevel[]>(
-        () => getEffortLevelsForModel(selectedAgent, currentModelKey),
-        [selectedAgent, currentModelKey],
+        () => getEffortLevelsForModel(displayAgent, currentModelKey),
+        [displayAgent, currentModelKey],
     );
 
-    const supportsWorktree = getSupportsWorktree(selectedAgent);
+    const supportsWorktree = getSupportsWorktree(displayAgent);
     const showModel = modelModes.length > 1;
     const showEffort = effortLevels.length > 0;
     const showPermission = permissionModes.length > 1;
 
-    // Reset indices when agent changes — try draft keys first, then defaults
+    // Reset indices when effective agent changes — try draft keys first, then defaults
     React.useEffect(() => {
         const draftPermIdx = permissionModes.findIndex(m => m.key === draft.permissionMode);
-        const defaultPermIdx = permissionModes.findIndex(m => m.key === getDefaultPermissionModeKey(selectedAgent));
+        const defaultPermIdx = permissionModes.findIndex(m => m.key === getDefaultPermissionModeKey(displayAgent));
         setPermissionIndex(draftPermIdx >= 0 ? draftPermIdx : (defaultPermIdx >= 0 ? defaultPermIdx : 0));
 
         const draftModelIdx = modelModes.findIndex(m => m.key === draft.modelMode);
-        const defaultModelIdx = modelModes.findIndex(m => m.key === getDefaultModelKey(selectedAgent));
+        const defaultModelIdx = modelModes.findIndex(m => m.key === getDefaultModelKey(displayAgent));
         setModelIndex(draftModelIdx >= 0 ? draftModelIdx : (defaultModelIdx >= 0 ? defaultModelIdx : 0));
 
         if (!supportsWorktree) setWorktreeKey('__none__');
-    }, [selectedAgent, permissionModes, modelModes, supportsWorktree]);
+    }, [displayAgent, permissionModes, modelModes, supportsWorktree]);
 
     // Reset effort when model changes
     React.useEffect(() => {
-        const defaultEffort = getDefaultEffortKeyForModel(selectedAgent, currentModelKey);
+        const defaultEffort = getDefaultEffortKeyForModel(displayAgent, currentModelKey);
         if (defaultEffort && effortLevels.length > 0) {
             const idx = effortLevels.findIndex(e => e.key === defaultEffort);
             setEffortIndex(idx >= 0 ? idx : effortLevels.length - 1);
         } else {
             setEffortIndex(0);
         }
-    }, [selectedAgent, currentModelKey, effortLevels]);
+    }, [displayAgent, currentModelKey, effortLevels]);
 
     const hasText = prompt.trim().length > 0;
 
@@ -727,13 +730,13 @@ function NewSessionScreen() {
     }, [effortLevels.length]);
 
     const cycleAgent = React.useCallback(() => {
-        const idx = availableAgents.findIndex(a => a.key === selectedAgent);
+        const idx = availableAgents.findIndex(a => a.key === displayAgent);
         const next = availableAgents[(idx + 1) % availableAgents.length].key;
         setSelectedAgent(next);
-    }, [availableAgents, selectedAgent, setSelectedAgent]);
+    }, [availableAgents, displayAgent, setSelectedAgent]);
 
     const isOffline = selectedMachine ? !isMachineOnline(selectedMachine) : false;
-    const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS[0];
+    const agent = availableAgents.find(a => a.key === displayAgent) ?? ALL_AGENTS[0];
     const currentPermission = permissionModes[permissionIndex] ?? permissionModes[0];
     const currentEffort = effortLevels[effortIndex] ?? effortLevels[0];
     const permissionStyle = currentPermission?.key !== 'default' ? getPermissionStyle(currentPermission.key) : null;
@@ -818,9 +821,9 @@ function NewSessionScreen() {
                 spawnDirectory = worktreeKey;
             }
 
-            // Persist last used settings
+            // Persist last used settings (use displayAgent — the agent actually being launched)
             sync.applySettings({
-                lastUsedAgent: selectedAgent,
+                lastUsedAgent: displayAgent,
                 lastUsedPermissionMode: currentPermission.key,
                 lastUsedModelMode: currentModelKey,
             });
@@ -829,7 +832,7 @@ function NewSessionScreen() {
                 machineId: selectedMachineId,
                 directory: spawnDirectory,
                 approvedNewDirectoryCreation,
-                agent: selectedAgent,
+                agent: displayAgent,
             });
 
             switch (result.type) {
@@ -874,7 +877,7 @@ function NewSessionScreen() {
         } finally {
             setIsSpawning(false);
         }
-    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, prompt, router, navigateToSession, currentPermission.key, currentModelKey, worktreeKey]);
+    }, [selectedMachineId, selectedMachine, selectedPath, displayAgent, prompt, router, navigateToSession, currentPermission.key, currentModelKey, worktreeKey]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
 
@@ -1067,7 +1070,7 @@ function NewSessionScreen() {
 
                                     {/* Agent */}
                                     <Pressable
-                                        onPress={() => { cycleAgent(); showFlash(availableAgents[(availableAgents.findIndex(a => a.key === selectedAgent) + 1) % availableAgents.length].label); }}
+                                        onPress={() => { cycleAgent(); showFlash(availableAgents[(availableAgents.findIndex(a => a.key === displayAgent) + 1) % availableAgents.length].label); }}
                                         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                                         style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
                                     >
