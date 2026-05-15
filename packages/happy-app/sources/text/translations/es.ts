@@ -211,6 +211,8 @@ export const es: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pulsación larga abre modal de copiado',
         hideInactiveSessions: 'Ocultar sesiones inactivas',
         hideInactiveSessionsSubtitle: 'Muestra solo los chats activos en tu lista',
+        groupToolCalls: 'Agrupar llamadas a herramientas',
+        groupToolCallsSubtitle: 'Contrae las llamadas consecutivas a herramientas en un solo contenedor',
         privacy: 'Privacidad',
         privacyDescription: 'Desactiva completamente toda la analítica y telemetría. No se enviarán datos a PostHog ni a ningún otro servicio de seguimiento.',
         disableAnalytics: 'Desactivar analítica',

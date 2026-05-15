@@ -27,9 +27,18 @@ export type DisplayItem = TextItem | ToolGroupItem;
  * The messages array is newest-first (inverted FlatList). Group IDs are
  * derived from the last message in each group (oldest chronologically)
  * for stability as new messages prepend.
+ *
+ * When `enabled` is false (user disabled grouping in settings), every
+ * message passes through as a standalone TextItem — restoring the
+ * pre-grouping behavior where MessageView renders each message (and
+ * returns null for hidden tools/thinking) on its own.
  */
-export function useGroupedMessages(messages: Message[]): DisplayItem[] {
+export function useGroupedMessages(messages: Message[], enabled: boolean = true): DisplayItem[] {
     return React.useMemo(() => {
+        if (!enabled) {
+            return messages.map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
+        }
+
         const result: DisplayItem[] = [];
         let buffer: Message[] = [];
 
@@ -67,7 +76,7 @@ export function useGroupedMessages(messages: Message[]): DisplayItem[] {
 
         flushBuffer();
         return result;
-    }, [messages]);
+    }, [messages, enabled]);
 }
 
 /** Returns true for messages that should NOT be grouped (displayed standalone) */

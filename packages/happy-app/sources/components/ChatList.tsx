@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useSession, useSessionMessages } from "@/sync/storage";
+import { useSession, useSessionMessages, useSetting } from "@/sync/storage";
 import { sync } from '@/sync/sync';
 import { ActivityIndicator, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, View } from 'react-native';
 import { useCallback } from 'react';
@@ -74,8 +74,10 @@ const ChatListInternal = React.memo((props: {
     // parent re-renders on every wheel tick.
     const showScrollButtonRef = React.useRef(false);
 
-    // Group consecutive tool calls between text messages into collapsible containers
-    const displayItems = useGroupedMessages(props.messages);
+    // Group consecutive tool calls between text messages into collapsible
+    // containers — unless the user disabled it in settings.
+    const groupToolCalls = useSetting('groupToolCalls');
+    const displayItems = useGroupedMessages(props.messages, groupToolCalls);
 
     // Track which groups the user has manually toggled (flips their default state)
     const [toggledGroups, setToggledGroups] = React.useState<Set<string>>(new Set());

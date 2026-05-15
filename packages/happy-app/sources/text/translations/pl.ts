@@ -228,6 +228,8 @@ export const pl: TranslationStructure = {
         markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',
         hideInactiveSessions: 'Ukryj nieaktywne sesje',
         hideInactiveSessionsSubtitle: 'Wyświetlaj tylko aktywne czaty na liście',
+        groupToolCalls: 'Grupuj wywołania narzędzi',
+        groupToolCallsSubtitle: 'Zwijaj kolejne wywołania narzędzi w jeden kontener',
         privacy: 'Prywatność',
         privacyDescription: 'Całkowicie wyłącza wszystkie analizy i telemetrię. Żadne dane nie będą wysyłane do PostHog ani żadnego innego serwisu śledzącego.',
         disableAnalytics: 'Wyłącz analitykę',
