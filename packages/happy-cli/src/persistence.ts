@@ -44,6 +44,7 @@ interface Settings {
   chromeMode?: boolean
   sandboxConfig?: SandboxConfig
   serverUrl?: string
+  webappUrl?: string
 }
 
 const defaultSettings: Settings = {
