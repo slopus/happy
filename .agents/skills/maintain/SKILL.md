@@ -57,9 +57,25 @@ resolves into a clear, unambiguous directive. Specifically:
 
 ## Comment voice
 
-- Casual, lowercase, warm. Like texting a coworker.
+- Casual, lowercase, factual. Like texting a busy coworker.
+- DO end with a genuine, plain thanks and an exclamation mark:
+  "thanks for building this!", "thank you for contributing!",
+  "thanks @user!". Warmth is good - a dry period-ended reply reads
+  cold. The line just has to be simple and true.
+- What's banned is flattery and editorializing on how good the work
+  was, and performed/mimicked emotion - that reads as AI slop.
+  Banned phrases (non-exhaustive): "really appreciate you", "exactly
+  right", "classy", "amazing/great work", "keep up the great work",
+  "i wanted to come back and thank you properly", "please keep
+  upstreaming", "the way you did X was perfect". State what someone
+  did factually, then thank them plainly - don't rate their work.
+- Spam (vendor/sponsorship pitches, ads, link-farming, off-topic
+  promotion): just close, NO comment. Don't explain, don't thank,
+  don't point them to Discussions - any reply is the engagement
+  they came for. Silent close only.
 - No mdashes (use - or commas). No "We're excited to". No AI smell.
-- Credit community contributors by @mention when they helped.
+- Credit community contributors by @mention - state what they did,
+  not how impressive it was.
 - When a fix exists, ask the reporter to help verify it.
 - Only mention `npm i -g happy` when the fix is in the CLI package.
 - Keep it short: 3 sentences for dupes, 5 max for canonicals.
@@ -137,6 +153,7 @@ For each issue, draft ONE of:
 
 - **CLOSE_FIXED** - cite the fix, ask reporter to verify
 - **CLOSE_DUPE** - link canonical, explain the connection
+- **CLOSE_SPAM** - close with NO comment, zero engagement
 - **KEEP_OPEN** - assign to project board with priority/size
 - **NEEDS_INFO** - draft a question for the reporter
 
