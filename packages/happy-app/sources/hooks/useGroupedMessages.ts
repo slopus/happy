@@ -21,17 +21,18 @@ export type ToolGroupItem = {
 export type DisplayItem = TextItem | ToolGroupItem;
 
 /**
- * Groups consecutive non-text messages (tool calls, thinking, events) into
- * collapsible ToolGroupItems. Text messages pass through as TextItems.
+ * Groups all tool-call messages within a single turn (user message →
+ * next user message) into one collapsible ToolGroupItem. Text messages
+ * always pass through as standalone TextItems.
  *
- * The messages array is newest-first (inverted FlatList). Group IDs are
- * derived from the last message in each group (oldest chronologically)
- * for stability as new messages prepend.
+ * The messages array is newest-first (inverted FlatList). The group is
+ * placed at the position of the chronologically-first tool call in the
+ * turn (highest array index) so that agent text before / after tools
+ * keeps its natural position. Group IDs are derived from the oldest
+ * tool in each turn for stability as new messages prepend.
  *
  * When `enabled` is false (user disabled grouping in settings), every
- * message passes through as a standalone TextItem — restoring the
- * pre-grouping behavior where MessageView renders each message (and
- * returns null for hidden tools/thinking) on its own.
+ * message passes through as a standalone TextItem.
  */
 export function useGroupedMessages(messages: Message[], enabled: boolean = true): DisplayItem[] {
     return React.useMemo(() => {
@@ -39,60 +40,72 @@ export function useGroupedMessages(messages: Message[], enabled: boolean = true)
             return messages.map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
         }
 
-        const result: DisplayItem[] = [];
-        let buffer: Message[] = [];
-
-        const flushBuffer = () => {
-            if (buffer.length === 0) return;
-
-            let hasRunning = false;
-            for (const msg of buffer) {
-                if (msg.kind === 'tool-call' && msg.tool.state === 'running') {
-                    hasRunning = true;
-                    break;
-                }
-            }
-
-            result.push({
-                type: 'tool-group',
-                id: `group-${buffer[buffer.length - 1].id}`,
-                messages: buffer,
-                hasRunning,
-            });
-            buffer = [];
-        };
-
-        for (const msg of messages) {
-            if (isStandaloneMessage(msg) || isUserAttachment(msg)) {
-                flushBuffer();
-                result.push({ type: 'message', id: msg.id, message: msg });
-            } else if (isInvisibleMessage(msg)) {
-                // Skip messages that render as null (hidden tools, thinking, empty text)
-                continue;
-            } else {
-                buffer.push(msg);
-            }
+        // Step 1: assign each message to a turn (newest-first → turn 0 = current)
+        const turnOf = new Array<number>(messages.length);
+        let turn = 0;
+        for (let i = 0; i < messages.length; i++) {
+            turnOf[i] = turn;
+            if (messages[i].kind === 'user-text') turn++;
         }
 
-        flushBuffer();
+        // Step 2: collect visible tool-call messages per turn, track oldest index
+        const turnTools = new Map<number, { msgs: Message[]; oldestIdx: number }>();
+        for (let i = 0; i < messages.length; i++) {
+            const msg = messages[i];
+            if (msg.kind !== 'tool-call') continue;
+            if (isInvisibleMessage(msg) || isUserAttachment(msg)) continue;
+            const t = turnOf[i];
+            let info = turnTools.get(t);
+            if (!info) {
+                info = { msgs: [], oldestIdx: i };
+                turnTools.set(t, info);
+            }
+            info.msgs.push(msg);
+            info.oldestIdx = i; // keeps updating → ends up as highest index = oldest
+        }
+
+        // Step 3: build display items — group emitted at oldest tool position
+        const result: DisplayItem[] = [];
+        for (let i = 0; i < messages.length; i++) {
+            const msg = messages[i];
+
+            if (isInvisibleMessage(msg)) continue;
+
+            if (isUserAttachment(msg)) {
+                result.push({ type: 'message', id: msg.id, message: msg });
+                continue;
+            }
+
+            if (msg.kind === 'tool-call') {
+                const info = turnTools.get(turnOf[i]);
+                if (info && i === info.oldestIdx) {
+                    let hasRunning = false;
+                    for (const m of info.msgs) {
+                        if (m.kind === 'tool-call' && m.tool.state === 'running') {
+                            hasRunning = true;
+                            break;
+                        }
+                    }
+                    result.push({
+                        type: 'tool-group',
+                        id: `group-${info.msgs[info.msgs.length - 1].id}`,
+                        messages: info.msgs,
+                        hasRunning,
+                    });
+                }
+                // All tool calls consumed by their turn group — skip standalone
+                continue;
+            }
+
+            // Standalone messages (user text, agent text, events)
+            result.push({ type: 'message', id: msg.id, message: msg });
+        }
+
         return result;
     }, [messages, enabled]);
 }
 
-/** Returns true for messages that should NOT be grouped (displayed standalone) */
-function isStandaloneMessage(msg: Message): boolean {
-    if (msg.kind === 'user-text') return true;
-    if (msg.kind === 'agent-event') return true; // Mode switches, "aborted by user", etc.
-    if (msg.kind === 'agent-text') {
-        // Thinking messages go into groups, non-empty text stands alone
-        if (msg.isThinking) return false;
-        if (msg.text.trim().length === 0) return false;
-        return true;
-    }
-    return false;
-}
-
-/** Returns true for messages that render as null and should be excluded from groups */
+/** Returns true for messages that render as null and should be excluded entirely */
 function isInvisibleMessage(msg: Message): boolean {
     // Hidden tools (ToolSearch, CodexReasoning, etc.)
     if (msg.kind === 'tool-call') {
