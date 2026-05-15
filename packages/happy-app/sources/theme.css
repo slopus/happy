@@ -2,6 +2,13 @@
    Prevents scroll-chaining from inner scrollable elements to the body. */
 html, body {
     overscroll-behavior: none;
+    /* macOS Safari's default subpixel AA aliases badly under the body zoom
+       below ("chopped" bold, faint regular text); Chrome re-rasterizes and is
+       unaffected. Force grayscale AA, and stop Safari faux-bolding the
+       already-bold IBMPlexSans-SemiBold family. All three inherit. */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-synthesis: none;
 }
 
 html.happy-app-zoomed {
