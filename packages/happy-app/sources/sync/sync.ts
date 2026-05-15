@@ -2217,12 +2217,22 @@ class Sync {
 
             log.log(`🗑️ Session ${sessionId} deleted from local storage`);
         } else if (updateData.body.t === 'update-session') {
-            const session = storage.getState().sessions[updateData.body.id];
+            // Session + encryption may not be initialized yet if sessions are
+            // still syncing on startup. Mirror the new-message path: await the
+            // sessions sync queue and re-check before giving up — dropping here
+            // silently loses the metadata update that carries the chat title
+            // (#1251: every chat stuck on "New chat" after the lazy-load change).
+            let session = storage.getState().sessions[updateData.body.id];
+            let sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
+            if (!session || !sessionEncryption) {
+                await this.sessionsSync.awaitQueue();
+                session = storage.getState().sessions[updateData.body.id];
+                sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
+            }
             if (session) {
-                // Get session encryption
-                const sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
                 if (!sessionEncryption) {
-                    console.error(`Session encryption not found for ${updateData.body.id} - this should never happen`);
+                    console.error(`Session encryption not found for ${updateData.body.id} after sync`);
+                    this.fetchSessions();
                     return;
                 }
 
