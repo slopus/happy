@@ -688,7 +688,7 @@ class Sync {
                 model,
                 fallbackModel,
                 appendSystemPrompt: systemPrompt,
-                ...(effort && { effort }), // Forward effort (low/medium/high/max for Claude, low/medium/high/xhigh for Codex)
+                ...(effort && { effort }), // Forward effort (low/medium/high/xhigh/max for Claude, low/medium/high/xhigh for Codex)
                 ...(displayText && { displayText }) // Add displayText if provided
             }
         };

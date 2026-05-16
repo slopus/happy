@@ -13,7 +13,7 @@ import type { SandboxConfig } from "@/persistence"
 export type { PermissionMode } from "@/api/types"
 import type { PermissionMode } from "@/api/types"
 
-export type ClaudeEffort = 'low' | 'medium' | 'high' | 'max';
+export type ClaudeEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface EnhancedMode {
     permissionMode: PermissionMode;
