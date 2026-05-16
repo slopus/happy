@@ -11,20 +11,18 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY scripts ./scripts
 COPY patches ./patches
 
-RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-wire
+RUN mkdir -p packages/happy-server packages/happy-wire
 
-COPY packages/happy-app/package.json packages/happy-app/
 COPY packages/happy-server/package.json packages/happy-server/
-COPY packages/happy-cli/package.json packages/happy-cli/
 COPY packages/happy-wire/package.json packages/happy-wire/
 
 # Workspace postinstall requirements
-COPY packages/happy-app/patches packages/happy-app/patches
 COPY packages/happy-server/prisma packages/happy-server/prisma
-COPY packages/happy-cli/scripts packages/happy-cli/scripts
-COPY packages/happy-cli/tools packages/happy-cli/tools
 
-RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile
+# Install only the workspaces needed for happy-server (+ its workspace dep happy-wire).
+# Avoids pulling in happy-app / happy-cli / happy-agent / happy-app-logs / codium —
+# saves several GB of disk during build and shrinks the runtime image.
+RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --filter happy-server... --frozen-lockfile
 
 # Stage 2: build the server
 FROM deps AS builder
