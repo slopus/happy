@@ -33,6 +33,7 @@ This will:
 ```
 happy codex
 happy gemini
+happy kimi
 happy openclaw
 
 # or any ACP-compatible CLI
@@ -100,6 +101,7 @@ happy connect status
 | `happy` | Start Claude Code session (default) |
 | `happy codex` | Start Codex mode |
 | `happy gemini` | Start Gemini CLI session |
+| `happy kimi` | Start Kimi CLI session |
 | `happy openclaw` | Start OpenClaw session |
 | `happy acp` | Start any ACP-compatible agent |
 | `happy resume <id>` | Resume a previous session |
