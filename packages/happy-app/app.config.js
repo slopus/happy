@@ -1,4 +1,7 @@
 const variant = process.env.APP_ENV || 'development';
+const personalEasBuild = process.env.HAPPY_PERSONAL_EAS === '1';
+const easProjectId = "4558dd3d-cd5a-47cd-bad9-e591a241cc06";
+const personalEasProjectId = "1d89df57-549b-484e-aa13-9e708f279188";
 const name = {
     development: "Happy (dev)",
     preview: "Happy (preview)",
@@ -172,8 +175,8 @@ export default {
                 }
             ]
         ],
-        updates: {
-            url: "https://u.expo.dev/4558dd3d-cd5a-47cd-bad9-e591a241cc06",
+        updates: personalEasBuild ? undefined : {
+            url: `https://u.expo.dev/${easProjectId}`,
             requestHeaders: {
                 "expo-channel-name": "production"
             }
@@ -186,7 +189,7 @@ export default {
                 root: "./sources/app"
             },
             eas: {
-                projectId: "4558dd3d-cd5a-47cd-bad9-e591a241cc06"
+                projectId: personalEasBuild ? personalEasProjectId : easProjectId
             },
             app: {
                 postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
@@ -197,6 +200,6 @@ export default {
                 consoleLoggingDefault,
             }
         },
-        owner: "bulkacorp"
+        owner: personalEasBuild ? "zzzzwws" : "bulkacorp"
     }
 };
