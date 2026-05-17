@@ -30,10 +30,59 @@ import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
 import { Avatar } from '@/components/Avatar';
 import { t } from '@/text';
 
+type BuildConfig = {
+    buildCommitSha?: unknown;
+    buildCommitTimestamp?: unknown;
+};
+
+function getBuildConfig(): BuildConfig {
+    const appConfig = Constants.expoConfig?.extra?.app;
+    return appConfig && typeof appConfig === 'object' ? appConfig as BuildConfig : {};
+}
+
+function formatUtcTimestamp(value: string): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toISOString()
+        .replace(/\.\d{3}Z$/, 'Z')
+        .replace(/:\d{2}Z$/, 'Z')
+        .replace('T', ' ')
+        .replace('Z', ' UTC');
+}
+
+function formatBuildSubtitle(buildConfig: BuildConfig): string | undefined {
+    const commitTimestamp = typeof buildConfig.buildCommitTimestamp === 'string'
+        ? formatUtcTimestamp(buildConfig.buildCommitTimestamp)
+        : undefined;
+    const commitSha = typeof buildConfig.buildCommitSha === 'string'
+        ? buildConfig.buildCommitSha.slice(0, 7)
+        : undefined;
+
+    if (!commitTimestamp && !commitSha) {
+        return undefined;
+    }
+
+    return [
+        commitTimestamp ? `Commit ${commitTimestamp}` : 'Commit',
+        commitSha,
+    ].filter(Boolean).join(' / ');
+}
+
 export const SettingsView = React.memo(function SettingsView() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const appVersion = Constants.expoConfig?.version || '1.0.0';
+    const runtimeVersion = typeof Constants.expoConfig?.runtimeVersion === 'string'
+        ? Constants.expoConfig.runtimeVersion
+        : undefined;
+    const versionDetail = [
+        appVersion,
+        runtimeVersion ? `runtime ${runtimeVersion}` : undefined,
+    ].filter(Boolean).join(' / ');
+    const versionSubtitle = formatBuildSubtitle(getBuildConfig());
     const auth = useAuth();
     const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
     const isPro = __DEV__ || useEntitlement('pro');
@@ -401,7 +450,9 @@ export const SettingsView = React.memo(function SettingsView() {
                 )}
                 <Item
                     title={t('common.version')}
-                    detail={appVersion}
+                    subtitle={versionSubtitle}
+                    subtitleLines={2}
+                    detail={versionDetail}
                     icon={<Ionicons name="information-circle-outline" size={29} color={theme.colors.textSecondary} />}
                     onPress={handleVersionClick}
                     showChevron={false}
