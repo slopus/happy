@@ -314,7 +314,7 @@ function PathPickerContent({
     const currentValue = value ?? '';
     const [selection, setSelection] = React.useState<{ start: number; end: number } | undefined>(undefined);
 
-    const dirSuggestions = useDirSuggestions(machineId, currentValue);
+    const dirSuggestions = useDirSuggestions(machineId, currentValue, homeDir);
 
     React.useEffect(() => {
         const timeout = setTimeout(() => {

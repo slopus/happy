@@ -3,12 +3,20 @@
  *
  * Given a machine ID and a partially-typed path, lists subdirectories under the
  * parent directory and filters them by the typed prefix. Results are debounced
- * and cached per (machineId, parentDir) pair so rapid keystrokes don't flood
- * the machine with bash calls.
+ * and cached per (machineId, resolvedParentDir) pair so rapid keystrokes don't
+ * flood the machine with bash calls.
+ *
+ * Paths beginning with `~` are expanded against the machine's home directory
+ * before being shipped to bash — bash does not expand `~` inside double quotes,
+ * so the raw `ls -1ap "~/"` form would silently fail.
  */
 
 import * as React from 'react';
 import { machineBash } from '@/sync/ops';
+import { splitPathForSuggestions } from './useDirSuggestions.utils';
+
+export { splitPathForSuggestions } from './useDirSuggestions.utils';
+export type { SplitPath } from './useDirSuggestions.utils';
 
 const DEBOUNCE_MS = 250;
 const CACHE_TTL_MS = 10_000;
@@ -25,8 +33,8 @@ function cacheKey(machineId: string, dir: string): string {
     return `${machineId}:${dir}`;
 }
 
-async function fetchDirs(machineId: string, dir: string): Promise<string[]> {
-    const key = cacheKey(machineId, dir);
+async function fetchDirs(machineId: string, resolvedDir: string): Promise<string[]> {
+    const key = cacheKey(machineId, resolvedDir);
     const cached = dirCache.get(key);
     if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
         return cached.dirs;
@@ -35,8 +43,8 @@ async function fetchDirs(machineId: string, dir: string): Promise<string[]> {
     // List only directories (trailing slash marker from ls -p)
     const result = await machineBash(
         machineId,
-        `ls -1ap "${dir}" 2>/dev/null | grep '/$' | grep -v '^\\.\\.\\?/$'`,
-        dir,
+        `ls -1ap "${resolvedDir}" 2>/dev/null | grep '/$' | grep -v '^\\.\\.\\?/$'`,
+        resolvedDir,
     );
 
     if (!result.success) {
@@ -54,31 +62,34 @@ async function fetchDirs(machineId: string, dir: string): Promise<string[]> {
 }
 
 export interface DirSuggestion {
-    /** Full absolute path of the suggested directory */
+    /** Suggested directory path — preserves the user's typed parent form (keeps `~` if they typed `~`). */
     fullPath: string;
-    /** Display label (just the directory name) */
+    /** Display label (just the directory name). */
     label: string;
 }
 
 /**
  * Returns directory suggestions for `pathText` typed by the user.
  *
+ * Pass `homeDir` (from the selected machine's metadata) so `~/...` inputs
+ * resolve to a real directory on the remote machine.
+ *
  * Returns empty array when:
  * - `machineId` is null/undefined (machine not selected)
  * - `pathText` is empty
- * - The last path segment contains no typed characters after the final `/`
- *   AND the path already ends with `/` (to avoid suggestions on bare `/`)
+ * - The path already ends with `/` (nothing typed after the final `/`)
  */
 export function useDirSuggestions(
     machineId: string | null | undefined,
     pathText: string,
+    homeDir?: string,
 ): DirSuggestion[] {
     const [suggestions, setSuggestions] = React.useState<DirSuggestion[]>([]);
     const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-    const latestRef = React.useRef({ machineId, pathText });
+    const latestRef = React.useRef({ machineId, pathText, homeDir });
 
     React.useEffect(() => {
-        latestRef.current = { machineId, pathText };
+        latestRef.current = { machineId, pathText, homeDir };
     });
 
     React.useEffect(() => {
@@ -92,22 +103,17 @@ export function useDirSuggestions(
         }
 
         timerRef.current = setTimeout(async () => {
-            const { machineId: mid, pathText: pt } = latestRef.current;
+            const { machineId: mid, pathText: pt, homeDir: hd } = latestRef.current;
             if (!mid || !pt) return;
 
-            // Split into parent directory + prefix
-            const lastSlash = pt.lastIndexOf('/');
-            const parentDir = lastSlash >= 0 ? pt.slice(0, lastSlash + 1) : '/';
-            const prefix = lastSlash >= 0 ? pt.slice(lastSlash + 1) : pt;
+            const { parentDir, resolvedParentDir, prefix } = splitPathForSuggestions(pt, hd);
 
-            // Don't suggest if there's nothing typed after the last slash
-            // (avoids a suggestions list appearing on a bare path like "/home/user/")
             if (prefix.length === 0) {
                 setSuggestions([]);
                 return;
             }
 
-            const dirs = await fetchDirs(mid, parentDir || '/');
+            const dirs = await fetchDirs(mid, resolvedParentDir);
 
             if (latestRef.current.machineId !== mid || latestRef.current.pathText !== pt) {
                 return; // stale
@@ -128,7 +134,7 @@ export function useDirSuggestions(
                 clearTimeout(timerRef.current);
             }
         };
-    }, [machineId, pathText]);
+    }, [machineId, pathText, homeDir]);
 
     return suggestions;
 }
