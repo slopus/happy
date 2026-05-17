@@ -609,9 +609,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return label;
     }, [isSandboxEnabled]);
 
-    // Calculate context warning
-    const contextWarning = props.usageData?.contextSize
-        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme, props.usageData.model)
+    // Gate on `alwaysShow || contextSize` so the toggle still renders before usage streams in.
+    const alwaysShowContextSize = props.alwaysShowContextSize ?? false;
+    const contextWarning = alwaysShowContextSize || props.usageData?.contextSize
+        ? getContextWarning(props.usageData?.contextSize ?? 0, alwaysShowContextSize, theme, props.usageData?.model)
         : null;
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
