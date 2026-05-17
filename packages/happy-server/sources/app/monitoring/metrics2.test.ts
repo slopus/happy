@@ -28,16 +28,16 @@ describe("updateDatabaseMetrics", () => {
         dbMock.$queryRaw.mockResolvedValue([{ estimated_count: 123n }]);
     });
 
-    it("uses an estimated count for SessionMessage", async () => {
+    it("uses estimated counts instead of exact table counts", async () => {
         await updateDatabaseMetrics();
 
-        expect(dbMock.account.count).toHaveBeenCalledOnce();
-        expect(dbMock.session.count).toHaveBeenCalledOnce();
-        expect(dbMock.machine.count).toHaveBeenCalledOnce();
+        expect(dbMock.account.count).not.toHaveBeenCalled();
+        expect(dbMock.session.count).not.toHaveBeenCalled();
         expect(dbMock.sessionMessage.count).not.toHaveBeenCalled();
-        expect(dbMock.$queryRaw).toHaveBeenCalledOnce();
+        expect(dbMock.machine.count).not.toHaveBeenCalled();
+        expect(dbMock.$queryRaw).toHaveBeenCalledTimes(4);
 
-        const [, tableName] = dbMock.$queryRaw.mock.calls[0];
-        expect(tableName).toBe('"SessionMessage"');
+        const queriedTables = dbMock.$queryRaw.mock.calls.map((call) => call[1]);
+        expect(queriedTables).toEqual(['"Account"', '"Session"', '"SessionMessage"', '"Machine"']);
     });
 });

@@ -118,14 +118,13 @@ async function getEstimatedRecordCount(tableName: string): Promise<number> {
 
 // Database metrics updater
 export async function updateDatabaseMetrics(): Promise<void> {
-    // Keep exact counts for small tables, but use a catalog estimate for
-    // SessionMessage. Exact COUNT(*) on that table scans hundreds of millions
-    // of rows in production and this updater runs once a minute.
+    // Use catalog estimates instead of exact COUNT(*). Exact counts are full
+    // scans in Postgres and this updater runs once a minute.
     const [accountCount, sessionCount, messageCount, machineCount] = await Promise.all([
-        db.account.count(),
-        db.session.count(),
+        getEstimatedRecordCount('"Account"'),
+        getEstimatedRecordCount('"Session"'),
         getEstimatedRecordCount('"SessionMessage"'),
-        db.machine.count()
+        getEstimatedRecordCount('"Machine"')
     ]);
 
     // Update metrics
