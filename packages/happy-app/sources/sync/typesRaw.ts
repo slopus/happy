@@ -526,6 +526,7 @@ export type NormalizedMessage = ({
     isSidechain: boolean,
     meta?: MessageMeta,
     usage?: UsageData,
+    model?: string,
     /**
      * Underlying Claude `uuid` for this message — used as the rewind point
      * for the session fork / duplicate flow. Optional because some message
@@ -835,7 +836,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     isSidechain: raw.content.data.isSidechain ?? false,
                     content,
                     meta: raw.meta,
-                    usage: raw.content.data.message.usage
+                    usage: raw.content.data.message.usage,
+                    model: raw.content.data.message.model
                 };
             } else if (raw.content.data.type === 'user') {
                 if (!raw.content.data.uuid) {

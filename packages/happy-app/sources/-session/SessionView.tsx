@@ -571,6 +571,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             cacheCreation: source.cacheCreation,
             cacheRead: source.cacheRead,
             contextSize: source.contextSize,
+            model: source.model,
         };
     }, [sessionUsage, session.latestUsage]);
 

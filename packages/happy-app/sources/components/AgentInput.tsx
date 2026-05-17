@@ -72,6 +72,7 @@ interface AgentInputProps {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        model?: string;
     };
     alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
@@ -93,7 +94,18 @@ interface AgentInputProps {
     onAddImages?: (images: AttachmentPreview[]) => void;
 }
 
-const MAX_CONTEXT_SIZE = 190000;
+// Effective usable context per model. Anthropic 1M-context variants
+// expose ~950K usable tokens; everything else is treated as 200K (~190K usable).
+// See https://github.com/slopus/happy/issues/910
+const DEFAULT_MAX_CONTEXT_SIZE = 190000;
+const ONE_MILLION_MAX_CONTEXT_SIZE = 950000;
+
+function getMaxContextSize(model?: string): number {
+    if (model && /\[1m\]/i.test(model)) {
+        return ONE_MILLION_MAX_CONTEXT_SIZE;
+    }
+    return DEFAULT_MAX_CONTEXT_SIZE;
+}
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -300,8 +312,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
 }));
 
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
-    const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
+const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme, model?: string) => {
+    const maxContextSize = getMaxContextSize(model);
+    const percentageUsed = (contextSize / maxContextSize) * 100;
     const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
 
     if (percentageRemaining <= 5) {
@@ -598,7 +611,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
-        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
+        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme, props.usageData.model)
         : null;
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');

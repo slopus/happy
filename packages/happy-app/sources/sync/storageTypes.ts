@@ -125,6 +125,7 @@ export interface Session {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        model?: string;
         timestamp: number;
     } | null;
 }
