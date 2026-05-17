@@ -116,6 +116,7 @@ import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState, TodoItem, TodoItemsSchema } from "../storageTypes";
 import { MessageMeta } from "../typesMessageMeta";
 import { parseMessageAsEvent } from "./messageToEvent";
+import deepEqual from "fast-deep-equal";
 
 type ReducerMessage = {
     id: string;
@@ -140,6 +141,12 @@ type StoredPermission = {
     mode?: string;
     allowedTools?: string[];
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+};
+
+type IncomingToolCall = {
+    id: string;
+    name: string;
+    input: unknown;
 };
 
 export type ReducerState = {
@@ -189,6 +196,82 @@ function mergeToolInputs(existingInput: unknown, nextInput: unknown): unknown {
         return { ...nextInput, ...existingInput };
     }
     return nextInput ?? existingInput;
+}
+
+function normalizeValueForPermissionMatch(value: unknown, parentKey?: string): unknown {
+    if (Array.isArray(value)) {
+        const normalized = value.map((item) => normalizeValueForPermissionMatch(item));
+        if (parentKey === 'command') {
+            return normalized.map((item) => String(item)).join(' ');
+        }
+        return normalized;
+    }
+
+    if (isRecord(value)) {
+        const result: Record<string, unknown> = {};
+        for (const key of Object.keys(value).sort()) {
+            result[key] = normalizeValueForPermissionMatch(value[key], key);
+        }
+        return result;
+    }
+
+    return value;
+}
+
+function permissionInputsMatch(left: unknown, right: unknown): boolean {
+    return deepEqual(
+        normalizeValueForPermissionMatch(left),
+        normalizeValueForPermissionMatch(right),
+    );
+}
+
+function canMatchPermissionAcrossIds(toolName: string): boolean {
+    return toolName === 'CodexBash' || toolName === 'CodexPatch';
+}
+
+function findMatchingIncomingTool(
+    incomingToolCalls: IncomingToolCall[],
+    toolName: string,
+    input: unknown,
+): IncomingToolCall | null {
+    if (!canMatchPermissionAcrossIds(toolName)) {
+        return null;
+    }
+
+    for (const tool of incomingToolCalls) {
+        if (tool.name === toolName && permissionInputsMatch(tool.input, input)) {
+            return tool;
+        }
+    }
+    return null;
+}
+
+function findMatchingPermission(
+    state: ReducerState,
+    toolName: string,
+    input: unknown,
+): { permissionId: string; messageId?: string; permission: StoredPermission } | null {
+    if (!canMatchPermissionAcrossIds(toolName)) {
+        return null;
+    }
+
+    let best: { permissionId: string; messageId?: string; permission: StoredPermission } | null = null;
+
+    for (const [permissionId, permission] of state.permissions.entries()) {
+        if (permission.tool !== toolName || !permissionInputsMatch(permission.arguments, input)) {
+            continue;
+        }
+
+        const messageId = state.toolIdToMessageId.get(permissionId);
+        const message = messageId ? state.messages.get(messageId) : undefined;
+        const actualMessageId = message?.tool ? messageId : undefined;
+
+        if (!best || permission.createdAt > best.permission.createdAt) {
+            best = { permissionId, messageId: actualMessageId, permission };
+        }
+    }
+
+    return best;
 }
 
 function getSidechainOwner(state: ReducerState, sidechainId: string): ReducerMessage | null {
@@ -382,13 +465,20 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     // Update nonSidechainMessages to only include messages that weren't converted
     nonSidechainMessages = messagesToProcess;
 
-    // Build a set of incoming tool IDs for quick lookup
+    // Build indexes of incoming tool calls for quick lookup. Codex can report
+    // approval and execution with different IDs, so keep name/input too.
     const incomingToolIds = new Set<string>();
+    const incomingToolCalls: IncomingToolCall[] = [];
     for (let msg of nonSidechainMessages) {
         if (msg.role === 'agent') {
             for (let c of msg.content) {
                 if (c.type === 'tool-call') {
                     incomingToolIds.add(c.id);
+                    incomingToolCalls.push({
+                        id: c.id,
+                        name: c.name,
+                        input: c.input,
+                    });
                 }
             }
         }
@@ -426,41 +516,44 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         changed.add(existingMessageId);
                     }
                 } else {
-                    if (ENABLE_LOGGING) {
-                        console.log(`[REDUCER] Creating new message for permission ${permId}`);
-                    }
-
-                    // Create a new tool message for the permission request
-                    let mid = allocateId();
-                    let toolCall: ToolCall = {
-                        name: request.tool,
-                        state: 'running' as const,
-                        input: request.arguments,
-                        createdAt: request.createdAt || Date.now(),
-                        startedAt: null,
-                        completedAt: null,
-                        description: null,
-                        result: undefined,
-                        permission: {
-                            id: permId,
-                            status: 'pending'
+                    const matchingIncomingTool = findMatchingIncomingTool(incomingToolCalls, request.tool, request.arguments);
+                    if (!matchingIncomingTool) {
+                        if (ENABLE_LOGGING) {
+                            console.log(`[REDUCER] Creating new message for permission ${permId}`);
                         }
-                    };
 
-                    state.messages.set(mid, {
-                        id: mid,
-                        realID: null,
-                        role: 'agent',
-                        createdAt: request.createdAt || Date.now(),
-                        text: null,
-                        tool: toolCall,
-                        event: null,
-                    });
+                        // Create a new tool message for the permission request
+                        let mid = allocateId();
+                        let toolCall: ToolCall = {
+                            name: request.tool,
+                            state: 'running' as const,
+                            input: request.arguments,
+                            createdAt: request.createdAt || Date.now(),
+                            startedAt: null,
+                            completedAt: null,
+                            description: null,
+                            result: undefined,
+                            permission: {
+                                id: permId,
+                                status: 'pending'
+                            }
+                        };
 
-                    // Store by permission ID (which will match tool ID)
-                    state.toolIdToMessageId.set(permId, mid);
+                        state.messages.set(mid, {
+                            id: mid,
+                            realID: null,
+                            role: 'agent',
+                            createdAt: request.createdAt || Date.now(),
+                            text: null,
+                            tool: toolCall,
+                            event: null,
+                        });
 
-                    changed.add(mid);
+                        // Store by permission ID (which will match tool ID)
+                        state.toolIdToMessageId.set(permId, mid);
+
+                        changed.add(mid);
+                    }
                 }
 
                 // Store permission details for quick lookup
@@ -564,8 +657,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         }
                     }
                 } else {
-                    // No existing message - check if tool ID is in incoming messages
-                    if (incomingToolIds.has(permId)) {
+                    // No existing message - check if this permission belongs to an incoming tool.
+                    const matchingIncomingTool = incomingToolIds.has(permId)
+                        ? { id: permId }
+                        : findMatchingIncomingTool(incomingToolCalls, completed.tool, completed.arguments);
+                    if (matchingIncomingTool) {
                         if (ENABLE_LOGGING) {
                             console.log(`[REDUCER] Storing permission ${permId} for incoming tool`);
                         }
@@ -576,7 +672,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             createdAt: completed.createdAt || Date.now(),
                             completedAt: completed.completedAt || undefined,
                             status: completed.status,
-                            reason: completed.reason || undefined
+                            reason: completed.reason || undefined,
+                            mode: completed.mode || undefined,
+                            allowedTools: completed.allowedTools || undefined,
+                            decision: completed.decision || undefined
                         });
                         continue;
                     }
@@ -751,7 +850,17 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             console.log(`[REDUCER] Creating new message for tool ${c.id}`);
                         }
                         // Check if there's a stored permission for this tool
-                        const permission = state.permissions.get(c.id);
+                        let permission = state.permissions.get(c.id);
+                        let permissionId = c.id;
+                        let permissionMessageId: string | undefined;
+                        if (!permission) {
+                            const matched = findMatchingPermission(state, c.name, c.input);
+                            if (matched) {
+                                permission = matched.permission;
+                                permissionId = matched.permissionId;
+                                permissionMessageId = matched.messageId;
+                            }
+                        }
 
                         let toolCall: ToolCall = {
                             name: c.name,
@@ -770,7 +879,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                                 console.log(`[REDUCER] Found stored permission for tool ${c.id}`);
                             }
                             toolCall.permission = {
-                                id: c.id,
+                                id: permissionId,
                                 status: permission.status,
                                 reason: permission.reason,
                                 mode: permission.mode,
@@ -788,20 +897,36 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             }
                         }
 
-                        let mid = allocateId();
-                        state.messages.set(mid, {
-                            id: mid,
-                            realID: msg.id,
-                            role: 'agent',
-                            createdAt: msg.createdAt,
-                            text: null,
-                            tool: toolCall,
-                            event: null,
-                            meta: msg.meta,
-                        });
+                        if (permissionMessageId) {
+                            const existingPermissionMessage = state.messages.get(permissionMessageId);
+                            if (existingPermissionMessage?.tool) {
+                                existingPermissionMessage.realID = msg.id;
+                                existingPermissionMessage.tool = {
+                                    ...toolCall,
+                                    createdAt: existingPermissionMessage.tool.createdAt,
+                                };
+                                existingPermissionMessage.meta = msg.meta;
+                                state.toolIdToMessageId.set(c.id, permissionMessageId);
+                                state.toolIdToMessageId.set(permissionId, permissionMessageId);
+                                changed.add(permissionMessageId);
+                            }
+                        } else {
+                            let mid = allocateId();
+                            state.messages.set(mid, {
+                                id: mid,
+                                realID: msg.id,
+                                role: 'agent',
+                                createdAt: msg.createdAt,
+                                text: null,
+                                tool: toolCall,
+                                event: null,
+                                meta: msg.meta,
+                            });
 
-                        state.toolIdToMessageId.set(c.id, mid);
-                        changed.add(mid);
+                            state.toolIdToMessageId.set(c.id, mid);
+                            state.toolIdToMessageId.set(permissionId, mid);
+                            changed.add(mid);
+                        }
 
                     }
                 }

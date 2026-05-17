@@ -81,6 +81,11 @@ function buildEnvelopeOptions(currentTurnId: string | null, subagent?: string): 
     };
 }
 
+function pickMessageTurnId(message: Record<string, unknown>): string | null {
+    const turnId = message.turn_id ?? message.turnId;
+    return typeof turnId === 'string' && turnId.length > 0 ? turnId : null;
+}
+
 function pickProviderSubagent(message: Record<string, unknown>): string | undefined {
     const candidates = [message.subagent, message.parent_call_id, message.parentCallId];
     for (const candidate of candidates) {
@@ -183,7 +188,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     const providerSubagentToSessionSubagent = getProviderSubagentToSessionSubagent(state);
 
     if (type === 'task_started') {
-        const turnId = createId();
+        const turnId = pickMessageTurnId(message) ?? createId();
         const turnStart = createEnvelope('agent', { t: 'turn-start' }, { turn: turnId });
         startedSubagents.clear();
         activeSubagents.clear();
@@ -198,7 +203,8 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     }
 
     if (type === 'task_complete' || type === 'turn_aborted') {
-        if (!state.currentTurnId) {
+        const turnId = state.currentTurnId ?? pickMessageTurnId(message);
+        if (!turnId) {
             return {
                 currentTurnId: null,
                 startedSubagents,
@@ -208,7 +214,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             };
         }
 
-        const lifecycleOpts = { turn: state.currentTurnId } satisfies CreateEnvelopeOptions;
+        const lifecycleOpts = { turn: turnId } satisfies CreateEnvelopeOptions;
         providerSubagentToSessionSubagent.clear();
         return {
             currentTurnId: null,
@@ -236,7 +242,8 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     }
 
     const subagent = resolveSessionSubagent(message, providerSubagentToSessionSubagent);
-    const opts = buildEnvelopeOptions(state.currentTurnId, subagent);
+    const effectiveTurnId = state.currentTurnId ?? pickMessageTurnId(message);
+    const opts = buildEnvelopeOptions(effectiveTurnId, subagent);
 
     if (type === 'agent_message') {
         if (typeof message.message !== 'string') {

@@ -49,6 +49,17 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         expect(result.envelopes[0].ev).toEqual({ t: 'text', text: 'hello' });
     });
 
+    it('uses provider turn_id when state turn was already cleared', () => {
+        const result = mapCodexMcpMessageToSessionEnvelopes(
+            { type: 'agent_message', message: 'late final answer', turn_id: 'provider-turn-1' },
+            { currentTurnId: null }
+        );
+
+        expect(result.envelopes).toHaveLength(1);
+        expect(result.envelopes[0].turn).toBe('provider-turn-1');
+        expect(result.envelopes[0].ev).toEqual({ t: 'text', text: 'late final answer' });
+    });
+
     it('maps parent call linkage to subagent field', () => {
         const result = mapCodexMcpMessageToSessionEnvelopes(
             { type: 'agent_message', message: 'subagent hello', parent_call_id: 'parent-call-1' },

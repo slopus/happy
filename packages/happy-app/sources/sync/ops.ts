@@ -82,6 +82,23 @@ interface SessionListDirectoryResponse {
     error?: string;
 }
 
+export interface MachineDirectoryEntry {
+    name: string;
+    path: string;
+    type: 'file' | 'directory' | 'other';
+    size?: number;
+    modified?: number;
+}
+
+export interface MachineListDirectoryResponse {
+    success: boolean;
+    path?: string;
+    parent?: string | null;
+    root?: string;
+    entries?: MachineDirectoryEntry[];
+    error?: string;
+}
+
 // Directory tree operation types
 interface SessionGetDirectoryTreeRequest {
     path: string;
@@ -210,6 +227,22 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
         return {
             type: 'error',
             errorMessage: error instanceof Error ? error.message : 'Failed to spawn session'
+        };
+    }
+}
+
+export async function machineListDirectory(machineId: string, path: string): Promise<MachineListDirectoryResponse> {
+    try {
+        const result = await apiSocket.machineRPC<MachineListDirectoryResponse, { path: string }>(
+            machineId,
+            'list-machine-directory',
+            { path }
+        );
+        return result;
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to list remote directory'
         };
     }
 }
