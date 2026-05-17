@@ -82,6 +82,43 @@ pnpm --filter happy run build
 
 Report success/failure. Stop on failure.
 
+### Step 5b: Rebuild bundled assets (server + webapp) — REQUIRED for every CLI release
+
+**Do not skip this. `pnpm run build` does NOT rebuild `tools/`.** The npm package
+ships `tools/` (see `files` in package.json) **as-is from disk**. The bundled
+self-host server (`tools/server/<plat>/`) and web app (`tools/webapp/`) are
+produced by separate scripts, so a plain build + publish ships **whatever stale
+bundle happened to be on disk** — this is exactly how a beta went out with an old
+server bundle and a broken Prisma engine.
+
+```bash
+# 1. Regenerate Prisma client before compiling the server.
+#    The native query engine is provided at install time by happy's
+#    @prisma/engines dependency; do not package all platform engines into tools/.
+pnpm --filter happy-server generate
+
+# 2. Cross-build the server binary for all 5 platforms (NOT host-only).
+pnpm --filter happy run bundle:server:all
+
+# 3. Rebuild the bundled web app.
+pnpm --filter happy run bundle:webapp
+```
+
+Sanity-check the output before continuing — every platform dir under
+`packages/happy-cli/tools/server/` must contain `happy-server`,
+`pglite.wasm`, `pglite.data`, `prisma/migrations/`, and `tools/webapp/index.html`
+must exist:
+
+```bash
+ls packages/happy-cli/tools/server/*/ && ls packages/happy-cli/tools/webapp/index.html
+```
+
+`bundle:server` needs `bun` on PATH. Cross-compiling all platforms from one host
+is supported by `bun build --compile --target`. The Prisma query engine is a
+native `.node` file and is NOT embeddable in the bun binary; `happy-cli` resolves
+it from its `@prisma/engines` dependency and points Prisma at it via
+`PRISMA_QUERY_ENGINE_LIBRARY`.
+
 ### Step 6: Test (unit only)
 
 ```bash
@@ -331,6 +368,7 @@ Separate repo, not part of this monorepo. Guide the user to push to that repo.
 - **Release notes: investigate with subagents, exclude default-off, ask when unsure** — see "Writing release notes" above.
 - **Always present options** — never assume which component, channel, or version.
 - **Always verify before publishing** — show the user what will be published and get confirmation.
+- **Always rebuild bundled assets on a CLI release** — `pnpm --filter happy-server generate`, then `bundle:server:all` + `bundle:webapp` before pack/publish (Step 5b). `pnpm run build` does NOT do this; the tarball ships `tools/` from disk, so skipping it ships a stale/broken server + webapp.
 - **Unit tests are the gate, not integration tests** — integration tests are slow and have flaky abort/interrupt tests.
 - **Use pnpm publish, not npm publish** — avoids workspace protocol issues.
 - **Use --ignore-scripts** — we build and test explicitly, no need for prepublishOnly to redo it.

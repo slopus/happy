@@ -15,6 +15,10 @@
  *       pglite.data
  *       prisma/migrations/...
  *
+ * Prisma query engine: bun --compile cannot embed native .node modules.
+ * happy-cli depends on @prisma/engines and points PRISMA_QUERY_ENGINE_LIBRARY
+ * at the npm-installed engine for the current machine when spawning this binary.
+ *
  * Default: builds for the current host platform only. Pass --all-platforms to cross-build
  * for all six (used by release/CI).
  */

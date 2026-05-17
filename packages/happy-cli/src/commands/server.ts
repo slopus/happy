@@ -12,6 +12,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require_ = createRequire(import.meta.url);
 
+const PRISMA_QUERY_ENGINE_FILES: Record<string, string> = {
+    'arm64-darwin': 'libquery_engine-darwin-arm64.dylib.node',
+    'x64-darwin': 'libquery_engine-darwin.dylib.node',
+    'arm64-linux': 'libquery_engine-linux-arm64-openssl-3.0.x.so.node',
+    'x64-linux': 'libquery_engine-debian-openssl-3.0.x.so.node',
+    'x64-win32': 'query_engine-windows.dll.node',
+};
+
 interface ServerOptions {
     port: number;
     host: string;
@@ -85,6 +93,20 @@ export async function handleServerCommand(args: string[]): Promise<void> {
         serverUrl,
         disableAnalytics: true,
     });
+
+    // The bundled bun binary can't embed Prisma's native query engine. Source/dev
+    // mode resolves the engine from node_modules normally, but bundled mode needs
+    // an explicit path because bun's bunfs execPath defeats Prisma's search.
+    if (artifacts.bundled) {
+        const prismaEngine = resolvePrismaQueryEngineLibrary(artifacts.cwd);
+        if (!prismaEngine) {
+            console.error(chalk.red('Could not locate the Prisma query engine for this platform.'));
+            console.error(chalk.gray('  Expected @prisma/engines to be installed with the happy package.'));
+            console.error(chalk.gray('  Try reinstalling happy, then run `happy server` again.'));
+            process.exit(1);
+        }
+        env.PRISMA_QUERY_ENGINE_LIBRARY = prismaEngine;
+    }
 
     console.log(chalk.gray('Running migrations...'));
     await spawnAndWait(artifacts, env, ['migrate']);
@@ -193,6 +215,33 @@ function loadOrCreateMasterSecret(file: string): string {
 
 function currentPlatform(): string {
     return `${process.arch}-${process.platform}`;
+}
+
+function resolvePrismaQueryEngineLibrary(bundledServerDir: string): string | undefined {
+    const fromDependency = findPrismaEngineFromDependency();
+    if (fromDependency) {
+        return fromDependency;
+    }
+
+    // Backward-compatible local fallback for bundles produced before the engine
+    // moved to @prisma/engines as a CLI dependency.
+    const legacyBundledEngine = path.join(bundledServerDir, 'libquery_engine.node');
+    return existsSync(legacyBundledEngine) ? legacyBundledEngine : undefined;
+}
+
+function findPrismaEngineFromDependency(): string | undefined {
+    const engineFile = PRISMA_QUERY_ENGINE_FILES[currentPlatform()];
+    if (!engineFile) {
+        return undefined;
+    }
+
+    try {
+        const enginesPackage = require_.resolve('@prisma/engines/package.json');
+        const candidate = path.join(path.dirname(enginesPackage), engineFile);
+        return existsSync(candidate) ? candidate : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 /**

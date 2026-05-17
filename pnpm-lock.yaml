@@ -927,6 +927,9 @@ importers:
       '@paralleldrive/cuid2':
         specifier: ^2.2.2
         version: 2.3.1
+      '@prisma/engines':
+        specifier: 6.19.2
+        version: 6.19.2
       '@slopus/happy-wire':
         specifier: workspace:*
         version: link:../happy-wire
