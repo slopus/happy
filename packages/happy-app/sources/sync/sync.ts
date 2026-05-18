@@ -69,6 +69,13 @@ type V3GetSessionMessagesResponse = {
 // within int4 while still being effectively "infinite" for any session.
 const SEQ_BACKWARD_INITIAL_SENTINEL = 2_147_483_647;
 
+// Background prefetch tuning. After the session list refreshes, live sessions
+// are prefetched immediately (small N, parallel). All other non-archived
+// sessions are prefetched after a short delay, with a small concurrency cap
+// so a 100-session cold start does not slam the server.
+const SESSION_PREFETCH_FILL_DELAY_MS = 5_000;
+const SESSION_PREFETCH_CONCURRENCY = 3;
+
 type V3PostSessionMessagesResponse = {
     messages: Array<{
         id: string;
@@ -131,6 +138,10 @@ class Sync {
     private backgroundSendTimeout: ReturnType<typeof setTimeout> | null = null;
     private backgroundSendNotificationId: string | null = null;
     private backgroundSendStartedAt: number | null = null;
+    // Pending phase-2 fill-in timer for background session prefetch. Cleared
+    // and rescheduled every time fetchSessions runs so the latest session
+    // list wins.
+    private sessionPrefetchTimer: ReturnType<typeof setTimeout> | null = null;
     revenueCatInitialized = false;
 
     // Generic locking mechanism
@@ -973,6 +984,94 @@ class Sync {
         this.applySessions(decryptedSessions);
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
 
+        // Kick off background prefetch of session messages so opening a
+        // session for the first time in this app run does not pay the
+        // round-trip-to-server latency at tap time. Fire-and-forget — we
+        // never want to gate the session list on this.
+        void this.runSessionPrefetch();
+    }
+
+    /**
+     * Background prefetch of the latest message page for sessions the user
+     * has not yet opened this app run. Two phases:
+     *
+     *   Phase 1 — live sessions, immediate parallel. Live sessions are the
+     *     most likely next-tap and are usually 1–10 in count.
+     *
+     *   Phase 2 — every other non-archived session, sorted by activeAt desc,
+     *     processed with concurrency=SESSION_PREFETCH_CONCURRENCY after a
+     *     SESSION_PREFETCH_FILL_DELAY_MS pause so cold start is not slammed.
+     *
+     * Per-session `InvalidateSync` + `AsyncLock` already dedupe against the
+     * foreground `onSessionVisible` path, so a user tap mid-prefetch is safe.
+     */
+    private runSessionPrefetch = () => {
+        const sessions = Object.values(storage.getState().sessions);
+
+        // Phase 1: live sessions — parallel, immediate. Each session's own
+        // InvalidateSync + AsyncLock prevents duplicate work if the user
+        // taps the same session at the same moment.
+        let livePrefetched = 0;
+        for (const session of sessions) {
+            if (!session.active) continue;
+            if (this.sessionLastSeq.get(session.id) !== undefined) continue;
+            this.getMessagesSync(session.id).invalidate();
+            livePrefetched += 1;
+        }
+        if (livePrefetched > 0) {
+            log.log(`🔮 Session prefetch phase 1: ${livePrefetched} live session(s)`);
+        }
+
+        // Phase 2: schedule fill-in pass for all remaining non-archived
+        // sessions. Reschedule on every fetchSessions so the freshest
+        // snapshot wins (e.g., post-reconnect after sessions changed).
+        if (this.sessionPrefetchTimer) {
+            clearTimeout(this.sessionPrefetchTimer);
+        }
+        this.sessionPrefetchTimer = setTimeout(() => {
+            this.sessionPrefetchTimer = null;
+            void this.runSessionPrefetchFillIn();
+        }, SESSION_PREFETCH_FILL_DELAY_MS);
+    }
+
+    /**
+     * Phase 2 of background prefetch. Iterates non-archived sessions sorted
+     * by recency, with a small concurrency cap so we never fire more than
+     * SESSION_PREFETCH_CONCURRENCY parallel `fetchMessages` at once.
+     */
+    private runSessionPrefetchFillIn = async () => {
+        const sessions = Object.values(storage.getState().sessions);
+        const candidates = sessions
+            .filter(s => s.metadata?.lifecycleState !== 'archived')
+            .filter(s => this.sessionLastSeq.get(s.id) === undefined)
+            .sort((a, b) => b.activeAt - a.activeAt);
+
+        if (candidates.length === 0) {
+            return;
+        }
+
+        log.log(`🔮 Session prefetch phase 2: ${candidates.length} non-archived session(s), concurrency=${SESSION_PREFETCH_CONCURRENCY}`);
+
+        let cursor = 0;
+        const workers = Array.from({ length: SESSION_PREFETCH_CONCURRENCY }, async () => {
+            while (cursor < candidates.length) {
+                const idx = cursor++;
+                const session = candidates[idx];
+                // Race: another path (user tap, phase 1, an earlier phase-2
+                // worker for the same session via stale candidates) may
+                // have already fetched it.
+                if (this.sessionLastSeq.get(session.id) !== undefined) {
+                    continue;
+                }
+                try {
+                    await this.getMessagesSync(session.id).invalidateAndAwait();
+                } catch (error) {
+                    log.log(`🔮 Session prefetch phase 2 failed for ${session.id}: ${String(error)}`);
+                }
+            }
+        });
+        await Promise.all(workers);
+        log.log(`🔮 Session prefetch phase 2 complete`);
     }
 
     public refreshMachines = async () => {
