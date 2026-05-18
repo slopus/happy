@@ -65,15 +65,27 @@ export async function startDaemon(): Promise<void> {
     requestShutdown = (source, errorMessage) => {
       logger.debug(`[DAEMON RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
 
-      // Fallback - in case startup malfunctions - we will force exit the process with code 1
+      // Fallback - in case startup malfunctions - we will force exit the process with code 1.
+      //
+      // The graceful shutdown path runs `cleanupAndShutdown` which awaits
+      // metadata updates, `apiMachine.shutdown()`, `stopControlServer()`,
+      // `cleanupDaemonState()`, `stopCaffeinate()`, and `releaseDaemonLock()`
+      // — and any in-flight `persistSession(...)` writes for session
+      // encryption keys must finish before we hard-exit, otherwise a session
+      // started <100ms before this fires becomes unresumable on next launch
+      // (its key never made it to `sessions.json`).
+      //
+      // 1s was empirically too tight on slow disks (CI runners, FileVault
+      // throttling, network-mounted home dirs). 5s leaves comfortable
+      // headroom while still bounding shutdown latency.
       setTimeout(async () => {
-        logger.debug('[DAEMON RUN] Startup malfunctioned, forcing exit with code 1');
+        logger.debug('[DAEMON RUN] Graceful shutdown did not finish in time, forcing exit with code 1');
 
         // Give time for logs to be flushed
         await new Promise(resolve => setTimeout(resolve, 100))
 
         process.exit(1);
-      }, 1_000);
+      }, 5_000);
 
       // Start graceful shutdown
       resolve({ source, errorMessage });
@@ -716,6 +728,43 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
+    // Grace period after SIGTERM before SIGKILL fallback escalation.
+    // Agent CLIs (claude, codex, gemini) may have signal handlers that
+    // checkpoint conversation state or run cleanup tools — allow ~3s for
+    // a clean exit before forcing termination.
+    const SIGKILL_GRACE_MS = 3_000;
+
+    // Schedule a SIGKILL fallback in case the child traps SIGTERM. The
+    // tracking map is updated synchronously by callers; the kill itself
+    // is fire-and-forget so callers' synchronous return contract is kept.
+    const scheduleSigkillFallback = (
+      pid: number,
+      sessionId: string,
+      childProcess: import('node:child_process').ChildProcess | undefined,
+    ) => {
+      setTimeout(() => {
+        try {
+          // Probe with signal 0 — throws ESRCH if the process is gone.
+          process.kill(pid, 0);
+          // Still alive after SIGTERM grace — escalate.
+          if (childProcess && !childProcess.killed) {
+            childProcess.kill('SIGKILL');
+          } else {
+            process.kill(pid, 'SIGKILL');
+          }
+          logger.debug(`[DAEMON RUN] SIGKILL fallback fired for session ${sessionId} (PID ${pid})`);
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException)?.code;
+          if (code === 'ESRCH') {
+            // Already exited — happy path.
+            logger.debug(`[DAEMON RUN] SIGKILL fallback skipped — PID ${pid} already gone`);
+          } else {
+            logger.debug(`[DAEMON RUN] SIGKILL fallback for PID ${pid} threw:`, err);
+          }
+        }
+      }, SIGKILL_GRACE_MS).unref();
+    };
+
     // Stop a session by sessionId or PID fallback
     const stopSession = (sessionId: string): boolean => {
       logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
@@ -729,6 +778,7 @@ export async function startDaemon(): Promise<void> {
             try {
               session.childProcess.kill('SIGTERM');
               logger.debug(`[DAEMON RUN] Sent SIGTERM to daemon-spawned session ${sessionId}`);
+              scheduleSigkillFallback(pid, sessionId, session.childProcess);
             } catch (error) {
               logger.debug(`[DAEMON RUN] Failed to kill session ${sessionId}:`, error);
             }
@@ -737,6 +787,7 @@ export async function startDaemon(): Promise<void> {
             try {
               process.kill(pid, 'SIGTERM');
               logger.debug(`[DAEMON RUN] Sent SIGTERM to external session PID ${pid}`);
+              scheduleSigkillFallback(pid, sessionId, session.childProcess);
             } catch (error) {
               logger.debug(`[DAEMON RUN] Failed to kill external session PID ${pid}:`, error);
             }
