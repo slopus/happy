@@ -71,4 +71,16 @@ describe('createSessionMetadata', () => {
 
         expect(metadata.dangerouslySkipPermissions).toBe(true);
     });
+
+    it('sets fork lineage metadata when provided', () => {
+        const { metadata } = createSessionMetadata({
+            flavor: 'codex',
+            machineId: 'machine-6',
+            parentSessionId: 'happy-source',
+            forkedFromMessageId: 'message-2',
+        });
+
+        expect(metadata.parentSessionId).toBe('happy-source');
+        expect(metadata.forkedFromMessageId).toBe('message-2');
+    });
 });

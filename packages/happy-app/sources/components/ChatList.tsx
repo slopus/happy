@@ -182,12 +182,14 @@ const ChatListInternal = React.memo((props: {
     const session = useSession(props.sessionId);
     const { canFork } = useSessionQuickActions(session!, {});
 
-    const handleForkFromMessage = useCallback((_messageId: string, claudeUuid: string) => {
+    const handleForkFromMessage = useCallback((messageId: string, rewindPointId: string | undefined, messageText: string) => {
         Modal.show({
             component: DuplicateSheet,
             props: {
                 sessionId: props.sessionId,
-                initialClaudeUuid: claudeUuid,
+                initialRewindPointId: rewindPointId,
+                initialMessageText: messageText,
+                initialForkedFromMessageId: messageId,
             },
         } as any);
     }, [props.sessionId]);

@@ -31,7 +31,11 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
-import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
+import {
+    mapCodexMcpMessageToSessionEnvelopes,
+    mapCodexProcessorMessageToSessionEnvelopes,
+    mapCodexThreadToSessionEnvelopes,
+} from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 
@@ -118,11 +122,17 @@ export async function runCodex(opts: {
     // Create session
     //
 
+    // Lineage from the daemon's spawn RPC (set by app-side fork / duplicate).
+    const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
+    const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
+
     const { state, metadata } = createSessionMetadata({
         flavor: 'codex',
         machineId,
         startedBy: opts.startedBy,
         sandbox: sandboxConfig,
+        ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
+        ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
     });
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
@@ -673,6 +683,27 @@ export async function runCodex(opts: {
                 mcpServers,
             });
             first = false;
+        }
+
+        const forkCodexThreadId = process.env.HAPPY_FORK_CODEX_THREAD_ID;
+        if (!reconnectSessionId && forkCodexThreadId) {
+            try {
+                const { thread } = await client.readThread({
+                    threadId: forkCodexThreadId,
+                    includeTurns: true,
+                });
+                const envelopes = mapCodexThreadToSessionEnvelopes(thread);
+                for (const envelope of envelopes) {
+                    session.sendSessionProtocolMessage(envelope);
+                }
+                session.updateMetadata((currentMetadata) => ({
+                    ...currentMetadata,
+                    codexThreadId: forkCodexThreadId,
+                }));
+                logger.debug(`[CODEX FORK BACKFILL] Replayed ${envelopes.length} historical envelopes from thread ${forkCodexThreadId}`);
+            } catch (error) {
+                logger.debug(`[CODEX FORK BACKFILL] Failed to read thread ${forkCodexThreadId}:`, error);
+            }
         }
 
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;

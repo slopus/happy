@@ -131,6 +131,11 @@ export interface SpawnSessionOptions {
      * session to it.
      */
     resumeClaudeSessionId?: string;
+    /**
+     * If set, the daemon spawns Codex with `--resume <id>` so a fresh Happy
+     * session attaches to a forked Codex app-server thread.
+     */
+    resumeCodexThreadId?: string;
     /** Happy session id this fork was branched from (lineage). */
     parentSessionId?: string;
     /** Happy message id used as the rewind point (only set for "duplicate"). */

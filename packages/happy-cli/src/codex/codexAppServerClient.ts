@@ -23,6 +23,15 @@ import type {
     NewConversationResponse,
     ResumeConversationParams,
     ResumeConversationResponse,
+    ForkConversationParams,
+    ForkConversationResponse,
+    ReadConversationParams,
+    ReadConversationResponse,
+    RollbackConversationParams,
+    RollbackConversationResponse,
+    InjectItemsParams,
+    InjectItemsResponse,
+    Thread,
     InterruptConversationParams,
     ReviewDecision,
     EventMsg,
@@ -641,6 +650,76 @@ export class CodexAppServerClient {
         });
         logger.debug('[CodexAppServer] Thread resumed:', this._threadId);
         return { threadId: result.thread.id, model: result.model };
+    }
+
+    async forkThread(opts: {
+        threadId: string;
+        model?: string;
+        cwd?: string;
+        approvalPolicy?: ApprovalPolicy;
+        sandbox?: SandboxMode;
+        mcpServers?: Record<string, unknown>;
+    }): Promise<{ threadId: string; model: string; thread: Thread }> {
+        const defaults = this.threadDefaults ?? {};
+        const params: ForkConversationParams = {
+            threadId: opts.threadId,
+            model: opts.model ?? defaults.model ?? null,
+            modelProvider: null,
+            cwd: opts.cwd ?? defaults.cwd ?? process.cwd(),
+            approvalPolicy: opts.approvalPolicy ?? defaults.approvalPolicy ?? null,
+            sandbox: opts.sandbox ?? defaults.sandbox ?? null,
+            config: this.buildThreadConfig(opts.mcpServers ?? defaults.mcpServers),
+            baseInstructions: null,
+            developerInstructions: null,
+            ephemeral: false,
+            threadSource: null,
+        };
+
+        const result = await this.request('thread/fork', params) as ForkConversationResponse;
+        this._threadId = result.thread.id;
+        this._turnId = null;
+        this.rememberThreadDefaults({
+            model: opts.model ?? defaults.model,
+            cwd: opts.cwd ?? defaults.cwd,
+            approvalPolicy: opts.approvalPolicy ?? defaults.approvalPolicy,
+            sandbox: opts.sandbox ?? defaults.sandbox,
+            mcpServers: opts.mcpServers ?? defaults.mcpServers,
+        });
+        logger.debug('[CodexAppServer] Thread forked:', opts.threadId, '->', this._threadId);
+        return { threadId: result.thread.id, model: result.model, thread: result.thread };
+    }
+
+    async readThread(opts: {
+        threadId: string;
+        includeTurns?: boolean;
+    }): Promise<ReadConversationResponse> {
+        const params: ReadConversationParams = {
+            threadId: opts.threadId,
+            includeTurns: opts.includeTurns ?? true,
+        };
+        return await this.request('thread/read', params) as ReadConversationResponse;
+    }
+
+    async rollbackThread(opts: {
+        threadId: string;
+        numTurns: number;
+    }): Promise<RollbackConversationResponse> {
+        const params: RollbackConversationParams = {
+            threadId: opts.threadId,
+            numTurns: opts.numTurns,
+        };
+        return await this.request('thread/rollback', params) as RollbackConversationResponse;
+    }
+
+    async injectItems(opts: {
+        threadId: string;
+        items: unknown[];
+    }): Promise<InjectItemsResponse> {
+        const params: InjectItemsParams = {
+            threadId: opts.threadId,
+            items: opts.items,
+        };
+        return await this.request('thread/inject_items', params) as InjectItemsResponse;
     }
 
     async reconnectAndResumeThread(): Promise<boolean> {

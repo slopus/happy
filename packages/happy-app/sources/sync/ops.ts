@@ -146,6 +146,11 @@ export interface SpawnSessionOptions {
      * file. Used by the session fork / duplicate flow.
      */
     resumeClaudeSessionId?: string;
+    /**
+     * If set, the daemon spawns Codex with `--resume <id>` so the new Happy
+     * session attaches to an app-server thread created by fork / duplicate.
+     */
+    resumeCodexThreadId?: string;
     /** Happy session id this fork was branched from (lineage). */
     parentSessionId?: string;
     /** Happy message id used as the rewind point (only set for "duplicate"). */
@@ -175,6 +180,28 @@ export type ClaudeListRewindPointsResult =
     | { type: 'success'; points: ClaudeRewindPoint[] }
     | { type: 'error'; errorMessage: string };
 
+export interface CodexForkThreadOptions {
+    machineId: string;
+    /** Working directory of the source session, passed to Codex thread/fork. */
+    directory: string;
+    /** Source Codex app-server thread id (Session.metadata.codexThreadId). */
+    codexThreadId: string;
+}
+
+export type CodexForkThreadResult =
+    | { type: 'success'; newCodexThreadId: string }
+    | { type: 'error'; errorMessage: string };
+
+export interface CodexRewindPoint {
+    itemId: string;
+    text: string;
+    timestamp: number;
+}
+
+export type CodexListRewindPointsResult =
+    | { type: 'success'; points: CodexRewindPoint[] }
+    | { type: 'error'; errorMessage: string };
+
 export interface ResumeSessionOptions {
     machineId: string;
     sessionId: string;
@@ -187,7 +214,7 @@ export interface ResumeSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, parentSessionId, forkedFromMessageId } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -197,12 +224,13 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             token?: string,
             agent?: 'codex' | 'claude' | 'gemini' | 'openclaw',
             resumeClaudeSessionId?: string,
+            resumeCodexThreadId?: string,
             parentSessionId?: string,
             forkedFromMessageId?: string,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, parentSessionId, forkedFromMessageId }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId }
         );
         return result;
     } catch (error) {
@@ -296,6 +324,71 @@ export async function claudeDuplicateSession(
         return {
             type: 'error',
             errorMessage: error instanceof Error ? error.message : 'Failed to duplicate session',
+        };
+    }
+}
+
+export async function codexForkThread(options: CodexForkThreadOptions): Promise<CodexForkThreadResult> {
+    const { machineId, directory, codexThreadId } = options;
+    try {
+        const result = await apiSocket.machineRPC<CodexForkThreadResult, {
+            directory: string;
+            codexThreadId: string;
+        }>(
+            machineId,
+            'codex-fork-thread',
+            { directory, codexThreadId },
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to fork Codex thread',
+        };
+    }
+}
+
+export async function codexDuplicateThread(
+    options: CodexForkThreadOptions & { cutAfterItemId: string },
+): Promise<CodexForkThreadResult> {
+    const { machineId, directory, codexThreadId, cutAfterItemId } = options;
+    try {
+        const result = await apiSocket.machineRPC<CodexForkThreadResult, {
+            directory: string;
+            codexThreadId: string;
+            cutAfterItemId: string;
+        }>(
+            machineId,
+            'codex-duplicate-thread',
+            { directory, codexThreadId, cutAfterItemId },
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to duplicate Codex thread',
+        };
+    }
+}
+
+export async function codexListRewindPoints(
+    options: CodexForkThreadOptions,
+): Promise<CodexListRewindPointsResult> {
+    const { machineId, directory, codexThreadId } = options;
+    try {
+        const result = await apiSocket.machineRPC<CodexListRewindPointsResult, {
+            directory: string;
+            codexThreadId: string;
+        }>(
+            machineId,
+            'codex-list-rewind-points',
+            { directory, codexThreadId },
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to list Codex rewind points',
         };
     }
 }
@@ -694,13 +787,30 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
     }
 }
 
-// Forking source description used by forkAndSpawn.
-export interface ForkSource {
+type ClaudeForkSource = {
+    kind?: 'claude';
     sessionId: string;
     machineId: string;
     directory: string;
     claudeSessionId: string;
-}
+};
+
+type CodexForkSource = {
+    kind: 'codex';
+    sessionId: string;
+    machineId: string;
+    directory: string;
+    codexThreadId: string;
+};
+
+// Forking source description used by forkAndSpawn.
+export type ForkSource = ClaudeForkSource | CodexForkSource;
+
+type ForkOptions = {
+    cutAfterUuid?: string;
+    cutAfterItemId?: string;
+    forkedFromMessageId?: string;
+};
 
 /**
  * Two-step orchestrator for the session fork / duplicate flow:
@@ -716,8 +826,47 @@ export interface ForkSource {
  */
 export async function forkAndSpawn(
     source: ForkSource,
-    opts: { cutAfterUuid?: string; forkedFromMessageId?: string } = {},
+    opts: ForkOptions = {},
 ): Promise<SpawnSessionResult> {
+    if (source.kind === 'codex') {
+        const forkResult = opts.cutAfterItemId
+            ? await codexDuplicateThread({
+                machineId: source.machineId,
+                directory: source.directory,
+                codexThreadId: source.codexThreadId,
+                cutAfterItemId: opts.cutAfterItemId,
+            })
+            : await codexForkThread({
+                machineId: source.machineId,
+                directory: source.directory,
+                codexThreadId: source.codexThreadId,
+            });
+
+        if (forkResult.type !== 'success') {
+            return { type: 'error', errorMessage: forkResult.errorMessage };
+        }
+
+        const spawnResult = await machineSpawnNewSession({
+            machineId: source.machineId,
+            directory: source.directory,
+            agent: 'codex',
+            approvedNewDirectoryCreation: false,
+            resumeCodexThreadId: forkResult.newCodexThreadId,
+            parentSessionId: source.sessionId,
+            forkedFromMessageId: opts.forkedFromMessageId,
+        });
+
+        if (spawnResult.type === 'success') {
+            try {
+                await sync.refreshSessions();
+            } catch {
+                // Refresh is best-effort; broadcast sync will still hydrate.
+            }
+        }
+
+        return spawnResult;
+    }
+
     const forkResult = opts.cutAfterUuid
         ? await claudeDuplicateSession({
             machineId: source.machineId,
