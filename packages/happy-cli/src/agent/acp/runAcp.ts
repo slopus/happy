@@ -482,6 +482,28 @@ export async function runAcp(opts: {
 
   let session: ApiSessionClient;
   let permissionHandler: GenericAcpPermissionHandler;
+
+  // Session-swap synchronization. `setupOfflineReconnection` can hand us a
+  // brand-new `ApiSessionClient` at any point — including mid-turn, while
+  // `onBackendMessage` is dispatching envelopes through `session.*`. If we
+  // swapped synchronously, half a turn's envelopes would land on the old
+  // (offline-stub) session and silently drop, while the other half landed
+  // on the new one. We mirror the queue-and-defer pattern already used by
+  // `runGemini.ts:144-181, 1001, 1291-1292`.
+  let isProcessingMessage = false;
+  let pendingSessionSwap: ApiSessionClient | null = null;
+
+  const applyPendingSessionSwap = () => {
+    if (pendingSessionSwap) {
+      logger.debug(`[${opts.agentName}] Applying deferred session swap`);
+      session = pendingSessionSwap;
+      if (permissionHandler) {
+        permissionHandler.updateSession(pendingSessionSwap);
+      }
+      pendingSessionSwap = null;
+    }
+  };
+
   const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
     api,
     sessionTag,
@@ -489,6 +511,13 @@ export async function runAcp(opts: {
     state,
     response,
     onSessionSwap: (newSession) => {
+      if (isProcessingMessage) {
+        // Defer until the in-flight turn finishes so envelopes don't get
+        // split across two ApiSessionClients.
+        logger.debug(`[${opts.agentName}] Session swap requested mid-turn — queueing`);
+        pendingSessionSwap = newSession;
+        return;
+      }
       session = newSession;
       if (permissionHandler) {
         permissionHandler.updateSession(newSession);
@@ -913,6 +942,9 @@ export async function runAcp(opts: {
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
       sendEnvelopes(sessionManager.startTurn());
       const turnEnded = waitForTurnEnd();
+      // Block session swaps for the duration of this turn — any swap
+      // requested while we're mid-flight is queued and applied below.
+      isProcessingMessage = true;
       try {
         if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
           await switchPermissionModeIfRequested(batch.mode.permissionMode);
@@ -933,6 +965,9 @@ export async function runAcp(opts: {
         logAcp('error', `Prompt error from ${opts.agentName}: ${error instanceof Error ? error.message : String(error)}`);
         clearPendingTurn(error instanceof Error ? error : new Error(String(error)));
         throw error;
+      } finally {
+        isProcessingMessage = false;
+        applyPendingSessionSwap();
       }
     }
   } finally {
