@@ -113,7 +113,8 @@ describe('auth', () => {
             // Verify axios was called with correct URL
             expect(mockedAxiosPost).toHaveBeenCalledWith(
                 'https://test-server.example.com/v1/auth/account/request',
-                expect.objectContaining({ publicKey: expect.any(String) })
+                expect.objectContaining({ publicKey: expect.any(String) }),
+                { headers: { 'X-Happy-Client': 'cli-control-plane/0.1.0' } },
             );
         });
 

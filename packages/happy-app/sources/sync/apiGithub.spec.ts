@@ -7,6 +7,11 @@ vi.mock('./serverConfig', () => ({
     getServerUrl: () => 'https://api.test.com'
 }));
 
+// Mock apiSocket to avoid pulling React Native modules into this unit test.
+vi.mock('./apiSocket', () => ({
+    getHappyClientId: () => 'test-client'
+}));
+
 // Mock backoff utility
 vi.mock('@/utils/time', () => ({
     backoff: vi.fn((fn) => fn())
@@ -45,7 +50,8 @@ describe('apiGithub', () => {
                 {
                     method: 'DELETE',
                     headers: {
-                        'Authorization': 'Bearer test-token'
+                        'Authorization': 'Bearer test-token',
+                        'X-Happy-Client': 'test-client'
                     }
                 }
             );

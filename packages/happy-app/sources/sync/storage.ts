@@ -29,7 +29,6 @@ import React from "react";
 import { sync } from "./sync";
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
 import { isMutableTool } from "@/components/tools/knownTools";
-import { projectManager } from "./projectManager";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
 
@@ -216,11 +215,6 @@ interface StorageState {
     updateArtifact: (artifact: DecryptedArtifact) => void;
     deleteArtifact: (artifactId: string) => void;
     deleteSession: (sessionId: string) => void;
-    // Project management methods
-    getProjects: () => import('./projectManager').Project[];
-    getProject: (projectId: string) => import('./projectManager').Project | null;
-    getProjectForSession: (sessionId: string) => import('./projectManager').Project | null;
-    getProjectSessions: (projectId: string) => string[];
     // Friend management methods
     applyFriends: (friends: UserProfile[]) => void;
     applyRelationshipUpdate: (event: RelationshipUpdatedEvent) => void;
@@ -590,15 +584,6 @@ export const storage = create<StorageState>()((set, get) => {
                 mergedSessions,
                 unreadSessionIds,
             );
-
-            // Update project manager with current sessions and machines
-            const machineMetadataMap = new Map<string, any>();
-            Object.values(state.machines).forEach(machine => {
-                if (machine.metadata) {
-                    machineMetadataMap.set(machine.id, machine.metadata);
-                }
-            });
-            projectManager.updateSessions(Object.values(mergedSessions), machineMetadataMap);
 
             return {
                 ...state,
@@ -1111,11 +1096,6 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: updatedSessions
             };
         }),
-        // Project management methods
-        getProjects: () => projectManager.getProjects(),
-        getProject: (projectId: string) => projectManager.getProject(projectId),
-        getProjectForSession: (sessionId: string) => projectManager.getProjectForSession(sessionId),
-        getProjectSessions: (projectId: string) => projectManager.getProjectSessions(projectId),
         getSessionPathKey: (sessionId: string): string | null => {
             const session = get().sessions[sessionId];
             if (!session?.metadata?.machineId || !session?.metadata?.path) return null;
@@ -1495,24 +1475,6 @@ export function useLocalSettingMutable<K extends keyof LocalSettings>(name: K): 
     const value = useLocalSetting(name);
     return [value, setValue];
 }
-
-// Project management hooks
-export function useProjects() {
-    return storage(useShallow((state) => state.getProjects()));
-}
-
-export function useProject(projectId: string | null) {
-    return storage(useShallow((state) => projectId ? state.getProject(projectId) : null));
-}
-
-export function useProjectForSession(sessionId: string | null) {
-    return storage(useShallow((state) => sessionId ? state.getProjectForSession(sessionId) : null));
-}
-
-export function useProjectSessions(projectId: string | null) {
-    return storage(useShallow((state) => projectId ? state.getProjectSessions(projectId) : []));
-}
-
 
 export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSettings[K] {
     return storage(useShallow((state) => state.localSettings[name]));
