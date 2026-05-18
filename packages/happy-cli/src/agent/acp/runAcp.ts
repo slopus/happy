@@ -569,8 +569,24 @@ export async function runAcp(opts: {
 
   const waitForTurnEnd = () => new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      pendingTurn = null;
-      reject(new Error(`Timed out waiting for ${opts.agentName} to finish the turn`));
+      // Route the timeout through the unified `clearPendingTurn` path so
+      // the surrounding catch handler in the prompt-batch loop always
+      // sees a consistent state machine (pendingTurn nulled, timer
+      // cleared, reject delivered exactly once). Previously the timer cb
+      // nulled pendingTurn itself, which left a window where a late
+      // `idle` from the backend (firing within the same tick) hit the
+      // now-no-op `clearPendingTurn` at the idle-status handler — and
+      // the eventual catch path could be mis-ordered with respect to
+      // the turn's envelope flush.
+      //
+      // Guard with reference equality so an out-of-band `clearPendingTurn`
+      // racing the timer doesn't get clobbered.
+      if (pendingTurn?.timeout !== timeout) return;
+      clearPendingTurn(
+        new Error(
+          `Timed out waiting for ${opts.agentName} to finish the turn after ${TURN_TIMEOUT_MS / 60_000} minutes`,
+        ),
+      );
     }, TURN_TIMEOUT_MS);
     pendingTurn = { resolve, reject, timeout };
   });
