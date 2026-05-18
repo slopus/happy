@@ -18,12 +18,17 @@ export type AgentPermissionMode =
     | 'plan'
     | 'dontAsk'
 
+export type AgentEngine = 'codex' | 'claude'
+
 export interface AgentStartOptions {
+    /** Built-in runtime. Codex runs the bundled Codex CLI; Claude runs the
+     * bundled Claude Agent SDK/native binary. */
+    engine?: AgentEngine
     /** Anthropic API key. Optional — the worker falls back to whatever
      *  ANTHROPIC_API_KEY is in its own environment. The SDK has no other
      *  auth path. */
     apiKey?: string
-    /** Optional Claude model id, e.g. `claude-opus-4-7`. */
+    /** Optional runtime model id or alias. */
     model?: string
     /** Optional reasoning effort. */
     effort?: AgentEffort

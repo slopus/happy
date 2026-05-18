@@ -32,15 +32,8 @@ export const SIDEBAR_WIDTH_BOUNDS = {
     min: SIDEBAR_WIDTH_MIN,
     max: SIDEBAR_WIDTH_MAX,
 }
-export const preSettingsPathAtom = atom<string>('/chat/new')
+export const preSettingsPathAtom = atom<string>('/projects/new')
 export const searchOpenAtom = atom(false)
-
-export interface TerminalEntry {
-    id: string
-    title: string
-}
-
-export const terminalsAtom = atom<TerminalEntry[]>([])
 
 export const fullscreenAtom = atom<boolean>(
     typeof window !== 'undefined' && window.win
@@ -50,6 +43,6 @@ export const fullscreenAtom = atom<boolean>(
 
 export type EffortLevel = 'low' | 'medium' | 'high'
 
-export const modelAtom = atom<string>('gpt-5-5')
+export const modelAtom = atom<string>('codex-default')
 export const effortAtom = atom<EffortLevel>('high')
 export const contextUsageAtom = atom<number>(0.24)

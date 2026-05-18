@@ -14,17 +14,18 @@
  *      refresh tokens.
  *   6. Refresh transparently when the access_token is near expiry.
  *
- * Tokens are persisted to the app's userData directory at
- * `<userData>/codex-auth.json`, NOT `~/.codex/auth.json` — that file is
- * owned by the CLI and we don't want to step on it.
+ * Tokens are persisted to Codium's Happy home at `<Happy home>/codex-auth.json`,
+ * NOT `~/.codex/auth.json` - that file is owned by the CLI and we don't want
+ * to step on it.
  * ──────────────────────────────────────────────────────────────────────── */
-import { app, shell } from 'electron'
+import { shell } from 'electron'
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { URL } from 'node:url'
+import { storageFilePath } from './app-storage'
 
 const CLIENT_ID     = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const AUTHORIZE_URL = 'https://auth.openai.com/oauth/authorize'
@@ -247,7 +248,7 @@ interface StoredTokens {
 }
 
 function authPath(): string {
-    return join(app.getPath('userData'), 'codex-auth.json')
+    return storageFilePath('codex-auth.json')
 }
 
 async function readStored(): Promise<StoredTokens | null> {

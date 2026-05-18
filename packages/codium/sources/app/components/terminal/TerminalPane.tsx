@@ -5,9 +5,10 @@ import './TerminalPane.css'
 
 interface TerminalPaneProps {
     id: string
+    cwd?: string
 }
 
-export function TerminalPane({ id: _id }: TerminalPaneProps) {
+export function TerminalPane({ id: _id, cwd }: TerminalPaneProps) {
     const { ref, write } = useTerminal()
     const ptyIdRef = useRef<string | null>(null)
 
@@ -17,7 +18,7 @@ export function TerminalPane({ id: _id }: TerminalPaneProps) {
         let unsubExit: (() => void) | null = null
 
         ;(async () => {
-            const ptyId = await window.pty.create({ cols: 80, rows: 24 })
+            const ptyId = await window.pty.create({ cols: 80, rows: 24, cwd })
             if (cancelled) {
                 window.pty.kill(ptyId)
                 return
@@ -39,7 +40,7 @@ export function TerminalPane({ id: _id }: TerminalPaneProps) {
                 ptyIdRef.current = null
             }
         }
-    }, [write])
+    }, [cwd, write])
 
     return (
         <div className="terminal-pane">

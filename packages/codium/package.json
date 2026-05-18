@@ -20,6 +20,7 @@
         "@types/better-sqlite3": "^7.6.13",
         "@types/d3": "^7.4.3",
         "@types/katex": "^0.16.8",
+        "@types/qrcode": "^1.5.5",
         "@types/react": "^19.2.14",
         "@types/react-dom": "^19.2.3",
         "@types/uuid": "^11.0.0",
@@ -34,8 +35,9 @@
         "vitest": "^4.1.5"
     },
     "dependencies": {
-        "@anthropic-ai/claude-agent-sdk": "^0.2.96",
-        "@anthropic-ai/sdk": "^0.91.1",
+        "@anthropic-ai/claude-agent-sdk": "^0.3.143",
+        "@anthropic-ai/claude-code": "2.1.143",
+        "@anthropic-ai/sdk": "^0.96.0",
         "@dnd-kit/accessibility": "^3.1.1",
         "@dnd-kit/core": "^6.3.1",
         "@dnd-kit/modifiers": "^9.0.0",
@@ -55,6 +57,7 @@
         "@lexical/selection": "^0.43.0",
         "@lexical/utils": "^0.43.0",
         "@lexical/yjs": "^0.43.0",
+        "@openai/codex": "0.130.0",
         "@radix-ui/react-accordion": "^1.2.12",
         "@radix-ui/react-checkbox": "^1.3.3",
         "@radix-ui/react-collapsible": "^1.1.12",
@@ -99,6 +102,7 @@
         "prosemirror-state": "^1.4.4",
         "prosemirror-transform": "^1.12.0",
         "prosemirror-view": "^1.41.8",
+        "qrcode": "^1.5.4",
         "react-intl": "^10.1.2",
         "react-router-dom": "^7.14.1",
         "remark": "^15.0.1",
@@ -112,9 +116,10 @@
         "streamdown": "^2.5.0",
         "tailwind-merge": "^3.5.0",
         "tailwind-styled-components": "^2.2.0",
+        "tweetnacl": "^1.0.3",
         "uuid": "^14.0.0",
         "yjs": "^13.6.30",
-        "zod": "3.25.76",
+        "zod": "4.4.3",
         "zod-to-json-schema": "^3.25.2"
     }
 }

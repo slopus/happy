@@ -34,6 +34,7 @@ export interface ChatMessage {
 
 export interface Chat {
     id: string
+    workspaceId?: string
     title: string
     messages: ChatMessage[]
     /** Which model id was used for the most recent assistant turn (for display). */
@@ -95,7 +96,7 @@ export const chatByIdAtomFamily = (id: string) =>
 
 export const createChatAtom = atom(
     null,
-    (_get, set, init: { title?: string; firstUserMessage?: string }) => {
+    (_get, set, init: { title?: string; firstUserMessage?: string; workspaceId?: string }) => {
         const id = uuid()
         const now = Date.now()
         const messages: ChatMessage[] = []
@@ -104,6 +105,7 @@ export const createChatAtom = atom(
         }
         const chat: Chat = {
             id,
+            workspaceId: init.workspaceId,
             title: init.title ?? init.firstUserMessage?.slice(0, 60) ?? 'New chat',
             messages,
             sessionId: uuid(),

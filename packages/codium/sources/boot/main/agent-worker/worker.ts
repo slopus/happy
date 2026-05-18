@@ -15,16 +15,27 @@
  * `resume: sessionId`.
  * ──────────────────────────────────────────────────────────────────────── */
 import { parentPort } from 'node:worker_threads'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { createRequire } from 'node:module'
 import { query, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentEvent, AgentStartOptions, FromWorker, ToWorker } from '../../../shared/agent-protocol'
+import { buildCodexExecArgs } from './codex-cli'
 
 if (!parentPort) {
     throw new Error('agent worker must be started via worker_threads')
 }
 const port = parentPort
 const send = (m: FromWorker) => port.postMessage(m)
+const nodeRequire = createRequire(import.meta.url)
 
-interface SessionState {
+type SessionState = ClaudeSessionState | CodexSessionState
+
+interface ClaudeSessionState {
+    engine: 'claude'
     /** SDK Query for this session; lets us call .interrupt() and iterate. */
     q: Query
     /** Push end of the streaming-input iterable. Resolves the next pending
@@ -39,6 +50,12 @@ interface SessionState {
      *  overwrites its slot, so we don't need explicit message-boundary
      *  resets — entries are stale only until the next tool_use lands. */
     toolIndex: Map<number, string>
+}
+
+interface CodexSessionState {
+    engine: 'codex'
+    child: ChildProcessWithoutNullStreams
+    stop(): void
 }
 
 const sessions = new Map<string, SessionState>()
@@ -69,12 +86,23 @@ async function handle(msg: ToWorker): Promise<void> {
             })
             return
         }
+        if (s.engine !== 'claude') {
+            emit(msg.sessionId, {
+                type: 'error',
+                message: 'Codex CLI turns are one-shot. Start a new turn after the current process closes.',
+            })
+            return
+        }
         s.pushInput(makeUserMessage(msg.sessionId, msg.text))
         return
     }
     if (msg.kind === 'interrupt') {
         const s = sessions.get(msg.sessionId)
         if (!s) return
+        if (s.engine === 'codex') {
+            s.stop()
+            return
+        }
         try {
             await s.q.interrupt()
         } catch (err) {
@@ -88,6 +116,10 @@ async function handle(msg: ToWorker): Promise<void> {
     if (msg.kind === 'stop') {
         const s = sessions.get(msg.sessionId)
         if (!s) return
+        if (s.engine === 'codex') {
+            s.stop()
+            return
+        }
         s.closeInput()
         // Don't await `consumed` here — the consume loop will emit `closed`
         // itself when the SDK actually winds down. Keeping handle() snappy
@@ -104,10 +136,14 @@ async function startSession(
     options: AgentStartOptions,
 ): Promise<void> {
     if (sessions.has(sessionId)) {
-        emit(sessions.get(sessionId)!.q ? sessionId : sessionId, {
+        emit(sessionId, {
             type: 'error',
             message: 'start: session already active. Send instead, or stop first.',
         })
+        return
+    }
+    if (options.engine === 'codex') {
+        await startCodexTurn(sessionId, initialPrompt, options)
         return
     }
 
@@ -151,10 +187,12 @@ async function startSession(
             // Token-level streaming for text + thinking. Without this we
             // only see whole-block messages at the end of a turn.
             includePartialMessages: true,
+            pathToClaudeCodeExecutable: resolveClaudeExecutable(),
         },
     })
 
-    const state: SessionState = {
+    const state: ClaudeSessionState = {
+        engine: 'claude',
         q,
         pushInput: input.push,
         closeInput: input.close,
@@ -169,7 +207,87 @@ async function startSession(
     })
 }
 
-async function consume(sessionId: string, state: SessionState): Promise<void> {
+async function startCodexTurn(
+    sessionId: string,
+    prompt: string,
+    options: AgentStartOptions,
+): Promise<void> {
+    const tmp = await mkdtemp(join(tmpdir(), 'codium-codex-'))
+    const outputPath = join(tmp, 'last-message.txt')
+    const { executable, extraPathDirs } = resolveCodexExecutable()
+    const args = buildCodexExecArgs({
+        prompt,
+        outputPath,
+        ...(options.cwd ? { cwd: options.cwd } : {}),
+        ...(options.model ? { model: options.model } : {}),
+    })
+    emit(sessionId, { type: 'assistant_turn_started' })
+    const child = spawn(executable, args, {
+        cwd: options.cwd,
+        env: {
+            ...process.env,
+            PATH: withPrependedPath(extraPathDirs),
+        },
+    })
+    const state: CodexSessionState = {
+        engine: 'codex',
+        child,
+        stop() {
+            try {
+                child.kill('SIGINT')
+            } catch {
+                /* ignored */
+            }
+        },
+    }
+    sessions.set(sessionId, state)
+
+    let stderr = ''
+    child.stdout.on('data', () => {
+        // Codex --json can be verbose. Drain stdout so the child cannot
+        // block on a full pipe; the final assistant text is read from
+        // --output-last-message for a stable renderer contract.
+    })
+    child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString()
+    })
+
+    child.on('error', (err) => {
+        emit(sessionId, { type: 'error', message: errString(err) })
+    })
+
+    child.on('exit', async (code, signal) => {
+        sessions.delete(sessionId)
+        try {
+            if (existsSync(outputPath)) {
+                const text = await readFile(outputPath, 'utf8')
+                if (text.trim().length > 0) {
+                    emit(sessionId, {
+                        type: 'assistant_complete',
+                        text,
+                        toolUses: [],
+                    })
+                }
+            }
+            if (code === 0) {
+                emit(sessionId, { type: 'turn_done', subtype: 'success' })
+            } else {
+                emit(sessionId, {
+                    type: 'turn_done',
+                    subtype: 'error',
+                    error: stderr.trim() || (signal ? `Codex exited via ${signal}` : `Codex exited with code ${code}`),
+                })
+            }
+        } catch (err) {
+            emit(sessionId, { type: 'error', message: errString(err) })
+        } finally {
+            await rm(tmp, { recursive: true, force: true }).catch(() => {})
+            send({ kind: 'closed', sessionId })
+        }
+    })
+}
+
+async function consume(sessionId: string, state: ClaudeSessionState): Promise<void> {
     try {
         for await (const msg of state.q) {
             const events = mapSdkMessage(msg, state)
@@ -248,7 +366,7 @@ function makeUserMessage(sessionId: string, text: string): SDKUserMessage {
 
 /* ─────────── SDK → renderer event normalization ─────────── */
 
-function mapSdkMessage(msg: SDKMessage, state: SessionState): AgentEvent[] {
+function mapSdkMessage(msg: SDKMessage, state: ClaudeSessionState): AgentEvent[] {
     if (msg.type === 'system' && msg.subtype === 'init') {
         return [{ type: 'session_init', sessionId: msg.session_id, model: msg.model }]
     }
@@ -377,6 +495,43 @@ function mapSdkMessage(msg: SDKMessage, state: SessionState): AgentEvent[] {
 
 function emit(sessionId: string, event: AgentEvent): void {
     send({ kind: 'event', sessionId, event })
+}
+
+function resolveClaudeExecutable(): string {
+    if (process.platform !== 'darwin') {
+        throw new Error('Bundled Claude Agent SDK binary is currently configured for macOS only.')
+    }
+    const pkg = process.arch === 'arm64'
+        ? '@anthropic-ai/claude-agent-sdk-darwin-arm64'
+        : '@anthropic-ai/claude-agent-sdk-darwin-x64'
+    const packageJson = nodeRequire.resolve(`${pkg}/package.json`)
+    return join(dirname(packageJson), 'claude')
+}
+
+function resolveCodexExecutable(): { executable: string; extraPathDirs: string[] } {
+    if (process.platform !== 'darwin') {
+        throw new Error('Bundled Codex binary is currently configured for macOS only.')
+    }
+    const targetTriple = process.arch === 'arm64'
+        ? 'aarch64-apple-darwin'
+        : 'x86_64-apple-darwin'
+    const pkg = process.arch === 'arm64'
+        ? '@openai/codex-darwin-arm64'
+        : '@openai/codex-darwin-x64'
+    const packageJson = nodeRequire.resolve(`${pkg}/package.json`)
+    const vendorRoot = join(dirname(packageJson), 'vendor', targetTriple)
+    return {
+        executable: join(vendorRoot, 'codex', 'codex'),
+        extraPathDirs: [join(vendorRoot, 'path')],
+    }
+}
+
+function withPrependedPath(dirs: string[]): string {
+    const separator = process.platform === 'win32' ? ';' : ':'
+    return [
+        ...dirs.filter((dir) => existsSync(dir)),
+        ...(process.env.PATH ?? '').split(separator).filter(Boolean),
+    ].join(separator)
 }
 
 function errString(err: unknown): string {

@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
 import { ComposerEditor, type ComposerEditorHandle } from './ComposerEditor'
 import { AttachButton } from './AttachButton'
-import { ComposerOptions } from './ComposerOptions'
 import { ModelEffortPicker } from './ModelEffortPicker'
 import { AttachmentChip, type Attachment } from './AttachmentChip'
 import './Composer.css'
@@ -84,7 +83,7 @@ interface ComposerProps {
 }
 
 export function Composer({
-    placeholder = 'Ask Codex anything. @ to use plugins or mention files',
+    placeholder = 'Ask Codium about this workspace',
     onSubmit,
 }: ComposerProps) {
     const editorRef = useRef<ComposerEditorHandle>(null)
@@ -166,7 +165,6 @@ export function Composer({
                     </div>
                 </div>
             </div>
-            <ComposerOptions onSelect={addAttachments} />
         </div>
     )
 }

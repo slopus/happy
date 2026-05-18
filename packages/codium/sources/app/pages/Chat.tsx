@@ -9,12 +9,15 @@ import { AssistantMessage } from '@/app/components/chat/AssistantMessage'
 import { effortAtom, modelAtom } from '@/app/state'
 import { useChatRunner } from '@/app/chat/runner'
 import { appendMessageAtom, chatByIdAtomFamily } from '@/app/chat/store'
+import { workspaceByIdAtomFamily } from '@/app/workspace/store'
 import './Chat.css'
 
 export function ChatPage() {
-    const { id = '' } = useParams<{ id: string }>()
+    const { id = '', workspaceId = '' } = useParams<{ id: string; workspaceId?: string }>()
     const chatAtom = useMemo(() => chatByIdAtomFamily(id), [id])
+    const workspaceAtom = useMemo(() => workspaceByIdAtomFamily(workspaceId), [workspaceId])
     const chat = useAtomValue(chatAtom)
+    const workspace = useAtomValue(workspaceAtom)
     const append = useSetAtom(appendMessageAtom)
     const model = useAtomValue(modelAtom)
     const effort = useAtomValue(effortAtom)
@@ -48,7 +51,8 @@ export function ChatPage() {
         el.scrollTop = el.scrollHeight
     }, [chat?.messages.length, chat?.messages[chat.messages.length - 1]?.text.length])
 
-    // Coming from /chat/new the chat already has the user's first message
+    // Opening a seeded workspace chat can already include the user's first
+    // message but no assistant response yet. Kick off the initial turn here.
     // but no assistant response yet — kick off the initial turn here so
     // NewChat doesn't have to know about session lifecycle.
     useEffect(() => {
@@ -57,11 +61,17 @@ export function ChatPage() {
         const hasAssistant = chat.messages.some((m) => m.role === 'assistant')
         if (!hasAssistant && lastMsg?.role === 'user' && chat.status === 'idle') {
             initialRunFiredRef.current = true
-            run({ chatId: chat.id, prompt: lastMsg.text, modelId: model, effort })
+            run({
+                chatId: chat.id,
+                prompt: lastMsg.text,
+                modelId: model,
+                effort,
+                cwd: workspace?.path,
+            })
         }
-    }, [chat, run, model, effort])
+    }, [chat, run, model, effort, workspace?.path])
 
-    if (!chat) return <Navigate to="/chat/new" replace />
+    if (!chat) return <Navigate to="/projects/new" replace />
 
     const onSubmit = (text: string) => {
         const trimmed = text.trim()
@@ -81,6 +91,7 @@ export function ChatPage() {
             prompt: trimmed,
             modelId: model,
             effort,
+            cwd: workspace?.path,
         })
     }
 

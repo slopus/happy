@@ -7,10 +7,12 @@ import {
     shell,
 } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { basename, extname, join } from 'node:path'
 import { homedir } from 'node:os'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, randomInt } from 'node:crypto'
 import * as pty from 'node-pty'
 import {
     cancelLogin as cancelCodexLogin,
@@ -20,9 +22,32 @@ import {
 } from './codex-oauth'
 import { registerAgentIpc } from './agent-worker/host'
 import { registerChatStoreIpc } from './chat-store'
+import { registerHappyIpc } from './happy-worker/host'
+import { projectWorkspacesDir, workspacesRootDir } from './app-storage'
+import {
+    chooseVersionedName,
+    chooseWorktreeName,
+    slugifyPathPart,
+    WORLD_CITY_NAMES,
+} from './worktree-names'
+
+if (!app.requestSingleInstanceLock()) {
+    app.exit(0)
+}
+
+app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (!win) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+})
 
 registerAgentIpc()
 registerChatStoreIpc()
+registerHappyIpc()
+
+const execFileAsync = promisify(execFile)
 
 if (is.dev) {
     app.commandLine.appendSwitch('remote-debugging-port', '9224')
@@ -213,6 +238,105 @@ ipcMain.handle('files:read-data-url', async (_e, filePath: string) => {
         return null
     }
 })
+
+ipcMain.handle(
+    'projects:create-worktree',
+    async (_e, args: {
+        projectPath: string
+        projectName: string
+        projectWorkspaceName?: string
+    }) => {
+        const projectPath = args.projectPath
+        if (!await isGitRepository(projectPath)) {
+            return {
+                kind: 'plain-fallback' as const,
+                reason: 'Selected folder is not a git repository.',
+            }
+        }
+        const projectSlug = await resolveProjectWorkspaceName(args)
+        const projectDir = projectWorkspacesDir(projectSlug)
+        await mkdir(projectDir, { recursive: true, mode: 0o700 })
+        const existing = new Set(await existingWorkspaceNames(projectDir))
+        let name = ''
+        let branchName = ''
+        let worktreePath = ''
+        for (let attempt = 0; attempt < WORLD_CITY_NAMES.length + 32; attempt++) {
+            name = chooseWorktreeName(existing, () => randomInt(WORLD_CITY_NAMES.length) / WORLD_CITY_NAMES.length)
+            branchName = `codium/${projectSlug}/${name}`
+            worktreePath = join(projectDir, name)
+            if (await gitBranchExists(projectPath, branchName)) {
+                existing.add(name)
+                continue
+            }
+            break
+        }
+        try {
+            await execFileAsync('git', ['-C', projectPath, 'worktree', 'add', '-b', branchName, worktreePath])
+        } catch (err) {
+            return {
+                kind: 'error' as const,
+                message: friendlyGitError(err, 'Could not create git worktree.'),
+            }
+        }
+        return {
+            kind: 'worktree' as const,
+            path: worktreePath,
+            name,
+            branchName,
+            projectWorkspaceName: projectSlug,
+        }
+    },
+)
+
+async function isGitRepository(projectPath: string): Promise<boolean> {
+    try {
+        await execFileAsync('git', ['-C', projectPath, 'rev-parse', '--is-inside-work-tree'])
+        return true
+    } catch {
+        return false
+    }
+}
+
+function friendlyGitError(err: unknown, fallback: string): string {
+    if (typeof err !== 'object' || err === null) return fallback
+    const stderr = 'stderr' in err && typeof err.stderr === 'string' ? err.stderr.trim() : ''
+    if (!stderr) return fallback
+    if (stderr.includes('not a git repository')) return 'Selected folder is not a git repository.'
+    if (stderr.includes('already exists')) return 'A worktree with that name already exists.'
+    return stderr.split('\n').at(-1) || fallback
+}
+
+async function resolveProjectWorkspaceName(args: {
+    projectPath: string
+    projectName: string
+    projectWorkspaceName?: string
+}): Promise<string> {
+    if (args.projectWorkspaceName) {
+        return slugifyPathPart(args.projectWorkspaceName)
+    }
+    const root = workspacesRootDir()
+    await mkdir(root, { recursive: true, mode: 0o700 })
+    const base = slugifyPathPart(args.projectName || basename(args.projectPath))
+    return chooseVersionedName(base, await existingWorkspaceNames(root))
+}
+
+async function existingWorkspaceNames(projectDir: string): Promise<string[]> {
+    try {
+        const entries = await readdir(projectDir, { withFileTypes: true })
+        return entries.map((entry) => entry.name)
+    } catch {
+        return []
+    }
+}
+
+async function gitBranchExists(repoPath: string, branchName: string): Promise<boolean> {
+    try {
+        await execFileAsync('git', ['-C', repoPath, 'show-ref', '--verify', '--quiet', `refs/heads/${branchName}`])
+        return true
+    } catch {
+        return false
+    }
+}
 
 function createWindow(): void {
     const isMac = process.platform === 'darwin'

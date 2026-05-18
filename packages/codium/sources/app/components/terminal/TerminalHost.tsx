@@ -1,13 +1,13 @@
 import { useLocation } from 'react-router-dom'
 import { useAtomValue } from 'jotai'
-import { terminalsAtom } from '@/app/state'
+import { terminalsAtom } from '@/app/workspace/store'
 import { TerminalPane } from './TerminalPane'
 import './TerminalHost.css'
 
 export function TerminalHost() {
-    const terminals = useAtomValue(terminalsAtom)
+    const terminals = Object.values(useAtomValue(terminalsAtom))
     const location = useLocation()
-    const match = location.pathname.match(/^\/terminal\/([^/]+)$/)
+    const match = location.pathname.match(/\/terminal\/([^/]+)$/)
     const activeId = match ? match[1] : null
     const visible = activeId !== null
     const active = terminals.find((t) => t.id === activeId)
@@ -33,7 +33,7 @@ export function TerminalHost() {
                                 : 'terminal-host__pane'
                         }
                     >
-                        <TerminalPane id={t.id} />
+                        <TerminalPane id={t.id} cwd={t.cwd} />
                     </div>
                 ))}
             </div>
