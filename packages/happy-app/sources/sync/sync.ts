@@ -7,7 +7,7 @@ import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
-import { Session, Machine } from './storageTypes';
+import { Session, Machine, AgentState } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
@@ -42,6 +42,7 @@ import { AsyncLock } from '@/utils/lock';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
+import { AgentStateDecryptionError } from './encryption/sessionEncryption';
 import { systemPrompt } from './prompt/systemPrompt';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
 import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
@@ -956,8 +957,20 @@ class Sync {
             // Decrypt metadata using session-specific encryption
             let metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
 
-            // Decrypt agent state using session-specific encryption
-            let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
+            // Decrypt agent state using session-specific encryption. On a real
+            // decryption failure (wrong key / schema skew) we keep the empty
+            // agentState the server-side row had, rather than crashing the
+            // whole session load — but we log so the failure is visible.
+            let agentState: AgentState = {};
+            try {
+                agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
+            } catch (err) {
+                if (err instanceof AgentStateDecryptionError) {
+                    log.log(`⚠️ Failed to decrypt agentState for session ${session.id} (initial load): ${err.message}`);
+                } else {
+                    throw err;
+                }
+            }
 
             // Put it all together
             const processedSession = {
@@ -2236,9 +2249,25 @@ class Sync {
                     return;
                 }
 
-                const agentState = updateData.body.agentState && sessionEncryption
-                    ? await sessionEncryption.decryptAgentState(updateData.body.agentState.version, updateData.body.agentState.value)
-                    : session.agentState;
+                // On a real decryption failure (wrong key / schema skew) keep
+                // the PREVIOUS agentState rather than overwriting it with `{}`.
+                // The old behavior silently cleared `requests` / `completedRequests`
+                // and the agent would hang waiting for a permission decision
+                // the user had no UI for. Throws from `decryptAgentState` are
+                // typed as `AgentStateDecryptionError`; anything else still
+                // bubbles.
+                let agentState = session.agentState;
+                if (updateData.body.agentState && sessionEncryption) {
+                    try {
+                        agentState = await sessionEncryption.decryptAgentState(updateData.body.agentState.version, updateData.body.agentState.value);
+                    } catch (err) {
+                        if (err instanceof AgentStateDecryptionError) {
+                            log.log(`⚠️ Failed to decrypt agentState for session ${updateData.body.id}; preserving previous state. ${err.message}`);
+                        } else {
+                            throw err;
+                        }
+                    }
+                }
                 const metadata = updateData.body.metadata && sessionEncryption
                     ? await sessionEncryption.decryptMetadata(updateData.body.metadata.version, updateData.body.metadata.value)
                     : session.metadata;

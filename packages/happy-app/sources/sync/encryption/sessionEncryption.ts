@@ -176,7 +176,16 @@ export class SessionEncryption {
     }
 
     /**
-     * Decrypt agent state using session-specific encryption
+     * Decrypt agent state using session-specific encryption.
+     *
+     * Returns `{}` ONLY when the caller passed no ciphertext at all (the
+     * server has nothing for us). When ciphertext is present but cannot be
+     * decrypted or fails schema validation, this throws
+     * {@link AgentStateDecryptionError} so callers can preserve their
+     * previously-known agentState rather than silently overwriting it with
+     * an empty object. The empty-object behavior was losing pending
+     * permission requests on every schema-skew / wrong-key scenario, which
+     * left the agent blocked with no UI affordance.
      */
     async decryptAgentState(version: number, encrypted: string | null | undefined): Promise<AgentState> {
         if (!encrypted) {
@@ -193,15 +202,31 @@ export class SessionEncryption {
         const encryptedData = decodeBase64(encrypted, 'base64');
         const decrypted = await this.encryptor.decrypt([encryptedData]);
         if (!decrypted[0]) {
-            return {};
+            throw new AgentStateDecryptionError(
+                `decryption returned no plaintext for session ${this.sessionId} version ${version}`,
+            );
         }
         const parsed = AgentStateSchema.safeParse(decrypted[0]);
         if (!parsed.success) {
-            return {};
+            throw new AgentStateDecryptionError(
+                `schema parse failed for session ${this.sessionId} version ${version}: ${parsed.error.message}`,
+            );
         }
 
         // Cache the result
         this.cache.setCachedAgentState(this.sessionId, version, parsed.data);
         return parsed.data;
+    }
+}
+
+/**
+ * Thrown when a non-empty ciphertext fails to decrypt or fails schema
+ * validation. Distinct from `decryptAgentState` returning `{}`, which only
+ * happens when the caller passes no ciphertext at all.
+ */
+export class AgentStateDecryptionError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'AgentStateDecryptionError';
     }
 }
