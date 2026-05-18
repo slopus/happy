@@ -34,6 +34,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
 import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
 import { handleCodexCommand } from './commands/codexCommand'
+import { redactArgvForLog } from './utils/redactSecrets'
 
 
 (async () => {
@@ -41,7 +42,12 @@ import { handleCodexCommand } from './commands/codexCommand'
 
   // If --version is passed - do not log, its likely daemon inquiring about our version
   if (!args.includes('--version')) {
-    logger.debug('Starting happy CLI with args: ', process.argv)
+    // `--claude-env ANTHROPIC_TOKEN=...` and similar `KEY=VAL` arg values
+    // can carry OAuth tokens, API keys, etc. The log file lives in
+    // `~/.happy/logs/` (default 0o644) and may be forwarded over plain
+    // HTTP if `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` is set,
+    // so we redact before logging.
+    logger.debug('Starting happy CLI with args: ', redactArgvForLog(process.argv))
   }
 
   // Check if first argument is a subcommand
