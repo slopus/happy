@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import { isTauri } from '@/utils/isTauri';
 
-export const DEFAULT_APP_ZOOM = 0.75;
+export const DEFAULT_APP_ZOOM = 1.0;
 
 const MIN_APP_ZOOM = 0.5;
 const MAX_APP_ZOOM = 2.5;
