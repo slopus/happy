@@ -8,6 +8,7 @@ import { Metadata } from '@/sync/storageTypes';
 import { resolvePath } from '@/utils/pathUtils';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { getDiffStats, getPatchDiffStats } from '@/components/diff/calculateDiff';
+import { materializeUnifiedDiffPatch } from '@/utils/codexUnifiedDiff';
 
 interface CodexPatchViewProps {
     tool: ToolCall;
@@ -94,10 +95,13 @@ export const CodexPatchView = React.memo<CodexPatchViewProps>(({ tool, metadata 
                 const kindLabel = getPatchKindLabel(change);
                 const movePath = change.kind?.move_path ? resolvePath(change.kind.move_path, metadata) : null;
                 const fileName = file.split('/').pop() ?? file;
+                const displayPatch = diffInput?.kind === 'patch'
+                    ? materializeUnifiedDiffPatch(diffInput.patch, file, change.kind?.type)
+                    : null;
                 const stats = !diffInput
                     ? null
                     : diffInput.kind === 'patch'
-                        ? getPatchDiffStats(diffInput.patch)
+                        ? getPatchDiffStats(displayPatch ?? diffInput.patch)
                         : getDiffStats(diffInput.oldText, diffInput.newText);
 
                 return (
@@ -117,8 +121,8 @@ export const CodexPatchView = React.memo<CodexPatchViewProps>(({ tool, metadata 
                                 </View>
                                 {movePath ? <Text style={styles.movePath}>{movePath}</Text> : null}
                             </View>
-                            {diffInput?.kind === 'patch' ? (
-                                <ToolDiffView patch={diffInput.patch} fileName={fileName} />
+                            {displayPatch ? (
+                                <ToolDiffView patch={displayPatch} fileName={fileName} />
                             ) : diffInput?.kind === 'pair' && (diffInput.oldText.length > 0 || diffInput.newText.length > 0) ? (
                                 <ToolDiffView
                                     oldText={diffInput.oldText}

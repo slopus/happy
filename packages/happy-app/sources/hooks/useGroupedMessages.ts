@@ -36,73 +36,78 @@ export type DisplayItem = TextItem | ToolGroupItem;
  */
 export function useGroupedMessages(messages: Message[], enabled: boolean = true): DisplayItem[] {
     return React.useMemo(() => {
-        if (!enabled) {
-            return messages.map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
-        }
-
-        // Step 1: assign each message to a turn (newest-first → turn 0 = current)
-        const turnOf = new Array<number>(messages.length);
-        let turn = 0;
-        for (let i = 0; i < messages.length; i++) {
-            turnOf[i] = turn;
-            if (messages[i].kind === 'user-text') turn++;
-        }
-
-        // Step 2: collect visible tool-call messages per turn, track oldest index
-        const turnTools = new Map<number, { msgs: Message[]; oldestIdx: number }>();
-        for (let i = 0; i < messages.length; i++) {
-            const msg = messages[i];
-            if (msg.kind !== 'tool-call') continue;
-            if (isInvisibleMessage(msg) || isUserAttachment(msg)) continue;
-            const t = turnOf[i];
-            let info = turnTools.get(t);
-            if (!info) {
-                info = { msgs: [], oldestIdx: i };
-                turnTools.set(t, info);
-            }
-            info.msgs.push(msg);
-            info.oldestIdx = i; // keeps updating → ends up as highest index = oldest
-        }
-
-        // Step 3: build display items — group emitted at oldest tool position
-        const result: DisplayItem[] = [];
-        for (let i = 0; i < messages.length; i++) {
-            const msg = messages[i];
-
-            if (isInvisibleMessage(msg)) continue;
-
-            if (isUserAttachment(msg)) {
-                result.push({ type: 'message', id: msg.id, message: msg });
-                continue;
-            }
-
-            if (msg.kind === 'tool-call') {
-                const info = turnTools.get(turnOf[i]);
-                if (info && i === info.oldestIdx) {
-                    let hasRunning = false;
-                    for (const m of info.msgs) {
-                        if (m.kind === 'tool-call' && m.tool.state === 'running') {
-                            hasRunning = true;
-                            break;
-                        }
-                    }
-                    result.push({
-                        type: 'tool-group',
-                        id: `group-${info.msgs[info.msgs.length - 1].id}`,
-                        messages: info.msgs,
-                        hasRunning,
-                    });
-                }
-                // All tool calls consumed by their turn group — skip standalone
-                continue;
-            }
-
-            // Standalone messages (user text, agent text, events)
-            result.push({ type: 'message', id: msg.id, message: msg });
-        }
-
-        return result;
+        return groupMessagesForDisplay(messages, enabled);
     }, [messages, enabled]);
+}
+
+export function groupMessagesForDisplay(messages: Message[], enabled: boolean = true): DisplayItem[] {
+    if (!enabled) {
+        return messages.map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
+    }
+
+    // Step 1: assign each message to a turn (newest-first → turn 0 = current)
+    const turnOf = new Array<number>(messages.length);
+    let turn = 0;
+    for (let i = 0; i < messages.length; i++) {
+        turnOf[i] = turn;
+        if (messages[i].kind === 'user-text') turn++;
+    }
+
+    // Step 2: collect visible tool-call messages per turn, track oldest index
+    const turnTools = new Map<number, { msgs: Message[]; oldestIdx: number }>();
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (msg.kind !== 'tool-call') continue;
+        if (isInvisibleMessage(msg) || isUserAttachment(msg)) continue;
+        const t = turnOf[i];
+        let info = turnTools.get(t);
+        if (!info) {
+            info = { msgs: [], oldestIdx: i };
+            turnTools.set(t, info);
+        }
+        info.msgs.push(msg);
+        info.oldestIdx = i; // keeps updating → ends up as highest index = oldest
+    }
+
+    // Step 3: build display items — group emitted at oldest tool position
+    const result: DisplayItem[] = [];
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+
+        if (isInvisibleMessage(msg)) continue;
+
+        if (isUserAttachment(msg)) {
+            result.push({ type: 'message', id: msg.id, message: msg });
+            continue;
+        }
+
+        if (msg.kind === 'tool-call') {
+            const info = turnTools.get(turnOf[i]);
+            if (info && i === info.oldestIdx) {
+                let hasRunning = false;
+                for (const m of info.msgs) {
+                    if (m.kind === 'tool-call' && m.tool.state === 'running') {
+                        hasRunning = true;
+                        break;
+                    }
+                }
+                const chronologicalMessages = [...info.msgs].reverse();
+                result.push({
+                    type: 'tool-group',
+                    id: `group-${chronologicalMessages[0].id}`,
+                    messages: chronologicalMessages,
+                    hasRunning,
+                });
+            }
+            // All tool calls consumed by their turn group — skip standalone
+            continue;
+        }
+
+        // Standalone messages (user text, agent text, events)
+        result.push({ type: 'message', id: msg.id, message: msg });
+    }
+
+    return result;
 }
 
 /** Returns true for messages that render as null and should be excluded entirely */
