@@ -193,16 +193,25 @@ export class Encryption {
     //
 
     async decryptEncryptionKey(encrypted: string) {
-        const encryptedKey = decodeBase64(encrypted, 'base64');
-        if (encryptedKey[0] !== 0) {
-            return null;
-        }
+        // Never throw: callers (fetchMachines/fetchSessions/artifacts) iterate
+        // many keys, and an exception on one malformed/foreign key would
+        // reject the whole sync and silently drop every item. Always degrade
+        // to null so the caller can decide per-item.
+        try {
+            const encryptedKey = decodeBase64(encrypted, 'base64');
+            if (encryptedKey[0] !== 0) {
+                return null;
+            }
 
-        const decrypted = decryptBox(encryptedKey.slice(1), this.contentKeyPair.privateKey);
-        if (!decrypted) {
+            const decrypted = decryptBox(encryptedKey.slice(1), this.contentKeyPair.privateKey);
+            if (!decrypted) {
+                return null;
+            }
+            return decrypted;
+        } catch (error) {
+            console.error('decryptEncryptionKey failed:', error);
             return null;
         }
-        return decrypted;
     }
 
     async encryptEncryptionKey(key: Uint8Array): Promise<Uint8Array> {

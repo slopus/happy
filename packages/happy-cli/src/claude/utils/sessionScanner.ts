@@ -21,6 +21,12 @@ export async function createSessionScanner(opts: {
     sessionId: string | null,
     workingDirectory: string
     onMessage: (message: RawJSONLines) => void
+    /**
+     * How long a session transcript may stay absent before its watcher gives
+     * up and the session is dropped. Defaults to the startFileWatcher default
+     * (60s). Exposed mainly so tests can exercise the drop path quickly.
+     */
+    missingFileTimeoutMs?: number
 }) {
 
     // Resolve project directory
@@ -32,6 +38,12 @@ export async function createSessionScanner(opts: {
     let currentSessionId: string | null = null;
     let watchers = new Map<string, (() => void)>();
     let processedMessageKeys = new Set<string>();
+    // Sessions whose transcript file never appeared. Their watcher gave up,
+    // so we must stop re-reading them and never re-create a watcher for them
+    // — otherwise a phantom session id (e.g. a remote launch whose .jsonl is
+    // never written) keeps itself alive forever via the watchers map below
+    // and spins the CPU / floods the log (the "dead Happy instance" bug).
+    let deadSessions = new Set<string>();
 
     // Mark existing messages as processed and start watching the initial session
     if (opts.sessionId) {
@@ -53,14 +65,16 @@ export async function createSessionScanner(opts: {
         // This ensures we continue processing sessions that Claude Code may still write to
         let sessions: string[] = [];
         for (let p of pendingSessions) {
-            sessions.push(p);
+            if (!deadSessions.has(p)) {
+                sessions.push(p);
+            }
         }
-        if (currentSessionId && !pendingSessions.has(currentSessionId)) {
+        if (currentSessionId && !pendingSessions.has(currentSessionId) && !deadSessions.has(currentSessionId)) {
             sessions.push(currentSessionId);
         }
         // Also process sessions that have active watchers (they may still receive updates)
         for (let [sessionId] of watchers) {
-            if (!sessions.includes(sessionId)) {
+            if (!sessions.includes(sessionId) && !deadSessions.has(sessionId)) {
                 sessions.push(sessionId);
             }
         }
@@ -96,9 +110,27 @@ export async function createSessionScanner(opts: {
 
         // Update watchers for all sessions
         for (let p of sessions) {
-            if (!watchers.has(p)) {
+            if (!watchers.has(p) && !deadSessions.has(p)) {
                 logger.debug(`[SESSION_SCANNER] Starting watcher for session: ${p}`);
-                watchers.set(p, startFileWatcher(join(projectDir, `${p}.jsonl`), () => { sync.invalidate(); }));
+                watchers.set(p, startFileWatcher(
+                    join(projectDir, `${p}.jsonl`),
+                    () => { sync.invalidate(); },
+                    {
+                        missingFileTimeoutMs: opts.missingFileTimeoutMs,
+                        onGaveUp: () => {
+                            // The transcript for this session never appeared.
+                            // Tear the watcher down and blacklist the session
+                            // so the collection loop above stops resurrecting
+                            // it. Without this the phantom session would keep
+                            // itself in `watchers` forever.
+                            logger.debug(`[SESSION_SCANNER] Session ${p} transcript never appeared — dropping it`);
+                            watchers.get(p)?.();
+                            watchers.delete(p);
+                            deadSessions.add(p);
+                            pendingSessions.delete(p);
+                        },
+                    },
+                ));
             }
         }
     });
@@ -122,6 +154,11 @@ export async function createSessionScanner(opts: {
             if (currentSessionId === sessionId) {
                 logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is the same as the current session, skipping`);
                 return;
+            }
+            // The caller explicitly re-announces this session, so give a
+            // previously-dropped id another chance (its file may exist now).
+            if (deadSessions.delete(sessionId)) {
+                logger.debug(`[SESSION_SCANNER] Reviving previously-dropped session: ${sessionId}`);
             }
             if (finishedSessions.has(sessionId)) {
                 logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is already finished, skipping`);
