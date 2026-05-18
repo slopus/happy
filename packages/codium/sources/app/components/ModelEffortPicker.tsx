@@ -1,8 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useAtom } from 'jotai'
-import { Link } from 'react-router-dom'
 import { effortAtom, modelAtom, type EffortLevel } from '@/app/state'
-import { useInferenceModels } from '@/plugins'
+import { AGENT_MODELS } from '@/agents/catalog'
 import './Composer.css'
 
 const EFFORTS: { id: EffortLevel; label: string }[] = [
@@ -29,39 +28,25 @@ function Check() {
 export function ModelEffortPicker() {
     const [model, setModel] = useAtom(modelAtom)
     const [effort, setEffort] = useAtom(effortAtom)
-    const inferenceModels = useInferenceModels()
 
-    const currentModel = inferenceModels.find((m) => m.model.id === model)?.model
+    const currentModel = AGENT_MODELS.find((m) => m.id === model) ?? AGENT_MODELS[0]
     const currentEffort = EFFORTS.find((e) => e.id === effort) ?? EFFORTS[2]
-    const groups = Array.from(new Set(inferenceModels.map(({ model: m }) => m.group)))
+    const groups = Array.from(new Set(AGENT_MODELS.map((m) => m.group)))
 
-    const empty = inferenceModels.length === 0
     return (
         <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
                 <button
                     type="button"
-                    className={
-                        empty
-                            ? 'composer-footer__btn composer-footer__btn--model-effort composer-footer__btn--empty'
-                            : 'composer-footer__btn composer-footer__btn--model-effort'
-                    }
+                    className="composer-footer__btn composer-footer__btn--model-effort"
                     aria-label="Model and reasoning effort"
                 >
-                    {empty ? (
-                        <span className="composer-footer__btn-text composer-footer__btn-text--muted">
-                            Pick a model
-                        </span>
-                    ) : (
-                        <>
-                            <span className="composer-footer__btn-text composer-footer__btn-text--strong">
-                                {currentModel?.label ?? 'No model'}
-                            </span>
-                            <span className="composer-footer__btn-text composer-footer__btn-text--muted">
-                                {currentEffort.label}
-                            </span>
-                        </>
-                    )}
+                    <span className="composer-footer__btn-text composer-footer__btn-text--strong">
+                        {currentModel.label}
+                    </span>
+                    <span className="composer-footer__btn-text composer-footer__btn-text--muted">
+                        {currentModel.engine === 'codex' ? 'CLI' : currentEffort.label}
+                    </span>
                     <ChevronDown />
                 </button>
             </DropdownMenu.Trigger>
@@ -72,26 +57,14 @@ export function ModelEffortPicker() {
                     align="end"
                     sideOffset={6}
                 >
-                    {inferenceModels.length === 0 && (
-                        <DropdownMenu.Group className="composer-menu__group">
-                            <DropdownMenu.Label className="composer-menu__label">
-                                No inference plugins connected
-                            </DropdownMenu.Label>
-                            <DropdownMenu.Item asChild>
-                                <Link to="/plugins" className="composer-menu__item">
-                                    <span>Open Plugins…</span>
-                                </Link>
-                            </DropdownMenu.Item>
-                        </DropdownMenu.Group>
-                    )}
                     {groups.map((g) => (
                         <DropdownMenu.Group key={g} className="composer-menu__group">
                             <DropdownMenu.Label className="composer-menu__label">
                                 {g}
                             </DropdownMenu.Label>
-                            {inferenceModels
-                                .filter(({ model: m }) => m.group === g)
-                                .map(({ model: m }) => (
+                            {AGENT_MODELS
+                                .filter((m) => m.group === g)
+                                .map((m) => (
                                     <DropdownMenu.Item
                                         key={m.id}
                                         className="composer-menu__item"

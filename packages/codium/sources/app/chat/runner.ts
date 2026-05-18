@@ -9,9 +9,9 @@ import {
     type ChatMessage,
     type ChatToolCall,
 } from './store'
-import { pluginHost } from '@/plugins'
+import { agentModelById } from '@/agents/catalog'
 import type { EffortLevel } from '@/app/state'
-import { openAgentSession, type AgentSession } from '@/plugins/agent-bridge'
+import { openAgentSession, type AgentSession } from '@/agents/agent-bridge'
 import type { AgentEffort, AgentEvent } from '../../shared/agent-protocol'
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -36,6 +36,7 @@ export interface RunArgs {
     modelId: string
     effort?: EffortLevel
     systemPrompt?: string
+    cwd?: string
 }
 
 const EFFORT_MAP: Record<EffortLevel, AgentEffort> = {
@@ -88,8 +89,7 @@ export function useChatRunner() {
             const chat = store.get(chatByIdAtomFamily(args.chatId))
             if (!chat) return
 
-            const provider = pluginHost.inferenceFor(args.modelId)
-            const apiKey = provider?.cap.getApiKey() ?? null
+            const selectedModel = agentModelById(args.modelId)
 
             // Append a fresh assistant placeholder for this turn. The
             // worker-emitted `assistant_turn_started` may add additional
@@ -130,10 +130,11 @@ export function useChatRunner() {
                 prompt: args.prompt,
                 resume: chat.sessionStarted === true,
                 options: {
-                    ...(apiKey ? { apiKey } : {}),
-                    model: args.modelId,
+                    engine: selectedModel.engine,
+                    ...(selectedModel.model ? { model: selectedModel.model } : {}),
                     ...(args.effort ? { effort: EFFORT_MAP[args.effort] } : {}),
                     ...(args.systemPrompt ? { systemPrompt: args.systemPrompt } : {}),
+                    ...(args.cwd ? { cwd: args.cwd } : {}),
                 },
                 onEvent,
                 onClosed: () => {

@@ -4,9 +4,7 @@ import { MainLayout } from './layouts/MainLayout'
 import { SettingsLayout } from './layouts/SettingsLayout'
 import { NewChatPage } from './pages/NewChat'
 import { ChatPage } from './pages/Chat'
-import { AutomationsPage } from './pages/Automations'
-import { PluginsPage } from './pages/Plugins'
-import { PluginDetailPage } from './pages/PluginDetail'
+import { NewProjectPage } from './pages/NewProject'
 import { ComponentsPage } from './pages/Components'
 import { AppearanceSettings } from './pages/settings/Appearance'
 import { GeneralSettings } from './pages/settings/General'
@@ -19,12 +17,12 @@ export const router = createHashRouter([
             {
                 element: <MainLayout />,
                 children: [
-                    { index: true, element: <Navigate to="/chat/new" replace /> },
+                    { index: true, element: <Navigate to="/projects/new" replace /> },
+                    { path: 'projects/new', element: <NewProjectPage /> },
                     { path: 'chat/new', element: <NewChatPage /> },
                     { path: 'chat/:id', element: <ChatPage /> },
-                    { path: 'automations', element: <AutomationsPage /> },
-                    { path: 'plugins', element: <PluginsPage /> },
-                    { path: 'plugins/:id', element: <PluginDetailPage /> },
+                    { path: 'project/:projectId/workspace/:workspaceId/chat/:id', element: <ChatPage /> },
+                    { path: 'project/:projectId/workspace/:workspaceId/terminal/:id', element: null },
                     { path: 'components', element: <ComponentsPage /> },
                     { path: 'terminal/:id', element: null },
                 ],

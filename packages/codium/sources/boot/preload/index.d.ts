@@ -1,4 +1,8 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
+import type {
+    HappyAuthenticatedClientStatus,
+    HappyStateSnapshot,
+} from '../../shared/happy-protocol'
 
 export type ThemeSource = 'system' | 'light' | 'dark'
 export type ThemeState = { source: ThemeSource; shouldUseDarkColors: boolean }
@@ -32,6 +36,25 @@ export type FilesApi = {
     readDataUrl(path: string): Promise<string | null>
 }
 
+export type ProjectsApi = {
+    createWorktree(args: {
+        projectPath: string
+        projectName: string
+        projectWorkspaceName?: string
+    }): Promise<ProjectWorktreeResult>
+}
+
+export type ProjectWorktreeResult =
+    | {
+        kind: 'worktree'
+        path: string
+        name: string
+        branchName: string
+        projectWorkspaceName: string
+      }
+    | { kind: 'plain-fallback'; reason: string }
+    | { kind: 'error'; message: string }
+
 export interface CodexAuthSnapshot {
     status: 'unconfigured' | 'connected'
     email?: string
@@ -45,6 +68,17 @@ export type CodexAuthApi = {
     login(): Promise<CodexAuthSnapshot>
     logout(): Promise<void>
     cancelLogin(): void
+}
+
+export type HappyApi = {
+    getState(): Promise<HappyStateSnapshot>
+    createAccount(): Promise<HappyStateSnapshot>
+    startLinkDevice(): Promise<HappyStateSnapshot>
+    restoreSecret(secretKey: string): Promise<HappyStateSnapshot>
+    cancelAuth(): Promise<HappyStateSnapshot>
+    logout(): Promise<HappyStateSnapshot>
+    clientStatus(): Promise<HappyAuthenticatedClientStatus>
+    onState(cb: (state: HappyStateSnapshot) => void): () => void
 }
 
 export type {
@@ -74,6 +108,10 @@ export type AgentApi = {
 export interface PersistedChats {
     chats: Record<string, unknown>
     order: string[]
+    projects?: Record<string, unknown>
+    projectOrder?: string[]
+    workspaces?: Record<string, unknown>
+    terminals?: Record<string, unknown>
 }
 
 export type ChatsApi = {
@@ -89,7 +127,9 @@ declare global {
         pty: PtyApi
         win: WinApi
         files: FilesApi
+        projects: ProjectsApi
         codexAuth: CodexAuthApi
+        happy: HappyApi
         agent: AgentApi
         chats: ChatsApi
     }

@@ -1,5 +1,6 @@
 import { anthropicPlugin } from './anthropic'
 import { codexPlugin } from './codex'
+import { happyPlugin } from './happy'
 import { registerPlugin } from './host'
 
 export type {
@@ -30,5 +31,6 @@ export async function bootPlugins(): Promise<void> {
     await Promise.all([
         registerPlugin(anthropicPlugin),
         registerPlugin(codexPlugin),
+        registerPlugin(happyPlugin),
     ])
 }

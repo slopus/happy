@@ -233,3 +233,28 @@
     font-size: var(--text-sm);
     color: var(--color-text-foreground-tertiary);
 }
+
+.happy-auth__qr-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.happy-auth__qr {
+    width: 220px;
+    height: 220px;
+    border: 1px solid var(--color-border-light);
+    border-radius: 8px;
+    background: #fff;
+}
+.happy-auth__qr--empty {
+    background: var(--color-hover);
+}
+.happy-auth__url-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.happy-auth__url {
+    flex: 1;
+    min-width: 0;
+}

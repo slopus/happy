@@ -37,7 +37,6 @@ import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
 import { log } from '@/log';
 import { gitStatusSync } from './gitStatusSync';
-import { projectManager } from './projectManager';
 import { AsyncLock } from '@/utils/lock';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
@@ -2200,9 +2199,6 @@ class Sync {
 
             // Remove encryption keys from memory
             this.encryption.removeSessionEncryption(sessionId);
-
-            // Remove from project manager
-            projectManager.removeSession(sessionId);
 
             // Clear any cached git status
             gitStatusSync.clearForSession(sessionId);

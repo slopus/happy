@@ -63,7 +63,8 @@
     "bundle:server:all": "node scripts/bundle-server.cjs --all-platforms",
     "bundle:webapp": "node scripts/bundle-webapp.cjs",
     "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
-    "test": "pnpm run build && vitest run",
+    "test": "pnpm run build && vitest run --project unit",
+    "test:integration": "pnpm run build && vitest run --project integration-empty --project integration-plan-mode --project integration-authenticated",
     "cli:install": "node scripts/install-local.cjs",
     "prepublishOnly": "pnpm test",
     "postinstall": "node scripts/unpack-tools.cjs"

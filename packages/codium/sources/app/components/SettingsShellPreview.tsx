@@ -5,7 +5,7 @@ import { SettingsRow } from './SettingsRow'
 import { ToggleSwitch } from './ToggleSwitch'
 import './SettingsShellPreview.css'
 
-const NAV = ['General', 'Appearance', 'Plugins', 'Usage']
+const NAV = ['General', 'Appearance', 'Agents', 'Usage']
 
 export function SettingsShellPreview() {
     return (

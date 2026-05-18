@@ -1,20 +1,25 @@
+import * as ContextMenu from '@radix-ui/react-context-menu'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useAtom, useAtomValue, useSetAtom } from 'jotai'
+import { useAtomValue, useSetAtom } from 'jotai'
 import {
     preSettingsPathAtom,
     searchOpenAtom,
-    terminalsAtom,
-    type TerminalEntry,
 } from '@/app/state'
-import { chatListAtom, deleteChatAtom } from '@/app/chat/store'
+import {
+    createWorkspaceAtom,
+    deleteProjectAtom,
+    projectListAtom,
+    workspacesAtom,
+    type Project,
+} from '@/app/workspace/store'
 import { SidebarResizer } from './SidebarResizer'
 import './MainSidebar.css'
 
-function NewChatIcon() {
+function NewProjectIcon() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z" />
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
         </svg>
     )
 }
@@ -24,22 +29,6 @@ function SearchIcon() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="7" />
             <path d="m20 20-3.5-3.5" />
-        </svg>
-    )
-}
-
-function AutomationsIcon() {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M13 2 3 14h8l-1 8 10-12h-8l1-8Z" />
-        </svg>
-    )
-}
-
-function PluginsIcon() {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 4h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2h1v4h-1a2 2 0 0 0-2 2v2a2 2 0 0 1-2 2h-2v-1a2 2 0 0 0-2-2 2 2 0 0 0-2 2v1H6a2 2 0 0 1-2-2v-2a2 2 0 0 0-2-2H1v-4h1a2 2 0 0 0 2-2V6a2 2 0 0 1 2-2h4v1a2 2 0 0 0 2 2 2 2 0 0 0 2-2V4Z" />
         </svg>
     )
 }
@@ -55,19 +44,30 @@ function ComponentsIcon() {
     )
 }
 
-function ChatIcon() {
+function FolderIcon() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
         </svg>
     )
 }
 
-function TerminalIcon() {
+function BranchIcon() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m4 6 6 6-6 6" />
-            <path d="M12 19h8" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="6" r="3" />
+            <path d="M6 15V8a2 2 0 0 1 2-2h7" />
+        </svg>
+    )
+}
+
+function SectionIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 5h16" />
+            <path d="M4 12h16" />
+            <path d="M4 19h16" />
         </svg>
     )
 }
@@ -77,15 +77,6 @@ function PlusIcon() {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 5v14" />
             <path d="M5 12h14" />
-        </svg>
-    )
-}
-
-function CloseIcon() {
-    return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 6 6 18" />
-            <path d="m6 6 12 12" />
         </svg>
     )
 }
@@ -104,39 +95,71 @@ export function MainSidebar() {
     const navigate = useNavigate()
     const setPreSettings = useSetAtom(preSettingsPathAtom)
     const setSearchOpen = useSetAtom(searchOpenAtom)
-    const [terminals, setTerminals] = useAtom(terminalsAtom)
-    const chats = useAtomValue(chatListAtom)
-    const deleteChat = useSetAtom(deleteChatAtom)
-
-    const removeChat = (chatId: string) => {
-        deleteChat(chatId)
-        if (location.pathname === `/chat/${chatId}`) navigate('/chat/new')
-    }
+    const projects = useAtomValue(projectListAtom)
+    const workspaces = useAtomValue(workspacesAtom)
+    const createWorkspace = useSetAtom(createWorkspaceAtom)
+    const deleteProject = useSetAtom(deleteProjectAtom)
 
     const openSettings = () => {
         setPreSettings(location.pathname)
         navigate('/settings')
     }
 
-    const addTerminal = () => {
-        const id =
-            typeof crypto !== 'undefined' && 'randomUUID' in crypto
-                ? crypto.randomUUID()
-                : `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        const next: TerminalEntry = {
-            id,
-            title: `Terminal ${terminals.length + 1}`,
+    const addWorkspace = async (project: Project) => {
+        if (project.mode === 'worktree') {
+            const created = await window.projects.createWorktree({
+                projectPath: project.path,
+                projectName: project.name,
+                projectWorkspaceName: project.workspaceRootName,
+            })
+            if (created.kind === 'plain-fallback') {
+                const usePlain = window.confirm(`${created.reason} Create a plain section instead?`)
+                if (!usePlain) return
+                const result = createWorkspace({
+                    projectId: project.id,
+                    name: `Section ${project.workspaceIds.length + 1}`,
+                    path: project.path,
+                    kind: 'section',
+                })
+                if (result) {
+                    navigate(`/project/${project.id}/workspace/${result.workspace.id}/chat/${result.chat.id}`)
+                }
+                return
+            }
+            if (created.kind === 'error') {
+                window.alert(created.message)
+                return
+            }
+            const result = createWorkspace({
+                projectId: project.id,
+                name: created.name,
+                path: created.path,
+                kind: 'worktree',
+                branchName: created.branchName,
+            })
+            if (result) {
+                navigate(`/project/${project.id}/workspace/${result.workspace.id}/chat/${result.chat.id}`)
+            }
+            return
         }
-        setTerminals([...terminals, next])
-        navigate(`/terminal/${id}`)
+
+        const result = createWorkspace({
+            projectId: project.id,
+            name: `Section ${project.workspaceIds.length + 1}`,
+            path: project.path,
+            kind: 'section',
+        })
+        if (result) {
+            navigate(`/project/${project.id}/workspace/${result.workspace.id}/chat/${result.chat.id}`)
+        }
     }
 
-    const closeTerminal = (targetId: string) => {
-        const remaining = terminals.filter((t) => t.id !== targetId)
-        setTerminals(remaining)
-        if (location.pathname === `/terminal/${targetId}`) {
-            const next = remaining[remaining.length - 1]
-            navigate(next ? `/terminal/${next.id}` : '/chat/new')
+    const removeProject = (project: Project) => {
+        const confirmed = window.confirm(`Delete "${project.name}" from Codium? Files on disk are not removed.`)
+        if (!confirmed) return
+        deleteProject(project.id)
+        if (location.pathname.startsWith(`/project/${project.id}/`)) {
+            navigate('/projects/new')
         }
     }
 
@@ -145,13 +168,13 @@ export function MainSidebar() {
             <SidebarResizer />
             <div className="app__sidebar-nav">
                 <NavLink
-                    to="/chat/new"
+                    to="/projects/new"
                     className={({ isActive }) =>
                         isActive ? 'app__nav-item app__nav-item--active' : 'app__nav-item'
                     }
                 >
-                    <NewChatIcon />
-                    <span>New chat</span>
+                    <NewProjectIcon />
+                    <span>New project</span>
                 </NavLink>
                 <button
                     type="button"
@@ -163,24 +186,6 @@ export function MainSidebar() {
                     <kbd className="app__nav-kbd">⌘K</kbd>
                 </button>
                 <NavLink
-                    to="/automations"
-                    className={({ isActive }) =>
-                        isActive ? 'app__nav-item app__nav-item--active' : 'app__nav-item'
-                    }
-                >
-                    <AutomationsIcon />
-                    <span>Automations</span>
-                </NavLink>
-                <NavLink
-                    to="/plugins"
-                    className={({ isActive }) =>
-                        isActive ? 'app__nav-item app__nav-item--active' : 'app__nav-item'
-                    }
-                >
-                    <PluginsIcon />
-                    <span>Plugins</span>
-                </NavLink>
-                <NavLink
                     to="/components"
                     className={({ isActive }) =>
                         isActive ? 'app__nav-item app__nav-item--active' : 'app__nav-item'
@@ -189,68 +194,68 @@ export function MainSidebar() {
                     <ComponentsIcon />
                     <span>Components</span>
                 </NavLink>
-                <button
-                    type="button"
-                    className="app__nav-item"
-                    onClick={addTerminal}
-                >
-                    <PlusIcon />
-                    <span>New terminal</span>
-                </button>
-                {chats.length > 0 && (
+
+                {projects.length > 0 && (
                     <div className="app__sidebar-section">
-                        <div className="app__sidebar-section-header">Chats</div>
-                        {chats.map((c) => (
-                            <div key={c.id} className="app__sidebar-row">
-                                <NavLink
-                                    to={`/chat/${c.id}`}
-                                    className={({ isActive }) =>
-                                        isActive
-                                            ? 'app__nav-item app__sidebar-row-main app__nav-item--active'
-                                            : 'app__nav-item app__sidebar-row-main'
-                                    }
-                                    title={c.title}
-                                >
-                                    <ChatIcon />
-                                    <span className="app__sidebar-row-label">{c.title}</span>
-                                </NavLink>
-                                <button
-                                    type="button"
-                                    className="app__sidebar-row-close"
-                                    aria-label={`Delete ${c.title}`}
-                                    onClick={() => removeChat(c.id)}
-                                >
-                                    <CloseIcon />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-                {terminals.length > 0 && (
-                    <div className="app__sidebar-section">
-                        <div className="app__sidebar-section-header">Terminals</div>
-                        {terminals.map((t) => (
-                            <div key={t.id} className="app__sidebar-row">
-                                <NavLink
-                                    to={`/terminal/${t.id}`}
-                                    className={({ isActive }) =>
-                                        isActive
-                                            ? 'app__nav-item app__sidebar-row-main app__nav-item--active'
-                                            : 'app__nav-item app__sidebar-row-main'
-                                    }
-                                >
-                                    <TerminalIcon />
-                                    <span>{t.title}</span>
-                                </NavLink>
-                                <button
-                                    type="button"
-                                    className="app__sidebar-row-close"
-                                    aria-label={`Close ${t.title}`}
-                                    onClick={() => closeTerminal(t.id)}
-                                >
-                                    <CloseIcon />
-                                </button>
-                            </div>
+                        <div className="app__sidebar-section-header">Projects</div>
+                        {projects.map((project) => (
+                            <ContextMenu.Root key={project.id}>
+                                <ContextMenu.Trigger asChild>
+                                    <div className="app__project">
+                                        <div className="app__project-header">
+                                            <div className="app__project-title" title={project.path}>
+                                                <FolderIcon />
+                                                <span>{project.name}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="app__project-add"
+                                                aria-label={`Add ${project.mode === 'worktree' ? 'worktree' : 'section'} to ${project.name}`}
+                                                onClick={() => void addWorkspace(project).catch((err) => {
+                                                    window.alert(err instanceof Error ? err.message : String(err))
+                                                })}
+                                            >
+                                                <PlusIcon />
+                                            </button>
+                                        </div>
+                                        {project.workspaceIds.map((workspaceId) => {
+                                            const workspace = workspaces[workspaceId]
+                                            if (!workspace) return null
+                                            const firstTab = workspace.activeTabId
+                                                ?? workspace.chatIds[0]
+                                                ?? workspace.terminalIds[0]
+                                            if (!firstTab) return null
+                                            const tabKind = workspace.chatIds.includes(firstTab)
+                                                ? 'chat'
+                                                : 'terminal'
+                                            return (
+                                                <NavLink
+                                                    key={workspace.id}
+                                                    to={`/project/${project.id}/workspace/${workspace.id}/${tabKind}/${firstTab}`}
+                                                    className={({ isActive }) =>
+                                                        isActive
+                                                            ? 'app__nav-item app__nav-item--nested app__nav-item--active'
+                                                            : 'app__nav-item app__nav-item--nested'
+                                                    }
+                                                >
+                                                    {workspace.kind === 'worktree' ? <BranchIcon /> : <SectionIcon />}
+                                                    <span className="app__sidebar-row-label">{workspace.name}</span>
+                                                </NavLink>
+                                            )
+                                        })}
+                                    </div>
+                                </ContextMenu.Trigger>
+                                <ContextMenu.Portal>
+                                    <ContextMenu.Content className="app__context-menu">
+                                        <ContextMenu.Item
+                                            className="app__context-menu-item app__context-menu-item--danger"
+                                            onSelect={() => removeProject(project)}
+                                        >
+                                            Delete project
+                                        </ContextMenu.Item>
+                                    </ContextMenu.Content>
+                                </ContextMenu.Portal>
+                            </ContextMenu.Root>
                         ))}
                     </div>
                 )}

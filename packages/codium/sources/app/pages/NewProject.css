@@ -1,0 +1,82 @@
+.new-project {
+    min-height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+}
+
+.new-project__panel {
+    width: min(520px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.new-project__title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--color-text-foreground);
+}
+
+.new-project__copy {
+    margin: 0;
+    font-size: var(--text-base);
+    line-height: 1.5;
+    color: var(--color-text-foreground-secondary);
+}
+
+.new-project__mode {
+    display: inline-flex;
+    width: fit-content;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--color-border-light);
+    border-radius: 10px;
+}
+
+.new-project__mode-btn,
+.new-project__pick {
+    height: 32px;
+    border: 0;
+    border-radius: 8px;
+    font-size: var(--text-sm);
+    color: var(--color-text-foreground);
+    cursor: pointer;
+}
+
+.new-project__mode-btn {
+    padding: 0 12px;
+    background: transparent;
+}
+
+.new-project__mode-btn--active {
+    background: var(--color-button-bg);
+}
+
+.new-project__pick {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    min-width: 104px;
+    padding: 0 14px;
+    background: var(--color-text-foreground);
+    color: var(--color-background-surface);
+    font-weight: 500;
+}
+
+.new-project__pick:hover {
+    background: color-mix(in srgb, var(--color-text-foreground) 88%, var(--color-background-surface));
+}
+
+.new-project__pick:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+.new-project__error {
+    color: var(--color-decoration-deleted);
+    font-size: var(--text-sm);
+}

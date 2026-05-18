@@ -90,8 +90,10 @@ export async function handleServerCommand(args: string[]): Promise<void> {
     await spawnAndWait(artifacts, env, ['migrate']);
 
     if (opts.persistServerUrl) {
-        await updateSettings(current => ({ ...current, serverUrl }));
-        console.log(chalk.gray(`Wrote serverUrl=${serverUrl} to ${configuration.settingsFile}`));
+        // The bundled server serves the webapp at its own origin, so webappUrl === serverUrl.
+        // Without this the CLI's auth flow would open the prod webapp (app.happy.engineering).
+        await updateSettings(current => ({ ...current, serverUrl, webappUrl: serverUrl }));
+        console.log(chalk.gray(`Wrote serverUrl + webappUrl=${serverUrl} to ${configuration.settingsFile}`));
     }
 
     console.log(chalk.gray('Starting server...'));

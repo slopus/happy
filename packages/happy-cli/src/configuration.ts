@@ -29,8 +29,6 @@ class Configuration {
   public readonly disableCaffeinate: boolean
 
   constructor() {
-    this.webappUrl = process.env.HAPPY_WEBAPP_URL || 'https://app.happy.engineering'
-
     // Check if we're running as daemon based on process args
     const args = process.argv.slice(2)
     this.isDaemonProcess = args.length >= 2 && args[0] === 'daemon' && (args[1] === 'start-sync')
@@ -51,12 +49,18 @@ class Configuration {
     this.daemonLockFile = join(this.happyHomeDir, 'daemon.state.json.lock')
     this.sessionsFile = join(this.happyHomeDir, 'sessions.json')
 
-    // Server URL precedence: HAPPY_SERVER_URL env > settings.serverUrl > default
-    // settings.serverUrl is read sync here (avoid circular import with persistence.ts)
+    // URL precedence (both): HAPPY_*_URL env > settings.<key> > default.
+    // Settings are read sync here (avoid circular import with persistence.ts).
+    // webappUrl must follow the same chain as serverUrl, otherwise `happy server`
+    // self-host points the API at localhost but auth still opens the prod webapp.
     this.serverUrl =
       process.env.HAPPY_SERVER_URL ||
-      readSettingsServerUrlSync(this.settingsFile) ||
+      readSettingsStringSync(this.settingsFile, 'serverUrl') ||
       'https://api.cluster-fluster.com'
+    this.webappUrl =
+      process.env.HAPPY_WEBAPP_URL ||
+      readSettingsStringSync(this.settingsFile, 'webappUrl') ||
+      'https://app.happy.engineering'
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
     this.disableCaffeinate = ['true', '1', 'yes'].includes(process.env.HAPPY_DISABLE_CAFFEINATE?.toLowerCase() || '');
@@ -79,13 +83,12 @@ class Configuration {
   }
 }
 
-function readSettingsServerUrlSync(settingsFile: string): string | undefined {
+function readSettingsStringSync(settingsFile: string, key: 'serverUrl' | 'webappUrl'): string | undefined {
   try {
     if (!existsSync(settingsFile)) return undefined
     const raw = JSON.parse(readFileSync(settingsFile, 'utf8'))
-    return typeof raw?.serverUrl === 'string' && raw.serverUrl.length > 0
-      ? raw.serverUrl
-      : undefined
+    const value = raw?.[key]
+    return typeof value === 'string' && value.length > 0 ? value : undefined
   } catch {
     return undefined
   }

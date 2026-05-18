@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import * as QRCode from 'qrcode'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Page } from '@/app/components/Page'
+import { happyClient, useHappyState } from '@/happy/client'
 import { pluginHost, usePlugin } from '@/plugins'
 import './Plugins.css'
 
@@ -96,7 +98,9 @@ export function PluginDetailPage() {
 
                 <section className="plugin-detail__section">
                     <h3 className="plugins-section__heading">Authentication</h3>
-                    {auth.status === 'connected' ? (
+                    {plugin.id === 'happy' ? (
+                        <HappyAuthPanel />
+                    ) : auth.status === 'connected' ? (
                         <div className="plugin-detail__row">
                             <span className="plugin-card__status plugin-card__status--good">
                                 <span className="plugin-card__status-dot" aria-hidden />
@@ -184,5 +188,153 @@ export function PluginDetailPage() {
                 )}
             </div>
         </Page>
+    )
+}
+
+function HappyAuthPanel() {
+    const state = useHappyState()
+    const [busy, setBusy] = useState<string | null>(null)
+    const [secretKey, setSecretKey] = useState('')
+    const [qrDataUrl, setQrDataUrl] = useState('')
+    const authUrl = state.authFlow?.method === 'link-device'
+        ? state.authFlow.authUrl ?? ''
+        : ''
+
+    useEffect(() => {
+        let active = true
+        if (!authUrl) {
+            setQrDataUrl('')
+            return () => { active = false }
+        }
+        void QRCode.toDataURL(authUrl, {
+            width: 220,
+            margin: 2,
+            color: { dark: '#111111', light: '#ffffff' },
+        })
+            .then((url) => { if (active) setQrDataUrl(url) })
+            .catch(() => { if (active) setQrDataUrl('') })
+        return () => { active = false }
+    }, [authUrl])
+
+    const run = async (name: string, action: () => Promise<unknown>) => {
+        setBusy(name)
+        try {
+            await action()
+            if (name === 'restore') setSecretKey('')
+        } finally {
+            setBusy(null)
+        }
+    }
+
+    if (state.status === 'starting') {
+        return <small className="plugin-detail__help">Loading Happy state…</small>
+    }
+
+    if (state.status === 'authenticated') {
+        return (
+            <div className="plugin-detail__row">
+                <span className="plugin-card__status plugin-card__status--good">
+                    <span className="plugin-card__status-dot" aria-hidden />
+                    Connected{state.accountId ? ` as ${state.accountId}` : ''}
+                </span>
+                <div className="plugin-detail__actions">
+                    <button
+                        type="button"
+                        className="plugins-page__action"
+                        onClick={() => run('logout', () => happyClient.logout())}
+                        disabled={busy !== null}
+                    >
+                        Disconnect
+                    </button>
+                </div>
+            </div>
+        )
+    }
+
+    if (state.status === 'authenticating' && authUrl) {
+        return (
+            <div className="plugin-detail__row plugin-detail__row--column">
+                <div className="happy-auth__qr-wrap">
+                    {qrDataUrl ? (
+                        <img className="happy-auth__qr" src={qrDataUrl} alt="Happy authentication QR code" />
+                    ) : (
+                        <div className="happy-auth__qr happy-auth__qr--empty" />
+                    )}
+                </div>
+                <div className="happy-auth__url-row">
+                    <input
+                        className="plugin-detail__input happy-auth__url"
+                        value={authUrl}
+                        readOnly
+                        spellCheck={false}
+                    />
+                    <button
+                        type="button"
+                        className="plugins-page__action"
+                        onClick={() => navigator.clipboard?.writeText(authUrl)}
+                    >
+                        Copy
+                    </button>
+                </div>
+                <div className="plugin-detail__actions">
+                    <button
+                        type="button"
+                        className="plugins-page__action"
+                        onClick={() => run('cancel', () => happyClient.cancelAuth())}
+                        disabled={busy !== null}
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <div className="plugin-detail__row plugin-detail__row--column">
+            {state.status === 'error' && (
+                <small className="plugin-detail__help plugin-detail__help--bad">
+                    {state.error}
+                </small>
+            )}
+            <div className="plugin-detail__actions">
+                <button
+                    type="button"
+                    className="plugins-page__action plugins-page__action--primary"
+                    onClick={() => run('create', () => happyClient.createAccount())}
+                    disabled={busy !== null}
+                >
+                    {busy === 'create' ? 'Creating…' : 'Create account'}
+                </button>
+                <button
+                    type="button"
+                    className="plugins-page__action"
+                    onClick={() => run('link', () => happyClient.startLinkDevice())}
+                    disabled={busy !== null}
+                >
+                    {busy === 'link' ? 'Starting…' : 'Link device'}
+                </button>
+            </div>
+            <label className="plugin-detail__label">Secret key</label>
+            <div className="happy-auth__url-row">
+                <input
+                    type="password"
+                    className="plugin-detail__input"
+                    placeholder="XXXXX-XXXXX-XXXXX..."
+                    value={secretKey}
+                    onChange={(e) => setSecretKey(e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                />
+                <button
+                    type="button"
+                    className="plugins-page__action"
+                    onClick={() => run('restore', () => happyClient.restoreSecret(secretKey))}
+                    disabled={busy !== null || secretKey.trim().length === 0}
+                >
+                    {busy === 'restore' ? 'Restoring…' : 'Restore'}
+                </button>
+            </div>
+        </div>
     )
 }

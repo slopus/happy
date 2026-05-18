@@ -31,7 +31,7 @@ export function SearchDialog() {
                     <Command className="search-dialog__command" label="Search">
                         <Command.Input
                             className="search-dialog__input"
-                            placeholder="Search chats, automations, plugins…"
+                            placeholder="Search chats…"
                             autoFocus
                         />
                         <Command.List className="search-dialog__list">
@@ -41,11 +41,6 @@ export function SearchDialog() {
                             <Command.Group heading="Chats" className="search-dialog__group">
                                 <Command.Item className="search-dialog__item">
                                     Example chat
-                                </Command.Item>
-                            </Command.Group>
-                            <Command.Group heading="Automations" className="search-dialog__group">
-                                <Command.Item className="search-dialog__item">
-                                    Example automation
                                 </Command.Item>
                             </Command.Group>
                         </Command.List>

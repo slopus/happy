@@ -7,11 +7,12 @@ import {
 } from '@/app/components/Toolbar'
 import { MainSidebar } from '@/app/components/MainSidebar'
 import { TerminalHost } from '@/app/components/terminal/TerminalHost'
+import { WorkspaceTabs } from '@/app/components/WorkspaceTabs'
 import './MainLayout.css'
 
 export function MainLayout() {
     const location = useLocation()
-    const isTerminal = location.pathname.startsWith('/terminal/')
+    const isTerminal = location.pathname.includes('/terminal/')
 
     return (
         <>
@@ -22,6 +23,7 @@ export function MainLayout() {
             </Toolbar>
             <MainSidebar />
             <main className="app__main">
+                <WorkspaceTabs />
                 <TerminalHost />
                 <div
                     className="main-outlet"

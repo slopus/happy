@@ -102,14 +102,29 @@ export const databaseRecordCountGauge = new Gauge({
     registers: [register]
 });
 
+type EstimatedCountRow = {
+    estimated_count: bigint | number | null;
+};
+
+async function getEstimatedRecordCount(tableName: string): Promise<number> {
+    const rows = await db.$queryRaw<EstimatedCountRow[]>`
+        SELECT GREATEST(reltuples, 0)::bigint AS estimated_count
+        FROM pg_class
+        WHERE oid = to_regclass(${tableName})
+    `;
+    const estimatedCount = rows[0]?.estimated_count ?? 0;
+    return Number(estimatedCount);
+}
+
 // Database metrics updater
 export async function updateDatabaseMetrics(): Promise<void> {
-    // Query counts for each table
+    // Use catalog estimates instead of exact COUNT(*). Exact counts are full
+    // scans in Postgres and this updater runs once a minute.
     const [accountCount, sessionCount, messageCount, machineCount] = await Promise.all([
-        db.account.count(),
-        db.session.count(),
-        db.sessionMessage.count(),
-        db.machine.count()
+        getEstimatedRecordCount('"Account"'),
+        getEstimatedRecordCount('"Session"'),
+        getEstimatedRecordCount('"SessionMessage"'),
+        getEstimatedRecordCount('"Machine"')
     ]);
 
     // Update metrics

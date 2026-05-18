@@ -12,6 +12,7 @@ describe('resolveMessageModeMeta', () => {
         expect(meta).toEqual({
             permissionMode: 'read-only',
             model: 'gpt-5-high',
+            effort: null,
         });
     });
 
@@ -27,6 +28,7 @@ describe('resolveMessageModeMeta', () => {
         expect(meta).toEqual({
             permissionMode: 'bypassPermissions',
             model: null,
+            effort: null,
         });
     });
 
@@ -42,6 +44,22 @@ describe('resolveMessageModeMeta', () => {
         expect(meta).toEqual({
             permissionMode: 'default',
             model: null,
+            effort: null,
+        });
+    });
+
+    it('passes through an explicit effort level', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: 'default',
+            modelMode: null,
+            effortLevel: 'high',
+            metadata: null,
+        } as any);
+
+        expect(meta).toEqual({
+            permissionMode: 'default',
+            model: null,
+            effort: 'high',
         });
     });
 });

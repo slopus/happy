@@ -1,21 +1,8 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useAtom } from 'jotai'
 import { modelAtom } from '@/app/state'
+import { AGENT_MODELS } from '@/agents/catalog'
 import './Composer.css'
-
-interface ModelOption {
-    id: string
-    label: string
-    group?: string
-}
-
-const MODELS: ModelOption[] = [
-    { id: 'gpt-5-5',            label: '5.5',         group: 'OpenAI' },
-    { id: 'gpt-5-4',            label: '5.4',         group: 'OpenAI' },
-    { id: 'claude-opus-4-7',    label: 'Opus 4.7',    group: 'Anthropic' },
-    { id: 'claude-sonnet-4-6',  label: 'Sonnet 4.6',  group: 'Anthropic' },
-    { id: 'claude-opus-4-6',    label: 'Opus 4.6',    group: 'Anthropic' },
-]
 
 function ChevronDown() {
     return (
@@ -35,8 +22,8 @@ function Check() {
 
 export function ModelPicker() {
     const [model, setModel] = useAtom(modelAtom)
-    const current = MODELS.find((m) => m.id === model) ?? MODELS[0]
-    const groups = Array.from(new Set(MODELS.map((m) => m.group ?? 'Models')))
+    const current = AGENT_MODELS.find((m) => m.id === model) ?? AGENT_MODELS[0]
+    const groups = Array.from(new Set(AGENT_MODELS.map((m) => m.group)))
 
     return (
         <DropdownMenu.Root>
@@ -58,7 +45,7 @@ export function ModelPicker() {
                             <DropdownMenu.Label className="composer-menu__label">
                                 {g}
                             </DropdownMenu.Label>
-                            {MODELS.filter((m) => (m.group ?? 'Models') === g).map((m) => (
+                            {AGENT_MODELS.filter((m) => m.group === g).map((m) => (
                                 <DropdownMenu.Item
                                     key={m.id}
                                     className="composer-menu__item"
