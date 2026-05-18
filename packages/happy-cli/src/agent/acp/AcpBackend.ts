@@ -879,7 +879,7 @@ export class AcpBackend implements AgentBackend {
       idleTimeout: this.idleTimeout,
       toolCallCountSincePrompt: this.toolCallCountSincePrompt,
       emit: (msg) => this.emit(msg),
-      emitIdleStatus: () => this.emitIdleStatus(),
+      markUpdatesSettled: () => this.markUpdatesSettled(),
       clearIdleTimeout: () => {
         if (this.idleTimeout) {
           clearTimeout(this.idleTimeout);
@@ -1037,6 +1037,23 @@ export class AcpBackend implements AgentBackend {
   private idleResolver: (() => void) | null = null;
   private waitingForResponse = false;
 
+  // Two-signal turn-complete state machine. A turn is "complete" only when
+  // BOTH the RPC `prompt` response is back AND the session-update stream has
+  // settled (no chunks for the idle window, no active tool calls). Per ACP
+  // spec these two streams can interleave in any order; we used to assume
+  // updates arrived last, which races with agents that flush their response
+  // before the final update.
+  private responseReceived = false;
+  private updatesSettled = false;
+  /** Monotonic turn counter so stale Promise resolutions can be ignored. */
+  private currentTurnId = 0;
+  /**
+   * Grace timer armed when the RPC response arrives before the update stream
+   * has settled. If no further update fires within this window we treat the
+   * update stream as drained and emit `idle`.
+   */
+  private postResponseGraceTimer: NodeJS.Timeout | null = null;
+
   async sendPrompt(sessionId: SessionId, prompt: string): Promise<void> {
     // Check if prompt contains change_title instruction (via optional callback)
     const promptHasChangeTitle = this.options.hasChangeTitleInstruction?.(prompt) ?? false;
@@ -1074,7 +1091,24 @@ export class AcpBackend implements AgentBackend {
       };
 
       logger.debug(`[AcpBackend] Prompt request:`, JSON.stringify(promptRequest, null, 2));
-      await this.connection.prompt(promptRequest);
+
+      // Reset turn-complete state machine for this prompt. We bump turnId so
+      // that the `.then(...)` callback below can detect when its turn has
+      // been superseded (e.g. by an immediate follow-up prompt) and skip
+      // touching the wrong turn's state.
+      const turnId = ++this.currentTurnId;
+      this.responseReceived = false;
+      this.updatesSettled = false;
+      this.clearPostResponseGrace();
+
+      const responsePromise = this.connection.prompt(promptRequest).then((result) => {
+        if (turnId === this.currentTurnId) {
+          this.responseReceived = true;
+          this.maybeCompleteTurn();
+        }
+        return result;
+      });
+      await responsePromise;
       logger.debug('[AcpBackend] Prompt request sent to ACP connection');
       
       // Don't emit 'idle' here - it will be emitted after all message chunks are received
@@ -1226,14 +1260,67 @@ export class AcpBackend implements AgentBackend {
   }
 
   /**
-   * Helper to emit idle status and resolve any waiting promises
+   * Helper to emit idle status and resolve any waiting promises.
+   *
+   * Always also clears the turn-complete state machine so that a subsequent
+   * stray `markUpdatesSettled` or RPC `.then` callback can't accidentally
+   * fire a second `idle` event for the same turn.
    */
   private emitIdleStatus(): void {
     this.emit({ type: 'status', status: 'idle' });
+    this.waitingForResponse = false;
+    this.responseReceived = false;
+    this.updatesSettled = false;
+    this.clearPostResponseGrace();
     // Resolve any waiting promises
     if (this.idleResolver) {
       logger.debug('[AcpBackend] Resolving idle waiter');
       this.idleResolver();
+    }
+  }
+
+  /**
+   * Called from `HandlerContext.markUpdatesSettled` when the update stream
+   * goes silent (last chunk's idle timer fires, last tool completes, or a
+   * tool-call timeout cleans up). Records the "updates side" of the
+   * two-signal completion gate and tries to finish the turn.
+   */
+  private markUpdatesSettled(): void {
+    this.updatesSettled = true;
+    this.maybeCompleteTurn();
+  }
+
+  /**
+   * Try to emit the final `idle` status if BOTH the RPC response is back AND
+   * the update stream has settled. If only the response is back we arm a
+   * `POST_RESPONSE_GRACE_MS` timer so an `idle` is still produced when the
+   * agent's prompt response arrives before its last `session/update`.
+   */
+  private maybeCompleteTurn(): void {
+    if (!this.waitingForResponse) return;
+    if (this.activeToolCalls.size > 0) return;
+    if (!this.responseReceived) return;
+    if (!this.updatesSettled) {
+      this.armPostResponseGrace();
+      return;
+    }
+    this.emitIdleStatus();
+  }
+
+  private armPostResponseGrace(): void {
+    if (this.postResponseGraceTimer) return;
+    this.postResponseGraceTimer = setTimeout(() => {
+      this.postResponseGraceTimer = null;
+      // Treat the absence of further updates as "stream settled".
+      this.updatesSettled = true;
+      this.maybeCompleteTurn();
+    }, DEFAULT_IDLE_TIMEOUT_MS);
+  }
+
+  private clearPostResponseGrace(): void {
+    if (this.postResponseGraceTimer) {
+      clearTimeout(this.postResponseGraceTimer);
+      this.postResponseGraceTimer = null;
     }
   }
 
@@ -1273,9 +1360,12 @@ export class AcpBackend implements AgentBackend {
 
   async dispose(): Promise<void> {
     if (this.disposed) return;
-    
+
     logger.debug('[AcpBackend] Disposing backend');
     this.disposed = true;
+
+    // Cancel any pending turn-complete grace timer so it doesn't fire after dispose.
+    this.clearPostResponseGrace();
 
     // Try graceful shutdown first
     if (this.connection && this.acpSessionId) {

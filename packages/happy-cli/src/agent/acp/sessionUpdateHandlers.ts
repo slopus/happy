@@ -65,8 +65,13 @@ export interface HandlerContext {
   toolCallCountSincePrompt: number;
   /** Emit function to send agent messages */
   emit: (msg: AgentMessage) => void;
-  /** Emit idle status helper */
-  emitIdleStatus: () => void;
+  /**
+   * Signal that the session-update stream has settled (no chunks for the
+   * idle window, no active tool calls). The backend decides whether this
+   * means the turn is complete — it must also see the RPC response before
+   * actually emitting an `idle` status. See AcpBackend.maybeCompleteTurn.
+   */
+  markUpdatesSettled: () => void;
   /** Clear idle timeout helper */
   clearIdleTimeout: () => void;
   /** Set idle timeout helper */
@@ -100,7 +105,7 @@ export function scheduleDeferredIdle(ctx: HandlerContext, settledLogMessage: str
   ctx.setIdleTimeout(() => {
     if (ctx.activeToolCalls.size === 0) {
       logger.debug(settledLogMessage);
-      ctx.emitIdleStatus();
+      ctx.markUpdatesSettled();
     } else {
       logger.debug(`[AcpBackend] Deferred idle skipped — ${ctx.activeToolCalls.size} active tool calls`);
     }
@@ -213,7 +218,7 @@ export function handleAgentMessageChunk(
     ctx.setIdleTimeout(() => {
       if (ctx.activeToolCalls.size === 0) {
         logger.debug('[AcpBackend] No more chunks received, emitting idle status');
-        ctx.emitIdleStatus();
+        ctx.markUpdatesSettled();
       } else {
         logger.debug(`[AcpBackend] Delaying idle status - ${ctx.activeToolCalls.size} active tool calls`);
       }
@@ -301,7 +306,7 @@ export function startToolCall(
 
       if (ctx.activeToolCalls.size === 0) {
         logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
-        ctx.emitIdleStatus();
+        ctx.markUpdatesSettled();
       }
     }, timeoutMs);
 

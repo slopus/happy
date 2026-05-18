@@ -29,7 +29,12 @@ function makeCtx() {
     emit: (msg) => {
       messages.push(msg);
     },
-    emitIdleStatus: () => {
+    // In production this signals the backend that the update stream has
+    // settled; the backend then waits for the RPC response before actually
+    // emitting `idle`. For these handler-level tests we model that as a
+    // direct `idle` push so the assertions in this file continue to verify
+    // the 500ms deferral timing exposed by sessionUpdateHandlers itself.
+    markUpdatesSettled: () => {
       messages.push({ type: 'status', status: 'idle' });
     },
     clearIdleTimeout: () => {
