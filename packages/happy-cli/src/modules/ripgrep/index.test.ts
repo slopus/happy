@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { run } from './index'
+import { run, DEFAULT_MAX_OUTPUT_BYTES } from './index'
 
 describe('ripgrep low-level wrapper', () => {
     it('should get version', async () => {
@@ -38,5 +38,28 @@ describe('ripgrep low-level wrapper', () => {
         const result = await run(['describe', 'index.test.ts'], { cwd: 'src/modules/ripgrep' })
         expect(result.exitCode).toBe(0)
         expect(result.stdout).toContain('describe')
+    })
+
+    it('should exposes a sane default output cap', () => {
+        // 32 MiB — well below V8's ~512 MiB string-length limit, more than
+        // enough for any LLM-facing grep result. Regression guard for #1195.
+        expect(DEFAULT_MAX_OUTPUT_BYTES).toBe(32 * 1024 * 1024)
+    })
+
+    it('truncates stdout when output exceeds the configured cap', async () => {
+        // Search a regex that matches every line in node_modules — guaranteed
+        // many matches — but cap at 4 KiB so we hit the truncation branch
+        // quickly. The match pattern `.` matches any non-empty character.
+        const result = await run([
+            '--no-heading',
+            '--no-line-number',
+            '.', // match-anything regex
+            'src',
+        ], { cwd: '.', maxBufferBytes: 4096 })
+
+        expect(result.truncated).toBe(true)
+        // stdout was capped near the limit (plus the suffix note).
+        expect(result.stdout.length).toBeLessThan(4096 + 200)
+        expect(result.stdout).toMatch(/output truncated at \d+ MiB cap/)
     })
 })
