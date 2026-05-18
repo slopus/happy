@@ -1,11 +1,12 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { useRouter } from 'expo-router';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { useSession } from '@/sync/storage';
 import { useHappyAction } from '@/hooks/useHappyAction';
+import { getDuplicateSheetFrame } from '@/utils/duplicateSheetLayout';
 import {
     forkAndSpawn,
     claudeListRewindPoints,
@@ -44,6 +45,11 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
     const { sessionId, initialClaudeUuid, initialRewindPointId, initialMessageText, initialForkedFromMessageId, onClose } = props;
     const session = useSession(sessionId);
     const router = useRouter();
+    const windowSize = useWindowDimensions();
+    const sheetFrame = React.useMemo(
+        () => getDuplicateSheetFrame(windowSize),
+        [windowSize.width, windowSize.height],
+    );
 
     const source = React.useMemo(() => session ? getSessionForkSource(session) : null, [
         session?.id,
@@ -155,7 +161,7 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
     });
 
     return (
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, sheetFrame]}>
             <View style={styles.header}>
                 <Text style={styles.title}>{t('session.duplicateSheetTitle')}</Text>
                 <Text style={styles.subtitle}>{t('session.duplicateSheetSubtitle')}</Text>
@@ -255,10 +261,9 @@ const styles = StyleSheet.create((theme) => ({
     sheet: {
         backgroundColor: theme.colors.surface,
         borderRadius: 16,
-        width: '100%',
-        maxWidth: 560,
-        maxHeight: '85%',
         overflow: 'hidden',
+        alignSelf: 'center',
+        minWidth: 0,
     },
     header: {
         paddingHorizontal: 20,
@@ -281,6 +286,7 @@ const styles = StyleSheet.create((theme) => ({
         flexGrow: 0,
         flexShrink: 1,
         maxHeight: 420,
+        minHeight: 0,
     },
     listContent: {
         paddingVertical: 8,
