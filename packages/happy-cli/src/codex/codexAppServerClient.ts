@@ -836,8 +836,25 @@ export class CodexAppServerClient {
         // Wait for any in-flight interruptTurn() to complete before starting a new
         // turn. Otherwise the stale turn/interrupt RPC can reach Codex after our
         // turn/start and abort the wrong turn.
+        //
+        // Claim the pending interrupt slot locally and null the instance field
+        // BEFORE awaiting. A naïve `await this.pendingInterrupt` looks correct
+        // but leaves a sub-microtask window: when `interruptTurn`'s old
+        // `finally` block nulled `this.pendingInterrupt`, a re-entrant
+        // `sendTurnAndWait` running in the same tick — e.g. user spamming abort
+        // then immediately submitting a new prompt — would see
+        // `pendingInterrupt === null`, skip both the await AND the event-loop
+        // yield below, and dispatch `turn/start` while the previous turn's
+        // `turn_aborted` notification was still queued in stdout. The new turn
+        // then gets matched and aborted by the stale notification.
         if (this.pendingInterrupt) {
-            await this.pendingInterrupt;
+            const interrupt = this.pendingInterrupt;
+            this.pendingInterrupt = null;
+            try {
+                await interrupt;
+            } catch {
+                // Errors from interruptTurn are already logged inside doInterrupt.
+            }
             // Yield to the event loop so any stale turn_aborted/task_complete
             // notifications queued by the interrupted turn are processed now
             // (harmlessly, since pendingTurnCompletion is null at this point).
@@ -880,6 +897,12 @@ export class CodexAppServerClient {
             logger.debug('[CodexAppServer] interruptTurn: no active turnId, skipping');
             return;
         }
+        // De-duplicate: if a prior interrupt is still in flight, return its
+        // promise so we don't double-issue `turn/interrupt` and so spamming
+        // the abort button collapses into a single RPC.
+        if (this.pendingInterrupt) {
+            return this.pendingInterrupt;
+        }
         const params: InterruptConversationParams = {
             threadId: this._threadId,
             turnId: this._turnId,
@@ -890,9 +913,13 @@ export class CodexAppServerClient {
             } catch (err) {
                 // Ignore if no turn is active
                 logger.debug('[CodexAppServer] interruptTurn error (may be expected):', err);
-            } finally {
-                this.pendingInterrupt = null;
             }
+            // Intentionally do NOT null `this.pendingInterrupt` here — clearing
+            // the slot before `sendTurnAndWait` has a chance to `await` and
+            // then yield the event loop opens a race window where a same-tick
+            // re-entrant call skips the wait entirely. The slot is claimed
+            // and cleared by `sendTurnAndWait` AFTER both the await and the
+            // event-loop yield.
         };
         this.pendingInterrupt = doInterrupt();
         return this.pendingInterrupt;
