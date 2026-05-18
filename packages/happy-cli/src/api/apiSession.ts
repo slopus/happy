@@ -748,12 +748,24 @@ export class ApiSessionClient extends EventEmitter {
             return;
         }
         return new Promise((resolve) => {
-            this.socket.emit('ping', () => {
-                resolve();
-            });
-            setTimeout(() => {
+            // Track which side resolved so we never resolve twice and we
+            // always clear the unbacked timer. The old code left a bare
+            // 10s setTimeout running after the ping ack came back, which
+            // held the event loop open for the rest of the 10s window —
+            // that's the "why does `happy claude` take 10 seconds to quit
+            // after Ctrl-C" complaint.
+            let settled = false;
+            const timeout = setTimeout(() => {
+                if (settled) return;
+                settled = true;
                 resolve();
             }, 10000);
+            this.socket.emit('ping', () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeout);
+                resolve();
+            });
         });
     }
 
