@@ -283,6 +283,18 @@ export async function clearCredentials(): Promise<void> {
   if (existsSync(configuration.privateKeyFile)) {
     await unlink(configuration.privateKeyFile);
   }
+  // Also wipe persisted session encryption keys. Otherwise after `happy logout`
+  // the on-disk `sessions.json` keeps holding keys derived from the previous
+  // identity for up to SESSION_MAX_AGE_MS (14 days) — and any process with
+  // read access to the file can still decrypt the corresponding server-side
+  // session history. This also makes `clearCredentials` a complete logout.
+  if (existsSync(configuration.sessionsFile)) {
+    try {
+      await unlink(configuration.sessionsFile);
+    } catch (error) {
+      logger.debug(`[PERSISTENCE] Failed to remove sessions file during clearCredentials:`, error);
+    }
+  }
 }
 
 export async function clearMachineId(): Promise<void> {
@@ -310,10 +322,24 @@ export async function readDaemonState(): Promise<DaemonLocallyPersistedState | n
 }
 
 /**
- * Write daemon state to local file (synchronously for atomic operation)
+ * Write daemon state to local file atomically (tmp + rename).
+ *
+ * `writeFileSync` directly is NOT atomic: a reader hitting the file mid-write
+ * (or a crash mid-write) sees a truncated / empty file. `readDaemonState`
+ * swallows the resulting `JSON.parse` error and returns `null`, which made
+ * `checkIfDaemonRunningAndCleanupStaleState()` believe the daemon was dead
+ * and spawn a SECOND one. The two daemons would then fight over the lock
+ * (the loser exits via `acquireDaemonLock` retries) — but the loser had
+ * already overwritten `daemon.state.json` with its partial state, breaking
+ * the survivor's lookup table.
+ *
+ * Following the same tmp + rename pattern used by `persistSession` below
+ * makes the visible state transition POSIX-atomic.
  */
 export function writeDaemonState(state: DaemonLocallyPersistedState): void {
-  writeFileSync(configuration.daemonStateFile, JSON.stringify(state, null, 2), 'utf-8');
+  const tmpFile = configuration.daemonStateFile + '.tmp';
+  writeFileSync(tmpFile, JSON.stringify(state, null, 2), 'utf-8');
+  renameSync(tmpFile, configuration.daemonStateFile);
 }
 
 /**
