@@ -1139,8 +1139,24 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 // Helpers
 //
 
-function allocateId() {
-    return Math.random().toString(36).substring(2, 15);
+function allocateId(): string {
+    // Prefer Web Crypto's `randomUUID` (128-bit, cryptographically random):
+    //  - Node ≥ 19 exposes it on `globalThis.crypto.randomUUID`.
+    //  - React Native / Expo provide it via `expo-crypto`'s polyfill, which
+    //    happy-app already installs at startup.
+    // The old generator (`Math.random().toString(36).substring(2, 15)`)
+    // yields only ~67 bits of entropy — long sessions hit birthday-paradox
+    // collisions inside `state.messages` / `messageIds` / `toolIdToMessageId`,
+    // silently overwriting messages and routing tool-result events to the
+    // wrong message. Falling back to two `Math.random` chunks + a timestamp
+    // gives ~96+ bits (still strictly better than the original) so this
+    // file stays loadable in node-only test runners that may not have the
+    // RN polyfill registered.
+    const g = globalThis as { crypto?: { randomUUID?: () => string } };
+    if (typeof g.crypto?.randomUUID === 'function') {
+        return g.crypto.randomUUID();
+    }
+    return `${Math.random().toString(36).slice(2, 11)}-${Math.random().toString(36).slice(2, 11)}-${Date.now().toString(36)}`;
 }
 
 function processUsageData(state: ReducerState, usage: UsageData, timestamp: number) {
