@@ -28,6 +28,8 @@ import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
+import { applyAxOrchestration } from '@/orchestrator/prompts/integrate';
+import { registerAxRpcHandlers } from '@/orchestrator/registerAxRpcHandlers';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -268,7 +270,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
-    session.onUserMessage((message) => {
+    session.onUserMessage(async (message) => {
 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
         let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
@@ -375,6 +377,27 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             return;
         }
 
+        // Apply AX Studio orchestration (start-from-planning workflow): if the
+        // workspace has `.ax/state.json`, prepend step guide + dynamic context
+        // to the user text and inject the AX base prompt into appendSystemPrompt.
+        // Returns null for non-AX workspaces — fall through to default flow.
+        let pushText = message.content.text;
+        try {
+            const ax = await applyAxOrchestration({
+                workspaceRoot: workingDirectory,
+                userText: pushText,
+                currentAppendSystemPrompt: messageAppendSystemPrompt,
+            });
+            if (ax) {
+                pushText = ax.userText;
+                messageAppendSystemPrompt = ax.appendSystemPrompt;
+                currentAppendSystemPrompt = ax.appendSystemPrompt;
+                logger.debug('[ax] orchestration applied to user message');
+            }
+        } catch (err) {
+            logger.debug(`[ax] orchestration failed, falling through: ${(err as Error).message}`);
+        }
+
         // Push with resolved permission mode, model, system prompts, and tools
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode || 'default',
@@ -385,7 +408,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             allowedTools: messageAllowedTools,
             disallowedTools: messageDisallowedTools
         };
-        messageQueue.push(message.content.text, enhancedMode);
+        messageQueue.push(pushText, enhancedMode);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 
@@ -447,6 +470,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     });
 
     registerKillSessionHandler(session.rpcHandlerManager, cleanup);
+    registerAxRpcHandlers(session.rpcHandlerManager, workingDirectory);
 
     // Create claude loop
     const exitCode = await loop({

@@ -33,6 +33,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
 import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
 import { handleCodexCommand } from './commands/codexCommand'
+import { runPreToolUseCli } from './hooks/runPreToolUseCli'
 
 
 (async () => {
@@ -100,6 +101,20 @@ import { handleCodexCommand } from './commands/codexCommand'
   } else if (subcommand === 'bye') {
     console.log('Bye!');
     process.exit(0);
+  } else if (subcommand === 'hooks') {
+    // `happy hooks pre-tool-use` — invoked by Claude Code via .claude/settings.json
+    const hookName = args[1];
+    if (hookName === 'pre-tool-use') {
+      const exit = await runPreToolUseCli({
+        cwd: process.cwd(),
+        stdin: process.stdin,
+        stdout: process.stdout,
+        stderr: process.stderr,
+      });
+      process.exit(exit);
+    }
+    console.error(`Unknown hook: ${hookName}`);
+    process.exit(1);
   } else if (subcommand === 'resume') {
     try {
       await handleResumeCommand(args.slice(1));
