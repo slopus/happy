@@ -15,6 +15,7 @@ import { logger } from '@/ui/logger';
 import { AxState, AxStep, AxStepSchema } from './state/schema';
 import { readState } from './state/io';
 import { StateFileCorruptError } from './state/io';
+import { bootstrapWorkspace } from './state/bootstrap';
 import {
     applyTransition,
     applyPermissionDecision,
@@ -53,6 +54,14 @@ const PERMISSION_DECISIONS: ReadonlySet<PermissionDecisionKind> = new Set([
 ]);
 
 export function registerAxRpcHandlers(manager: RpcHandlerManager, workspaceRoot: string): void {
+    manager.registerHandler<{ step?: AxStep }, GetStateResponse>('ax:bootstrap', async (req) => {
+        const step = AxStepSchema.parse(req?.step ?? 'plan');
+        logger.debug(`[ax] bootstrap requested → step=${step}`);
+        await bootstrapWorkspace(workspaceRoot, step);
+        const state = await readState(workspaceRoot);
+        return { state };
+    });
+
     manager.registerHandler<unknown, GetStateResponse>('ax:get-state', async () => {
         try {
             const state = await readState(workspaceRoot);
