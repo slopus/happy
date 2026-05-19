@@ -44,6 +44,9 @@ const mocks = vi.hoisted(() => {
     mockApiCreate: vi.fn(),
     mockGetOrCreateMachine: vi.fn(async () => ({})),
     mockGetOrCreateSession: vi.fn(async () => ({ id: 'session-1' })),
+    mockPush: vi.fn(() => ({
+      sendSessionNotification: vi.fn(),
+    })),
     mockSetupOfflineReconnection: vi.fn(),
     mockNotifyDaemonSessionStarted: vi.fn(async () => ({ error: null })),
     mockStartHappyServer: vi.fn(),
@@ -209,6 +212,7 @@ describe('runAcp', () => {
     mocks.mockApiCreate.mockResolvedValue({
       getOrCreateMachine: mocks.mockGetOrCreateMachine,
       getOrCreateSession: mocks.mockGetOrCreateSession,
+      push: mocks.mockPush,
     });
     mocks.mockSetupOfflineReconnection.mockImplementation(() => ({
       session: mocks.mockSession,

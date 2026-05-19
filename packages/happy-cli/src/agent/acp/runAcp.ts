@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
+import type { PushNotificationClient } from '@/api/pushNotifications';
 import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
 import { DefaultTransport } from '@/agent/transport';
@@ -407,8 +408,8 @@ function resolveRequestedLegacyModelCode(models: SessionModelState, requested: s
 class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPermissionHandler {
   private readonly logPrefix: string;
 
-  constructor(session: ApiSessionClient, agentName: string) {
-    super(session);
+  constructor(session: ApiSessionClient, agentName: string, pushClient?: PushNotificationClient) {
+    super(session, pushClient);
     this.logPrefix = `[${agentName}]`;
   }
 
@@ -511,7 +512,7 @@ export async function runAcp(opts: {
     }
   }
 
-  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName);
+  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName, api.push());
   // Drop any permission requests left in agent state from a previous CLI
   // process that died while a tool prompt was open — see the matching
   // call in claudeRemoteLauncher for the full rationale.
@@ -924,6 +925,19 @@ export async function runAcp(opts: {
         await turnEnded;
         sendEnvelopes(sessionManager.endTurn('completed'));
         session.sendSessionEvent({ type: 'ready' });
+        try {
+          api.push().sendSessionNotification({
+            kind: 'done',
+            metadata: session.getMetadata(),
+            data: {
+              sessionId: session.sessionId,
+              type: 'ready',
+              provider: opts.agentName,
+            }
+          });
+        } catch (pushError) {
+          logger.debug(`[${opts.agentName}] Failed to send ready push`, pushError);
+        }
         if (verbose) {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
         }
