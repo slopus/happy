@@ -166,7 +166,13 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     const terminalCommand = getTerminalToolCommand(tool);
     const isCompactTerminalTool = terminalCommand !== null;
+    const isInlineCodexPatch = Platform.OS === 'web' && tool.name === 'CodexPatch';
     const renderCardHeader = shouldRenderToolCardHeader(tool.name, Platform.OS);
+    const renderPermissionFooter = () => (
+        tool.permission && sessionId && tool.name !== 'AskUserQuestion'
+            ? <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} toolInput={tool.input} metadata={props.metadata} />
+            : null
+    );
 
     const renderHeaderContent = () => {
         if (isCompactTerminalTool) {
@@ -214,7 +220,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     };
 
     return (
-        <View style={isCompactTerminalTool ? styles.compactContainer : styles.container}>
+        <View style={isCompactTerminalTool ? styles.compactContainer : isInlineCodexPatch ? styles.inlineContainer : styles.container}>
             {renderCardHeader ? (
                 isPressable ? (
                     <TouchableOpacity style={isCompactTerminalTool ? styles.compactHeader : styles.header} onPress={handlePress} activeOpacity={0.8}>
@@ -239,7 +245,13 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 if (SpecificToolView) {
                     return (
                         <View style={styles.content}>
-                            <SpecificToolView tool={tool} metadata={props.metadata} messages={props.messages ?? []} sessionId={sessionId} />
+                            <SpecificToolView
+                                tool={tool}
+                                metadata={props.metadata}
+                                messages={props.messages ?? []}
+                                sessionId={sessionId}
+                                permissionFooter={isInlineCodexPatch ? renderPermissionFooter() : undefined}
+                            />
                             {tool.state === 'error' && tool.result &&
                                 !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
                                 !hideDefaultError && (
@@ -283,9 +295,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
             {/* Permission footer - always renders when permission exists to maintain consistent height */}
             {/* AskUserQuestion has its own Submit button UI - no permission footer needed */}
-            {tool.permission && sessionId && tool.name !== 'AskUserQuestion' && (
-                <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} toolInput={tool.input} metadata={props.metadata} />
-            )}
+            {!isInlineCodexPatch ? renderPermissionFooter() : null}
         </View>
     );
 });
@@ -304,6 +314,11 @@ const styles = StyleSheet.create((theme) => ({
         overflow: 'hidden'
     },
     compactContainer: {
+        backgroundColor: 'transparent',
+        marginVertical: 1,
+        overflow: 'visible',
+    },
+    inlineContainer: {
         backgroundColor: 'transparent',
         marginVertical: 1,
         overflow: 'visible',

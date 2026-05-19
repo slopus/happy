@@ -103,11 +103,57 @@ function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | unde
         }
 
         const entry: Record<string, unknown> = {};
-        if (typeof change.diff === 'string') {
-            entry.diff = change.diff;
+        const changeRecord = change as Record<string, unknown>;
+        const kind = changeRecord.kind && typeof changeRecord.kind === 'object' && !Array.isArray(changeRecord.kind)
+            ? changeRecord.kind as Record<string, unknown>
+            : null;
+        const type = typeof changeRecord.type === 'string'
+            ? changeRecord.type
+            : (typeof kind?.type === 'string' ? kind.type : null);
+        const movePath = changeRecord.move_path ?? kind?.move_path ?? null;
+
+        if (kind) {
+            entry.kind = kind;
+        } else if (type) {
+            entry.kind = { type, move_path: movePath };
         }
-        if (change.kind && typeof change.kind === 'object' && !Array.isArray(change.kind)) {
-            entry.kind = change.kind;
+
+        const diff = typeof changeRecord.diff === 'string'
+            ? changeRecord.diff
+            : (typeof changeRecord.unified_diff === 'string' ? changeRecord.unified_diff : null);
+        if (diff !== null) {
+            entry.diff = diff;
+        }
+
+        if (changeRecord.add && typeof changeRecord.add === 'object' && !Array.isArray(changeRecord.add)) {
+            entry.add = changeRecord.add;
+        }
+        if (changeRecord.modify && typeof changeRecord.modify === 'object' && !Array.isArray(changeRecord.modify)) {
+            entry.modify = changeRecord.modify;
+        }
+        if (changeRecord.delete && typeof changeRecord.delete === 'object' && !Array.isArray(changeRecord.delete)) {
+            entry.delete = changeRecord.delete;
+        }
+
+        const content = typeof changeRecord.content === 'string' ? changeRecord.content : null;
+        if (type === 'add' && content !== null) {
+            entry.add = { content };
+        }
+        if (type === 'delete' && content !== null) {
+            entry.delete = { content };
+        }
+
+        const oldContent = typeof changeRecord.oldContent === 'string'
+            ? changeRecord.oldContent
+            : (typeof changeRecord.old_content === 'string' ? changeRecord.old_content : null);
+        const newContent = typeof changeRecord.newContent === 'string'
+            ? changeRecord.newContent
+            : (typeof changeRecord.new_content === 'string' ? changeRecord.new_content : null);
+        if ((oldContent !== null || newContent !== null) && type !== 'add' && type !== 'delete') {
+            entry.modify = {
+                old_content: oldContent ?? '',
+                new_content: newContent ?? '',
+            };
         }
 
         normalized[path] = entry;

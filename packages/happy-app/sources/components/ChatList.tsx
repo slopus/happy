@@ -6,7 +6,7 @@ import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
-import { ToolGroupView } from './ToolGroupView';
+import { AgentWorkGroupView, ToolGroupView } from './ToolGroupView';
 import { DuplicateSheet } from './DuplicateSheet';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
@@ -73,37 +73,68 @@ const ChatListInternal = React.memo((props: {
     // on every scroll frame (60Hz). Without this guard, the entire list
     // parent re-renders on every wheel tick.
     const showScrollButtonRef = React.useRef(false);
+    const session = useSession(props.sessionId);
 
-    // Group consecutive tool calls between text messages into collapsible
-    // containers — unless the user disabled it in settings.
+    // Collapse agent work between a user prompt and the final answer.
+    // Nested tool groups remain expandable inside the work block.
     const groupToolCalls = useSetting('groupToolCalls');
-    const displayItems = useGroupedMessages(props.messages, groupToolCalls);
+    const hasPendingPermission = Boolean(
+        session?.agentState?.requests && Object.keys(session.agentState.requests).length > 0,
+    );
+    const collapseCurrentTurn = session?.thinking !== true && !hasPendingPermission;
+    const groupingOptions = React.useMemo(
+        () => ({ collapseCurrentTurn }),
+        [collapseCurrentTurn],
+    );
+    const displayItems = useGroupedMessages(props.messages, groupToolCalls, groupingOptions);
 
-    // Tracks which groups are explicitly collapsed. All groups start
-    // collapsed; the current turn's group is expanded when tools arrive.
+    // Tracks which groups are explicitly collapsed. Groups start collapsed;
+    // pending approval groups are the only ones we auto-expand.
     const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(() => {
         const initial = new Set<string>();
         for (const item of displayItems) {
-            if (item.type === 'tool-group') {
+            if (isCollapsibleDisplayItem(item) && !item.hasPendingPermission) {
                 initial.add(item.id);
             }
         }
         return initial;
     });
 
-    // Auto-expand groups that have running tools (new group appeared for
-    // current turn) — but only if the user hasn't manually collapsed them.
+    // Auto-expand groups that need user approval — but only if the user
+    // hasn't manually collapsed them.
     // We track manually-collapsed IDs so we never force-reopen them.
     const manuallyCollapsedRef = React.useRef<Set<string>>(new Set());
+    const initialSeenCollapsibleGroups = React.useMemo(() => {
+        const initial = new Set<string>();
+        for (const item of displayItems) {
+            if (isCollapsibleDisplayItem(item)) {
+                initial.add(item.id);
+            }
+        }
+        return initial;
+    }, []);
+    const seenCollapsibleGroupsRef = React.useRef<Set<string>>(initialSeenCollapsibleGroups);
 
     React.useEffect(() => {
         setCollapsedGroups((prev) => {
             let changed = false;
             const next = new Set(prev);
+            const seen = seenCollapsibleGroupsRef.current;
             for (const item of displayItems) {
-                if (item.type === 'tool-group' && item.hasRunning
-                    && prev.has(item.id) && !manuallyCollapsedRef.current.has(item.id)) {
+                if (!isCollapsibleDisplayItem(item)) {
+                    continue;
+                }
+                const isNewGroup = !seen.has(item.id);
+                if (isNewGroup) {
+                    seen.add(item.id);
+                }
+                if (item.hasPendingPermission && prev.has(item.id) && !manuallyCollapsedRef.current.has(item.id)) {
                     next.delete(item.id);
+                    changed = true;
+                    continue;
+                }
+                if (isNewGroup && !item.hasPendingPermission) {
+                    next.add(item.id);
                     changed = true;
                 }
             }
@@ -122,7 +153,7 @@ const ChatListInternal = React.memo((props: {
                 setCollapsedGroups((prev) => {
                     const next = new Set(prev);
                     for (const item of displayItemsRef.current) {
-                        if (item.type === 'tool-group' && !item.hasRunning) {
+                        if (isCollapsibleDisplayItem(item) && !item.hasRunning) {
                             next.add(item.id);
                         }
                     }
@@ -149,7 +180,7 @@ const ChatListInternal = React.memo((props: {
             setCollapsedGroups((prev) => {
                 const next = new Set(prev);
                 for (const item of displayItemsRef.current) {
-                    if (item.type === 'tool-group') {
+                    if (isCollapsibleDisplayItem(item)) {
                         next.add(item.id);
                     }
                 }
@@ -179,7 +210,6 @@ const ChatListInternal = React.memo((props: {
     // experiments toggle, requires a Claude session with claudeSessionId
     // and a machine that's online. Active OR inactive — fork works either
     // way (the on-disk JSONL exists in both cases).
-    const session = useSession(props.sessionId);
     const { canFork } = useSessionQuickActions(session!, {});
 
     const handleForkFromMessage = useCallback((messageId: string, rewindPointId: string | undefined, messageText: string) => {
@@ -198,6 +228,17 @@ const ChatListInternal = React.memo((props: {
         if (item.type === 'tool-group') {
             return (
                 <ToolGroupView
+                    group={item}
+                    metadata={props.metadata}
+                    sessionId={props.sessionId}
+                    expanded={!collapsedGroups.has(item.id)}
+                    onToggle={() => handleToggleGroup(item.id)}
+                />
+            );
+        }
+        if (item.type === 'agent-work-group') {
+            return (
+                <AgentWorkGroupView
                     group={item}
                     metadata={props.metadata}
                     sessionId={props.sessionId}
@@ -309,6 +350,10 @@ const ChatListInternal = React.memo((props: {
         </View>
     )
 });
+
+function isCollapsibleDisplayItem(item: DisplayItem): item is ToolGroupItem | Extract<DisplayItem, { type: 'agent-work-group' }> {
+    return item.type === 'tool-group' || item.type === 'agent-work-group';
+}
 
 const styles = StyleSheet.create((theme) => ({
     scrollButtonContainer: {

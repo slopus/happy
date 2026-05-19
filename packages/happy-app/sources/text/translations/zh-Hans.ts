@@ -503,6 +503,7 @@ export const zhHans: TranslationStructure = {
     },
 
     toolGroup: {
+        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => `编辑了 ${count} 个文件`,
         readFiles: ({ count }: { count: number }) => `读取了 ${count} 个文件`,
         ranCommands: ({ count }: { count: number }) => `执行了 ${count} 个命令`,
@@ -510,6 +511,7 @@ export const zhHans: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => `获取了 ${count} 个 URL`,
         ranTasks: ({ count }: { count: number }) => `执行了 ${count} 个任务`,
         usedTools: ({ count }: { count: number }) => `使用了 ${count} 个工具`,
+        workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 
     tools: {

@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { Message } from '@/sync/typesMessage';
-import { Metadata } from '@/sync/storageTypes';
 import { knownTools } from '@/components/tools/knownTools';
 import { t } from '@/text';
 
@@ -16,65 +15,86 @@ export type ToolGroupItem = {
     id: string;
     messages: Message[];
     hasRunning: boolean;
+    hasPendingPermission: boolean;
 };
 
-export type DisplayItem = TextItem | ToolGroupItem;
+export type AgentWorkGroupItem = {
+    type: 'agent-work-group';
+    id: string;
+    messages: Message[];
+    hasRunning: boolean;
+    hasPendingPermission: boolean;
+    startedAt: number;
+    completedAt: number | null;
+};
+
+export type ToolDisplayItem = TextItem | ToolGroupItem;
+export type DisplayItem = TextItem | ToolGroupItem | AgentWorkGroupItem;
 
 /**
- * Groups all tool-call messages within a single turn (user message →
- * next user message) into one collapsible ToolGroupItem. Text messages
- * always pass through as standalone TextItems.
+ * The messages array is newest-first for the inverted FlatList.
  *
- * The messages array is newest-first (inverted FlatList). The group is
- * placed at the position of the chronologically-first tool call in the
- * turn (highest array index) so that agent text before / after tools
- * keeps its natural position. Group IDs are derived from the oldest
- * tool in each turn for stability as new messages prepend.
- *
- * When `enabled` is false (user disabled grouping in settings), every
- * message passes through as a standalone TextItem.
+ * When enabled, intermediate agent work in a turn is collapsed into an
+ * AgentWorkGroupItem while the final agent text remains visible. Tool calls
+ * that remain outside a work group are collapsed only when adjacent visible
+ * tool calls form a run. When disabled, every message passes through.
  */
-export function useGroupedMessages(messages: Message[], enabled: boolean = true): DisplayItem[] {
+export function useGroupedMessages(
+    messages: Message[],
+    enabled: boolean = true,
+    options: { collapseCurrentTurn?: boolean } = {},
+): DisplayItem[] {
+    const collapseCurrentTurn = options.collapseCurrentTurn ?? true;
     return React.useMemo(() => {
-        return groupMessagesForDisplay(messages, enabled);
-    }, [messages, enabled]);
+        return groupMessagesForDisplay(messages, enabled, { collapseCurrentTurn });
+    }, [messages, enabled, collapseCurrentTurn]);
 }
 
-export function groupMessagesForDisplay(messages: Message[], enabled: boolean = true): DisplayItem[] {
+export function groupMessagesForDisplay(
+    messages: Message[],
+    enabled: boolean = true,
+    options: { collapseCurrentTurn?: boolean } = {},
+): DisplayItem[] {
     if (!enabled) {
         return messages.map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
     }
 
-    // Step 1: assign each message to a turn (newest-first → turn 0 = current)
-    const turnOf = new Array<number>(messages.length);
-    let turn = 0;
-    for (let i = 0; i < messages.length; i++) {
-        turnOf[i] = turn;
-        if (messages[i].kind === 'user-text') turn++;
-    }
+    const collapseCurrentTurn = options.collapseCurrentTurn ?? true;
+    const turnOf = getTurnAssignments(messages);
+    const workGroups = collectAgentWorkGroups(messages, turnOf, collapseCurrentTurn);
+    const hiddenWorkIndexes = new Set<number>();
+    const workGroupByOldestIndex = new Map<number, AgentWorkGroupItem>();
 
-    // Step 2: collect visible tool-call messages per turn, track oldest index
-    const turnTools = new Map<number, { msgs: Message[]; oldestIdx: number }>();
-    for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-        if (msg.kind !== 'tool-call') continue;
-        if (isInvisibleMessage(msg) || isUserAttachment(msg)) continue;
-        const t = turnOf[i];
-        let info = turnTools.get(t);
-        if (!info) {
-            info = { msgs: [], oldestIdx: i };
-            turnTools.set(t, info);
+    for (const group of workGroups) {
+        workGroupByOldestIndex.set(group.oldestIdx, group.item);
+        for (const index of group.hiddenIndexes) {
+            hiddenWorkIndexes.add(index);
         }
-        info.msgs.push(msg);
-        info.oldestIdx = i; // keeps updating → ends up as highest index = oldest
     }
 
-    // Step 3: build display items — group emitted at oldest tool position
+    const visibleForToolGrouping = (msg: Message, index: number): boolean => {
+        if (hiddenWorkIndexes.has(index)) return false;
+        if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
+        return msg.kind === 'tool-call';
+    };
+
+    const toolRuns = collectToolRuns(messages, visibleForToolGrouping);
+
+    // Build display items — groups are emitted at their oldest hidden member
+    // so the visual order remains user message → collapsed work → final answer.
     const result: DisplayItem[] = [];
     for (let i = 0; i < messages.length; i++) {
         const msg = messages[i];
 
         if (isInvisibleMessage(msg)) continue;
+
+        if (hiddenWorkIndexes.has(i)) {
+            const workGroup = workGroupByOldestIndex.get(i);
+            if (workGroup) {
+                result.push(workGroup);
+            }
+            continue;
+        }
 
         if (isUserAttachment(msg)) {
             result.push({ type: 'message', id: msg.id, message: msg });
@@ -82,8 +102,8 @@ export function groupMessagesForDisplay(messages: Message[], enabled: boolean = 
         }
 
         if (msg.kind === 'tool-call') {
-            const info = turnTools.get(turnOf[i]);
-            if (info && i === info.oldestIdx) {
+            const info = toolRuns.get(i);
+            if (info && info.msgs.length > 1 && i === info.oldestIdx) {
                 let hasRunning = false;
                 for (const m of info.msgs) {
                     if (m.kind === 'tool-call' && m.tool.state === 'running') {
@@ -97,10 +117,12 @@ export function groupMessagesForDisplay(messages: Message[], enabled: boolean = 
                     id: `group-${chronologicalMessages[0].id}`,
                     messages: chronologicalMessages,
                     hasRunning,
+                    hasPendingPermission: hasPendingPermission(info.msgs),
                 });
             }
-            // All tool calls consumed by their turn group — skip standalone
-            continue;
+            if (info && info.msgs.length > 1) {
+                continue;
+            }
         }
 
         // Standalone messages (user text, agent text, events)
@@ -108,6 +130,170 @@ export function groupMessagesForDisplay(messages: Message[], enabled: boolean = 
     }
 
     return result;
+}
+
+export function groupToolCallsForDisplay(messages: Message[], enabled: boolean = true): ToolDisplayItem[] {
+    if (!enabled) {
+        return messages.map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
+    }
+
+    const toolRuns = collectToolRuns(messages, (msg) => {
+        if (msg.kind !== 'tool-call') return false;
+        if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
+        return true;
+    });
+
+    const result: ToolDisplayItem[] = [];
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+
+        if (isInvisibleMessage(msg)) continue;
+
+        if (isUserAttachment(msg)) {
+            result.push({ type: 'message', id: msg.id, message: msg });
+            continue;
+        }
+
+        if (msg.kind === 'tool-call') {
+            const info = toolRuns.get(i);
+            if (info && info.msgs.length > 1 && i === info.oldestIdx) {
+                let hasRunning = false;
+                for (const m of info.msgs) {
+                    if (m.kind === 'tool-call' && m.tool.state === 'running') {
+                        hasRunning = true;
+                        break;
+                    }
+                }
+                const chronologicalMessages = [...info.msgs].reverse();
+                result.push({
+                    type: 'tool-group',
+                    id: `group-${chronologicalMessages[0].id}`,
+                    messages: chronologicalMessages,
+                    hasRunning,
+                    hasPendingPermission: hasPendingPermission(info.msgs),
+                });
+            }
+            if (info && info.msgs.length > 1) {
+                continue;
+            }
+        }
+
+        result.push({ type: 'message', id: msg.id, message: msg });
+    }
+
+    return result;
+}
+
+function getTurnAssignments(messages: Message[]): number[] {
+    // Newest-first → turn 0 is the current assistant turn.
+    const turnOf = new Array<number>(messages.length);
+    let turn = 0;
+    for (let i = 0; i < messages.length; i++) {
+        turnOf[i] = turn;
+        if (messages[i].kind === 'user-text') turn++;
+    }
+    return turnOf;
+}
+
+function collectToolRuns(
+    messages: Message[],
+    shouldInclude: (msg: Message, index: number) => boolean,
+): Map<number, { msgs: Message[]; oldestIdx: number }> {
+    const runsByIndex = new Map<number, { msgs: Message[]; oldestIdx: number }>();
+    let current: { indexes: number[]; msgs: Message[] } | null = null;
+
+    const flush = () => {
+        if (!current || current.msgs.length === 0) {
+            current = null;
+            return;
+        }
+        const oldestIdx = current.indexes[current.indexes.length - 1];
+        const run = { msgs: current.msgs, oldestIdx };
+        for (const index of current.indexes) {
+            runsByIndex.set(index, run);
+        }
+        current = null;
+    };
+
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (!shouldInclude(msg, i)) {
+            if (!isInvisibleMessage(msg)) {
+                flush();
+            }
+            continue;
+        }
+        if (!current) {
+            current = { indexes: [], msgs: [] };
+        }
+        current.indexes.push(i);
+        current.msgs.push(msg);
+    }
+    flush();
+
+    return runsByIndex;
+}
+
+function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseCurrentTurn: boolean): Array<{
+    item: AgentWorkGroupItem;
+    hiddenIndexes: number[];
+    oldestIdx: number;
+}> {
+    const segments = new Map<number, number[]>();
+    for (let i = 0; i < messages.length; i++) {
+        const turn = turnOf[i];
+        if (!segments.has(turn)) {
+            segments.set(turn, []);
+        }
+        segments.get(turn)!.push(i);
+    }
+
+    const groups: Array<{
+        item: AgentWorkGroupItem;
+        hiddenIndexes: number[];
+        oldestIdx: number;
+    }> = [];
+
+    for (const [turn, indexes] of segments) {
+        if (turn === 0 && !collapseCurrentTurn) {
+            continue;
+        }
+
+        const visibleAgentIndexes = indexes.filter((index) => {
+            const msg = messages[index];
+            if (msg.kind === 'user-text') return false;
+            if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
+            return true;
+        });
+
+        const finalTextIndex = visibleAgentIndexes.find((index) => messages[index].kind === 'agent-text');
+        if (finalTextIndex === undefined) continue;
+
+        const hiddenIndexes = visibleAgentIndexes.filter((index) => index > finalTextIndex);
+        if (hiddenIndexes.length === 0) continue;
+
+        const oldestIdx = Math.max(...hiddenIndexes);
+        const hiddenMessages = hiddenIndexes.map((index) => messages[index]);
+        const startedAt = Math.min(...hiddenMessages.map((msg) => msg.createdAt));
+        const completedAt = messages[finalTextIndex].createdAt;
+        const hasRunning = hiddenMessages.some((msg) => msg.kind === 'tool-call' && msg.tool.state === 'running');
+
+        groups.push({
+            hiddenIndexes,
+            oldestIdx,
+            item: {
+                type: 'agent-work-group',
+                id: `work-${messages[oldestIdx].id}`,
+                messages: hiddenMessages,
+                hasRunning,
+                hasPendingPermission: hasPendingPermission(hiddenMessages),
+                startedAt,
+                completedAt,
+            },
+        });
+    }
+
+    return groups;
 }
 
 /** Returns true for messages that render as null and should be excluded entirely */
@@ -128,6 +314,13 @@ function isInvisibleMessage(msg: Message): boolean {
 /** User-sent file/image attachments should never be collapsed into a group */
 function isUserAttachment(msg: Message): boolean {
     return msg.kind === 'tool-call' && msg.tool.name === 'file';
+}
+
+function hasPendingPermission(messages: Message[]): boolean {
+    return messages.some((msg) => (
+        msg.kind === 'tool-call'
+        && msg.tool.permission?.status === 'pending'
+    ));
 }
 
 // Tool name → category mapping for summary generation
@@ -164,4 +357,19 @@ export function generateGroupSummary(messages: Message[]): string {
     if (counts.other) parts.push(t('toolGroup.usedTools', { count: counts.other }));
 
     return parts.join(', ') || t('toolGroup.usedTools', { count: messages.length });
+}
+
+export function formatWorkDuration(durationMs: number): string {
+    const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+        return `${hours}h${minutes}m`;
+    }
+    if (minutes > 0) {
+        return `${minutes}m${seconds}s`;
+    }
+    return `${seconds}s`;
 }

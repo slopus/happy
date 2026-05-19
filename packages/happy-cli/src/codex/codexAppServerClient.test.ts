@@ -673,6 +673,10 @@ describe('CodexAppServerClient sandbox integration', () => {
                                         path: 'README.md',
                                         kind: { type: 'update', move_path: null },
                                         diff: '@@ -1 +1 @@',
+                                    }, {
+                                        path: 'MONETIZATION.md',
+                                        type: 'add',
+                                        content: '# Monetization\n\nPaid plans.\n',
                                     }],
                                 },
                             },
@@ -690,6 +694,10 @@ describe('CodexAppServerClient sandbox integration', () => {
                                         path: 'README.md',
                                         kind: { type: 'update', move_path: null },
                                         diff: '@@ -1 +1 @@',
+                                    }, {
+                                        path: 'MONETIZATION.md',
+                                        type: 'add',
+                                        content: '# Monetization\n\nPaid plans.\n',
                                     }],
                                 },
                             },
@@ -739,6 +747,10 @@ describe('CodexAppServerClient sandbox integration', () => {
                     'README.md': {
                         diff: '@@ -1 +1 @@',
                         kind: { type: 'update', move_path: null },
+                    },
+                    'MONETIZATION.md': {
+                        kind: { type: 'add', move_path: null },
+                        add: { content: '# Monetization\n\nPaid plans.\n' },
                     },
                 },
             }),
