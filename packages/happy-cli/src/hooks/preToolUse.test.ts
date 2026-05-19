@@ -103,19 +103,20 @@ describe('decidePreToolUse — step: work', () => {
         expect(result.decision).toBe('allow');
     });
 
-    it('asks before editing AX_PROJECT_PLAN.md when permission=ask', () => {
+    it('denies AX_PROJECT_PLAN.md edits when permission=ask, pointing user to the panel', () => {
         const result = decidePreToolUse(
             inWorkspace(stateAsk, 'Edit', { file_path: '/tmp/ws/AX_PROJECT_PLAN.md' }),
         );
-        expect(result.decision).toBe('ask');
+        expect(result.decision).toBe('deny');
         expect(result.permissionTarget).toBe('editPlanMd');
+        expect(result.reason).toMatch(/항상 허용|패널/);
     });
 
-    it('asks before editing AX_STUDIO_DESIGN.md when permission=ask', () => {
+    it('denies AX_STUDIO_DESIGN.md edits when permission=ask', () => {
         const result = decidePreToolUse(
             inWorkspace(stateAsk, 'Edit', { file_path: '/tmp/ws/AX_STUDIO_DESIGN.md' }),
         );
-        expect(result.decision).toBe('ask');
+        expect(result.decision).toBe('deny');
         expect(result.permissionTarget).toBe('editDesignMd');
     });
 

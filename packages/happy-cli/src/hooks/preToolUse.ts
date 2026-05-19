@@ -104,9 +104,15 @@ function gatedDecision(
                 reason: `${filename} 수정이 영구 차단되어 있습니다 (permissions.${target} = "never"). 변경하려면 워크스페이스 설정에서 권한을 갱신하세요.`,
             };
         case 'ask':
+            // Claude Code 의 내장 ask 모달은 happy 의 permission 인프라 (모바일
+            // 알림 / 웹 UI 권한 모달) 와 통합 경로가 명확하지 않다. 사용자가
+            // 채팅 화면 상단의 "기획·디자인 문서 수정 권한" 패널 (web-ui
+            // AxPermissionsPanel) 에서 직접 always/never 를 선택하는 UX 로
+            // 일원화 — hook 은 일단 deny 하고, 사용자가 권한을 풀면 다음
+            // turn 에 Claude 가 재시도한다.
             return {
-                decision: 'ask',
-                reason: `Claude가 ${filename}을 수정하려고 합니다. 허용/거부를 선택하세요.`,
+                decision: 'deny',
+                reason: `Claude가 ${filename}을 수정하려고 했습니다. 채팅 화면 상단의 "🛡 기획·디자인 문서 수정 권한" 패널을 펼쳐 "${target}"을 "항상 허용" 으로 바꾼 뒤 다시 요청해 주세요. (현재 권한: ask)`,
                 permissionTarget: target,
             };
     }

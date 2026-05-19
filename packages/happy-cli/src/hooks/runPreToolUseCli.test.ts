@@ -81,9 +81,10 @@ describe('runPreToolUseCli', () => {
         expect(blocked[0].payload).toMatchObject({ tool: 'Write' });
     });
 
-    it('emits a structured JSON decision on stdout for ask cases', async () => {
+    it('denies plan md edits with a panel-pointing reason in work + ask state', async () => {
         await bootstrapWorkspace(workspace, 'work');
         const stdout = new MemorySink();
+        const stderr = new MemorySink();
         const exit = await runPreToolUseCli({
             cwd: workspace,
             stdin: stdinFor({
@@ -91,13 +92,14 @@ describe('runPreToolUseCli', () => {
                 tool_input: { file_path: join(workspace, 'AX_PROJECT_PLAN.md') },
             }),
             stdout,
+            stderr,
         });
-        // Exit code 0 — we hand off to upstream so it surfaces the modal.
-        // Decision body uses Claude Code hook JSON output shape.
-        expect(exit).toBe(0);
-        const parsed = JSON.parse(stdout.text().trim());
-        expect(parsed.hookSpecificOutput.permissionDecision).toBe('ask');
-        expect(parsed.hookSpecificOutput.permissionDecisionReason).toMatch(/AX_PROJECT_PLAN/);
+        // The hook denies (exit 2) and points the user to AxPermissionsPanel.
+        // This keeps the UX one-modal-clean rather than relying on Claude Code's
+        // native ask flow which is not integrated with happy's permission UI.
+        expect(exit).toBe(2);
+        expect(stderr.text()).toMatch(/항상 허용|패널/);
+        expect(stderr.text()).toMatch(/AX_PROJECT_PLAN/);
     });
 
     it('survives malformed stdin gracefully (exit 0, no block)', async () => {
