@@ -8,6 +8,8 @@ import { githubConnect } from "@/app/github/githubConnect";
 import { githubDisconnect } from "@/app/github/githubDisconnect";
 import { Context } from "@/context";
 import { db } from "@/storage/db";
+import { INFERENCE_VENDORS } from "@/utils/inferenceVendors";
+import { isLikelyGithubPat } from "@/utils/validateGithubPat";
 
 export function connectRoutes(app: Fastify) {
 
@@ -252,7 +254,7 @@ export function connectRoutes(app: Fastify) {
                 token: z.string()
             }),
             params: z.object({
-                vendor: z.enum(['openai', 'anthropic', 'gemini'])
+                vendor: z.enum(INFERENCE_VENDORS)
             })
         }
     }, async (request, reply) => {
@@ -270,7 +272,7 @@ export function connectRoutes(app: Fastify) {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
-                vendor: z.enum(['openai', 'anthropic', 'gemini'])
+                vendor: z.enum(INFERENCE_VENDORS)
             }),
             response: {
                 200: z.object({
@@ -295,7 +297,7 @@ export function connectRoutes(app: Fastify) {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
-                vendor: z.enum(['openai', 'anthropic', 'gemini'])
+                vendor: z.enum(INFERENCE_VENDORS)
             }),
             response: {
                 200: z.object({
@@ -323,12 +325,122 @@ export function connectRoutes(app: Fastify) {
         }
     }, async (request, reply) => {
         const userId = request.userId;
-        const tokens = await db.serviceAccountToken.findMany({ where: { accountId: userId } });
+        // Inference-vendor allowlist — `/v1/connect/tokens` returns plaintext
+        // tokens; non-inference vendors (e.g. github-pat) must NEVER leak
+        // through this surface. See specs/remote-git-clone-per-user-credentials.
+        const tokens = await db.serviceAccountToken.findMany({
+            where: { accountId: userId, vendor: { in: [...INFERENCE_VENDORS] } }
+        });
         let decrypted = [];
         for (const token of tokens) {
             decrypted.push({ vendor: token.vendor, token: decryptString(['user', userId, 'vendors', token.vendor, 'token'], token.token) });
         }
         return reply.send({ tokens: decrypted });
+    });
+
+    //
+    // GitHub Personal Access Token (PAT) — separate surface from the
+    // inference-vendor endpoints above. Rationale:
+    //   - `/v1/connect/:vendor/token` returns plaintext for LLM SDKs, but
+    //     GitHub PAT must never reach the browser (used only server-side to
+    //     build `git clone` URLs in vite middleware / daemon RPC).
+    //   - `status` exposes only registration metadata; `token` is the
+    //     server-internal plaintext fetch (still bearer-authenticated as
+    //     the requesting user, but expected to be called only by the
+    //     vite middleware on behalf of that user).
+    //
+    // Cross-repo spec:
+    //   aplus-dev-studio specs/remote-git-clone-per-user-credentials.
+    //
+
+    const GITHUB_PAT_VENDOR = 'github-pat';
+
+    app.post('/v1/connect/github-pat/register', {
+        preHandler: app.authenticate,
+        schema: {
+            body: z.object({
+                token: z.string().refine(isLikelyGithubPat, {
+                    message: 'Token does not match a GitHub PAT shape (ghp_/github_pat_/gho_/ghs_ + ≥20 chars)'
+                })
+            }),
+            response: {
+                200: z.object({ success: z.literal(true) })
+            }
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const encrypted = encryptString(['user', userId, 'vendors', GITHUB_PAT_VENDOR, 'token'], request.body.token);
+        await db.serviceAccountToken.upsert({
+            where: { accountId_vendor: { accountId: userId, vendor: GITHUB_PAT_VENDOR } },
+            update: { updatedAt: new Date(), token: encrypted },
+            create: { accountId: userId, vendor: GITHUB_PAT_VENDOR, token: encrypted }
+        });
+        return reply.send({ success: true });
+    });
+
+    app.get('/v1/connect/github-pat/status', {
+        preHandler: app.authenticate,
+        schema: {
+            response: {
+                200: z.object({
+                    hasPat: z.boolean(),
+                    updatedAt: z.string().nullable()
+                })
+            }
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const row = await db.serviceAccountToken.findUnique({
+            where: { accountId_vendor: { accountId: userId, vendor: GITHUB_PAT_VENDOR } },
+            select: { updatedAt: true }
+        });
+        return reply.send({
+            hasPat: !!row,
+            updatedAt: row ? row.updatedAt.toISOString() : null
+        });
+    });
+
+    app.delete('/v1/connect/github-pat', {
+        preHandler: app.authenticate,
+        schema: {
+            response: {
+                200: z.object({ success: z.literal(true) })
+            }
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        // Idempotent: deleting a non-existent row should not 500.
+        await db.serviceAccountToken.deleteMany({
+            where: { accountId: userId, vendor: GITHUB_PAT_VENDOR }
+        });
+        return reply.send({ success: true });
+    });
+
+    app.get('/v1/connect/github-pat/token', {
+        preHandler: app.authenticate,
+        schema: {
+            response: {
+                200: z.object({ token: z.string().nullable() })
+            }
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const row = await db.serviceAccountToken.findUnique({
+            where: { accountId_vendor: { accountId: userId, vendor: GITHUB_PAT_VENDOR } },
+            select: { token: true }
+        });
+        if (!row) {
+            return reply.send({ token: null });
+        }
+        // Update lastUsedAt without blocking the response — best-effort.
+        db.serviceAccountToken.update({
+            where: { accountId_vendor: { accountId: userId, vendor: GITHUB_PAT_VENDOR } },
+            data: { lastUsedAt: new Date() }
+        }).catch((err) => {
+            log({ module: 'github-pat', level: 'warn' }, `lastUsedAt update failed: ${err?.message ?? err}`);
+        });
+        const plaintext = decryptString(['user', userId, 'vendors', GITHUB_PAT_VENDOR, 'token'], row.token);
+        return reply.send({ token: plaintext });
     });
 
 }

@@ -9,6 +9,7 @@ import { log } from "@/utils/log";
 import { AccountProfile } from "@/types";
 import { Context } from "@/context";
 import { accountUpdateProfile } from "@/app/account/accountUpdateProfile";
+import { INFERENCE_VENDORS } from "@/utils/inferenceVendors";
 
 export function accountRoutes(app: Fastify) {
     app.get('/v1/account/profile', {
@@ -25,7 +26,15 @@ export function accountRoutes(app: Fastify) {
                 githubUser: true
             }
         });
-        const connectedVendors = new Set((await db.serviceAccountToken.findMany({ where: { accountId: userId } })).map(t => t.vendor));
+        // Inference-vendor allowlist: serviceAccountToken now hosts non-
+        // inference rows too (e.g. vendor='github-pat'); the "connectedVendors"
+        // surface predates that and is consumed by clients that only know
+        // about LLM vendors. See specs/remote-git-clone-per-user-credentials.
+        const connectedVendors = new Set(
+            (await db.serviceAccountToken.findMany({
+                where: { accountId: userId, vendor: { in: [...INFERENCE_VENDORS] } }
+            })).map(t => t.vendor)
+        );
         return reply.send({
             id: userId,
             timestamp: Date.now(),
@@ -64,8 +73,11 @@ export function accountRoutes(app: Fastify) {
             ? (result.value.githubUser as { profile: unknown }).profile
             : null;
         const avatar = result.value.avatar as { path: string } | null;
+        // See note in /v1/account/profile above — same inference-vendor filter.
         const connectedVendors = new Set(
-            (await db.serviceAccountToken.findMany({ where: { accountId: userId } })).map(t => t.vendor)
+            (await db.serviceAccountToken.findMany({
+                where: { accountId: userId, vendor: { in: [...INFERENCE_VENDORS] } }
+            })).map(t => t.vendor)
         );
         return reply.send({
             id: userId,
