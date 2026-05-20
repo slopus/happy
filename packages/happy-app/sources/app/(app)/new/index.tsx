@@ -89,10 +89,6 @@ const COMPOSER_INPUT_VERTICAL_PADDING = Platform.OS === 'web' ? 10 : 8;
 // compact cap on native mobile so the input doesn't dominate the screen.
 const COMPOSER_INPUT_MAX_HEIGHT = Platform.OS === 'web' ? 480 : 240;
 const COMPOSER_SEND_BUTTON_SIZE = 32;
-const COMPOSER_SEND_BUTTON_MARGIN_BOTTOM = Math.max(
-    0,
-    Math.round((MULTI_TEXT_INPUT_LINE_HEIGHT + COMPOSER_INPUT_VERTICAL_PADDING * 2 - COMPOSER_SEND_BUTTON_SIZE) / 2),
-);
 const WORKTREE_PATH_DEBOUNCE_MS = 300;
 
 function trimPathInput(path: string | null | undefined): string {
@@ -1319,25 +1315,25 @@ function NewSessionScreen() {
     const composerNode = (
         <View style={styles.inputBox}>
             <View style={styles.inputField}>
-                <View style={{ flex: 1 }}>
-                    <PromptInput
-                        ref={composerInputRef}
-                        placeholder="What would you like to work on?"
-                        onKeyPress={handleKeyPress}
-                    />
-                </View>
+                <PromptInput
+                    ref={composerInputRef}
+                    placeholder="What would you like to work on?"
+                    onKeyPress={handleKeyPress}
+                />
+            </View>
+            <View style={styles.actionButtonsContainer}>
+                <View style={styles.actionButtonsLeft} />
                 <View style={[
                     styles.sendButton,
+                    isSpawning ? styles.sendButtonActive :
                     canSend ? styles.sendButtonActive : styles.sendButtonInactive,
                 ]}>
                     <Pressable
-                        style={(p) => ({
-                            width: '100%',
-                            height: '100%',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            opacity: p.pressed ? 0.7 : 1,
-                        })}
+                        style={(p) => [
+                            styles.sendButtonInner,
+                            p.pressed && styles.sendButtonInnerPressed,
+                        ]}
+                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                         disabled={!canSend}
                         onPress={() => handleSend()}
                     >
@@ -1351,7 +1347,10 @@ function NewSessionScreen() {
                                 name="arrow-up"
                                 size={16}
                                 color={theme.colors.button.primary.tint}
-                                style={{ marginTop: Platform.OS === 'web' ? 2 : 0 }}
+                                style={[
+                                    styles.sendButtonIcon,
+                                    { marginTop: Platform.OS === 'web' ? 2 : 0 },
+                                ]}
                             />
                         )}
                     </Pressable>
@@ -1682,16 +1681,28 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: Platform.select({ default: 16, android: 20 }),
         overflow: 'hidden',
         paddingVertical: 2,
+        paddingBottom: 8,
         paddingHorizontal: 8,
     },
     inputField: {
         flexDirection: 'row',
-        alignItems: 'flex-end',
+        alignItems: 'center',
         paddingLeft: 8,
-        paddingRight: 4,
+        paddingRight: 8,
         paddingVertical: 4,
         minHeight: 40,
+    },
+    actionButtonsContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 0,
+    },
+    actionButtonsLeft: {
+        flexDirection: 'row',
         gap: 8,
+        flex: 1,
+        overflow: 'hidden',
     },
     sendButton: {
         width: COMPOSER_SEND_BUTTON_SIZE,
@@ -1700,13 +1711,25 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         alignItems: 'center',
         flexShrink: 0,
-        marginBottom: COMPOSER_SEND_BUTTON_MARGIN_BOTTOM,
+        marginLeft: 8,
     },
     sendButtonActive: {
         backgroundColor: theme.colors.button.primary.background,
     },
     sendButtonInactive: {
         backgroundColor: theme.colors.button.primary.disabled,
+    },
+    sendButtonInner: {
+        width: '100%',
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    sendButtonInnerPressed: {
+        opacity: 0.7,
+    },
+    sendButtonIcon: {
+        color: theme.colors.button.primary.tint,
     },
     offlineHelp: {
         flexDirection: 'row',
