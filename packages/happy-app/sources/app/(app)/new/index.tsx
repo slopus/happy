@@ -14,10 +14,11 @@ import {
     TextInputSelectionChangeEventData,
     NativeSyntheticEvent,
     Image as RNImage,
+    useWindowDimensions,
 } from 'react-native';
 import { GlassView } from 'expo-glass-effect';
 import { Ionicons, Octicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import {
@@ -31,7 +32,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Constants from 'expo-constants';
 import { useHeaderHeight } from '@/utils/responsive';
 import { t } from '@/text';
-import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage';
+import { useAllMachines, useLocalSetting, useSessions, useSetting, storage } from '@/sync/storage';
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -58,6 +59,8 @@ import {
     type EffortLevel,
 } from '@/components/modelModeOptions';
 import { isRunningOnMac } from '@/utils/platform';
+import { getNewSessionSidebarLayout } from '@/utils/newSessionSidebarLayout';
+import { getAgentPickerItems, getModePickerItems } from '@/utils/newSessionPickerItems';
 
 // Agent icon assets
 const agentIcons = {
@@ -77,7 +80,7 @@ const ALL_AGENTS: { key: AgentKey; label: string }[] = [
 
 type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean };
 
-type PickerType = 'machine' | 'path' | 'worktree';
+type PickerType = 'machine' | 'path' | 'worktree' | 'agent' | 'model' | 'effort' | 'permission';
 
 type PermissionStyle = { color: string; icon: 'play-forward' | 'pause' };
 
@@ -86,10 +89,6 @@ const COMPOSER_INPUT_VERTICAL_PADDING = Platform.OS === 'web' ? 10 : 8;
 // compact cap on native mobile so the input doesn't dominate the screen.
 const COMPOSER_INPUT_MAX_HEIGHT = Platform.OS === 'web' ? 480 : 240;
 const COMPOSER_SEND_BUTTON_SIZE = 32;
-const COMPOSER_SEND_BUTTON_MARGIN_BOTTOM = Math.max(
-    0,
-    Math.round((MULTI_TEXT_INPUT_LINE_HEIGHT + COMPOSER_INPUT_VERTICAL_PADDING * 2 - COMPOSER_SEND_BUTTON_SIZE) / 2),
-);
 const WORKTREE_PATH_DEBOUNCE_MS = 300;
 
 function trimPathInput(path: string | null | undefined): string {
@@ -220,6 +219,7 @@ function PickerContent({
     selectedKey,
     onSelect,
     searchPlaceholder,
+    embedded = false,
 }: {
     title: string;
     fixedItems?: PickerItem[];
@@ -227,22 +227,29 @@ function PickerContent({
     selectedKey: string | null;
     onSelect: (key: string) => void;
     searchPlaceholder?: string;
+    embedded?: boolean;
 }) {
     const { theme } = useUnistyles();
     const [search, setSearch] = React.useState('');
+    const shouldShowSearch = !embedded || items.length + (fixedItems?.length ?? 0) > 4;
 
     const filtered = React.useMemo(() => {
-        if (!search) return items;
+        if (!shouldShowSearch || !search) return items;
         const q = search.toLowerCase();
         return items.filter(item => item.label.toLowerCase().includes(q));
-    }, [search, items]);
+    }, [shouldShowSearch, search, items]);
 
     const renderOption = (item: PickerItem) => {
         const isSelected = item.key === selectedKey;
         return (
             <Pressable
                 key={item.key}
-                style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed, item.dimmed && { opacity: 0.45 }]}
+                style={(p) => [
+                    pickerStyles.option,
+                    embedded && pickerStyles.embeddedOption,
+                    p.pressed && pickerStyles.optionPressed,
+                    item.dimmed && { opacity: 0.45 },
+                ]}
                 onPress={() => onSelect(item.key)}
             >
                 <Octicons
@@ -250,10 +257,14 @@ function PickerContent({
                     size={16}
                     color={isSelected ? theme.colors.button.primary.background : theme.colors.textSecondary}
                 />
-                <View style={{ flex: 1 }}>
-                    <Text style={[pickerStyles.optionText, { color: theme.colors.text }]}>{item.label}</Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[pickerStyles.optionText, { color: theme.colors.text }]} numberOfLines={1}>
+                        {item.label}
+                    </Text>
                     {item.subtitle && (
-                        <Text style={[pickerStyles.optionText, { color: theme.colors.textSecondary, fontSize: 13 }]}>{item.subtitle}</Text>
+                        <Text style={[pickerStyles.optionText, { color: theme.colors.textSecondary, fontSize: 13 }]} numberOfLines={1}>
+                            {item.subtitle}
+                        </Text>
                     )}
                 </View>
             </Pressable>
@@ -261,23 +272,35 @@ function PickerContent({
     };
 
     return (
-        <View style={pickerStyles.container}>
-            <Text style={[pickerStyles.title, { color: theme.colors.text }]}>{title}</Text>
+        <View style={[pickerStyles.container, embedded && pickerStyles.embeddedContainer]}>
+            {!embedded && (
+                <Text style={[pickerStyles.title, { color: theme.colors.text }]}>{title}</Text>
+            )}
 
-            <View style={[pickerStyles.searchRow, { backgroundColor: theme.colors.input.background }]}>
-                <Ionicons name="search" size={16} color={theme.colors.textSecondary} />
-                <TextInput
-                    value={search}
-                    onChangeText={setSearch}
-                    placeholder={searchPlaceholder ?? 'search...'}
-                    placeholderTextColor={theme.colors.textSecondary}
-                    style={[pickerStyles.searchInput, { color: theme.colors.text }]}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                />
-            </View>
+            {shouldShowSearch && (
+                <View style={[
+                    pickerStyles.searchRow,
+                    { backgroundColor: embedded ? 'transparent' : theme.colors.input.background },
+                    embedded && pickerStyles.embeddedSearchRow,
+                ]}>
+                    <Ionicons name="search" size={16} color={theme.colors.textSecondary} />
+                    <TextInput
+                        value={search}
+                        onChangeText={setSearch}
+                        placeholder={searchPlaceholder ?? 'search...'}
+                        placeholderTextColor={theme.colors.textSecondary}
+                        style={[pickerStyles.searchInput, { color: theme.colors.text }]}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                    />
+                </View>
+            )}
 
-            <ScrollView style={pickerStyles.optionList} keyboardShouldPersistTaps="handled">
+            <ScrollView
+                style={[pickerStyles.optionList, embedded && pickerStyles.embeddedOptionList]}
+                contentContainerStyle={embedded && pickerStyles.embeddedOptionListContent}
+                keyboardShouldPersistTaps="handled"
+            >
                 {fixedItems?.map(renderOption)}
                 {fixedItems && fixedItems.length > 0 && filtered.length > 0 && (
                     <View style={[pickerStyles.divider, { backgroundColor: theme.colors.divider }]} />
@@ -300,6 +323,7 @@ function PathPickerContent({
     homeDir,
     onChangeValue,
     onDone,
+    embedded = false,
 }: {
     title: string;
     items: PickerItem[];
@@ -307,6 +331,7 @@ function PathPickerContent({
     homeDir?: string;
     onChangeValue: (value: string) => void;
     onDone?: () => void;
+    embedded?: boolean;
 }) {
     const { theme } = useUnistyles();
     const inputRef = React.useRef<TextInput>(null);
@@ -352,46 +377,49 @@ function PathPickerContent({
     const doneIconColor = theme.colors.header.tint;
 
     return (
-        <View style={pickerStyles.container}>
-            <View style={pickerStyles.titleRow}>
-                <Text style={[pickerStyles.title, { color: theme.colors.text }]}>{title}</Text>
-                {Platform.OS !== 'web' && onDone && (
-                    <Pressable
-                        onPress={onDone}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        style={({ pressed }) => [
-                            pickerStyles.doneButtonPressable,
-                            { opacity: pressed ? 0.82 : 1 },
-                        ]}
-                        accessibilityRole="button"
-                        accessibilityLabel="Done"
-                    >
-                        <GlassView
-                            glassEffectStyle="regular"
-                            tintColor="rgba(255,255,255,0.10)"
-                            isInteractive={true}
-                            style={[
-                                pickerStyles.doneButtonGlass,
-                                { borderColor: 'rgba(255,255,255,0.16)' },
+        <View style={[pickerStyles.container, embedded && pickerStyles.embeddedContainer]}>
+            {!embedded && (
+                <View style={pickerStyles.titleRow}>
+                    <Text style={[pickerStyles.title, { color: theme.colors.text }]}>{title}</Text>
+                    {Platform.OS !== 'web' && onDone && (
+                        <Pressable
+                            onPress={onDone}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={({ pressed }) => [
+                                pickerStyles.doneButtonPressable,
+                                { opacity: pressed ? 0.82 : 1 },
                             ]}
+                            accessibilityRole="button"
+                            accessibilityLabel="Done"
                         >
-                            <Ionicons
-                                name="checkmark"
-                                size={20}
-                                color={doneIconColor}
-                            />
-                        </GlassView>
-                    </Pressable>
-                )}
-            </View>
+                            <GlassView
+                                glassEffectStyle="regular"
+                                tintColor="rgba(255,255,255,0.10)"
+                                isInteractive={true}
+                                style={[
+                                    pickerStyles.doneButtonGlass,
+                                    { borderColor: 'rgba(255,255,255,0.16)' },
+                                ]}
+                            >
+                                <Ionicons
+                                    name="checkmark"
+                                    size={20}
+                                    color={doneIconColor}
+                                />
+                            </GlassView>
+                        </Pressable>
+                    )}
+                </View>
+            )}
 
             <View
                 style={[
                     pickerStyles.pathInputRow,
                     {
-                        backgroundColor: theme.colors.input.background,
-                        borderColor: theme.colors.divider,
+                        backgroundColor: embedded ? 'transparent' : theme.colors.input.background,
+                        borderColor: embedded ? 'transparent' : theme.colors.divider,
                     },
+                    embedded && pickerStyles.embeddedPathInputRow,
                 ]}
             >
                 <Ionicons name="folder-outline" size={16} color={theme.colors.textSecondary} />
@@ -404,7 +432,11 @@ function PathPickerContent({
                         selection={selection}
                         placeholder="Enter project path"
                         placeholderTextColor={theme.colors.textSecondary}
-                        style={[pickerStyles.pathTextInput, { color: theme.colors.text }]}
+                        style={[
+                            pickerStyles.pathTextInput,
+                            embedded && pickerStyles.embeddedPathTextInput,
+                            { color: theme.colors.text },
+                        ]}
                         autoCapitalize="none"
                         autoCorrect={false}
                         multiline={false}
@@ -425,14 +457,22 @@ function PathPickerContent({
                 Recent
             </Text>
 
-            <ScrollView style={pickerStyles.optionList} keyboardShouldPersistTaps="handled">
+            <ScrollView
+                style={[pickerStyles.optionList, embedded && pickerStyles.embeddedOptionList]}
+                contentContainerStyle={embedded && pickerStyles.embeddedOptionListContent}
+                keyboardShouldPersistTaps="handled"
+            >
                 {items.map((item) => {
                     const isSelected = item.key === matchedItemKey;
 
                     return (
                         <Pressable
                             key={item.key}
-                            style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed]}
+                            style={(p) => [
+                                pickerStyles.option,
+                                embedded && pickerStyles.embeddedOption,
+                                p.pressed && pickerStyles.optionPressed,
+                            ]}
                             onPress={() => handleSuggestionPress(item)}
                         >
                             <Ionicons
@@ -440,8 +480,8 @@ function PathPickerContent({
                                 size={16}
                                 color={theme.colors.textSecondary}
                             />
-                            <View style={{ flex: 1 }}>
-                                <Text style={[pickerStyles.optionText, { color: theme.colors.text }]}>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={[pickerStyles.optionText, { color: theme.colors.text }]} numberOfLines={1}>
                                     {item.label}
                                 </Text>
                             </View>
@@ -504,12 +544,16 @@ function NewSessionScreen() {
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
     const router = useRouter();
+    const navigation = useNavigation();
     const navigateToSession = useNavigateToSession();
 
     // Real data sources
     const allMachines = useAllMachines({ includeOffline: true });
     const sessions = useSessions();
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
+    const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
+    const zenMode = useLocalSetting('zenMode');
+    const { width: windowWidth } = useWindowDimensions();
 
     // Persisted draft state (survives navigation).
     //
@@ -752,38 +796,13 @@ function NewSessionScreen() {
 
     const toggleConfig = React.useCallback(() => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setActivePicker(null);
         setIsConfigExpanded(v => !v);
     }, []);
 
     const togglePicker = React.useCallback((type: PickerType) => {
         setActivePicker(v => v === type ? null : type);
     }, []);
-
-    const cyclePermission = React.useCallback(() => {
-        setPermissionIndex(i => {
-            const next = (i + 1) % permissionModes.length;
-            draft.setPermissionMode(permissionModes[next]?.key ?? 'default');
-            return next;
-        });
-    }, [permissionModes, draft.setPermissionMode]);
-
-    const cycleModel = React.useCallback(() => {
-        setModelIndex(i => {
-            const next = (i + 1) % modelModes.length;
-            draft.setModelMode(modelModes[next]?.key ?? 'default');
-            return next;
-        });
-    }, [modelModes, draft.setModelMode]);
-
-    const cycleEffort = React.useCallback(() => {
-        setEffortIndex(i => (i + 1) % effortLevels.length);
-    }, [effortLevels.length]);
-
-    const cycleAgent = React.useCallback(() => {
-        const idx = availableAgents.findIndex(a => a.key === selectedAgent);
-        const next = availableAgents[(idx + 1) % availableAgents.length].key;
-        setSelectedAgent(next);
-    }, [availableAgents, selectedAgent, setSelectedAgent]);
 
     const isOffline = selectedMachine ? !isMachineOnline(selectedMachine) : false;
     const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS[0];
@@ -802,21 +821,6 @@ function NewSessionScreen() {
             ? 'new worktree'
             : worktreeItems.find(wt => wt.key === worktreeKey)?.label || worktreeKey;
 
-    // Flash label for collapsed icon taps — shows label briefly above the icon
-    const flashOpacity = React.useRef(new Animated.Value(0)).current;
-    const [flashText, setFlashText] = React.useState('');
-    const flashTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const showFlash = React.useCallback((text: string) => {
-        if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-        setFlashText(text);
-        flashOpacity.setValue(0);
-        Animated.timing(flashOpacity, { toValue: 1, duration: 120, useNativeDriver: true }).start();
-        flashTimerRef.current = setTimeout(() => {
-            Animated.timing(flashOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
-        }, 800);
-    }, [flashOpacity]);
-
     // Picker data derived from active picker type
     const pickerData = React.useMemo(() => {
         switch (activePicker) {
@@ -824,10 +828,32 @@ function NewSessionScreen() {
                 return { title: 'Machine', items: machineItems, selectedKey: selectedMachineId, searchPlaceholder: 'search machines...' };
             case 'worktree':
                 return { title: 'Worktree', fixedItems: WORKTREE_FIXED_ITEMS, items: worktreeItems, selectedKey: worktreeKey, searchPlaceholder: 'search worktrees...' };
+            case 'agent':
+                return { title: 'Agent', items: getAgentPickerItems(availableAgents), selectedKey: selectedAgent, searchPlaceholder: 'search agents...' };
+            case 'model':
+                return { title: 'Model', items: getModePickerItems(modelModes), selectedKey: currentModelKey, searchPlaceholder: 'search models...' };
+            case 'effort':
+                return { title: 'Effort', items: getModePickerItems(effortLevels), selectedKey: currentEffort?.key ?? null, searchPlaceholder: 'search efforts...' };
+            case 'permission':
+                return { title: 'Permissions', items: getModePickerItems(permissionModes), selectedKey: currentPermission?.key ?? null, searchPlaceholder: 'search permissions...' };
             default:
                 return null;
         }
-    }, [activePicker, machineItems, selectedMachineId, worktreeKey, worktreeItems]);
+    }, [
+        activePicker,
+        availableAgents,
+        currentEffort?.key,
+        currentModelKey,
+        currentPermission?.key,
+        effortLevels,
+        machineItems,
+        modelModes,
+        permissionModes,
+        selectedAgent,
+        selectedMachineId,
+        worktreeKey,
+        worktreeItems,
+    ]);
 
     const handlePickerSelect = React.useCallback((key: string) => {
         switch (activePicker) {
@@ -837,9 +863,48 @@ function NewSessionScreen() {
             case 'worktree':
                 setWorktreeKey(key);
                 break;
+            case 'agent':
+                if (availableAgents.some((candidate) => candidate.key === key)) {
+                    setSelectedAgent(key as NewSessionAgentType);
+                }
+                break;
+            case 'model': {
+                const next = modelModes.findIndex((mode) => mode.key === key);
+                if (next >= 0) {
+                    setModelIndex(next);
+                    draft.setModelMode(modelModes[next]?.key ?? 'default');
+                }
+                break;
+            }
+            case 'effort': {
+                const next = effortLevels.findIndex((level) => level.key === key);
+                if (next >= 0) {
+                    setEffortIndex(next);
+                }
+                break;
+            }
+            case 'permission': {
+                const next = permissionModes.findIndex((mode) => mode.key === key);
+                if (next >= 0) {
+                    setPermissionIndex(next);
+                    draft.setPermissionMode(permissionModes[next]?.key ?? 'default');
+                }
+                break;
+            }
         }
         setActivePicker(null);
-    }, [activePicker, setSelectedMachineId, setWorktreeKey]);
+    }, [
+        activePicker,
+        availableAgents,
+        draft.setModelMode,
+        draft.setPermissionMode,
+        effortLevels,
+        modelModes,
+        permissionModes,
+        setSelectedAgent,
+        setSelectedMachineId,
+        setWorktreeKey,
+    ]);
 
     // Spawn session handler
     const handleSend = React.useCallback(async (approvedNewDirectoryCreation: boolean = false) => {
@@ -892,6 +957,9 @@ function NewSessionScreen() {
                     // Set permission mode and model on the session before sending
                     storage.getState().updateSessionPermissionMode(result.sessionId, currentPermission.key);
                     storage.getState().updateSessionModelMode(result.sessionId, currentModelKey);
+                    if (currentEffort?.key) {
+                        storage.getState().updateSessionEffortLevel(result.sessionId, currentEffort.key);
+                    }
 
                     // Pull live prompt and clear it. We read via getState() so this
                     // callback doesn't have to subscribe to `input` (which would
@@ -931,9 +999,20 @@ function NewSessionScreen() {
         } finally {
             setIsSpawning(false);
         }
-    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession, currentPermission.key, currentModelKey, worktreeKey]);
+    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession, currentPermission.key, currentModelKey, currentEffort?.key, worktreeKey]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
+    const sidebarLayout = getNewSessionSidebarLayout({
+        platform: Platform.OS,
+        isMac: isRunningOnMac(),
+        fileDiffsSidebarEnabled,
+        zenMode,
+        windowWidth,
+    });
+    React.useLayoutEffect(() => {
+        navigation.setOptions({ headerShown: !sidebarLayout.showSidebar });
+        return () => navigation.setOptions({ headerShown: true });
+    }, [navigation, sidebarLayout.showSidebar]);
 
     // Handle Enter/Cmd+Enter to send on web
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
@@ -955,316 +1034,389 @@ function NewSessionScreen() {
         return () => clearTimeout(timeout);
     }, []);
 
+    const renderActivePickerPopover = React.useCallback((type: PickerType) => {
+        if (Platform.OS !== 'web' || activePicker !== type) {
+            return null;
+        }
+
+        return (
+            <View style={[
+                styles.popover,
+                sidebarLayout.showSidebar
+                    ? styles.sidebarPopover
+                    : { backgroundColor: theme.colors.header.background },
+            ]}>
+                {type === 'path' ? (
+                    <PathPickerContent
+                        title="Project"
+                        items={pathItems}
+                        value={selectedPath}
+                        homeDir={selectedHomeDir}
+                        onChangeValue={setSelectedPath}
+                        onDone={() => setActivePicker(null)}
+                        embedded={sidebarLayout.showSidebar}
+                    />
+                ) : pickerData ? (
+                    <PickerContent
+                        {...pickerData}
+                        onSelect={handlePickerSelect}
+                        embedded={sidebarLayout.showSidebar}
+                    />
+                ) : null}
+            </View>
+        );
+    }, [
+        activePicker,
+        handlePickerSelect,
+        pathItems,
+        pickerData,
+        selectedHomeDir,
+        selectedPath,
+        setSelectedPath,
+        sidebarLayout.showSidebar,
+        theme.colors.header.background,
+    ]);
+
+    const configContent = (
+        <>
+            <View style={[
+                styles.configBox,
+                activePicker && styles.configBoxWithPopover,
+                sidebarLayout.showSidebar && styles.sidebarConfigBox,
+            ]}>
+                {sidebarLayout.showSidebar || isConfigExpanded ? (
+                    <>
+                        <View style={styles.configRowWithToggle}>
+                            <Pressable
+                                style={(p) => [
+                                    styles.configRow,
+                                    { flex: 1 },
+                                    p.pressed && styles.configRowPressed,
+                                ]}
+                                onPress={() => togglePicker('machine')}
+                            >
+                                <Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} />
+                                <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
+                                    {machineName}
+                                </Text>
+                                <Ionicons name="chevron-down" size={13} color={theme.colors.textSecondary} />
+                            </Pressable>
+                            {!sidebarLayout.showSidebar && (
+                                <Pressable
+                                    onPress={toggleConfig}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    style={(p) => [styles.collapseToggle, p.pressed && styles.configRowPressed]}
+                                >
+                                    <Ionicons name="chevron-up" size={16} color={theme.colors.textSecondary} />
+                                </Pressable>
+                            )}
+                        </View>
+                        {renderActivePickerPopover('machine')}
+
+                        {isOffline && (
+                            <View style={styles.offlineHelp}>
+                                <Ionicons name="cloud-offline-outline" size={14} color={theme.colors.status.disconnected} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[styles.offlineHelpTitle, { color: theme.colors.status.disconnected }]}>
+                                        {t('newSession.machineOffline')}
+                                    </Text>
+                                    <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
+                                        {t('machine.offlineHelp')}
+                                        {'\n'}{t('newSession.switchMachinesHint')}
+                                    </Text>
+                                </View>
+                            </View>
+                        )}
+
+                        <View style={{ opacity: isOffline ? 0.4 : 1 }} pointerEvents={isOffline ? 'none' : 'auto'}>
+                            <Pressable
+                                style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
+                                onPress={() => togglePicker('path')}
+                            >
+                                <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
+                                <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
+                                    {pathName}
+                                </Text>
+                                <Ionicons name="chevron-down" size={13} color={theme.colors.textSecondary} />
+                            </Pressable>
+                            {renderActivePickerPopover('path')}
+
+                            <View style={styles.configRow}>
+                                <Pressable
+                                    onPress={() => togglePicker('agent')}
+                                    style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}
+                                >
+                                    <RNImage
+                                        source={agentIcons[agent.key]}
+                                        style={[styles.agentIcon, { tintColor: theme.colors.textSecondary }]}
+                                        resizeMode="contain"
+                                    />
+                                    <Text style={[styles.configLabel, styles.configInlineText]} numberOfLines={1}>
+                                        {agent.label}
+                                    </Text>
+                                    <Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} />
+                                </Pressable>
+
+                                {showModel && (
+                                    <>
+                                        <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
+                                        <Pressable onPress={() => togglePicker('model')} style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}>
+                                            <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                                                {currentModel.name}
+                                            </Text>
+                                            <Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} />
+                                        </Pressable>
+                                    </>
+                                )}
+
+                                {showEffort && (
+                                    <>
+                                        <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
+                                        <Pressable onPress={() => togglePicker('effort')} style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}>
+                                            <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                                                {currentEffort?.name}
+                                            </Text>
+                                            <Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} />
+                                        </Pressable>
+                                    </>
+                                )}
+                            </View>
+                            {renderActivePickerPopover('agent')}
+                            {renderActivePickerPopover('model')}
+                            {renderActivePickerPopover('effort')}
+
+                            {showPermission && (
+                                <Pressable
+                                    style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
+                                    onPress={() => togglePicker('permission')}
+                                >
+                                    <Ionicons
+                                        name={permissionStyle?.icon ?? 'shield-outline'}
+                                        size={15}
+                                        color={theme.colors.textSecondary}
+                                    />
+                                    <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
+                                        {currentPermission?.name}
+                                    </Text>
+                                    <Ionicons name="chevron-down" size={13} color={theme.colors.textSecondary} />
+                                </Pressable>
+                            )}
+                            {renderActivePickerPopover('permission')}
+
+                            {supportsWorktree && (
+                                <>
+                                    <Pressable
+                                        style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
+                                        onPress={() => togglePicker('worktree')}
+                                    >
+                                        <MaterialCommunityIcons name="tree" size={15} color={theme.colors.textSecondary} />
+                                        <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
+                                            {worktreeLabel}
+                                        </Text>
+                                        <Ionicons name="chevron-down" size={13} color={theme.colors.textSecondary} />
+                                    </Pressable>
+                                    {renderActivePickerPopover('worktree')}
+                                </>
+                            )}
+                        </View>
+                    </>
+                ) : (
+                    <>
+                        <View style={styles.configRowWithToggle}>
+                            <Pressable
+                                style={(p) => [styles.collapsedRow, { flex: 1 }, p.pressed && styles.configRowPressed]}
+                                onPress={() => togglePicker('path')}
+                            >
+                                <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
+                                <Text style={[styles.configLabel, { flex: 1 }]} numberOfLines={1}>
+                                    {pathName}
+                                </Text>
+                            </Pressable>
+                            <Pressable
+                                onPress={toggleConfig}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                style={(p) => [styles.collapseToggle, p.pressed && styles.configRowPressed]}
+                            >
+                                <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
+                            </Pressable>
+                        </View>
+                        {renderActivePickerPopover('path')}
+
+                        <View style={styles.collapsedIconsRow}>
+                            <Pressable
+                                onPress={() => togglePicker('machine')}
+                                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                            >
+                                <Ionicons name="desktop-outline" size={14} color={isOffline ? theme.colors.status.disconnected : theme.colors.textSecondary} />
+                            </Pressable>
+
+                            <Pressable
+                                onPress={() => togglePicker('agent')}
+                                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                            >
+                                <RNImage
+                                    source={agentIcons[agent.key]}
+                                    style={[styles.collapsedAgentIcon, { tintColor: theme.colors.textSecondary }]}
+                                    resizeMode="contain"
+                                />
+                            </Pressable>
+
+                            {showPermission && (
+                                <Pressable
+                                    onPress={() => togglePicker('permission')}
+                                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                    style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                                >
+                                    <Ionicons
+                                        name={permissionStyle?.icon ?? 'shield-outline'}
+                                        size={14}
+                                        color={permissionStyle?.color ?? theme.colors.textSecondary}
+                                    />
+                                </Pressable>
+                            )}
+
+                            {supportsWorktree && (
+                                <Pressable
+                                    onPress={() => togglePicker('worktree')}
+                                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                    style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                                >
+                                    <MaterialCommunityIcons name="tree" size={14} color={theme.colors.textSecondary} />
+                                </Pressable>
+                            )}
+                        </View>
+                        {renderActivePickerPopover('machine')}
+                        {renderActivePickerPopover('agent')}
+                        {renderActivePickerPopover('permission')}
+                        {renderActivePickerPopover('worktree')}
+
+                        {isOffline && (
+                            <View style={styles.offlineHelp}>
+                                <Ionicons name="cloud-offline-outline" size={14} color={theme.colors.status.disconnected} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[styles.offlineHelpTitle, { color: theme.colors.status.disconnected }]}>
+                                        {t('newSession.machineOffline')}
+                                    </Text>
+                                    <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
+                                        {t('machine.offlineHelp')}
+                                        {'\n'}{t('newSession.switchMachinesHint')}
+                                    </Text>
+                                </View>
+                            </View>
+                        )}
+                    </>
+                )}
+            </View>
+        </>
+    );
+
+    const composerNode = (
+        <View style={styles.inputBox}>
+            <View style={styles.inputField}>
+                <PromptInput
+                    ref={composerInputRef}
+                    placeholder="What would you like to work on?"
+                    onKeyPress={handleKeyPress}
+                />
+            </View>
+            <View style={styles.actionButtonsContainer}>
+                <View style={styles.actionButtonsLeft} />
+                <View style={[
+                    styles.sendButton,
+                    isSpawning ? styles.sendButtonActive :
+                    canSend ? styles.sendButtonActive : styles.sendButtonInactive,
+                ]}>
+                    <Pressable
+                        style={(p) => [
+                            styles.sendButtonInner,
+                            p.pressed && styles.sendButtonInnerPressed,
+                        ]}
+                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                        disabled={!canSend}
+                        onPress={() => handleSend()}
+                    >
+                        {isSpawning ? (
+                            <ActivityIndicator
+                                size="small"
+                                color={theme.colors.button.primary.tint}
+                            />
+                        ) : (
+                            <Octicons
+                                name="arrow-up"
+                                size={16}
+                                color={theme.colors.button.primary.tint}
+                                style={[
+                                    styles.sendButtonIcon,
+                                    { marginTop: Platform.OS === 'web' ? 2 : 0 },
+                                ]}
+                            />
+                        )}
+                    </Pressable>
+                </View>
+            </View>
+        </View>
+    );
+
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + headerHeight : 0}
+            keyboardVerticalOffset={Platform.OS === 'ios' && !sidebarLayout.showSidebar ? Constants.statusBarHeight + headerHeight : 0}
             style={styles.container}
         >
-            <View style={styles.inner}>
-                <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center', paddingHorizontal: 12, gap: 8, paddingTop: 12 }}>
-
-                    {/* Config box */}
-                    <View style={styles.configBox}>
-                        {isConfigExpanded ? (
-                            <>
-                                {/* Machine row */}
-                                <View style={styles.configRowWithToggle}>
-                                    <Pressable
-                                        style={(p) => [styles.configRow, { flex: 1 }, p.pressed && styles.configRowPressed]}
-                                        onPress={() => togglePicker('machine')}
-                                    >
-                                        <Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} />
-                                        <Text style={styles.configLabel} numberOfLines={1}>
-                                            {machineName}
-                                        </Text>
-                                    </Pressable>
-                                    <Pressable
-                                        onPress={toggleConfig}
-                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                        style={(p) => [styles.collapseToggle, p.pressed && styles.configRowPressed]}
-                                    >
-                                        <Ionicons name="chevron-up" size={16} color={theme.colors.textSecondary} />
-                                    </Pressable>
-                                </View>
-
-                                {/* Offline help section — right under machine */}
-                                {isOffline && (
-                                    <View style={styles.offlineHelp}>
-                                        <Ionicons name="cloud-offline-outline" size={14} color={theme.colors.status.disconnected} />
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={[styles.offlineHelpTitle, { color: theme.colors.status.disconnected }]}>
-                                                {t('newSession.machineOffline')}
-                                            </Text>
-                                            <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
-                                                {t('machine.offlineHelp')}
-                                                {'\n'}{t('newSession.switchMachinesHint')}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                )}
-
-                                {/* Config rows below machine — grayed out when offline */}
-                                <View style={{ opacity: isOffline ? 0.4 : 1 }} pointerEvents={isOffline ? 'none' : 'auto'}>
-                                    {/* Path row */}
-                                    <Pressable
-                                        style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                        onPress={() => togglePicker('path')}
-                                    >
-                                        <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
-                                        <Text style={styles.configLabel} numberOfLines={1}>
-                                            {pathName}
-                                        </Text>
-                                    </Pressable>
-
-                                    {/* Agent + model + effort row */}
-                                    <View style={styles.configRow}>
-                                        <Pressable
-                                            onPress={cycleAgent}
-                                            style={(p) => [{ flexDirection: 'row', alignItems: 'center', gap: 8 }, p.pressed && styles.configRowPressed]}
-                                        >
-                                            <RNImage
-                                                source={agentIcons[agent.key]}
-                                                style={[styles.agentIcon, { tintColor: theme.colors.textSecondary }]}
-                                                resizeMode="contain"
-                                            />
-                                            <Text style={styles.configLabel} numberOfLines={1}>
-                                                {agent.label}
-                                            </Text>
-                                        </Pressable>
-
-                                        {showModel && (
-                                            <>
-                                                <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
-                                                <Pressable onPress={cycleModel} style={(p) => [p.pressed && styles.configRowPressed]}>
-                                                    <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                                        {currentModel.name}
-                                                    </Text>
-                                                </Pressable>
-                                            </>
-                                        )}
-
-                                        {showEffort && (
-                                            <>
-                                                <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
-                                                <Pressable onPress={cycleEffort} style={(p) => [p.pressed && styles.configRowPressed]}>
-                                                    <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                                        {currentEffort?.name}
-                                                    </Text>
-                                                </Pressable>
-                                            </>
-                                        )}
-                                    </View>
-
-                                    {/* Permission row */}
-                                    {showPermission && (
-                                        <Pressable
-                                            style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                            onPress={cyclePermission}
-                                        >
-                                            <Ionicons
-                                                name={permissionStyle?.icon ?? 'shield-outline'}
-                                                size={15}
-                                                color={theme.colors.textSecondary}
-                                            />
-                                            <Text style={styles.configLabel} numberOfLines={1}>
-                                                {currentPermission?.name}
-                                            </Text>
-                                        </Pressable>
-                                    )}
-
-                                    {/* Worktree row */}
-                                    {supportsWorktree && (
-                                        <Pressable
-                                            style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                            onPress={() => togglePicker('worktree')}
-                                        >
-                                            <MaterialCommunityIcons name="tree" size={15} color={theme.colors.textSecondary} />
-                                            <Text style={styles.configLabel} numberOfLines={1}>
-                                                {worktreeLabel}
-                                            </Text>
-                                        </Pressable>
-                                    )}
-                                </View>
-
-                            </>
-                        ) : (
-                            /* Collapsed: path row + icons row + optional offline warning */
-                            <>
-                                {/* Path row with expand chevron */}
-                                <View style={styles.configRowWithToggle}>
-                                    <Pressable
-                                        style={(p) => [styles.collapsedRow, { flex: 1 }, p.pressed && styles.configRowPressed]}
-                                        onPress={() => togglePicker('path')}
-                                    >
-                                        <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
-                                        <Text style={[styles.configLabel, { flex: 1 }]} numberOfLines={1}>
-                                            {pathName}
-                                        </Text>
-                                    </Pressable>
-                                    <Pressable
-                                        onPress={toggleConfig}
-                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                        style={(p) => [styles.collapseToggle, p.pressed && styles.configRowPressed]}
-                                    >
-                                        <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
-                                    </Pressable>
-                                </View>
-
-                                {/* Tappable icons row: machine, agent, permission, worktree */}
-                                <View style={styles.collapsedIconsRow}>
-                                    {/* Machine */}
-                                    <Pressable
-                                        onPress={() => togglePicker('machine')}
-                                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                                        style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
-                                    >
-                                        <Ionicons name="desktop-outline" size={14} color={isOffline ? theme.colors.status.disconnected : theme.colors.textSecondary} />
-                                    </Pressable>
-
-                                    {/* Agent */}
-                                    <Pressable
-                                        onPress={() => { cycleAgent(); showFlash(availableAgents[(availableAgents.findIndex(a => a.key === selectedAgent) + 1) % availableAgents.length].label); }}
-                                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                                        style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
-                                    >
-                                        <RNImage
-                                            source={agentIcons[agent.key]}
-                                            style={[styles.collapsedAgentIcon, { tintColor: theme.colors.textSecondary }]}
-                                            resizeMode="contain"
-                                        />
-                                    </Pressable>
-
-                                    {/* Permission */}
-                                    {showPermission && (
-                                        <Pressable
-                                            onPress={() => { cyclePermission(); showFlash(permissionModes[(permissionIndex + 1) % permissionModes.length]?.name ?? 'default'); }}
-                                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                                            style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
-                                        >
-                                            <Ionicons
-                                                name={permissionStyle?.icon ?? 'shield-outline'}
-                                                size={14}
-                                                color={permissionStyle?.color ?? theme.colors.textSecondary}
-                                            />
-                                        </Pressable>
-                                    )}
-
-                                    {/* Worktree */}
-                                    {supportsWorktree && (
-                                        <Pressable
-                                            onPress={() => togglePicker('worktree')}
-                                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                                            style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
-                                        >
-                                            <MaterialCommunityIcons name="tree" size={14} color={theme.colors.textSecondary} />
-                                        </Pressable>
-                                    )}
-                                </View>
-
-                                {/* Offline warning in collapsed state */}
-                                {isOffline && (
-                                    <View style={styles.offlineHelp}>
-                                        <Ionicons name="cloud-offline-outline" size={14} color={theme.colors.status.disconnected} />
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={[styles.offlineHelpTitle, { color: theme.colors.status.disconnected }]}>
-                                                {t('newSession.machineOffline')}
-                                            </Text>
-                                            <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
-                                                {t('machine.offlineHelp')}
-                                                {'\n'}{t('newSession.switchMachinesHint')}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                )}
-                            </>
-                        )}
-                    </View>
-
-                    {/* Flash label — centered below config box, hidden when picker is open */}
-                    {flashText !== '' && !activePicker && (
-                        <Animated.View style={[styles.flashLabel, { opacity: flashOpacity }]} pointerEvents="none">
-                            <Text style={[styles.flashLabelText, { color: theme.colors.textSecondary }]}>{flashText}</Text>
-                        </Animated.View>
-                    )}
-
-                    {/* Web: inline popover */}
+            {sidebarLayout.showSidebar ? (
+                <View style={styles.desktopShell}>
                     {Platform.OS === 'web' && activePicker && (
-                        <View style={[styles.popover, { backgroundColor: theme.colors.header.background }]}>
-                            {activePicker === 'path' ? (
-                                <PathPickerContent
-                                    title="Project"
-                                    items={pathItems}
-                                    value={selectedPath}
-                                    homeDir={selectedHomeDir}
-                                    onChangeValue={setSelectedPath}
-                                    onDone={() => setActivePicker(null)}
-                                />
-                            ) : pickerData ? (
-                                <PickerContent {...pickerData} onSelect={handlePickerSelect} />
-                            ) : null}
-                        </View>
+                        <Pressable
+                            style={styles.clickAwayBackdrop}
+                            onPress={() => setActivePicker(null)}
+                        />
                     )}
-                </View>
-
-                {/* Web: click-away backdrop */}
-                {Platform.OS === 'web' && activePicker && (
-                    <Pressable
-                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: -1 }}
-                        onPress={() => setActivePicker(null)}
-                    />
-                )}
-
-                {/* Spacer */}
-                <View style={{ flex: 1 }} />
-
-                <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center', paddingHorizontal: 12, gap: 8 }}>
-                    {/* Input box */}
-                    <View style={styles.inputBox}>
-                        <View style={styles.inputField}>
-                            <View style={{ flex: 1 }}>
-                                <PromptInput
-                                    ref={composerInputRef}
-                                    placeholder="What would you like to work on?"
-                                    onKeyPress={handleKeyPress}
-                                />
-                            </View>
-                            <View style={[
-                                styles.sendButton,
-                                canSend ? styles.sendButtonActive : styles.sendButtonInactive,
-                            ]}>
-                                <Pressable
-                                    style={(p) => ({
-                                        width: '100%',
-                                        height: '100%',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        opacity: p.pressed ? 0.7 : 1,
-                                    })}
-                                    disabled={!canSend}
-                                    onPress={() => handleSend()}
-                                >
-                                    {isSpawning ? (
-                                        <ActivityIndicator
-                                            size="small"
-                                            color={theme.colors.button.primary.tint}
-                                        />
-                                    ) : (
-                                        <Octicons
-                                            name="arrow-up"
-                                            size={16}
-                                            color={theme.colors.button.primary.tint}
-                                            style={{ marginTop: Platform.OS === 'web' ? 2 : 0 }}
-                                        />
-                                    )}
-                                </Pressable>
+                    <View style={styles.desktopMain}>
+                        <View style={styles.centeredComposerWrap}>
+                            <View style={styles.desktopPromptCluster}>
+                                <Text style={styles.desktopPromptTitle}>
+                                    {t('newSession.title')}
+                                </Text>
+                                <View style={styles.composerWidthWrap}>
+                                    {composerNode}
+                                </View>
                             </View>
                         </View>
                     </View>
+                    <View style={[styles.rightSidebar, { width: sidebarLayout.sidebarWidth }]}>
+                        <ScrollView
+                            style={styles.rightSidebarScroll}
+                            contentContainerStyle={styles.rightSidebarContent}
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            {configContent}
+                        </ScrollView>
+                    </View>
                 </View>
+            ) : (
+                <View style={styles.inner}>
+                    <View style={styles.inlineConfigWrap}>
+                        {configContent}
+                    </View>
 
-                <View style={{ height: Math.max(16, safeArea.bottom) }} />
-            </View>
+                    {Platform.OS === 'web' && activePicker && (
+                        <Pressable
+                            style={styles.clickAwayBackdropBehind}
+                            onPress={() => setActivePicker(null)}
+                        />
+                    )}
+
+                    <View style={{ flex: 1 }} />
+
+                    <View style={styles.inlineComposerWrap}>
+                        {composerNode}
+                    </View>
+
+                    <View style={{ height: Math.max(16, safeArea.bottom) }} />
+                </View>
+            )}
 
             {/* Native: picker bottom sheet */}
             {Platform.OS !== 'web' && (
@@ -1303,12 +1455,103 @@ const styles = StyleSheet.create((theme) => ({
     inner: {
         flex: 1,
     },
+    desktopShell: {
+        flex: 1,
+        flexDirection: 'row',
+        position: 'relative',
+    },
+    desktopMain: {
+        flex: 1,
+        minWidth: 0,
+    },
+    centeredComposerWrap: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 12,
+    },
+    desktopPromptCluster: {
+        width: '100%',
+        alignItems: 'center',
+        gap: 32,
+        transform: [{ translateY: -28 }],
+    },
+    desktopPromptTitle: {
+        fontSize: 30,
+        lineHeight: 36,
+        color: theme.colors.text,
+        textAlign: 'center',
+        ...Typography.default(),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    },
+    composerWidthWrap: {
+        maxWidth: layout.maxWidth,
+        width: '100%',
+    },
+    rightSidebar: {
+        flexShrink: 0,
+        alignSelf: 'stretch',
+        backgroundColor: theme.colors.groupped.background,
+        borderLeftWidth: StyleSheet.hairlineWidth,
+        borderLeftColor: theme.colors.divider,
+        zIndex: 2,
+    },
+    rightSidebarScroll: {
+        flex: 1,
+    },
+    rightSidebarContent: {
+        paddingHorizontal: 12,
+        paddingTop: 12,
+        paddingBottom: 16,
+        gap: 8,
+    },
+    inlineConfigWrap: {
+        maxWidth: layout.maxWidth,
+        width: '100%',
+        alignSelf: 'center',
+        paddingHorizontal: 12,
+        gap: 8,
+        paddingTop: 12,
+    },
+    inlineComposerWrap: {
+        maxWidth: layout.maxWidth,
+        width: '100%',
+        alignSelf: 'center',
+        paddingHorizontal: 12,
+        gap: 8,
+    },
+    clickAwayBackdrop: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 1,
+    },
+    clickAwayBackdropBehind: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: -1,
+    },
     configBox: {
         backgroundColor: theme.colors.input.background,
         borderRadius: Platform.select({ default: 16, android: 20 }),
         paddingVertical: 4,
         paddingHorizontal: 4,
         overflow: 'hidden',
+    },
+    configBoxWithPopover: {
+        overflow: 'visible',
+    },
+    sidebarConfigBox: {
+        backgroundColor: 'transparent',
+        borderRadius: 0,
+        paddingVertical: 0,
+        paddingHorizontal: 0,
+        overflow: 'visible',
     },
     popover: {
         borderRadius: 12,
@@ -1329,10 +1572,33 @@ const styles = StyleSheet.create((theme) => ({
             },
         }),
     },
+    sidebarPopover: {
+        minWidth: 0,
+        alignSelf: 'stretch',
+        backgroundColor: 'transparent',
+        borderRadius: 0,
+        borderWidth: 0,
+        overflow: 'hidden',
+        paddingVertical: 0,
+        marginTop: -2,
+        marginRight: 6,
+        marginBottom: 6,
+        marginLeft: 24,
+        ...Platform.select({
+            web: {
+                boxShadow: 'none',
+            },
+            default: {
+                shadowOpacity: 0,
+                elevation: 0,
+            },
+        }),
+    },
     configRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
+        minWidth: 0,
         paddingHorizontal: 12,
         paddingVertical: 10,
         borderRadius: 12,
@@ -1389,26 +1655,54 @@ const styles = StyleSheet.create((theme) => ({
         height: 14,
     },
     configLabel: {
+        minWidth: 0,
         fontSize: 14,
         color: theme.colors.text,
         ...Typography.default('semiBold'),
         ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    },
+    configValueText: {
+        flex: 1,
+        flexShrink: 1,
+    },
+    configInlineField: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        minWidth: 0,
+        flexShrink: 1,
+    },
+    configInlineText: {
+        minWidth: 0,
+        flexShrink: 1,
     },
     inputBox: {
         backgroundColor: theme.colors.input.background,
         borderRadius: Platform.select({ default: 16, android: 20 }),
         overflow: 'hidden',
         paddingVertical: 2,
+        paddingBottom: 8,
         paddingHorizontal: 8,
     },
     inputField: {
         flexDirection: 'row',
-        alignItems: 'flex-end',
+        alignItems: 'center',
         paddingLeft: 8,
-        paddingRight: 4,
+        paddingRight: 8,
         paddingVertical: 4,
         minHeight: 40,
+    },
+    actionButtonsContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 0,
+    },
+    actionButtonsLeft: {
+        flexDirection: 'row',
         gap: 8,
+        flex: 1,
+        overflow: 'hidden',
     },
     sendButton: {
         width: COMPOSER_SEND_BUTTON_SIZE,
@@ -1417,13 +1711,25 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         alignItems: 'center',
         flexShrink: 0,
-        marginBottom: COMPOSER_SEND_BUTTON_MARGIN_BOTTOM,
+        marginLeft: 8,
     },
     sendButtonActive: {
         backgroundColor: theme.colors.button.primary.background,
     },
     sendButtonInactive: {
         backgroundColor: theme.colors.button.primary.disabled,
+    },
+    sendButtonInner: {
+        width: '100%',
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    sendButtonInnerPressed: {
+        opacity: 0.7,
+    },
+    sendButtonIcon: {
+        color: theme.colors.button.primary.tint,
     },
     offlineHelp: {
         flexDirection: 'row',
@@ -1487,6 +1793,14 @@ const pickerStyles = {
         paddingHorizontal: 16,
         paddingBottom: 8,
     } as const,
+    embeddedContainer: {
+        width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
+        alignSelf: 'stretch',
+        paddingHorizontal: 0,
+        paddingBottom: 2,
+    } as const,
     title: {
         fontSize: 18,
         paddingVertical: 12,
@@ -1524,8 +1838,17 @@ const pickerStyles = {
         borderRadius: 12,
         marginBottom: 8,
     },
+    embeddedSearchRow: {
+        width: '100%',
+        minWidth: 0,
+        paddingHorizontal: 4,
+        paddingVertical: 8,
+        borderRadius: 0,
+        marginBottom: 4,
+    } as const,
     searchInput: {
         flex: 1,
+        minWidth: 0,
         fontSize: 15,
         padding: 0,
         ...Typography.default(),
@@ -1541,8 +1864,18 @@ const pickerStyles = {
         marginBottom: 8,
         borderWidth: 1,
     },
+    embeddedPathInputRow: {
+        width: '100%',
+        minWidth: 0,
+        paddingHorizontal: 4,
+        minHeight: 38,
+        borderRadius: 0,
+        borderWidth: 0,
+        marginBottom: 4,
+    } as const,
     pathInputField: {
         flex: 1,
+        minWidth: 0,
     } as const,
     pathTextInput: {
         fontSize: 16,
@@ -1554,6 +1887,10 @@ const pickerStyles = {
             web: { outlineStyle: 'none' } as any,
             default: {},
         }),
+    } as const,
+    embeddedPathTextInput: {
+        fontSize: 15,
+        minHeight: 34,
     } as const,
     pathMetaText: {
         fontSize: 13,
@@ -1577,10 +1914,20 @@ const pickerStyles = {
         paddingVertical: 12,
         borderRadius: 12,
     },
+    embeddedOption: {
+        width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
+        paddingHorizontal: 4,
+        paddingVertical: 8,
+        borderRadius: 0,
+    } as const,
     optionPressed: {
         opacity: 0.6,
     } as const,
     optionText: {
+        minWidth: 0,
+        flexShrink: 1,
         fontSize: 15,
         ...Typography.default(),
         ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
@@ -1593,6 +1940,17 @@ const pickerStyles = {
     optionList: {
         flexGrow: 0,
         flexShrink: 1,
+    } as const,
+    embeddedOptionList: {
+        width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
+        maxHeight: 176,
+    } as const,
+    embeddedOptionListContent: {
+        width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
     } as const,
     emptyText: {
         fontSize: 14,
