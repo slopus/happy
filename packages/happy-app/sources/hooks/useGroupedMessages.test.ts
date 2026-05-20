@@ -260,4 +260,30 @@ describe('useGroupedMessages', () => {
         expect(items.map((item) => item.type)).toEqual(['message', 'message']);
         expect(items[0]).toMatchObject({ type: 'message', id: 'tool-only' });
     });
+
+    it('can collapse single standalone tool calls for nested work details', () => {
+        const messages: Message[] = [
+            toolMessage('tool-only', 2),
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: 'run one tool',
+            },
+        ];
+
+        const items = groupToolCallsForDisplay(messages, true, { groupSingleToolCalls: true });
+
+        expect(items.map((item) => item.type)).toEqual(['tool-group', 'message']);
+        expect(items[0]).toMatchObject({
+            type: 'tool-group',
+            id: 'group-tool-only',
+            hasPendingPermission: false,
+        });
+        if (items[0].type !== 'tool-group') {
+            throw new Error('Expected a tool group');
+        }
+        expect(items[0].messages.map((message) => message.id)).toEqual(['tool-only']);
+    });
 });

@@ -132,11 +132,16 @@ export function groupMessagesForDisplay(
     return result;
 }
 
-export function groupToolCallsForDisplay(messages: Message[], enabled: boolean = true): ToolDisplayItem[] {
+export function groupToolCallsForDisplay(
+    messages: Message[],
+    enabled: boolean = true,
+    options: { groupSingleToolCalls?: boolean } = {},
+): ToolDisplayItem[] {
     if (!enabled) {
         return messages.map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
     }
 
+    const groupSingleToolCalls = options.groupSingleToolCalls ?? false;
     const toolRuns = collectToolRuns(messages, (msg) => {
         if (msg.kind !== 'tool-call') return false;
         if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
@@ -156,7 +161,8 @@ export function groupToolCallsForDisplay(messages: Message[], enabled: boolean =
 
         if (msg.kind === 'tool-call') {
             const info = toolRuns.get(i);
-            if (info && info.msgs.length > 1 && i === info.oldestIdx) {
+            const shouldGroupRun = info && (info.msgs.length > 1 || groupSingleToolCalls);
+            if (shouldGroupRun && i === info.oldestIdx) {
                 let hasRunning = false;
                 for (const m of info.msgs) {
                     if (m.kind === 'tool-call' && m.tool.state === 'running') {
@@ -173,7 +179,7 @@ export function groupToolCallsForDisplay(messages: Message[], enabled: boolean =
                     hasPendingPermission: hasPendingPermission(info.msgs),
                 });
             }
-            if (info && info.msgs.length > 1) {
+            if (shouldGroupRun) {
                 continue;
             }
         }

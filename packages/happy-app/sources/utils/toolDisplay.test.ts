@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ToolCall } from '@/sync/typesMessage';
-import { getTerminalToolCommand, isTerminalToolName, shouldRenderToolCardHeader } from './toolDisplay';
+import {
+    getTerminalToolCommand,
+    getToolSummaryCategory,
+    getToolSummaryDetail,
+    isTerminalToolName,
+    shouldRenderToolCardHeader,
+} from './toolDisplay';
 
 function tool(name: string, input: unknown): ToolCall {
     return {
@@ -47,5 +53,30 @@ describe('terminal tool display helpers', () => {
         expect(shouldRenderToolCardHeader('CodexPatch', 'ios')).toBe(true);
         expect(shouldRenderToolCardHeader('CodexPatch', 'android')).toBe(true);
         expect(shouldRenderToolCardHeader('CodexBash', 'web')).toBe(true);
+    });
+
+    it('classifies tools for compact transcript rows', () => {
+        expect(getToolSummaryCategory('CodexBash')).toBe('terminal');
+        expect(getToolSummaryCategory('CodexPatch')).toBe('edit');
+        expect(getToolSummaryCategory('Read')).toBe('read');
+        expect(getToolSummaryCategory('Grep')).toBe('search');
+        expect(getToolSummaryCategory('WebFetch')).toBe('web');
+    });
+
+    it('extracts compact transcript row details', () => {
+        expect(getToolSummaryDetail(tool('CodexBash', {
+            command: ['/usr/bin/zsh', '-lc', 'git status --short'],
+            parsed_cmd: [{ type: 'bash', cmd: 'git status --short' }],
+        }))).toBe('git status --short');
+
+        expect(getToolSummaryDetail(tool('CodexPatch', {
+            changes: {
+                'README-RU.md': { kind: { type: 'update' } },
+            },
+        }))).toBe('README-RU.md');
+
+        expect(getToolSummaryDetail(tool('MultiEdit', {
+            file_path: '/repo/src/app.tsx',
+        }))).toBe('/repo/src/app.tsx');
     });
 });
