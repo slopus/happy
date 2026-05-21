@@ -382,7 +382,7 @@ Delete `~/.happy/settings.json` (or remove the `serverUrl` / `webappUrl` keys). 
 | Realtime sync fails / sockets disconnect immediately | Caddy basic-auth might be gating `/socket.io/*` | Confirm Caddyfile gates only `/v1/*` paths — sockets must pass through ungated |
 | Server logs report Prisma migration errors after upgrade | `pnpm exec tsx ./sources/standalone.ts migrate` not re-run after pulling | Re-run migrate, then restart serve |
 | `sudo ufw allow` fails with `iptables-nft` error | Kernel/iptables backend mismatch | Switch iptables to legacy (see step 7) |
-| Non-interactive `ssh host "cmd"` returns no output | Shell init script (e.g., `.zshrc`) silently exec's another shell or redirects stdout | Pipe via stdin: `echo 'cmd' \| ssh -T -x -o BatchMode=yes host` |
+| Non-interactive `ssh host "cmd"` returns no output | Shell init silently exec's another shell or redirects stdout, OR sshd cloud-init drop-in / PAM rule swallows the channel in command-arg mode | Diagnose: pipe via stdin (`echo 'cmd' \| ssh -T -x -o BatchMode=yes host`) — if that works, it's host-side. Inspect `~/.zshrc` for a top-level p10k-instant-prompt block (add `[[ $- == *i* ]] \|\| return` at top) and `~/.bashrc` for missing interactive-shell guard. If neither, suspect sshd: `sudo cat /etc/ssh/sshd_config.d/*.conf` and `sudo grep -RnE 'ForceCommand\|PermitTTY' /etc/pam.d/sshd /etc/pam.d/ssh*`. The stdin-pipe workaround is fine to ship long-term if the root cause isn't readily fixable. |
 
 ## Related docs
 
