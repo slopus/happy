@@ -96,6 +96,23 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    pickSessionContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 48,
+        backgroundColor: theme.colors.groupped.background,
+    },
+    pickSessionIcon: {
+        marginBottom: 16,
+        opacity: 0.5,
+    },
+    pickSessionText: {
+        fontSize: 16,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+        ...Typography.default(),
+    },
 }));
 
 // Tab header configuration
@@ -223,6 +240,23 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     return null;
 });
 
+const TabletPickSessionPlaceholder = React.memo(() => {
+    const { theme } = useUnistyles();
+    return (
+        <View style={styles.pickSessionContainer}>
+            <Ionicons
+                name="terminal-outline"
+                size={56}
+                color={theme.colors.textSecondary}
+                style={styles.pickSessionIcon}
+            />
+            <Text style={styles.pickSessionText}>
+                Select a session from the sidebar.
+            </Text>
+        </View>
+    );
+});
+
 export const MainView = React.memo(({ variant }: MainViewProps) => {
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
@@ -289,11 +323,26 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     }
 
     // Phone variant
-    // Tablet in phone mode - special case (when showing index view on tablets, show empty view)
+    // Tablet in phone mode: with the sidebar showing the session list on the
+    // left, the right pane on the index route used to render a bare empty
+    // View. On a wide window that read as "the whole app went blank" — users
+    // perceived nothing on screen even though the sidebar had content. Show
+    // a placeholder that mirrors the sidebar's empty state when there are no
+    // sessions yet, and a clear "pick a session" hint otherwise.
     if (isTablet) {
-        // Just show an empty view on tablets for the index view
-        // The sessions list is shown in the sidebar, so the main area should be blank
-        return <View style={styles.emptyStateContentContainer} />;
+        return (
+            <View style={styles.emptyStateContentContainer}>
+                {sessionListViewData === null ? (
+                    <View style={styles.tabletLoadingContainer}>
+                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    </View>
+                ) : sessionListViewData.length === 0 ? (
+                    <EmptySessionsTablet />
+                ) : (
+                    <TabletPickSessionPlaceholder />
+                )}
+            </View>
+        );
     }
 
     // Regular phone mode with tabs
