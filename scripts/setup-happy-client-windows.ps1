@@ -25,17 +25,45 @@
 #       -Register
 
 param(
-    [Parameter(Mandatory=$true)] [string]$HappyServerUrl,
-    [string]$HappyBasicAuthUrl   = '',
-    [string]$AccessKeyPath       = '',
-    [string]$SshTunnelHost       = '',
-    [int]   $SshTunnelPort       = 3006,
-    [bool]  $InstallShortcut     = $false,
-    [string]$HappyCliVersion     = '1.1.10-beta.4',
+    [string]$HappyServerUrl     = $env:HAPPY_SERVER_URL,
+    [string]$HappyBasicAuthUrl  = $env:HAPPY_BASIC_AUTH_URL,
+    [string]$AccessKeyPath      = '',
+    [string]$SshTunnelHost      = $env:HAPPY_SSH_TUNNEL_HOST,
+    [int]   $SshTunnelPort      = $(if ($env:HAPPY_PUBLIC_PORT) { [int]$env:HAPPY_PUBLIC_PORT } else { 3006 }),
+    [bool]  $InstallShortcut    = $false,
+    [string]$HappyCliVersion    = $(if ($env:HAPPY_CLI_VERSION) { $env:HAPPY_CLI_VERSION } else { '1.1.10-beta.4' }),
     [switch]$Register
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Load repo-root .env if present (one source of truth — see .env.example).
+$envFile = Join-Path $PSScriptRoot '..\.env'
+if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match '^\s*#') { return }                 # comment line
+        if ($_ -match '^\s*$') { return }                 # blank line
+        if ($_ -match '^\s*([^=]+?)\s*=\s*(.*)\s*$') {
+            $k = $matches[1].Trim()
+            $v = $matches[2].Trim() -replace "^['""]|['""]$",''
+            # primitive ${VAR} expansion
+            while ($v -match '\$\{([^}]+)\}') {
+                $vn = $matches[1]
+                $vv = (Get-Item "env:$vn" -ErrorAction SilentlyContinue).Value
+                $v  = $v -replace ('\$\{' + [regex]::Escape($vn) + '\}'), ($vv -as [string])
+            }
+            Set-Item "env:$k" $v
+        }
+    }
+    if (-not $HappyServerUrl)    { $HappyServerUrl    = $env:HAPPY_SERVER_URL }
+    if (-not $HappyBasicAuthUrl) { $HappyBasicAuthUrl = $env:HAPPY_BASIC_AUTH_URL }
+    if (-not $SshTunnelHost)     { $SshTunnelHost     = $env:HAPPY_SSH_TUNNEL_HOST }
+}
+
+if (-not $HappyServerUrl) {
+    Write-Host 'HappyServerUrl required (pass -HappyServerUrl or set HAPPY_SERVER_URL in .env)' -ForegroundColor Red
+    exit 1
+}
 function Red($s)   { Write-Host $s -ForegroundColor Red }
 function Green($s) { Write-Host $s -ForegroundColor Green }
 function Hl($s)    { Write-Host $s -ForegroundColor Cyan }

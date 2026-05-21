@@ -26,6 +26,17 @@
 
 set -euo pipefail
 
+# Source repo-root .env if present so users have one source of truth
+# (see .env.example for the full schema). Variables in the env take
+# precedence over this file.
+HERE="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$HERE/../.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$HERE/../.env"
+    set +a
+fi
+
 HAPPY_BASIC_AUTH_USER="${HAPPY_BASIC_AUTH_USER:-happy}"
 HAPPY_PUBLIC_PORT="${HAPPY_PUBLIC_PORT:-3006}"
 HAPPY_SRC="${HAPPY_SRC:-$HOME/code/happy}"

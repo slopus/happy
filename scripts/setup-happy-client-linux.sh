@@ -32,6 +32,15 @@
 
 set -euo pipefail
 
+# Source repo-root .env if present so users have one source of truth.
+HERE="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$HERE/../.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$HERE/../.env"
+    set +a
+fi
+
 HAPPY_CLI_VERSION="${HAPPY_CLI_VERSION:-1.1.10-beta.4}"
 HAPPY_NODE_INSTALL_PATH="${HAPPY_NODE_INSTALL_PATH:-$HOME/local}"
 
