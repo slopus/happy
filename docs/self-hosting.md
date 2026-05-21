@@ -114,7 +114,11 @@ tmux new-session -d -s happy-server '~/bin/start-happy-server.sh 2>&1 | tee ~/.h
 
 Verify with `curl http://127.0.0.1:3005/` — you should see `Welcome to Happy Server!`.
 
-### 5. Build the webapp (so it can be served from your host)
+### 5. (Optional) Build the webapp for browser-based viewing
+
+You can skip this step entirely if you only want to use the mobile app or the
+CLI — the bootstrap flow below uses `scripts/happy-register.mjs` and never
+needs the webapp. The webapp is only needed for an in-browser session viewer.
 
 ```bash
 cd ~/code/happy/packages/happy-app
@@ -129,6 +133,11 @@ HAPPY_INJECT_HTML_CONFIG={"serverUrl":"https://<your-public-domain-or-ip>:<PUBLI
 ```
 
 The `HAPPY_INJECT_HTML_CONFIG` value is injected as `window.__HAPPY_CONFIG__` into `index.html` so the bundled webapp knows where to call the API. It should match the public URL clients use — *not* `127.0.0.1:3005`. **Do not include credentials in this URL**; the webapp would expose them to anyone who fetches the HTML.
+
+> Heads-up: the published `happy` npm CLI's webapp pairing UI (`/terminal/connect`)
+> assumes you already have an authenticated device to approve from. On a brand-new
+> self-host that's a chicken-and-egg. The register script in the bootstrap
+> section below sidesteps all of that — strongly recommended.
 
 ### 6. Set up Caddy reverse proxy with basic auth
 
@@ -288,41 +297,57 @@ Verify with `happy doctor` — you should see the URL echoed back under `Server 
 }
 ```
 
-## First-time bootstrap order (the chicken-and-egg)
+## First-time bootstrap (shortcut: just register the CLI directly)
 
-On a fresh self-hosted server there are **no authenticated devices yet**, and the webapp's terminal-pairing screen (`/terminal/connect`) assumes there *is* one. Doing the steps out of order produces a "failed to connect terminal" toast. Follow this order exactly:
+A fresh self-hosted server has no accounts yet. The published CLI's
+`happy auth login` opens a webapp pairing page that *assumes you already have
+an authenticated device* — chicken-and-egg. Browsers also block fetch URLs
+with embedded credentials, strip `user:pass@` silently on some platforms, and
+cache stale `auth_credentials` in localStorage. The painless way around all of
+that is the included register script — it POSTs to `/v1/auth` once and writes
+`~/.happy/access.key` directly.
 
-1. **Open the webapp homepage** (not the terminal/connect URL) in a browser:
-   ```
-   http://<HOST>:<PUBLIC_PORT>/
-   ```
+```bash
+# Make sure ~/.happy/settings.json on this machine has serverUrl pointing
+# at your Caddy URL (with URL-encoded basic-auth password embedded).
+node scripts/happy-register.mjs
 
-2. When the browser issues a basic-auth prompt (it will on the first `/v1/*` call the webapp makes), enter the `<username>` / `<password>` from your Caddyfile. Tick "remember" so subsequent fetches re-use it.
+# Or pass the URL explicitly if settings.json isn't set up yet:
+node scripts/happy-register.mjs 'http://<username>:<url-encoded-password>@<HOST>:<PUBLIC_PORT>'
+```
 
-3. On the homepage, click **"Create Account"**. This:
-   - generates a fresh keypair in the browser
-   - posts to `/v1/auth` (the direct-registration endpoint)
-   - stores the resulting JWT + secret in browser local storage
-   - transitions the page to the authenticated home view
+What it does:
+1. Generates a fresh 32-byte NaCl seed and the matching sign keypair.
+2. Signs a random challenge with the keypair.
+3. POSTs `{publicKey, challenge, signature}` to `/v1/auth` with `Authorization: Basic …` (it splits out the URL userinfo because Node 22's fetch rejects URLs with embedded credentials).
+4. The server creates an `Account` row keyed by the public key and returns a JWT.
+5. The script writes `{secret, token}` to `~/.happy/access.key` in the legacy format the CLI expects.
 
-   Your server now has exactly one account.
+After it succeeds, `happy doctor` reports **`Authenticated`** — no browser, no webapp, no QR code.
 
-4. **Now** run `happy auth login` from any CLI machine. It opens `/terminal/connect#key=…` in the browser. Because the webapp is authenticated, the **Accept Connection** button works — clicking it encrypts the account's secret to the CLI's ephemeral key and the CLI completes the pairing.
+### Alternative: webapp pairing (only if you want it)
 
-5. The CLI prints `✓ Authentication successful` and the credentials are stored at `~/.happy/access.key`.
+If you do want to bind the CLI through the webapp (e.g. to demo the pairing
+flow), build + deploy the webapp per step 5 above, then in this exact order:
+
+1. Open `http://<HOST>:<PUBLIC_PORT>/` in a modern browser (Firefox <115 has bundle-parse issues — use Chrome or current Firefox).
+2. Complete the basic-auth dialog at the network layer.
+3. Click **"Create Account"** on the homepage. This calls `/v1/auth` directly via the webapp and stashes credentials in localStorage.
+4. Run `happy auth login` on the CLI (or set `HAPPY_WEBAPP_URL` to your `http://user:url-encoded-pass@host:port` if you're on the npm-published CLI before `1.1.11`, since that version's `webappUrl` setting isn't honored).
+5. The CLI prints a `/terminal/connect#key=…` URL — open it in the **same** browser session so the webapp's localStorage credentials are reused.
+6. Click **"Accept Connection"** (or **"Create Account & Accept"** if you skipped step 3 — that branch is in the patched terminal-connect screen).
 
 ## Putting multiple machines on the same account
 
-For headless servers where running an interactive pairing flow per machine is awkward, copy the access key from one machine that has completed pairing:
+Once any machine has `~/.happy/access.key`, copy it to every other machine to share the identity:
 
 ```bash
-# from the machine that ran `happy auth login` successfully:
 scp ~/.happy/access.key user@other-host:~/.happy/access.key
 ```
 
-After this, `happy doctor` on `other-host` reports `Authentication: Authenticated`, and `happy claude`/`codex`/`gemini` invocations register sessions to the same account.
+`happy doctor` on the other side then reports `Authentication: Authenticated`, and `happy claude`/`codex`/`gemini` invocations register sessions to the same account.
 
-**Trade-off**: every host with this key acts as the same identity on the server. Compromise of one host gives an attacker the identity on all of them. Acceptable for hosts you control; not appropriate for multi-user. For per-host revocability, pair each machine individually via step 4 above so each gets its own keypair.
+**Trade-off**: every host with this key acts as the same identity on the server. Compromise of one host gives an attacker the identity on all of them. Acceptable for hosts you control; not appropriate for multi-user. For per-host revocability, register each machine independently — just run `node scripts/happy-register.mjs` from each (each gets its own keypair, each is a separate account). Then if you want them to see each other's sessions, you'd add a friendship/sharing layer (out of scope for this guide).
 
 ## Operations
 
