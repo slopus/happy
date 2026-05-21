@@ -17,9 +17,20 @@ export const LocalSettingsSchema = z.object({
     zenMode: z.boolean().describe('Hide all sidebars and non-essential UI for focused work'),
     // CLI version acknowledgments - keyed by machineId
     acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
-    // Multiplexer state — open session ids + active id (web/desktop only)
-    multiSessionIds: z.array(z.string()).describe('Session ids currently open in the multi-session view'),
-    multiActiveId: z.string().nullable().describe('Active tab in the multi-session view'),
+    // Multiplexer state — open session ids + active id (web/desktop only).
+    // multiSessionIds/multiActiveId is the legacy single-tab shape kept for
+    // backward-compatible reads. Newer UI uses multiTabs: each tab is a named
+    // workspace holding several sessions visible in a split layout, so users
+    // can group conversations (e.g. "frontend", "infra") and switch tabs
+    // without losing the layout.
+    multiSessionIds: z.array(z.string()).describe('Legacy: session ids open in the single-tab multi-session view'),
+    multiActiveId: z.string().nullable().describe('Legacy: active session in the single-tab multi-session view'),
+    multiTabs: z.array(z.object({
+        id: z.string(),
+        name: z.string(),
+        sessionIds: z.array(z.string()),
+    })).describe('Multiplexer tabs — each is a named workspace with its own session list'),
+    multiActiveTabId: z.string().nullable().describe('Currently selected multiplexer tab id'),
 });
 
 //
@@ -48,6 +59,8 @@ export const localSettingsDefaults: LocalSettings = {
     acknowledgedCliVersions: {},
     multiSessionIds: [],
     multiActiveId: null,
+    multiTabs: [],
+    multiActiveTabId: null,
 };
 Object.freeze(localSettingsDefaults);
 
