@@ -139,6 +139,30 @@ sed -i "s|HAPPY_SRC_PLACEHOLDER|$HAPPY_SRC|g; s|HAPPY_HOME_DIR_PLACEHOLDER|$HAPP
 chmod +x "$HOME/bin/start-happy-server.sh"
 
 # --- Caddyfile
+# Optional HTTPS port — set HAPPY_TLS_PORT and HAPPY_TLS_HOST to enable.
+# HAPPY_TLS_HOST must match how clients address the server (IP or DNS name)
+# because Caddy issues the self-signed cert for that exact identifier.
+TLS_BLOCK=""
+if [ -n "${HAPPY_TLS_PORT:-}" ] && [ -n "${HAPPY_TLS_HOST:-}" ]; then
+    TLS_BLOCK=$(cat <<TLS
+# HTTPS on $HAPPY_TLS_PORT — gives browsers a secure context so
+# window.crypto.subtle is defined and the authenticated webapp works
+# without an SSH tunnel. Self-signed cert; clients accept once.
+https://$HAPPY_TLS_HOST:$HAPPY_TLS_PORT {
+    tls internal
+    @auth path /v1/auth /v1/auth/* /v1/auth/request /v1/auth/account/request /v1/auth/account/response /v1/auth/request/status
+    basic_auth @auth {
+        $HAPPY_BASIC_AUTH_USER $HAPPY_BASIC_AUTH_PASS_BCRYPT
+    }
+    reverse_proxy 127.0.0.1:3005 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+    }
+}
+TLS
+)
+fi
+
 cat > "$HOME/.caddy/Caddyfile" <<CADDYFILE
 {
     admin off
@@ -146,6 +170,7 @@ cat > "$HOME/.caddy/Caddyfile" <<CADDYFILE
     auto_https disable_redirects
 }
 
+# Plain HTTP — CLI, mobile, and (for browser) only via SSH-tunneled localhost.
 http://:$HAPPY_PUBLIC_PORT {
     @auth path /v1/auth /v1/auth/* /v1/auth/request /v1/auth/account/request /v1/auth/account/response /v1/auth/request/status
     basic_auth @auth {
@@ -156,6 +181,7 @@ http://:$HAPPY_PUBLIC_PORT {
         header_up X-Real-IP {remote_host}
     }
 }
+$TLS_BLOCK
 CADDYFILE
 
 # --- Prisma migrate
@@ -167,10 +193,14 @@ hl "(Re)starting happy-server and Caddy in tmux..."
 tmux kill-session -t happy-server 2>/dev/null || true
 tmux kill-session -t happy-caddy  2>/dev/null || true
 pkill -f 'caddy run' 2>/dev/null || true
-sleep 1
+sleep 2
 
 tmux new-session -d -s happy-server "$HOME/bin/start-happy-server.sh 2>&1 | tee $HAPPY_HOME_DIR/server.log"
-tmux new-session -d -s happy-caddy  "cd ~/.caddy && $HOME/bin/caddy run --config Caddyfile 2>&1 | tee ~/.caddy/caddy.log"
+# Caddy via nohup, not tmux — tmux session was being garbage-collected when
+# the ssh that launched it exited, taking Caddy down with it. nohup keeps
+# Caddy detached even when the parent shell goes.
+cd "$HOME/.caddy" && nohup "$HOME/bin/caddy" run --config Caddyfile > "$HOME/.caddy/caddy.log" 2>&1 < /dev/null &
+disown
 sleep 4
 
 green "✓ happy-server + Caddy started in tmux."
