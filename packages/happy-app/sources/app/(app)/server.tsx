@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, TextInput, KeyboardAvoidingView, Platform, Switch } from 'react-native';
+import { Stack } from 'expo-router';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -10,6 +10,12 @@ import { Modal } from '@/modal';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { getServerUrl, setServerUrl, validateServerUrl, getServerInfo } from '@/sync/serverConfig';
+import {
+    ServerCredentialsStore,
+    inlineCredentials,
+    stripCredentials,
+    extractCredentials,
+} from '@/sync/serverCredentialsStore';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -73,42 +79,94 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         textAlign: 'center',
     },
+    toggleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        marginTop: 4,
+        marginBottom: 8,
+    },
+    toggleLabel: {
+        flex: 1,
+        ...Typography.default(),
+        fontSize: 14,
+        color: theme.colors.text,
+    },
+    toggleHint: {
+        ...Typography.default(),
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        marginBottom: 12,
+    },
 }));
 
 export default function ServerConfigScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    const router = useRouter();
     const serverInfo = getServerInfo();
-    const [inputUrl, setInputUrl] = useState(serverInfo.isCustom ? getServerUrl() : '');
+
+    // Strip any inlined credentials from the displayed URL — they live in
+    // the user/pass fields below.
+    const initialDisplayUrl = useMemo(
+        () => (serverInfo.isCustom ? stripCredentials(getServerUrl()) : ''),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        []
+    );
+
+    const [inputUrl, setInputUrl] = useState(initialDisplayUrl);
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [rememberCreds, setRememberCreds] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isValidating, setIsValidating] = useState(false);
 
-    const validateServer = async (url: string): Promise<boolean> => {
+    // On mount: re-hydrate credentials from secure store; fall back to ones
+    // inlined in the current serverUrl. Either way, switch the toggle on if
+    // we found anything stored.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const fromStore = await ServerCredentialsStore.get();
+            if (cancelled) return;
+            if (fromStore) {
+                setUsername(fromStore.username);
+                setPassword(fromStore.password);
+                setRememberCreds(true);
+                return;
+            }
+            // Best-effort: parse credentials currently inlined in MMKV URL
+            const fromUrl = extractCredentials(getServerUrl());
+            if (fromUrl) {
+                setUsername(fromUrl.username);
+                setPassword(fromUrl.password);
+                // Default off if we found them in the URL — user hasn't
+                // explicitly opted into secure storage yet.
+                setRememberCreds(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    const validateServer = async (composedUrl: string): Promise<boolean> => {
         try {
             setIsValidating(true);
             setError(null);
-            
-            const response = await fetch(url, {
+            const response = await fetch(composedUrl, {
                 method: 'GET',
-                headers: {
-                    'Accept': 'text/plain'
-                }
+                headers: { 'Accept': 'text/plain' },
             });
-            
             if (!response.ok) {
                 setError(t('server.serverReturnedError'));
                 return false;
             }
-            
             const text = await response.text();
             if (!text.includes('Welcome to Happy Server!')) {
                 setError(t('server.notValidHappyServer'));
                 return false;
             }
-            
             return true;
-        } catch (err) {
+        } catch {
             setError(t('server.failedToConnectToServer'));
             return false;
         } finally {
@@ -121,27 +179,35 @@ export default function ServerConfigScreen() {
             Modal.alert(t('common.error'), t('server.enterServerUrl'));
             return;
         }
-
         const validation = validateServerUrl(inputUrl);
         if (!validation.valid) {
             setError(validation.error || t('errors.invalidFormat'));
             return;
         }
 
-        // Validate the server
-        const isValid = await validateServer(inputUrl);
-        if (!isValid) {
-            return;
-        }
+        const creds = (username.trim() && password.length > 0)
+            ? { username: username.trim(), password }
+            : null;
+        const composed = inlineCredentials(inputUrl.trim(), creds);
+
+        const isValid = await validateServer(composed);
+        if (!isValid) return;
 
         const confirmed = await Modal.confirm(
             t('server.changeServer'),
             t('server.continueWithServer'),
             { confirmText: t('common.continue'), destructive: true }
         );
+        if (!confirmed) return;
 
-        if (confirmed) {
-            setServerUrl(inputUrl);
+        setServerUrl(composed);
+
+        if (creds && rememberCreds) {
+            await ServerCredentialsStore.set(creds);
+        } else {
+            // User unchecked the toggle (or has no creds) — purge any
+            // previously-saved credentials from the keychain.
+            await ServerCredentialsStore.clear();
         }
     };
 
@@ -151,11 +217,13 @@ export default function ServerConfigScreen() {
             t('server.resetServerDefault'),
             { confirmText: t('common.reset'), destructive: true }
         );
-
-        if (confirmed) {
-            setServerUrl(null);
-            setInputUrl('');
-        }
+        if (!confirmed) return;
+        setServerUrl(null);
+        await ServerCredentialsStore.clear();
+        setInputUrl('');
+        setUsername('');
+        setPassword('');
+        setRememberCreds(false);
     };
 
     return (
@@ -168,7 +236,7 @@ export default function ServerConfigScreen() {
                 }}
             />
 
-            <KeyboardAvoidingView 
+            <KeyboardAvoidingView
                 style={styles.keyboardAvoidingView}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             >
@@ -179,13 +247,10 @@ export default function ServerConfigScreen() {
                             <TextInput
                                 style={[
                                     styles.textInput,
-                                    isValidating && styles.textInputValidating
+                                    isValidating && styles.textInputValidating,
                                 ]}
                                 value={inputUrl}
-                                onChangeText={(text) => {
-                                    setInputUrl(text);
-                                    setError(null);
-                                }}
+                                onChangeText={(text) => { setInputUrl(text); setError(null); }}
                                 placeholder={t('common.urlPlaceholder')}
                                 placeholderTextColor={theme.colors.input.placeholder}
                                 autoCapitalize="none"
@@ -193,16 +258,47 @@ export default function ServerConfigScreen() {
                                 keyboardType="url"
                                 editable={!isValidating}
                             />
-                            {error && (
-                                <Text style={styles.errorText}>
-                                    {error}
-                                </Text>
-                            )}
-                            {isValidating && (
-                                <Text style={styles.validatingText}>
-                                    {t('server.validatingServer')}
-                                </Text>
-                            )}
+                            {error && <Text style={styles.errorText}>{error}</Text>}
+                            {isValidating && <Text style={styles.validatingText}>{t('server.validatingServer')}</Text>}
+                        </View>
+                    </ItemGroup>
+
+                    <ItemGroup footer={t('server.basicAuthFooter')}>
+                        <View style={styles.contentContainer}>
+                            <Text style={styles.labelText}>{t('server.basicAuthLabel').toUpperCase()}</Text>
+                            <TextInput
+                                style={[styles.textInput, isValidating && styles.textInputValidating]}
+                                value={username}
+                                onChangeText={setUsername}
+                                placeholder={t('server.usernameLabel')}
+                                placeholderTextColor={theme.colors.input.placeholder}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                editable={!isValidating}
+                                textContentType="username"
+                            />
+                            <TextInput
+                                style={[styles.textInput, isValidating && styles.textInputValidating]}
+                                value={password}
+                                onChangeText={setPassword}
+                                placeholder={t('server.passwordLabel')}
+                                placeholderTextColor={theme.colors.input.placeholder}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                secureTextEntry
+                                editable={!isValidating}
+                                textContentType="password"
+                            />
+                            <View style={styles.toggleRow}>
+                                <Text style={styles.toggleLabel}>{t('server.rememberCredentials')}</Text>
+                                <Switch
+                                    value={rememberCreds}
+                                    onValueChange={setRememberCreds}
+                                    disabled={isValidating}
+                                />
+                            </View>
+                            <Text style={styles.toggleHint}>{t('server.rememberCredentialsHint')}</Text>
+
                             <View style={styles.buttonRow}>
                                 <View style={styles.buttonWrapper}>
                                     <RoundButton
@@ -228,8 +324,7 @@ export default function ServerConfigScreen() {
                             )}
                         </View>
                     </ItemGroup>
-
-                    </ItemList>
+                </ItemList>
             </KeyboardAvoidingView>
         </>
     );

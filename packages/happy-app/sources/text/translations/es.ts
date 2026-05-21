@@ -118,6 +118,8 @@ export const es: TranslationStructure = {
         voiceAssistantSubtitle: 'Configura las preferencias de voz',
         featuresTitle: 'Características',
         featuresSubtitle: 'Habilitar o deshabilitar funciones de la aplicación',
+        serverSettings: 'Server',
+        serverSettingsSubtitle: 'Custom happy server + basic-auth credentials',
         developer: 'Desarrollador',
         developerTools: 'Herramientas de desarrollador',
         about: 'Acerca de',
@@ -331,7 +333,14 @@ export const es: TranslationStructure = {
         failedToConnectToServer: 'Falló al conectar con el servidor',
         currentlyUsingCustomServer: 'Actualmente usando servidor personalizado',
         customServerUrlLabel: 'URL del servidor personalizado',
-        advancedFeatureFooter: 'Esta es una característica avanzada. Solo cambia el servidor si sabes lo que haces. Necesitarás cerrar sesión e iniciarla nuevamente después de cambiar servidores.'
+        advancedFeatureFooter: 'Esta es una característica avanzada. Solo cambia el servidor si sabes lo que haces. Necesitarás cerrar sesión e iniciarla nuevamente después de cambiar servidores.',
+        basicAuthLabel: 'HTTP Basic Auth (optional)',
+        basicAuthFooter: 'Required when your server is gated by a reverse proxy that demands basic auth (e.g. Caddy/Nginx). Leave empty otherwise.',
+        usernameLabel: 'Username',
+        passwordLabel: 'Password',
+        rememberCredentials: 'Remember credentials securely',
+        rememberCredentialsHint: "Stores username + password in your device keychain so you don't have to re-enter them.",
+        credentialsCleared: 'Saved credentials were cleared.'
     },
 
     sessionInfo: {

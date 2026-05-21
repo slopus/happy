@@ -120,6 +120,8 @@ export const zhHans: TranslationStructure = {
         voiceAssistantSubtitle: '配置语音交互偏好',
         featuresTitle: '功能',
         featuresSubtitle: '启用或禁用应用功能',
+        serverSettings: 'Server',
+        serverSettingsSubtitle: 'Custom happy server + basic-auth credentials',
         developer: '开发者',
         developerTools: '开发者工具',
         about: '关于',
@@ -332,7 +334,14 @@ export const zhHans: TranslationStructure = {
         failedToConnectToServer: '连接服务器失败',
         currentlyUsingCustomServer: '当前使用自定义服务器',
         customServerUrlLabel: '自定义服务器 URL',
-        advancedFeatureFooter: "这是一个高级功能。只有在您知道自己在做什么时才更改服务器。更改服务器后您需要重新登录。"
+        advancedFeatureFooter: "这是一个高级功能。只有在您知道自己在做什么时才更改服务器。更改服务器后您需要重新登录。",
+        basicAuthLabel: 'HTTP Basic Auth (optional)',
+        basicAuthFooter: 'Required when your server is gated by a reverse proxy that demands basic auth (e.g. Caddy/Nginx). Leave empty otherwise.',
+        usernameLabel: 'Username',
+        passwordLabel: 'Password',
+        rememberCredentials: 'Remember credentials securely',
+        rememberCredentialsHint: "Stores username + password in your device keychain so you don't have to re-enter them.",
+        credentialsCleared: 'Saved credentials were cleared.'
     },
 
     sessionInfo: {

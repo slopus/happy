@@ -120,6 +120,8 @@ export const ja: TranslationStructure = {
         voiceAssistantSubtitle: '音声操作の設定',
         featuresTitle: '機能',
         featuresSubtitle: 'アプリ機能の有効/無効を切り替え',
+        serverSettings: 'Server',
+        serverSettingsSubtitle: 'Custom happy server + basic-auth credentials',
         developer: '開発者',
         developerTools: '開発者ツール',
         about: 'このアプリについて',
@@ -332,7 +334,14 @@ export const ja: TranslationStructure = {
         failedToConnectToServer: 'サーバーへの接続に失敗しました',
         currentlyUsingCustomServer: '現在カスタムサーバーを使用中',
         customServerUrlLabel: 'カスタムサーバーURL',
-        advancedFeatureFooter: "これは高度な機能です。何をしているか理解している場合のみサーバーを変更してください。サーバー変更後は再度ログインが必要です。"
+        advancedFeatureFooter: "これは高度な機能です。何をしているか理解している場合のみサーバーを変更してください。サーバー変更後は再度ログインが必要です。",
+        basicAuthLabel: 'HTTP Basic Auth (optional)',
+        basicAuthFooter: 'Required when your server is gated by a reverse proxy that demands basic auth (e.g. Caddy/Nginx). Leave empty otherwise.',
+        usernameLabel: 'Username',
+        passwordLabel: 'Password',
+        rememberCredentials: 'Remember credentials securely',
+        rememberCredentialsHint: "Stores username + password in your device keychain so you don't have to re-enter them.",
+        credentialsCleared: 'Saved credentials were cleared.'
     },
 
     sessionInfo: {

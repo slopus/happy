@@ -105,6 +105,8 @@ export const ru: TranslationStructure = {
         voiceAssistantSubtitle: 'Настройка предпочтений голосового взаимодействия',
         featuresTitle: 'Возможности',
         featuresSubtitle: 'Включить или отключить функции приложения',
+        serverSettings: 'Server',
+        serverSettingsSubtitle: 'Custom happy server + basic-auth credentials',
         developer: 'Разработчик',
         developerTools: 'Инструменты разработчика',
         about: 'О программе',
@@ -289,7 +291,14 @@ export const ru: TranslationStructure = {
         failedToConnectToServer: 'Не удалось подключиться к серверу',
         currentlyUsingCustomServer: 'Сейчас используется пользовательский сервер',
         customServerUrlLabel: 'URL пользовательского сервера',
-        advancedFeatureFooter: 'Это расширенная функция. Изменяйте сервер только если знаете, что делаете. Вам нужно будет выйти и войти снова после изменения серверов.'
+        advancedFeatureFooter: 'Это расширенная функция. Изменяйте сервер только если знаете, что делаете. Вам нужно будет выйти и войти снова после изменения серверов.',
+        basicAuthLabel: 'HTTP Basic Auth (optional)',
+        basicAuthFooter: 'Required when your server is gated by a reverse proxy that demands basic auth (e.g. Caddy/Nginx). Leave empty otherwise.',
+        usernameLabel: 'Username',
+        passwordLabel: 'Password',
+        rememberCredentials: 'Remember credentials securely',
+        rememberCredentialsHint: "Stores username + password in your device keychain so you don't have to re-enter them.",
+        credentialsCleared: 'Saved credentials were cleared.'
     },
 
     sessionInfo: {

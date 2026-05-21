@@ -117,6 +117,8 @@ export const en = {
         voiceAssistantSubtitle: 'Configure voice interaction preferences',
         featuresTitle: 'Features',
         featuresSubtitle: 'Enable or disable app features',
+        serverSettings: 'Server',
+        serverSettingsSubtitle: 'Custom happy server + basic-auth credentials',
         developer: 'Developer',
         developerTools: 'Developer Tools',
         about: 'About',
@@ -345,7 +347,14 @@ export const en = {
         failedToConnectToServer: 'Failed to connect to server',
         currentlyUsingCustomServer: 'Currently using custom server',
         customServerUrlLabel: 'Custom Server URL',
-        advancedFeatureFooter: "This is an advanced feature. Only change the server if you know what you're doing. You will need to log out and log in again after changing servers."
+        advancedFeatureFooter: "This is an advanced feature. Only change the server if you know what you're doing. You will need to log out and log in again after changing servers.",
+        basicAuthLabel: 'HTTP Basic Auth (optional)',
+        basicAuthFooter: 'Required when your server is gated by a reverse proxy that demands basic auth (e.g. Caddy/Nginx). Leave empty otherwise.',
+        usernameLabel: 'Username',
+        passwordLabel: 'Password',
+        rememberCredentials: 'Remember credentials securely',
+        rememberCredentialsHint: 'Stores username + password in your device keychain so you don\'t have to re-enter them.',
+        credentialsCleared: 'Saved credentials were cleared.',
     },
 
     sessionInfo: {

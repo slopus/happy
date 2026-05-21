@@ -339,6 +339,12 @@ export const SettingsView = React.memo(function SettingsView() {
                     icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
                     onPress={() => router.push('/settings/features')}
                 />
+                <Item
+                    title={t('settings.serverSettings')}
+                    subtitle={isCustomServer ? t('server.currentlyUsingCustomServer') : t('settings.serverSettingsSubtitle')}
+                    icon={<Ionicons name="server-outline" size={29} color="#8E8E93" />}
+                    onPress={() => router.push('/server')}
+                />
                 {experiments && (
                     <Item
                         title={t('settings.usage')}
