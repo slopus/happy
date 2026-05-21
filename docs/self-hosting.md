@@ -1,0 +1,366 @@
+# Self-hosting happy on a single Linux box
+
+This guide walks through standing up the happy backend on one Linux host, gating it behind a reverse proxy with HTTP basic auth, and configuring the CLI + web client to use it. It's deliberately scoped to a *single-box* deployment — for production-grade infrastructure see `docs/deployment.md`.
+
+The approach trades the convenience of the maintainers' public server for:
+
+- Sessions never leave your hosts unencrypted (already true via E2E encryption, but the server is yours too)
+- No third-party SaaS in the path
+- A scoped credential per client (basic-auth password) rather than spreading SSH keys
+
+## Architecture
+
+```
+   ┌─────────────────────────────────────────┐
+   │  Linux host (the "server box")          │
+   │                                         │
+   │  ┌─────────┐   loopback   ┌──────────┐  │
+   │  │ Caddy   │ ───────────► │ happy-   │  │
+   │  │ :PUBLIC │              │ server   │  │
+   │  │         │              │ :3005    │  │
+   │  └────▲────┘              └────┬─────┘  │
+   │       │                        │        │
+   │       │                  pglite (embedded postgres)
+   │       │                        │        │
+   │       │                  ~/.happy/server-data/
+   │       │                                  │
+   └───────┼──────────────────────────────────┘
+           │
+           │ HTTP/WS on :PUBLIC
+           │
+   ┌───────┴────────┐  ┌───────────────┐  ┌────────────┐
+   │  Local PC      │  │  Remote VMs   │  │  Browser   │
+   │  happy CLI     │  │  happy CLI    │  │  webapp    │
+   └────────────────┘  └───────────────┘  └────────────┘
+```
+
+Two processes on the server:
+- **happy-server** (Fastify + Socket.IO) bound to **127.0.0.1:3005** — never reachable from outside
+- **Caddy** bound to **0.0.0.0:`<PUBLIC_PORT>`** — basic-auth gate in front of `/v1/*` paths, transparent for `/socket.io/*` and the webapp static files
+
+**Why basic auth on `/v1/*` only and not everything?** `socket.io-client` does not honor `user:pass@host` URL userinfo on its polling/WebSocket requests (verified empirically — it doesn't carry an Authorization header). Gating the entire origin would break realtime sync. The server still requires a JWT on socket connections, and JWTs are only issued via the basic-auth-gated `/v1/auth*` paths, so the net effect is equivalent to fully gating: no basic-auth credentials → no JWT → no socket connection.
+
+## Server-side setup
+
+### Prerequisites
+
+- Linux host, your user has SSH access. Sudo *only* needed once, to open a firewall port.
+- Node.js 20+ (install via `nvm`, system package, or [official tarball](https://nodejs.org/dist/) into `~/local`)
+- `git`, `curl`, `tmux` (or `systemd` user units)
+- Optional: Docker, only if you want to run the server in a container instead
+
+### 1. Clone the repository and install deps
+
+```bash
+cd ~/code   # or wherever you keep checkouts
+git clone https://github.com/slopus/happy.git
+cd happy
+
+# enable pnpm via corepack (ships with Node 20+)
+corepack enable
+corepack prepare pnpm@latest --activate
+
+pnpm install --frozen-lockfile
+```
+
+### 2. Generate a master secret
+
+This signs the server's JWTs and encrypts service-account tokens at rest. **Keep it secret, keep it stable.** Rotating it invalidates every issued JWT.
+
+```bash
+openssl rand -hex 32
+```
+
+### 3. Write the server env file
+
+```bash
+mkdir -p ~/.happy/server-data
+cat > ~/.happy/server.env <<'EOF'
+DB_PROVIDER=pglite
+HANDY_MASTER_SECRET=<paste the hex output from step 2>
+PORT=3005
+HOST=127.0.0.1
+DATA_DIR=/home/<your-user>/.happy/server-data
+PGLITE_DIR=/home/<your-user>/.happy/server-data/pglite
+NODE_ENV=production
+METRICS_ENABLED=false
+EOF
+chmod 600 ~/.happy/server.env
+```
+
+### 4. Run migrations + start the server
+
+```bash
+cd packages/happy-server
+pnpm exec tsx --env-file=$HOME/.happy/server.env ./sources/standalone.ts migrate
+```
+
+Wrap the serve command in a tmux session (or a systemd user service) so it survives SSH disconnects:
+
+```bash
+cat > ~/bin/start-happy-server.sh <<'EOF'
+#!/usr/bin/env bash
+set -e
+# load your Node manager if needed
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+cd $HOME/code/happy/packages/happy-server
+exec pnpm exec tsx --env-file=$HOME/.happy/server.env ./sources/standalone.ts serve
+EOF
+chmod +x ~/bin/start-happy-server.sh
+
+tmux new-session -d -s happy-server '~/bin/start-happy-server.sh 2>&1 | tee ~/.happy/server.log'
+```
+
+Verify with `curl http://127.0.0.1:3005/` — you should see `Welcome to Happy Server!`.
+
+### 5. Build the webapp (so it can be served from your host)
+
+```bash
+cd ~/code/happy/packages/happy-app
+pnpm exec expo export --platform web --output-dir dist
+```
+
+This produces `dist/` with `index.html` + bundled assets. Tell the server to serve them by adding two lines to `~/.happy/server.env` and **restarting** the tmux session:
+
+```bash
+HAPPY_STATIC_DIR=/home/<your-user>/code/happy/packages/happy-app/dist
+HAPPY_INJECT_HTML_CONFIG={"serverUrl":"https://<your-public-domain-or-ip>:<PUBLIC_PORT>"}
+```
+
+The `HAPPY_INJECT_HTML_CONFIG` value is injected as `window.__HAPPY_CONFIG__` into `index.html` so the bundled webapp knows where to call the API. It should match the public URL clients use — *not* `127.0.0.1:3005`. **Do not include credentials in this URL**; the webapp would expose them to anyone who fetches the HTML.
+
+### 6. Set up Caddy reverse proxy with basic auth
+
+Install Caddy (user-space binary works, no sudo for install):
+
+```bash
+mkdir -p ~/bin ~/.caddy
+curl -sSL -o /tmp/caddy.tar.gz \
+  https://github.com/caddyserver/caddy/releases/download/v2.8.4/caddy_2.8.4_linux_amd64.tar.gz
+tar xzf /tmp/caddy.tar.gz -C ~/bin caddy
+chmod +x ~/bin/caddy
+```
+
+Generate a strong password and bcrypt-hash it:
+
+```bash
+PASS=$(openssl rand -base64 24)
+echo "PASS=$PASS"          # save this for clients
+~/bin/caddy hash-password --plaintext "$PASS"
+```
+
+Write the Caddyfile:
+
+```caddyfile
+{
+    auto_https off
+    admin off
+}
+
+:<PUBLIC_PORT> {
+    @api path /v1/* /v1
+
+    basic_auth @api {
+        <username> <bcrypt-hash-from-above>
+    }
+
+    reverse_proxy 127.0.0.1:3005 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+    }
+}
+```
+
+Validate + run:
+
+```bash
+~/bin/caddy validate --config ~/.caddy/Caddyfile --adapter caddyfile
+tmux new-session -d -s happy-caddy '~/bin/caddy run --config ~/.caddy/Caddyfile 2>&1 | tee ~/.caddy/caddy.log'
+```
+
+### 7. Open the firewall
+
+`<PUBLIC_PORT>` won't be reachable from outside until you open it. If you're using UFW:
+
+```bash
+sudo ufw allow <PUBLIC_PORT>/tcp
+sudo ufw status
+```
+
+**Common gotcha on Ubuntu 20.04+ with iptables-nft backend:** `ufw allow` may fail with `iptables v1.8.7 (nf_tables): Could not fetch rule set generation id`. Fix:
+
+```bash
+sudo update-alternatives --set iptables /usr/sbin/iptables-legacy
+sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+sudo ufw disable && sudo ufw enable
+sudo ufw allow <PUBLIC_PORT>/tcp
+```
+
+### 8. Smoke-test from a remote machine
+
+```bash
+curl -sS -o /dev/null -w 'no-auth: %{http_code}\n' \
+  http://<HOST>:<PUBLIC_PORT>/v1/auth -X POST
+# expect: 401
+
+curl -sS -o /dev/null -w 'with-auth: %{http_code}\n' \
+  -u '<username>:<password>' \
+  http://<HOST>:<PUBLIC_PORT>/v1/auth -X POST \
+  -H 'Content-Type: application/json' -d '{}'
+# expect: 400 (Caddy passed; happy-server rejected empty body — fine)
+
+curl -sS -o /dev/null -w 'webapp: %{http_code}\n' \
+  http://<HOST>:<PUBLIC_PORT>/
+# expect: 200 (the webapp index.html, ungated)
+```
+
+If all three are as expected, the server is ready to accept clients.
+
+### 9. (Optional) Add TLS
+
+For anything that crosses an untrusted network, terminate TLS at Caddy. Easiest path is a public DNS name pointed at the host plus port 80/443 open:
+
+```caddyfile
+your.domain.tld {
+    @api path /v1/* /v1
+    basic_auth @api {
+        <username> <bcrypt-hash>
+    }
+    reverse_proxy 127.0.0.1:3005
+}
+```
+
+Caddy auto-provisions a Let's Encrypt cert. Drop the `auto_https off` global from the previous Caddyfile.
+
+For internal-only deployments without a public domain, use `tls internal` and accept the self-signed CA trust on each client.
+
+## Client-side setup
+
+### Install the CLI (per machine)
+
+Stick to the version that ships the `happy server` subcommand we used for bundled webapp lookups:
+
+```bash
+npm install -g happy@1.1.10-beta.4
+happy --version   # 1.1.10-beta.4
+```
+
+If `npm install -g` fails for permission reasons (system Node), point npm at a user-writable prefix:
+
+```bash
+mkdir -p ~/.npm-global
+npm config set prefix ~/.npm-global
+echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.bashrc   # or .zshrc
+```
+
+### Point the CLI at your server
+
+Write `~/.happy/settings.json` (Windows: `%USERPROFILE%\.happy\settings.json`):
+
+```json
+{
+  "schemaVersion": 2,
+  "onboardingCompleted": false,
+  "serverUrl": "http://<username>:<url-encoded-password>@<HOST>:<PUBLIC_PORT>",
+  "webappUrl": "http://<username>:<url-encoded-password>@<HOST>:<PUBLIC_PORT>"
+}
+```
+
+**URL-encode the password** if it contains `/`, `+`, `=`, `:`, `@`, etc.:
+
+```
+/  →  %2F
++  →  %2B
+=  →  %3D
+```
+
+The CLI uses `serverUrl` for HTTP+WebSocket; `webappUrl` is what `happy auth login` opens in your browser.
+
+Verify with `happy doctor` — you should see the URL echoed back under `Server URL:`.
+
+**On the server box itself**, the CLI can bypass Caddy and talk to the loopback server directly:
+
+```json
+{
+  "serverUrl": "http://127.0.0.1:3005",
+  "webappUrl": "http://127.0.0.1:3005"
+}
+```
+
+## First-time bootstrap order (the chicken-and-egg)
+
+On a fresh self-hosted server there are **no authenticated devices yet**, and the webapp's terminal-pairing screen (`/terminal/connect`) assumes there *is* one. Doing the steps out of order produces a "failed to connect terminal" toast. Follow this order exactly:
+
+1. **Open the webapp homepage** (not the terminal/connect URL) in a browser:
+   ```
+   http://<HOST>:<PUBLIC_PORT>/
+   ```
+
+2. When the browser issues a basic-auth prompt (it will on the first `/v1/*` call the webapp makes), enter the `<username>` / `<password>` from your Caddyfile. Tick "remember" so subsequent fetches re-use it.
+
+3. On the homepage, click **"Create Account"**. This:
+   - generates a fresh keypair in the browser
+   - posts to `/v1/auth` (the direct-registration endpoint)
+   - stores the resulting JWT + secret in browser local storage
+   - transitions the page to the authenticated home view
+
+   Your server now has exactly one account.
+
+4. **Now** run `happy auth login` from any CLI machine. It opens `/terminal/connect#key=…` in the browser. Because the webapp is authenticated, the **Accept Connection** button works — clicking it encrypts the account's secret to the CLI's ephemeral key and the CLI completes the pairing.
+
+5. The CLI prints `✓ Authentication successful` and the credentials are stored at `~/.happy/access.key`.
+
+## Putting multiple machines on the same account
+
+For headless servers where running an interactive pairing flow per machine is awkward, copy the access key from one machine that has completed pairing:
+
+```bash
+# from the machine that ran `happy auth login` successfully:
+scp ~/.happy/access.key user@other-host:~/.happy/access.key
+```
+
+After this, `happy doctor` on `other-host` reports `Authentication: Authenticated`, and `happy claude`/`codex`/`gemini` invocations register sessions to the same account.
+
+**Trade-off**: every host with this key acts as the same identity on the server. Compromise of one host gives an attacker the identity on all of them. Acceptable for hosts you control; not appropriate for multi-user. For per-host revocability, pair each machine individually via step 4 above so each gets its own keypair.
+
+## Operations
+
+### Restart server / proxy
+
+```bash
+ssh <server> "tmux kill-session -t happy-server && tmux new-session -d -s happy-server '~/bin/start-happy-server.sh 2>&1 | tee ~/.happy/server.log'"
+ssh <server> "tmux kill-session -t happy-caddy && tmux new-session -d -s happy-caddy '~/bin/caddy run --config ~/.caddy/Caddyfile 2>&1 | tee ~/.caddy/caddy.log'"
+```
+
+For production prefer systemd user services with `Restart=on-failure` over tmux.
+
+### Rotate the basic-auth password
+
+1. Generate new password + bcrypt hash with `caddy hash-password`
+2. Replace the hash in `~/.caddy/Caddyfile`
+3. Reload Caddy: `tmux send-keys -t happy-caddy C-c` + restart (or `caddy reload`)
+4. Update each client's `settings.json` with the new URL-encoded password
+
+### Switch back to the maintainers' public server
+
+Delete `~/.happy/settings.json` (or remove the `serverUrl` / `webappUrl` keys). The CLI falls back to `https://api.cluster-fluster.com` and `https://app.happy.engineering`. Your local `~/.happy/access.key` is bound to *your self-hosted server's account* though — log out (`happy auth logout`) and pair fresh against the public server.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `happy auth login` opens browser → "failed to connect terminal" | Webapp isn't authenticated yet — `/terminal/connect` requires an existing account | Open the homepage `/` first, click **Create Account**, then re-run `happy auth login` |
+| Browser prompt: "site asks for username and password" repeatedly | Browser isn't caching basic-auth credentials for the origin | Some browsers don't cache cross-tab — visit `/` once, complete the prompt, leave the tab open before triggering CLI auth |
+| `with-auth` curl returns 401 instead of 400 | Wrong password / wrong base64 of the bcrypt | Re-run `caddy hash-password`, paste exact output into Caddyfile, restart Caddy |
+| `with-auth` curl returns 400 (good) but CLI still 401s | Password not URL-encoded properly in `settings.json` | `/ → %2F`, `+ → %2B`, `= → %3D`. Use `encodeURIComponent` in Node to verify |
+| Realtime sync fails / sockets disconnect immediately | Caddy basic-auth might be gating `/socket.io/*` | Confirm Caddyfile gates only `/v1/*` paths — sockets must pass through ungated |
+| Server logs report Prisma migration errors after upgrade | `pnpm exec tsx ./sources/standalone.ts migrate` not re-run after pulling | Re-run migrate, then restart serve |
+| `sudo ufw allow` fails with `iptables-nft` error | Kernel/iptables backend mismatch | Switch iptables to legacy (see step 7) |
+| Non-interactive `ssh host "cmd"` returns no output | Shell init script (e.g., `.zshrc`) silently exec's another shell or redirects stdout | Pipe via stdin: `echo 'cmd' \| ssh -T -x -o BatchMode=yes host` |
+
+## Related docs
+
+- [`docs/deployment.md`](deployment.md) — production deployment with external Postgres + Redis + S3 + Kubernetes manifests
+- [`docs/encryption.md`](encryption.md) — how E2E encryption and the master secret interact
+- [`docs/user-identity.md`](user-identity.md) — how a single account is bound across CLIs, mobile, and external services
