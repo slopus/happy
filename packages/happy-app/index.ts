@@ -4,22 +4,31 @@
  * `localStorage.auth_credentials` so the desktop app launches against the
  * self-hosted server with the user's identity.
  *
- * The Tauri read is fire-and-forget *in parallel* with React boot — using
- * await on it (or dynamic-importing expo-router/entry behind it) caused
- * Metro's web bundler to ship a never-resolving promise, leaving a blank
- * white screen. With the parallel pattern: the seed lands within ~50ms (Tauri
- * invoke is fast), well before serverConfig.ts is touched for the first
- * authenticated API call.
+ * The bootstrap is exposed as `globalThis.__HAPPY_TAURI_BOOTSTRAP__`; RootLayout
+ * awaits it before reading credentials / connecting the socket. Without that
+ * await, syncRestore() raced the bootstrap, called getServerUrl() before the
+ * Tauri-supplied URL landed, and connected to the public default server —
+ * which 401s for self-hosted accounts and leaves the UI spinning forever.
+ *
+ * We still don't `await` the bootstrap at module scope: dynamic-importing
+ * 'expo-router/entry' behind the same await caused Metro's web bundler to
+ * ship a never-resolving chunk (white screen). The promise pattern keeps the
+ * React tree statically importable while letting the layout effect block on
+ * config readiness.
  */
 
 import './sources/polyfills/screenOrientation';
 import './sources/unistyles';
 
+declare global {
+    var __HAPPY_TAURI_BOOTSTRAP__: Promise<void> | undefined;
+}
+
 if (
     typeof window !== 'undefined' &&
     (window as any).__TAURI_INTERNALS__ !== undefined
 ) {
-    import('@tauri-apps/api/core')
+    (globalThis as any).__HAPPY_TAURI_BOOTSTRAP__ = import('@tauri-apps/api/core')
         .then(({ invoke }) =>
             invoke<{
                 server_url?: string;
@@ -40,7 +49,9 @@ if (
                 }
             }
         })
-        .catch((e) => console.warn('[happy-bootstrap] Tauri config read skipped:', e));
+        .catch((e) => {
+            console.warn('[happy-bootstrap] Tauri config read skipped:', e);
+        });
 }
 
 import 'expo-router/entry';

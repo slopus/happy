@@ -236,6 +236,16 @@ export default function RootLayout() {
                 await loadFonts();
                 await sodium.ready;
 
+                // Tauri build seeds __HAPPY_CONFIG__.serverUrl + localStorage
+                // auth_credentials asynchronously from ~/.happy/. Wait for it
+                // so getCredentials() and getServerUrl() see the self-hosted
+                // values; otherwise syncRestore() raced the bootstrap and
+                // connected to the public default server, 401ing forever.
+                const bootstrap = (globalThis as any).__HAPPY_TAURI_BOOTSTRAP__ as Promise<void> | undefined;
+                if (bootstrap) {
+                    await bootstrap;
+                }
+
                 let credentials = await TokenStorage.getCredentials();
                 const devCredentials = getDevWebQueryCredentials() ?? getDevEnvironmentCredentials();
 
