@@ -17,6 +17,9 @@ export const LocalSettingsSchema = z.object({
     zenMode: z.boolean().describe('Hide all sidebars and non-essential UI for focused work'),
     // CLI version acknowledgments - keyed by machineId
     acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
+    // Multiplexer state — open session ids + active id (web/desktop only)
+    multiSessionIds: z.array(z.string()).describe('Session ids currently open in the multi-session view'),
+    multiActiveId: z.string().nullable().describe('Active tab in the multi-session view'),
 });
 
 //
@@ -43,6 +46,8 @@ export const localSettingsDefaults: LocalSettings = {
     verboseLogging: false,
     zenMode: false,
     acknowledgedCliVersions: {},
+    multiSessionIds: [],
+    multiActiveId: null,
 };
 Object.freeze(localSettingsDefaults);
 
