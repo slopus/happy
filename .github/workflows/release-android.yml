@@ -73,7 +73,12 @@ jobs:
                   cd packages/happy-app
                   eas whoami
 
-            - name: Build AAB (Play Store)
+            # EAS cloud builds don't support --output (that's local-build only).
+            # We submit the build, wait for it to finish, then curl the
+            # artifact URL from the JSON result. Each build produces one
+            # platform×profile file — AAB for the Play-Store profile, APK
+            # for the preview profile.
+            - name: Build AAB (Play Store) on EAS
               env:
                   EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
               run: |
@@ -82,20 +87,39 @@ jobs:
                     --platform android \
                     --profile ${{ inputs.profile || 'production' }} \
                     --non-interactive \
-                    --output ../../happy-android.aab
+                    --wait \
+                    --json > /tmp/eas-aab.json
+                  URL=$(jq -r '.[0].artifacts.applicationArchiveUrl // empty' /tmp/eas-aab.json)
+                  if [ -z "$URL" ]; then
+                      echo "::error::No artifact URL in EAS build output. Dump:"
+                      cat /tmp/eas-aab.json
+                      exit 1
+                  fi
+                  curl -fsSL -o $GITHUB_WORKSPACE/happy-android.aab "$URL"
+                  ls -la $GITHUB_WORKSPACE/happy-android.aab
 
-            - name: Build APK (sideload)
+            - name: Build APK (sideload) on EAS
               env:
                   EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
               run: |
                   cd packages/happy-app
-                  # Use preview-style profile that emits APK; falls back to
-                  # local-build if eas.json doesn't have one. Adjust to taste.
+                  # `preview` profile is expected to set buildType=apk in
+                  # eas.json. If your eas.json doesn't have one, EAS will
+                  # error here — see CI-CD-SECRETS.md for a starter eas.json.
                   eas build \
                     --platform android \
                     --profile preview \
                     --non-interactive \
-                    --output ../../happy-android.apk
+                    --wait \
+                    --json > /tmp/eas-apk.json
+                  URL=$(jq -r '.[0].artifacts.applicationArchiveUrl // empty' /tmp/eas-apk.json)
+                  if [ -z "$URL" ]; then
+                      echo "::error::No artifact URL in EAS preview-build output. Dump:"
+                      cat /tmp/eas-apk.json
+                      exit 1
+                  fi
+                  curl -fsSL -o $GITHUB_WORKSPACE/happy-android.apk "$URL"
+                  ls -la $GITHUB_WORKSPACE/happy-android.apk
 
             - name: Upload to GitHub Release
               uses: softprops/action-gh-release@v2
