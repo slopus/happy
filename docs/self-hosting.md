@@ -36,9 +36,13 @@ The approach trades the convenience of the maintainers' public server for:
 
 Two processes on the server:
 - **happy-server** (Fastify + Socket.IO) bound to **127.0.0.1:3005** — never reachable from outside
-- **Caddy** bound to **0.0.0.0:`<PUBLIC_PORT>`** — basic-auth gate in front of `/v1/*` paths, transparent for `/socket.io/*` and the webapp static files
+- **Caddy** bound to **0.0.0.0:`<PUBLIC_PORT>`** — basic-auth gate in front of `/v1/auth*` paths only, transparent for everything else
 
-**Why basic auth on `/v1/*` only and not everything?** `socket.io-client` does not honor `user:pass@host` URL userinfo on its polling/WebSocket requests (verified empirically — it doesn't carry an Authorization header). Gating the entire origin would break realtime sync. The server still requires a JWT on socket connections, and JWTs are only issued via the basic-auth-gated `/v1/auth*` paths, so the net effect is equivalent to fully gating: no basic-auth credentials → no JWT → no socket connection.
+**Why basic auth on `/v1/auth*` only, not the whole `/v1/*`?** The HTTP `Authorization` header can carry only one scheme. Once a client holds a JWT, every other `/v1/*` request sends `Authorization: Bearer <jwt>`. If Caddy also expects `Authorization: Basic …` on those paths, the Bearer scheme wins and Caddy 401s — breaking every authenticated API call. Two-layer auth on the same header is impossible.
+
+The fix is to gate ONLY the JWT-issuance endpoints (`/v1/auth`, `/v1/auth/request`, `/v1/auth/account/request`, etc.). Without basic-auth credentials, no one can mint a JWT, so the rest of `/v1/*` stays effectively protected — happy-server's `authenticate` middleware rejects any unsigned/forged Bearer.
+
+`socket.io-client` is another reason the rest of `/v1/*` can't be basic-auth-gated: it doesn't honor `user:pass@host` URL userinfo on its polling/WebSocket handshake (verified empirically). Realtime sync would break if those paths needed Basic auth.
 
 ## Server-side setup
 
@@ -168,9 +172,14 @@ Write the Caddyfile:
 }
 
 :<PUBLIC_PORT> {
-    @api path /v1/* /v1
+    # Gate ONLY the auth-issuance endpoints with basic auth.
+    # The HTTP Authorization header can carry only one scheme — so
+    # gating the full /v1/* would conflict with the CLI's Bearer JWT
+    # auth. Issued JWTs are verified by happy-server's middleware on
+    # all other /v1/* paths, so they're still protected.
+    @auth path /v1/auth /v1/auth/* /v1/auth/request /v1/auth/account/request /v1/auth/account/response /v1/auth/request/status
 
-    basic_auth @api {
+    basic_auth @auth {
         <username> <bcrypt-hash-from-above>
     }
 
