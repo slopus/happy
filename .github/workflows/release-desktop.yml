@@ -74,19 +74,45 @@ jobs:
             - name: Install dependencies
               run: pnpm install --frozen-lockfile
 
+            # Signing env vars are forwarded to tauri-action ONLY when all
+            # required secrets are non-empty. GitHub Actions evaluates missing
+            # secrets to "" rather than unsetting them, which some versions of
+            # tauri-action mis-detect as "signing requested → attempt import"
+            # → fails with `security: SecKeychainItemImport`. We gate via a
+            # script step that writes to $GITHUB_ENV (or skips) so the
+            # downstream env block sees true unset values when secrets are
+            # missing.
+            - name: Configure macOS signing
+              if: matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != ''
+              shell: bash
+              run: |
+                  echo "macOS signing enabled"
+                  {
+                      echo "APPLE_CERTIFICATE<<EOF_CERT"
+                      echo "${{ secrets.APPLE_CERTIFICATE }}"
+                      echo "EOF_CERT"
+                      echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.APPLE_CERTIFICATE_PASSWORD }}"
+                      echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}"
+                      echo "APPLE_ID=${{ secrets.APPLE_ID }}"
+                      echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}"
+                      echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
+                  } >> "$GITHUB_ENV"
+
+            - name: Configure Windows signing
+              if: matrix.platform == 'windows-latest' && secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != ''
+              shell: bash
+              run: |
+                  echo "Windows signing enabled"
+                  {
+                      echo "TAURI_SIGNING_PRIVATE_KEY<<EOF_KEY"
+                      echo "${{ secrets.WINDOWS_CERTIFICATE }}"
+                      echo "EOF_KEY"
+                      echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}"
+                  } >> "$GITHUB_ENV"
+
             - name: Build Tauri app
               uses: tauri-apps/tauri-action@v0
               env:
-                  # macOS signing (optional)
-                  APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-                  APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-                  APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-                  APPLE_ID: ${{ secrets.APPLE_ID }}
-                  APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-                  # Windows signing (optional)
-                  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.WINDOWS_CERTIFICATE }}
-                  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               with:
                   projectPath: packages/happy-app
