@@ -68,6 +68,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="multi"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Multi-session',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="session/[id]/message/[messageId]"
                 options={{
                     headerShown: true,
