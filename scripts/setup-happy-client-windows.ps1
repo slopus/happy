@@ -149,6 +149,27 @@ if ($InstallShortcut) {
     }
 }
 
+# --- bake auth into the Chrome HappyDesktop profile (optional) ---
+# Browser webapp has isolated localStorage per origin; "Create Account" in
+# the webapp mints a NEW server account instead of importing the CLI's
+# ~/.happy/access.key. Run the injector to bridge that gap, so future
+# Happy (Multi) shortcut launches land already-authenticated as the same
+# identity the CLI uses.
+if ($InstallShortcut -and (Test-Path $keyPath) -and $env:HAPPY_TLS_URL) {
+    Hl 'Injecting CLI auth into the HappyDesktop Chrome profile (persistent)...'
+    Get-Process chrome -ErrorAction SilentlyContinue | Where-Object {
+        try { (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)").CommandLine -match 'HappyDesktop' } catch { $false }
+    } | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+    Start-Sleep 2
+    $injector = Join-Path $PSScriptRoot 'inject-happy-auth-windows.mjs'
+    if (Test-Path $injector) {
+        $env:HAPPY_TARGET_URL = "$($env:HAPPY_TLS_URL)/multi"
+        & node $injector
+    } else {
+        Red "Injector not found at $injector"
+    }
+}
+
 # --- verify ---
 Green "`n✓ Setup complete. Verification:"
 happy doctor 2>&1 | Select-String -Pattern 'Server URL|Authent|Happy CLI Version' | Select-Object -First 6
