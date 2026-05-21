@@ -83,31 +83,51 @@ jobs:
             # downstream env block sees true unset values when secrets are
             # missing.
             - name: Configure macOS signing
-              if: matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != ''
+              if: matrix.platform == 'macos-latest'
               shell: bash
+              env:
+                  IN_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+                  IN_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+                  IN_APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+                  IN_APPLE_ID: ${{ secrets.APPLE_ID }}
+                  IN_APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+                  IN_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
               run: |
+                  if [ -z "$IN_APPLE_CERTIFICATE" ] || [ -z "$IN_APPLE_CERTIFICATE_PASSWORD" ] \
+                     || [ -z "$IN_APPLE_SIGNING_IDENTITY" ] || [ -z "$IN_APPLE_ID" ] \
+                     || [ -z "$IN_APPLE_PASSWORD" ] || [ -z "$IN_APPLE_TEAM_ID" ]; then
+                      echo "macOS signing disabled — one or more Apple secrets not set"
+                      exit 0
+                  fi
                   echo "macOS signing enabled"
                   {
-                      echo "APPLE_CERTIFICATE<<EOF_CERT"
-                      echo "${{ secrets.APPLE_CERTIFICATE }}"
-                      echo "EOF_CERT"
-                      echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.APPLE_CERTIFICATE_PASSWORD }}"
-                      echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}"
-                      echo "APPLE_ID=${{ secrets.APPLE_ID }}"
-                      echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}"
-                      echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
+                      echo "APPLE_CERTIFICATE<<EOF_APPLE_CERT"
+                      printf '%s\n' "$IN_APPLE_CERTIFICATE"
+                      echo "EOF_APPLE_CERT"
+                      echo "APPLE_CERTIFICATE_PASSWORD=$IN_APPLE_CERTIFICATE_PASSWORD"
+                      echo "APPLE_SIGNING_IDENTITY=$IN_APPLE_SIGNING_IDENTITY"
+                      echo "APPLE_ID=$IN_APPLE_ID"
+                      echo "APPLE_PASSWORD=$IN_APPLE_PASSWORD"
+                      echo "APPLE_TEAM_ID=$IN_APPLE_TEAM_ID"
                   } >> "$GITHUB_ENV"
 
             - name: Configure Windows signing
-              if: matrix.platform == 'windows-latest' && secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != ''
+              if: matrix.platform == 'windows-latest'
               shell: bash
+              env:
+                  IN_WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+                  IN_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
               run: |
+                  if [ -z "$IN_WINDOWS_CERTIFICATE" ] || [ -z "$IN_WINDOWS_CERTIFICATE_PASSWORD" ]; then
+                      echo "Windows signing disabled — secrets not set"
+                      exit 0
+                  fi
                   echo "Windows signing enabled"
                   {
-                      echo "TAURI_SIGNING_PRIVATE_KEY<<EOF_KEY"
-                      echo "${{ secrets.WINDOWS_CERTIFICATE }}"
-                      echo "EOF_KEY"
-                      echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}"
+                      echo "TAURI_SIGNING_PRIVATE_KEY<<EOF_WIN_KEY"
+                      printf '%s\n' "$IN_WINDOWS_CERTIFICATE"
+                      echo "EOF_WIN_KEY"
+                      echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$IN_WINDOWS_CERTIFICATE_PASSWORD"
                   } >> "$GITHUB_ENV"
 
             - name: Build Tauri app
