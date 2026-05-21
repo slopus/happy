@@ -235,9 +235,22 @@ curl -sS -o /dev/null -w 'webapp: %{http_code}\n' \
 
 If all three are as expected, the server is ready to accept clients.
 
-### 9. (Optional) Add TLS
+### 9. TLS — strongly recommended if you want browser webapp access
 
-For anything that crosses an untrusted network, terminate TLS at Caddy. Easiest path is a public DNS name pointed at the host plus port 80/443 open:
+**You need TLS if anyone will use the webapp in a browser.** Modern browsers
+gate `window.crypto.subtle` to "secure contexts" — HTTPS, or
+`localhost`/`127.0.0.1`. The happy webapp uses `crypto.subtle.digest` during
+the authenticated-user encryption-key derivation, so without TLS the
+authenticated webapp dies with `Cannot read properties of undefined (reading
+'digest')` immediately after sign-in, rendering a blank page.
+
+The CLI (Node.js) doesn't have this restriction; it works against plain HTTP.
+
+Two workable patterns:
+
+**A. SSH local-forward + `http://localhost:<PUBLIC_PORT>`.** No server change; each browser-using client opens an SSH tunnel: `ssh -L <PUBLIC_PORT>:127.0.0.1:<PUBLIC_PORT> -N <HOST>`. Then opens `http://localhost:<PUBLIC_PORT>/`. localhost is treated as a secure context regardless of HTTP.
+
+**B. TLS at Caddy.** Easiest path is a public DNS name pointed at the host plus port 80/443 open:
 
 ```caddyfile
 your.domain.tld {
@@ -251,7 +264,18 @@ your.domain.tld {
 
 Caddy auto-provisions a Let's Encrypt cert. Drop the `auto_https off` global from the previous Caddyfile.
 
-For internal-only deployments without a public domain, use `tls internal` and accept the self-signed CA trust on each client.
+For internal-only deployments without a public domain, add a second site block with `tls internal` on a separate port:
+
+```caddyfile
+https://:<TLS_PORT> {
+    tls internal
+    @auth path /v1/auth /v1/auth/* /v1/auth/request /v1/auth/account/request /v1/auth/account/response /v1/auth/request/status
+    basic_auth @auth { <username> <bcrypt-hash> }
+    reverse_proxy 127.0.0.1:3005
+}
+```
+
+Open `<TLS_PORT>` in UFW. Each browser will warn once about the self-signed cert — accept it and the webapp works fully (secure context + valid HTTPS).
 
 ## Client-side setup
 
