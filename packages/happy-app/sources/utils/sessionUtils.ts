@@ -81,6 +81,19 @@ export function getSessionName(session: Session): string {
     if (session.metadata?.summary) {
         return session.metadata.summary.text;
     }
+    // Resumed CLI sessions often boot before Claude has a chance to call
+    // mcp__happy__change_title (the title prompt targets *new* chats).
+    // Showing "New chat" for every session in the sidebar is useless — fall
+    // back to the project's directory name so users can tell sessions apart.
+    if (session.metadata?.name) {
+        return session.metadata.name;
+    }
+    const path = session.metadata?.path;
+    if (path) {
+        const segments = path.replace(/[\\/]+$/, '').split(/[\\/]/);
+        const leaf = segments[segments.length - 1];
+        if (leaf) return leaf;
+    }
     return t('session.newChat');
 }
 
