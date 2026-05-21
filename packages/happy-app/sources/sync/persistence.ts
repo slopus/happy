@@ -12,7 +12,7 @@ const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
 const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-count';
 const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
 
-export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw';
+export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw' | 'devin';
 export type NewSessionSessionType = 'simple' | 'worktree';
 
 export interface NewSessionDraft {

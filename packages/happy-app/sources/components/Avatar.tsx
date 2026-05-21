@@ -23,6 +23,7 @@ const flavorIcons = {
     codex: require('@/assets/images/icon-gpt.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
     openclaw: require('@/assets/images/icon-openclaw.png'),
+    devin: require('@/assets/images/icon-gpt.png'),
 };
 
 const styles = StyleSheet.create((theme) => ({
