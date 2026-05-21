@@ -44,8 +44,28 @@ if (
                 };
             }
             if (cfg?.auth && typeof localStorage !== 'undefined') {
-                if (!localStorage.getItem('auth_credentials')) {
-                    localStorage.setItem('auth_credentials', JSON.stringify(cfg.auth));
+                // Treat the CLI as the source of truth for *this machine's*
+                // identity. We used to only write when localStorage was empty,
+                // which left users stuck on a stale token from a previous
+                // registration (e.g. when first set up against the public
+                // server, then switched to self-host via .env). The mismatched
+                // JWT 401s on every request and the loading spinner spins
+                // forever — overwrite when the JWT subject differs.
+                const incoming = JSON.stringify(cfg.auth);
+                const existing = localStorage.getItem('auth_credentials');
+                let shouldWrite = !existing;
+                if (existing && !shouldWrite) {
+                    try {
+                        const existingSub = JSON.parse(atob(JSON.parse(existing).token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub;
+                        const incomingSub = JSON.parse(atob(cfg.auth.token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub;
+                        shouldWrite = existingSub !== incomingSub;
+                    } catch {
+                        // Can't parse → existing creds are corrupt, replace them
+                        shouldWrite = true;
+                    }
+                }
+                if (shouldWrite) {
+                    localStorage.setItem('auth_credentials', incoming);
                 }
             }
         })
