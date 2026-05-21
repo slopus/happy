@@ -751,6 +751,8 @@ export const ru: TranslationStructure = {
         clientSideProcessing: 'Обработка на стороне клиента',
         linkProcessedLocally: 'Ссылка обработана локально в браузере',
         linkProcessedOnDevice: 'Ссылка обработана локально на устройстве',
+        createAccountAndAccept: 'Create Account & Accept',
+        createAccountToPairHint: "No account on this device yet. We'll create one on this server, then complete the pairing."
     },
 
     modals: {

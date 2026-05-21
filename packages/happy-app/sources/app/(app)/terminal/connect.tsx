@@ -9,12 +9,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
+import { Modal } from '@/modal';
+import { useAuth } from '@/auth/AuthContext';
+import { authGetToken } from '@/auth/authGetToken';
+import { encodeBase64 } from '@/encryption/base64';
+import { getRandomBytesAsync } from 'expo-crypto';
+import { trackAccountCreated } from '@/track';
 import { t } from '@/text';
 
 export default function TerminalConnectScreen() {
     const router = useRouter();
+    const auth = useAuth();
     const [publicKey, setPublicKey] = useState<string | null>(null);
     const [hashProcessed, setHashProcessed] = useState(false);
+    const [creatingAccount, setCreatingAccount] = useState(false);
     const { processAuthUrl, isLoading } = useConnectTerminal({
         onSuccess: () => {
             router.back();
@@ -48,6 +56,34 @@ export default function TerminalConnectScreen() {
 
     const handleReject = () => {
         router.back();
+    };
+
+    // Inline "Create Account" so a fresh self-hosted instance can complete the
+    // bootstrap from this screen — otherwise useConnectTerminal.processAuthUrl
+    // throws on auth.credentials! and surfaces as a generic "failed to connect
+    // terminal" toast.
+    const handleCreateAccountAndConnect = async () => {
+        setCreatingAccount(true);
+        try {
+            const secret = await getRandomBytesAsync(32);
+            const token = await authGetToken(secret);
+            if (!token) {
+                throw new Error('No token returned from /v1/auth');
+            }
+            await auth.login(token, encodeBase64(secret, 'base64url'));
+            trackAccountCreated();
+            // Auth state is now set; useConnectTerminal will pick it up via
+            // useAuth on the next render. Kick off the pairing immediately.
+            if (publicKey) {
+                const authUrl = `happy://terminal?${publicKey}`;
+                await processAuthUrl(authUrl);
+            }
+        } catch (e) {
+            console.error('Create-account-and-connect failed', e);
+            Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [{ text: t('common.ok') }]);
+        } finally {
+            setCreatingAccount(false);
+        }
     };
 
     // Show placeholder for mobile platforms
@@ -200,26 +236,48 @@ export default function TerminalConnectScreen() {
                 />
             </ItemGroup>
 
-            {/* Action Buttons */}
+            {/* Action Buttons — branch on auth state so a brand-new self-host
+                instance can create an account inline before pairing. */}
             <ItemGroup>
-                <View style={{ 
+                <View style={{
                     paddingHorizontal: 16,
                     paddingVertical: 16,
-                    gap: 12 
+                    gap: 12,
                 }}>
-                    <RoundButton
-                        title={isLoading ? t('terminal.connecting') : t('terminal.acceptConnection')}
-                        onPress={handleConnect}
-                        size="large"
-                        disabled={isLoading}
-                        loading={isLoading}
-                    />
+                    {auth.isAuthenticated ? (
+                        <RoundButton
+                            title={isLoading ? t('terminal.connecting') : t('terminal.acceptConnection')}
+                            onPress={handleConnect}
+                            size="large"
+                            disabled={isLoading}
+                            loading={isLoading}
+                        />
+                    ) : (
+                        <>
+                            <Text style={{
+                                ...Typography.default(),
+                                fontSize: 13,
+                                color: '#8E8E93',
+                                textAlign: 'center',
+                                marginBottom: 4,
+                            }}>
+                                {t('terminal.createAccountToPairHint')}
+                            </Text>
+                            <RoundButton
+                                title={creatingAccount || isLoading ? t('terminal.connecting') : t('terminal.createAccountAndAccept')}
+                                onPress={handleCreateAccountAndConnect}
+                                size="large"
+                                disabled={creatingAccount || isLoading}
+                                loading={creatingAccount || isLoading}
+                            />
+                        </>
+                    )}
                     <RoundButton
                         title={t('terminal.reject')}
                         onPress={handleReject}
                         size="large"
                         display="inverted"
-                        disabled={isLoading}
+                        disabled={isLoading || creatingAccount}
                     />
                 </View>
             </ItemGroup>

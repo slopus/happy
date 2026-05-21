@@ -762,6 +762,8 @@ export const en = {
         clientSideProcessing: 'Client-Side Processing',
         linkProcessedLocally: 'Link processed locally in browser',
         linkProcessedOnDevice: 'Link processed locally on device',
+        createAccountAndAccept: 'Create Account & Accept',
+        createAccountToPairHint: 'No account on this device yet. We\'ll create one on this server, then complete the pairing.',
     },
 
     modals: {

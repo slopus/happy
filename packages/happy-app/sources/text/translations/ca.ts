@@ -747,6 +747,8 @@ export const ca: TranslationStructure = {
         clientSideProcessing: 'Processament del costat del client',
         linkProcessedLocally: 'Enllaç processat localment al navegador',
         linkProcessedOnDevice: 'Enllaç processat localment al dispositiu',
+        createAccountAndAccept: 'Create Account & Accept',
+        createAccountToPairHint: "No account on this device yet. We'll create one on this server, then complete the pairing."
     },
 
     modals: {

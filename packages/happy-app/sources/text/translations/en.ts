@@ -763,6 +763,9 @@ export const en: TranslationStructure = {
         clientSideProcessing: 'Client-Side Processing',
         linkProcessedLocally: 'Link processed locally in browser',
         linkProcessedOnDevice: 'Link processed locally on device',
+        // i18n-todo: translate via i18n-translator agent
+        createAccountAndAccept: 'Create Account & Accept',
+        createAccountToPairHint: 'No account on this device yet. We\'ll create one on this server, then complete the pairing.',
     },
 
     modals: {

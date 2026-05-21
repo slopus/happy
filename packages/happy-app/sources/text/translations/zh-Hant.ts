@@ -747,6 +747,8 @@ export const zhHant: TranslationStructure = {
         clientSideProcessing: '用戶端處理',
         linkProcessedLocally: '連結在瀏覽器中本機處理',
         linkProcessedOnDevice: '連結在裝置上本機處理',
+        createAccountAndAccept: 'Create Account & Accept',
+        createAccountToPairHint: "No account on this device yet. We'll create one on this server, then complete the pairing."
     },
 
     modals: {

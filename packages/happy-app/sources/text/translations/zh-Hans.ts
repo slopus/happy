@@ -748,6 +748,8 @@ export const zhHans: TranslationStructure = {
         clientSideProcessing: '客户端处理',
         linkProcessedLocally: '链接在浏览器中本地处理',
         linkProcessedOnDevice: '链接在设备上本地处理',
+        createAccountAndAccept: 'Create Account & Accept',
+        createAccountToPairHint: "No account on this device yet. We'll create one on this server, then complete the pairing."
     },
 
     modals: {

@@ -748,6 +748,8 @@ export const ja: TranslationStructure = {
         clientSideProcessing: 'クライアントサイド処理',
         linkProcessedLocally: 'リンクはブラウザ内でローカルに処理されました',
         linkProcessedOnDevice: 'リンクはデバイス上でローカルに処理されました',
+        createAccountAndAccept: 'Create Account & Accept',
+        createAccountToPairHint: "No account on this device yet. We'll create one on this server, then complete the pairing."
     },
 
     modals: {
