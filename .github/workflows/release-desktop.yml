@@ -1,0 +1,101 @@
+name: Release desktop (macOS + Windows)
+
+# Tag-triggered build of the Tauri desktop app.
+# Builds macOS .dmg and Windows .msi / .exe in parallel and uploads them to a
+# GitHub Release named after the tag. Signing is conditional: if the relevant
+# secrets are set, artifacts get signed/notarized; otherwise they're produced
+# unsigned (users see a SmartScreen warning on Windows / Gatekeeper prompt on
+# macOS).
+#
+# Required secrets (see happy-setup/CI-CD-SECRETS.md):
+#   macOS:
+#     APPLE_CERTIFICATE              base64-encoded Developer ID Application .p12
+#     APPLE_CERTIFICATE_PASSWORD     password for the .p12
+#     APPLE_SIGNING_IDENTITY         "Developer ID Application: NAME (TEAMID)"
+#     APPLE_ID                       Apple ID email
+#     APPLE_PASSWORD                 app-specific password
+#     APPLE_TEAM_ID                  10-char team ID
+#   Windows (optional):
+#     WINDOWS_CERTIFICATE            base64-encoded code-signing .pfx
+#     WINDOWS_CERTIFICATE_PASSWORD   password for the .pfx
+
+on:
+    push:
+        tags:
+            - 'v*.*.*'
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: 'Existing tag to build (e.g. v1.0.0)'
+                required: true
+                type: string
+
+jobs:
+    build:
+        permissions:
+            contents: write
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - platform: 'macos-latest'
+                      args: ''
+                    - platform: 'windows-latest'
+                      args: ''
+        runs-on: ${{ matrix.platform }}
+        timeout-minutes: 60
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.tag || github.ref }}
+
+            - name: Install pnpm
+              uses: pnpm/action-setup@v4
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: pnpm
+
+            - name: Install Rust stable
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache Rust
+              uses: swatinem/rust-cache@v2
+              with:
+                  workspaces: packages/happy-app/src-tauri
+
+            - name: Install Linux deps (skipped — no linux runner here)
+              if: matrix.platform == 'never'
+              run: true
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Build Tauri app
+              uses: tauri-apps/tauri-action@v0
+              env:
+                  # macOS signing (optional)
+                  APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+                  APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+                  APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+                  APPLE_ID: ${{ secrets.APPLE_ID }}
+                  APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+                  # Windows signing (optional)
+                  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.WINDOWS_CERTIFICATE }}
+                  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  projectPath: packages/happy-app
+                  tauriScript: pnpm tauri
+                  configPath: src-tauri/tauri.conf.json
+                  tagName: ${{ inputs.tag || github.ref_name }}
+                  releaseName: 'Happy ${{ inputs.tag || github.ref_name }}'
+                  releaseBody: |
+                      Desktop builds. Android APK + AAB are uploaded by the release-android workflow.
+                  releaseDraft: true
+                  prerelease: false
+                  args: ${{ matrix.args }}

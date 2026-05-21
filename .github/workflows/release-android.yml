@@ -1,0 +1,111 @@
+name: Release Android (EAS build)
+
+# Tag-triggered Android build via Expo Application Services (EAS Build).
+# Produces an AAB (Play Store) and an APK (direct install / sideload) and
+# attaches them to the GitHub Release created by the desktop workflow.
+#
+# Required secrets (see happy-setup/CI-CD-SECRETS.md):
+#   EXPO_TOKEN           Robot/owner token from https://expo.dev/accounts/<you>/settings/access-tokens
+#                        (needs "build" permission on the happy-app project)
+#
+# EAS-side configuration:
+#   Configure Android keystore in EAS once: `eas credentials -p android`
+#   (EAS stores the keystore for you; no need to add it to GitHub).
+#
+# The runtime server-config UI added in this version means the Play Store APK
+# can be pointed at any custom happy server post-install via Settings → Server.
+
+on:
+    push:
+        tags:
+            - 'v*.*.*'
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: 'Existing tag to build (e.g. v1.0.0)'
+                required: true
+                type: string
+            profile:
+                description: 'EAS build profile'
+                required: false
+                default: 'production'
+                type: choice
+                options:
+                    - production
+                    - preview
+                    - development
+
+jobs:
+    build-android:
+        permissions:
+            contents: write
+        runs-on: ubuntu-latest
+        timeout-minutes: 60
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.tag || github.ref }}
+
+            - name: Install pnpm
+              uses: pnpm/action-setup@v4
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: pnpm
+
+            - name: Install Expo CLI
+              run: npm install -g eas-cli@latest
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Verify EAS auth
+              env:
+                  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+              run: |
+                  if [ -z "$EXPO_TOKEN" ]; then
+                      echo "::error::EXPO_TOKEN secret is required. See happy-setup/CI-CD-SECRETS.md."
+                      exit 1
+                  fi
+                  cd packages/happy-app
+                  eas whoami
+
+            - name: Build AAB (Play Store)
+              env:
+                  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+              run: |
+                  cd packages/happy-app
+                  eas build \
+                    --platform android \
+                    --profile ${{ inputs.profile || 'production' }} \
+                    --non-interactive \
+                    --output ../../happy-android.aab
+
+            - name: Build APK (sideload)
+              env:
+                  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+              run: |
+                  cd packages/happy-app
+                  # Use preview-style profile that emits APK; falls back to
+                  # local-build if eas.json doesn't have one. Adjust to taste.
+                  eas build \
+                    --platform android \
+                    --profile preview \
+                    --non-interactive \
+                    --output ../../happy-android.apk
+
+            - name: Upload to GitHub Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ inputs.tag || github.ref_name }}
+                  files: |
+                      happy-android.aab
+                      happy-android.apk
+                  draft: true
+                  fail_on_unmatched_files: true
+                  body: |
+                      Android artifacts. Desktop builds (macOS .dmg / Windows .msi)
+                      are uploaded by the release-desktop workflow.
