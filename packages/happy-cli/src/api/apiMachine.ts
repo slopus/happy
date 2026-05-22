@@ -18,6 +18,7 @@ import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgen
 import type { PortRegistry } from '@/daemon/portRegistry';
 import { proxyHttp, PreviewProxyError } from '@/daemon/previewProxy';
 import { startServerProcess, StartServerError } from '@/daemon/startServer';
+import packageJson from '../../package.json';
 import { stopServerProcess, StopServerError } from '@/daemon/stopServer';
 import { createPtySession } from '@/daemon/remoteTerminal';
 import { decideTerminalCwd, formatCwdFallbackBanner } from '@/daemon/decideTerminalCwd';
@@ -128,6 +129,11 @@ export class ApiMachineClient {
     private keepAliveInterval: NodeJS.Timeout | null = null;
     private lastKnownCLIAvailability: CLIAvailability | null = null;
     private lastKnownResumeSupport: ResumeSupport | null = null;
+    // specs/20260521-happy-cli-version-republish — daemon 재시작 후 새 cli
+    // 버전을 server metadata 에 re-publish 못 하던 회귀 fix. null 초기
+    // 이므로 첫 keep-alive 가 무조건 publish 하여 stale 한 server-side
+    // happyCliVersion 을 갱신한다.
+    private lastKnownCliVersion: string | null = null;
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string) => Promise<SpawnSessionResult>) | null = null;
     // specs/remote-terminal-cwd-fallback/ — cached so the
@@ -746,20 +752,25 @@ export class ApiMachineClient {
             const prev = this.lastKnownCLIAvailability;
             const newResumeSupport = detectResumeSupport();
             const prevResume = this.lastKnownResumeSupport;
+            const newCliVersion = packageJson.version;
+            const prevCliVersion = this.lastKnownCliVersion;
             const cliAvailabilityChanged = !prev || prev.claude !== newAvailability.claude || prev.codex !== newAvailability.codex || prev.gemini !== newAvailability.gemini || prev.openclaw !== newAvailability.openclaw;
             const resumeSupportChanged = !prevResume
                 || prevResume.rpcAvailable !== newResumeSupport.rpcAvailable
                 || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;
+            const cliVersionChanged = prevCliVersion !== newCliVersion;
 
             this.syncResumeSessionRpcRegistration(newResumeSupport.rpcAvailable);
 
-            if (cliAvailabilityChanged || resumeSupportChanged) {
+            if (cliAvailabilityChanged || resumeSupportChanged || cliVersionChanged) {
                 this.lastKnownCLIAvailability = newAvailability;
                 this.lastKnownResumeSupport = newResumeSupport;
+                this.lastKnownCliVersion = newCliVersion;
                 this.updateMachineMetadata((metadata) => ({
                     ...(metadata || {} as any),
                     cliAvailability: newAvailability,
                     resumeSupport: newResumeSupport,
+                    happyCliVersion: newCliVersion,
                 })).catch((err) => {
                     logger.debug('[API MACHINE] Failed to update machine capabilities:', err);
                 });
