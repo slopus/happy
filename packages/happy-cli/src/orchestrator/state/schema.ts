@@ -9,7 +9,7 @@
 
 import { z } from 'zod';
 
-export const AxStepSchema = z.enum(['plan', 'design', 'work']);
+export const AxStepSchema = z.enum(['plan', 'design', 'work', 'free']);
 export type AxStep = z.infer<typeof AxStepSchema>;
 
 export const CandidatesSourceSchema = z.enum(['claude-suggested', 'user-picked']);

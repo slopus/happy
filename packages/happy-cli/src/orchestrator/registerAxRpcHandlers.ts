@@ -36,7 +36,7 @@ interface TransitionResponse {
 
 export function registerAxRpcHandlers(manager: RpcHandlerManager, workspaceRoot: string): void {
     manager.registerHandler<{ step?: AxStep }, GetStateResponse>('ax:bootstrap', async (req) => {
-        const step = AxStepSchema.parse(req?.step ?? 'plan');
+        const step = AxStepSchema.parse(req?.step ?? 'free');
         logger.debug(`[ax] bootstrap requested → step=${step}`);
         await bootstrapWorkspace(workspaceRoot, step);
         const state = await readState(workspaceRoot);

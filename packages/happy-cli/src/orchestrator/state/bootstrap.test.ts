@@ -23,6 +23,13 @@ describe('bootstrapWorkspace', () => {
         expect(state.history[0]).toMatchObject({ from: null, to: 'plan' });
     });
 
+    it('creates .ax/state.json with step=free when requested', async () => {
+        await bootstrapWorkspace(workspace, 'free');
+        const state = await readState(workspace);
+        expect(state.step).toBe('free');
+        expect(state.history[0]).toMatchObject({ from: null, to: 'free' });
+    });
+
     it('creates an empty .ax/events.jsonl', async () => {
         await bootstrapWorkspace(workspace, 'work');
         const eventsStat = await stat(join(workspace, '.ax', 'events.jsonl'));

@@ -41,9 +41,14 @@ describe('ax:bootstrap', () => {
         expect(onDisk).toEqual(state);
     });
 
-    it('defaults to plan when step is omitted', async () => {
+    it('defaults to free when step is omitted', async () => {
         const { state } = await manager.call<{ state: AxState }>('ax:bootstrap', {});
-        expect(state.step).toBe('plan');
+        expect(state.step).toBe('free');
+    });
+
+    it('accepts free as an explicit step', async () => {
+        const { state } = await manager.call<{ state: AxState }>('ax:bootstrap', { step: 'free' });
+        expect(state.step).toBe('free');
     });
 
     it('is idempotent — second call preserves existing state', async () => {
@@ -79,5 +84,14 @@ describe('ax:transition', () => {
     it('rejects unknown step', async () => {
         await bootstrapWorkspace(workspace, 'plan');
         await expect(manager.call('ax:transition', { to: 'bogus' })).rejects.toThrow();
+    });
+
+    it('allows transitioning to and from free', async () => {
+        await bootstrapWorkspace(workspace, 'plan');
+        const a = await manager.call<{ state: AxState }>('ax:transition', { to: 'free' });
+        expect(a.state.step).toBe('free');
+        const b = await manager.call<{ state: AxState }>('ax:transition', { to: 'work' });
+        expect(b.state.step).toBe('work');
+        expect(b.state.history.at(-1)).toMatchObject({ from: 'free', to: 'work' });
     });
 });
