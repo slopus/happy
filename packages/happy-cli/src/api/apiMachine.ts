@@ -427,6 +427,7 @@ export class ApiMachineClient {
 
         this.socket.on('connect_error', (error) => {
             logger.debug(`[API MACHINE] Connection error: ${error.message}`);
+            this.startSmartReconnect();
         });
 
         this.socket.io.on('error', (error: any) => {
