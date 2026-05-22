@@ -5,11 +5,11 @@
   "author": "Kirill Dubovitskiy (upstream), justinbuzzni (aplus fork)",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/justinbuzzni/happy",
-  "bugs": "https://github.com/justinbuzzni/happy/issues",
+  "homepage": "https://github.com/buzzni/happy",
+  "bugs": "https://github.com/buzzni/happy/issues",
   "repository": {
     "type": "git",
-    "url": "https://github.com/justinbuzzni/happy",
+    "url": "https://github.com/buzzni/happy",
     "directory": "packages/happy-cli"
   },
   "publishConfig": {
