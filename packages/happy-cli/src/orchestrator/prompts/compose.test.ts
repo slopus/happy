@@ -16,12 +16,19 @@ afterEach(async () => {
 });
 
 describe('loadBasePrompt', () => {
-    it('returns the AX Studio base prompt text', async () => {
+    it('returns the AX Studio base prompt text mentioning all 4 modes', async () => {
         const text = await loadBasePrompt();
         expect(text).toMatch(/AX Studio AI assistant/);
         expect(text).toMatch(/plan/);
         expect(text).toMatch(/design/);
         expect(text).toMatch(/work/);
+        expect(text).toMatch(/free/);
+    });
+
+    it('does not mention the removed PreToolUse hook enforcement', async () => {
+        const text = await loadBasePrompt();
+        expect(text).not.toMatch(/PreToolUse hook/);
+        expect(text).not.toMatch(/enforces per-step write boundaries/);
     });
 });
 
@@ -42,6 +49,13 @@ describe('composeStepGuide', () => {
     it('loads the work step guide', async () => {
         const guide = await composeStepGuide('work');
         expect(guide).toMatch(/Step: work/);
+        expect(guide).toMatch(/TDD/);
+    });
+
+    it('loads the free step guide', async () => {
+        const guide = await composeStepGuide('free');
+        expect(guide).toMatch(/Step: free/);
+        expect(guide).toMatch(/full-stack/i);
         expect(guide).toMatch(/TDD/);
     });
 });
@@ -90,7 +104,17 @@ describe('composeDynamicContext', () => {
         expect(ctx).toMatch(/not found|missing|not yet created/i);
     });
 
-    it('state summary includes design.candidates and permissions', async () => {
+    it('free step: attaches plan + design when present, skips when absent', async () => {
+        const state = createInitialState('free');
+        await writeFile(join(workspace, 'AX_PROJECT_PLAN.md'), '# Plan\nfree-body-plan\n');
+        const ctx = await composeDynamicContext(workspace, state);
+        expect(ctx).toMatch(/"step":\s*"free"/);
+        expect(ctx).toMatch(/free-body-plan/);
+        expect(ctx).toMatch(/AX_STUDIO_DESIGN\.md/);
+        expect(ctx).toMatch(/not found|missing|not yet created/i);
+    });
+
+    it('state summary includes design.candidates', async () => {
         const state = createInitialState('design');
         state.design.candidates = ['linear', 'stripe', 'bmw-m'];
         const ctx = await composeDynamicContext(workspace, state);

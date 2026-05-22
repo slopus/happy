@@ -18,12 +18,13 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { AxState, AxStep, PLAN_MD_FILENAME, DESIGN_MD_FILENAME } from '../state/schema';
-import { BASE_PROMPT, STEP_PLAN, STEP_DESIGN, STEP_WORK } from './assets';
+import { BASE_PROMPT, STEP_PLAN, STEP_DESIGN, STEP_WORK, STEP_FREE } from './assets';
 
 const STEP_GUIDES: Record<AxStep, string> = {
     plan: STEP_PLAN,
     design: STEP_DESIGN,
     work: STEP_WORK,
+    free: STEP_FREE,
 };
 
 export async function loadBasePrompt(): Promise<string> {
@@ -64,7 +65,6 @@ function formatStateSummary(state: AxState): string {
         },
         work: {
             startedAt: state.work.startedAt,
-            permissions: state.work.permissions,
         },
         historyDepth: state.history.length,
     };
@@ -75,6 +75,7 @@ const STEP_ATTACHMENTS: Record<AxStep, readonly string[]> = {
     plan: [],
     design: [PLAN_MD_FILENAME],
     work: [PLAN_MD_FILENAME, DESIGN_MD_FILENAME],
+    free: [PLAN_MD_FILENAME, DESIGN_MD_FILENAME],
 };
 
 async function collectAttachments(workspaceRoot: string, step: AxStep): Promise<string[]> {

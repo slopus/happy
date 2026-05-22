@@ -1,17 +1,16 @@
 /**
  * Zod schemas + TypeScript types for `.ax/state.json` — the workspace SoT
- * for the start-from-planning 3-step workflow (plan / design / work).
+ * for the AX Studio step workflow (plan / design / work / free).
  *
- * Shape mirrors specs/20260519-start-from-planning/spec.md §"Data Structure / API".
+ * Shape mirrors specs/20260519-start-from-planning/spec.md §"Data Structure / API"
+ * with specs/20260522-ax-step-free-mode adjustments (free step + permissions
+ * field removal).
  */
 
 import { z } from 'zod';
 
-export const AxStepSchema = z.enum(['plan', 'design', 'work']);
+export const AxStepSchema = z.enum(['plan', 'design', 'work', 'free']);
 export type AxStep = z.infer<typeof AxStepSchema>;
-
-export const PermissionValueSchema = z.enum(['ask', 'always', 'never']);
-export type PermissionValue = z.infer<typeof PermissionValueSchema>;
 
 export const CandidatesSourceSchema = z.enum(['claude-suggested', 'user-picked']);
 export type CandidatesSource = z.infer<typeof CandidatesSourceSchema>;
@@ -41,10 +40,6 @@ export const AxStateSchema = z.object({
     }),
     work: z.object({
         startedAt: IsoOrNullSchema,
-        permissions: z.object({
-            editPlanMd: PermissionValueSchema,
-            editDesignMd: PermissionValueSchema,
-        }),
     }),
     history: z.array(HistoryEntrySchema),
 });
@@ -68,7 +63,6 @@ export function createInitialState(step: AxStep, now: Date = new Date()): AxStat
         },
         work: {
             startedAt: null,
-            permissions: { editPlanMd: 'ask', editDesignMd: 'ask' },
         },
         history: [{ from: null, to: step, at }],
     };

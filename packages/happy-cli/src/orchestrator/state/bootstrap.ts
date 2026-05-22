@@ -1,10 +1,13 @@
 /**
- * Workspace bootstrap for the start-from-planning workflow.
+ * Workspace bootstrap for the AX Studio step workflow.
  *
- * Idempotently provisions the three files every workspace needs:
+ * Idempotently provisions the files every workspace needs:
  *   - `.ax/state.json`         — Source of Truth, created at the requested step
  *   - `.ax/events.jsonl`       — empty append-only audit log
- *   - `.claude/settings.json`  — PreToolUse hook wired to the bundled guard
+ *
+ * Additionally, cleans up stale `PreToolUse` hook entries left in
+ * `.claude/settings.json` by older bootstraps. The hook was removed in
+ * specs/20260522-ax-step-free-mode.
  *
  * If `state.json` already exists and is valid, we leave it untouched so a
  * second bootstrap call never clobbers the user's progress.
@@ -15,13 +18,13 @@ import { join } from 'node:path';
 import { AxStep, createInitialState } from './schema';
 import { writeState, readState, StateFileCorruptError } from './io';
 
-const PRE_TOOL_USE_HOOK_COMMAND = 'happy hooks pre-tool-use';
+const STALE_HOOK_COMMAND = 'happy hooks pre-tool-use';
 
 export async function bootstrapWorkspace(workspaceRoot: string, step: AxStep): Promise<void> {
     await mkdir(join(workspaceRoot, '.ax'), { recursive: true });
     await ensureState(workspaceRoot, step);
     await ensureEventsFile(workspaceRoot);
-    await ensureClaudeSettings(workspaceRoot);
+    await cleanupStaleHookSettings(workspaceRoot);
 }
 
 async function ensureState(workspaceRoot: string, step: AxStep): Promise<void> {
@@ -30,7 +33,6 @@ async function ensureState(workspaceRoot: string, step: AxStep): Promise<void> {
         return;
     } catch (err) {
         if (err instanceof StateFileCorruptError) {
-            // Surface explicitly — bootstrap is not responsible for backup/reset
             throw err;
         }
         if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
@@ -60,31 +62,54 @@ interface ClaudeSettings {
     [key: string]: unknown;
 }
 
-async function ensureClaudeSettings(workspaceRoot: string): Promise<void> {
-    const dir = join(workspaceRoot, '.claude');
-    await mkdir(dir, { recursive: true });
-    const path = join(dir, 'settings.json');
+/**
+ * Strips legacy `happy hooks pre-tool-use` entries from
+ * `.claude/settings.json`. No-op if the file is absent or has no such
+ * entry. Preserves all other settings keys and other hook entries.
+ */
+async function cleanupStaleHookSettings(workspaceRoot: string): Promise<void> {
+    const path = join(workspaceRoot, '.claude', 'settings.json');
 
-    let settings: ClaudeSettings = {};
+    let raw: string;
     try {
-        const raw = await readFile(path, 'utf8');
-        settings = JSON.parse(raw) as ClaudeSettings;
+        raw = await readFile(path, 'utf8');
     } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+        throw err;
     }
 
-    settings.hooks ??= {};
-    const entries: ClaudeHookEntry[] = settings.hooks.PreToolUse ?? [];
-    const alreadyRegistered = entries.some((entry) =>
-        entry.hooks.some((h) => h.command === PRE_TOOL_USE_HOOK_COMMAND),
-    );
-    if (!alreadyRegistered) {
-        entries.push({
-            matcher: 'Write|Edit|MultiEdit',
-            hooks: [{ type: 'command', command: PRE_TOOL_USE_HOOK_COMMAND }],
-        });
+    let settings: ClaudeSettings;
+    try {
+        settings = JSON.parse(raw) as ClaudeSettings;
+    } catch {
+        return;
     }
-    settings.hooks.PreToolUse = entries;
+
+    const entries = settings.hooks?.PreToolUse;
+    if (!Array.isArray(entries)) return;
+
+    const filtered = entries
+        .map((entry) => ({
+            ...entry,
+            hooks: entry.hooks.filter((h) => h.command !== STALE_HOOK_COMMAND),
+        }))
+        .filter((entry) => entry.hooks.length > 0);
+
+    if (filtered.length === entries.length) {
+        const allKept = entries.every(
+            (entry, i) => entry.hooks.length === filtered[i].hooks.length,
+        );
+        if (allKept) return;
+    }
+
+    if (filtered.length === 0) {
+        delete settings.hooks!.PreToolUse;
+        if (Object.keys(settings.hooks!).length === 0) {
+            delete settings.hooks;
+        }
+    } else {
+        settings.hooks!.PreToolUse = filtered;
+    }
 
     await writeFile(path, JSON.stringify(settings, null, 2) + '\n', 'utf8');
 }
