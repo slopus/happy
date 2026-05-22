@@ -1,5 +1,6 @@
 import type { Metadata } from '@/sync/storageTypes';
 import { hackModes } from '@/sync/modeHacks';
+import { getCodeAgentDefaults } from '@/sync/agentDefaults';
 
 export type ModeOption = {
     key: string;
@@ -191,17 +192,11 @@ export function resolveCurrentOption<T extends ModeOption>(
 }
 
 export function getDefaultModelKey(flavor: AgentFlavor): string {
-    if (flavor === 'codex') {
-        return 'default';
-    }
-    if (flavor === 'gemini') {
-        return 'gemini-2.5-pro';
-    }
-    return 'default';
+    return getCodeAgentDefaults(flavor).modelMode;
 }
 
-export function getDefaultPermissionModeKey(_flavor: AgentFlavor): string {
-    return 'default';
+export function getDefaultPermissionModeKey(flavor: AgentFlavor): string {
+    return getCodeAgentDefaults(flavor).permissionMode;
 }
 
 // Effort levels per agent type
@@ -231,8 +226,7 @@ export function getHardcodedEffortLevels(flavor: AgentFlavor): EffortLevel[] {
 }
 
 export function getDefaultEffortKey(flavor: AgentFlavor): string | null {
-    if (flavor === 'claude' || flavor === 'codex') return 'high';
-    return null;
+    return getCodeAgentDefaults(flavor).effortLevel;
 }
 
 // Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
@@ -254,7 +248,7 @@ export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string):
 export function getDefaultEffortKeyForModel(flavor: AgentFlavor, modelKey: string): string | null {
     const levels = getEffortLevelsForModel(flavor, modelKey);
     if (levels.length === 0) return null;
-    return levels[levels.length - 1].key;
+    return getCodeAgentDefaults(flavor).effortLevel ?? levels[levels.length - 1].key;
 }
 
 export function getSupportsWorktree(flavor: AgentFlavor): boolean {

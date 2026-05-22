@@ -17,6 +17,7 @@ export class Session {
     readonly allowedTools?: string[];
     readonly sandboxConfig?: SandboxConfig;
     readonly _onModeChange: (mode: 'local' | 'remote') => void;
+    readonly _onAbort?: () => void;
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     readonly hookSettingsPath: string;
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -43,6 +44,7 @@ export class Session {
         mcpServers: Record<string, any>,
         messageQueue: MessageQueue2<EnhancedMode>,
         onModeChange: (mode: 'local' | 'remote') => void,
+        onAbort?: () => void,
         allowedTools?: string[],
         sandboxConfig?: SandboxConfig,
         /** Path to temporary settings file with SessionStart hook (required for session tracking) */
@@ -62,6 +64,7 @@ export class Session {
         this.allowedTools = opts.allowedTools;
         this.sandboxConfig = opts.sandboxConfig;
         this._onModeChange = opts.onModeChange;
+        this._onAbort = opts.onAbort;
         this.hookSettingsPath = opts.hookSettingsPath;
         this.jsRuntime = opts.jsRuntime ?? 'node';
 
@@ -90,6 +93,10 @@ export class Session {
         this.mode = mode;
         this.client.keepAlive(this.thinking, mode);
         this._onModeChange(mode);
+    }
+
+    onAbort = () => {
+        this._onAbort?.();
     }
 
     /**

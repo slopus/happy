@@ -46,6 +46,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
         async function doAbort() {
             logger.debug('[local]: doAbort');
+            session.onAbort();
 
             // Switching to remote mode
             if (!exitReason) {

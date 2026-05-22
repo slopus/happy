@@ -82,6 +82,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     async function doAbort() {
         logger.debug('[remote]: doAbort');
+        session.onAbort();
         await abort();
     }
 

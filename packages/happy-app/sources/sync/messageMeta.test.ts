@@ -2,64 +2,86 @@ import { describe, expect, it } from 'vitest';
 import { resolveMessageModeMeta } from './messageMeta';
 
 describe('resolveMessageModeMeta', () => {
-    it('sends explicit permission and model keys', () => {
+    it('omits agent mode metadata when nothing was explicitly overridden', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'codex' },
+        } as any);
+
+        expect(meta).toEqual({});
+    });
+
+    it('sends explicit per-session overrides', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: 'read-only',
-            modelMode: 'gpt-5-high',
-            metadata: null,
+            modelMode: 'gpt-5.4',
+            effortLevel: 'high',
+            metadata: { flavor: 'codex' },
         } as any);
 
         expect(meta).toEqual({
             permissionMode: 'read-only',
-            model: 'gpt-5-high',
-            effort: null,
+            model: 'gpt-5.4',
+            effort: 'high',
         });
     });
 
-    it('forces bypass permissions in sandbox when mode is default', () => {
+    it('sends settings-level overrides when session has no override', () => {
         const meta = resolveMessageModeMeta({
-            permissionMode: 'default',
+            permissionMode: null,
             modelMode: null,
-            metadata: {
-                sandbox: { enabled: true },
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
+        } as any, {
+            agentDefaultOverrides: {
+                claude: {
+                    permissionMode: 'bypassPermissions',
+                    modelMode: 'opus',
+                    effortLevel: 'medium',
+                },
             },
         } as any);
 
         expect(meta).toEqual({
             permissionMode: 'bypassPermissions',
-            model: null,
-            effort: null,
+            model: 'opus',
+            effort: 'medium',
         });
     });
 
-    it('keeps default permissions when sandbox is disabled', () => {
+    it('lets session overrides beat settings-level overrides', () => {
         const meta = resolveMessageModeMeta({
-            permissionMode: null,
-            modelMode: 'default',
-            metadata: {
-                sandbox: null,
+            permissionMode: 'default',
+            modelMode: 'gpt-5.4',
+            effortLevel: 'xhigh',
+            metadata: { flavor: 'codex' },
+        } as any, {
+            agentDefaultOverrides: {
+                codex: {
+                    permissionMode: 'yolo',
+                    modelMode: 'gpt-5.5',
+                    effortLevel: 'medium',
+                },
             },
         } as any);
 
         expect(meta).toEqual({
             permissionMode: 'default',
-            model: null,
-            effort: null,
+            model: 'gpt-5.4',
+            effort: 'xhigh',
         });
     });
 
-    it('passes through an explicit effort level', () => {
+    it('treats an explicit default model as a reset override', () => {
         const meta = resolveMessageModeMeta({
-            permissionMode: 'default',
-            modelMode: null,
-            effortLevel: 'high',
-            metadata: null,
+            permissionMode: null,
+            modelMode: 'default',
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
         } as any);
 
-        expect(meta).toEqual({
-            permissionMode: 'default',
-            model: null,
-            effort: 'high',
-        });
+        expect(meta).toEqual({ model: null });
     });
 });
