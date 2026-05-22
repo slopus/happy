@@ -93,7 +93,9 @@ If the CLI release depends on self-host server changes, release
 `happy-server-self-host` separately: regenerate Prisma, build the bundled webapp
 with `pnpm --filter happy-server-self-host run bundle:webapp`, then publish the
 server package. The server package is a JS/TS npm package; npm handles platform
-specific dependencies such as Prisma and sharp normally.
+specific dependencies such as Prisma and sharp normally. Do not pass
+`--ignore-scripts` when publishing it; its `prepublishOnly` script rebuilds the
+runtime, rebuilds the webapp, and runs tests before npm receives the tarball.
 
 ### Step 6: Test (unit only)
 
@@ -111,11 +113,13 @@ Report results. If failures, ask the user whether to proceed or abort.
 
 ```bash
 cd packages/happy-cli
-pnpm publish --tag {channel} --no-git-checks --ignore-scripts
+pnpm publish --tag {channel} --no-git-checks
 ```
 
 - `--no-git-checks`: allows dirty working tree (we already verified state)
-- `--ignore-scripts`: skips `prepublishOnly` (we already built and tested)
+- Do not pass `--ignore-scripts`. Package lifecycle scripts are the final
+  publish-time guard; `prepublishOnly` must run even if the same build/test gate
+  was already run manually.
 
 **MUST use `pnpm publish` — never `npm publish`.** This is a pnpm workspace; `npm
 publish` mis-resolves the workspace protocol and the `bin` entries and ships a
@@ -347,5 +351,5 @@ Separate repo, not part of this monorepo. Guide the user to push to that repo.
 - **Do not bundle self-host server/webapp into `happy`** — self-host runtime and the bundled webapp ship through `happy-server-self-host`, not the main CLI package.
 - **Unit tests are the gate, not integration tests** — integration tests are slow and have flaky abort/interrupt tests.
 - **Use pnpm publish, not npm publish** — avoids workspace protocol issues.
-- **Use --ignore-scripts** — we build and test explicitly, no need for prepublishOnly to redo it.
+- **Never use --ignore-scripts for package publishing** — prepublish scripts are the last guard before npm receives the tarball.
 - **Never force-push tags** — if a tag exists, stop and ask.
