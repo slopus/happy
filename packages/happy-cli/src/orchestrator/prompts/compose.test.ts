@@ -90,7 +90,7 @@ describe('composeDynamicContext', () => {
         expect(ctx).toMatch(/not found|missing|not yet created/i);
     });
 
-    it('state summary includes design.candidates and permissions', async () => {
+    it('state summary includes design.candidates', async () => {
         const state = createInitialState('design');
         state.design.candidates = ['linear', 'stripe', 'bmw-m'];
         const ctx = await composeDynamicContext(workspace, state);

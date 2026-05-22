@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
     AxStateSchema,
     AxStepSchema,
-    PermissionValueSchema,
     CandidatesSourceSchema,
     createInitialState,
 } from './schema';
@@ -16,18 +15,6 @@ describe('AxStepSchema', () => {
 
     it('rejects unknown step', () => {
         expect(() => AxStepSchema.parse('coding')).toThrow();
-    });
-});
-
-describe('PermissionValueSchema', () => {
-    it('accepts ask/always/never', () => {
-        expect(PermissionValueSchema.parse('ask')).toBe('ask');
-        expect(PermissionValueSchema.parse('always')).toBe('always');
-        expect(PermissionValueSchema.parse('never')).toBe('never');
-    });
-
-    it('rejects other values', () => {
-        expect(() => PermissionValueSchema.parse('maybe')).toThrow();
     });
 });
 
@@ -51,12 +38,9 @@ describe('createInitialState', () => {
         expect(state.design.filePath).toBe('AX_STUDIO_DESIGN.md');
         expect(state.design.completedAt).toBeNull();
         expect(state.work.startedAt).toBeNull();
-        expect(state.work.permissions.editPlanMd).toBe('ask');
-        expect(state.work.permissions.editDesignMd).toBe('ask');
         expect(state.history).toHaveLength(1);
         expect(state.history[0]).toMatchObject({ from: null, to: 'plan' });
         expect(typeof state.history[0].at).toBe('string');
-        // Resulting object satisfies the full schema
         expect(() => AxStateSchema.parse(state)).not.toThrow();
     });
 
@@ -83,7 +67,6 @@ describe('AxStateSchema', () => {
             },
             work: {
                 startedAt: null,
-                permissions: { editPlanMd: 'always', editDesignMd: 'ask' },
             },
             history: [
                 { from: null, to: 'plan', at: '2026-05-19T09:00:00.000Z' },
@@ -91,6 +74,29 @@ describe('AxStateSchema', () => {
             ],
         };
         expect(() => AxStateSchema.parse(valid)).not.toThrow();
+    });
+
+    it('strips legacy work.permissions field when present (Zod default behavior)', () => {
+        const legacy = {
+            version: 1,
+            step: 'work',
+            plan: { filePath: 'AX_PROJECT_PLAN.md', completedAt: null },
+            design: {
+                candidates: [],
+                candidatesSource: 'claude-suggested',
+                selected: null,
+                filePath: 'AX_STUDIO_DESIGN.md',
+                completedAt: null,
+            },
+            work: {
+                startedAt: null,
+                permissions: { editPlanMd: 'always', editDesignMd: 'ask' },
+            },
+            history: [{ from: null, to: 'work', at: '2026-05-22T00:00:00.000Z' }],
+        };
+        const parsed = AxStateSchema.parse(legacy);
+        expect(parsed.work).toEqual({ startedAt: null });
+        expect('permissions' in parsed.work).toBe(false);
     });
 
     it('rejects state with wrong version', () => {
@@ -111,15 +117,6 @@ describe('AxStateSchema', () => {
                 ...state.design,
                 candidates: Array.from({ length: 11 }, (_, i) => `slug-${i}`),
             },
-        };
-        expect(() => AxStateSchema.parse(bad)).toThrow();
-    });
-
-    it('rejects state missing permissions', () => {
-        const state = createInitialState('plan');
-        const bad = {
-            ...state,
-            work: { startedAt: null, permissions: { editPlanMd: 'ask' } },
         };
         expect(() => AxStateSchema.parse(bad)).toThrow();
     });

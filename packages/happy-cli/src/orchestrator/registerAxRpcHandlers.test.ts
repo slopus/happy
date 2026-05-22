@@ -7,12 +7,6 @@ import { bootstrapWorkspace } from './state/bootstrap';
 import { readState } from './state/io';
 import { AxState } from './state/schema';
 
-/**
- * Minimal stub of `RpcHandlerManager.registerHandler` — captures handlers in a
- * map so the test can invoke them directly without standing up an actual
- * socket. The production manager has more surface (error normalization, etc.)
- * but this is sufficient to verify the orchestration logic above the wire.
- */
 type Handler = (req: unknown) => Promise<unknown>;
 class StubManager {
     handlers = new Map<string, Handler>();
@@ -70,7 +64,7 @@ describe('ax:get-state', () => {
     it('returns the bootstrapped state', async () => {
         await bootstrapWorkspace(workspace, 'design');
         const r = await manager.call<{ state: AxState }>('ax:get-state');
-        expect(r.state.step).toBe('design');
+        expect(r.state!.step).toBe('design');
     });
 });
 
@@ -85,30 +79,5 @@ describe('ax:transition', () => {
     it('rejects unknown step', async () => {
         await bootstrapWorkspace(workspace, 'plan');
         await expect(manager.call('ax:transition', { to: 'bogus' })).rejects.toThrow();
-    });
-});
-
-describe('ax:permission', () => {
-    it('always: persists permission and returns updated state', async () => {
-        await bootstrapWorkspace(workspace, 'work');
-        const r = await manager.call<{ state: AxState }>('ax:permission', {
-            target: 'editPlanMd',
-            decision: 'always',
-        });
-        expect(r.state.work.permissions.editPlanMd).toBe('always');
-    });
-
-    it('rejects invalid target', async () => {
-        await bootstrapWorkspace(workspace, 'work');
-        await expect(
-            manager.call('ax:permission', { target: 'editOther', decision: 'always' }),
-        ).rejects.toThrow(/Invalid permission target/);
-    });
-
-    it('rejects invalid decision', async () => {
-        await bootstrapWorkspace(workspace, 'work');
-        await expect(
-            manager.call('ax:permission', { target: 'editPlanMd', decision: 'maybe' }),
-        ).rejects.toThrow(/Invalid permission decision/);
     });
 });

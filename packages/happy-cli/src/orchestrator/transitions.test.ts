@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { applyTransition, applyPermissionDecision } from './transitions';
+import { applyTransition } from './transitions';
 import { bootstrapWorkspace } from './state/bootstrap';
 import { readState, readEvents } from './state/io';
 
@@ -63,39 +63,5 @@ describe('applyTransition', () => {
 
     it('throws when state.json is missing', async () => {
         await expect(applyTransition(workspace, 'plan')).rejects.toThrow();
-    });
-});
-
-describe('applyPermissionDecision', () => {
-    it('always: sets permissions.editPlanMd = always', async () => {
-        await bootstrapWorkspace(workspace, 'work');
-        await applyPermissionDecision(workspace, 'editPlanMd', 'always');
-        const state = await readState(workspace);
-        expect(state.work.permissions.editPlanMd).toBe('always');
-    });
-
-    it('never: sets permissions.editDesignMd = never', async () => {
-        await bootstrapWorkspace(workspace, 'work');
-        await applyPermissionDecision(workspace, 'editDesignMd', 'never');
-        const state = await readState(workspace);
-        expect(state.work.permissions.editDesignMd).toBe('never');
-    });
-
-    it('once / deny: do NOT mutate permissions (turn-scoped only)', async () => {
-        await bootstrapWorkspace(workspace, 'work');
-        const before = await readState(workspace);
-        await applyPermissionDecision(workspace, 'editPlanMd', 'once');
-        await applyPermissionDecision(workspace, 'editPlanMd', 'deny');
-        const after = await readState(workspace);
-        expect(after.work.permissions).toEqual(before.work.permissions);
-    });
-
-    it('always appends an event regardless of decision', async () => {
-        await bootstrapWorkspace(workspace, 'work');
-        await applyPermissionDecision(workspace, 'editPlanMd', 'once');
-        await applyPermissionDecision(workspace, 'editPlanMd', 'always');
-        const events = await readEvents(workspace);
-        const decisions = events.filter((e) => e.type === 'permission.decision');
-        expect(decisions).toHaveLength(2);
     });
 });

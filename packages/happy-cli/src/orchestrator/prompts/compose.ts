@@ -64,7 +64,6 @@ function formatStateSummary(state: AxState): string {
         },
         work: {
             startedAt: state.work.startedAt,
-            permissions: state.work.permissions,
         },
         historyDepth: state.history.length,
     };
