@@ -54,7 +54,8 @@
     "dist",
     "bin",
     "scripts",
-    "tools",
+    "tools/archives",
+    "tools/licenses",
     "package.json"
   ],
   "scripts": {
@@ -77,7 +78,6 @@
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",
     "@paralleldrive/cuid2": "^2.2.2",
-    "@prisma/engines": "6.19.2",
     "@slopus/happy-wire": "workspace:*",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",

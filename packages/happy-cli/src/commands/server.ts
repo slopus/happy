@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { randomBytes } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { createInterface } from 'node:readline/promises';
 import { configuration } from '@/configuration';
 import { updateSettings } from '@/persistence';
 
@@ -19,12 +20,15 @@ const PRISMA_QUERY_ENGINE_FILES: Record<string, string> = {
     'x64-linux': 'libquery_engine-debian-openssl-3.0.x.so.node',
     'x64-win32': 'query_engine-windows.dll.node',
 };
+const SERVER_PACKAGE_NAME = 'happy-server-self-host';
+const SETTINGS_WRITE_CONFIRM_FLAG = '--i-understand-this-will-modify-default-happy-settings';
 
 interface ServerOptions {
     port: number;
     host: string;
     reset: boolean;
     persistServerUrl: boolean;
+    allowSettingsWrite: boolean;
     masterSecret?: string;
 }
 
@@ -37,11 +41,30 @@ interface ServerArtifacts {
     cwd: string;
     /** True when running the bundled bun binary; false when running from monorepo source. */
     bundled: boolean;
+    /** Where this runnable came from. */
+    source: 'package' | 'legacy-bundled' | 'source';
+    /** Prisma's native query engine path for bun-compiled server binaries. */
+    prismaQueryEngineLibrary?: string;
+    /** Static web app directory served by the self-host server. */
+    webappDir?: string;
+}
+
+interface HappyServerPackageArtifact {
+    command: string;
+    prefixArgs?: string[];
+    cwd: string;
+    bundled?: boolean;
+    source?: string;
+    prismaQueryEngineLibrary?: string;
+    webappDir?: string;
 }
 
 export async function handleServerCommand(args: string[]): Promise<void> {
     const opts = parseArgs(args);
     if (opts === null) return;
+
+    const serverUrl = `http://${opts.host === '0.0.0.0' ? '127.0.0.1' : opts.host}:${opts.port}`;
+    await ensureSettingsWriteAllowed(opts, serverUrl);
 
     const dataDir = path.join(configuration.happyHomeDir, 'server-data');
     const pgliteDir = path.join(dataDir, 'pglite');
@@ -58,20 +81,21 @@ export async function handleServerCommand(args: string[]): Promise<void> {
 
     const artifacts = resolveServerArtifacts();
     if (!artifacts) {
-        console.error(chalk.red('Could not locate the happy-server bundle or source.'));
+        console.error(chalk.red('Could not locate happy-server.'));
         console.error(chalk.gray('  Expected one of:'));
-        console.error(chalk.gray(`    - bundled binary at ${path.join(__dirname, '..', '..', 'tools', 'server', currentPlatform(), bundledBinaryName())}`));
+        console.error(chalk.gray(`    - installed ${SERVER_PACKAGE_NAME} package`));
+        console.error(chalk.gray(`    - legacy bundled binary at ${path.join(__dirname, '..', '..', 'tools', 'server', currentPlatform(), bundledBinaryName())}`));
         console.error(chalk.gray('    - sibling packages/happy-server/sources/standalone.ts in the monorepo'));
+        console.error(chalk.gray(`  For npm installs, run: npm install -g ${SERVER_PACKAGE_NAME}`));
         process.exit(1);
     }
 
-    const serverUrl = `http://${opts.host === '0.0.0.0' ? '127.0.0.1' : opts.host}:${opts.port}`;
-    const staticDir = findWebappDir();
+    const staticDir = artifacts.webappDir ?? findWebappDir();
 
     console.log(chalk.cyan(`\n  happy server`));
     console.log(chalk.gray(`  data dir:   ${dataDir}`));
     console.log(chalk.gray(`  server url: ${serverUrl}`));
-    console.log(chalk.gray(`  mode:       ${artifacts.bundled ? 'bundled' : 'source (dev)'}`));
+    console.log(chalk.gray(`  mode:       ${serverArtifactMode(artifacts)}`));
     if (staticDir) {
         console.log(chalk.gray(`  webapp:     ${staticDir}`));
     } else {
@@ -98,11 +122,16 @@ export async function handleServerCommand(args: string[]): Promise<void> {
     // mode resolves the engine from node_modules normally, but bundled mode needs
     // an explicit path because bun's bunfs execPath defeats Prisma's search.
     if (artifacts.bundled) {
-        const prismaEngine = resolvePrismaQueryEngineLibrary(artifacts.cwd);
+        const prismaEngine = artifacts.prismaQueryEngineLibrary ?? resolvePrismaQueryEngineLibrary(artifacts.cwd);
         if (!prismaEngine) {
             console.error(chalk.red('Could not locate the Prisma query engine for this platform.'));
-            console.error(chalk.gray('  Expected @prisma/engines to be installed with the happy package.'));
-            console.error(chalk.gray('  Try reinstalling happy, then run `happy server` again.'));
+            if (artifacts.source === 'package') {
+                console.error(chalk.gray(`  Expected ${SERVER_PACKAGE_NAME} to install @prisma/engines.`));
+                console.error(chalk.gray(`  Try reinstalling ${SERVER_PACKAGE_NAME}, then run \`happy server\` again.`));
+            } else {
+                console.error(chalk.gray('  Expected @prisma/engines to be available near the happy package.'));
+                console.error(chalk.gray('  Try reinstalling happy, then run `happy server` again.'));
+            }
             process.exit(1);
         }
         env.PRISMA_QUERY_ENGINE_LIBRARY = prismaEngine;
@@ -138,13 +167,13 @@ export async function handleServerCommand(args: string[]): Promise<void> {
     process.on('SIGINT', () => forwardSignal('SIGINT'));
     process.on('SIGTERM', () => forwardSignal('SIGTERM'));
 
-    await new Promise<void>(resolve => {
+    const exitCode = await new Promise<number>(resolve => {
         child.on('exit', code => {
             console.log(chalk.gray(`\nhappy-server exited (code ${code ?? 0})`));
-            resolve();
+            resolve(code ?? 0);
         });
     });
-    process.exit(0);
+    process.exit(exitCode);
 }
 
 function parseArgs(args: string[]): ServerOptions | null {
@@ -152,6 +181,7 @@ function parseArgs(args: string[]): ServerOptions | null {
     let host = '127.0.0.1';
     let reset = false;
     let persistServerUrl = true;
+    let allowSettingsWrite = false;
     let masterSecret: string | undefined;
 
     for (let i = 0; i < args.length; i++) {
@@ -171,6 +201,8 @@ function parseArgs(args: string[]): ServerOptions | null {
             reset = true;
         } else if (arg === '--no-persist') {
             persistServerUrl = false;
+        } else if (arg === SETTINGS_WRITE_CONFIRM_FLAG) {
+            allowSettingsWrite = true;
         } else if (arg === '--master-secret') {
             masterSecret = args[++i];
         } else {
@@ -180,7 +212,7 @@ function parseArgs(args: string[]): ServerOptions | null {
         }
     }
 
-    return { port, host, reset, persistServerUrl, masterSecret };
+    return { port, host, reset, persistServerUrl, allowSettingsWrite, masterSecret };
 }
 
 function showHelp() {
@@ -195,13 +227,46 @@ ${chalk.bold('Options:')}
   --host <ip>           Host to bind (default: 127.0.0.1)
   --reset               Wipe local server data before starting
   --no-persist          Don't write serverUrl into settings.json
+  ${SETTINGS_WRITE_CONFIRM_FLAG}
+                        Write settings.serverUrl/settings.webappUrl without prompting
   --master-secret <hex> Use a specific master secret (default: auto-generated)
 
 ${chalk.bold('Notes:')}
   - Stores data in ${chalk.cyan('$HAPPY_HOME_DIR/server-data/')}
-  - Writes ${chalk.cyan('settings.serverUrl')} so happy CLI + daemon point at it automatically
+  - Packaged installs require ${chalk.cyan(SERVER_PACKAGE_NAME)} for the local server binary
+  - By default, asks before writing ${chalk.cyan('settings.serverUrl')} and ${chalk.cyan('settings.webappUrl')}
+  - Use ${chalk.cyan('--no-persist')} to run without modifying default Happy settings
   - Open ${chalk.cyan('http://127.0.0.1:<port>')} for the web app (if bundled)
 `);
+}
+
+async function ensureSettingsWriteAllowed(opts: ServerOptions, serverUrl: string): Promise<void> {
+    if (!opts.persistServerUrl || opts.allowSettingsWrite) {
+        return;
+    }
+
+    const message =
+        `happy server will write settings.serverUrl and settings.webappUrl to ${serverUrl} ` +
+        `in ${configuration.settingsFile}.`;
+
+    if (!process.stdin.isTTY || !process.stderr.isTTY) {
+        console.error(chalk.red('Refusing to modify default Happy settings from a non-interactive run.'));
+        console.error(chalk.gray(message));
+        console.error(chalk.gray(`Re-run with --no-persist, or pass ${SETTINGS_WRITE_CONFIRM_FLAG}.`));
+        process.exit(1);
+    }
+
+    const rl = createInterface({ input: process.stdin, output: process.stderr });
+    try {
+        const answer = await rl.question(`${chalk.yellow(message)} Continue? ${chalk.gray('[y/N]')} `);
+        const normalized = answer.trim().toLowerCase();
+        if (normalized !== 'y' && normalized !== 'yes') {
+            console.error(chalk.gray('Cancelled. Re-run with --no-persist to start without changing settings.'));
+            process.exit(1);
+        }
+    } finally {
+        rl.close();
+    }
 }
 
 function loadOrCreateMasterSecret(file: string): string {
@@ -280,20 +345,30 @@ function ensureExecutable(file: string): void {
     }
 }
 
+function serverArtifactMode(artifacts: ServerArtifacts): string {
+    if (artifacts.source === 'package') return SERVER_PACKAGE_NAME;
+    if (artifacts.source === 'legacy-bundled') return 'legacy bundled';
+    return 'source (dev)';
+}
+
 /**
  * Resolves the artifacts needed to spawn happy-server.
  *
  * Order:
- *   1. Bundled binary at tools/server/<platform>/happy-server (shipped with npm package)
- *   2. Source-mode fallback for monorepo dev: ../happy-server/sources/standalone.ts via tsx
+ *   1. happy-server-self-host package (npm-installed local server artifact)
+ *   2. Legacy bundled binary at tools/server/<platform>/happy-server
+ *   3. Source-mode fallback for monorepo dev: ../happy-server/sources/standalone.ts via tsx
  */
 function resolveServerArtifacts(): ServerArtifacts | undefined {
+    const packageArtifact = resolveInstalledServerPackage();
+    if (packageArtifact) return packageArtifact;
+
     const toolsRoot = resolveToolsPath('server');
     const binDir = path.join(toolsRoot, currentPlatform());
     const binary = path.join(binDir, bundledBinaryName());
     if (existsSync(binary)) {
         ensureExecutable(binary);
-        return { command: binary, prefixArgs: [], cwd: binDir, bundled: true };
+        return { command: binary, prefixArgs: [], cwd: binDir, bundled: true, source: 'legacy-bundled' };
     }
 
     const sourceEntry = findSourceStandalone();
@@ -305,10 +380,34 @@ function resolveServerArtifacts(): ServerArtifacts | undefined {
             prefixArgs: useNode ? [tsx, sourceEntry] : [sourceEntry],
             cwd: path.dirname(path.dirname(sourceEntry)),
             bundled: false,
+            source: 'source',
         };
     }
 
     return undefined;
+}
+
+function resolveInstalledServerPackage(): ServerArtifacts | undefined {
+    try {
+        const serverPackage = require_(SERVER_PACKAGE_NAME) as {
+            resolveServerArtifact?: () => HappyServerPackageArtifact | undefined;
+        };
+        const artifact = serverPackage.resolveServerArtifact?.();
+        if (!artifact || !artifact.command || !existsSync(artifact.command)) {
+            return undefined;
+        }
+        return {
+            command: artifact.command,
+            prefixArgs: artifact.prefixArgs ?? [],
+            cwd: artifact.cwd,
+            bundled: artifact.bundled ?? true,
+            source: 'package',
+            prismaQueryEngineLibrary: artifact.prismaQueryEngineLibrary,
+            webappDir: artifact.webappDir,
+        };
+    } catch {
+        return undefined;
+    }
 }
 
 function findSourceStandalone(): string | undefined {
