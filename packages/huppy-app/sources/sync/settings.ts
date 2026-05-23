@@ -40,6 +40,8 @@ export const SettingsSchema = z.object({
     lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
     lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
     // Dismissed CLI warning banners (supports both per-machine and global dismissal)
+    aiDataSharingConsented: z.boolean().describe('Whether user has consented to sharing data with Anthropic AI'),
+    // Dismissed CLI warning banners (supports both per-machine and global dismissal)
     dismissedCLIWarnings: z.object({
         perMachine: z.record(z.string(), z.object({
             claude: z.boolean().optional(),
@@ -102,6 +104,7 @@ export const settingsDefaults: Settings = {
     lastUsedAgent: null,
     lastUsedPermissionMode: null,
     lastUsedModelMode: null,
+    aiDataSharingConsented: false,
     dismissedCLIWarnings: { perMachine: {}, global: {} },
 };
 Object.freeze(settingsDefaults);

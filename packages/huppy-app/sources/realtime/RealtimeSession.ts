@@ -19,6 +19,10 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         return;
     }
 
+    // Request AI data sharing consent before starting voice session
+    const consented = await sync.ensureAiDataSharingConsent('voice');
+    if (!consented) return;
+
     // Show connecting state immediately so the user sees feedback
     storage.getState().setRealtimeStatus('connecting');
 
