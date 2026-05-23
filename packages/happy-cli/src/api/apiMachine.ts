@@ -4,6 +4,9 @@
  */
 
 import { io, Socket } from 'socket.io-client';
+import { readdir, stat } from 'node:fs/promises';
+import { dirname, join, parse, resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
@@ -24,6 +27,22 @@ import {
 } from '@/claude/utils/claudeSessionFork';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type MachineDirectoryEntry = {
+    name: string;
+    path: string;
+    type: 'file' | 'directory' | 'other';
+    size?: number;
+    modified?: number;
+};
+
+function resolveMachineBrowsePath(input: unknown): string {
+    const raw = typeof input === 'string' && input.trim().length > 0 ? input.trim() : '~';
+    if (raw === '~' || raw.startsWith('~/') || raw.startsWith('~\\')) {
+        return resolve(homedir(), raw.slice(2));
+    }
+    return resolve(raw);
+}
 
 interface ServerToDaemonEvents {
     update: (data: Update) => void;
@@ -163,6 +182,61 @@ export class ApiMachineClient {
 
             logger.debug(`[API MACHINE] Stopped session ${sessionId}`);
             return { message: 'Session stopped' };
+        });
+
+        this.rpcHandlerManager.registerHandler('list-machine-directory', async (params: any) => {
+            const directoryPath = resolveMachineBrowsePath(params?.path);
+            const entries = await readdir(directoryPath, { withFileTypes: true });
+
+            const root = parse(directoryPath).root;
+            const parent = dirname(directoryPath);
+            const directoryEntries: MachineDirectoryEntry[] = await Promise.all(entries.map(async (entry) => {
+                const fullPath = join(directoryPath, entry.name);
+                let type: MachineDirectoryEntry['type'] = 'other';
+                let size: number | undefined;
+                let modified: number | undefined;
+
+                if (entry.isDirectory()) {
+                    type = 'directory';
+                } else if (entry.isFile()) {
+                    type = 'file';
+                }
+
+                try {
+                    const stats = await stat(fullPath);
+                    size = stats.size;
+                    modified = stats.mtime.getTime();
+                    if (stats.isDirectory()) {
+                        type = 'directory';
+                    } else if (stats.isFile()) {
+                        type = 'file';
+                    }
+                } catch (error) {
+                    logger.debug(`[API MACHINE] Failed to stat ${fullPath}:`, error);
+                }
+
+                return {
+                    name: entry.name,
+                    path: fullPath,
+                    type,
+                    size,
+                    modified
+                };
+            }));
+
+            directoryEntries.sort((a, b) => {
+                if (a.type === 'directory' && b.type !== 'directory') return -1;
+                if (a.type !== 'directory' && b.type === 'directory') return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            return {
+                success: true,
+                path: directoryPath,
+                parent: parent === directoryPath ? null : parent,
+                root,
+                entries: directoryEntries
+            };
         });
 
         // Register Claude session fork handlers (used by app-side fork /

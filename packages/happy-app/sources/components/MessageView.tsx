@@ -1,8 +1,10 @@
 import * as React from "react";
 import { View, Text, Pressable, Platform } from "react-native";
+import * as Clipboard from 'expo-clipboard';
 import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
+import { Modal } from '@/modal';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
 import { ToolView } from "./tools/ToolView";
@@ -153,6 +155,16 @@ function AgentTextBlock(props: {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
+  const copyMessage = React.useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(props.message.text);
+      Modal.alert(t('common.copied'), t('items.copiedToClipboard', { label: t('common.message') }));
+    } catch (error) {
+      console.error('Failed to copy message:', error);
+      Modal.alert(t('common.error'), t('markdown.copyFailed'), [{ text: t('common.ok'), style: 'cancel' }]);
+    }
+  }, [props.message.text]);
+
   // Hide thinking messages
   if (props.message.isThinking) {
     return null;
@@ -160,6 +172,15 @@ function AgentTextBlock(props: {
 
   return (
     <View style={styles.agentMessageContainer}>
+      <View style={styles.agentMessageActions}>
+        <Pressable
+          style={styles.agentCopyButton}
+          onPress={copyMessage}
+          hitSlop={8}
+        >
+          <Text style={styles.agentCopyButtonText}>{t('common.copy')}</Text>
+        </Pressable>
+      </View>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
     </View>
   );
@@ -277,6 +298,23 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: 12,
     borderRadius: 16,
     maxWidth: '100%',
+  },
+  agentMessageActions: {
+    alignItems: 'flex-end',
+    marginBottom: 4,
+  },
+  agentCopyButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: theme.colors.divider,
+    backgroundColor: theme.colors.surfaceHighest,
+  },
+  agentCopyButtonText: {
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
   },
   agentEventContainer: {
     marginHorizontal: 8,

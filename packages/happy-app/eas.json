@@ -33,6 +33,16 @@
         "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
     },
+    "personal-preview": {
+      "autoIncrement": true,
+      "distribution": "internal",
+      "channel": "preview",
+      "env": {
+        "APP_ENV": "preview",
+        "HAPPY_PERSONAL_EAS": "1",
+        "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
+      }
+    },
     "preview-store": {
       "autoIncrement": true,
       "distribution": "store",

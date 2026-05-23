@@ -35,7 +35,7 @@ import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { machineSpawnNewSession } from '@/sync/ops';
+import { machineListDirectory, machineSpawnNewSession, type MachineDirectoryEntry } from '@/sync/ops';
 import { createWorktree, listWorktrees } from '@/utils/worktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
@@ -296,6 +296,8 @@ function PathPickerContent({
     items,
     value,
     homeDir,
+    machineId,
+    machineOnline,
     onChangeValue,
     onDone,
 }: {
@@ -303,6 +305,8 @@ function PathPickerContent({
     items: PickerItem[];
     value: string | null;
     homeDir?: string;
+    machineId?: string | null;
+    machineOnline?: boolean;
     onChangeValue: (value: string) => void;
     onDone?: () => void;
 }) {
@@ -310,6 +314,13 @@ function PathPickerContent({
     const inputRef = React.useRef<TextInput>(null);
     const currentValue = value ?? '';
     const [selection, setSelection] = React.useState<{ start: number; end: number } | undefined>(undefined);
+    const [browsePath, setBrowsePath] = React.useState(() => normalizePathForComparison(currentValue, homeDir) ?? homeDir ?? '~');
+    const [remotePath, setRemotePath] = React.useState<string | null>(null);
+    const [remoteParent, setRemoteParent] = React.useState<string | null>(null);
+    const [remoteEntries, setRemoteEntries] = React.useState<MachineDirectoryEntry[]>([]);
+    const [remoteLoading, setRemoteLoading] = React.useState(false);
+    const [remoteError, setRemoteError] = React.useState<string | null>(null);
+    const [remoteReloadKey, setRemoteReloadKey] = React.useState(0);
 
     React.useEffect(() => {
         const timeout = setTimeout(() => {
@@ -342,6 +353,69 @@ function PathPickerContent({
             inputRef.current?.focus();
         }, 0);
     }, [onChangeValue]);
+
+    React.useEffect(() => {
+        const normalized = normalizePathForComparison(currentValue, homeDir);
+        setBrowsePath(normalized ?? homeDir ?? '~');
+    }, [homeDir]);
+
+    React.useEffect(() => {
+        if (!machineId || !machineOnline || !browsePath) {
+            setRemoteEntries([]);
+            setRemotePath(null);
+            setRemoteParent(null);
+            setRemoteError(null);
+            setRemoteLoading(false);
+            return;
+        }
+
+        let cancelled = false;
+        setRemoteLoading(true);
+        setRemoteError(null);
+        machineListDirectory(machineId, browsePath).then((result) => {
+            if (cancelled) return;
+            if (result.success) {
+                setRemotePath(result.path ?? browsePath);
+                setRemoteParent(result.parent ?? null);
+                setRemoteEntries(result.entries ?? []);
+            } else {
+                setRemoteEntries([]);
+                setRemoteError(result.error ?? 'Failed to list remote directory');
+            }
+        }).finally(() => {
+            if (!cancelled) {
+                setRemoteLoading(false);
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [browsePath, machineId, machineOnline, remoteReloadKey]);
+
+    const selectPathValue = React.useCallback((nextValue: string) => {
+        const nextSelection = { start: nextValue.length, end: nextValue.length };
+        onChangeValue(nextValue);
+        setSelection(nextSelection);
+    }, [onChangeValue]);
+
+    const browseCurrentInput = React.useCallback(() => {
+        const normalized = normalizePathForComparison(currentValue, homeDir) ?? homeDir ?? '~';
+        setBrowsePath(normalized);
+    }, [currentValue, homeDir]);
+
+    const handleRemoteDirectoryPress = React.useCallback((entry: MachineDirectoryEntry) => {
+        selectPathValue(entry.path);
+        setBrowsePath(entry.path);
+        setTimeout(() => {
+            inputRef.current?.focus();
+        }, 0);
+    }, [selectPathValue]);
+
+    const remoteDirectories = React.useMemo(
+        () => remoteEntries.filter((entry) => entry.type === 'directory'),
+        [remoteEntries],
+    );
 
     const isCustomPath = currentValue.trim().length > 0 && matchedItemKey === null;
     const handleSelectionChange = React.useCallback((event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
@@ -411,12 +485,98 @@ function PathPickerContent({
                         onSubmitEditing={onDone}
                     />
                 </View>
+                {machineId && machineOnline && (
+                    <Pressable
+                        onPress={browseCurrentInput}
+                        style={(p) => [pickerStyles.pathBrowseButton, p.pressed && pickerStyles.optionPressed]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Browse typed path"
+                    >
+                        <Ionicons name="navigate-outline" size={17} color={theme.colors.textSecondary} />
+                    </Pressable>
+                )}
             </View>
 
             {isCustomPath && (
                 <Text style={[pickerStyles.pathMetaText, { color: theme.colors.textSecondary }]}>
                     using custom path above
                 </Text>
+            )}
+
+            {machineId && (
+                <>
+                    <View style={pickerStyles.remoteHeaderRow}>
+                        <Text style={[pickerStyles.sectionLabel, pickerStyles.remoteSectionLabel, { color: theme.colors.textSecondary }]}>
+                            Remote folders
+                        </Text>
+                        {machineOnline && remoteParent && (
+                            <Pressable
+                                onPress={() => setBrowsePath(remoteParent)}
+                                style={(p) => [pickerStyles.remoteHeaderButton, p.pressed && pickerStyles.optionPressed]}
+                                accessibilityRole="button"
+                                accessibilityLabel="Go to parent folder"
+                            >
+                                <Ionicons name="arrow-up" size={15} color={theme.colors.textSecondary} />
+                            </Pressable>
+                        )}
+                        {machineOnline && (
+                            <Pressable
+                                onPress={() => setRemoteReloadKey((key) => key + 1)}
+                                style={(p) => [pickerStyles.remoteHeaderButton, p.pressed && pickerStyles.optionPressed]}
+                                accessibilityRole="button"
+                                accessibilityLabel="Refresh remote folders"
+                            >
+                                <Ionicons name="refresh" size={15} color={theme.colors.textSecondary} />
+                            </Pressable>
+                        )}
+                    </View>
+
+                    {remotePath && (
+                        <Text
+                            numberOfLines={1}
+                            style={[pickerStyles.pathMetaText, { color: theme.colors.textSecondary }]}
+                        >
+                            {formatPathRelativeToHome(remotePath, homeDir)}
+                        </Text>
+                    )}
+
+                    {!machineOnline ? (
+                        <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
+                            machine is offline
+                        </Text>
+                    ) : remoteLoading ? (
+                        <View style={pickerStyles.loadingRow}>
+                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                        </View>
+                    ) : remoteError ? (
+                        <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
+                            {remoteError}
+                        </Text>
+                    ) : (
+                        <ScrollView style={pickerStyles.remoteOptionList} keyboardShouldPersistTaps="handled">
+                            {remoteDirectories.map((entry) => (
+                                <Pressable
+                                    key={entry.path}
+                                    style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed]}
+                                    onPress={() => handleRemoteDirectoryPress(entry)}
+                                >
+                                    <Ionicons name="folder-outline" size={16} color={theme.colors.textSecondary} />
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[pickerStyles.optionText, { color: theme.colors.text }]} numberOfLines={1}>
+                                            {entry.name}
+                                        </Text>
+                                    </View>
+                                </Pressable>
+                            ))}
+
+                            {remoteDirectories.length === 0 && (
+                                <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
+                                    no folders
+                                </Text>
+                            )}
+                        </ScrollView>
+                    )}
+                </>
             )}
 
             <Text style={[pickerStyles.sectionLabel, { color: theme.colors.textSecondary }]}>
@@ -1202,6 +1362,8 @@ function NewSessionScreen() {
                                     items={pathItems}
                                     value={selectedPath}
                                     homeDir={selectedHomeDir}
+                                    machineId={selectedMachineId}
+                                    machineOnline={!!selectedMachine && isMachineOnline(selectedMachine)}
                                     onChangeValue={setSelectedPath}
                                     onDone={() => setActivePicker(null)}
                                 />
@@ -1283,6 +1445,8 @@ function NewSessionScreen() {
                             items={pathItems}
                             value={selectedPath}
                             homeDir={selectedHomeDir}
+                            machineId={selectedMachineId}
+                            machineOnline={!!selectedMachine && isMachineOnline(selectedMachine)}
                             onChangeValue={setSelectedPath}
                             onDone={() => setActivePicker(null)}
                         />
@@ -1549,6 +1713,13 @@ const pickerStyles = {
     pathInputField: {
         flex: 1,
     } as const,
+    pathBrowseButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+    } as const,
     pathTextInput: {
         fontSize: 16,
         minHeight: 44,
@@ -1574,6 +1745,23 @@ const pickerStyles = {
         ...Typography.default('semiBold'),
         ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
     } as const,
+    remoteHeaderRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        paddingTop: 2,
+        paddingBottom: 4,
+    } as const,
+    remoteSectionLabel: {
+        flex: 1,
+        paddingBottom: 0,
+    } as const,
+    remoteHeaderButton: {
+        width: 30,
+        height: 28,
+        borderRadius: 8,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+    } as const,
     option: {
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
@@ -1598,6 +1786,17 @@ const pickerStyles = {
     optionList: {
         flexGrow: 0,
         flexShrink: 1,
+    } as const,
+    remoteOptionList: {
+        flexGrow: 0,
+        flexShrink: 1,
+        maxHeight: 220,
+        marginBottom: 8,
+    } as const,
+    loadingRow: {
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        paddingVertical: 18,
     } as const,
     emptyText: {
         fontSize: 14,

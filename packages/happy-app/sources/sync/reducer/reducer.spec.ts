@@ -2900,6 +2900,71 @@ describe('reducer', () => {
             const permMsgId = state.toolIdToMessageId.get('tool-1');
             expect(toolMsgId).toBe(permMsgId); // Same message - properly matched!
         });
+
+        it('should merge Codex approval and execution when their IDs differ', () => {
+            const state = createReducer();
+
+            const toolMessage: NormalizedMessage = {
+                id: 'msg-1',
+                localId: null,
+                createdAt: 2000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: 'exec-1',
+                    name: 'CodexBash',
+                    input: { command: 'ls -la', cwd: '/tmp/project' },
+                    description: 'ls -la',
+                    uuid: 'tool-uuid-1',
+                    parentUUID: null
+                }]
+            };
+
+            const resultMessage: NormalizedMessage = {
+                id: 'msg-2',
+                localId: null,
+                createdAt: 3000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'exec-1',
+                    content: 'file1.txt',
+                    is_error: false,
+                    uuid: 'result-uuid-1',
+                    parentUUID: null
+                }]
+            };
+
+            const agentState: AgentState = {
+                completedRequests: {
+                    'approval-1': {
+                        tool: 'CodexBash',
+                        arguments: { command: ['ls -la'], cwd: '/tmp/project' },
+                        createdAt: 1000,
+                        completedAt: 1500,
+                        status: 'approved',
+                        decision: 'approved',
+                    }
+                }
+            };
+
+            const result = reducer(state, [toolMessage, resultMessage], agentState);
+
+            const toolMessages = result.messages.filter((message) => message.kind === 'tool-call');
+            expect(toolMessages).toHaveLength(1);
+            expect(state.messages.size).toBe(1);
+
+            const messageId = state.toolIdToMessageId.get('exec-1');
+            expect(messageId).toBe(state.toolIdToMessageId.get('approval-1'));
+
+            const message = state.messages.get(messageId!);
+            expect(message?.tool?.permission?.id).toBe('approval-1');
+            expect(message?.tool?.permission?.status).toBe('approved');
+            expect(message?.tool?.state).toBe('completed');
+            expect(message?.tool?.result).toBe('file1.txt');
+        });
     });
 
     describe('session protocol lifecycle and subagent sidechains', () => {

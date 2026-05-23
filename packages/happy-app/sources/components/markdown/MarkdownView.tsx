@@ -163,6 +163,7 @@ function RenderNumberedListBlock(props: { items: { number: number, depth: number
 
 function RenderCodeBlock(props: { content: string, language: string | null, first: boolean, last: boolean, selectable: boolean }) {
     const [isHovered, setIsHovered] = React.useState(false);
+    const showCopyButton = Platform.OS !== 'web' || isHovered;
 
     const copyCode = React.useCallback(async () => {
         try {
@@ -193,12 +194,13 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
                 />
             </HorizontalScrollView>
             <View
-                style={[style.copyButtonWrapper, isHovered && style.copyButtonWrapperVisible]}
+                style={[style.copyButtonWrapper, showCopyButton && style.copyButtonWrapperVisible]}
                 {...(Platform.OS === 'web' ? ({ className: 'copy-button-wrapper' } as any) : {})}
             >
                 <Pressable
                     style={style.copyButton}
                     onPress={copyCode}
+                    hitSlop={8}
                 >
                     <Text style={style.copyButtonText}>{t('common.copy')}</Text>
                 </Pressable>

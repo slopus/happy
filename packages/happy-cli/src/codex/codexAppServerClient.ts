@@ -290,10 +290,12 @@ export class CodexAppServerClient {
 
         if (method === 'item/started' && item.type === 'commandExecution') {
             const callId = typeof item.id === 'string' ? item.id : '';
+            const turnId = this.extractTurnId(params);
             this.eventHandler?.({
                 type: 'exec_command_begin',
                 call_id: callId,
                 callId,
+                ...(turnId ? { turn_id: turnId } : {}),
                 command: item.command,
                 cwd: item.cwd,
                 description: item.command,
@@ -303,10 +305,12 @@ export class CodexAppServerClient {
 
         if (method === 'item/completed' && item.type === 'commandExecution') {
             const callId = typeof item.id === 'string' ? item.id : '';
+            const turnId = this.extractTurnId(params);
             this.eventHandler?.({
                 type: 'exec_command_end',
                 call_id: callId,
                 callId,
+                ...(turnId ? { turn_id: turnId } : {}),
                 output: item.aggregatedOutput ?? '',
                 exit_code: item.exitCode ?? null,
                 duration_ms: item.durationMs ?? null,
@@ -319,6 +323,7 @@ export class CodexAppServerClient {
 
         if (item.type === 'fileChange') {
             const callId = typeof item.id === 'string' ? item.id : '';
+            const turnId = this.extractTurnId(params);
             const changes = normalizeRawFileChangeList(item.changes);
 
             if (callId && changes) {
@@ -330,6 +335,7 @@ export class CodexAppServerClient {
                     type: 'patch_apply_begin',
                     call_id: callId,
                     callId,
+                    ...(turnId ? { turn_id: turnId } : {}),
                     changes: changes ?? {},
                 });
                 return true;
@@ -340,6 +346,7 @@ export class CodexAppServerClient {
                     type: 'patch_apply_end',
                     call_id: callId,
                     callId,
+                    ...(turnId ? { turn_id: turnId } : {}),
                     status: item.status,
                 });
 
@@ -352,10 +359,12 @@ export class CodexAppServerClient {
 
         if (method === 'item/completed' && item.type === 'agentMessage') {
             const text = typeof item.text === 'string' ? item.text : '';
+            const turnId = this.extractTurnId(params);
             if (text.length > 0) {
                 this.eventHandler?.({
                     type: 'agent_message',
                     message: text,
+                    ...(turnId ? { turn_id: turnId } : {}),
                     item_id: item.id,
                     phase: item.phase,
                 });
