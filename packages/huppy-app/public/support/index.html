@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Huppy Support</title>
+  <meta
+    name="description"
+    content="Get help with Huppy account access, pairing, subscriptions, restores, and bug reports."
+  >
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4efe7;
+      --paper: #fffaf4;
+      --ink: #18120d;
+      --muted: #62564b;
+      --brand: #ff9a3c;
+      --brand-deep: #cc6b11;
+      --border: #e8d8c5;
+      --shadow: 0 24px 80px rgba(90, 51, 13, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(255, 173, 92, 0.22), transparent 32rem),
+        linear-gradient(180deg, #fff8ef 0%, var(--bg) 100%);
+      color: var(--ink);
+      line-height: 1.6;
+    }
+
+    a {
+      color: var(--brand-deep);
+    }
+
+    .shell {
+      width: min(980px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 48px 0 72px;
+    }
+
+    .hero,
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 40px;
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(255, 154, 60, 0.16);
+      color: var(--brand-deep);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 18px 0 12px;
+      font-size: clamp(36px, 6vw, 64px);
+      line-height: 0.96;
+      letter-spacing: -0.04em;
+    }
+
+    .lede {
+      max-width: 50rem;
+      margin: 0;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    .highlights {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 28px;
+    }
+
+    .highlight {
+      padding: 18px;
+      border-radius: 20px;
+      background: rgba(255, 154, 60, 0.08);
+      border: 1px solid rgba(255, 154, 60, 0.18);
+    }
+
+    .highlight strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .card {
+      padding: 28px;
+    }
+
+    .card h2 {
+      margin-top: 0;
+      margin-bottom: 12px;
+      font-size: 24px;
+      letter-spacing: -0.02em;
+    }
+
+    .contact {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin: 10px 0 16px;
+      padding: 14px 18px;
+      border-radius: 18px;
+      background: #fff1e4;
+      border: 1px solid rgba(255, 154, 60, 0.26);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .steps,
+    .faq {
+      padding-left: 18px;
+      margin: 0;
+    }
+
+    .steps li,
+    .faq li {
+      margin-bottom: 14px;
+    }
+
+    .faq strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .footer {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 768px) {
+      .shell {
+        width: min(100% - 24px, 980px);
+        padding-top: 24px;
+      }
+
+      .hero,
+      .card {
+        border-radius: 24px;
+      }
+
+      .hero,
+      .card {
+        padding: 24px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="eyebrow">Huppy Support</div>
+      <h1>Get help with pairing, billing, and account access.</h1>
+      <p class="lede">
+        Huppy is free to download and use. If you need help connecting your computer,
+        restoring Huppy Plus, or reporting a bug, contact us and we will point you to the
+        fastest fix.
+      </p>
+      <div class="highlights">
+        <div class="highlight">
+          <strong>Email support</strong>
+          <span>Contact us at <a href="mailto:support@huppy.ai">support@huppy.ai</a>.</span>
+        </div>
+        <div class="highlight">
+          <strong>Response time</strong>
+          <span>We aim to reply within 2 business days.</span>
+        </div>
+        <div class="highlight">
+          <strong>Before you write</strong>
+          <span>Include your device type, Huppy version, and a short description of the issue.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>How to get help</h2>
+        <p>
+          Use the support email below for account questions, billing issues, restore requests,
+          pairing problems, or bug reports.
+        </p>
+        <a class="contact" href="mailto:support@huppy.ai">support@huppy.ai</a>
+        <ol class="steps">
+          <li>Tell us what you were trying to do.</li>
+          <li>Include your iPhone or iPad model and the Huppy app version.</li>
+          <li>Add screenshots or screen recordings if they make the issue easier to understand.</li>
+        </ol>
+        <p class="footer">
+          For subscription refunds processed through Apple, Apple Support remains the final refund authority.
+        </p>
+      </article>
+
+      <article class="card">
+        <h2>Frequently Asked Questions</h2>
+        <ul class="faq">
+          <li>
+            <strong>How do I connect my computer?</strong>
+            Open Huppy on your phone, then scan the QR code shown by the Huppy desktop or CLI flow, or paste the terminal link manually.
+          </li>
+          <li>
+            <strong>Do I need to pay to create an account?</strong>
+            No. Huppy account access is free. A paid subscription is optional and only unlocks premium features.
+          </li>
+          <li>
+            <strong>Where do I buy or restore Huppy Plus?</strong>
+            On iPhone and iPad, Huppy Plus is purchased and restored through Apple's in-app purchase flow.
+          </li>
+          <li>
+            <strong>What does Huppy Plus unlock?</strong>
+            Huppy Plus unlocks premium voice usage beyond the free allowance and allows more than one connected computer per account.
+          </li>
+          <li>
+            <strong>Which AI providers does Huppy support?</strong>
+            Huppy currently supports Claude Code, Codex, Gemini, and OpenClaw sessions running on your own machine.
+          </li>
+          <li>
+            <strong>How do I report a bug?</strong>
+            Email us with steps to reproduce the issue, what you expected to happen, and any screenshots that help explain the problem.
+          </li>
+        </ul>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
