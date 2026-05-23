@@ -684,7 +684,11 @@ export const ca: TranslationStructure = {
         failedToConnectTerminal: 'Ha fallat connectar el terminal',
         cameraPermissionsRequiredToConnectTerminal: 'Es requereixen permisos de càmera per connectar el terminal',
         failedToLinkDevice: 'Ha fallat enllaçar el dispositiu',
-        cameraPermissionsRequiredToScanQr: 'Es requereixen permisos de càmera per escanejar codis QR'
+        cameraPermissionsRequiredToScanQr: 'Es requereixen permisos de càmera per escanejar codis QR',
+        aiDataSharingTitle: 'Compartir dades amb IA',
+        aiDataSharingMessageMessages: 'Per processar la vostra sol·licitud, els missatges de conversa s\'enviaran a Anthropic (Claude AI). Anthropic pot utilitzar aquestes dades per millorar els seus serveis.\n\nEsteu d\'acord a compartir aquestes dades?',
+        aiDataSharingMessageVoice: 'Per processar la vostra sol·licitud, l\'àudio de veu i les transcripcions s\'enviaran a Anthropic (Claude AI). Anthropic pot utilitzar aquestes dades per millorar els seus serveis.\n\nEsteu d\'acord a compartir aquestes dades?',
+        aiDataSharingAgree: 'D\'acord',
     },
 
     navigation: {

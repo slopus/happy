@@ -371,7 +371,7 @@ export const en = {
             installCli: 'Install the Huppy CLI',
             runIt: 'Run it',
             scanQrCode: 'Scan the QR code',
-            openCamera: 'Open Camera',
+            openCamera: 'Scan QR Code',
         },
     },
 
@@ -682,7 +682,11 @@ export const en = {
         failedToConnectTerminal: 'Failed to connect terminal',
         cameraPermissionsRequiredToConnectTerminal: 'Camera permissions are required to connect terminal',
         failedToLinkDevice: 'Failed to link device',
-        cameraPermissionsRequiredToScanQr: 'Camera permissions are required to scan QR codes'
+        cameraPermissionsRequiredToScanQr: 'Camera permissions are required to scan QR codes',
+        aiDataSharingTitle: 'Data Sharing with AI',
+        aiDataSharingMessageMessages: 'To process your request, conversation messages will be sent to Anthropic (Claude AI). Anthropic may use this data to improve their services.\n\nDo you agree to share this data?',
+        aiDataSharingMessageVoice: 'To process your request, voice audio and transcriptions will be sent to Anthropic (Claude AI). Anthropic may use this data to improve their services.\n\nDo you agree to share this data?',
+        aiDataSharingAgree: 'I Agree',
     },
 
     navigation: {

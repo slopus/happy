@@ -374,7 +374,7 @@ export const zhHans: TranslationStructure = {
             installCli: '安装 Huppy CLI',
             runIt: '运行它',
             scanQrCode: '扫描二维码',
-            openCamera: '打开相机',
+            openCamera: '扫码认证',
         },
     },
 
@@ -685,7 +685,11 @@ export const zhHans: TranslationStructure = {
         failedToConnectTerminal: '连接终端失败',
         cameraPermissionsRequiredToConnectTerminal: '连接终端需要相机权限',
         failedToLinkDevice: '链接设备失败',
-        cameraPermissionsRequiredToScanQr: '扫描二维码需要相机权限'
+        cameraPermissionsRequiredToScanQr: '扫描二维码需要相机权限',
+        aiDataSharingTitle: '与 AI 共享数据',
+        aiDataSharingMessageMessages: '为处理您的请求，对话消息将发送至 Anthropic（Claude AI）。Anthropic 可能使用这些数据来改善其服务。\n\n您是否同意共享这些数据？',
+        aiDataSharingMessageVoice: '为处理您的请求，语音录音和转录内容将发送至 Anthropic（Claude AI）。Anthropic 可能使用这些数据来改善其服务。\n\n您是否同意共享这些数据？',
+        aiDataSharingAgree: '我同意',
     },
 
     navigation: {

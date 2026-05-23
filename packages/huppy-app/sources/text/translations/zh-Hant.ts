@@ -684,7 +684,11 @@ export const zhHant: TranslationStructure = {
         failedToConnectTerminal: '連線終端失敗',
         cameraPermissionsRequiredToConnectTerminal: '連線終端需要相機權限',
         failedToLinkDevice: '連結裝置失敗',
-        cameraPermissionsRequiredToScanQr: '掃描 QR Code 需要相機權限'
+        cameraPermissionsRequiredToScanQr: '掃描 QR Code 需要相機權限',
+        aiDataSharingTitle: '與 AI 共享資料',
+        aiDataSharingMessageMessages: '為處理您的請求，對話訊息將發送至 Anthropic（Claude AI）。Anthropic 可能使用這些資料來改善其服務。\n\n您是否同意共享這些資料？',
+        aiDataSharingMessageVoice: '為處理您的請求，語音錄音和轉錄內容將發送至 Anthropic（Claude AI）。Anthropic 可能使用這些資料來改善其服務。\n\n您是否同意共享這些資料？',
+        aiDataSharingAgree: '我同意',
     },
 
     navigation: {

@@ -684,7 +684,11 @@ export const es: TranslationStructure = {
         failedToConnectTerminal: 'Falló al conectar terminal',
         cameraPermissionsRequiredToConnectTerminal: 'Se requieren permisos de cámara para conectar terminal',
         failedToLinkDevice: 'Falló al vincular dispositivo',
-        cameraPermissionsRequiredToScanQr: 'Se requieren permisos de cámara para escanear códigos QR'
+        cameraPermissionsRequiredToScanQr: 'Se requieren permisos de cámara para escanear códigos QR',
+        aiDataSharingTitle: 'Compartir datos con IA',
+        aiDataSharingMessageMessages: 'Para procesar tu solicitud, los mensajes de conversación se enviarán a Anthropic (Claude AI). Anthropic puede usar estos datos para mejorar sus servicios.\n\n¿Aceptas compartir estos datos?',
+        aiDataSharingMessageVoice: 'Para procesar tu solicitud, el audio de voz y las transcripciones se enviarán a Anthropic (Claude AI). Anthropic puede usar estos datos para mejorar sus servicios.\n\n¿Aceptas compartir estos datos?',
+        aiDataSharingAgree: 'Acepto',
     },
 
     navigation: {

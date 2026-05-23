@@ -681,7 +681,11 @@ export const ru: TranslationStructure = {
         failedToConnectTerminal: 'Не удалось подключить терминал',
         cameraPermissionsRequiredToConnectTerminal: 'Для подключения терминала требуется доступ к камере',
         failedToLinkDevice: 'Не удалось связать устройство',
-        cameraPermissionsRequiredToScanQr: 'Для сканирования QR-кодов требуется доступ к камере'
+        cameraPermissionsRequiredToScanQr: 'Для сканирования QR-кодов требуется доступ к камере',
+        aiDataSharingTitle: 'Передача данных ИИ',
+        aiDataSharingMessageMessages: 'Для обработки вашего запроса сообщения из переписки будут отправлены в Anthropic (Claude AI). Anthropic может использовать эти данные для улучшения своих сервисов.\n\nВы согласны поделиться этими данными?',
+        aiDataSharingMessageVoice: 'Для обработки вашего запроса голосовые записи и расшифровки будут отправлены в Anthropic (Claude AI). Anthropic может использовать эти данные для улучшения своих сервисов.\n\nВы согласны поделиться этими данными?',
+        aiDataSharingAgree: 'Согласен',
     },
 
     navigation: {

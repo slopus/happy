@@ -32,6 +32,8 @@ import { AsyncLock } from '@/utils/lock';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
+import { Modal } from '@/modal';
+import { t } from '@/text';
 import { systemPrompt } from './prompt/systemPrompt';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
 import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
@@ -439,7 +441,29 @@ class Sync {
         this.backgroundSendStartedAt = null;
     }
 
+    async ensureAiDataSharingConsent(scope: 'message' | 'voice'): Promise<boolean> {
+        if (storage.getState().settings.aiDataSharingConsented) {
+            return true;
+        }
+        const message = scope === 'voice'
+            ? t('modals.aiDataSharingMessageVoice')
+            : t('modals.aiDataSharingMessageMessages');
+        const confirmed = await Modal.confirm(
+            t('modals.aiDataSharingTitle'),
+            message,
+            { confirmText: t('modals.aiDataSharingAgree'), cancelText: t('common.cancel') }
+        );
+        if (confirmed) {
+            storage.getState().applySettingsLocal({ aiDataSharingConsented: true });
+        }
+        return confirmed;
+    }
+
     async sendMessage(sessionId: string, text: string, displayText?: string) {
+
+        // Request AI data sharing consent before sending
+        const consented = await this.ensureAiDataSharingConsent('message');
+        if (!consented) return;
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);

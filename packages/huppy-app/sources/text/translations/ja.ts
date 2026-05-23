@@ -685,7 +685,11 @@ export const ja: TranslationStructure = {
         failedToConnectTerminal: 'ターミナルの接続に失敗しました',
         cameraPermissionsRequiredToConnectTerminal: 'ターミナルの接続にはカメラの権限が必要です',
         failedToLinkDevice: 'デバイスのリンクに失敗しました',
-        cameraPermissionsRequiredToScanQr: 'QRコードのスキャンにはカメラの権限が必要です'
+        cameraPermissionsRequiredToScanQr: 'QRコードのスキャンにはカメラの権限が必要です',
+        aiDataSharingTitle: 'AIとのデータ共有',
+        aiDataSharingMessageMessages: 'リクエストを処理するために、会話メッセージがAnthropic（Claude AI）に送信されます。Anthropicはこのデータをサービス改善のために使用する場合があります。\n\nデータの共有に同意しますか？',
+        aiDataSharingMessageVoice: 'リクエストを処理するために、音声録音と文字起こしがAnthropic（Claude AI）に送信されます。Anthropicはこのデータをサービス改善のために使用する場合があります。\n\nデータの共有に同意しますか？',
+        aiDataSharingAgree: '同意する',
     },
 
     navigation: {
