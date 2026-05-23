@@ -1,0 +1,118 @@
+diff --git a/node_modules/expo-updates/ios/EXUpdates/Database/UpdatesDatabase.swift b/node_modules/expo-updates/ios/EXUpdates/Database/UpdatesDatabase.swift
+index 9949b91..65d3be3 100644
+--- a/node_modules/expo-updates/ios/EXUpdates/Database/UpdatesDatabase.swift
++++ b/node_modules/expo-updates/ios/EXUpdates/Database/UpdatesDatabase.swift
+@@ -410,7 +410,7 @@ public final class UpdatesDatabase: NSObject {
+   public func allUpdates(withConfig config: UpdatesConfig) throws -> [Update] {
+     let sql = "SELECT * FROM updates;"
+     let rows = try execute(sql: sql, withArgs: nil)
+-    return rows.map { row in
++    return rows.compactMap { row in
+       update(withRow: row, config: config)
+     }
+   }
+@@ -418,7 +418,7 @@ public final class UpdatesDatabase: NSObject {
+   public func allUpdates(withStatus status: UpdateStatus, config: UpdatesConfig) throws -> [Update] {
+     let sql = "SELECT * FROM updates WHERE status = ?1;"
+     let rows = try execute(sql: sql, withArgs: [status.rawValue])
+-    return rows.map { row in
++    return rows.compactMap { row in
+       update(withRow: row, config: config)
+     }
+   }
+@@ -440,7 +440,7 @@ public final class UpdatesDatabase: NSObject {
+     )
+ 
+     let rows = try execute(sql: sql, withArgs: [config.scopeKey])
+-    return rows.map { row in
++    return rows.compactMap { row in
+       update(withRow: row, config: config)
+     }
+   }
+@@ -457,7 +457,7 @@ public final class UpdatesDatabase: NSObject {
+   public func allAssets() throws -> [UpdateAsset] {
+     let sql = "SELECT * FROM assets;"
+     let rows = try execute(sql: sql, withArgs: nil)
+-    return rows.map { row in
++    return rows.compactMap { row in
+       asset(withRow: row)
+     }
+   }
+@@ -465,7 +465,7 @@ public final class UpdatesDatabase: NSObject {
+   public func assets(withUpdateId updateId: UUID) throws -> [UpdateAsset] {
+     let sql = "SELECT assets.*, launch_asset_id FROM assets INNER JOIN updates_assets ON updates_assets.asset_id = assets.id INNER JOIN updates ON updates_assets.update_id = updates.id WHERE updates.id = ?1;"
+     let rows = try execute(sql: sql, withArgs: [updateId])
+-    return rows.map { row in
++    return rows.compactMap { row in
+       asset(withRow: row)
+     }
+   }
+@@ -626,9 +626,13 @@ public final class UpdatesDatabase: NSObject {
+     sqlite3_exec(db, "COMMIT;", nil, nil, nil)
+   }
+ 
+-  private func update(withRow row: [String: Any?], config: UpdatesConfig) -> Update {
+-    let rowManifest: String = row.requiredValue(forKey: "manifest")
+-    let manifest = (try? JSONSerialization.jsonObject(with: rowManifest.data(using: .utf8)!) as? [String: Any]).require("Update manifest should be a valid JSON object")
++  private func update(withRow row: [String: Any?], config: UpdatesConfig) -> Update? {
++    guard let rowManifest: String = row.optionalValue(forKey: "manifest"),
++      let manifestData = rowManifest.data(using: .utf8),
++      let manifestJSON = try? JSONSerialization.jsonObject(with: manifestData) as? [String: Any] else {
++      return nil
++    }
++
+     let keep: NSNumber = row.requiredValue(forKey: "keep")
+     let status: NSNumber = row.requiredValue(forKey: "status")
+     let successfulLaunchCount: NSNumber = row.requiredValue(forKey: "successful_launch_count")
+@@ -637,7 +641,7 @@ public final class UpdatesDatabase: NSObject {
+     let requestHeaders: [String: String]? = Self.decodeRequestHeaders(row.optionalValue(forKey: "headers"))
+ 
+     let update = Update(
+-      manifest: ManifestFactory.manifest(forManifestJSON: manifest),
++      manifest: ManifestFactory.manifest(forManifestJSON: manifestJSON),
+       config: config,
+       database: self,
+       updateId: row.requiredValue(forKey: "id"),
+@@ -657,17 +661,25 @@ public final class UpdatesDatabase: NSObject {
+     return update
+   }
+ 
+-  private func asset(withRow row: [String: Any?]) -> UpdateAsset {
++  private func asset(withRow row: [String: Any?]) -> UpdateAsset? {
+     let rowMetadata = row["metadata"]
+     var metadata: [String: Any]?
+     if let rowMetadata = rowMetadata as? String {
+-      metadata = (try? JSONSerialization.jsonObject(with: rowMetadata.data(using: .utf8)!) as? [String: Any]).require("Asset metadata should be a valid JSON object")
++      guard let metadataData = rowMetadata.data(using: .utf8),
++        let metadataJSON = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] else {
++        return nil
++      }
++      metadata = metadataJSON
+     }
+ 
+     let rowExtraRequestHeaders = row["extra_request_headers"]
+     var extraRequestHeaders: [String: Any]?
+     if let rowExtraRequestHeaders = rowExtraRequestHeaders as? String {
+-      extraRequestHeaders = (try? JSONSerialization.jsonObject(with: rowExtraRequestHeaders.data(using: .utf8)!) as? [String: Any]).require("Asset extra_request_headers should be a valid JSON object")
++      guard let headersData = rowExtraRequestHeaders.data(using: .utf8),
++        let headersJSON = try? JSONSerialization.jsonObject(with: headersData) as? [String: Any] else {
++        return nil
++      }
++      extraRequestHeaders = headersJSON
+     }
+ 
+     let launchAssetId: NSNumber? = row.optionalValue(forKey: "launch_asset_id")
+diff --git a/node_modules/expo-updates/ios/EXUpdates/ErrorRecovery.swift b/node_modules/expo-updates/ios/EXUpdates/ErrorRecovery.swift
+index 14a9ce5..d031a23 100644
+--- a/node_modules/expo-updates/ios/EXUpdates/ErrorRecovery.swift
++++ b/node_modules/expo-updates/ios/EXUpdates/ErrorRecovery.swift
+@@ -158,7 +158,8 @@ public final class ErrorRecovery: NSObject {
+ 
+       if let launchedUpdate = self.delegate?.launchedUpdate(),
+         launchedUpdate.successfulLaunchCount > 0 {
+-        self.pipeline.remove(.launchCached)
++        // Keep .launchCached in pipeline even after successful launches
++        // to prevent crash when OTA check times out with no update available
+       } else if !self.rctContentHasAppeared {
+         self.delegate?.markFailedLaunchForLaunchedUpdate()
+       }
