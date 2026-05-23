@@ -25,7 +25,7 @@ export default {
         name,
         slug: "huppy",
         version: "1.8.0",
-        runtimeVersion: "22",
+        runtimeVersion: "27",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
         scheme: ["huppy", "happy"],
@@ -37,7 +37,7 @@ export default {
                 usesNonExemptEncryption: false
             },
             infoPlist: {
-                NSMicrophoneUsageDescription: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations.",
+                NSMicrophoneUsageDescription: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations with AI.",
                 NSLocalNetworkUsageDescription: "Allow $(PRODUCT_NAME) to find and connect to local devices on your network.",
                 NSBonjourServices: ["_http._tcp", "_https._tcp"]
             },
@@ -101,12 +101,7 @@ export default {
             "expo-web-browser",
             "react-native-vision-camera",
             "@more-tech/react-native-libsodium",
-            [
-                "react-native-audio-api",
-                {
-                    iosBackgroundMode: false
-                }
-            ],
+            "react-native-audio-api",
             "@livekit/react-native-expo-plugin",
             "@config-plugins/react-native-webrtc",
             [
@@ -116,9 +111,23 @@ export default {
                 }
             ],
             [
+                "expo-location",
+                {
+                    locationAlwaysAndWhenInUsePermission: "Allow $(PRODUCT_NAME) to improve AI quality by using your location.",
+                    locationAlwaysPermission: "Allow $(PRODUCT_NAME) to improve AI quality by using your location.",
+                    locationWhenInUsePermission: "Allow $(PRODUCT_NAME) to improve AI quality by using your location."
+                }
+            ],
+            [
+                "expo-calendar",
+                {
+                    "calendarPermission": "Allow $(PRODUCT_NAME) to access your calendar to improve AI quality."
+                }
+            ],
+            [
                 "expo-camera",
                 {
-                    cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to scan QR codes for secure device pairing.",
+                    cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to scan QR codes and share photos with AI.",
                     microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations.",
                     recordAudioAndroid: true
                 }
@@ -170,6 +179,7 @@ export default {
                 postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
                 revenueCatAppleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_APPLE,
                 revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
+                revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE,
                 elevenLabsAgentId,
                 consoleLoggingDefault,
             }
