@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildResumeLaunch, formatResumeHelp, parseResumeCommandArgs } from './handleResumeCommand';
+import { buildReconnectEnv, buildResumeLaunch, formatResumeHelp, parseResumeCommandArgs } from './handleResumeCommand';
+import type { ReconnectableHappySession } from './resolveHappySession';
 
 describe('parseResumeCommandArgs', () => {
     it('parses the happy session id', () => {
@@ -85,5 +86,51 @@ describe('buildResumeLaunch', () => {
 describe('formatResumeHelp', () => {
     it('mentions the session id command shape', () => {
         expect(formatResumeHelp()).toContain('happy resume <happy-session-id>');
+    });
+});
+
+describe('buildReconnectEnv', () => {
+    const sample: ReconnectableHappySession = {
+        id: 'cmmij8olq00dp5jcxr3wtbpau',
+        active: false,
+        metadata: {
+            path: '/tmp/repo',
+            flavor: 'claude',
+            claudeSessionId: '93a9705e-bc6a-406d-8dce-8acc014dedbd',
+            host: 'localhost',
+            homeDir: '/tmp',
+            happyHomeDir: '/tmp/.happy',
+            happyLibDir: '/tmp/happy',
+            happyToolsDir: '/tmp/happy/tools',
+        },
+        seq: 42,
+        metadataVersion: 7,
+        agentStateVersion: 3,
+        encryptionKey: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
+        encryptionVariant: 'dataKey',
+    };
+
+    it('produces all reconnect env vars the CLI receiver expects', () => {
+        const env = buildReconnectEnv(sample);
+        expect(env).toEqual({
+            HAPPY_RECONNECT_SESSION_ID: 'cmmij8olq00dp5jcxr3wtbpau',
+            HAPPY_RECONNECT_ENCRYPTION_KEY: 'AQIDBAUGBwg=',
+            HAPPY_RECONNECT_ENCRYPTION_VARIANT: 'dataKey',
+            HAPPY_RECONNECT_SEQ: '42',
+            HAPPY_RECONNECT_METADATA_VERSION: '7',
+            HAPPY_RECONNECT_AGENT_STATE_VERSION: '3',
+        });
+    });
+
+    it('preserves the legacy encryption variant tag', () => {
+        const env = buildReconnectEnv({ ...sample, encryptionVariant: 'legacy' });
+        expect(env.HAPPY_RECONNECT_ENCRYPTION_VARIANT).toBe('legacy');
+    });
+
+    it('stringifies numeric versions and seq so they survive process.env', () => {
+        const env = buildReconnectEnv({ ...sample, seq: 0, metadataVersion: 0, agentStateVersion: 0 });
+        expect(env.HAPPY_RECONNECT_SEQ).toBe('0');
+        expect(env.HAPPY_RECONNECT_METADATA_VERSION).toBe('0');
+        expect(env.HAPPY_RECONNECT_AGENT_STATE_VERSION).toBe('0');
     });
 });

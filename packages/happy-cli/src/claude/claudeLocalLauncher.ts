@@ -12,18 +12,25 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
     const scanner = await createSessionScanner({
         sessionId: session.sessionId,
         workingDirectory: session.path,
-        onMessage: (message) => { 
+        onMessage: (message) => {
             // Block SDK summary messages - we generate our own
             if (message.type !== 'summary') {
                 session.client.sendClaudeSessionMessage(message)
             }
         }
     });
-    
+
+    // When this CLI is reattaching to an existing Happy session (`happy resume`
+    // or daemon-driven resume), the Happy server already holds every prior
+    // message. `claude --resume` mints a fresh JSONL with the entire history
+    // copied in, so without this flag the scanner would re-forward every
+    // historical user/assistant message and double the transcript.
+    const isReconnect = !!process.env.HAPPY_RECONNECT_SESSION_ID;
+
     // Register callback to notify scanner when session ID is found via hook
     // This is important for --continue/--resume where session ID is not known upfront
     const scannerSessionCallback = (sessionId: string) => {
-        scanner.onNewSession(sessionId);
+        scanner.onNewSession(sessionId, { treatExistingAsProcessed: isReconnect });
     };
     session.addSessionFoundCallback(scannerSessionCallback);
 
@@ -92,7 +99,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
         // Handle session start
         const handleSessionStart = (sessionId: string) => {
             session.onSessionFound(sessionId);
-            scanner.onNewSession(sessionId);
+            scanner.onNewSession(sessionId, { treatExistingAsProcessed: isReconnect });
         }
 
         // Run local mode

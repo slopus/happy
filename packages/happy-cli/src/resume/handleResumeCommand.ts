@@ -1,9 +1,14 @@
 import { existsSync } from 'node:fs';
 
+import { encodeBase64 } from '@/api/encryption';
 import type { Metadata } from '@/api/types';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 
-import { resolveHappySession, type ResumableHappySession } from './resolveHappySession';
+import {
+    resolveReconnectableSession,
+    type ReconnectableHappySession,
+    type ResumableHappySession,
+} from './resolveHappySession';
 
 export type ResumeLaunch = {
     cwd: string;
@@ -13,6 +18,15 @@ export type ResumeLaunch = {
 export type ResumeLaunchOptions = {
     claudeStartingMode?: 'local' | 'remote';
     startedBy?: 'daemon' | 'terminal';
+};
+
+export type ReconnectEnv = {
+    HAPPY_RECONNECT_SESSION_ID: string;
+    HAPPY_RECONNECT_ENCRYPTION_KEY: string;
+    HAPPY_RECONNECT_ENCRYPTION_VARIANT: 'legacy' | 'dataKey';
+    HAPPY_RECONNECT_SEQ: string;
+    HAPPY_RECONNECT_METADATA_VERSION: string;
+    HAPPY_RECONNECT_AGENT_STATE_VERSION: string;
 };
 
 export function parseResumeCommandArgs(args: string[]): { showHelp: boolean; sessionId: string } {
@@ -85,6 +99,17 @@ export function buildResumeLaunch(session: ResumableHappySession, options: Resum
     throw new Error(`Happy session ${session.id} uses unsupported flavor "${metadata.flavor ?? 'unknown'}".`);
 }
 
+export function buildReconnectEnv(session: ReconnectableHappySession): ReconnectEnv {
+    return {
+        HAPPY_RECONNECT_SESSION_ID: session.id,
+        HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(session.encryptionKey),
+        HAPPY_RECONNECT_ENCRYPTION_VARIANT: session.encryptionVariant,
+        HAPPY_RECONNECT_SEQ: String(session.seq),
+        HAPPY_RECONNECT_METADATA_VERSION: String(session.metadataVersion),
+        HAPPY_RECONNECT_AGENT_STATE_VERSION: String(session.agentStateVersion),
+    };
+}
+
 export function formatResumeHelp(): string {
     return [
         'happy resume - Resume a previous Happy session',
@@ -96,16 +121,17 @@ export function formatResumeHelp(): string {
         '  happy resume cmmij8olq00dp5jcxr3wtbpau',
         '  happy resume cmmij8',
         '',
-        'This reuses the saved worktree/path and resumes the underlying agent session',
-        'when the backend supports it.',
+        'Reattaches to the existing Happy session (including its full chat history),',
+        'unarchiving it on the server and resuming the underlying agent in the saved',
+        'working directory. New turns append to the same transcript.',
     ].join('\n');
 }
 
-function spawnResumeChild(launch: ResumeLaunch): Promise<number | null> {
+function spawnResumeChild(launch: ResumeLaunch, reconnectEnv: ReconnectEnv): Promise<number | null> {
     return new Promise((resolve, reject) => {
         const child = spawnHappyCLI(launch.args, {
             cwd: launch.cwd,
-            env: process.env,
+            env: { ...process.env, ...reconnectEnv },
             stdio: 'inherit',
         });
 
@@ -127,14 +153,15 @@ export async function handleResumeCommand(args: string[]): Promise<void> {
         return;
     }
 
-    const session = await resolveHappySession(parsed.sessionId);
+    const session = await resolveReconnectableSession(parsed.sessionId);
     const launch = buildResumeLaunch(session);
+    const reconnectEnv = buildReconnectEnv(session);
 
     if (!existsSync(launch.cwd)) {
         throw new Error(`Saved session path does not exist: ${launch.cwd}`);
     }
 
-    const exitCode = await spawnResumeChild(launch);
+    const exitCode = await spawnResumeChild(launch, reconnectEnv);
     if (typeof exitCode === 'number' && exitCode !== 0) {
         process.exit(exitCode);
     }
