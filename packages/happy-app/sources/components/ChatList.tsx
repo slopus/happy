@@ -19,6 +19,20 @@ import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 
 const SCROLL_THRESHOLD = 300;
 
+// Per-session scroll offset cache (module scope, in-memory only).
+// The SessionView mounts <ChatList key={sessionId} ...> via expo-router's
+// Stack, so navigating away from a session unmounts this component entirely
+// and the FlatList's scroll state is destroyed. Without this cache, coming
+// back to a session always renders at offset 0 (visual bottom for an
+// inverted list), losing whatever position the user had while reading
+// older messages.
+//
+// Lives at module scope so it survives the unmount/remount cycle of the
+// component. Not persisted across app restarts — that would be a separate
+// requirement and adds storage coupling we don't need for the
+// switch-between-sessions case.
+const sessionScrollOffsets: Map<string, number> = new Map();
+
 export const ChatList = React.memo((props: { session: Session }) => {
     const { messages, hasMoreOlder, isLoadingOlder } = useSessionMessages(props.session.id);
     return (
@@ -167,11 +181,33 @@ const ChatListInternal = React.memo((props: {
             showScrollButtonRef.current = next;
             setShowScrollButton(next);
         }
-    }, []);
+        // Remember the user's position per session so we can restore it the
+        // next time this component mounts for the same session (see
+        // restoreScrollOnce below).
+        sessionScrollOffsets.set(props.sessionId, offsetY);
+    }, [props.sessionId]);
 
     const scrollToBottom = useCallback(() => {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     }, []);
+
+    // Restore the user's prior scroll position on the FIRST onContentSizeChange
+    // that fires after this component has actual content to lay out. The
+    // FlatList renders at offset 0 (visual bottom of an inverted list) by
+    // default, which is wrong when the user was reading older messages and
+    // came back to this session from elsewhere. We only restore once per
+    // mount — subsequent content-size changes (incoming messages, lazy-load
+    // pages) are left to FlatList's native maintainVisibleContentPosition.
+    const hasRestoredRef = React.useRef(false);
+    const handleContentSizeChange = useCallback(() => {
+        if (hasRestoredRef.current) return;
+        if (displayItems.length === 0) return;
+        const cached = sessionScrollOffsets.get(props.sessionId);
+        hasRestoredRef.current = true;
+        if (cached !== undefined && cached > 0) {
+            flatListRef.current?.scrollToOffset({ offset: cached, animated: false });
+        }
+    }, [props.sessionId, displayItems.length]);
 
     // In an inverted FlatList, `onEndReached` fires when the user scrolls
     // past the visual top — i.e. when they want to see older history.
@@ -225,6 +261,7 @@ const ChatListInternal = React.memo((props: {
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
                 renderItem={renderItem}
                 onScroll={handleScroll}
+                onContentSizeChange={handleContentSizeChange}
                 scrollEventThrottle={16}
                 ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
                 ListFooterComponent={<ListHeader isLoadingOlder={props.isLoadingOlder} />}
