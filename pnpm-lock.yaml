@@ -978,6 +978,9 @@ importers:
       http-proxy-middleware:
         specifier: ^3.0.5
         version: 3.0.5
+      https-proxy-agent:
+        specifier: ^7.0.6
+        version: 7.0.6
       ink:
         specifier: ^6.5.1
         version: 6.6.0(@types/react@19.2.14)(react-devtools-core@6.1.5)(react@19.2.0)
