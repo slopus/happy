@@ -491,6 +491,68 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('clears active thread state so the next prompt starts a fresh thread', async () => {
+        const requests: MockRpcMessage[] = [];
+        let nextThreadNumber = 1;
+        const proc = createMockProcess({
+            pid: 2601,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    const threadId = `thread-${nextThreadNumber++}`;
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: threadId, path: `/tmp/${threadId}` },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'readOnly' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'read-only',
+        });
+
+        expect(client.threadId).toBe('thread-1');
+        expect(client.hasActiveThread()).toBe(true);
+
+        client.clearThreadState();
+
+        expect(client.threadId).toBeNull();
+        expect(client.turnId).toBeNull();
+        expect(client.hasActiveThread()).toBe(false);
+
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'read-only',
+        });
+
+        expect(client.threadId).toBe('thread-2');
+        expect(requests.filter((msg) => msg.method === 'thread/start')).toHaveLength(2);
+
+        await client.disconnect();
+    });
+
     it('maps raw item notifications into legacy events and deduplicates turn completion', async () => {
         const requests: MockRpcMessage[] = [];
         const proc = createMockProcess({

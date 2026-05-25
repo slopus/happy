@@ -38,6 +38,7 @@ import {
 } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
+import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -311,7 +312,14 @@ export async function runCodex(opts: {
             model: messageModel,
             effort: messageEffort,
         };
-        messageQueue.push(message.content.text, enhancedMode);
+        const enqueueResult = enqueueCodexUserText({
+            text: message.content.text,
+            mode: enhancedMode,
+            queue: messageQueue,
+        });
+        if (enqueueResult === 'clear') {
+            logger.debug('[Codex] /clear command pushed to isolated queue');
+        }
     });
     let thinking = false;
     let currentTurnId: string | null = null;
@@ -743,6 +751,34 @@ export async function runCodex(opts: {
             // Defensive check for TS narrowing
             if (!message) {
                 break;
+            }
+
+            if (isCodexClearText(message.message)) {
+                logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
+                client.clearThreadState();
+                currentTurnId = null;
+                codexStartedSubagents = new Set<string>();
+                codexActiveSubagents = new Set<string>();
+                codexProviderSubagentToSessionSubagent = new Map<string, string>();
+                permissionHandler.reset();
+                reasoningProcessor.abort();
+                diffProcessor.reset();
+                thinking = false;
+                session.keepAlive(thinking, 'remote');
+                messageBuffer.addMessage('Context was reset', 'status');
+                session.sendSessionEvent({ type: 'message', message: 'Context was reset' });
+                session.updateMetadata((currentMetadata) => {
+                    const nextMetadata = { ...currentMetadata };
+                    delete nextMetadata.codexThreadId;
+                    return nextMetadata;
+                });
+                emitReadyIfIdle({
+                    pending,
+                    queueSize: () => messageQueue.size(),
+                    shouldExit,
+                    sendReady,
+                });
+                continue;
             }
 
             // Display user messages in the UI

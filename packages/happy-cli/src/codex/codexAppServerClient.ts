@@ -1029,6 +1029,18 @@ export class CodexAppServerClient {
         return this._threadId !== null;
     }
 
+    clearThreadState(): void {
+        logger.debug(
+            `[CodexAppServer] Clearing thread state: thread=${this._threadId ?? 'none'} turn=${this._turnId ?? 'none'}`,
+        );
+        this.resolvePendingTurn(true);
+        this._threadId = null;
+        this._turnId = null;
+        this.threadDefaults = null;
+        this.completedTurnIds.clear();
+        this.rawFileChangesByItemId.clear();
+    }
+
     // ─── JSON-RPC transport ─────────────────────────────────────
 
     /** Default timeout for RPC requests (ms). */
