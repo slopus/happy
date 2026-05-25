@@ -28,4 +28,31 @@ describe('resolveCodexExecutionPolicy', () => {
             sandbox: 'read-only',
         });
     });
+
+    it('maps safe-yolo to on-failure while keeping the workspace sandbox', () => {
+        const policy = resolveCodexExecutionPolicy('safe-yolo', false);
+
+        expect(policy).toEqual({
+            approvalPolicy: 'on-failure',
+            sandbox: 'workspace-write',
+        });
+    });
+
+    it('maps yolo to never with full sandbox access', () => {
+        const policy = resolveCodexExecutionPolicy('yolo', false);
+
+        expect(policy).toEqual({
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+    });
+
+    it('maps bypassPermissions to never with full sandbox access', () => {
+        const policy = resolveCodexExecutionPolicy('bypassPermissions', false);
+
+        expect(policy).toEqual({
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+    });
 });
