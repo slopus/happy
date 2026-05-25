@@ -54,6 +54,10 @@ function describeCodexFailure(msg: any): string | null {
     return 'Unknown error';
 }
 
+const DEFAULT_CODEX_MODEL = 'gpt-5.5';
+const DEFAULT_CODEX_EFFORT: ReasoningEffort = 'medium';
+const DEFAULT_CODEX_PERMISSION_MODE: import('@/api/types').PermissionMode = 'yolo';
+
 /**
  * Main entry point for the codex command with ink UI
  */
@@ -224,9 +228,16 @@ export async function runCodex(opts: {
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
-    let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
-    let currentModel: string | undefined = undefined;
-    let currentEffort: ReasoningEffort | undefined = undefined;
+    let currentPermissionMode: import('@/api/types').PermissionMode | undefined = DEFAULT_CODEX_PERMISSION_MODE;
+    let currentModel: string | undefined = DEFAULT_CODEX_MODEL;
+    let currentEffort: ReasoningEffort | undefined = DEFAULT_CODEX_EFFORT;
+
+    const resetCurrentModeDefaults = () => {
+        currentPermissionMode = DEFAULT_CODEX_PERMISSION_MODE;
+        currentModel = DEFAULT_CODEX_MODEL;
+        currentEffort = DEFAULT_CODEX_EFFORT;
+        logger.debug('[Codex] Reset current mode defaults after abort');
+    };
 
     // Valid Codex permission modes from remote messages. Matches the modes
     // the mobile UI exposes for Codex sessions (see modelModeOptions.ts:
@@ -404,6 +415,7 @@ export async function runCodex(opts: {
             } catch (error) {
                 logger.debug('[Codex] Error during abort:', error);
             } finally {
+                resetCurrentModeDefaults();
                 // Wake up message queue wait if idle
                 abortController.abort();
                 abortController = new AbortController();

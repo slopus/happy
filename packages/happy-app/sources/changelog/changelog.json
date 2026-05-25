@@ -1,6 +1,11 @@
 {
   "entries": [
     {
+      "title": "May 15 — Cleaner, steadier chat",
+      "summary": "Less clutter in the conversation, fewer stuck states, smoother scrolling.",
+      "markdown": "- Slash commands render as a clean chip — no more raw command markup or duplicated text.\n- Skill runs no longer dump a wall of raw instructions into the chat.\n- Chats pick up their real title instead of staying stuck on \"New chat\".\n- The view stays put while the agent streams — no more scroll jumps when you've scrolled up to read.\n- \"Permission required\" prompts clear properly after a session is interrupted.\n- Resumed sessions no longer replay your whole history as duplicate messages.\n- Slash-command and file autocomplete shows more results and keeps the highlighted item in view."
+    },
+    {
       "title": "May 13 — Faster long chats",
       "summary": "Long sessions open instantly. Messages load latest-first with older history streaming in on scroll.",
       "markdown": "- Parallel decryption — no more freezing on sessions with thousands of messages.\n- Backward pagination — scroll up to load history on demand."
@@ -51,5 +56,5 @@
       "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],
-  "latestTitle": "May 13 — Faster long chats"
+  "latestTitle": "May 15 — Cleaner, steadier chat"
 }

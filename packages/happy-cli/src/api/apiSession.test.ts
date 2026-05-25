@@ -8,7 +8,8 @@ const {
     mockAxiosGet,
     mockAxiosPost,
     mockBackoff,
-    mockDelay
+    mockDelay,
+    mockShouldReconnect
 } = vi.hoisted(() => ({
     mockIo: vi.fn(),
     mockAxiosGet: vi.fn(),
@@ -24,7 +25,8 @@ const {
         }
         throw lastError;
     }),
-    mockDelay: vi.fn(async () => undefined)
+    mockDelay: vi.fn(async () => undefined),
+    mockShouldReconnect: vi.fn(() => true)
 }));
 
 vi.mock('socket.io-client', () => ({
@@ -66,6 +68,10 @@ vi.mock('@/modules/common/registerCommonHandlers', () => ({
 vi.mock('@/utils/time', () => ({
     backoff: mockBackoff,
     delay: mockDelay
+}));
+
+vi.mock('@/utils/lidState', () => ({
+    shouldReconnect: mockShouldReconnect
 }));
 
 type SocketHandler = (...args: any[]) => void;
@@ -145,6 +151,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockShouldReconnect.mockReturnValue(true);
         socketHandlers = {};
         session = makeSession();
         mockSocket = {
@@ -169,6 +176,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
 
     afterEach(() => {
+        vi.useRealTimers();
         vi.restoreAllMocks();
     });
 
@@ -179,6 +187,25 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('disconnect', expect.any(Function));
         expect(mockSocket.on).toHaveBeenCalledWith('update', expect.any(Function));
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries after initial socket connection error', async () => {
+        vi.useFakeTimers();
+        mockSocket.connected = false;
+
+        const client = new ApiSessionClient('fake-token', session);
+
+        expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
+
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(2);
+
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(3);
+
+        await client.close();
     });
 
     it('queues codex message to v3 outbox, sends once, and drains outbox', async () => {

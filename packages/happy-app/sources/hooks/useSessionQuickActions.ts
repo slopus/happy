@@ -7,6 +7,7 @@ import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
+import { resolveMessageModeMeta } from '@/sync/messageMeta';
 import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
 import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
@@ -167,11 +168,12 @@ export function useSessionQuickActions(
             throw new HappyError(t('sessionInfo.resumeSessionMissingMachine'), false);
         }
 
+        const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
         const result = await machineResumeSession({
             machineId,
             sessionId: session.id,
-            model: session.modelMode ?? undefined,
-            permissionMode: session.permissionMode ?? undefined,
+            model: modeMeta.model ?? undefined,
+            permissionMode: modeMeta.permissionMode,
         });
 
         switch (result.type) {

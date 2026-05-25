@@ -120,7 +120,7 @@ async function serve() {
 
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
     const host = process.env.HOST || "0.0.0.0";
-    const staticDir = process.env.HAPPY_STATIC_DIR || undefined;
+    const staticDir = findStaticDir();
     let injectHtmlConfig: Record<string, unknown> | undefined;
     if (process.env.HAPPY_INJECT_HTML_CONFIG) {
         try {
@@ -143,6 +143,23 @@ async function serve() {
     // Block until shutdown so the process stays alive.
     const { awaitShutdown } = await import("./utils/shutdown");
     await awaitShutdown();
+    process.exit(0);
+}
+
+function findStaticDir(): string | undefined {
+    const candidates = [
+        process.env.HAPPY_STATIC_DIR,
+        path.join(process.cwd(), "webapp"),
+        path.join(path.dirname(process.execPath), "webapp"),
+    ].filter(Boolean) as string[];
+
+    for (const candidate of candidates) {
+        if (fs.existsSync(path.join(candidate, "index.html"))) {
+            return candidate;
+        }
+    }
+
+    return undefined;
 }
 
 // CLI — only when this file is invoked directly, not when imported as a library.
