@@ -21,6 +21,9 @@
  *  - 환경변수 빈 문자열로 두면 해당 매칭 그룹은 꺼짐.
  */
 
+// 진단 로그 재활성화 시 주석 해제
+// import { logger } from '@/ui/logger'
+
 export const REDACTED_PLACEHOLDER = '[redacted by policy]'
 
 const DEFAULT_PREFIXES = 'mcp__aplus-common__,mcp__aplus-company__'
@@ -73,6 +76,8 @@ const toolUseIdToName = new Map<string, string>()
 export function recordToolUse(id: string | undefined, name: string | undefined): void {
     if (!id || !name) return
     toolUseIdToName.set(id, name)
+    // 진단용 — redact 동작 확인 시 주석 해제 (specs/20260525-company-mcp-server P5 검증)
+    // logger.debug(`[redact] recordToolUse id=${id} name=${name} match=${shouldRedact(name)}`)
 }
 
 export function getToolNameById(id: string | undefined): string | undefined {
@@ -90,6 +95,8 @@ export function resetToolUseMap(): void {
  * 입력 객체는 그대로 두고 새 값을 반환 (immutability — 모델 컨텍스트 보호).
  */
 export function redactToolResultContent(content: unknown): unknown {
+    // 진단용 — redact 동작 확인 시 주석 해제 (specs/20260525-company-mcp-server P5 검증)
+    // logger.debug(`[redact] redactToolResultContent fired (contentType=${typeof content}${Array.isArray(content) ? '[]' : ''})`)
     if (typeof content === 'string') return REDACTED_PLACEHOLDER
     if (Array.isArray(content)) {
         return content.map(block => {
