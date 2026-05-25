@@ -949,7 +949,8 @@ export class AcpBackend implements AgentBackend {
 
     // Dispatch to appropriate handler based on update type
     if (sessionUpdateType === 'agent_message_chunk') {
-      handleAgentMessageChunk(update as SessionUpdate, ctx);
+      const result = handleAgentMessageChunk(update as SessionUpdate, ctx);
+      if (result.handled) this.markUpdatesActive();
       return;
     }
 
@@ -958,6 +959,7 @@ export class AcpBackend implements AgentBackend {
       if (result.toolCallCountSincePrompt !== undefined) {
         this.toolCallCountSincePrompt = result.toolCallCountSincePrompt;
       }
+      if (result.handled) this.markUpdatesActive();
       return;
     }
 
@@ -967,7 +969,8 @@ export class AcpBackend implements AgentBackend {
     }
 
     if (sessionUpdateType === 'tool_call') {
-      handleToolCall(update as SessionUpdate, ctx);
+      const result = handleToolCall(update as SessionUpdate, ctx);
+      if (result.handled) this.markUpdatesActive();
       return;
     }
 
@@ -1288,6 +1291,16 @@ export class AcpBackend implements AgentBackend {
   private markUpdatesSettled(): void {
     this.updatesSettled = true;
     this.maybeCompleteTurn();
+  }
+
+  /**
+   * Called when a new session update proves the update stream was not truly
+   * settled. This prevents a stale idle/grace window from completing the turn
+   * before the newly-arrived update has had its own quiet period.
+   */
+  private markUpdatesActive(): void {
+    this.updatesSettled = false;
+    this.clearPostResponseGrace();
   }
 
   /**

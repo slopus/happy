@@ -112,6 +112,28 @@ describe('AcpBackend turn-completion race conditions', () => {
     expect(idleCount()).toBe(1);
   });
 
+  it('late update after a settled window resets the update gate before response completes', async () => {
+    const backend = createBackend();
+    const response = defer<unknown>();
+    const { idleCount } = stubBackend(backend, response);
+
+    const sendPromise = backend.sendPrompt('test-session', 'hello');
+    await Promise.resolve();
+
+    dispatchUpdate(backend, { sessionUpdate: 'agent_message_chunk', content: { text: 'first' } });
+    await vi.advanceTimersByTimeAsync(DEFAULT_IDLE_TIMEOUT_MS);
+    expect(idleCount()).toBe(0);
+
+    dispatchUpdate(backend, { sessionUpdate: 'agent_message_chunk', content: { text: 'late' } });
+    response.resolve({ stopReason: 'end_turn' });
+    await sendPromise;
+
+    expect(idleCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_IDLE_TIMEOUT_MS);
+    expect(idleCount()).toBe(1);
+  });
+
   it('race: empty turn — response arrives, NO updates ever — grace timer still settles the turn', async () => {
     const backend = createBackend();
     const response = defer<unknown>();
