@@ -294,6 +294,24 @@ function buildInterceptorScript(prefix: string): string {
         `patchSetAttr(HTMLLinkElement.prototype);` +
         `patchSetAttr(HTMLImageElement.prototype);` +
         `if(typeof HTMLSourceElement!=='undefined')patchSetAttr(HTMLSourceElement.prototype);` +
+        // Phase B (specs/preview-relay-escape-plug/): patch
+        // window.location writes — href setter, assign(), replace() —
+        // so JS-driven navigation routes through rw() and stays inside
+        // the preview mount instead of escaping to the relay origin.
+        // Wrapped in try/catch: some browsers / strict-mode CSP refuse
+        // to redefine Location.prototype.href; we silently fall back
+        // (the other interceptors still apply).
+        `try{/* location-patch */` +
+        `var oAssign=window.location.assign.bind(window.location);` +
+        `var oReplace=window.location.replace.bind(window.location);` +
+        `window.location.assign=function(u){return oAssign(rw(u))};` +
+        `window.location.replace=function(u){return oReplace(rw(u))};` +
+        `var lp=Object.getPrototypeOf(window.location);` +
+        `var ld=lp&&Object.getOwnPropertyDescriptor(lp,'href');` +
+        `if(ld&&ld.set){Object.defineProperty(window.location,'href',{configurable:true,` +
+        `get:function(){return ld.get.call(window.location)},` +
+        `set:function(v){ld.set.call(window.location,rw(v))}})}` +
+        `}catch(_){}` +
         `var oGA=Element.prototype.getAttribute;` +
         `HTMLScriptElement.prototype.getAttribute=function(n){` +
         `var v=oGA.call(this,n);` +

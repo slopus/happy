@@ -418,6 +418,30 @@ describe('rewriteHtml — interceptor script src/href/setAttribute patches', () 
     });
 });
 
+describe('rewriteHtml — interceptor window.location patches (Phase B escape plug)', () => {
+    it('patches window.location.assign to route absolute paths through rw()', () => {
+        const out = rewriteHtml('<html><head></head></html>', PREFIX);
+        expect(out).toContain(`window.location.assign=function(u){return oAssign(rw(u))}`);
+    });
+
+    it('patches window.location.replace to route absolute paths through rw()', () => {
+        const out = rewriteHtml('<html><head></head></html>', PREFIX);
+        expect(out).toContain(`window.location.replace=function(u){return oReplace(rw(u))}`);
+    });
+
+    it('patches window.location.href setter on the Location prototype via rw()', () => {
+        const out = rewriteHtml('<html><head></head></html>', PREFIX);
+        // 정확한 한 줄을 박지 않고 setter 가 rw 를 통과시킨다는 invariant 만 확인
+        expect(out).toMatch(/Object\.defineProperty\(.*?[Ll]ocation[\s\S]{0,200}set:[\s\S]{0,200}rw\(/);
+    });
+
+    it('wraps the location patches in try/catch for graceful fallback when redefine is blocked', () => {
+        const out = rewriteHtml('<html><head></head></html>', PREFIX);
+        // 식별 가능한 sentinel 한 줄로 try/catch 블록 존재 확인
+        expect(out).toContain(`/* location-patch */`);
+    });
+});
+
 describe('rewriteJsCss', () => {
     it('rewrites ES import paths', () => {
         const out = rewriteJsCss(`import x from '/lib/x.js'`, PREFIX);
