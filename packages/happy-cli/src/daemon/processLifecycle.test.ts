@@ -33,4 +33,21 @@ describe('scheduleSigkillFallback', () => {
     expect(child.kill).not.toHaveBeenCalled();
     expect(killProcess).not.toHaveBeenCalled();
   });
+
+  it('does not schedule a PID-only SIGKILL fallback without a child process handle', () => {
+    vi.useFakeTimers();
+    const killProcess = vi.fn();
+
+    scheduleSigkillFallback({
+      pid: 12345,
+      sessionId: 'external-session',
+      graceMs: 3_000,
+      killProcess,
+      log: vi.fn(),
+    });
+
+    vi.advanceTimersByTime(3_000);
+
+    expect(killProcess).not.toHaveBeenCalled();
+  });
 });

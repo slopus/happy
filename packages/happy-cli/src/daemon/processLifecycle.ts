@@ -24,6 +24,11 @@ export function scheduleSigkillFallback({
   killProcess = process.kill,
   log = () => {},
 }: ScheduleSigkillFallbackOptions): void {
+  if (!childProcess) {
+    log(`[DAEMON RUN] SIGKILL fallback skipped for session ${sessionId} (PID ${pid}) - no child process handle`);
+    return;
+  }
+
   let timer: ReturnType<typeof setTimeout> | null = null;
   const cancelFallback = () => {
     if (timer) {
@@ -33,16 +38,12 @@ export function scheduleSigkillFallback({
   };
 
   timer = setTimeout(() => {
-    if (childProcess) {
-      childProcess.off('exit', cancelFallback);
-    }
+    childProcess.off('exit', cancelFallback);
     try {
       // Probe with signal 0; throws ESRCH if the process is gone.
       killProcess(pid, 0);
-      if (childProcess && !childProcess.killed) {
+      if (!childProcess.killed) {
         childProcess.kill('SIGKILL');
-      } else {
-        killProcess(pid, 'SIGKILL');
       }
       log(`[DAEMON RUN] SIGKILL fallback fired for session ${sessionId} (PID ${pid})`);
     } catch (err) {
@@ -56,7 +57,5 @@ export function scheduleSigkillFallback({
   }, graceMs);
   timer.unref?.();
 
-  if (childProcess) {
-    childProcess.once('exit', cancelFallback);
-  }
+  childProcess.once('exit', cancelFallback);
 }

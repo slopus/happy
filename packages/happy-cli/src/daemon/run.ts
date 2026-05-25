@@ -763,13 +763,6 @@ export async function startDaemon(): Promise<void> {
             try {
               process.kill(pid, 'SIGTERM');
               logger.debug(`[DAEMON RUN] Sent SIGTERM to external session PID ${pid}`);
-              scheduleSigkillFallback({
-                pid,
-                sessionId,
-                childProcess: session.childProcess,
-                graceMs: SIGKILL_GRACE_MS,
-                log: logger.debug.bind(logger),
-              });
             } catch (error) {
               logger.debug(`[DAEMON RUN] Failed to kill external session PID ${pid}:`, error);
             }
