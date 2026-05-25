@@ -43,6 +43,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { AgentStateDecryptionError } from './encryption/sessionEncryption';
+import { getAgentStateDecryptFallback } from './agentStateFallback';
 import { systemPrompt } from './prompt/systemPrompt';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
 import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
@@ -958,15 +959,15 @@ class Sync {
             let metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
 
             // Decrypt agent state using session-specific encryption. On a real
-            // decryption failure (wrong key / schema skew) we keep the empty
-            // agentState the server-side row had, rather than crashing the
-            // whole session load — but we log so the failure is visible.
+            // decryption failure (wrong key / schema skew) preserve the
+            // previously-known local state instead of wiping pending requests.
             let agentState: AgentState = {};
             try {
                 agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
             } catch (err) {
                 if (err instanceof AgentStateDecryptionError) {
-                    log.log(`⚠️ Failed to decrypt agentState for session ${session.id} (initial load): ${err.message}`);
+                    agentState = getAgentStateDecryptFallback(storage.getState().sessions, session.id);
+                    log.log(`⚠️ Failed to decrypt agentState for session ${session.id} (initial load); preserving previous state. ${err.message}`);
                 } else {
                     throw err;
                 }
