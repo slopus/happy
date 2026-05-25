@@ -104,6 +104,7 @@ export async function claudeRemote(opts: {
         if (opts.onSessionReset) {
             opts.onSessionReset();
         }
+        opts.onReady();
         return;
     }
 
