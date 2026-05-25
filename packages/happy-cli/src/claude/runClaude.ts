@@ -475,7 +475,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // P6(b): aplus 자동 mcp 등록 — web-ui 의 /api/me/mcp-config 응답을
     // 'happy' MCP 옆에 머지한다. 실패는 silent (graceful degrade).
-    const aplusMcpServers = await fetchAplusMcpServers(credentials.token);
+    const aplusMcpServers = await fetchAplusMcpServers(credentials.token, machineId);
 
     // Create claude loop
     const exitCode = await loop({

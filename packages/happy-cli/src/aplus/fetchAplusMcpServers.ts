@@ -22,10 +22,14 @@ export type AplusMcpServersMap = Record<string, McpHttpServerEntry>
 
 const TIMEOUT_MS = 3000
 
-export async function fetchAplusMcpServers(token: string): Promise<AplusMcpServersMap> {
+export async function fetchAplusMcpServers(token: string, machineId: string): Promise<AplusMcpServersMap> {
     const configUrl = process.env.HAPPY_APLUS_MCP_CONFIG_URL
     if (!configUrl) {
         logger.debug('[aplus] HAPPY_APLUS_MCP_CONFIG_URL 미설정 — aplus MCP 자동등록 skip')
+        return {}
+    }
+    if (!machineId) {
+        logger.debug('[aplus] machineId 없음 — aplus MCP 자동등록 skip')
         return {}
     }
     const ctl = new AbortController()
@@ -33,7 +37,10 @@ export async function fetchAplusMcpServers(token: string): Promise<AplusMcpServe
     try {
         const res = await fetch(configUrl, {
             method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` },
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'X-Aplus-Machine-Id': machineId,
+            },
             signal: ctl.signal,
         })
         if (!res.ok) {
