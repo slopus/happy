@@ -7,18 +7,18 @@ COPY package.json yarn.lock ./
 COPY scripts ./scripts
 COPY patches ./patches
 
-RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-wire
+RUN mkdir -p packages/huppy-app packages/huppy-server packages/huppy-cli packages/huppy-wire
 
-COPY packages/happy-app/package.json packages/happy-app/
-COPY packages/happy-server/package.json packages/happy-server/
-COPY packages/happy-cli/package.json packages/happy-cli/
-COPY packages/happy-wire/package.json packages/happy-wire/
+COPY packages/huppy-app/package.json packages/huppy-app/
+COPY packages/huppy-server/package.json packages/huppy-server/
+COPY packages/huppy-cli/package.json packages/huppy-cli/
+COPY packages/huppy-wire/package.json packages/huppy-wire/
 
 # Workspace postinstall requirements
-COPY packages/happy-app/patches packages/happy-app/patches
-COPY packages/happy-server/prisma packages/happy-server/prisma
-COPY packages/happy-cli/scripts packages/happy-cli/scripts
-COPY packages/happy-cli/tools packages/happy-cli/tools
+COPY packages/huppy-app/patches packages/huppy-app/patches
+COPY packages/huppy-server/prisma packages/huppy-server/prisma
+COPY packages/huppy-cli/scripts packages/huppy-cli/scripts
+COPY packages/huppy-cli/tools packages/huppy-cli/tools
 
 RUN SKIP_HAPPY_WIRE_BUILD=1 yarn install --frozen-lockfile --ignore-engines
 
@@ -33,16 +33,16 @@ ENV APP_ENV=production
 ENV EXPO_PUBLIC_POSTHOG_API_KEY=$POSTHOG_API_KEY
 ENV EXPO_PUBLIC_REVENUE_CAT_STRIPE=$REVENUE_CAT_STRIPE
 
-COPY packages/happy-wire ./packages/happy-wire
-COPY packages/happy-app ./packages/happy-app
+COPY packages/huppy-wire ./packages/huppy-wire
+COPY packages/huppy-app ./packages/huppy-app
 
-RUN yarn workspace @slopus/happy-wire build
-RUN yarn workspace happy-app expo export --platform web --output-dir dist
+RUN yarn workspace @liangsili/huppy-wire build
+RUN yarn workspace huppy-app expo export --platform web --output-dir dist
 
 # Stage 3: runtime with Nginx
 FROM nginx:alpine AS runner
 
-COPY --from=builder /repo/packages/happy-app/dist /usr/share/nginx/html
+COPY --from=builder /repo/packages/huppy-app/dist /usr/share/nginx/html
 
 # Remove default nginx configuration
 RUN rm /etc/nginx/conf.d/default.conf
