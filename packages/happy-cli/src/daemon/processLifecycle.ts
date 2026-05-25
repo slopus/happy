@@ -1,7 +1,6 @@
 type ChildExitListener = (code: number | null, signal: NodeJS.Signals | null) => void;
 
 type ChildWithExit = {
-  killed: boolean;
   kill(signal: NodeJS.Signals): boolean;
   once(event: 'exit', listener: ChildExitListener): unknown;
   off(event: 'exit', listener: ChildExitListener): unknown;
@@ -42,9 +41,7 @@ export function scheduleSigkillFallback({
     try {
       // Probe with signal 0; throws ESRCH if the process is gone.
       killProcess(pid, 0);
-      if (!childProcess.killed) {
-        childProcess.kill('SIGKILL');
-      }
+      childProcess.kill('SIGKILL');
       log(`[DAEMON RUN] SIGKILL fallback fired for session ${sessionId} (PID ${pid})`);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException)?.code;

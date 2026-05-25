@@ -50,4 +50,29 @@ describe('scheduleSigkillFallback', () => {
 
     expect(killProcess).not.toHaveBeenCalled();
   });
+
+  it('still sends SIGKILL when SIGTERM was sent but the child has not exited', () => {
+    vi.useFakeTimers();
+    const child = new EventEmitter() as EventEmitter & {
+      killed: boolean;
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.killed = true;
+    child.kill = vi.fn();
+    const killProcess = vi.fn();
+
+    scheduleSigkillFallback({
+      pid: 12345,
+      sessionId: 'session1',
+      childProcess: child,
+      graceMs: 3_000,
+      killProcess,
+      log: vi.fn(),
+    });
+
+    vi.advanceTimersByTime(3_000);
+
+    expect(killProcess).toHaveBeenCalledWith(12345, 0);
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+  });
 });
