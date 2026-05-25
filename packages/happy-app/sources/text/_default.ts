@@ -443,6 +443,7 @@ export const en = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            hermes: 'Hermes',
             openclaw: 'OpenClaw',
         },
         model: {

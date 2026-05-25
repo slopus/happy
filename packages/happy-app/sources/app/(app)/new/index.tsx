@@ -63,6 +63,7 @@ const agentIcons = {
     codex: require('@/assets/images/icon-gpt.png'),
     openclaw: require('@/assets/images/icon-openclaw.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
+    hermes: require('@/assets/images/icon-hermes.png'),
 };
 
 type AgentKey = NewSessionAgentType;
@@ -71,6 +72,7 @@ const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'codex', label: 'codex' },
     { key: 'openclaw', label: 'openclaw' },
     { key: 'gemini', label: 'gemini' },
+    { key: 'hermes', label: 'hermes' },
 ];
 
 type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean };
@@ -672,7 +674,7 @@ function NewSessionScreen() {
     const availableAgents = React.useMemo(() => {
         const availability = selectedMachine?.metadata?.cliAvailability;
         if (!availability) return ALL_AGENTS;
-        return ALL_AGENTS.filter(a => availability[a.key]);
+        return ALL_AGENTS.filter(a => availability[a.key] === true);
     }, [selectedMachine]);
 
     // If current agent not available on this machine, switch to first available
