@@ -108,8 +108,9 @@ export function run(args: string[], options?: RipgrepOptions): Promise<RipgrepRe
                     const note = `\n[ripgrep: output truncated at ${capMb} MiB cap — narrow your query]\n`;
                     stderr += note;
                 }
+                const exitCode = code ?? (truncated ? 1 : 0);
                 resolve({
-                    exitCode: code ?? 0,
+                    exitCode,
                     stdout,
                     stderr,
                     truncated,

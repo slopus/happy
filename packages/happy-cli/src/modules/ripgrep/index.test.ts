@@ -58,6 +58,7 @@ describe('ripgrep low-level wrapper', () => {
         ], { cwd: '.', maxBufferBytes: 4096 })
 
         expect(result.truncated).toBe(true)
+        expect(result.exitCode).not.toBe(0)
         expect(result.stdout.length).toBeLessThanOrEqual(4096)
         expect(result.stdout).not.toMatch(/output truncated at \d+ MiB cap/)
         expect(result.stderr).toMatch(/output truncated at \d+ MiB cap/)
