@@ -63,4 +63,11 @@ describe('ripgrep low-level wrapper', () => {
         expect(result.stdout).not.toMatch(/output truncated at \d+ MiB cap/)
         expect(result.stderr).toMatch(/output truncated at \d+ MiB cap/)
     })
+
+    it('forces a non-zero exit code when output is truncated even if ripgrep exits cleanly', async () => {
+        const result = await run(['--version'], { maxBufferBytes: 1 })
+
+        expect(result.truncated).toBe(true)
+        expect(result.exitCode).not.toBe(0)
+    })
 })
