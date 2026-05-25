@@ -106,7 +106,6 @@ export function run(args: string[], options?: RipgrepOptions): Promise<RipgrepRe
                 if (truncated) {
                     const capMb = (maxBufferBytes / (1024 * 1024)).toFixed(0);
                     const note = `\n[ripgrep: output truncated at ${capMb} MiB cap — narrow your query]\n`;
-                    stdout += note;
                     stderr += note;
                 }
                 resolve({

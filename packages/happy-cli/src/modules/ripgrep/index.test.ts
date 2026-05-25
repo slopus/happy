@@ -46,7 +46,7 @@ describe('ripgrep low-level wrapper', () => {
         expect(DEFAULT_MAX_OUTPUT_BYTES).toBe(32 * 1024 * 1024)
     })
 
-    it('truncates stdout when output exceeds the configured cap', async () => {
+    it('reports truncation on stderr without appending a marker to stdout', async () => {
         // Search a regex that matches every line in node_modules — guaranteed
         // many matches — but cap at 4 KiB so we hit the truncation branch
         // quickly. The match pattern `.` matches any non-empty character.
@@ -58,8 +58,8 @@ describe('ripgrep low-level wrapper', () => {
         ], { cwd: '.', maxBufferBytes: 4096 })
 
         expect(result.truncated).toBe(true)
-        // stdout was capped near the limit (plus the suffix note).
-        expect(result.stdout.length).toBeLessThan(4096 + 200)
-        expect(result.stdout).toMatch(/output truncated at \d+ MiB cap/)
+        expect(result.stdout.length).toBeLessThanOrEqual(4096)
+        expect(result.stdout).not.toMatch(/output truncated at \d+ MiB cap/)
+        expect(result.stderr).toMatch(/output truncated at \d+ MiB cap/)
     })
 })
