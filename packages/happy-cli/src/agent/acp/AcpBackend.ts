@@ -1012,14 +1012,20 @@ export class AcpBackend implements AgentBackend {
     if (updateType === 'usage_update') {
       const usage = update as { size?: unknown; used?: unknown; cost?: unknown };
       if (typeof usage.size === 'number' && typeof usage.used === 'number') {
+        const payload: { size: number; used: number; cost?: unknown } = {
+          size: usage.size,
+          used: usage.used,
+        };
+        if (
+          Object.prototype.hasOwnProperty.call(usage, 'cost') &&
+          (usage.cost === null || typeof usage.cost === 'object')
+        ) {
+          payload.cost = usage.cost;
+        }
         this.emit({
           type: 'event',
           name: 'usage_update',
-          payload: {
-            size: usage.size,
-            used: usage.used,
-            ...(usage.cost && typeof usage.cost === 'object' ? { cost: usage.cost } : {}),
-          },
+          payload,
         });
       }
       return;

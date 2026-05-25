@@ -69,6 +69,28 @@ describe('AcpBackend.handleSessionUpdate', () => {
       });
     });
 
+    it('preserves explicit null cost when present', () => {
+      const backend = createBackend();
+      const events = captureEvents(backend);
+
+      dispatchUpdate(backend, {
+        sessionUpdate: 'usage_update',
+        size: 100000,
+        used: 12345,
+        cost: null,
+      });
+
+      expect(events[0]).toEqual({
+        type: 'event',
+        name: 'usage_update',
+        payload: {
+          size: 100000,
+          used: 12345,
+          cost: null,
+        },
+      });
+    });
+
     it('ignores usage_update with non-numeric size or used', () => {
       const backend = createBackend();
       const events = captureEvents(backend);
