@@ -14,7 +14,6 @@ import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
-import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
@@ -22,7 +21,6 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
-import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
@@ -39,6 +37,11 @@ import {
 import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
+import {
+    buildCodexTurnPrompt,
+    hashCodexEnhancedMode,
+    type CodexEnhancedMode,
+} from './codexPrompt';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -85,12 +88,7 @@ export async function runCodex(opts: {
 
     // Use shared PermissionMode type for cross-agent compatibility
     type PermissionMode = import('@/api/types').PermissionMode;
-    interface EnhancedMode {
-        permissionMode: PermissionMode;
-        model?: string;
-        /** Reasoning effort passed through to Codex's sendTurnAndWait. */
-        effort?: ReasoningEffort;
-    }
+    type EnhancedMode = CodexEnhancedMode;
 
     //
     // Define session
@@ -221,22 +219,20 @@ export async function runCodex(opts: {
         }
     }
 
-    const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
-        permissionMode: mode.permissionMode,
-        model: mode.model,
-        effort: mode.effort,
-    }));
+    const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
     let currentPermissionMode: import('@/api/types').PermissionMode | undefined = DEFAULT_CODEX_PERMISSION_MODE;
     let currentModel: string | undefined = DEFAULT_CODEX_MODEL;
     let currentEffort: ReasoningEffort | undefined = DEFAULT_CODEX_EFFORT;
+    let currentAppendSystemPrompt: string | undefined = undefined;
 
     const resetCurrentModeDefaults = () => {
         currentPermissionMode = DEFAULT_CODEX_PERMISSION_MODE;
         currentModel = DEFAULT_CODEX_MODEL;
         currentEffort = DEFAULT_CODEX_EFFORT;
+        currentAppendSystemPrompt = undefined;
         logger.debug('[Codex] Reset current mode defaults after abort');
     };
 
@@ -307,9 +303,19 @@ export async function runCodex(opts: {
             logger.debug(`[Codex] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
         }
 
+        let messageAppendSystemPrompt = currentAppendSystemPrompt;
+        if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
+            messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined;
+            currentAppendSystemPrompt = messageAppendSystemPrompt;
+            logger.debug(`[Codex] Append system prompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to none'}`);
+        } else {
+            logger.debug(`[Codex] User message received with no append system prompt override, using current: ${currentAppendSystemPrompt ? 'set' : 'none'}`);
+        }
+
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode || 'default',
             model: messageModel,
+            appendSystemPrompt: messageAppendSystemPrompt,
             effort: messageEffort,
         };
         const enqueueResult = enqueueCodexUserText({
@@ -687,6 +693,7 @@ export async function runCodex(opts: {
         }
     } as const;
     let first = true;
+    let appendSystemPromptInjected = false;
 
     try {
         logger.debug('[codex]: client.connect begin');
@@ -703,6 +710,7 @@ export async function runCodex(opts: {
                 mcpServers,
             });
             first = false;
+            appendSystemPromptInjected = true;
         }
 
         const forkCodexThreadId = process.env.HAPPY_FORK_CODEX_THREAD_ID;
@@ -763,6 +771,7 @@ export async function runCodex(opts: {
                 permissionHandler.reset();
                 reasoningProcessor.abort();
                 diffProcessor.reset();
+                appendSystemPromptInjected = false;
                 thinking = false;
                 session.keepAlive(thinking, 'remote');
                 messageBuffer.addMessage('Context was reset', 'status');
@@ -808,9 +817,15 @@ export async function runCodex(opts: {
                     }));
                 }
 
-                const turnPrompt = first
-                    ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION
-                    : message.message;
+                const includeAppendSystemPrompt = Boolean(
+                    message.mode.appendSystemPrompt && !appendSystemPromptInjected,
+                );
+                const turnPrompt = buildCodexTurnPrompt({
+                    message: message.message,
+                    mode: message.mode,
+                    includeAppendSystemPrompt,
+                    includeTitleInstruction: first,
+                });
 
                 const result = await client.sendTurnAndWait(turnPrompt, {
                     model: message.mode.model,
@@ -819,6 +834,9 @@ export async function runCodex(opts: {
                     effort: message.mode.effort,
                 });
                 first = false;
+                if (includeAppendSystemPrompt) {
+                    appendSystemPromptInjected = true;
+                }
 
                 if (result.aborted) {
                     // Turn was aborted (user abort or permission cancel).
