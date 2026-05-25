@@ -959,7 +959,7 @@ export class AcpBackend implements AgentBackend {
       if (result.toolCallCountSincePrompt !== undefined) {
         this.toolCallCountSincePrompt = result.toolCallCountSincePrompt;
       }
-      if (result.handled) this.markUpdatesActive();
+      if (result.updatesActive) this.markUpdatesActive();
       return;
     }
 

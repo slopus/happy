@@ -134,6 +134,28 @@ describe('AcpBackend turn-completion race conditions', () => {
     expect(idleCount()).toBe(1);
   });
 
+  it('content-only tool_call_update does not cancel the post-response grace window', async () => {
+    const backend = createBackend();
+    const response = defer<unknown>();
+    const { idleCount } = stubBackend(backend, response);
+
+    const sendPromise = backend.sendPrompt('test-session', 'hello');
+    await Promise.resolve();
+
+    response.resolve({ stopReason: 'end_turn' });
+    await sendPromise;
+    expect(idleCount()).toBe(0);
+
+    dispatchUpdate(backend, {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 't1',
+      content: [{ type: 'text', text: 'still streaming' }],
+    });
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_IDLE_TIMEOUT_MS);
+    expect(idleCount()).toBe(1);
+  });
+
   it('race: empty turn — response arrives, NO updates ever — grace timer still settles the turn', async () => {
     const backend = createBackend();
     const response = defer<unknown>();

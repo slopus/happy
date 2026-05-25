@@ -84,6 +84,8 @@ export interface HandlerContext {
 export interface HandlerResult {
   /** Whether the update was handled */
   handled: boolean;
+  /** Whether this update starts or advances turn activity that will later settle */
+  updatesActive?: boolean;
   /** Updated tool call counter */
   toolCallCountSincePrompt?: number;
 }
@@ -476,8 +478,10 @@ export function handleToolCallUpdate(
 
   const toolKind = update.kind || 'unknown';
   let toolCallCountSincePrompt = ctx.toolCallCountSincePrompt;
+  let updatesActive = false;
 
   if (status === 'in_progress' || status === 'pending') {
+    updatesActive = true;
     if (!ctx.activeToolCalls.has(toolCallId)) {
       toolCallCountSincePrompt++;
       startToolCall(toolCallId, toolKind, update, ctx, 'tool_call_update');
@@ -485,12 +489,14 @@ export function handleToolCallUpdate(
       logger.debug(`[AcpBackend] Tool call ${toolCallId} already tracked, status: ${status}`);
     }
   } else if (status === 'completed') {
+    updatesActive = true;
     completeToolCall(toolCallId, toolKind, update.content, ctx);
   } else if (status === 'failed' || status === 'cancelled') {
+    updatesActive = true;
     failToolCall(toolCallId, status, toolKind, update.content, ctx);
   }
 
-  return { handled: true, toolCallCountSincePrompt };
+  return { handled: true, updatesActive, toolCallCountSincePrompt };
 }
 
 /**
