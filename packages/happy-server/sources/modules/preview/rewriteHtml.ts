@@ -58,6 +58,14 @@ const INLINE_STYLE_ATTR = /(style\s*=\s*["'])([^"']*)(["'])/gi;
 // lowercase on the DOM side, but our regex runs on the source string,
 // so we need to match every case variant.
 const MULTI_URL_ATTRS = /((?:srcset|imagesrcset)\s*=\s*["'])([^"']+)(["'])/gi;
+// `<meta http-equiv="refresh" content="<delay>;url=<path>">` — when
+// the path is absolute, browsers follow it against the iframe's current
+// origin and escape the relay mount. Rewrite the url part (preserving
+// delay / separators / quoting) so the refresh stays in-prefix.
+// Case-insensitive on attribute names, http-equiv value, and `url=`
+// keyword (HTML spec is case-insensitive). See specs/preview-relay-
+// escape-plug/ Phase C.
+const META_REFRESH = /(<meta\b[^>]*?http-equiv\s*=\s*["']refresh["'][^>]*?content\s*=\s*["'][^"']*?url\s*=\s*)(\/(?!\/)[^"']*)/gi;
 function rewriteSrcSetValue(value: string, prefix: string): string {
     return value
         .split(',')
@@ -155,6 +163,11 @@ export function rewriteJsCss(text: string, prefix: string): string {
 export function rewriteHtml(html: string, prefix: string): string {
     const rep = makeReplacer(prefix);
     let out = html
+        .replace(META_REFRESH, (match, head: string, path: string) => {
+            // idempotent: skip if already prefixed
+            if (path === prefix || path.startsWith(prefix + '/')) return match;
+            return `${head}${prefix}${path}`;
+        })
         .replace(ABS_PATH_ATTRS, rep)
         .replace(ABS_PATH_IMPORT, rep)
         .replace(MULTI_URL_ATTRS, (_match, head: string, list: string, tail: string) =>
@@ -294,6 +307,24 @@ function buildInterceptorScript(prefix: string): string {
         `patchSetAttr(HTMLLinkElement.prototype);` +
         `patchSetAttr(HTMLImageElement.prototype);` +
         `if(typeof HTMLSourceElement!=='undefined')patchSetAttr(HTMLSourceElement.prototype);` +
+        // Phase B (specs/preview-relay-escape-plug/): patch
+        // window.location writes — href setter, assign(), replace() —
+        // so JS-driven navigation routes through rw() and stays inside
+        // the preview mount instead of escaping to the relay origin.
+        // Wrapped in try/catch: some browsers / strict-mode CSP refuse
+        // to redefine Location.prototype.href; we silently fall back
+        // (the other interceptors still apply).
+        `try{/* location-patch */` +
+        `var oAssign=window.location.assign.bind(window.location);` +
+        `var oReplace=window.location.replace.bind(window.location);` +
+        `window.location.assign=function(u){return oAssign(rw(u))};` +
+        `window.location.replace=function(u){return oReplace(rw(u))};` +
+        `var lp=Object.getPrototypeOf(window.location);` +
+        `var ld=lp&&Object.getOwnPropertyDescriptor(lp,'href');` +
+        `if(ld&&ld.set){Object.defineProperty(window.location,'href',{configurable:true,` +
+        `get:function(){return ld.get.call(window.location)},` +
+        `set:function(v){ld.set.call(window.location,rw(v))}})}` +
+        `}catch(_){}` +
         `var oGA=Element.prototype.getAttribute;` +
         `HTMLScriptElement.prototype.getAttribute=function(n){` +
         `var v=oGA.call(this,n);` +

@@ -418,6 +418,67 @@ describe('rewriteHtml — interceptor script src/href/setAttribute patches', () 
     });
 });
 
+describe('rewriteHtml — interceptor window.location patches (Phase B escape plug)', () => {
+    it('patches window.location.assign to route absolute paths through rw()', () => {
+        const out = rewriteHtml('<html><head></head></html>', PREFIX);
+        expect(out).toContain(`window.location.assign=function(u){return oAssign(rw(u))}`);
+    });
+
+    it('patches window.location.replace to route absolute paths through rw()', () => {
+        const out = rewriteHtml('<html><head></head></html>', PREFIX);
+        expect(out).toContain(`window.location.replace=function(u){return oReplace(rw(u))}`);
+    });
+
+    it('patches window.location.href setter on the Location prototype via rw()', () => {
+        const out = rewriteHtml('<html><head></head></html>', PREFIX);
+        // 정확한 한 줄을 박지 않고 setter 가 rw 를 통과시킨다는 invariant 만 확인
+        expect(out).toMatch(/Object\.defineProperty\(.*?[Ll]ocation[\s\S]{0,200}set:[\s\S]{0,200}rw\(/);
+    });
+
+    it('wraps the location patches in try/catch for graceful fallback when redefine is blocked', () => {
+        const out = rewriteHtml('<html><head></head></html>', PREFIX);
+        // 식별 가능한 sentinel 한 줄로 try/catch 블록 존재 확인
+        expect(out).toContain(`/* location-patch */`);
+    });
+});
+
+describe('rewriteHtml — <meta http-equiv="refresh"> rewrite (Phase C escape plug)', () => {
+    it('rewrites absolute-path url in standard form', () => {
+        const out = rewriteHtml(
+            '<html><head><meta http-equiv="refresh" content="0;url=/admin"></head></html>',
+            PREFIX,
+        );
+        expect(out).toContain(`content="0;url=${PREFIX}/admin"`);
+    });
+
+    it('handles case-insensitive http-equiv / Refresh / URL', () => {
+        const out = rewriteHtml(
+            `<html><head><META HTTP-EQUIV='Refresh' CONTENT='5; URL=/admin'></head></html>`,
+            PREFIX,
+        );
+        expect(out).toContain(`URL=${PREFIX}/admin`);
+    });
+
+    it('preserves cross-origin URLs', () => {
+        const input = '<html><head><meta http-equiv="refresh" content="0;url=https://google.com/login"></head></html>';
+        const out = rewriteHtml(input, PREFIX);
+        expect(out).toContain('content="0;url=https://google.com/login"');
+    });
+
+    it('preserves protocol-relative URLs', () => {
+        const input = '<html><head><meta http-equiv="refresh" content="0;url=//cdn.example/x"></head></html>';
+        const out = rewriteHtml(input, PREFIX);
+        expect(out).toContain('content="0;url=//cdn.example/x"');
+    });
+
+    it('does not double-prefix already-prefixed URLs (idempotent)', () => {
+        const input = `<html><head><meta http-equiv="refresh" content="0;url=${PREFIX}/admin"></head></html>`;
+        const out = rewriteHtml(input, PREFIX);
+        expect(out).toContain(`content="0;url=${PREFIX}/admin"`);
+        expect(out).not.toContain(`${PREFIX}${PREFIX}`);
+    });
+});
+
 describe('rewriteJsCss', () => {
     it('rewrites ES import paths', () => {
         const out = rewriteJsCss(`import x from '/lib/x.js'`, PREFIX);

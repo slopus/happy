@@ -64,6 +64,27 @@ describe('stripResponseHeaders', () => {
         expect(out['link']).toBeUndefined();
     });
 
+    it('rewrites Location header absolute path with prefix (Phase A escape plug)', () => {
+        const out = stripResponseHeaders(
+            { Location: '/admin', 'content-type': 'text/html' },
+            '/v1/preview/m1/3000',
+        );
+        expect(out['Location']).toBe('/v1/preview/m1/3000/admin');
+    });
+
+    it('leaves Location header untouched when no prefix supplied (backwards compat)', () => {
+        const out = stripResponseHeaders({ Location: '/admin', 'content-type': 'text/html' });
+        expect(out['Location']).toBe('/admin');
+    });
+
+    it('leaves cross-origin Location header alone even with prefix', () => {
+        const out = stripResponseHeaders(
+            { Location: 'https://google.com/login', 'content-type': 'text/html' },
+            '/v1/preview/m1/3000',
+        );
+        expect(out['Location']).toBe('https://google.com/login');
+    });
+
     it('preserves cache-control, etag, content-type, and arbitrary headers', () => {
         const out = stripResponseHeaders({
             'cache-control': 'no-store',
