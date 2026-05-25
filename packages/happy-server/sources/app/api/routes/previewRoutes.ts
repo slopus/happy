@@ -26,6 +26,7 @@ import { signPreviewToken, verifyPreviewToken } from "@/modules/preview/previewT
 import { readPreviewCookie, buildPreviewCookie } from "@/modules/preview/previewCookie";
 import { rewriteHtml, rewriteJsCss } from "@/modules/preview/rewriteHtml";
 import { rewriteLinkHeader } from "@/modules/preview/rewriteLinkHeader";
+import { rewriteLocationHeader } from "@/modules/preview/rewriteLocationHeader";
 import { renderExpiredPtokenHtml, shouldServeExpiredHtml } from "@/modules/preview/expiredPtokenHtml";
 import { type Fastify } from "../types";
 
@@ -109,6 +110,15 @@ export function stripResponseHeaders(
             const rewritten = rewriteLinkHeader(value, prefix);
             if (rewritten === null) continue;
             out[key] = rewritten;
+            continue;
+        }
+        // `Location` (3xx redirects): dev server emits absolute paths
+        // (e.g. Next.js `redirect('/admin')`) that the browser would
+        // follow against the relay origin → escape to relay host root.
+        // Prefix the path so the redirect stays inside the preview mount.
+        // See specs/preview-relay-escape-plug/ Phase A.
+        if (lower === 'location') {
+            out[key] = prefix ? rewriteLocationHeader(value, prefix) : value;
             continue;
         }
         out[key] = value;
