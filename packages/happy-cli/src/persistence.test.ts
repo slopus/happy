@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SandboxConfigSchema } from './persistence';
+import { SandboxConfigSchema, getDaemonStateTempFile } from './persistence';
 
 describe('SandboxConfigSchema', () => {
     it('applies defaults when values are omitted', () => {
@@ -68,5 +68,14 @@ describe('SandboxConfigSchema', () => {
                 denyReadPaths: [123],
             }),
         ).toThrow();
+    });
+});
+
+describe('getDaemonStateTempFile', () => {
+    it('uses a per-attempt temp path instead of a shared daemon.state.json.tmp path', () => {
+        const stateFile = '/tmp/happy/daemon.state.json';
+
+        expect(getDaemonStateTempFile(stateFile, 'attempt-a')).toBe('/tmp/happy/daemon.state.json.attempt-a.tmp');
+        expect(getDaemonStateTempFile(stateFile, 'attempt-b')).toBe('/tmp/happy/daemon.state.json.attempt-b.tmp');
     });
 });

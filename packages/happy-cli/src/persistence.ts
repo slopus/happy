@@ -8,6 +8,7 @@ import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
 import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync } from 'node:fs'
 import { constants } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
@@ -336,8 +337,12 @@ export async function readDaemonState(): Promise<DaemonLocallyPersistedState | n
  * Following the same tmp + rename pattern used by `persistSession` below
  * makes the visible state transition POSIX-atomic.
  */
+export function getDaemonStateTempFile(stateFile: string, attemptId = `${process.pid}-${randomUUID()}`): string {
+  return `${stateFile}.${attemptId}.tmp`;
+}
+
 export function writeDaemonState(state: DaemonLocallyPersistedState): void {
-  const tmpFile = configuration.daemonStateFile + '.tmp';
+  const tmpFile = getDaemonStateTempFile(configuration.daemonStateFile);
   writeFileSync(tmpFile, JSON.stringify(state, null, 2), 'utf-8');
   renameSync(tmpFile, configuration.daemonStateFile);
 }
@@ -470,4 +475,3 @@ export function persistSession(sessionId: string, session: PersistedSession): vo
     logger.debug(`[PERSISTENCE] Failed to persist session ${sessionId}:`, error);
   }
 }
-
