@@ -4,12 +4,12 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'packages/happy-cli/**'
+      - 'packages/huppy-cli/**'
       - '.github/workflows/cli-smoke-test.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'packages/happy-cli/**'
+      - 'packages/huppy-cli/**'
       - '.github/workflows/cli-smoke-test.yml'
   workflow_dispatch:
 
@@ -35,40 +35,40 @@ jobs:
       run: yarn install --immutable
 
     - name: Build package
-      run: yarn workspace happy build
+      run: yarn workspace huppy-ai build
 
     - name: Pack package
-      run: yarn workspace happy pack
+      run: yarn workspace huppy-ai pack
 
     - name: Install packed package globally
       run: |
-        PACKAGE_FILE=$(ls packages/happy-cli/*.tgz)
+        PACKAGE_FILE=$(ls packages/huppy-cli/*.tgz)
         npm install -g "./$PACKAGE_FILE"
 
     - name: Test binary execution
       run: |
         # Test that the binary starts successfully
-        echo "Testing happy --help..."
-        timeout 30s happy --help || {
-          echo "Error: happy --help failed or timed out"
+        echo "Testing huppy --help..."
+        timeout 30s huppy --help || {
+          echo "Error: huppy --help failed or timed out"
           exit 1
         }
 
-        echo "Testing happy --version..."
-        timeout 10s happy --version || {
-          echo "Error: happy --version failed or timed out"
+        echo "Testing huppy --version..."
+        timeout 10s huppy --version || {
+          echo "Error: huppy --version failed or timed out"
           exit 1
         }
 
-        echo "Testing happy doctor..."
-        timeout 30s happy doctor || {
-          echo "Error: happy doctor failed or timed out"
+        echo "Testing huppy doctor..."
+        timeout 30s huppy doctor || {
+          echo "Error: huppy doctor failed or timed out"
           exit 1
         }
 
-        echo "Testing happy daemon status..."
-        timeout 10s happy daemon status || {
-          echo "Error: happy daemon status failed or timed out"
+        echo "Testing huppy daemon status..."
+        timeout 10s huppy daemon status || {
+          echo "Error: huppy daemon status failed or timed out"
           exit 1
         }
 
@@ -95,15 +95,15 @@ jobs:
       run: yarn install --immutable
 
     - name: Build package
-      run: yarn workspace happy build
+      run: yarn workspace huppy-ai build
 
     - name: Pack package
-      run: yarn workspace happy pack
+      run: yarn workspace huppy-ai pack
 
     - name: Install packed package globally
       shell: cmd
       run: |
-        for %%f in (packages\happy-cli\*.tgz) do npm install -g "%%f"
+        for %%f in (packages\huppy-cli\*.tgz) do npm install -g "%%f"
 
     - name: Debug npm global installation structure
       shell: cmd
@@ -119,14 +119,14 @@ jobs:
           dir "%NPM_PREFIX%\node_modules" 2>nul
           echo.
           echo Checking for happy package:
-          if exist "%NPM_PREFIX%\node_modules\happy" (
+          if exist "%NPM_PREFIX%\node_modules\huppy-ai" (
             echo Found happy package
-            dir "%NPM_PREFIX%\node_modules\happy" 2>nul
+            dir "%NPM_PREFIX%\node_modules\huppy-ai" 2>nul
             echo.
             echo Checking for dist directory:
-            if exist "%NPM_PREFIX%\node_modules\happy\dist" (
+            if exist "%NPM_PREFIX%\node_modules\huppy-ai\dist" (
               echo Found dist directory
-              dir "%NPM_PREFIX%\node_modules\happy\dist" 2>nul
+              dir "%NPM_PREFIX%\node_modules\huppy-ai\dist" 2>nul
             ) else (
               echo No dist directory found
             )
@@ -151,64 +151,64 @@ jobs:
         rem Debug: Check if happy exists in various locations
         echo Checking for happy binary...
         where happy 2>nul && echo Found happy in PATH || echo happy not found in PATH
-        if exist "%NPM_PREFIX%\happy.cmd" echo Found happy.cmd in NPM_PREFIX
-        if exist "%NPM_PREFIX%\node_modules\.bin\happy.cmd" echo Found happy.cmd in .bin directory
+        if exist "%NPM_PREFIX%\huppy.cmd" echo Found huppy.cmd in NPM_PREFIX
+        if exist "%NPM_PREFIX%\node_modules\.bin\huppy.cmd" echo Found huppy.cmd in .bin directory
         dir "%NPM_PREFIX%\*happy*" 2>nul || echo No happy files found in NPM_PREFIX
 
         rem Debug: Check the actual contents and encoding of the installed file
-        if exist "%NPM_PREFIX%\happy.cmd" (
+        if exist "%NPM_PREFIX%\huppy.cmd" (
           echo File size and type:
-          dir "%NPM_PREFIX%\happy.cmd"
+          dir "%NPM_PREFIX%\huppy.cmd"
           echo.
           echo First few lines of the file:
-          type "%NPM_PREFIX%\happy.cmd" | head -5
+          type "%NPM_PREFIX%\huppy.cmd" | head -5
           echo.
           echo Hex dump of first 50 bytes to check line endings:
-          powershell -Command "Get-Content '%NPM_PREFIX%\happy.cmd' -Encoding Byte -TotalCount 50 | ForEach-Object { '{0:X2}' -f $_ } | Join-String -Separator ' '"
+          powershell -Command "Get-Content '%NPM_PREFIX%\huppy.cmd' -Encoding Byte -TotalCount 50 | ForEach-Object { '{0:X2}' -f $_ } | Join-String -Separator ' '"
           echo.
           echo Testing with direct path...
-          "%NPM_PREFIX%\happy.cmd" --help
+          "%NPM_PREFIX%\huppy.cmd" --help
         ) else (
-          echo Testing happy --help...
-          happy --help
+          echo Testing huppy --help...
+          huppy --help
         )
         if errorlevel 1 (
-          echo Error: happy --help failed
+          echo Error: huppy --help failed
           exit /b 1
         )
 
         rem Test version
-        if exist "%NPM_PREFIX%\happy.cmd" (
-          "%NPM_PREFIX%\happy.cmd" --version
+        if exist "%NPM_PREFIX%\huppy.cmd" (
+          "%NPM_PREFIX%\huppy.cmd" --version
         ) else (
-          happy --version
+          huppy --version
         )
         if errorlevel 1 (
-          echo Error: happy --version failed
+          echo Error: huppy --version failed
           exit /b 1
         )
 
         rem Test doctor
-        echo Testing happy doctor...
-        if exist "%NPM_PREFIX%\happy.cmd" (
-          "%NPM_PREFIX%\happy.cmd" doctor
+        echo Testing huppy doctor...
+        if exist "%NPM_PREFIX%\huppy.cmd" (
+          "%NPM_PREFIX%\huppy.cmd" doctor
         ) else (
-          happy doctor
+          huppy doctor
         )
         if errorlevel 1 (
-          echo Error: happy doctor failed
+          echo Error: huppy doctor failed
           exit /b 1
         )
 
         rem Test daemon status
-        echo Testing happy daemon status...
-        if exist "%NPM_PREFIX%\happy.cmd" (
-          "%NPM_PREFIX%\happy.cmd" daemon status
+        echo Testing huppy daemon status...
+        if exist "%NPM_PREFIX%\huppy.cmd" (
+          "%NPM_PREFIX%\huppy.cmd" daemon status
         ) else (
-          happy daemon status
+          huppy daemon status
         )
         if errorlevel 1 (
-          echo Error: happy daemon status failed
+          echo Error: huppy daemon status failed
           exit /b 1
         )
 
