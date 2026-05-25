@@ -45,8 +45,15 @@ export function redactArgvForLog(argv: readonly string[]): string[] {
     const eqIdx = arg.indexOf('=');
     if (eqIdx <= 0) return arg;
     const key = arg.slice(0, eqIdx);
-    if (!SECRET_NAME_PATTERN.test(key)) return arg;
-    return `${key}=${REDACTED}`;
+    if (SECRET_NAME_PATTERN.test(key)) {
+      return `${key}=${REDACTED}`;
+    }
+    const value = arg.slice(eqIdx + 1);
+    const innerEqIdx = value.indexOf('=');
+    if (innerEqIdx <= 0) return arg;
+    const innerKey = value.slice(0, innerEqIdx);
+    if (!SECRET_NAME_PATTERN.test(innerKey)) return arg;
+    return `${key}=${innerKey}=${REDACTED}`;
   });
 }
 

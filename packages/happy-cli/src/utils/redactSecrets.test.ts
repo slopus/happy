@@ -15,6 +15,13 @@ describe('redactArgvForLog', () => {
     ]);
   });
 
+  it('redacts the env value when --claude-env is passed as --flag=KEY=VAL', () => {
+    expect(redactArgvForLog(['happy', '--claude-env=ANTHROPIC_TOKEN=sk-leak-12345'])).toEqual([
+      'happy',
+      `--claude-env=ANTHROPIC_TOKEN=${REDACTED}`,
+    ]);
+  });
+
   it('redacts case-insensitively (lower, mixed)', () => {
     expect(redactArgvForLog(['accessToken=value-1', 'API_KEY=value-2', 'oauth_secret=value-3'])).toEqual([
       `accessToken=${REDACTED}`,
