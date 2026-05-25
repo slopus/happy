@@ -58,6 +58,14 @@ const INLINE_STYLE_ATTR = /(style\s*=\s*["'])([^"']*)(["'])/gi;
 // lowercase on the DOM side, but our regex runs on the source string,
 // so we need to match every case variant.
 const MULTI_URL_ATTRS = /((?:srcset|imagesrcset)\s*=\s*["'])([^"']+)(["'])/gi;
+// `<meta http-equiv="refresh" content="<delay>;url=<path>">` — when
+// the path is absolute, browsers follow it against the iframe's current
+// origin and escape the relay mount. Rewrite the url part (preserving
+// delay / separators / quoting) so the refresh stays in-prefix.
+// Case-insensitive on attribute names, http-equiv value, and `url=`
+// keyword (HTML spec is case-insensitive). See specs/preview-relay-
+// escape-plug/ Phase C.
+const META_REFRESH = /(<meta\b[^>]*?http-equiv\s*=\s*["']refresh["'][^>]*?content\s*=\s*["'][^"']*?url\s*=\s*)(\/(?!\/)[^"']*)/gi;
 function rewriteSrcSetValue(value: string, prefix: string): string {
     return value
         .split(',')
@@ -155,6 +163,11 @@ export function rewriteJsCss(text: string, prefix: string): string {
 export function rewriteHtml(html: string, prefix: string): string {
     const rep = makeReplacer(prefix);
     let out = html
+        .replace(META_REFRESH, (match, head: string, path: string) => {
+            // idempotent: skip if already prefixed
+            if (path === prefix || path.startsWith(prefix + '/')) return match;
+            return `${head}${prefix}${path}`;
+        })
         .replace(ABS_PATH_ATTRS, rep)
         .replace(ABS_PATH_IMPORT, rep)
         .replace(MULTI_URL_ATTRS, (_match, head: string, list: string, tail: string) =>

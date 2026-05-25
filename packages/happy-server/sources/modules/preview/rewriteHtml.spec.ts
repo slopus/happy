@@ -442,6 +442,43 @@ describe('rewriteHtml — interceptor window.location patches (Phase B escape pl
     });
 });
 
+describe('rewriteHtml — <meta http-equiv="refresh"> rewrite (Phase C escape plug)', () => {
+    it('rewrites absolute-path url in standard form', () => {
+        const out = rewriteHtml(
+            '<html><head><meta http-equiv="refresh" content="0;url=/admin"></head></html>',
+            PREFIX,
+        );
+        expect(out).toContain(`content="0;url=${PREFIX}/admin"`);
+    });
+
+    it('handles case-insensitive http-equiv / Refresh / URL', () => {
+        const out = rewriteHtml(
+            `<html><head><META HTTP-EQUIV='Refresh' CONTENT='5; URL=/admin'></head></html>`,
+            PREFIX,
+        );
+        expect(out).toContain(`URL=${PREFIX}/admin`);
+    });
+
+    it('preserves cross-origin URLs', () => {
+        const input = '<html><head><meta http-equiv="refresh" content="0;url=https://google.com/login"></head></html>';
+        const out = rewriteHtml(input, PREFIX);
+        expect(out).toContain('content="0;url=https://google.com/login"');
+    });
+
+    it('preserves protocol-relative URLs', () => {
+        const input = '<html><head><meta http-equiv="refresh" content="0;url=//cdn.example/x"></head></html>';
+        const out = rewriteHtml(input, PREFIX);
+        expect(out).toContain('content="0;url=//cdn.example/x"');
+    });
+
+    it('does not double-prefix already-prefixed URLs (idempotent)', () => {
+        const input = `<html><head><meta http-equiv="refresh" content="0;url=${PREFIX}/admin"></head></html>`;
+        const out = rewriteHtml(input, PREFIX);
+        expect(out).toContain(`content="0;url=${PREFIX}/admin"`);
+        expect(out).not.toContain(`${PREFIX}${PREFIX}`);
+    });
+});
+
 describe('rewriteJsCss', () => {
     it('rewrites ES import paths', () => {
         const out = rewriteJsCss(`import x from '/lib/x.js'`, PREFIX);
