@@ -13,6 +13,7 @@ import type {
     SDKResultMessage
 } from '@/claude/sdk'
 import type { RawJSONLines } from '@/claude/types'
+import { recordToolUse, getToolNameById, shouldRedact, redactToolResultContent, REDACTED_PLACEHOLDER } from '@/redact/redactGate'
 
 /**
  * Context for converting SDK messages to log format
@@ -110,10 +111,22 @@ export class SDKToLogConverter {
         switch (sdkMessage.type) {
             case 'user': {
                 const userMsg = sdkMessage as SDKUserMessage
+                // P5 redact: tool_result 블록 본문을 정책에 따라 치환한 새 message 를 만든다.
+                // 원본 userMsg.message 는 절대 mutate 하지 않는다 — 모델로 가는 path 보호.
+                let outMessage: any = userMsg.message
+                if (Array.isArray(userMsg.message?.content)) {
+                    const newContent = userMsg.message.content.map((c: any) => {
+                        if (c && c.type === 'tool_result' && shouldRedact(getToolNameById(c.tool_use_id))) {
+                            return { ...c, content: redactToolResultContent(c.content) }
+                        }
+                        return c
+                    })
+                    outMessage = { ...userMsg.message, content: newContent }
+                }
                 logMessage = {
                     ...baseFields,
                     type: 'user',
-                    message: userMsg.message,
+                    message: outMessage,
                     ...(userMsg.parent_tool_use_id ? { parent_tool_use_id: userMsg.parent_tool_use_id } : {}),
                 }
 
@@ -135,6 +148,14 @@ export class SDKToLogConverter {
 
             case 'assistant': {
                 const assistantMsg = sdkMessage as SDKAssistantMessage
+                // P5 redact: 이후 tool_result lookup 을 위해 (id → name) 적재.
+                if (assistantMsg.message?.content && Array.isArray(assistantMsg.message.content)) {
+                    for (const block of assistantMsg.message.content) {
+                        if (block && (block as any).type === 'tool_use') {
+                            recordToolUse((block as any).id, (block as any).name)
+                        }
+                    }
+                }
                 logMessage = {
                     ...baseFields,
                     type: 'assistant',
@@ -185,6 +206,9 @@ export class SDKToLogConverter {
             // Handle tool use results (often comes as user messages)
             case 'tool_result': {
                 const toolMsg = sdkMessage as any
+                // P5 redact: 내부 합성 tool_result (interrupted 등) 도 동일 정책 적용.
+                const isRedacted = shouldRedact(getToolNameById(toolMsg.tool_use_id))
+                const outContent = isRedacted ? redactToolResultContent(toolMsg.content) : toolMsg.content
                 const baseLogMessage: any = {
                     ...baseFields,
                     type: 'user',
@@ -193,10 +217,10 @@ export class SDKToLogConverter {
                         content: [{
                             type: 'tool_result',
                             tool_use_id: toolMsg.tool_use_id,
-                            content: toolMsg.content
+                            content: outContent
                         }]
                     },
-                    toolUseResult: toolMsg.content
+                    toolUseResult: isRedacted ? REDACTED_PLACEHOLDER : toolMsg.content
                 }
 
                 // Add mode if available from responses

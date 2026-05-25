@@ -1,6 +1,7 @@
 import type { SDKMessage, SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from '@/claude/sdk'
 import type { MessageBuffer } from './ink/messageBuffer'
 import { logger } from './logger'
+import { recordToolUse, getToolNameById, shouldRedact, REDACTED_PLACEHOLDER } from '@/redact/redactGate'
 
 export type OnAssistantResultInkCallback = (result: SDKResultMessage, messageBuffer: MessageBuffer) => void | Promise<void>
 
@@ -43,16 +44,23 @@ export function formatClaudeMessageForInk(
                         if (block.type === 'text') {
                             messageBuffer.addMessage(`👤 User: ${block.text}`, 'user')
                         } else if (block.type === 'tool_result') {
+                            // P5 redact: 매핑된 tool name 이 정책 매칭이면 본문을 치환해 표시.
+                            const toolName = getToolNameById(block.tool_use_id)
+                            const redacted = shouldRedact(toolName)
                             messageBuffer.addMessage(`✅ Tool Result (ID: ${block.tool_use_id})`, 'result')
                             if (block.content) {
-                                const outputStr = typeof block.content === 'string' 
-                                    ? block.content 
-                                    : JSON.stringify(block.content, null, 2)
-                                const maxLength = 200
-                                if (outputStr.length > maxLength) {
-                                    messageBuffer.addMessage(outputStr.substring(0, maxLength) + '... (truncated)', 'result')
+                                if (redacted) {
+                                    messageBuffer.addMessage(REDACTED_PLACEHOLDER, 'result')
                                 } else {
-                                    messageBuffer.addMessage(outputStr, 'result')
+                                    const outputStr = typeof block.content === 'string'
+                                        ? block.content
+                                        : JSON.stringify(block.content, null, 2)
+                                    const maxLength = 200
+                                    if (outputStr.length > maxLength) {
+                                        messageBuffer.addMessage(outputStr.substring(0, maxLength) + '... (truncated)', 'result')
+                                    } else {
+                                        messageBuffer.addMessage(outputStr, 'result')
+                                    }
                                 }
                             }
                         }
@@ -74,6 +82,8 @@ export function formatClaudeMessageForInk(
                     if (block.type === 'text') {
                         messageBuffer.addMessage(block.text || '', 'assistant')
                     } else if (block.type === 'tool_use') {
+                        // P5 redact: tool_result 에 name 이 없으므로 여기서 id→name 매핑 적재.
+                        recordToolUse(block.id, block.name)
                         messageBuffer.addMessage(`🔧 Tool: ${block.name}`, 'tool')
                         if (block.input) {
                             const inputStr = JSON.stringify(block.input, null, 2)

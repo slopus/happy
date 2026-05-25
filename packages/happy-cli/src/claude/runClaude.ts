@@ -30,6 +30,7 @@ import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
 import { applyAxOrchestration } from '@/orchestrator/prompts/integrate';
 import { registerAxRpcHandlers } from '@/orchestrator/registerAxRpcHandlers';
+import { fetchAplusMcpServers } from '@/aplus/fetchAplusMcpServers';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -472,6 +473,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     registerKillSessionHandler(session.rpcHandlerManager, cleanup);
     registerAxRpcHandlers(session.rpcHandlerManager, workingDirectory);
 
+    // P6(b): aplus 자동 mcp 등록 — web-ui 의 /api/me/mcp-config 응답을
+    // 'happy' MCP 옆에 머지한다. 실패는 silent (graceful degrade).
+    const aplusMcpServers = await fetchAplusMcpServers(credentials.token);
+
     // Create claude loop
     const exitCode = await loop({
         path: workingDirectory,
@@ -496,7 +501,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             'happy': {
                 type: 'http' as const,
                 url: happyServer.url,
-            }
+            },
+            ...aplusMcpServers,
         },
         session,
         claudeEnvVars: options.claudeEnvVars,
