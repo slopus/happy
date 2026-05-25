@@ -89,7 +89,7 @@ interface AgentInputProps {
     sessionStatusModelLabel?: string | null;
     sessionStatusEffortLabel?: string | null;
     onFileViewerPress?: () => void;
-    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy';
+    agentType?: 'claude' | 'codex' | 'gemini' | 'hermes' | 'openclaw' | 'agy';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
@@ -705,11 +705,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const hasImages = (props.selectedImages?.length ?? 0) > 0;
     const hasComposerContent = hasText || hasImages;
 
-    // Check if this is a Codex, Gemini, or OpenClaw session
+    // Check if this is a Codex, Gemini, Hermes, or OpenClaw session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
     const isRig = isRigMetadata(props.metadata);
     const isCodex = !isRig && (props.metadata?.flavor === 'codex' || props.agentType === 'codex');
     const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
+    const isHermes = props.metadata?.flavor === 'hermes' || props.agentType === 'hermes';
     const isOpenClaw = props.metadata?.flavor === 'openclaw' || props.agentType === 'openclaw';
     const displayPermissionMode = React.useMemo(() => (
         props.permissionMode ? hackMode(props.permissionMode) : null

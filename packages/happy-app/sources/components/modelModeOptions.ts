@@ -34,7 +34,7 @@ export type EffortLevel = ModeOption;
 export type PermissionModeKey = string;
 export type ModelModeKey = string;
 
-export type AgentFlavor = 'claude' | 'codex' | 'gemini' | string | null | undefined;
+export type AgentFlavor = 'claude' | 'codex' | 'gemini' | 'hermes' | string | null | undefined;
 
 type Translate = (key: any) => string;
 
@@ -143,12 +143,32 @@ export function getAgyPermissionModes(translate: Translate): PermissionMode[] {
     ];
 }
 
+export function getHermesPermissionModes(translate: Translate): PermissionMode[] {
+    // Hermes ACP currently exposes only a single "default" surface (`hooks_auto_accept`
+    // toggle is handled CLI-side). Keep the picker minimal until the agent advertises
+    // operating modes via metadata.operatingModes.
+    return [
+        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
+    ];
+}
+
+export function getHermesModelModes(): ModelMode[] {
+    // Hermes broadcasts its model list at runtime via the ACP available_models event,
+    // populating metadata.models. The hardcoded fallback only needs a sentinel.
+    return [
+        { key: 'default', name: 'default model', description: null },
+    ];
+}
+
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
     }
     if (flavor === 'gemini') {
         return getGeminiPermissionModes(translate);
+    }
+    if (flavor === 'hermes') {
+        return getHermesPermissionModes(translate);
     }
     if (flavor === 'openclaw') {
         return getOpenClawPermissionModes(translate);
@@ -185,6 +205,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     }
     if (flavor === 'gemini') {
         return getGeminiModelModes();
+    }
+    if (flavor === 'hermes') {
+        return getHermesModelModes();
     }
     if (flavor === 'openclaw') {
         return getOpenClawModelModes();
@@ -288,7 +311,7 @@ export function getAvailablePermissionModes(
         }
         return modes;
     }
-    if (flavor === 'claude' || flavor === 'codex' || flavor === 'openclaw' || flavor === 'agy') {
+    if (flavor === 'claude' || flavor === 'codex' || flavor === 'hermes' || flavor === 'openclaw' || flavor === 'agy') {
         return hackModes(getHardcodedPermissionModes(flavor, translate));
     }
 

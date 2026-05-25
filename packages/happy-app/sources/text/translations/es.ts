@@ -467,6 +467,7 @@ export const es: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            hermes: 'Hermes',
             openclaw: 'OpenClaw',
         },
         model: {

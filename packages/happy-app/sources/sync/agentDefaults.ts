@@ -1,6 +1,6 @@
 import * as z from 'zod';
 
-export const agentKeys = ['claude', 'codex', 'gemini', 'openclaw', 'agy'] as const;
+export const agentKeys = ['claude', 'codex', 'gemini', 'hermes', 'openclaw', 'agy'] as const;
 export type AgentKey = typeof agentKeys[number];
 
 export const AgentDefaultOverrideSchema = z.object({
@@ -13,6 +13,7 @@ export const AgentDefaultOverridesSchema = z.object({
     claude: AgentDefaultOverrideSchema.optional(),
     codex: AgentDefaultOverrideSchema.optional(),
     gemini: AgentDefaultOverrideSchema.optional(),
+    hermes: AgentDefaultOverrideSchema.optional(),
     openclaw: AgentDefaultOverrideSchema.optional(),
     agy: AgentDefaultOverrideSchema.optional(),
 }).passthrough().default({});
@@ -33,12 +34,15 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     claude: { permissionMode: 'bypassPermissions', modelMode: 'opus', effortLevel: 'medium' },
     codex: { permissionMode: 'yolo', modelMode: 'gpt-5.5', effortLevel: 'medium' },
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
+    // Hermes advertises models dynamically via ACP available_models — keep
+    // the static default empty so the runtime list wins.
+    hermes: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
     agy: { permissionMode: 'default', modelMode: 'Gemini 3.1 Pro (High)', effortLevel: null },
 };
 
 export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
-    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw' || flavor === 'agy') {
+    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'hermes' || flavor === 'openclaw' || flavor === 'agy') {
         return flavor;
     }
     return 'claude';
