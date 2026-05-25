@@ -1042,6 +1042,7 @@ export class AcpBackend implements AgentBackend {
       'config_options_update',
       'current_mode_update',
       'usage_update',
+      'session_info_update',
     ];
     if (updateType &&
         !handledTypes.includes(updateType) &&

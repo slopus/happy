@@ -120,5 +120,16 @@ describe('AcpBackend.handleSessionUpdate', () => {
 
       expect(warnSpy).not.toHaveBeenCalled();
     });
+
+    it('does NOT warn on standard session_info_update metadata updates', () => {
+      const backend = createBackend();
+
+      dispatchUpdate(backend, {
+        sessionUpdate: 'session_info_update',
+        title: 'Updated title',
+      });
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
   });
 });
