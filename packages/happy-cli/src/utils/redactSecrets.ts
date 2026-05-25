@@ -37,24 +37,52 @@ export const FORCE_REDACT_KEYS: ReadonlySet<string> = new Set([
  * Redact `KEY=VALUE` entries in a `process.argv`-shaped list when KEY looks
  * like a secret. `--claude-env ANTHROPIC_TOKEN=secret-xxx` is the canonical
  * case: the second arg arrives here as `ANTHROPIC_TOKEN=secret-xxx` and
- * gets rewritten to `ANTHROPIC_TOKEN=[REDACTED]`. Pure flags / positional
- * args without an `=` are passed through unchanged.
+ * gets rewritten to `ANTHROPIC_TOKEN=[REDACTED]`. Secret-named flags such as
+ * `--gateway-token secret` keep the flag name and redact the following token.
  */
 export function redactArgvForLog(argv: readonly string[]): string[] {
-  return argv.map((arg) => {
+  const redacted: string[] = [];
+  let redactNext = false;
+
+  for (const arg of argv) {
+    if (redactNext) {
+      redacted.push(REDACTED);
+      redactNext = false;
+      continue;
+    }
+
     const eqIdx = arg.indexOf('=');
-    if (eqIdx <= 0) return arg;
+    if (eqIdx <= 0) {
+      redacted.push(arg);
+      if (arg.startsWith('-') && SECRET_NAME_PATTERN.test(arg)) {
+        redactNext = true;
+      }
+      continue;
+    }
+
     const key = arg.slice(0, eqIdx);
     if (SECRET_NAME_PATTERN.test(key)) {
-      return `${key}=${REDACTED}`;
+      redacted.push(`${key}=${REDACTED}`);
+      continue;
     }
+
     const value = arg.slice(eqIdx + 1);
     const innerEqIdx = value.indexOf('=');
-    if (innerEqIdx <= 0) return arg;
+    if (innerEqIdx <= 0) {
+      redacted.push(arg);
+      continue;
+    }
+
     const innerKey = value.slice(0, innerEqIdx);
-    if (!SECRET_NAME_PATTERN.test(innerKey)) return arg;
-    return `${key}=${innerKey}=${REDACTED}`;
-  });
+    if (!SECRET_NAME_PATTERN.test(innerKey)) {
+      redacted.push(arg);
+      continue;
+    }
+
+    redacted.push(`${key}=${innerKey}=${REDACTED}`);
+  }
+
+  return redacted;
 }
 
 /**

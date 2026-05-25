@@ -22,6 +22,21 @@ describe('redactArgvForLog', () => {
     ]);
   });
 
+  it('redacts secret values passed as the next argv token after a secret-named flag', () => {
+    expect(redactArgvForLog(['happy', 'openclaw', '--gateway-token', 'token-leak-12345'])).toEqual([
+      'happy',
+      'openclaw',
+      '--gateway-token',
+      REDACTED,
+    ]);
+    expect(redactArgvForLog(['happy', 'openclaw', '--gateway-password', 'password-leak-12345'])).toEqual([
+      'happy',
+      'openclaw',
+      '--gateway-password',
+      REDACTED,
+    ]);
+  });
+
   it('redacts case-insensitively (lower, mixed)', () => {
     expect(redactArgvForLog(['accessToken=value-1', 'API_KEY=value-2', 'oauth_secret=value-3'])).toEqual([
       `accessToken=${REDACTED}`,
