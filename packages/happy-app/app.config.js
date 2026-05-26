@@ -197,6 +197,9 @@ export default {
                 consoleLoggingDefault,
                 buildCommitSha: buildMetadata.commitSha,
                 buildCommitTimestamp: buildMetadata.commitTimestamp,
+            },
+            eas: {
+                projectId: "f178778f-b78f-4b6d-8891-e13cc99b1535"
             }
         },
         owner: "lincya"
