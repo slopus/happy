@@ -49,6 +49,15 @@ export interface BuildPreviewCookieOptions {
     /** `Lax` (default, same-origin iframes), or `None` (cross-origin HTTPS
      *  iframes — requires Secure=true). `Strict` is not useful here. */
     sameSite?: 'Lax' | 'None' | 'Strict';
+    /**
+     * Cookie scope mode.
+     * - `path-prefix` (default): Path=`/v1/preview/{mid}/{port}/`. Used by the
+     *   path-prefix relay route on the studio origin.
+     * - `subdomain`: Path=`/`, host-only (no Domain attribute). Used by the
+     *   `<mid>-<port>.preview.<zone>` origin-isolation route. See
+     *   specs/preview-iframe-origin-isolation-subdomain/.
+     */
+    mode?: 'path-prefix' | 'subdomain';
 }
 
 export function buildPreviewCookie(
@@ -59,9 +68,11 @@ export function buildPreviewCookie(
     options: BuildPreviewCookieOptions = {},
 ): string {
     const sameSite = options.sameSite ?? 'Lax';
+    const mode = options.mode ?? 'path-prefix';
+    const path = mode === 'subdomain' ? '/' : `/v1/preview/${machineId}/${port}/`;
     const parts = [
         `${cookieName(machineId, port)}=${encodeURIComponent(token)}`,
-        `Path=/v1/preview/${machineId}/${port}/`,
+        `Path=${path}`,
         `Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`,
         'HttpOnly',
         `SameSite=${sameSite}`,

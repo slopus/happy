@@ -117,4 +117,31 @@ describe('buildPreviewCookie', () => {
         expect(out).toContain('SameSite=None');
         expect(out).toContain('Secure');
     });
+
+    describe('mode: subdomain', () => {
+        it('uses root Path and omits Domain (host-only scope)', () => {
+            const out = buildPreviewCookie(MID, PORT, TOKEN, 600, { mode: 'subdomain' });
+            expect(out).toContain('Path=/');
+            expect(out).not.toContain(`Path=/v1/preview/`);
+            expect(out).not.toMatch(/Domain=/);
+        });
+
+        it('preserves HttpOnly + Max-Age + token encoding', () => {
+            const out = buildPreviewCookie(MID, PORT, TOKEN, 600, { mode: 'subdomain' });
+            expect(out).toContain('HttpOnly');
+            expect(out).toContain('Max-Age=600');
+            expect(out).toContain(`${cookieName(MID, PORT)}=${encodeURIComponent(TOKEN)}`);
+        });
+
+        it('combines with secure + SameSite=None for cross-origin iframe', () => {
+            const out = buildPreviewCookie(MID, PORT, TOKEN, 600, {
+                mode: 'subdomain',
+                secure: true,
+                sameSite: 'None',
+            });
+            expect(out).toContain('Path=/');
+            expect(out).toContain('Secure');
+            expect(out).toContain('SameSite=None');
+        });
+    });
 });
