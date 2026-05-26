@@ -339,6 +339,99 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(result.currentTurnId).toBe('turn-1');
         expect(result.envelopes).toHaveLength(0);
     });
+
+    describe('hook_response system messages', () => {
+        const baseHookResponse = {
+            type: 'system' as const,
+            subtype: 'hook_response',
+            hook_id: 'h1',
+            hook_name: 'UserPromptSubmit:test',
+            hook_event: 'UserPromptSubmit',
+            uuid: 'u1',
+            session_id: 's1',
+        };
+
+        it('emits a service envelope when stderr carries {systemMessage} (block hook, exit 2)', () => {
+            const stderrJson = JSON.stringify({
+                hookSpecificOutput: { decision: 'BLOCK' },
+                systemMessage: '⏰ Workout time! Sessions blocked until 06:40.',
+            });
+            const result = mapClaudeLogMessageToSessionEnvelopes(
+                {
+                    ...baseHookResponse,
+                    output: stderrJson,
+                    stdout: '',
+                    stderr: stderrJson,
+                    exit_code: 2,
+                    outcome: 'error',
+                } as any,
+                { currentTurnId: null },
+            );
+            // turn-start + service
+            expect(result.envelopes.map(e => e.ev.t)).toEqual(['turn-start', 'service']);
+            const service = result.envelopes[1].ev as any;
+            expect(service.text).toBe('⏰ Workout time! Sessions blocked until 06:40.');
+        });
+
+        it('emits a service envelope when stdout carries {systemMessage} (passing hook, exit 0)', () => {
+            const stdoutJson = JSON.stringify({ continue: true, systemMessage: '🚀 Session started' });
+            const result = mapClaudeLogMessageToSessionEnvelopes(
+                {
+                    ...baseHookResponse,
+                    hook_event: 'SessionStart',
+                    output: stdoutJson,
+                    stdout: stdoutJson,
+                    stderr: '',
+                    exit_code: 0,
+                    outcome: 'success',
+                } as any,
+                { currentTurnId: 'existing-turn' },
+            );
+            // existing turn reused → only service envelope
+            expect(result.envelopes.map(e => e.ev.t)).toEqual(['service']);
+            expect((result.envelopes[0].ev as any).text).toBe('🚀 Session started');
+        });
+
+        it('emits no envelopes for hook_response without a systemMessage payload', () => {
+            const result = mapClaudeLogMessageToSessionEnvelopes(
+                {
+                    ...baseHookResponse,
+                    output: 'Sync started in background\n',
+                    stdout: 'Sync started in background\n',
+                    stderr: '',
+                    exit_code: 0,
+                    outcome: 'success',
+                } as any,
+                { currentTurnId: null },
+            );
+            expect(result.envelopes).toHaveLength(0);
+        });
+
+        it('emits no envelopes for non-JSON stderr', () => {
+            const result = mapClaudeLogMessageToSessionEnvelopes(
+                {
+                    ...baseHookResponse,
+                    output: 'Error: command not found\n',
+                    stdout: '',
+                    stderr: 'Error: command not found\n',
+                    exit_code: 127,
+                    outcome: 'error',
+                } as any,
+                { currentTurnId: null },
+            );
+            expect(result.envelopes).toHaveLength(0);
+        });
+
+        it('emits no envelopes for system subtypes other than hook_response (init, hook_started, etc.)', () => {
+            for (const subtype of ['init', 'hook_started', 'hook_progress'] as const) {
+                const result = mapClaudeLogMessageToSessionEnvelopes(
+                    { type: 'system', subtype, uuid: 'u', session_id: 's' } as any,
+                    { currentTurnId: null },
+                );
+                expect(result.envelopes).toHaveLength(0);
+            }
+        });
+    });
 });
 
 describe('closeClaudeTurnWithStatus', () => {

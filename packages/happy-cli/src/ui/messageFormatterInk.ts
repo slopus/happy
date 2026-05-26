@@ -5,6 +5,29 @@ import { logger } from './logger'
 export type OnAssistantResultInkCallback = (result: SDKResultMessage, messageBuffer: MessageBuffer) => void | Promise<void>
 
 /**
+ * Extract a `systemMessage` value from a Claude SDK `hook_response` payload.
+ * Hooks emit JSON on either stdout (typical) or stderr (when exiting non-zero
+ * to block, e.g. exit code 2). The SDK forwards both verbatim. Try `output`
+ * first since the SDK populates it with whichever stream the hook used, then
+ * fall back to stdout/stderr.
+ */
+function extractHookSystemMessage(data: { output?: unknown; stdout?: unknown; stderr?: unknown }): string | null {
+    const candidates = [data.output, data.stdout, data.stderr]
+    for (const candidate of candidates) {
+        if (typeof candidate !== 'string' || candidate.length === 0) continue
+        try {
+            const parsed = JSON.parse(candidate)
+            if (parsed && typeof parsed === 'object' && typeof parsed.systemMessage === 'string' && parsed.systemMessage.length > 0) {
+                return parsed.systemMessage
+            }
+        } catch {
+            // Not JSON — hooks can also print plain text. Skip.
+        }
+    }
+    return null
+}
+
+/**
  * Formats Claude SDK messages for Ink display
  */
 export function formatClaudeMessageForInk(
@@ -26,6 +49,16 @@ export function formatClaudeMessageForInk(
                     messageBuffer.addMessage(`  Tools: ${sysMsg.tools.join(', ')}`, 'status')
                 }
                 messageBuffer.addMessage('─'.repeat(40), 'status')
+            } else if ((sysMsg as any).subtype === 'hook_response') {
+                // Surface hook `systemMessage` so users see hook-generated notes
+                // (e.g. UserPromptSubmit/SessionStart hooks). Hook output JSON is
+                // delivered verbatim in `output`/`stdout` (success) or `stderr`
+                // (when the hook exits non-zero to block, e.g. exit code 2).
+                const hookData = sysMsg as any
+                const systemMessage = extractHookSystemMessage(hookData)
+                if (systemMessage) {
+                    messageBuffer.addMessage(`⏺ ${systemMessage}`, 'system')
+                }
             }
             break
         }
