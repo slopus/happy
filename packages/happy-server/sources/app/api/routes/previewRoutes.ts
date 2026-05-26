@@ -28,6 +28,7 @@ import { rewriteHtml, rewriteJsCss } from "@/modules/preview/rewriteHtml";
 import { rewriteLinkHeader } from "@/modules/preview/rewriteLinkHeader";
 import { rewriteLocationHeader } from "@/modules/preview/rewriteLocationHeader";
 import { renderExpiredPtokenHtml, shouldServeExpiredHtml } from "@/modules/preview/expiredPtokenHtml";
+import { parsePreviewHost } from "@/modules/preview/parsePreviewHost";
 import { type Fastify } from "../types";
 
 interface ProxySuccess {
@@ -173,12 +174,35 @@ export function previewRoutes(app: Fastify) {
             done(null, body);
         });
 
+        // Phase 3 of specs/preview-iframe-origin-isolation-subdomain:
+        // When the iframe loads `<mid>-<port>.preview.<zone>/<app-path>`,
+        // intercept before routing, stash subdomain context on the request,
+        // and rewrite raw.url so the existing `/v1/preview/:machineId/:port/*`
+        // route picks it up. The handler reads `request.previewMode` to
+        // switch off prefix rewriting and use host-only cookie scope.
+        scope.addHook('onRequest', (request, _reply, done) => {
+            const parsed = parsePreviewHost(request.headers.host as string | undefined);
+            if (parsed) {
+                const url = request.raw.url ?? '/';
+                const qIdx = url.indexOf('?');
+                const rawPath = qIdx >= 0 ? url.slice(0, qIdx) : url;
+                const search = qIdx >= 0 ? url.slice(qIdx) : '';
+                const trimmed = rawPath.startsWith('/') ? rawPath.slice(1) : rawPath;
+                request.raw.url = `/v1/preview/${parsed.machineId}/${parsed.port}/${trimmed}${search}`;
+                (request as unknown as { previewMode?: 'subdomain' }).previewMode = 'subdomain';
+            }
+            done();
+        });
+
         scope.route({
             method: ALL_METHODS,
             url: '/v1/preview/:machineId/:port/*',
             handler: async (request, reply) => {
                 const params = request.params as { machineId: string; port: string; '*'?: string };
                 const query = request.query as { ptoken?: string };
+                const previewMode = (request as unknown as { previewMode?: 'subdomain' }).previewMode === 'subdomain'
+                    ? 'subdomain' as const
+                    : 'path-prefix' as const;
 
                 const portNum = Number.parseInt(params.port, 10);
                 if (!Number.isInteger(portNum)) {
@@ -289,7 +313,11 @@ export function previewRoutes(app: Fastify) {
                 }
 
                 // Successful proxy response — rewrite HTML/JS/CSS if applicable.
-                const prefix = `/v1/preview/${params.machineId}/${portNum}`;
+                // subdomain mode: prefix='' so absolute paths stay on the
+                // isolated origin and rewriters become no-ops.
+                const prefix = previewMode === 'subdomain'
+                    ? ''
+                    : `/v1/preview/${params.machineId}/${portNum}`;
                 const contentType = (rpcResponse.headers['content-type'] ?? '').toLowerCase();
                 let responseBody: Buffer = Buffer.from(rpcResponse.bodyB64, 'base64');
 
@@ -303,7 +331,7 @@ export function previewRoutes(app: Fastify) {
                     responseBody = Buffer.from(rewriteJsCss(responseBody.toString('utf-8'), prefix), 'utf-8');
                 }
 
-                const outHeaders = stripResponseHeaders(rpcResponse.headers, prefix);
+                const outHeaders = stripResponseHeaders(rpcResponse.headers, prefix || undefined);
                 if (rpcResponse.truncated) {
                     outHeaders['X-Preview-Truncated'] = '1';
                 }
@@ -315,12 +343,21 @@ export function previewRoutes(app: Fastify) {
                 // needing `?ptoken=` in their URLs. Max-Age tracks the signed
                 // ptoken's own expiry; the web-ui refreshes the iframe well
                 // before expiry (remotePreviewUrl REFRESH_MARGIN_MS = 5min).
+                //
+                // subdomain mode: Path=/, host-only Domain — cross-preview
+                // and studio-vs-preview cookie leakage both blocked.
+                // SameSite=None + Secure required for cross-origin iframe
+                // subresource requests on HTTPS.
                 const maxAgeSeconds = Math.floor(Math.max(0, claims.exp - Date.now()) / 1000);
+                const isHttps = (request.headers['x-forwarded-proto'] === 'https') || (request.protocol === 'https');
                 outHeaders['Set-Cookie'] = buildPreviewCookie(
                     params.machineId,
                     portNum,
                     token,
                     maxAgeSeconds,
+                    previewMode === 'subdomain'
+                        ? { mode: 'subdomain', sameSite: isHttps ? 'None' : 'Lax', secure: isHttps }
+                        : {},
                 );
 
                 reply.raw.writeHead(rpcResponse.status, outHeaders);
