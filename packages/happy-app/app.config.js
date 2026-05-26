@@ -2,9 +2,9 @@ const { execFileSync } = require('node:child_process');
 
 const variant = process.env.APP_ENV || 'development';
 const name = {
-    development: "Asboss (dev)",
-    preview: "Asboss (preview)",
-    production: "Asboss"
+    development: "As Boss (dev)",
+    preview: "As Boss (preview)",
+    production: "As Boss"
 }[variant];
 const bundleId = {
     development: "com.lincya.happyvibe.dev",
@@ -51,12 +51,12 @@ const buildMetadata = loadBuildMetadata();
 export default {
     expo: {
         name,
-        slug: "asboss",
+        slug: "as-boss",
         version: "1.7.0",
         runtimeVersion: "21",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
-        scheme: "asboss",
+        scheme: "as-boss",
         userInterfaceStyle: "automatic",
         ios: {
             supportsTablet: true,

@@ -42,7 +42,7 @@ class Configuration {
       const expandedPath = process.env.HAPPY_HOME_DIR.replace(/^~/, homedir())
       this.happyHomeDir = expandedPath
     } else {
-      this.happyHomeDir = join(homedir(), '.asboss')
+      this.happyHomeDir = join(homedir(), '.as-boss')
     }
 
     this.logsDir = join(this.happyHomeDir, 'logs')
