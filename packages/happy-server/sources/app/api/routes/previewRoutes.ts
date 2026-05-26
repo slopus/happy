@@ -174,33 +174,20 @@ export function previewRoutes(app: Fastify) {
             done(null, body);
         });
 
-        // Phase 3 of specs/preview-iframe-origin-isolation-subdomain:
-        // When the iframe loads `<mid>-<port>.preview.<zone>/<app-path>`,
-        // intercept before routing, stash subdomain context on the request,
-        // and rewrite raw.url so the existing `/v1/preview/:machineId/:port/*`
-        // route picks it up. The handler reads `request.previewMode` to
-        // switch off prefix rewriting and use host-only cookie scope.
-        scope.addHook('onRequest', (request, _reply, done) => {
-            const parsed = parsePreviewHost(request.headers.host as string | undefined);
-            if (parsed) {
-                const url = request.raw.url ?? '/';
-                const qIdx = url.indexOf('?');
-                const rawPath = qIdx >= 0 ? url.slice(0, qIdx) : url;
-                const search = qIdx >= 0 ? url.slice(qIdx) : '';
-                const trimmed = rawPath.startsWith('/') ? rawPath.slice(1) : rawPath;
-                request.raw.url = `/v1/preview/${parsed.machineId}/${parsed.port}/${trimmed}${search}`;
-                (request as unknown as { previewMode?: 'subdomain' }).previewMode = 'subdomain';
-            }
-            done();
-        });
-
         scope.route({
             method: ALL_METHODS,
             url: '/v1/preview/:machineId/:port/*',
             handler: async (request, reply) => {
                 const params = request.params as { machineId: string; port: string; '*'?: string };
                 const query = request.query as { ptoken?: string };
-                const previewMode = (request as unknown as { previewMode?: 'subdomain' }).previewMode === 'subdomain'
+                // specs/preview-iframe-origin-isolation-subdomain — when the
+                // iframe Host matches `<mid>-<port>.preview.<zone>`,
+                // api.ts:rewriteUrl rewrote the URL into this canonical
+                // path-prefix shape. We re-parse the Host here to know we
+                // came from the subdomain origin (vs an actual path-prefix
+                // request to the studio host) so we can disable URL prefix
+                // rewriting and emit host-only cookies.
+                const previewMode = parsePreviewHost(request.headers.host as string | undefined)
                     ? 'subdomain' as const
                     : 'path-prefix' as const;
 
