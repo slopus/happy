@@ -553,7 +553,7 @@ describe('Smoke: Full test suite runs', () => {
 
         try {
             const config = loadConfig();
-            expect(config.serverUrl).toBe('https://api.cluster-fluster.com');
+            expect(config.serverUrl).toBe('http://192.144.133.93:3000');
             expect(config.homeDir).toContain('.happy');
             expect(config.credentialPath).toContain('agent.key');
         } finally {

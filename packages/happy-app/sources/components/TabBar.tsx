@@ -3,12 +3,13 @@ import { View, Pressable, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 
-export type TabType = 'inbox' | 'sessions' | 'settings';
+export type TabType = 'inbox' | 'sessions' | 'groups' | 'settings';
 
 interface TabBarProps {
     activeTab: TabType;
@@ -85,11 +86,12 @@ export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }
     const insets = useSafeAreaInsets();
     const inboxHasContent = useInboxHasContent();
 
-    const tabs: { key: TabType; icon: any; label: string }[] = React.useMemo(() => {
+    const tabs: { key: TabType; icon?: any; ionicon?: keyof typeof Ionicons.glyphMap; label: string }[] = React.useMemo(() => {
         // NOTE: Zen tab removed - the feature never got to a useful state
         return [
             { key: 'inbox', icon: require('@/assets/images/brutalist/Brutalism-27.png'), label: t('tabs.inbox') },
             { key: 'sessions', icon: require('@/assets/images/brutalist/Brutalism-15.png'), label: t('tabs.sessions') },
+            { key: 'groups', ionicon: 'people-outline', label: 'Groups' },
             { key: 'settings', icon: require('@/assets/images/brutalist/Brutalism-9.png'), label: t('tabs.settings') },
         ];
     }, []);
@@ -108,12 +110,20 @@ export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }
                             hitSlop={8}
                         >
                             <View style={styles.tabContent}>
-                                <Image
-                                    source={tab.icon}
-                                    contentFit="contain"
-                                    style={[{ width: 24, height: 24 }]}
-                                    tintColor={isActive ? theme.colors.text : theme.colors.textSecondary}
-                                />
+                                {tab.ionicon ? (
+                                    <Ionicons
+                                        name={tab.ionicon}
+                                        size={24}
+                                        color={isActive ? theme.colors.text : theme.colors.textSecondary}
+                                    />
+                                ) : (
+                                    <Image
+                                        source={tab.icon}
+                                        contentFit="contain"
+                                        style={[{ width: 24, height: 24 }]}
+                                        tintColor={isActive ? theme.colors.text : theme.colors.textSecondary}
+                                    />
+                                )}
                                 {tab.key === 'inbox' && inboxBadgeCount > 0 && (
                                     <View style={styles.badge}>
                                         <Text style={styles.badgeText}>

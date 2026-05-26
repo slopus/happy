@@ -58,7 +58,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
     
     const workingDirectory = process.cwd();
-    const sessionTag = randomUUID();
+    const sessionTag = process.env.HAPPY_GROUP_SESSION_TAG || randomUUID();
 
     // Log environment info at startup
     logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
@@ -125,6 +125,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
         flavor: 'claude',
+        groupId: process.env.HAPPY_GROUP_ID,
+        groupName: process.env.HAPPY_GROUP_NAME,
+        agentRole: process.env.HAPPY_GROUP_AGENT_ROLE as 'executor' | 'reviewer' | undefined,
+        agentType: 'claude',
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),

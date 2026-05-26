@@ -1,12 +1,11 @@
-import { config } from '@/config';
-import PostHog from 'posthog-react-native';
+type TrackingClient = {
+    capture: (event: string, properties?: Record<string, unknown>) => void;
+    identify: (userId: string, properties?: Record<string, unknown>) => void;
+    reset: () => void;
+    screen: (name: string) => void;
+    optIn: () => void;
+    optOut: () => void;
+    getFeatureFlag: (key: string) => unknown;
+};
 
-const analyticsDisabled =
-    process.env.EXPO_PUBLIC_DISABLE_ANALYTICS === '1' ||
-    process.env.EXPO_PUBLIC_DISABLE_ANALYTICS === 'true' ||
-    (globalThis as any).__HAPPY_CONFIG__?.disableAnalytics === true;
-
-export const tracking = (!analyticsDisabled && config.postHogKey) ? new PostHog(config.postHogKey, {
-    host: 'https://us.i.posthog.com',
-    captureAppLifecycleEvents: true,
-}) : null;
+export const tracking: TrackingClient | null = null;

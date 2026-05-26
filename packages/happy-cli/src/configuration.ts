@@ -10,6 +10,9 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import packageJson from '../package.json'
 
+export const DEFAULT_SERVER_URL = 'http://192.144.133.93:3000'
+export const DEFAULT_WEBAPP_URL = 'http://192.144.133.93:3000'
+
 class Configuration {
   public readonly serverUrl: string
   public readonly webappUrl: string
@@ -56,11 +59,11 @@ class Configuration {
     this.serverUrl =
       process.env.HAPPY_SERVER_URL ||
       readSettingsStringSync(this.settingsFile, 'serverUrl') ||
-      'https://api.cluster-fluster.com'
+      DEFAULT_SERVER_URL
     this.webappUrl =
       process.env.HAPPY_WEBAPP_URL ||
       readSettingsStringSync(this.settingsFile, 'webappUrl') ||
-      'https://app.happy.engineering'
+      DEFAULT_WEBAPP_URL
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
     this.disableCaffeinate = ['true', '1', 'yes'].includes(process.env.HAPPY_DISABLE_CAFFEINATE?.toLowerCase() || '');

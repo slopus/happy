@@ -18,7 +18,7 @@ describe('config', () => {
     describe('defaults', () => {
         it('uses default server URL', () => {
             const config = loadConfig();
-            expect(config.serverUrl).toBe('https://api.cluster-fluster.com');
+            expect(config.serverUrl).toBe('http://192.144.133.93:3000');
         });
 
         it('uses default home directory', () => {

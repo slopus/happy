@@ -1554,7 +1554,8 @@ export function useArtifactsCount(): number {
 }
 
 export function useEntitlement(id: KnownEntitlements): boolean {
-    return storage(useShallow((state) => state.purchases.entitlements[id] ?? false));
+    const entitlement = storage(useShallow((state) => state.purchases.entitlements[id] ?? false));
+    return id === 'pro' || entitlement;
 }
 
 export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'connected' | 'error' {

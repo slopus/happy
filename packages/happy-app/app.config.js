@@ -7,16 +7,9 @@ const name = {
     production: "Happy"
 }[variant];
 const bundleId = {
-    development: "com.slopus.happy.dev",
-    preview: "com.slopus.happy.preview",
-    production: "com.ex3ndr.happy"
-}[variant];
-// const stagingElevenLabsAgentId = 'agent_7801k2c0r5hjfraa1kdbytpvs6yt';
-const productionElevenLabsAgentId = 'agent_6701k211syvvegba4kt7m68nxjmw';
-const elevenLabsAgentId = {
-    development: productionElevenLabsAgentId,
-    preview: productionElevenLabsAgentId,
-    production: productionElevenLabsAgentId,
+    development: "com.lincya.happyvibe.dev",
+    preview: "com.lincya.happyvibe.preview",
+    production: "com.lincya.happyvibe"
 }[variant];
 const consoleLoggingDefault = {
     development: true,
@@ -87,9 +80,10 @@ export default {
                     ? { NSAllowsLocalNetworking: true }
                     : { NSAllowsLocalNetworking: true, NSAllowsArbitraryLoads: true }
             },
-            associatedDomains: variant === 'production' ? ["applinks:app.happy.engineering"] : []
+            associatedDomains: []
         },
         android: {
+            usesCleartextTraffic: variant !== 'production',
             adaptiveIcon: {
                 foregroundImage: "./sources/assets/images/icon-adaptive.png",
                 monochromeImage: "./sources/assets/images/icon-monochrome.png",
@@ -111,20 +105,7 @@ export default {
             ],
             package: bundleId,
             googleServicesFile: "./google-services.json",
-            intentFilters: variant === 'production' ? [
-                {
-                    "action": "VIEW",
-                    "autoVerify": true,
-                    "data": [
-                        {
-                            "scheme": "https",
-                            "host": "app.happy.engineering",
-                            "pathPrefix": "/"
-                        }
-                    ],
-                    "category": ["BROWSABLE", "DEFAULT"]
-                }
-            ] : []
+            intentFilters: []
         },
         web: {
             bundler: "metro",
@@ -205,12 +186,6 @@ export default {
                 }
             ]
         ],
-        updates: {
-            url: "https://u.expo.dev/4558dd3d-cd5a-47cd-bad9-e591a241cc06",
-            requestHeaders: {
-                "expo-channel-name": "production"
-            }
-        },
         experiments: {
             typedRoutes: true
         },
@@ -218,20 +193,12 @@ export default {
             router: {
                 root: "./sources/app"
             },
-            eas: {
-                projectId: "4558dd3d-cd5a-47cd-bad9-e591a241cc06"
-            },
             app: {
-                postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
-                revenueCatAppleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_APPLE,
-                revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
-                revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE,
-                elevenLabsAgentId,
                 consoleLoggingDefault,
                 buildCommitSha: buildMetadata.commitSha,
                 buildCommitTimestamp: buildMetadata.commitTimestamp,
             }
         },
-        owner: "bulkacorp"
+        owner: "lincya"
     }
 };

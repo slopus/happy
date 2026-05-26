@@ -142,7 +142,7 @@ export async function handleServerCommand(args: string[]): Promise<void> {
 
     if (opts.persistServerUrl) {
         // The bundled server serves the webapp at its own origin, so webappUrl === serverUrl.
-        // Without this the CLI's auth flow would open the prod webapp (app.happy.engineering).
+        // Without this the CLI's auth flow would open the configured default webapp.
         await updateSettings(current => ({ ...current, serverUrl, webappUrl: serverUrl }));
         console.log(chalk.gray(`Wrote serverUrl + webappUrl=${serverUrl} to ${configuration.settingsFile}`));
     }

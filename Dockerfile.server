@@ -1,7 +1,17 @@
 # Stage 1: install dependencies with workspace context
 FROM node:20 AS deps
 
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
+    npm_config_electron_skip_binary_download=true \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    PUPPETEER_SKIP_DOWNLOAD=true \
+    CYPRESS_INSTALL_BINARY=0
+
 # Install build dependencies
+RUN sed -i \
+    -e 's|http://deb.debian.org/debian-security|http://mirrors.tencentyun.com/debian-security|g' \
+    -e 's|http://deb.debian.org/debian|http://mirrors.tencentyun.com/debian|g' \
+    /etc/apt/sources.list.d/debian.sources
 RUN apt-get update && apt-get install -y python3 ffmpeg make g++ build-essential && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
@@ -11,20 +21,16 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY scripts ./scripts
 COPY patches ./patches
 
-RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-wire
+RUN mkdir -p packages/happy-server packages/happy-wire
 
-COPY packages/happy-app/package.json packages/happy-app/
 COPY packages/happy-server/package.json packages/happy-server/
-COPY packages/happy-cli/package.json packages/happy-cli/
 COPY packages/happy-wire/package.json packages/happy-wire/
 
 # Workspace postinstall requirements
-COPY packages/happy-app/patches packages/happy-app/patches
 COPY packages/happy-server/prisma packages/happy-server/prisma
-COPY packages/happy-cli/scripts packages/happy-cli/scripts
-COPY packages/happy-cli/tools packages/happy-cli/tools
 
-RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile
+RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm --filter happy-server-self-host... install --frozen-lockfile
+RUN SKIP_HAPPY_WIRE_BUILD=1 node ./scripts/postinstall.cjs
 
 # Stage 2: build the server
 FROM deps AS builder
@@ -33,7 +39,7 @@ COPY packages/happy-wire ./packages/happy-wire
 COPY packages/happy-server ./packages/happy-server
 
 RUN pnpm --filter @slopus/happy-wire build
-RUN pnpm --filter happy-server build
+RUN pnpm --filter happy-server-self-host typecheck
 
 # Stage 3: runtime
 FROM node:20 AS runner
@@ -41,6 +47,10 @@ FROM node:20 AS runner
 WORKDIR /repo
 
 # Runtime dependencies
+RUN sed -i \
+    -e 's|http://deb.debian.org/debian-security|http://mirrors.tencentyun.com/debian-security|g' \
+    -e 's|http://deb.debian.org/debian|http://mirrors.tencentyun.com/debian|g' \
+    /etc/apt/sources.list.d/debian.sources
 RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
@@ -57,4 +67,4 @@ EXPOSE 3000
 
 # Command to run the application
 COPY --from=builder /repo/package.json /repo/pnpm-workspace.yaml /repo/
-CMD ["pnpm", "--filter", "happy-server", "start"]
+CMD ["pnpm", "--filter", "happy-server-self-host", "start"]

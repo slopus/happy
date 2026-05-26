@@ -194,7 +194,9 @@ export const MessageMetaSchema = z.object({
   customSystemPrompt: z.string().nullable().optional(), // Custom system prompt for this message (null = reset)
   appendSystemPrompt: z.string().nullable().optional(), // Append to system prompt for this message (null = reset)
   allowedTools: z.array(z.string()).nullable().optional(), // Allowed tools for this message (null = reset)
-  disallowedTools: z.array(z.string()).nullable().optional() // Disallowed tools for this message (null = reset)
+  disallowedTools: z.array(z.string()).nullable().optional(), // Disallowed tools for this message (null = reset)
+  agentRole: z.enum(['executor', 'reviewer']).optional(), // Group role for multi-agent sessions
+  agentType: z.enum(['claude', 'codex']).optional() // Group agent type for multi-agent sessions
 })
 
 export type MessageMeta = z.infer<typeof MessageMetaSchema>
@@ -319,6 +321,10 @@ export type Metadata = {
   archivedBy?: string,
   archiveReason?: string,
   flavor?: string
+  groupId?: string
+  groupName?: string
+  agentRole?: 'executor' | 'reviewer'
+  agentType?: 'claude' | 'codex'
   sandbox?: SandboxConfig | null
   dangerouslySkipPermissions?: boolean | null
   /** Lineage for sessions created via the fork / duplicate flow. */

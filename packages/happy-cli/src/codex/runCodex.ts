@@ -91,7 +91,7 @@ export async function runCodex(opts: {
     // Define session
     //
 
-    const sessionTag = randomUUID();
+    const sessionTag = process.env.HAPPY_GROUP_SESSION_TAG || randomUUID();
 
     // Set backend for offline warnings (before any API calls)
     connectionState.setBackend('Codex');
@@ -127,6 +127,10 @@ export async function runCodex(opts: {
         machineId,
         startedBy: opts.startedBy,
         sandbox: sandboxConfig,
+        groupId: process.env.HAPPY_GROUP_ID,
+        groupName: process.env.HAPPY_GROUP_NAME,
+        agentRole: process.env.HAPPY_GROUP_AGENT_ROLE as 'executor' | 'reviewer' | undefined,
+        agentType: 'codex',
     });
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)

@@ -35,6 +35,10 @@ export interface CreateSessionMetadataOptions {
     sandbox?: SandboxConfig;
     /** Whether the backend runs with "dangerously skip permissions" behavior */
     dangerouslySkipPermissions?: boolean;
+    groupId?: string;
+    groupName?: string;
+    agentRole?: 'executor' | 'reviewer';
+    agentType?: 'claude' | 'codex';
 }
 
 /**
@@ -88,6 +92,10 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
         flavor: opts.flavor,
+        groupId: opts.groupId,
+        groupName: opts.groupName,
+        agentRole: opts.agentRole,
+        agentType: opts.agentType,
         sandbox: opts.sandbox?.enabled ? opts.sandbox : null,
         dangerouslySkipPermissions: opts.dangerouslySkipPermissions ?? null,
     };

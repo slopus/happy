@@ -12,6 +12,7 @@ import { TabBar, TabType } from './TabBar';
 import { InboxView } from './InboxView';
 import { SettingsViewWrapper } from './SettingsViewWrapper';
 import { SessionsListWrapper } from './SessionsListWrapper';
+import { GroupsView } from './GroupsView';
 import { Header } from './navigation/Header';
 import { HeaderLogo } from './HeaderLogo';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
@@ -101,12 +102,13 @@ const styles = StyleSheet.create((theme) => ({
 // Tab header configuration
 const TAB_TITLES = {
     sessions: 'tabs.sessions',
+    groups: 'Groups',
     inbox: 'tabs.inbox',
     settings: 'tabs.settings',
 } as const;
 
 // Active tabs
-type ActiveTabType = 'sessions' | 'inbox' | 'settings';
+type ActiveTabType = 'sessions' | 'groups' | 'inbox' | 'settings';
 
 // Header title component with connection status
 const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
@@ -152,7 +154,7 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     return (
         <View style={styles.titleContainer}>
             <Text style={styles.titleText}>
-                {t(TAB_TITLES[activeTab])}
+                {activeTab === 'groups' ? TAB_TITLES[activeTab] : t(TAB_TITLES[activeTab])}
             </Text>
             {connectionStatus.text && (
                 <View style={styles.statusContainer}>
@@ -248,6 +250,8 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         switch (activeTab) {
             case 'inbox':
                 return <InboxView />;
+            case 'groups':
+                return <GroupsView />;
             case 'settings':
                 return <SettingsViewWrapper />;
             case 'sessions':

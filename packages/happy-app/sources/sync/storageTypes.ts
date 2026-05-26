@@ -45,6 +45,10 @@ export const MetadataSchema = z.object({
     hostPid: z.number().optional(), // Process ID of the session
     startedBy: z.enum(['daemon', 'terminal']).optional(),
     flavor: z.string().nullish(), // Session flavor/variant identifier
+    groupId: z.string().optional(),
+    groupName: z.string().optional(),
+    agentRole: z.enum(['executor', 'reviewer']).optional(),
+    agentType: z.enum(['claude', 'codex']).optional(),
     sandbox: z.any().nullish(), // Sandbox config metadata from CLI (or null when disabled)
     dangerouslySkipPermissions: z.boolean().nullish(), // Claude --dangerously-skip-permissions mode (or null when unknown)
     lifecycleState: z.string().optional(),

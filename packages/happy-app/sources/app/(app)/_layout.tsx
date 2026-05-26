@@ -62,6 +62,22 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="group/index"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Groups',
+                    headerBackTitle: t('common.home')
+                }}
+            />
+            <Stack.Screen
+                name="group/[groupId]"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Group',
+                    headerBackTitle: t('common.back')
+                }}
+            />
+            <Stack.Screen
                 name="session/[id]"
                 options={{
                     headerShown: false
