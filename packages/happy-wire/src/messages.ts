@@ -78,10 +78,22 @@ export const UpdateMachineBodySchema = z.object({
 });
 export type UpdateMachineBody = z.infer<typeof UpdateMachineBodySchema>;
 
+export const NewMachineBodySchema = z.object({
+  t: z.literal('new-machine'),
+  machineId: z.string(),
+  seq: z.number().optional(),
+  metadata: VersionedMachineEncryptedValueSchema.nullish(),
+  daemonState: VersionedMachineEncryptedValueSchema.nullish(),
+  active: z.boolean().optional(),
+  activeAt: z.number().optional(),
+}).passthrough();
+export type NewMachineBody = z.infer<typeof NewMachineBodySchema>;
+
 export const CoreUpdateBodySchema = z.discriminatedUnion('t', [
   UpdateNewMessageBodySchema,
   UpdateSessionBodySchema,
   UpdateMachineBodySchema,
+  NewMachineBodySchema,
 ]);
 export type CoreUpdateBody = z.infer<typeof CoreUpdateBodySchema>;
 
