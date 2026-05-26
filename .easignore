@@ -1,0 +1,18 @@
+# 砍掉确定不需要的（解决 220MB 上传问题）
+packages/happy-app/android/
+packages/happy-app/ios/
+packages/happy-app/src-tauri/
+
+# 其他包 EAS Android 构建用不上
+packages/happy-server/
+packages/happy-cli/
+packages/codium/
+
+# 日志、缓存、临时
+*.log
+.expo/
+dist/
+tsconfig.tsbuildinfo
+.DS_Store
+*.bak
+*.bak.*
