@@ -1,0 +1,21 @@
+# EAS 会跑 expo prebuild 从配置重新生成 android/ios，本地构建产物不要传
+android/
+ios/
+
+# Tauri 桌面端，不影响移动构建
+src-tauri/
+
+# 日志和缓存
+*.log
+.expo/
+dist/
+.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 临时
+*.bak
+*.bak.*
