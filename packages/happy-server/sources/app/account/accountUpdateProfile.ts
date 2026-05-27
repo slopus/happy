@@ -13,9 +13,11 @@ import { inTx } from "@/storage/inTx";
  *
  * Validation:
  * - `username` must match /^[a-zA-Z0-9_-]+$/ and be 1–40 chars.
- * - `username` must not be already in use by a different Account
- *   (Account.username is @unique). Returns 'username-taken' rather than
- *   letting Prisma throw P2002, so the route can return a clean 409.
+ * - `username` must not be already in use by a different *active* Account
+ *   (Account.username is @unique). Stale holders — rows with zero sessions
+ *   AND zero machines — are taken over automatically (specs/20260527-
+ *   happy-account-username-cleanup option B). Active holders still get
+ *   `'username-taken'` so the route can return 409 + a clean toast.
  *
  * Returns the updated firstName/lastName/username/avatar/githubUser
  * snapshot — the route layer wraps this with timestamp/connectedServices
@@ -94,7 +96,21 @@ export async function accountUpdateProfile(
                 select: { id: true }
             });
             if (taken) {
-                return { ok: false, error: "username-taken" } as const;
+                // Option B: take over the username when the holding row is
+                // stale (zero sessions, zero machines). Active rows keep the
+                // username and the caller still gets 'username-taken'. See
+                // specs/20260527-happy-account-username-cleanup §4.2.
+                const [sessionCount, machineCount] = await Promise.all([
+                    tx.session.count({ where: { accountId: taken.id } }),
+                    tx.machine.count({ where: { accountId: taken.id } })
+                ]);
+                if (sessionCount > 0 || machineCount > 0) {
+                    return { ok: false, error: "username-taken" } as const;
+                }
+                await tx.account.update({
+                    where: { id: taken.id },
+                    data: { username: null }
+                });
             }
         }
 
