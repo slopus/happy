@@ -37,12 +37,15 @@ export class PermissionHandler {
     private allowedBashLiterals = new Set<string>();
     private allowedBashPrefixes = new Set<string>();
     private permissionMode: PermissionMode = 'default';
+    private initialPermissionMode: PermissionMode = 'default';
     private onPermissionRequestCallback?: (toolCallId: string) => void;
     /** Callback to change permission mode on the active query (set by claudeRemote) */
     private setPermissionModeCallback?: (mode: PermissionMode) => Promise<void>;
 
-    constructor(session: Session) {
+    constructor(session: Session, initialPermissionMode: PermissionMode = 'default') {
         this.session = session;
+        this.permissionMode = initialPermissionMode;
+        this.initialPermissionMode = initialPermissionMode;
         this.setupClientHandler();
     }
 
@@ -307,7 +310,7 @@ export class PermissionHandler {
         this.allowedTools.clear();
         this.allowedBashLiterals.clear();
         this.allowedBashPrefixes.clear();
-        this.permissionMode = 'default';
+        this.permissionMode = this.initialPermissionMode;
 
         // Cancel all pending requests
         for (const [, pending] of this.pendingRequests.entries()) {
