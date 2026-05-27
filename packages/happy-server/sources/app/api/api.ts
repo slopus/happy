@@ -29,6 +29,7 @@ import { projectMemberRoutes } from "./routes/projectMemberRoutes";
 import { workspaceRoutes } from "./routes/workspaceRoutes";
 import { mergeRequestRoutes } from "./routes/mergeRequestRoutes";
 import { previewRoutes } from "./routes/previewRoutes";
+import { parsePreviewHost } from "@/modules/preview/parsePreviewHost";
 import { isLocalStorage, getLocalFilesDir } from "@/storage/files";
 import * as path from "path";
 import * as fs from "fs";
@@ -41,7 +42,25 @@ export async function startApi() {
     // Start API
     const app = fastify({
         loggerInstance: logger,
-        bodyLimit: 1024 * 1024 * 100, // 100MB
+        bodyLimit: 1024 * 1024 * 100, // 100MB,
+        // specs/preview-iframe-origin-isolation-subdomain Phase 3 fix —
+        // Fastify lifecycle runs routing BEFORE onRequest hooks, so a hook
+        // that mutates `request.raw.url` cannot redirect routing decisions.
+        // rewriteUrl runs *before* the router, which is what we need: when
+        // the iframe Host is `<mid>-<port>.preview.<zone>`, rewrite the URL
+        // into the canonical `/v1/preview/{mid}/{port}/<app-path>` shape
+        // so the existing preview route picks it up.
+        rewriteUrl: (req) => {
+            const host = req.headers.host;
+            const parsed = parsePreviewHost(host);
+            if (!parsed) return req.url ?? '/';
+            const url = req.url ?? '/';
+            const qIdx = url.indexOf('?');
+            const rawPath = qIdx >= 0 ? url.slice(0, qIdx) : url;
+            const search = qIdx >= 0 ? url.slice(qIdx) : '';
+            const trimmed = rawPath.startsWith('/') ? rawPath.slice(1) : rawPath;
+            return `/v1/preview/${parsed.machineId}/${parsed.port}/${trimmed}${search}`;
+        },
     });
     app.register(import('@fastify/cors'), {
         origin: '*',

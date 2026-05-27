@@ -28,6 +28,7 @@ import { rewriteHtml, rewriteJsCss } from "@/modules/preview/rewriteHtml";
 import { rewriteLinkHeader } from "@/modules/preview/rewriteLinkHeader";
 import { rewriteLocationHeader } from "@/modules/preview/rewriteLocationHeader";
 import { renderExpiredPtokenHtml, shouldServeExpiredHtml } from "@/modules/preview/expiredPtokenHtml";
+import { parsePreviewHost } from "@/modules/preview/parsePreviewHost";
 import { type Fastify } from "../types";
 
 interface ProxySuccess {
@@ -179,6 +180,16 @@ export function previewRoutes(app: Fastify) {
             handler: async (request, reply) => {
                 const params = request.params as { machineId: string; port: string; '*'?: string };
                 const query = request.query as { ptoken?: string };
+                // specs/preview-iframe-origin-isolation-subdomain — when the
+                // iframe Host matches `<mid>-<port>.preview.<zone>`,
+                // api.ts:rewriteUrl rewrote the URL into this canonical
+                // path-prefix shape. We re-parse the Host here to know we
+                // came from the subdomain origin (vs an actual path-prefix
+                // request to the studio host) so we can disable URL prefix
+                // rewriting and emit host-only cookies.
+                const previewMode = parsePreviewHost(request.headers.host as string | undefined)
+                    ? 'subdomain' as const
+                    : 'path-prefix' as const;
 
                 const portNum = Number.parseInt(params.port, 10);
                 if (!Number.isInteger(portNum)) {
@@ -289,7 +300,11 @@ export function previewRoutes(app: Fastify) {
                 }
 
                 // Successful proxy response — rewrite HTML/JS/CSS if applicable.
-                const prefix = `/v1/preview/${params.machineId}/${portNum}`;
+                // subdomain mode: prefix='' so absolute paths stay on the
+                // isolated origin and rewriters become no-ops.
+                const prefix = previewMode === 'subdomain'
+                    ? ''
+                    : `/v1/preview/${params.machineId}/${portNum}`;
                 const contentType = (rpcResponse.headers['content-type'] ?? '').toLowerCase();
                 let responseBody: Buffer = Buffer.from(rpcResponse.bodyB64, 'base64');
 
@@ -303,7 +318,7 @@ export function previewRoutes(app: Fastify) {
                     responseBody = Buffer.from(rewriteJsCss(responseBody.toString('utf-8'), prefix), 'utf-8');
                 }
 
-                const outHeaders = stripResponseHeaders(rpcResponse.headers, prefix);
+                const outHeaders = stripResponseHeaders(rpcResponse.headers, prefix || undefined);
                 if (rpcResponse.truncated) {
                     outHeaders['X-Preview-Truncated'] = '1';
                 }
@@ -315,12 +330,21 @@ export function previewRoutes(app: Fastify) {
                 // needing `?ptoken=` in their URLs. Max-Age tracks the signed
                 // ptoken's own expiry; the web-ui refreshes the iframe well
                 // before expiry (remotePreviewUrl REFRESH_MARGIN_MS = 5min).
+                //
+                // subdomain mode: Path=/, host-only Domain — cross-preview
+                // and studio-vs-preview cookie leakage both blocked.
+                // SameSite=None + Secure required for cross-origin iframe
+                // subresource requests on HTTPS.
                 const maxAgeSeconds = Math.floor(Math.max(0, claims.exp - Date.now()) / 1000);
+                const isHttps = (request.headers['x-forwarded-proto'] === 'https') || (request.protocol === 'https');
                 outHeaders['Set-Cookie'] = buildPreviewCookie(
                     params.machineId,
                     portNum,
                     token,
                     maxAgeSeconds,
+                    previewMode === 'subdomain'
+                        ? { mode: 'subdomain', sameSite: isHttps ? 'None' : 'Lax', secure: isHttps }
+                        : {},
                 );
 
                 reply.raw.writeHead(rpcResponse.status, outHeaders);

@@ -86,23 +86,73 @@ describe("accountUpdateProfile", () => {
         expect(currentTx.account.findFirst).not.toHaveBeenCalled();
     });
 
-    it("returns 'username-taken' when another account already owns the requested username", async () => {
+    it("returns 'username-taken' when another *active* account owns the requested username", async () => {
         // Why: Account.username is @unique. If we let the update through, the
         // DB would throw P2002 and the route would 500 — the client could not
         // distinguish that from a real failure. Fail fast with a structured
         // error so the route can map it to 409 + a clean toast.
+        //
+        // Active = has sessions or machines. Stale-row takeover is handled by
+        // a separate test below (specs/20260527-happy-account-username-cleanup
+        // option B). For "active holder" the caller must keep getting 409.
         currentTx = {
             account: {
                 findUnique: vi.fn().mockResolvedValue(makeAccount({ username: null })),
                 findFirst: vi.fn().mockResolvedValue({ id: "user-2" }),
                 update: vi.fn(),
-            }
+            },
+            session: { count: vi.fn().mockResolvedValue(1) },
+            machine: { count: vi.fn().mockResolvedValue(0) }
         };
 
         const result = await accountUpdateProfile(makeCtx("user-1"), { username: "alice" });
 
         expect(result).toEqual({ ok: false, error: "username-taken" });
         expect(currentTx.account.update).not.toHaveBeenCalled();
+    });
+
+    it("takes over the username from a stale row (no sessions, no machines)", async () => {
+        // Why: specs/20260527-happy-account-username-cleanup option B.
+        // When the holding row has zero sessions AND zero machines, it is a
+        // leftover from a prior publicKey/registration that nobody can claim
+        // anymore. The current caller — already authenticated via app.authenticate
+        // — gets to take the username over. Active rows are NOT touched
+        // (covered by the previous test).
+        const sessionCount = vi.fn().mockResolvedValue(0);
+        const machineCount = vi.fn().mockResolvedValue(0);
+        const updateMock = vi.fn().mockImplementation(({ where, data }) => {
+            if (where.id === "user-2") {
+                return Promise.resolve(makeAccount({ id: "user-2", username: data.username ?? null }));
+            }
+            return Promise.resolve(makeAccount({ id: where.id, username: data.username ?? null }));
+        });
+        currentTx = {
+            account: {
+                findUnique: vi.fn().mockResolvedValue(makeAccount({ id: "user-1", username: null })),
+                findFirst: vi.fn().mockResolvedValue({ id: "user-2" }),
+                update: updateMock,
+            },
+            session: { count: sessionCount },
+            machine: { count: machineCount }
+        };
+
+        const result = await accountUpdateProfile(makeCtx("user-1"), { username: "alice" });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.value.username).toBe("alice");
+
+        // The stale row's username is cleared first…
+        expect(sessionCount).toHaveBeenCalledWith({ where: { accountId: "user-2" } });
+        expect(machineCount).toHaveBeenCalledWith({ where: { accountId: "user-2" } });
+        expect(updateMock).toHaveBeenNthCalledWith(1, {
+            where: { id: "user-2" },
+            data: { username: null }
+        });
+        // …then the caller's row picks it up.
+        const lastCall = updateMock.mock.calls.at(-1)![0];
+        expect(lastCall.where).toEqual({ id: "user-1" });
+        expect(lastCall.data).toEqual({ username: "alice" });
     });
 
     it("rejects 'invalid-username' for characters outside [a-zA-Z0-9_-] or out-of-range length", async () => {
