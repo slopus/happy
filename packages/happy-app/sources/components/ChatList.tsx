@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { useSession, useSessionMessages, useSetting } from "@/sync/storage";
 import { sync } from '@/sync/sync';
-import { ActivityIndicator, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, View } from 'react-native';
+import { ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, View } from 'react-native';
+import { FlashList, FlashListRef } from '@shopify/flash-list';
 import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -66,7 +67,7 @@ const ChatListInternal = React.memo((props: {
     isLoadingOlder: boolean,
 }) => {
     const { theme } = useUnistyles();
-    const flatListRef = React.useRef<FlatList>(null);
+    const flatListRef = React.useRef<FlashListRef<DisplayItem>>(null);
     const [showScrollButton, setShowScrollButton] = React.useState(false);
     // Tracks whether the scroll-button is currently shown, so we only call
     // setShowScrollButton when the threshold is actually crossed instead of
@@ -202,30 +203,23 @@ const ChatListInternal = React.memo((props: {
 
     return (
         <View style={{ flex: 1 }}>
-            <FlatList
+            <FlashList
                 ref={flatListRef}
                 data={displayItems}
                 inverted={true}
                 keyExtractor={keyExtractor}
                 maintainVisibleContentPosition={{
-                    // Anchor on the second-newest message (index 1), not the
-                    // newest. The newest slot (index 0) gets a brand-new item
-                    // each agent token, which would otherwise destabilise the
-                    // anchor and drag the viewport up.
-                    //
-                    // autoscrollToTopThreshold: for INVERTED lists this is
-                    // actually the auto-stick-to-visual-bottom threshold —
-                    // contentOffset 0 is at the visual bottom in an inverted
-                    // list, and this prop sticks the viewport to offset 0
-                    // when the user is within N units of it.
-                    minIndexForVisible: 1,
+                    // FlashList v2 MVCP. With inverted=true, the FlashList
+                    // engine renders newest (data[0]) at the visual bottom
+                    // and prepends new items there, so autoscrollToTopThreshold
+                    // is the prop that auto-sticks the viewport to newest
+                    // content as new agent tokens stream in.
                     autoscrollToTopThreshold: 50,
                 }}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
                 renderItem={renderItem}
                 onScroll={handleScroll}
-                scrollEventThrottle={16}
                 ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
                 ListFooterComponent={<ListHeader isLoadingOlder={props.isLoadingOlder} />}
                 onEndReached={handleLoadOlder}
