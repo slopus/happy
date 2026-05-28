@@ -191,21 +191,35 @@ const ChatListInternal = React.memo((props: {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     }, []);
 
-    // Restore the user's prior scroll position on the FIRST onContentSizeChange
-    // that fires after this component has actual content to lay out. The
-    // FlatList renders at offset 0 (visual bottom of an inverted list) by
-    // default, which is wrong when the user was reading older messages and
-    // came back to this session from elsewhere. We only restore once per
-    // mount — subsequent content-size changes (incoming messages, lazy-load
-    // pages) are left to FlatList's native maintainVisibleContentPosition.
+    // Restore the user's prior scroll position after this component has
+    // actual content to lay out. The FlatList renders at offset 0 (visual
+    // bottom of an inverted list) by default, which is wrong when the user
+    // was reading older messages and came back to this session from
+    // elsewhere.
+    //
+    // Why this is NOT a fire-once-on-first-change: inverted FlatList renders
+    // a windowed slice of items on mount, so the first `onContentSizeChange`
+    // can report a content height much smaller than the cached offset. If we
+    // marked ourselves "restored" on that first fire, `scrollToOffset` would
+    // get clamped to the current (small) content height and subsequent
+    // content growth (virtualizer expanding the window, lazy older pages)
+    // would never re-trigger the restore. So we keep retrying — and keep
+    // clamping intentionally so FlatList renders more items — until content
+    // height has caught up to the cached offset. Then we mark restored and
+    // stop. Subsequent size changes (incoming live messages) are left to
+    // FlatList's native maintainVisibleContentPosition.
     const hasRestoredRef = React.useRef(false);
-    const handleContentSizeChange = useCallback(() => {
+    const handleContentSizeChange = useCallback((_w: number, h: number) => {
         if (hasRestoredRef.current) return;
         if (displayItems.length === 0) return;
         const cached = sessionScrollOffsets.get(props.sessionId);
-        hasRestoredRef.current = true;
-        if (cached !== undefined && cached > 0) {
-            flatListRef.current?.scrollToOffset({ offset: cached, animated: false });
+        if (cached === undefined || cached <= 0) {
+            hasRestoredRef.current = true;
+            return;
+        }
+        flatListRef.current?.scrollToOffset({ offset: cached, animated: false });
+        if (h >= cached) {
+            hasRestoredRef.current = true;
         }
     }, [props.sessionId, displayItems.length]);
 
