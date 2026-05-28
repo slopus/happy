@@ -168,6 +168,12 @@ const ChatListInternal = React.memo((props: {
         );
     }, [props.metadata, props.sessionId, canFork, handleForkFromMessage, toggledGroups, handleToggleGroup]);
 
+    // Declared up here so handleScroll can read it. The restore loop in
+    // handleContentSizeChange below sets this true once cached offset has
+    // been reached; until then, scroll events triggered by our own
+    // programmatic scrollToOffset must NOT overwrite the cache.
+    const hasRestoredRef = React.useRef(false);
+
     // In inverted FlatList, offset 0 = latest messages (visual bottom).
     // Offset increases as user scrolls up to see older messages.
     // Auto-stick-to-bottom on new messages is handled natively by FlatList's
@@ -183,8 +189,19 @@ const ChatListInternal = React.memo((props: {
         }
         // Remember the user's position per session so we can restore it the
         // next time this component mounts for the same session (see
-        // restoreScrollOnce below).
-        sessionScrollOffsets.set(props.sessionId, offsetY);
+        // handleContentSizeChange below).
+        //
+        // CRITICAL: only write while restore is NOT in progress. During the
+        // restore loop, our own programmatic scrollToOffset(cached) fires
+        // this handler with the CLAMPED offset (FlatList caps to current
+        // content height, which is still growing). Writing that clamped
+        // value back to the cache poisons the saved position — on the next
+        // retry tick we read the smaller cached value, and after a few
+        // iterations the restore can land near the bottom instead of the
+        // original position.
+        if (hasRestoredRef.current) {
+            sessionScrollOffsets.set(props.sessionId, offsetY);
+        }
     }, [props.sessionId]);
 
     const scrollToBottom = useCallback(() => {
@@ -208,7 +225,9 @@ const ChatListInternal = React.memo((props: {
     // height has caught up to the cached offset. Then we mark restored and
     // stop. Subsequent size changes (incoming live messages) are left to
     // FlatList's native maintainVisibleContentPosition.
-    const hasRestoredRef = React.useRef(false);
+    //
+    // (hasRestoredRef is declared near the top so handleScroll above can
+    // read it — see the comment on handleScroll for why that matters.)
     const handleContentSizeChange = useCallback((_w: number, h: number) => {
         if (hasRestoredRef.current) return;
         if (displayItems.length === 0) return;
