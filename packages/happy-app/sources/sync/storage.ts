@@ -793,12 +793,33 @@ export const storage = create<StorageState>()((set, get) => {
         applyOlderMessagesPagination: (sessionId: string, info: { hasMore: boolean }) => set((state) => {
             const existing = state.sessionMessages[sessionId];
             if (!existing) {
-                // Pagination metadata is only meaningful once the session has
-                // a SessionMessages entry. The fetch path always creates one
-                // through applyMessages / applyMessagesLoaded before calling
-                // this — but if for any reason it hasn't, ignore the update
-                // rather than synthesize a partial entry.
-                return state;
+                // The fetch path normally creates the SessionMessages entry
+                // through applyMessages / applyMessagesLoaded before reaching
+                // here. With the queue-based scheduler (enqueueMessages), the
+                // actual applyMessages call runs in a separate `lock.inLock`
+                // task that is queued behind the currently-running
+                // fetchInitialLatestPage. So when fetchInitialLatestPage
+                // finishes with `applyOlderMessagesPagination(..., { hasMore })`,
+                // the entry does not exist yet — silently dropping the update
+                // here leaves hasMoreOlder=false forever, which then makes
+                // prefetchOlderMessagesInBackground return immediately and
+                // ChatList's onEndReached handler no-op. Synthesize a minimal
+                // entry so the metadata survives; the queued applyMessages
+                // will merge into it preserving hasMoreOlder.
+                return {
+                    ...state,
+                    sessionMessages: {
+                        ...state.sessionMessages,
+                        [sessionId]: {
+                            messages: [],
+                            messagesMap: {},
+                            reducerState: createReducer(),
+                            isLoaded: false,
+                            hasMoreOlder: info.hasMore,
+                            isLoadingOlder: false
+                        } satisfies SessionMessages
+                    }
+                };
             }
             return {
                 ...state,
