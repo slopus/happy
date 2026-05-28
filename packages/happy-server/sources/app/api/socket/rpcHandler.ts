@@ -2,6 +2,16 @@ import { eventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
 import { Socket } from "socket.io";
 
+const DEFAULT_RPC_RELAY_TIMEOUT_MS = 30000;
+const MAX_RPC_RELAY_TIMEOUT_MS = 10 * 60 * 1000;
+
+function resolveRpcRelayTimeoutMs(value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+        return DEFAULT_RPC_RELAY_TIMEOUT_MS;
+    }
+    return Math.min(Math.floor(value), MAX_RPC_RELAY_TIMEOUT_MS);
+}
+
 export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<string, Socket>) {
     
     // RPC register - Register this socket as a listener for an RPC method
@@ -67,6 +77,7 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
     socket.on('rpc-call', async (data: any, callback: (response: any) => void) => {
         try {
             const { method, params } = data;
+            const timeoutMs = resolveRpcRelayTimeoutMs(data?.timeoutMs);
 
             if (!method || typeof method !== 'string') {
                 if (callback) {
@@ -108,7 +119,7 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
 
             // Forward the RPC request to the target socket using emitWithAck
             try {
-                const response = await targetSocket.timeout(30000).emitWithAck('rpc-request', {
+                const response = await targetSocket.timeout(timeoutMs).emitWithAck('rpc-request', {
                     method,
                     params
                 });
