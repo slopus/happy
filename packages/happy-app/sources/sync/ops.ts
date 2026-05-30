@@ -5,7 +5,7 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
-import type { MachineMetadata } from './storageTypes';
+import type { MachineMetadata, Metadata } from './storageTypes';
 
 // Strict type definitions for all operations
 
@@ -453,6 +453,67 @@ export async function machineUpdateMetadata(
     }
 
     throw new Error('Unexpected error in machineUpdateMetadata');
+}
+
+/**
+ * Update session metadata with optimistic concurrency control and automatic retry.
+ */
+export async function sessionUpdateMetadata(
+    sessionId: string,
+    metadata: Metadata,
+    expectedVersion: number,
+    maxRetries: number = 3,
+    mergeOnConflict?: (latestMetadata: Metadata) => Metadata,
+): Promise<{ version: number; metadata: string }> {
+    let currentVersion = expectedVersion;
+    let currentMetadata = { ...metadata };
+    let retryCount = 0;
+
+    const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
+    if (!sessionEncryption) {
+        throw new Error(`Session encryption not found for ${sessionId}`);
+    }
+
+    while (retryCount < maxRetries) {
+        const encryptedMetadata = await sessionEncryption.encryptMetadata(currentMetadata);
+
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+            message?: string;
+        }>('update-metadata', {
+            sid: sessionId,
+            metadata: encryptedMetadata,
+            expectedVersion: currentVersion
+        });
+
+        if (result.result === 'success') {
+            return {
+                version: result.version!,
+                metadata: result.metadata!
+            };
+        }
+
+        if (result.result === 'version-mismatch') {
+            currentVersion = result.version!;
+            const latestMetadata = await sessionEncryption.decryptRaw(result.metadata!) as Metadata | null;
+            if (!latestMetadata) {
+                throw new Error('Failed to decrypt latest session metadata after version conflict');
+            }
+            currentMetadata = mergeOnConflict ? mergeOnConflict(latestMetadata) : { ...latestMetadata, ...metadata };
+            retryCount++;
+
+            if (retryCount >= maxRetries) {
+                throw new Error(`Failed to update session metadata after ${maxRetries} retries due to version conflicts`);
+            }
+            continue;
+        }
+
+        throw new Error(result.message || 'Failed to update session metadata');
+    }
+
+    throw new Error('Unexpected error in sessionUpdateMetadata');
 }
 
 /**

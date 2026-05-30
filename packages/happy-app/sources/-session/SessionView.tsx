@@ -21,10 +21,11 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort } from '@/sync/ops';
+import { sessionAbort, sessionUpdateMetadata } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatusFiles, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
+import { appendRunReviewEvent, createRunReviewEvent, getFinalRunReviewEvent, getRunReviewEvents, RUN_REVIEW_CLOCK_INTERVAL_MS, type RunReviewActionEvent } from '@/sync/runReviewState';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
@@ -442,12 +443,6 @@ type RunReviewRiskBadge = {
     available: boolean;
 };
 
-type RunReviewActionEvent = {
-    kind: 'accepted' | 'flagged' | 'note';
-    note?: string;
-    createdAt: number;
-};
-
 type RunReviewModel = {
     title: string;
     summary: string;
@@ -468,6 +463,22 @@ const SILENT_RUN_DANGER_MS = 4 * 60 * 60 * 1000;
 const BROAD_FILE_CHANGE_COUNT = 10;
 const BROAD_FILE_CHANGE_LINES = 500;
 
+function useRunReviewClock(session: Session): number {
+    const [now, setNow] = React.useState(() => Date.now());
+    const shouldTick = session.presence === 'online' && (session.thinking || session.active);
+
+    React.useEffect(() => {
+        if (!shouldTick) {
+            setNow(Date.now());
+            return;
+        }
+        const timer = setInterval(() => setNow(Date.now()), RUN_REVIEW_CLOCK_INTERVAL_MS);
+        return () => clearInterval(timer);
+    }, [shouldTick]);
+
+    return now;
+}
+
 function SessionViewLoaded({ sessionId, session, onOpenChangeEvidence }: {
     sessionId: string,
     session: Session,
@@ -486,7 +497,8 @@ function SessionViewLoaded({ sessionId, session, onOpenChangeEvidence }: {
     const zenMode = useLocalSetting('zenMode');
     const { width: windowWidth } = useWindowDimensions();
     const sessionInputHorizontalPadding = Platform.OS === 'web' || isRunningOnMac() || isTablet ? 12 : 8;
-    const [reviewEvents, setReviewEvents] = React.useState<RunReviewActionEvent[]>([]);
+    const reviewClockNow = useRunReviewClock(session);
+    const reviewEvents = React.useMemo(() => getRunReviewEvents(session.metadata), [session.metadata]);
 
     // Check if CLI version is outdated and not already acknowledged
     const cliVersion = session.metadata?.version;
@@ -633,20 +645,43 @@ function SessionViewLoaded({ sessionId, session, onOpenChangeEvidence }: {
     }, [sessionUsage, session.latestUsage]);
 
     const runReview = React.useMemo(() => (
-        createRunReviewModel(session, messages, gitStatusFiles, Date.now(), reviewEvents)
-    ), [session, messages, gitStatusFiles, reviewEvents]);
+        createRunReviewModel(session, messages, gitStatusFiles, reviewClockNow, reviewEvents)
+    ), [session, messages, gitStatusFiles, reviewClockNow, reviewEvents]);
     const isReviewCompact = windowWidth < 700 || (deviceType === 'phone' && !isLandscape);
     const finalizedReview = React.useMemo(() => (
-        [...reviewEvents].reverse().find((event) => event.kind === 'accepted' || event.kind === 'flagged') ?? null
+        getFinalRunReviewEvent(reviewEvents)
     ), [reviewEvents]);
 
-    const appendReviewEvent = React.useCallback((event: RunReviewActionEvent) => {
-        setReviewEvents((prev) => [...prev, event]);
-    }, []);
+    const appendReviewEvent = React.useCallback(async (event: RunReviewActionEvent) => {
+        if (!session.metadata) {
+            Modal.alert('Run review', 'Session metadata is not available yet. Try again after sync finishes.');
+            return;
+        }
+
+        const nextEvents = appendRunReviewEvent(reviewEvents, event);
+        if (nextEvents === reviewEvents) return;
+
+        const optimisticMetadata = {
+            ...session.metadata,
+            runReviewEvents: nextEvents,
+        };
+        storage.getState().applySessions([{ ...session, metadata: optimisticMetadata }]);
+
+        try {
+            await sessionUpdateMetadata(sessionId, optimisticMetadata, session.metadataVersion, 3, (latestMetadata) => ({
+                ...latestMetadata,
+                runReviewEvents: appendRunReviewEvent(getRunReviewEvents(latestMetadata), event),
+            }));
+        } catch (error) {
+            storage.getState().applySessions([session]);
+            console.error('Failed to persist run review event:', error);
+            Modal.alert('Run review', 'Could not save this review action. Try again after sync reconnects.');
+        }
+    }, [reviewEvents, session, sessionId]);
 
     const handleAcceptReview = React.useCallback(() => {
         if (finalizedReview) return;
-        appendReviewEvent({ kind: 'accepted', createdAt: Date.now() });
+        void appendReviewEvent(createRunReviewEvent('accepted', Date.now()));
     }, [appendReviewEvent, finalizedReview]);
 
     const handleFlagReview = React.useCallback(async () => {
@@ -658,7 +693,7 @@ function SessionViewLoaded({ sessionId, session, onOpenChangeEvidence }: {
         );
         const trimmed = note?.trim();
         if (!trimmed) return;
-        appendReviewEvent({ kind: 'flagged', note: trimmed, createdAt: Date.now() });
+        void appendReviewEvent(createRunReviewEvent('flagged', Date.now(), trimmed));
     }, [appendReviewEvent, finalizedReview]);
 
     const handleAddReviewNote = React.useCallback(async () => {
@@ -669,7 +704,7 @@ function SessionViewLoaded({ sessionId, session, onOpenChangeEvidence }: {
         );
         const trimmed = note?.trim();
         if (!trimmed) return;
-        appendReviewEvent({ kind: 'note', note: trimmed, createdAt: Date.now() });
+        void appendReviewEvent(createRunReviewEvent('note', Date.now(), trimmed));
     }, [appendReviewEvent, finalizedReview]);
 
     const handleCopyReviewEvidence = React.useCallback(async () => {

@@ -60,6 +60,12 @@ export const MetadataSchema = z.object({
      */
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),
+    runReviewEvents: z.array(z.object({
+        id: z.string(),
+        kind: z.enum(['accepted', 'flagged', 'note']),
+        note: z.string().optional(),
+        createdAt: z.number(),
+    })).optional(),
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;
