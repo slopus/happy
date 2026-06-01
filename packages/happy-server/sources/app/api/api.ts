@@ -65,7 +65,7 @@ export async function startApi() {
     app.register(import('@fastify/cors'), {
         origin: '*',
         allowedHeaders: '*',
-        methods: ['GET', 'POST', 'DELETE']
+        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
     });
     app.get('/', function (request, reply) {
         reply.send('Welcome to Happy Server!');
