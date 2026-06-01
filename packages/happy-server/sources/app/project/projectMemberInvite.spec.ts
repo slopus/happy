@@ -37,7 +37,7 @@ describe("projectMemberInvite", () => {
         const result = await projectMemberInvite(
             makeCtx("user-1"),
             "missing-project",
-            "target",
+            { username: "target" },
             "editor"
         );
 
@@ -65,7 +65,7 @@ describe("projectMemberInvite", () => {
         const result = await projectMemberInvite(
             makeCtx("user-1"),
             "p1",
-            "target",
+            { username: "target" },
             "editor"
         );
 

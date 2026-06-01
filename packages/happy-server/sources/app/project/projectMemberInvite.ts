@@ -5,7 +5,10 @@ import { buildMemberInfo } from "./projectMemberList";
 import { getProjectAsOwner } from "./projectAccessCheck";
 
 /**
- * Invite a user to a project by username.
+ * Invite a user to a project. Target identified by either username (legacy
+ * path) or accountId (web-ui orchestrated path — avoids username-collision
+ * bugs where two happy Accounts share the same username and the older one
+ * gets picked unexpectedly).
  * Only the project owner can invite members.
  * Checks: project exists, caller is owner, target exists, not self,
  * not already a member.
@@ -13,7 +16,7 @@ import { getProjectAsOwner } from "./projectAccessCheck";
 export async function projectMemberInvite(
     ctx: Context,
     projectId: string,
-    targetUsername: string,
+    target: { username: string } | { accountId: string },
     role: ProjectRole
 ): Promise<Result<ProjectMemberInfo>> {
     return await inTx(async (tx) => {
@@ -23,9 +26,9 @@ export async function projectMemberInvite(
         }
         const project = projectResult.value;
 
-        const targetUser = await tx.account.findFirst({
-            where: { username: targetUsername }
-        });
+        const targetUser = 'accountId' in target
+            ? await tx.account.findUnique({ where: { id: target.accountId } })
+            : await tx.account.findFirst({ where: { username: target.username } });
         if (!targetUser) {
             return { ok: false, error: 'user-not-found' };
         }
