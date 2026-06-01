@@ -7,6 +7,7 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
+import { sessionArchive } from "@/app/session/sessionArchive";
 
 export function sessionRoutes(app: Fastify) {
 
@@ -369,6 +370,27 @@ export function sessionRoutes(app: Fastify) {
         const deleted = await sessionDelete({ uid: userId }, sessionId);
 
         if (!deleted) {
+            return reply.code(404).send({ error: 'Session not found or not owned by user' });
+        }
+
+        return reply.send({ success: true });
+    });
+
+    // Archive session (mark as inactive, idempotent)
+    app.post('/v1/sessions/:sessionId/archive', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+
+        const archived = await sessionArchive({ uid: userId }, sessionId);
+
+        if (!archived) {
             return reply.code(404).send({ error: 'Session not found or not owned by user' });
         }
 
