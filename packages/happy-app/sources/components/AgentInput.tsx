@@ -17,6 +17,7 @@ import { FloatingOverlay } from './FloatingOverlay';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
+import { ContextRingIndicator } from './ContextRingIndicator';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
 import { hackMode, hackModes } from '@/sync/modeHacks';
@@ -354,6 +355,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const contextWarning = props.usageData?.contextSize
         ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
         : null;
+
+    // Context ring: show when alwaysShowContextSize is on, or when ≤20% remaining
+    const contextPercentUsed = props.usageData?.contextSize
+        ? (props.usageData.contextSize / MAX_CONTEXT_SIZE) * 100
+        : null;
+    const showContextRing = contextPercentUsed !== null
+        && (props.alwaysShowContextSize || (100 - contextPercentUsed) <= 20);
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
@@ -1172,6 +1180,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             )}
                                         </Pressable>
                                     </Shaker>
+                                )}
+
+                                {/* Context ring indicator */}
+                                {showContextRing && contextPercentUsed !== null && (
+                                    <View style={{ justifyContent: 'center', height: 32 }}>
+                                        <ContextRingIndicator percentageUsed={contextPercentUsed} />
+                                    </View>
                                 )}
 
                                 {/* Git Status Badge */}
