@@ -7,7 +7,18 @@ import { log } from "@/utils/log";
 const VOICE_FREE_LIMIT_SECONDS = 1200;  // 20 minutes free tier per 30 days (~$0.76 cost)
 const VOICE_HARD_LIMIT_SECONDS = 18000; // 5 hours absolute cap per 30 days (even with subscription)
 const VOICE_MAX_CONVERSATIONS = 100;    // Max conversations trackable per 30 days (ElevenLabs page_size limit)
+const VOICE_EXTRA_LIMIT_SECONDS = 5 * 60 * 60;
+const VOICE_EXTRA_LIMIT_PUBLIC_IDS = new Set([
+    "cmp66x5u018d9wz0unf56tp07",
+]);
 const ELEVEN_LABS_API = "https://api.elevenlabs.io/v1/convai";
+
+function getVoiceHardLimitSeconds(userId: string): number {
+    if (VOICE_EXTRA_LIMIT_PUBLIC_IDS.has(userId)) {
+        return VOICE_HARD_LIMIT_SECONDS + VOICE_EXTRA_LIMIT_SECONDS;
+    }
+    return VOICE_HARD_LIMIT_SECONDS;
+}
 
 function deriveElevenUserId(happyUserId: string): string {
     const hmac = crypto.createHmac("sha256", process.env.HANDY_MASTER_SECRET!);
@@ -109,10 +120,11 @@ export function voiceRoutes(app: Fastify) {
         }
 
         const elevenUserId = deriveElevenUserId(userId);
+        const hardLimitSeconds = getVoiceHardLimitSeconds(userId);
 
         // Check usage from ElevenLabs directly
         const { usedSeconds, conversationCount } = await getVoiceUsage(elevenLabsApiKey, elevenUserId);
-        log({ module: 'voice' }, `User ${userId}: ${usedSeconds}s used, ${conversationCount} convos (free=${VOICE_FREE_LIMIT_SECONDS}s, hard=${VOICE_HARD_LIMIT_SECONDS}s)`);
+        log({ module: 'voice' }, `User ${userId}: ${usedSeconds}s used, ${conversationCount} convos (free=${VOICE_FREE_LIMIT_SECONDS}s, hard=${hardLimitSeconds}s)`);
 
         // Conversation count cap — we can only track 100 per query (ElevenLabs page_size limit)
         if (conversationCount >= VOICE_MAX_CONVERSATIONS) {
@@ -120,18 +132,18 @@ export function voiceRoutes(app: Fastify) {
                 allowed: false as const,
                 reason: 'voice_conversation_limit_reached' as const,
                 usedSeconds,
-                limitSeconds: VOICE_HARD_LIMIT_SECONDS,
+                limitSeconds: hardLimitSeconds,
                 agentId,
             });
         }
 
-        // Hard cap — 5 hours, no exceptions
-        if (usedSeconds >= VOICE_HARD_LIMIT_SECONDS) {
+        // Hard cap — normally 5 hours, with account-specific credits applied.
+        if (usedSeconds >= hardLimitSeconds) {
             return reply.send({
                 allowed: false as const,
                 reason: 'voice_hard_limit_reached' as const,
                 usedSeconds,
-                limitSeconds: VOICE_HARD_LIMIT_SECONDS,
+                limitSeconds: hardLimitSeconds,
                 agentId,
             });
         }
@@ -182,7 +194,7 @@ export function voiceRoutes(app: Fastify) {
                 agentId,
                 elevenUserId,
                 usedSeconds,
-                limitSeconds: usedSeconds >= VOICE_FREE_LIMIT_SECONDS ? VOICE_HARD_LIMIT_SECONDS : VOICE_FREE_LIMIT_SECONDS,
+                limitSeconds: usedSeconds >= VOICE_FREE_LIMIT_SECONDS ? hardLimitSeconds : VOICE_FREE_LIMIT_SECONDS,
             });
         } catch (error) {
             log({ module: 'voice' }, `ElevenLabs request error for user ${userId}: ${error}`);
@@ -211,6 +223,7 @@ export function voiceRoutes(app: Fastify) {
         }
 
         const elevenUserId = deriveElevenUserId(userId);
+        const hardLimitSeconds = getVoiceHardLimitSeconds(userId);
 
         try {
             const [{ usedSeconds, conversationCount }, subscribed] = await Promise.all([
@@ -219,7 +232,7 @@ export function voiceRoutes(app: Fastify) {
             ]);
             return reply.send({
                 usedSeconds,
-                limitSeconds: subscribed ? VOICE_HARD_LIMIT_SECONDS : VOICE_FREE_LIMIT_SECONDS,
+                limitSeconds: subscribed ? hardLimitSeconds : VOICE_FREE_LIMIT_SECONDS,
                 conversationCount,
                 conversationLimit: VOICE_MAX_CONVERSATIONS,
                 elevenUserId,
