@@ -49,6 +49,10 @@ export interface StartOptions {
     jsRuntime?: JsRuntime
 }
 
+const DEFAULT_CLAUDE_PERMISSION_MODE: PermissionMode = 'yolo';
+const DEFAULT_CLAUDE_MODEL = 'opus';
+const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'max' = 'medium';
+
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
     logger.debug(`[CLAUDE] ===== CLAUDE MODE STARTING =====`);
     logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
@@ -80,7 +84,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const sandboxConfig = options.noSandbox ? undefined : settings?.sandboxConfig;
     const sandboxEnabled = Boolean(sandboxConfig?.enabled);
     const initialPermissionMode = applySandboxPermissionPolicy(
-        resolveInitialClaudePermissionMode(options.permissionMode, options.claudeArgs),
+        resolveInitialClaudePermissionMode(options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE, options.claudeArgs),
         sandboxEnabled,
     );
     const dangerouslySkipPermissions =
@@ -401,20 +405,34 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         customSystemPrompt: mode.customSystemPrompt,
         appendSystemPrompt: mode.appendSystemPrompt,
         allowedTools: mode.allowedTools,
-        disallowedTools: mode.disallowedTools
+        disallowedTools: mode.disallowedTools,
+        effort: mode.effort,
     }));
 
     // Forward messages to the queue
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
-    let currentModel = options.model; // Track current model state
+    let currentModel: string | undefined = options.model ?? DEFAULT_CLAUDE_MODEL; // Track current model state
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
-    let currentEffort: 'low' | 'medium' | 'high' | 'max' | undefined = undefined; // Track current Claude effort (thinking depth)
+    let currentEffort: 'low' | 'medium' | 'high' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
+
+    const resetCurrentModeDefaults = () => {
+        currentPermissionMode = initialPermissionMode;
+        currentModel = options.model ?? DEFAULT_CLAUDE_MODEL;
+        currentFallbackModel = undefined;
+        currentCustomSystemPrompt = undefined;
+        currentAppendSystemPrompt = undefined;
+        currentAllowedTools = undefined;
+        currentDisallowedTools = undefined;
+        currentEffort = DEFAULT_CLAUDE_EFFORT;
+        logger.debug('[loop] Reset current mode defaults after abort');
+    };
+
     // Exit when session is archived from web/mobile
     session.on('archived', () => {
         logger.debug('[loop] Session archived from web/mobile, cleaning up...');
@@ -765,6 +783,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Store reference for hook server callback
             currentSession = sessionInstance;
         },
+        onAbort: resetCurrentModeDefaults,
         mcpServers: {
             'happy': {
                 type: 'http' as const,

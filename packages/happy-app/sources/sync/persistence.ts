@@ -1,5 +1,5 @@
 import { MMKV } from 'react-native-mmkv';
-import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
+import { Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SettingsSchema } from './settings';
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
@@ -42,7 +42,7 @@ export function loadSettings(): { settings: Settings, version: number | null } {
 }
 
 export function saveSettings(settings: Settings, version: number) {
-    mmkv.set('settings', JSON.stringify({ settings, version }));
+    mmkv.set('settings', JSON.stringify({ settings: settingsToSyncPayload(settings), version }));
 }
 
 export function loadPendingSettings(): Partial<Settings> {

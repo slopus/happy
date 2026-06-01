@@ -5,10 +5,7 @@ import { layout } from '@/components/layout';
 import {
     getAvailableModels,
     getAvailablePermissionModes,
-    getDefaultModelKey,
-    getDefaultPermissionModeKey,
     getEffortLevelsForModel,
-    getDefaultEffortKeyForModel,
     resolveCurrentOption,
     EffortLevel,
 } from '@/components/modelModeOptions';
@@ -53,6 +50,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
+import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -448,22 +446,26 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const availableModes = React.useMemo(() => (
         getAvailablePermissionModes(flavor, session.metadata, t)
     ), [flavor, session.metadata]);
+    const agentDefaultOverrides = useSetting('agentDefaultOverrides');
+    const effectiveAgentDefaults = React.useMemo(() => (
+        resolveAgentDefaultConfig(agentDefaultOverrides, flavor)
+    ), [agentDefaultOverrides, flavor]);
 
     const permissionMode = React.useMemo<PermissionMode | null>(() => (
         resolveCurrentOption(availableModes, [
             session.permissionMode,
+            effectiveAgentDefaults.permissionMode,
             session.metadata?.currentOperatingModeCode,
-            getDefaultPermissionModeKey(flavor),
         ])
-    ), [availableModes, session.permissionMode, session.metadata?.currentOperatingModeCode, flavor]);
+    ), [availableModes, session.permissionMode, effectiveAgentDefaults.permissionMode, session.metadata?.currentOperatingModeCode]);
 
     const modelMode = React.useMemo<ModelMode | null>(() => (
         resolveCurrentOption(availableModels, [
             session.modelMode,
+            effectiveAgentDefaults.modelMode,
             session.metadata?.currentModelCode,
-            getDefaultModelKey(flavor),
         ])
-    ), [availableModels, session.modelMode, session.metadata?.currentModelCode, flavor]);
+    ), [availableModels, session.modelMode, effectiveAgentDefaults.modelMode, session.metadata?.currentModelCode]);
 
     // Effort level state
     const modelKey = modelMode?.key ?? 'default';
@@ -473,9 +475,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const effortLevel = React.useMemo<EffortLevel | null>(() => (
         resolveCurrentOption(availableEffortLevels, [
             session.effortLevel,
-            getDefaultEffortKeyForModel(flavor, modelKey),
+            effectiveAgentDefaults.effortLevel,
         ])
-    ), [availableEffortLevels, session.effortLevel, flavor, modelKey]);
+    ), [availableEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel]);
 
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
@@ -544,6 +546,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [sessionId, expImageUpload, selectedImages, clearImages]);
 
     const handleAbort = React.useCallback(() => {
+        storage.getState().resetSessionAgentOverrides(sessionId);
         sessionAbort(sessionId);
     }, [sessionId]);
 

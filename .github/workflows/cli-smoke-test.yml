@@ -5,11 +5,13 @@ on:
     branches: [ main ]
     paths:
       - 'packages/happy-cli/**'
+      - 'packages/happy-server/**'
       - '.github/workflows/cli-smoke-test.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'packages/happy-cli/**'
+      - 'packages/happy-server/**'
       - '.github/workflows/cli-smoke-test.yml'
   workflow_dispatch:
 
@@ -39,13 +41,24 @@ jobs:
     - name: Build package
       run: pnpm --filter happy build
 
-    - name: Pack package
-      run: pnpm --filter happy pack --pack-destination packages/happy-cli
-
-    - name: Install packed package globally
+    # `happy server` resolves the self-host runtime and bundled webapp from
+    # happy-server-self-host. The server package is JS/TS and lets npm install
+    # platform-specific dependencies such as Prisma and sharp normally.
+    - name: Generate Prisma client + bundle happy-server-self-host webapp
       run: |
-        PACKAGE_FILE=$(ls packages/happy-cli/*.tgz)
-        npm install -g "./$PACKAGE_FILE"
+        pnpm --filter happy-server-self-host generate
+        pnpm --filter happy-server-self-host run bundle:webapp
+
+    - name: Pack packages
+      run: |
+        pnpm --filter happy pack --pack-destination packages/happy-cli
+        pnpm --filter happy-server-self-host pack --pack-destination packages/happy-server
+
+    - name: Install packed packages globally
+      run: |
+        HAPPY_PACKAGE_FILE=$(ls packages/happy-cli/*.tgz)
+        SERVER_PACKAGE_FILE=$(ls packages/happy-server/*.tgz)
+        npm install -g "./$SERVER_PACKAGE_FILE" "./$HAPPY_PACKAGE_FILE"
 
     - name: Test binary execution
       run: |
@@ -74,7 +87,29 @@ jobs:
           exit 1
         }
 
-        echo "Smoke test passed on Linux!"
+        echo "Binary smoke test passed on Linux!"
+
+    - name: Test packaged server (happy server)
+      run: |
+        export HAPPY_HOME_DIR="$(mktemp -d)"
+        timeout 90s happy server --port 4505 --host 127.0.0.1 --no-persist --reset > /tmp/happy-server.log 2>&1 &
+        SERVER_PID=$!
+        UP=0
+        for i in $(seq 1 60); do
+          if curl -sf -m 2 http://127.0.0.1:4505/ -o /dev/null; then UP=1; echo "server up after ${i}s"; break; fi
+          sleep 1
+        done
+        # Exercise the Prisma native query engine via a DB-backed read.
+        PK=$(node -e "console.log(Buffer.alloc(32).toString('base64'))")
+        BODY=$(curl -s -m 5 -G http://127.0.0.1:4505/v1/auth/request/status --data-urlencode "publicKey=$PK" || true)
+        echo "auth/request/status -> $BODY"
+        kill "$SERVER_PID" 2>/dev/null || true
+        pkill -f happy-server || true
+        echo "=== happy server log ==="; cat /tmp/happy-server.log || true
+        if [ "$UP" != "1" ]; then echo "Error: happy server did not become healthy"; exit 1; fi
+        if ! echo "$BODY" | grep -q '"status"'; then echo "Error: Prisma-backed endpoint did not respond"; exit 1; fi
+        if grep -qiE 'PrismaClientInitializationError|could not locate.*Query Engine' /tmp/happy-server.log; then echo "Error: Prisma query engine failed to load"; exit 1; fi
+        echo "happy server smoke test passed (booted + Prisma query engine OK)"
 
   smoke-test-windows:
     runs-on: windows-latest

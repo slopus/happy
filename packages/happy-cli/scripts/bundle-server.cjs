@@ -1,22 +1,26 @@
 #!/usr/bin/env node
 
 /**
- * Bundles happy-server into a self-contained artifact shipped inside happy-cli/tools/server/.
+ * Bundles happy-server into a self-contained artifact directory.
  *
  * Uses `bun build --compile` to produce a single platform-specific binary, then copies the
  * pglite WASM/data files and prisma migrations alongside. happy-cli does NOT depend on the
  * happy-server workspace package — we reach into the sibling directory at build time only.
  *
  * Layout produced:
- *   tools/server/
+ *   <out-dir>/
  *     <platform>/
  *       happy-server                  # bun-compiled binary
  *       pglite.wasm                   # PGlite expects these next to process.execPath
  *       pglite.data
  *       prisma/migrations/...
  *
+ * Prisma query engine: bun --compile cannot embed native .node modules. The package
+ * that runs this binary must provide @prisma/engines and point Prisma at the native
+ * library for the current machine via PRISMA_QUERY_ENGINE_LIBRARY.
+ *
  * Default: builds for the current host platform only. Pass --all-platforms to cross-build
- * for all six (used by release/CI).
+ * for every supported platform (used by release/CI).
  */
 
 const fs = require('node:fs');
@@ -27,7 +31,6 @@ const { spawnSync } = require('node:child_process');
 const PACKAGE_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PACKAGE_DIR, '..', '..');
 const SERVER_DIR = path.resolve(REPO_ROOT, 'packages/happy-server');
-const OUT_DIR = path.resolve(PACKAGE_DIR, 'tools/server');
 
 const BUN_TARGETS = {
     'arm64-darwin': 'bun-darwin-arm64',
@@ -74,13 +77,13 @@ function findPgliteAsset(name) {
     return null;
 }
 
-function buildPlatform(plat) {
+function buildPlatform(plat, outRoot) {
     if (!BUN_TARGETS[plat]) {
         console.error(`Unsupported platform: ${plat}`);
         process.exit(1);
     }
     const target = BUN_TARGETS[plat];
-    const outDir = path.join(OUT_DIR, plat);
+    const outDir = path.join(outRoot, plat);
     fs.mkdirSync(outDir, { recursive: true });
     const outFile = path.join(outDir, platformBinaryName(plat));
 
@@ -107,8 +110,8 @@ function buildPlatform(plat) {
     );
 }
 
-function copyAssetsForPlatform(plat) {
-    const platDir = path.join(OUT_DIR, plat);
+function copyAssetsForPlatform(plat, outRoot) {
+    const platDir = path.join(outRoot, plat);
     console.log(`\n→ Copying assets (pglite + migrations) into ${path.relative(PACKAGE_DIR, platDir)}`);
 
     for (const asset of ['pglite.wasm', 'pglite.data']) {
@@ -131,22 +134,35 @@ function copyAssetsForPlatform(plat) {
 function main() {
     const args = process.argv.slice(2);
     const allPlatforms = args.includes('--all-platforms');
+    const outDirArg = valueAfter(args, '--out-dir');
+    const outDir = outDirArg ? path.resolve(process.cwd(), outDirArg) : path.resolve(PACKAGE_DIR, 'tools/server');
 
     if (!fs.existsSync(SERVER_DIR)) {
         console.error(`Missing ${SERVER_DIR}. Run from the monorepo.`);
         process.exit(1);
     }
 
-    rmrf(OUT_DIR);
-    fs.mkdirSync(OUT_DIR, { recursive: true });
+    rmrf(outDir);
+    fs.mkdirSync(outDir, { recursive: true });
 
     const targets = allPlatforms ? Object.keys(BUN_TARGETS) : [currentPlatform()];
     for (const plat of targets) {
-        buildPlatform(plat);
-        copyAssetsForPlatform(plat);
+        buildPlatform(plat, outDir);
+        copyAssetsForPlatform(plat, outDir);
     }
 
-    console.log(`\n✓ happy-server bundle written to ${OUT_DIR}`);
+    console.log(`\n✓ happy-server bundle written to ${outDir}`);
+}
+
+function valueAfter(args, flag) {
+    const idx = args.indexOf(flag);
+    if (idx === -1) return null;
+    const value = args[idx + 1];
+    if (!value || value.startsWith('--')) {
+        console.error(`Missing value for ${flag}`);
+        process.exit(1);
+    }
+    return value;
 }
 
 main();

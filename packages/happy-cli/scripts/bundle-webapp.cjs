@@ -2,8 +2,8 @@
 
 /**
  * Runs `expo export -p web` in packages/happy-app and copies the output into
- * happy-cli/tools/webapp/. happy-cli ships this directory so `happy server` can serve the
- * web client statically alongside the API.
+ * a package-owned artifact directory. By default this writes to happy-cli/tools/webapp
+ * for local development. Release packaging can pass --out-dir to place it elsewhere.
  *
  * happy-cli does NOT depend on happy-app — we reach into the sibling at build time only.
  */
@@ -16,7 +16,6 @@ const PACKAGE_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PACKAGE_DIR, '..', '..');
 const APP_DIR = path.resolve(REPO_ROOT, 'packages/happy-app');
 const APP_DIST = path.join(APP_DIR, 'dist');
-const OUT_DIR = path.resolve(PACKAGE_DIR, 'tools/webapp');
 
 function rmrf(p) {
     fs.rmSync(p, { recursive: true, force: true });
@@ -31,6 +30,10 @@ function run(cmd, args, opts = {}) {
 }
 
 function main() {
+    const args = process.argv.slice(2);
+    const outDirArg = valueAfter(args, '--out-dir');
+    const outDir = outDirArg ? path.resolve(process.cwd(), outDirArg) : path.resolve(PACKAGE_DIR, 'tools/webapp');
+
     if (!fs.existsSync(APP_DIR)) {
         console.error(`Missing ${APP_DIR}. Run from the monorepo.`);
         process.exit(1);
@@ -45,12 +48,23 @@ function main() {
         process.exit(1);
     }
 
-    console.log(`\n→ Copying webapp into ${OUT_DIR}`);
-    rmrf(OUT_DIR);
-    fs.mkdirSync(path.dirname(OUT_DIR), { recursive: true });
-    fs.cpSync(APP_DIST, OUT_DIR, { recursive: true });
+    console.log(`\n→ Copying webapp into ${outDir}`);
+    rmrf(outDir);
+    fs.mkdirSync(path.dirname(outDir), { recursive: true });
+    fs.cpSync(APP_DIST, outDir, { recursive: true });
 
-    console.log(`\n✓ webapp written to ${OUT_DIR}`);
+    console.log(`\n✓ webapp written to ${outDir}`);
+}
+
+function valueAfter(args, flag) {
+    const idx = args.indexOf(flag);
+    if (idx === -1) return null;
+    const value = args[idx + 1];
+    if (!value || value.startsWith('--')) {
+        console.error(`Missing value for ${flag}`);
+        process.exit(1);
+    }
+    return value;
 }
 
 main();

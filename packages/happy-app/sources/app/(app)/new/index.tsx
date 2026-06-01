@@ -49,15 +49,13 @@ import {
     getHardcodedPermissionModes,
     getHardcodedModelModes,
     getEffortLevelsForModel,
-    getDefaultEffortKeyForModel,
-    getDefaultPermissionModeKey,
-    getDefaultModelKey,
     getSupportsWorktree,
     type PermissionMode,
     type ModelMode,
     type EffortLevel,
 } from '@/components/modelModeOptions';
 import { isRunningOnMac } from '@/utils/platform';
+import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 
 // Agent icon assets
 const agentIcons = {
@@ -510,6 +508,7 @@ function NewSessionScreen() {
     const allMachines = useAllMachines({ includeOffline: true });
     const sessions = useSessions();
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
+    const agentDefaultOverrides = useSetting('agentDefaultOverrides');
 
     // Persisted draft state (survives navigation).
     //
@@ -700,35 +699,36 @@ function NewSessionScreen() {
         () => getEffortLevelsForModel(selectedAgent, currentModelKey),
         [selectedAgent, currentModelKey],
     );
+    const effectiveAgentDefaults = React.useMemo(() => (
+        resolveAgentDefaultConfig(agentDefaultOverrides, selectedAgent)
+    ), [agentDefaultOverrides, selectedAgent]);
 
     const supportsWorktree = getSupportsWorktree(selectedAgent);
     const showModel = modelModes.length > 1;
     const showEffort = effortLevels.length > 0;
     const showPermission = permissionModes.length > 1;
 
-    // Reset indices when agent changes — try draft keys first, then defaults
+    // Reset indices when agent/default settings change.
     React.useEffect(() => {
-        const draftPermIdx = permissionModes.findIndex(m => m.key === draft.permissionMode);
-        const defaultPermIdx = permissionModes.findIndex(m => m.key === getDefaultPermissionModeKey(selectedAgent));
-        setPermissionIndex(draftPermIdx >= 0 ? draftPermIdx : (defaultPermIdx >= 0 ? defaultPermIdx : 0));
+        const defaultPermIdx = permissionModes.findIndex(m => m.key === effectiveAgentDefaults.permissionMode);
+        setPermissionIndex(defaultPermIdx >= 0 ? defaultPermIdx : 0);
 
-        const draftModelIdx = modelModes.findIndex(m => m.key === draft.modelMode);
-        const defaultModelIdx = modelModes.findIndex(m => m.key === getDefaultModelKey(selectedAgent));
-        setModelIndex(draftModelIdx >= 0 ? draftModelIdx : (defaultModelIdx >= 0 ? defaultModelIdx : 0));
+        const defaultModelIdx = modelModes.findIndex(m => m.key === effectiveAgentDefaults.modelMode);
+        setModelIndex(defaultModelIdx >= 0 ? defaultModelIdx : 0);
 
         if (!supportsWorktree) setWorktreeKey('__none__');
-    }, [selectedAgent, permissionModes, modelModes, supportsWorktree]);
+    }, [permissionModes, modelModes, supportsWorktree, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode]);
 
     // Reset effort when model changes
     React.useEffect(() => {
-        const defaultEffort = getDefaultEffortKeyForModel(selectedAgent, currentModelKey);
+        const defaultEffort = effectiveAgentDefaults.effortLevel;
         if (defaultEffort && effortLevels.length > 0) {
             const idx = effortLevels.findIndex(e => e.key === defaultEffort);
             setEffortIndex(idx >= 0 ? idx : effortLevels.length - 1);
         } else {
             setEffortIndex(0);
         }
-    }, [selectedAgent, currentModelKey, effortLevels]);
+    }, [effectiveAgentDefaults.effortLevel, currentModelKey, effortLevels]);
 
     // Auto collapse config once when user starts typing (mobile only)
     // On desktop (web / Mac Catalyst) the panel stays expanded
@@ -871,13 +871,6 @@ function NewSessionScreen() {
                 spawnDirectory = worktreeKey;
             }
 
-            // Persist last used settings
-            sync.applySettings({
-                lastUsedAgent: selectedAgent,
-                lastUsedPermissionMode: currentPermission.key,
-                lastUsedModelMode: currentModelKey,
-            });
-
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
                 directory: spawnDirectory,
@@ -889,9 +882,21 @@ function NewSessionScreen() {
                 case 'success':
                     await sync.refreshSessions();
 
-                    // Set permission mode and model on the session before sending
-                    storage.getState().updateSessionPermissionMode(result.sessionId, currentPermission.key);
-                    storage.getState().updateSessionModelMode(result.sessionId, currentModelKey);
+                    // Store only per-session overrides. Matching the effective
+                    // default stays null so future code default changes apply.
+                    const permissionOverride = currentPermission.key === effectiveAgentDefaults.permissionMode
+                        ? null
+                        : currentPermission.key;
+                    const modelOverride = currentModelKey === effectiveAgentDefaults.modelMode
+                        ? null
+                        : currentModelKey;
+                    const currentEffortKey = currentEffort?.key ?? null;
+                    const effortOverride = currentEffortKey === effectiveAgentDefaults.effortLevel
+                        ? null
+                        : currentEffortKey;
+                    storage.getState().updateSessionPermissionMode(result.sessionId, permissionOverride);
+                    storage.getState().updateSessionModelMode(result.sessionId, modelOverride);
+                    storage.getState().updateSessionEffortLevel(result.sessionId, effortOverride);
 
                     // Pull live prompt and clear it. We read via getState() so this
                     // callback doesn't have to subscribe to `input` (which would
@@ -931,7 +936,7 @@ function NewSessionScreen() {
         } finally {
             setIsSpawning(false);
         }
-    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession, currentPermission.key, currentModelKey, worktreeKey]);
+    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession, currentPermission.key, currentModelKey, currentEffort?.key, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.effortLevel, worktreeKey]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
 

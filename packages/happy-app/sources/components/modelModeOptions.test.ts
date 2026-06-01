@@ -4,6 +4,9 @@ import {
     getAvailablePermissionModes,
     getCodexModelModes,
     getClaudePermissionModes,
+    getDefaultEffortKey,
+    getDefaultModelKey,
+    getDefaultPermissionModeKey,
     mapMetadataOptions,
     resolveCurrentOption,
 } from './modelModeOptions';
@@ -41,6 +44,15 @@ describe('modelModeOptions', () => {
         ]);
         expect(models[0].name).toBe('default model');
         expect(models[1].name).toBe('gpt-5.5');
+    });
+
+    it('uses code defaults for agent defaults', () => {
+        expect(getDefaultPermissionModeKey('claude')).toBe('bypassPermissions');
+        expect(getDefaultModelKey('claude')).toBe('opus');
+        expect(getDefaultEffortKey('claude')).toBe('medium');
+        expect(getDefaultPermissionModeKey('codex')).toBe('yolo');
+        expect(getDefaultModelKey('codex')).toBe('gpt-5.5');
+        expect(getDefaultEffortKey('codex')).toBe('medium');
     });
 
     it('prefers metadata models over hardcoded fallbacks', () => {
