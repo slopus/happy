@@ -192,6 +192,8 @@ export function useSessionQuickActions(
                 throw new HappyError(t('sessionInfo.resumeSessionUnexpectedDirectoryPrompt'), false);
             case 'error':
                 throw new HappyError(result.errorMessage, false);
+            default:
+                throw new HappyError(t('sessionInfo.resumeSessionUnknownError'), false);
         }
     });
 
