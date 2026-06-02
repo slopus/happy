@@ -285,10 +285,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
-    // Exit when session is archived from web/mobile
+    // Exit when session is archived from web/mobile. The server already
+    // stamped lifecycleState='archived' (that's what fired this event), so we
+    // just tear down and exit — no need to re-archive.
     session.on('archived', () => {
         logger.debug('[loop] Session archived from web/mobile, cleaning up...');
-        cleanup();
+        void cleanup({ archive: false });
     });
 
     session.onUserMessage((message) => {
@@ -454,21 +456,34 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 
-    // Setup signal handlers for graceful shutdown
-    const cleanup = async () => {
-        logger.debug('[START] Received termination signal, cleaning up...');
+    // Setup signal handlers for graceful shutdown.
+    //
+    // `archive` controls whether we stamp lifecycleState='archived' on the way
+    // out. Process death — Ctrl-C, SIGTERM, or a crash — is NOT the user
+    // retiring the session: they almost always want to resume it later.
+    // Stamping 'archived' hides the session from the active list and, because
+    // the archived metadata is replayed to the client on reconnect (see the
+    // update-session handler in apiSession.ts), makes a subsequent resume
+    // bounce straight back out. So only the explicit in-app "Archive" action
+    // (the killSession RPC) archives; every other exit just sends the session
+    // death signal and leaves lifecycleState alone — the session goes
+    // active=false but stays visible and resumable, exactly like a network blip.
+    const cleanup = async ({ archive = false }: { archive?: boolean } = {}) => {
+        logger.debug(`[START] Cleaning up (archive=${archive})...`);
 
         try {
-            // Update lifecycle state to archived before closing
             if (session) {
-                session.updateMetadata((currentMetadata) => ({
-                    ...currentMetadata,
-                    lifecycleState: 'archived',
-                    lifecycleStateSince: Date.now(),
-                    archivedBy: 'cli',
-                    archiveReason: 'User terminated'
-                }));
-                
+                // Only retire the session when the user explicitly archived it.
+                if (archive) {
+                    session.updateMetadata((currentMetadata) => ({
+                        ...currentMetadata,
+                        lifecycleState: 'archived',
+                        lifecycleStateSince: Date.now(),
+                        archivedBy: 'cli',
+                        archiveReason: 'User archived'
+                    }));
+                }
+
                 // Cleanup session resources (intervals, callbacks)
                 currentSession?.cleanup();
 
@@ -493,22 +508,27 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
     };
 
-    // Handle termination signals
-    process.on('SIGTERM', cleanup);
-    process.on('SIGINT', cleanup);
+    // Ctrl-C / SIGTERM are user-initiated exits — the user will likely return
+    // to this session, so deactivate without archiving.
+    process.on('SIGTERM', () => { void cleanup({ archive: false }); });
+    process.on('SIGINT', () => { void cleanup({ archive: false }); });
 
-    // Handle uncaught exceptions and rejections
+    // Crashes: the process is toast, but the session is still recoverable via
+    // resume. Do NOT archive — archiving would hide a recoverable session and
+    // trap the next resume attempt behind the replayed 'archived' metadata.
     process.on('uncaughtException', (error) => {
         logger.debug('[START] Uncaught exception:', error);
-        cleanup();
+        void cleanup({ archive: false });
     });
 
     process.on('unhandledRejection', (reason) => {
         logger.debug('[START] Unhandled rejection:', reason);
-        cleanup();
+        void cleanup({ archive: false });
     });
 
-    registerKillSessionHandler(session.rpcHandlerManager, cleanup);
+    // The in-app "Archive" button (killSession RPC) is the ONLY explicit retire
+    // action — this is the one path that should stamp 'archived'.
+    registerKillSessionHandler(session.rpcHandlerManager, () => cleanup({ archive: true }));
 
     // Create claude loop
     const exitCode = await loop({
