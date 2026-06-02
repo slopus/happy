@@ -22,6 +22,7 @@ import {
     ForkTruncateUuidNotFoundError,
     ForkSourceMissingError,
 } from '@/claude/utils/claudeSessionFork';
+import { socketProxyOptions } from './socketProxy';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -357,6 +358,7 @@ export class ApiMachineClient {
         logger.debug(`[API MACHINE] Connecting to ${serverUrl}`);
 
         this.socket = io(serverUrl, {
+            ...socketProxyOptions(serverUrl),
             transports: ['websocket'],
             auth: {
                 token: this.token,

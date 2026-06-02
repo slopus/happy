@@ -21,6 +21,7 @@ import {
 } from '@/claude/utils/sessionProtocolMapper';
 import { InvalidateSync } from '@/utils/sync';
 import axios from 'axios';
+import { socketProxyOptions } from './socketProxy';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -144,6 +145,7 @@ export class ApiSessionClient extends EventEmitter {
         //
 
         this.socket = io(configuration.serverUrl, {
+            ...socketProxyOptions(configuration.serverUrl),
             auth: {
                 token: this.token,
                 clientType: 'session-scoped' as const,
