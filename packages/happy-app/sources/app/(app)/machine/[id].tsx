@@ -555,6 +555,15 @@ export default function MachineDetailScreen() {
                             }
                         />
                         <Item
+                            title="Devin"
+                            showChevron={false}
+                            rightElement={
+                                <Text style={{ color: metadata.cliAvailability.devin ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>
+                                    {metadata.cliAvailability.devin ? t('machine.cliInstalled') : t('machine.cliNotFound')}
+                                </Text>
+                            }
+                        />
+                        <Item
                             title={t('machine.lastDetected')}
                             subtitle={new Date(metadata.cliAvailability.detectedAt).toLocaleString()}
                             showChevron={false}

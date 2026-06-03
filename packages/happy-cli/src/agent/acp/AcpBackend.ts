@@ -334,6 +334,9 @@ export class AcpBackend implements AgentBackend {
   /** Map from real tool call ID to tool name for auto-approval */
   private toolCallIdToNameMap = new Map<string, string>();
 
+  /** Map from tool call ID to last streamed content (for agents that stream output in in_progress updates) */
+  private toolCallLastContent = new Map<string, unknown>();
+
   /** Track if we just sent a prompt with change_title instruction */
   private recentPromptHadChangeTitle = false;
 
@@ -563,6 +566,9 @@ export class AcpBackend implements AgentBackend {
       const client: Client = {
         sessionUpdate: async (params: SessionNotification) => {
           this.handleSessionUpdate(params);
+        },
+        extNotification: async (method: string, params: Record<string, unknown>) => {
+          logger.debug(`[AcpBackend] Received vendor notification: ${method}`, JSON.stringify(params));
         },
         requestPermission: async (params: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
           
@@ -876,6 +882,7 @@ export class AcpBackend implements AgentBackend {
       toolCallStartTimes: this.toolCallStartTimes,
       toolCallTimeouts: this.toolCallTimeouts,
       toolCallIdToNameMap: this.toolCallIdToNameMap,
+      toolCallLastContent: this.toolCallLastContent,
       idleTimeout: this.idleTimeout,
       toolCallCountSincePrompt: this.toolCallCountSincePrompt,
       emit: (msg) => this.emit(msg),

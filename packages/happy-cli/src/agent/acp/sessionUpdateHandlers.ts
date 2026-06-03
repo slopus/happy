@@ -59,6 +59,8 @@ export interface HandlerContext {
   toolCallTimeouts: Map<string, NodeJS.Timeout>;
   /** Map of tool call ID to tool name */
   toolCallIdToNameMap: Map<string, string>;
+  /** Map of tool call ID to last streamed content (for agents that stream output in in_progress updates) */
+  toolCallLastContent: Map<string, unknown>;
   /** Current idle timeout handle */
   idleTimeout: NodeJS.Timeout | null;
   /** Tool call counter since last prompt */
@@ -325,7 +327,7 @@ export function completeToolCall(
 ): void {
   const startTime = ctx.toolCallStartTimes.get(toolCallId);
   const duration = formatDuration(startTime);
-  const toolKindStr = typeof toolKind === 'string' ? toolKind : 'unknown';
+  const toolKindStr = typeof toolKind === 'string' ? toolKind : (ctx.toolCallIdToNameMap.get(toolCallId) ?? 'unknown');
 
   ctx.activeToolCalls.delete(toolCallId);
   ctx.toolCallStartTimes.delete(toolCallId);
@@ -365,7 +367,7 @@ export function failToolCall(
 ): void {
   const startTime = ctx.toolCallStartTimes.get(toolCallId);
   const duration = startTime ? Date.now() - startTime : null;
-  const toolKindStr = typeof toolKind === 'string' ? toolKind : 'unknown';
+  const toolKindStr = typeof toolKind === 'string' ? toolKind : (ctx.toolCallIdToNameMap.get(toolCallId) ?? 'unknown');
   const isInvestigation = ctx.transport.isInvestigationTool?.(toolCallId, toolKindStr) ?? false;
   const hadTimeout = ctx.toolCallTimeouts.has(toolCallId);
 
@@ -456,10 +458,18 @@ export function handleToolCallUpdate(
     } else {
       logger.debug(`[AcpBackend] Tool call ${toolCallId} already tracked, status: ${status}`);
     }
+    // Store latest content from streaming in_progress updates
+    if (update.content != null) {
+      ctx.toolCallLastContent.set(toolCallId, update.content);
+    }
   } else if (status === 'completed') {
-    completeToolCall(toolCallId, toolKind, update.content, ctx);
+    const content = update.content ?? ctx.toolCallLastContent.get(toolCallId);
+    ctx.toolCallLastContent.delete(toolCallId);
+    completeToolCall(toolCallId, update.kind, content, ctx);
   } else if (status === 'failed' || status === 'cancelled') {
-    failToolCall(toolCallId, status, toolKind, update.content, ctx);
+    const content = update.content ?? ctx.toolCallLastContent.get(toolCallId);
+    ctx.toolCallLastContent.delete(toolCallId);
+    failToolCall(toolCallId, status, update.kind, content, ctx);
   }
 
   return { handled: true, toolCallCountSincePrompt };

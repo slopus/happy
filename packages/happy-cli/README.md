@@ -32,6 +32,7 @@ This will:
 
 ```
 happy codex
+happy devin
 happy gemini
 happy openclaw
 
@@ -100,6 +101,7 @@ happy connect status
 | `happy` | Start Claude Code session (default) |
 | `happy codex` | Start Codex mode |
 | `happy gemini` | Start Gemini CLI session |
+| `happy devin` | Start Devin session |
 | `happy openclaw` | Start OpenClaw session |
 | `happy acp` | Start any ACP-compatible agent |
 | `happy resume <id>` | Resume a previous session |
@@ -144,6 +146,7 @@ yarn workspace happy cli --help
 - Node.js >= 20.0.0
 - For Claude: `claude` CLI installed & logged in
 - For Codex: `codex` CLI installed & logged in
+- For Devin: `devin` CLI installed & logged in
 - For Gemini: `npm install -g @google/gemini-cli` + `happy connect gemini`
 
 ## License
