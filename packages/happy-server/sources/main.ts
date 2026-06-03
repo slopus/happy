@@ -10,6 +10,7 @@ import { startDatabaseMetricsUpdater } from "@/app/monitoring/metrics2";
 import { initEncrypt } from "./modules/encrypt";
 import { initGithub } from "./modules/github";
 import { loadFiles } from "./storage/files";
+import { startPreviewIdleSweeper } from "./modules/preview/previewIdleSweeper";
 
 async function main() {
 
@@ -41,6 +42,16 @@ async function main() {
     await startMetricsServer();
     startDatabaseMetricsUpdater();
     startTimeout();
+    const previewIdleSweeper = startPreviewIdleSweeper({
+        enabled: process.env.PREVIEW_IDLE_SWEEPER_ENABLED === 'true',
+        intervalMs: Number(process.env.PREVIEW_IDLE_SWEEP_INTERVAL_MS ?? 300_000),
+        idleTimeoutMs: Number(process.env.PREVIEW_IDLE_TIMEOUT_MS ?? 1_800_000),
+    });
+    if (previewIdleSweeper) {
+        onShutdown('preview-idle-sweeper', async () => {
+            previewIdleSweeper.stop();
+        });
+    }
 
     //
     // Ready
