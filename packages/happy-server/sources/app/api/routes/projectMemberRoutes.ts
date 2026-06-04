@@ -17,17 +17,30 @@ export function projectMemberRoutes(app: Fastify) {
         preHandler: app.authenticate,
         schema: {
             params: z.object({ projectId: z.string() }),
-            body: z.object({
-                username: z.string(),
-                role: ProjectRoleSchema.default('editor')
-            })
+            // Either { username, role } (legacy) or { accountId, role }
+            // (preferred — web-ui orchestrates by happy accountId to avoid
+            // username-collision bugs).
+            body: z.union([
+                z.object({
+                    username: z.string(),
+                    role: ProjectRoleSchema.default('editor')
+                }),
+                z.object({
+                    accountId: z.string(),
+                    role: ProjectRoleSchema.default('editor')
+                })
+            ])
         }
     }, async (request, reply) => {
         const { projectId } = request.params;
-        const { username, role } = request.body;
+        const body = request.body;
+        const role = body.role;
+        const target = 'accountId' in body
+            ? { accountId: body.accountId }
+            : { username: body.username };
         const ctx = Context.create(request.userId);
 
-        const result = await projectMemberInvite(ctx, projectId, username, role);
+        const result = await projectMemberInvite(ctx, projectId, target, role);
         if (!result.ok) {
             return reply.code(errorToStatus(result.error)).send({ error: result.error });
         }
