@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionKill, forkAndSpawn, type ForkSource } from '@/sync/ops';
+import { machineResumeSession, sessionArchive, sessionDelete, sessionKill, sessionStopProcess, forkAndSpawn, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -103,6 +103,7 @@ export function useSessionQuickActions(
 ) {
     const {
         onAfterArchive,
+        onAfterDelete,
         onAfterCopySessionMetadata,
     } = options;
     const router = useRouter();
@@ -210,6 +211,40 @@ export function useSessionQuickActions(
         performArchive();
     }, [performArchive]);
 
+    const [deletingSession, performDelete] = useHappyAction(async () => {
+        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+
+        if (sessionStatus.isConnected || session.active) {
+            const killResult = await sessionStopProcess(session.id, session.metadata?.machineId);
+            if (!killResult.success) {
+                throw new HappyError(killResult.message || t('sessionInfo.failedToKillSession'), false);
+            }
+        }
+
+        const result = await sessionDelete(session.id);
+        if (!result.success) {
+            throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
+        }
+
+        storage.getState().deleteSession(session.id);
+        onAfterDelete?.();
+    });
+
+    const deleteSession = React.useCallback(() => {
+        Modal.alert(
+            t('sessionInfo.deleteSession'),
+            t('sessionInfo.deleteSessionWarning'),
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                    text: t('sessionInfo.deleteSession'),
+                    style: 'destructive',
+                    onPress: performDelete,
+                },
+            ],
+        );
+    }, [performDelete]);
+
     const resumeSession = React.useCallback(() => {
         performResume();
     }, [performResume]);
@@ -266,7 +301,8 @@ export function useSessionQuickActions(
             items.push({ id: 'copy-metadata-and-logs', icon: 'document-text-outline', label: t('sessionInfo.copyMetadata') + ' & Client Logs', onPress: copySessionMetadataAndLogs });
         }
 
-        items.push({ id: 'archive', icon: 'archive-outline', label: 'Archive', onPress: archiveSession, destructive: true });
+        items.push({ id: 'archive', icon: 'archive-outline', label: t('sessionInfo.archiveSession'), onPress: archiveSession, destructive: true });
+        items.push({ id: 'delete', icon: 'trash-outline', label: t('sessionInfo.deleteSession'), onPress: deleteSession, destructive: true });
 
         return items;
     }, [
@@ -275,6 +311,7 @@ export function useSessionQuickActions(
         canFork,
         copySessionMetadata,
         copySessionMetadataAndLogs,
+        deleteSession,
         forkSession,
         openDetails,
         openDuplicateSheet,
@@ -299,6 +336,8 @@ export function useSessionQuickActions(
         archivingSession,
         canArchive: true,
         canCopySessionMetadata,
+        deleteSession,
+        deletingSession,
         canResume: resumeAvailability.canResume,
         canShowResume: resumeAvailability.canShowResume,
         canFork,

@@ -11,7 +11,7 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionArchive, sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionArchive, sessionKill, sessionStopProcess, sessionDelete } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -184,19 +184,20 @@ function SessionInfoContent({ session }: { session: Session }) {
         // Prompt for worktree cleanup before killing (needs an active machine connection)
         await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
 
-        // Navigate back optimistically
-        router.back();
-        router.back();
-
-        // Kill session first if it's still active (best-effort)
         if (sessionStatus.isConnected || session.active) {
-            await sessionKill(session.id).catch(() => {});
+            const killResult = await sessionStopProcess(session.id, session.metadata?.machineId);
+            if (!killResult.success) {
+                throw new HappyError(killResult.message || t('sessionInfo.failedToKillSession'), false);
+            }
         }
 
         const result = await sessionDelete(session.id);
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
         }
+
+        router.back();
+        router.back();
     });
 
     const handleDeleteSession = useCallback(() => {

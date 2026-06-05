@@ -30,6 +30,15 @@ function kill(pid: number) {
   }
 }
 
+async function waitForFile(filePath: string, timeoutMs = 1000) {
+  const deadline = Date.now() + timeoutMs
+  while (!existsSync(filePath)) {
+    if (Date.now() >= deadline) return false
+    await sleep(25)
+  }
+  return true
+}
+
 describe('startServerProcess', () => {
   const dirs: string[] = []
   afterEach(() => {
@@ -68,9 +77,7 @@ describe('startServerProcess', () => {
       cwd: dir,
       env: { OUT: outPath, TEST_VAR: 'elastic_id=seen' },
     })
-    // Give the script a moment to fsync.
-    await sleep(150)
-    expect(existsSync(outPath)).toBe(true)
+    expect(await waitForFile(outPath)).toBe(true)
     expect(readFileSync(outPath, 'utf-8')).toBe('elastic_id=seen')
     kill(pid)
   })

@@ -15,6 +15,7 @@ import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
 import { terminalRelayHandler } from "./socket/terminalRelayHandler";
+import { db } from "@/storage/db";
 
 export function startSocket(app: Fastify) {
     const io = new Server(app.server, {
@@ -191,7 +192,7 @@ export function startSocket(app: Fastify) {
             socket.data.appState = data?.state === 'active' ? 'active' : 'background';
         });
 
-        socket.on('disconnect', () => {
+        socket.on('disconnect', async () => {
             websocketEventsCounter.inc({ event_type: 'disconnect', ...labels });
 
             // Cleanup connections
@@ -202,12 +203,25 @@ export function startSocket(app: Fastify) {
 
             // Broadcast daemon offline status
             if (connection.connectionType === 'machine-scoped') {
-                const machineActivity = buildMachineActivityEphemeral(connection.machineId, false, Date.now());
+                const disconnectedAt = Date.now();
+                const machineActivity = buildMachineActivityEphemeral(connection.machineId, false, disconnectedAt);
                 eventRouter.emitEphemeral({
                     userId,
                     payload: machineActivity,
                     recipientFilter: { type: 'user-scoped-only' }
                 });
+
+                try {
+                    const hasReplacementConnection = await eventRouter.hasMachineSocket(userId, connection.machineId);
+                    if (!hasReplacementConnection) {
+                        await db.machine.updateMany({
+                            where: { id: connection.machineId, accountId: userId, active: true },
+                            data: { active: false, lastActiveAt: new Date(disconnectedAt) },
+                        });
+                    }
+                } catch (error) {
+                    log({ module: 'websocket', level: 'error' }, `Failed to mark machine offline on disconnect: ${error}`);
+                }
             }
         });
 

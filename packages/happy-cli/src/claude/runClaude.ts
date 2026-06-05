@@ -656,8 +656,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
 
         // Apply AX Studio orchestration (start-from-planning workflow): if the
-        // workspace has `.ax/state.json`, prepend step guide + dynamic context
-        // to the user text and inject the AX base prompt into appendSystemPrompt.
+        // workspace has `.ax/state.json`, keep the visible user text clean and
+        // inject the step guide + dynamic context into appendSystemPrompt.
         // Returns null for non-AX workspaces — fall through to default flow.
         let pushText = message.content.text;
         try {
@@ -670,6 +670,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 pushText = ax.userText;
                 messageAppendSystemPrompt = ax.appendSystemPrompt;
                 currentAppendSystemPrompt = ax.appendSystemPrompt;
+                if (ax.step !== 'free' && messagePermissionMode === 'plan') {
+                    messagePermissionMode = 'acceptEdits';
+                }
                 logger.debug('[ax] orchestration applied to user message');
             }
         } catch (err) {

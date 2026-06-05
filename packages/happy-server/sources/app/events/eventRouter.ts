@@ -314,6 +314,11 @@ class EventRouter {
         });
     }
 
+    async hasMachineSocket(userId: string, machineId: string): Promise<boolean> {
+        const sockets = await this.io.in(`user:${userId}:machine:${machineId}`).fetchSockets();
+        return sockets.some(s => s.data.clientType === 'machine-scoped' && s.data.machineId === machineId);
+    }
+
     // === PRIVATE ROUTING LOGIC ===
 
     private getRoomsForFilter(userId: string, filter: RecipientFilter): string[] {

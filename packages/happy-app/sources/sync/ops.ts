@@ -127,6 +127,10 @@ interface SessionKillResponse {
     message: string;
 }
 
+interface MachineStopSessionResponse {
+    message: string;
+}
+
 // Response types for spawn session
 export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
@@ -707,6 +711,38 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
             success: false,
             message: error instanceof Error ? error.message : 'Unknown error'
         };
+    }
+}
+
+/**
+ * Stop the local agent process for a Happy session.
+ *
+ * Prefer the session RPC because it lets the process clean itself up. If that
+ * route is already gone, fall back to the machine daemon's tracked PID list.
+ */
+export async function sessionStopProcess(sessionId: string, machineId?: string): Promise<SessionKillResponse> {
+    const killResult = await sessionKill(sessionId);
+    if (killResult.success) {
+        return killResult;
+    }
+
+    if (!machineId) {
+        return killResult;
+    }
+
+    try {
+        await apiSocket.machineRPC<MachineStopSessionResponse, { sessionId: string }>(
+            machineId,
+            'stop-session',
+            { sessionId },
+        );
+        return { success: true, message: 'Session stopped' };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        if (/not found/i.test(message)) {
+            return { success: true, message: 'Session process was not running' };
+        }
+        return { success: false, message };
     }
 }
 
