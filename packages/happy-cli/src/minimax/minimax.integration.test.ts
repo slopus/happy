@@ -1,7 +1,7 @@
 /**
  * MiniMax Integration Tests
  *
- * Tests for MiniMax M2.7 integration via OpenCode ACP.
+ * Tests for MiniMax M3 integration via OpenCode ACP.
  *
  * Layer 1 rules (see agents.md):
  * - One primary integration test file per agent
@@ -25,23 +25,23 @@ describe.skipIf(!process.env[MINIMAX_API_KEY_ENV])(
     });
 
     it(
-      'basic turn: MiniMax M2.7 responds to a simple prompt',
+      'basic turn: MiniMax M3 responds to a simple prompt',
       { timeout: 60000 },
       async () => {
         // Integration test verifying that happy minimax produces a working session.
         // Full implementation is validated by running `happy minimax` end-to-end.
         // This test documents the requirement and is skipped without credentials.
         expect(process.env[MINIMAX_API_KEY_ENV]).toBeTruthy();
-        expect(DEFAULT_MINIMAX_MODEL).toBe('MiniMax-M2.7');
+        expect(DEFAULT_MINIMAX_MODEL).toBe('MiniMax-M3');
       }
     );
 
     it(
-      'model switching: supports MiniMax-M2.7-highspeed via --model flag',
+      'model switching: supports MiniMax-M2.7 and -highspeed via --model flag',
       { timeout: 30000 },
       async () => {
-        // The --model flag in `happy minimax --model MiniMax-M2.7-highspeed`
-        // passes OPENCODE_MODEL=minimax/MiniMax-M2.7-highspeed to opencode.
+        // The --model flag in `happy minimax --model MiniMax-M2.7`
+        // passes OPENCODE_MODEL=minimax/MiniMax-M2.7 to opencode.
         expect(process.env[MINIMAX_API_KEY_ENV]).toBeTruthy();
       }
     );
