@@ -15,6 +15,7 @@ import { initialMachineMetadata } from '@/daemon/run';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
+import { encodeBase64 } from '@/api/encryption';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { projectPath } from '@/projectPath';
@@ -498,13 +499,23 @@ export async function runAcp(opts: {
 
   if (response) {
     try {
-      await notifyDaemonSessionStarted(response.id, metadata);
+      await notifyDaemonSessionStarted(response.id, metadata, {
+        encryptionKey: encodeBase64(response.encryptionKey),
+        encryptionVariant: response.encryptionVariant,
+        seq: response.seq,
+        metadataVersion: response.metadataVersion,
+        agentStateVersion: response.agentStateVersion,
+      });
     } catch (error) {
       logger.debug('[acp] Failed to report session to daemon:', error);
     }
   }
 
   permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName);
+  // Drop any permission requests left in agent state from a previous CLI
+  // process that died while a tool prompt was open — see the matching
+  // call in claudeRemoteLauncher for the full rationale.
+  permissionHandler.reset('Previous CLI process exited before responding');
   const sessionManager = new AcpSessionManager();
   const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
   let currentPermissionMode: string | undefined;

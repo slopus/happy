@@ -1,10 +1,14 @@
 import { logger } from "@/ui/logger";
 
+export type PendingAttachment = { data: Uint8Array; mimeType: string; name: string };
+
 interface QueueItem<T> {
     message: string;
     mode: T;
     modeHash: string;
     isolate?: boolean; // If true, this message must be processed alone
+    /** Decoded image attachments owned by *this* message (per-message ownership). */
+    attachments?: PendingAttachment[];
 }
 
 /**
@@ -35,9 +39,10 @@ export class MessageQueue2<T> {
     }
 
     /**
-     * Push a message to the queue with a mode.
+     * Push a message to the queue with a mode and an optional list of
+     * attachments that travel with this message.
      */
-    push(message: string, mode: T): void {
+    push(message: string, mode: T, attachments?: PendingAttachment[]): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -49,7 +54,8 @@ export class MessageQueue2<T> {
             message,
             mode,
             modeHash,
-            isolate: false
+            isolate: false,
+            attachments,
         });
 
         // Trigger message handler if set
@@ -108,7 +114,7 @@ export class MessageQueue2<T> {
      * Clears any pending messages and ensures this message is never batched with others.
      * Used for special commands that require dedicated processing.
      */
-    pushIsolateAndClear(message: string, mode: T): void {
+    pushIsolateAndClear(message: string, mode: T, attachments?: PendingAttachment[]): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -123,7 +129,8 @@ export class MessageQueue2<T> {
             message,
             mode,
             modeHash,
-            isolate: true
+            isolate: true,
+            attachments,
         });
 
         // Trigger message handler if set
@@ -221,7 +228,7 @@ export class MessageQueue2<T> {
      * Wait for messages and return all messages with the same mode as a single string
      * Returns { message: string, mode: T } or null if aborted/closed
      */
-    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string } | null> {
+    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string, attachments?: PendingAttachment[] } | null> {
         // If we have messages, return them immediately
         if (this.queue.length > 0) {
             return this.collectBatch();
@@ -245,13 +252,14 @@ export class MessageQueue2<T> {
     /**
      * Collect a batch of messages with the same mode, respecting isolation requirements
      */
-    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean } | null {
+    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean, attachments?: PendingAttachment[] } | null {
         if (this.queue.length === 0) {
             return null;
         }
 
         const firstItem = this.queue[0];
         const sameModeMessages: string[] = [];
+        const collectedAttachments: PendingAttachment[] = [];
         let mode = firstItem.mode;
         let isolate = firstItem.isolate ?? false;
         const targetModeHash = firstItem.modeHash;
@@ -260,6 +268,7 @@ export class MessageQueue2<T> {
         if (firstItem.isolate) {
             const item = this.queue.shift()!;
             sameModeMessages.push(item.message);
+            if (item.attachments) collectedAttachments.push(...item.attachments);
             logger.debug(`[MessageQueue2] Collected isolated message with mode hash: ${targetModeHash}`);
         } else {
             // Collect all messages with the same mode until we hit an isolated message
@@ -268,6 +277,7 @@ export class MessageQueue2<T> {
                 !this.queue[0].isolate) {
                 const item = this.queue.shift()!;
                 sameModeMessages.push(item.message);
+                if (item.attachments) collectedAttachments.push(...item.attachments);
             }
             logger.debug(`[MessageQueue2] Collected batch of ${sameModeMessages.length} messages with mode hash: ${targetModeHash}`);
         }
@@ -279,7 +289,8 @@ export class MessageQueue2<T> {
             message: combinedMessage,
             mode,
             hash: targetModeHash,
-            isolate
+            isolate,
+            attachments: collectedAttachments.length > 0 ? collectedAttachments : undefined,
         };
     }
 

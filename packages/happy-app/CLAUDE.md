@@ -5,74 +5,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ### Development
-- `yarn start` - Start the Expo development server
-- `yarn ios` - Run the app on iOS simulator
-- `yarn android` - Run the app on Android emulator
-- `yarn web` - Run the app in web browser
-- `yarn prebuild` - Generate native iOS and Android directories
-- `yarn typecheck` - Run TypeScript type checking after all changes
+- `pnpm start` - Start the Expo development server
+- `pnpm ios` - Run the app on iOS simulator
+- `pnpm android` - Run the app on Android emulator
+- `pnpm web` - Run the app in web browser
+- `pnpm prebuild` - Generate native iOS and Android directories
+- `pnpm typecheck` - Run TypeScript type checking after all changes
 
 ### macOS Desktop (Tauri)
-- `yarn tauri:dev` - Run macOS desktop app with hot reload
-- `yarn tauri:build:dev` - Build development variant
-- `yarn tauri:build:preview` - Build preview variant
-- `yarn tauri:build:production` - Build production variant
+- `pnpm tauri:dev` - Run macOS desktop app with hot reload
+- `pnpm tauri:build:dev` - Build development variant
+- `pnpm tauri:build:preview` - Build preview variant
+- `pnpm tauri:build:production` - Build production variant
 
 ### Testing
-- `yarn test` - Run tests in watch mode (Vitest)
+- `pnpm test` - Run tests in watch mode (Vitest)
 - No existing tests in the codebase yet
 
 ### Production
-- `yarn ota` - Deploy over-the-air updates via EAS Update to production branch
-
-## Changelog Management
-
-The app includes an in-app changelog feature that displays version history to users. When making changes:
-
-### Adding Changelog Entries
-
-1. **Always update the latest version** in `/CHANGELOG.md` when adding new features or fixes
-2. **Format**: Each version follows this structure:
-   ```markdown
-   ## Version [NUMBER] - YYYY-MM-DD
-   - Brief description of change/feature/fix
-   - Another change description
-   - Keep descriptions user-friendly and concise
-   ```
-
-3. **Version numbering**: Increment the version number for each release (1, 2, 3, etc.)
-4. **Date format**: Use ISO date format (YYYY-MM-DD)
-
-### Regenerating Changelog Data
-
-After updating CHANGELOG.md, run:
-```bash
-npx tsx sources/scripts/parseChangelog.ts
-```
-
-This generates `sources/changelog/changelog.json` which is used by the app.
-
-### Best Practices
-
-- Write changelog entries from the user's perspective
-- Start each entry with a verb (Added, Fixed, Improved, Updated, Removed)
-- Group related changes together
-- Keep descriptions concise but informative
-- Focus on what changed, not technical implementation details
-- The changelog is automatically parsed during `yarn ota` and `yarn ota:production`
-- Always improve and expand basic changelog descriptions to be more user-friendly and informative
-- Include a brief summary paragraph before bullet points for each version explaining the theme of the update
-
-### Example Entry
-
-```markdown
-## Version 4 - 2025-01-26
-- Added dark mode support across all screens
-- Fixed navigation issues on tablet devices  
-- Improved app startup performance by 30%
-- Updated authentication flow for better security
-- Removed deprecated API endpoints
-```
+- `pnpm ota` - Deploy over-the-air updates via EAS Update to production branch
 
 ## Architecture Overview
 
@@ -107,7 +58,7 @@ sources/
 ### Development Guidelines
 
 - Use **4 spaces** for indentation
-- Use **yarn** instead of npm for package management
+- Use **pnpm** instead of npm for package management
 - Path alias `@/*` maps to `./sources/*`
 - TypeScript strict mode is enabled - ensure all code is properly typed
 - Follow existing component patterns when creating new UI components
@@ -116,7 +67,7 @@ sources/
 - When setting screen parameters ALWAYS set them in _layout.tsx if possible this avoids layout shifts
 - **Never use Alert module from React Native, always use @sources/modal/index.ts instead**
 - **Always apply layout width constraints** from `@/components/layout` to full-screen ScrollViews and content containers for responsive design across device sizes
-- Always run `yarn typecheck` after all changes to ensure type safety
+- Always run `pnpm typecheck` after all changes to ensure type safety
 
 ### Internationalization (i18n) Guidelines
 

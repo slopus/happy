@@ -11,7 +11,7 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionArchive, sessionKill, sessionDelete } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -21,7 +21,7 @@ import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
-import { copySessionMetadataToClipboard } from '@/utils/copySessionMetadataToClipboard';
+import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
 import { HappyError } from '@/utils/errors';
 
 // Animated status dot component
@@ -131,10 +131,14 @@ function SessionInfoContent({ session }: { session: Session }) {
     const sessionStatus = useSessionStatus(session);
     const {
         canShowResume,
+        canFork,
+        forking,
+        forkSession,
+        openDuplicateSheet,
         resumeSession,
         resumeSessionSubtitle,
     } = useSessionQuickActions(session);
-    
+
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
 
@@ -152,14 +156,19 @@ function SessionInfoContent({ session }: { session: Session }) {
         void copySessionMetadataToClipboard(session);
     }, [session]);
 
+    const handleCopyMetadataAndLogs = useCallback(() => {
+        void copySessionMetadataAndLogsToClipboard(session);
+    }, [session]);
+
     // Use HappyAction for archiving - it handles errors automatically
     const [archivingSession, performArchive] = useHappyAction(async () => {
         // Prompt for worktree cleanup before killing (needs an active machine connection)
         await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
 
-        const result = await sessionKill(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+        // Try to kill the CLI process; if it's already dead, force-archive via server
+        const killResult = await sessionKill(session.id);
+        if (!killResult.success) {
+            await sessionArchive(session.id);
         }
         // Success - navigate back
         router.back();
@@ -355,14 +364,37 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={resumeSession}
                         />
                     )}
-                    {sessionStatus.isConnected && (
+                    {canFork && (
                         <Item
-                            title={t('sessionInfo.archiveSession')}
-                            subtitle={t('sessionInfo.archiveSessionSubtitle')}
-                            icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
-                            onPress={handleArchiveSession}
+                            title={t('session.forkAction')}
+                            subtitle={t('session.forkSubtitle')}
+                            icon={<Ionicons name="git-branch-outline" size={29} color="#007AFF" />}
+                            onPress={forkSession}
+                            loading={forking}
                         />
                     )}
+                    {canFork && (
+                        <Item
+                            title={t('session.duplicateAction')}
+                            subtitle={t('session.duplicateSubtitle')}
+                            icon={<Ionicons name="time-outline" size={29} color="#007AFF" />}
+                            onPress={openDuplicateSheet}
+                        />
+                    )}
+                    {session.metadata?.parentSessionId && (
+                        <Item
+                            title={t('session.forkedFromLabel')}
+                            subtitle={t('session.forkedFromSubtitle')}
+                            icon={<Ionicons name="return-up-back-outline" size={29} color="#5856D6" />}
+                            onPress={() => router.push(`/session/${session.metadata!.parentSessionId}`)}
+                        />
+                    )}
+                    <Item
+                        title={t('sessionInfo.archiveSession')}
+                        subtitle={t('sessionInfo.archiveSessionSubtitle')}
+                        icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
+                        onPress={handleArchiveSession}
+                    />
                     <Item
                         title={t('sessionInfo.deleteSession')}
                         subtitle={t('sessionInfo.deleteSessionSubtitle')}
@@ -453,6 +485,11 @@ function SessionInfoContent({ session }: { session: Session }) {
                             title={t('sessionInfo.copyMetadata')}
                             icon={<Ionicons name="copy-outline" size={29} color="#007AFF" />}
                             onPress={handleCopyMetadata}
+                        />
+                        <Item
+                            title={t('sessionInfo.copyMetadata') + '\n& Client Logs'}
+                            icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
+                            onPress={handleCopyMetadataAndLogs}
                         />
                     </ItemGroup>
                 )}

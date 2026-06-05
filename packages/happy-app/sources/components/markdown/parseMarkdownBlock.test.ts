@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { parseMarkdown } from './parseMarkdown';
 
+const spans = (text: string) => text ? [{ styles: [], text, url: null }] : [];
+
 describe('parseMarkdownBlock - table parsing', () => {
 
     it('parses a standard table without blank lines', () => {
@@ -14,8 +16,8 @@ describe('parseMarkdownBlock - table parsing', () => {
         expect(blocks).toHaveLength(1);
         expect(blocks[0]).toEqual({
             type: 'table',
-            headers: ['A', 'B'],
-            rows: [['1', '2']],
+            headers: [spans('A'), spans('B')],
+            rows: [[spans('1'), spans('2')]],
         });
     });
 
@@ -36,8 +38,8 @@ describe('parseMarkdownBlock - table parsing', () => {
         expect(tableBlocks).toHaveLength(1);
         expect(tableBlocks[0]).toEqual({
             type: 'table',
-            headers: ['A', 'B'],
-            rows: [['1', '2'], ['3', '4']],
+            headers: [spans('A'), spans('B')],
+            rows: [[spans('1'), spans('2')], [spans('3'), spans('4')]],
         });
     });
 
@@ -52,8 +54,8 @@ describe('parseMarkdownBlock - table parsing', () => {
         expect(blocks).toHaveLength(1);
         expect(blocks[0]).toEqual({
             type: 'table',
-            headers: ['', 'Header1', 'Header2'],
-            rows: [['Row1', 'a', 'b']],
+            headers: [spans(''), spans('Header1'), spans('Header2')],
+            rows: [[spans('Row1'), spans('a'), spans('b')]],
         });
     });
 
@@ -81,10 +83,10 @@ describe('parseMarkdownBlock - table parsing', () => {
 
         // Empty first cell should be preserved
         expect(table.headers).toHaveLength(3);
-        expect(table.headers[0]).toBe('');
+        expect(table.headers[0]).toEqual([]);
 
         expect(table.rows).toHaveLength(3);
-        expect(table.rows[0][0]).toBe('Price');
+        expect(table.rows[0][0]).toEqual(spans('Price'));
     });
 
     it('stops table collection at non-blank, non-pipe lines', () => {

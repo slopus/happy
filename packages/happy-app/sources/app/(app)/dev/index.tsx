@@ -13,7 +13,7 @@ import { sync } from '@/sync/sync';
 import { getServerUrl, setServerUrl, validateServerUrl, getLogServerUrl, setLogServerUrl } from '@/sync/serverConfig';
 import { Switch } from '@/components/Switch';
 import { useUnistyles } from 'react-native-unistyles';
-import { setLastViewedVersion, getLatestVersion } from '@/changelog';
+import { setLastViewedTitle } from '@/changelog';
 
 export default function DevScreen() {
     const router = useRouter();
@@ -334,10 +334,7 @@ export default function DevScreen() {
                     subtitle="Show 'What's New' banner again"
                     icon={<Ionicons name="sparkles-outline" size={28} color="#007AFF" />}
                     onPress={() => {
-                        // Set to latest - 1 so it shows as unread
-                        // (setting to 0 triggers first-install logic that auto-marks as read)
-                        const latest = getLatestVersion();
-                        setLastViewedVersion(Math.max(0, latest - 1));
+                        setLastViewedTitle('');
                         Modal.alert('Done', 'Changelog reset. Restart app to see the banner.');
                     }}
                 />

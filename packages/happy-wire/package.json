@@ -48,7 +48,8 @@
     "vitest": "^3.2.4"
   },
   "publishConfig": {
+    "access": "public",
     "registry": "https://registry.npmjs.org"
   },
-  "packageManager": "yarn@1.22.22"
+  "packageManager": "pnpm@10.11.0"
 }

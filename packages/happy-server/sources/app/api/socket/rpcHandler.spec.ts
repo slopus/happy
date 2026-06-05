@@ -31,12 +31,21 @@ class FakeSocket {
     }
 }
 
+function fakeIo(targets: FakeSocket[]) {
+    return {
+        in: vi.fn(() => ({
+            timeout: vi.fn(() => ({
+                fetchSockets: vi.fn(async () => targets),
+            })),
+        })),
+    };
+}
+
 describe('rpcHandler relay timeout', () => {
     it('uses caller-provided timeoutMs when forwarding rpc-request to the target socket', async () => {
         const caller = new FakeSocket('caller');
         const target = new FakeSocket('target');
-        const listeners = new Map<string, FakeSocket>([['machine-1:bash', target]]);
-        rpcHandler('u1', caller as any, listeners as any);
+        rpcHandler('u1', caller as any, fakeIo([target]) as any);
 
         const callback = vi.fn();
         await caller.trigger('rpc-call', {
@@ -55,8 +64,7 @@ describe('rpcHandler relay timeout', () => {
     it('keeps the legacy 30s relay timeout when timeoutMs is not provided', async () => {
         const caller = new FakeSocket('caller');
         const target = new FakeSocket('target');
-        const listeners = new Map<string, FakeSocket>([['machine-1:bash', target]]);
-        rpcHandler('u1', caller as any, listeners as any);
+        rpcHandler('u1', caller as any, fakeIo([target]) as any);
 
         await caller.trigger('rpc-call', { method: 'machine-1:bash', params: 'encrypted' }, vi.fn());
 

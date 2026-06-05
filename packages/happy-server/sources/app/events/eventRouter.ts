@@ -1,4 +1,4 @@
-import { Socket } from "socket.io";
+import { Server, Socket } from "socket.io";
 import { log } from "@/utils/log";
 import { GitHubProfile } from "@/app/api/types";
 import { AccountProfile } from "@/types";
@@ -12,12 +12,14 @@ export interface SessionScopedConnection {
     socket: Socket;
     userId: string;
     sessionId: string;
+    happyClient?: string;
 }
 
 export interface UserScopedConnection {
     connectionType: 'user-scoped';
     socket: Socket;
     userId: string;
+    happyClient?: string;
 }
 
 export interface MachineScopedConnection {
@@ -25,6 +27,7 @@ export interface MachineScopedConnection {
     socket: Socket;
     userId: string;
     machineId: string;
+    happyClient?: string;
 }
 
 export type ClientConnection = SessionScopedConnection | UserScopedConnection | MachineScopedConnection;
@@ -108,6 +111,9 @@ export type UpdateEvent = {
     };
     activeAt?: number;
 } | {
+    type: 'delete-machine';
+    machineId: string;
+} | {
     type: 'new-artifact';
     artifactId: string;
     seq: number;
@@ -180,6 +186,13 @@ export type EphemeralEvent = {
     machineId: string;
     online: boolean;
     timestamp: number;
+} | {
+    type: 'session-event';
+    sessionId: string;
+    kind: 'done' | 'permission' | 'question';
+    title: string;
+    body: string;
+    timestamp: number;
 };
 
 // === EVENT PAYLOAD TYPES ===
@@ -202,15 +215,37 @@ export interface EphemeralPayload {
 // === EVENT ROUTER CLASS ===
 
 class EventRouter {
+    private io!: Server;
     private userConnections = new Map<string, Set<ClientConnection>>();
 
-    // === CONNECTION MANAGEMENT ===
+    // === INITIALIZATION ===
+
+    init(io: Server): void {
+        this.io = io;
+    }
+
+    // === CONNECTION MANAGEMENT (via Socket.IO rooms) ===
 
     addConnection(userId: string, connection: ClientConnection): void {
         if (!this.userConnections.has(userId)) {
             this.userConnections.set(userId, new Set());
         }
         this.userConnections.get(userId)!.add(connection);
+
+        const socket = connection.socket;
+        socket.join(`user:${userId}`);
+
+        switch (connection.connectionType) {
+            case 'user-scoped':
+                socket.join(`user:${userId}:user-scoped`);
+                break;
+            case 'session-scoped':
+                socket.join(`user:${userId}:session:${connection.sessionId}`);
+                break;
+            case 'machine-scoped':
+                socket.join(`user:${userId}:machine:${connection.machineId}`);
+                break;
+        }
     }
 
     removeConnection(userId: string, connection: ClientConnection): void {
@@ -221,6 +256,7 @@ class EventRouter {
                 this.userConnections.delete(userId);
             }
         }
+        // Socket.IO automatically removes sockets from all rooms on disconnect
     }
 
     getConnections(userId: string): Set<ClientConnection> | undefined {
@@ -259,44 +295,39 @@ class EventRouter {
         });
     }
 
+    // === PRESENCE QUERIES ===
+
+    /**
+     * Returns true if the user has any non-machine socket that hasn't
+     * reported `app-state: background`.  Old clients that never send
+     * `app-state` are treated as active (connected = present).
+     *
+     * Uses fetchSockets() which works cross-replica via Redis streams adapter.
+     */
+    async hasActiveNonMachineSocket(userId: string): Promise<boolean> {
+        const sockets = await this.io.in(`user:${userId}`).fetchSockets();
+        return sockets.some(s => {
+            if (s.data.clientType === 'machine-scoped') return false;
+            // No app-state yet → old client or just connected; assume active
+            const appState = s.data.appState as string | undefined;
+            return appState !== 'background';
+        });
+    }
+
     // === PRIVATE ROUTING LOGIC ===
 
-    private shouldSendToConnection(
-        connection: ClientConnection,
-        filter: RecipientFilter
-    ): boolean {
+    private getRoomsForFilter(userId: string, filter: RecipientFilter): string[] {
         switch (filter.type) {
-            case 'all-interested-in-session':
-                // Send to session-scoped with matching session + all user-scoped
-                if (connection.connectionType === 'session-scoped') {
-                    if (connection.sessionId !== filter.sessionId) {
-                        return false;  // Wrong session
-                    }
-                } else if (connection.connectionType === 'machine-scoped') {
-                    return false;  // Machines don't need session updates
-                }
-                // user-scoped always gets it
-                return true;
-
-            case 'user-scoped-only':
-                return connection.connectionType === 'user-scoped';
-
-            case 'machine-scoped-only':
-                // Send to user-scoped (mobile/web needs all machine updates) + only the specific machine
-                if (connection.connectionType === 'user-scoped') {
-                    return true;
-                }
-                if (connection.connectionType === 'machine-scoped') {
-                    return connection.machineId === filter.machineId;
-                }
-                return false;  // session-scoped doesn't need machine updates
-
             case 'all-user-authenticated-connections':
-                // Send to all connection types (default behavior)
-                return true;
-
-            default:
-                return false;
+                return [`user:${userId}`];
+            case 'user-scoped-only':
+                return [`user:${userId}:user-scoped`];
+            case 'all-interested-in-session':
+                // Union: session watchers + user-scoped (Socket.IO deduplicates)
+                return [`user:${userId}:session:${filter.sessionId}`, `user:${userId}:user-scoped`];
+            case 'machine-scoped-only':
+                // Union: specific machine + user-scoped
+                return [`user:${userId}:machine:${filter.machineId}`, `user:${userId}:user-scoped`];
         }
     }
 
@@ -307,24 +338,12 @@ class EventRouter {
         recipientFilter: RecipientFilter;
         skipSenderConnection?: ClientConnection;
     }): void {
-        const connections = this.userConnections.get(params.userId);
-        if (!connections) {
-            log({ module: 'websocket', level: 'warn' }, `No connections found for user ${params.userId}`);
-            return;
-        }
+        const rooms = this.getRoomsForFilter(params.userId, params.recipientFilter);
 
-        for (const connection of connections) {
-            // Skip message echo
-            if (params.skipSenderConnection && connection === params.skipSenderConnection) {
-                continue;
-            }
-
-            // Apply recipient filter
-            if (!this.shouldSendToConnection(connection, params.recipientFilter)) {
-                continue;
-            }
-
-            connection.socket.emit(params.eventName, params.payload);
+        if (params.skipSenderConnection) {
+            params.skipSenderConnection.socket.broadcast.to(rooms).emit(params.eventName, params.payload);
+        } else {
+            this.io.to(rooms).emit(params.eventName, params.payload);
         }
     }
 }
@@ -482,6 +501,18 @@ export function buildUpdateMachineUpdate(machineId: string, updateSeq: number, u
     };
 }
 
+export function buildDeleteMachineUpdate(machineId: string, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'delete-machine',
+            machineId
+        },
+        createdAt: Date.now()
+    };
+}
+
 export function buildSessionActivityEphemeral(sessionId: string, active: boolean, activeAt: number, thinking?: boolean): EphemeralPayload {
     return {
         type: 'activity',
@@ -517,6 +548,22 @@ export function buildMachineStatusEphemeral(machineId: string, online: boolean):
         type: 'machine-status',
         machineId,
         online,
+        timestamp: Date.now()
+    };
+}
+
+/**
+ * Session-level lifecycle event (Claude finished, needs permission, asks question).
+ * Emitted alongside the mobile push so other clients (e.g. web) can surface a
+ * tab-title counter or inline indicator without parsing every encrypted message.
+ */
+export function buildSessionEventEphemeral(sessionId: string, kind: 'done' | 'permission' | 'question', title: string, body: string): EphemeralPayload {
+    return {
+        type: 'session-event',
+        sessionId,
+        kind,
+        title,
+        body,
         timestamp: Date.now()
     };
 }

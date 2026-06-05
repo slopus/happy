@@ -23,6 +23,10 @@ export async function authGetToken(secret: Uint8Array): Promise<string> {
     challenge: encodeBase64(challenge),
     publicKey: encodeBase64(publicKey),
     signature: encodeBase64(signature)
+  }, {
+    headers: {
+      'X-Happy-Client': `cli/${configuration.currentCliVersion}`
+    }
   });
 
   if (!response.data.success || !response.data.token) {

@@ -34,6 +34,7 @@ export function artifactsRoutes(app: Fastify) {
             const artifacts = await db.artifact.findMany({
                 where: { accountId: userId },
                 orderBy: { updatedAt: 'desc' },
+                take: 200,
                 select: {
                     id: true,
                     header: true,

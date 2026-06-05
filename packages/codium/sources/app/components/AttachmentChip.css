@@ -1,0 +1,90 @@
+.attachment-chip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 9px 5px 5px;
+    border-radius: 12px;
+    background: var(--color-hover);
+    border: 1px solid transparent;
+    max-width: 260px;
+    min-width: 0;
+}
+
+html.electron-light .attachment-chip {
+    border-color: var(--color-border-light);
+}
+
+.attachment-chip--image {
+    padding: 4px 9px 4px 4px;
+}
+
+.attachment-chip__preview {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--color-button-bg);
+    color: var(--color-text-foreground-secondary);
+    overflow: hidden;
+}
+
+.attachment-chip__preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.attachment-chip__meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 1px;
+}
+
+.attachment-chip__name {
+    font-size: var(--text-sm);
+    color: var(--color-text-foreground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+
+.attachment-chip__ext {
+    font-size: var(--text-xs);
+    color: var(--color-text-foreground-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.attachment-chip__close {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-text-foreground-tertiary);
+    opacity: 0.6;
+    transition:
+        opacity 120ms ease,
+        background 120ms ease,
+        color 120ms ease;
+}
+
+.attachment-chip:hover .attachment-chip__close,
+.attachment-chip__close:focus-visible {
+    opacity: 1;
+}
+
+.attachment-chip__close:hover {
+    background: var(--color-hover);
+    color: var(--color-text-foreground);
+}

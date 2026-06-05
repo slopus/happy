@@ -5,7 +5,7 @@
  * Environment files should be loaded using Node's --env-file flag
  */
 
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import packageJson from '../package.json'
@@ -23,16 +23,13 @@ class Configuration {
   public readonly daemonStateFile: string
   public readonly daemonLockFile: string
   public readonly portRegistryFile: string
+  public readonly sessionsFile: string
   public readonly currentCliVersion: string
 
   public readonly isExperimentalEnabled: boolean
   public readonly disableCaffeinate: boolean
 
   constructor() {
-    // Server configuration - priority: parameter > environment > default
-    this.serverUrl = process.env.HAPPY_SERVER_URL || 'https://api.cluster-fluster.com'
-    this.webappUrl = process.env.HAPPY_WEBAPP_URL || 'https://app.happy.engineering'
-
     // Check if we're running as daemon based on process args
     const args = process.argv.slice(2)
     this.isDaemonProcess = args.length >= 2 && args[0] === 'daemon' && (args[1] === 'start-sync')
@@ -52,6 +49,20 @@ class Configuration {
     this.daemonStateFile = join(this.happyHomeDir, 'daemon.state.json')
     this.daemonLockFile = join(this.happyHomeDir, 'daemon.state.json.lock')
     this.portRegistryFile = join(this.happyHomeDir, 'port-registry.json')
+    this.sessionsFile = join(this.happyHomeDir, 'sessions.json')
+
+    // URL precedence (both): HAPPY_*_URL env > settings.<key> > default.
+    // Settings are read sync here (avoid circular import with persistence.ts).
+    // webappUrl must follow the same chain as serverUrl, otherwise `happy server`
+    // self-host points the API at localhost but auth still opens the prod webapp.
+    this.serverUrl =
+      process.env.HAPPY_SERVER_URL ||
+      readSettingsStringSync(this.settingsFile, 'serverUrl') ||
+      'https://api.cluster-fluster.com'
+    this.webappUrl =
+      process.env.HAPPY_WEBAPP_URL ||
+      readSettingsStringSync(this.settingsFile, 'webappUrl') ||
+      'https://app.happy.engineering'
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
     this.disableCaffeinate = ['true', '1', 'yes'].includes(process.env.HAPPY_DISABLE_CAFFEINATE?.toLowerCase() || '');
@@ -71,6 +82,17 @@ class Configuration {
     if (!existsSync(this.logsDir)) {
       mkdirSync(this.logsDir, { recursive: true })
     }
+  }
+}
+
+function readSettingsStringSync(settingsFile: string, key: 'serverUrl' | 'webappUrl'): string | undefined {
+  try {
+    if (!existsSync(settingsFile)) return undefined
+    const raw = JSON.parse(readFileSync(settingsFile, 'utf8'))
+    const value = raw?.[key]
+    return typeof value === 'string' && value.length > 0 ? value : undefined
+  } catch {
+    return undefined
   }
 }
 

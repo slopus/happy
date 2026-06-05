@@ -49,7 +49,8 @@
  * middleman steps that were providing workarounds for Windows vs Linux differences.
  */
 
-import { spawn, SpawnOptions, type ChildProcess } from 'child_process';
+import { SpawnOptions, type ChildProcess } from 'child_process';
+import { spawn as crossSpawn } from 'cross-spawn';
 import { join } from 'node:path';
 import { projectPath } from '@/projectPath';
 import { logger } from '@/ui/logger';
@@ -101,7 +102,11 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
   }
   
   const runtime = isBun() ? 'bun' : 'node';
-  return spawn(runtime, nodeArgs, {
+  // Use cross-spawn so `node` resolves to `node.exe` on Windows.
+  // Since Node's CVE-2024-27980 hardening, child_process.spawn('node', ...)
+  // on Windows no longer falls back to appending `.exe`, producing ENOENT
+  // even when node is on PATH (issue #1082).
+  return crossSpawn(runtime, nodeArgs, {
     windowsHide: true,
     ...options,
   });

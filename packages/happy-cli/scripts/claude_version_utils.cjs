@@ -33,16 +33,52 @@ function resolvePathSafe(filePath) {
 }
 
 /**
+ * Resolve the Claude Code entrypoint inside a package directory.
+ *
+ * Prior to @anthropic-ai/claude-code@2.1.113 the package shipped a JS
+ * entrypoint (`cli.js`) at the root. Starting with 2.1.113 the package
+ * ships a platform-specific native binary declared in package.json `bin`
+ * (e.g. `bin/claude.exe` on Windows, `bin/claude` elsewhere) and no
+ * longer contains `cli.js`.
+ *
+ * @param {string} pkgDir - Path to the @anthropic-ai/claude-code directory
+ * @returns {string|null} Path to the entrypoint, or null if not resolvable
+ */
+function resolveClaudeEntrypoint(pkgDir) {
+    // Legacy: cli.js at package root (< 2.1.113)
+    const legacyCliPath = path.join(pkgDir, 'cli.js');
+    if (fs.existsSync(legacyCliPath)) {
+        return legacyCliPath;
+    }
+
+    // Current: native binary declared via package.json "bin" (>= 2.1.113)
+    const pkgJsonPath = path.join(pkgDir, 'package.json');
+    if (!fs.existsSync(pkgJsonPath)) {
+        return null;
+    }
+    try {
+        const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+        const binRel = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.claude;
+        if (!binRel) return null;
+        const binPath = path.join(pkgDir, binRel);
+        if (fs.existsSync(binPath)) {
+            return binPath;
+        }
+    } catch (e) {
+        // Malformed package.json — treat as not found
+    }
+    return null;
+}
+
+/**
  * Find path to npm globally installed Claude Code CLI
- * @returns {string|null} Path to cli.js or null if not found
+ * @returns {string|null} Path to cli.js or native binary, or null if not found
  */
 function findNpmGlobalCliPath() {
     try {
         const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
-        const globalCliPath = path.join(globalRoot, '@anthropic-ai', 'claude-code', 'cli.js');
-        if (fs.existsSync(globalCliPath)) {
-            return globalCliPath;
-        }
+        const pkgDir = path.join(globalRoot, '@anthropic-ai', 'claude-code');
+        return resolveClaudeEntrypoint(pkgDir);
     } catch (e) {
         // npm root -g failed
     }
@@ -80,11 +116,12 @@ function findClaudeInPath() {
             const isExecutable = resolvedPath.endsWith('.js') || resolvedPath.endsWith('.cjs') || resolvedPath.endsWith('.exe');
             if (!isExecutable) {
                 const shimDir = path.dirname(claudePath);
-                const cliJsPath = path.join(shimDir, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
-                if (fs.existsSync(cliJsPath)) {
-                    return { path: cliJsPath, source: 'npm' };
+                const pkgDir = path.join(shimDir, 'node_modules', '@anthropic-ai', 'claude-code');
+                const entrypoint = resolveClaudeEntrypoint(pkgDir);
+                if (entrypoint) {
+                    return { path: entrypoint, source: 'npm' };
                 }
-                // Shim found but no cli.js next to it — skip and let other finders handle it
+                // Shim found but no resolvable entrypoint — skip and let other finders handle it
                 return null;
             }
 
@@ -493,8 +530,13 @@ function getClaudeCliPath() {
  */
 function runClaudeCli(cliPath) {
     const { pathToFileURL } = require('url');
-    const { spawn } = require('child_process');
-    
+    // Use cross-spawn (already a dependency, used everywhere else in this repo
+    // for the same reason) so Windows handles `.cmd`/`.bat`/extensionless npm
+    // shims correctly instead of failing with `spawn UNKNOWN` / errno -4094.
+    // For a plain `.exe` path it behaves identically to child_process.spawn.
+    // See issue #551 and the CVE-2024-27980 hardening notes elsewhere.
+    const spawn = require('cross-spawn');
+
     // Check if it's a JavaScript file (.js or .cjs) or a binary file
     const isJsFile = cliPath.endsWith('.js') || cliPath.endsWith('.cjs');
 
@@ -502,19 +544,66 @@ function runClaudeCli(cliPath) {
         // JavaScript file - use import to keep interceptors working
         const importUrl = pathToFileURL(cliPath).href;
         import(importUrl);
-    } else {
-        // Binary file (e.g., Homebrew installation) - spawn directly
-        // Note: Interceptors won't work with binary files, but that's acceptable
-        // as binary files are self-contained and don't need interception
-        const args = process.argv.slice(2);
-        const child = spawn(cliPath, args, {
-            stdio: 'inherit',
-            env: process.env
-        });
-        child.on('exit', (code) => {
-            process.exit(code || 0);
-        });
+        return;
     }
+
+    // Binary file (e.g., native installer >= 2.1.113, Homebrew). Spawn it as a
+    // child of the launcher and act as a signal trampoline.
+    //
+    // CRITICAL: when happy-cli aborts the launcher (terminal→remote switch),
+    // Node sends SIGTERM only to the immediate child (this launcher). Without
+    // signal forwarding, the spawned binary becomes an orphan adopted by init
+    // and *keeps reading the inherited TTY*. After a remote→local switch a
+    // fresh launcher + binary is spawned, so two claude binaries end up
+    // sharing the same stdin/stdout — visibly two cursors and garbled echo.
+    // (Investigation: ps showed orphan claude.exe with parent pid 1 still
+    // attached to the same pts as the live one.)
+    const args = process.argv.slice(2);
+    const child = spawn(cliPath, args, {
+        stdio: 'inherit',
+        env: process.env
+    });
+
+    let forwarded = false;
+    const forwardAndDetach = (sig) => {
+        if (forwarded) return;
+        forwarded = true;
+        try { child.kill(sig); } catch (_) { /* child may already be gone */ }
+    };
+
+    // Forward common termination signals to the spawned binary.
+    const signalsToForward = ['SIGTERM', 'SIGINT', 'SIGHUP', 'SIGQUIT'];
+    for (const sig of signalsToForward) {
+        process.on(sig, () => forwardAndDetach(sig));
+    }
+
+    // Best-effort: if the launcher process is exiting for any reason and the
+    // child is still alive, take it down too instead of leaving an orphan.
+    process.on('exit', () => {
+        if (child.exitCode === null && !child.killed) {
+            try { child.kill('SIGTERM'); } catch (_) { /* ignore */ }
+        }
+    });
+
+    child.on('exit', (code, signal) => {
+        // Mirror the binary's exit so happy-cli sees the same status. If the
+        // child exited because of a signal, re-raise it on ourselves so the
+        // parent's child.on('exit') reports a signal exit and not a clean code.
+        if (signal) {
+            try {
+                process.kill(process.pid, signal);
+                return;
+            } catch (_) {
+                // Fall through to plain exit if re-raise fails.
+            }
+        }
+        process.exit(code ?? 0);
+    });
+
+    child.on('error', (err) => {
+        console.error(err);
+        process.exit(1);
+    });
 }
 
 module.exports = {

@@ -1,0 +1,11 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(pnpm typecheck)",
+            "Bash(yarn typecheck)",
+            "Bash(git fetch*)",
+            "Bash(npm view *)",
+            "Bash(pnpm lint)"
+        ]
+    }
+}

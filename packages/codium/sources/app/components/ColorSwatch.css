@@ -1,0 +1,18 @@
+.color-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.color-swatch:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+.color-swatch--selected {
+    box-shadow:
+        0 0 0 2px var(--color-background-surface),
+        0 0 0 4px var(--color-text-foreground);
+}

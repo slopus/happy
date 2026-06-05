@@ -15,8 +15,12 @@ const {
     mockSpawn: vi.fn(),
 }));
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: mockExecSync,
+    spawn: mockSpawn,
+}));
+
+vi.mock('cross-spawn', () => ({
     spawn: mockSpawn,
 }));
 

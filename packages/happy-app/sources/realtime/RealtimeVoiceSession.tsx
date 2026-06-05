@@ -18,10 +18,10 @@ let agentIsSpeaking = false;
 // Global voice session implementation
 class RealtimeVoiceSessionImpl implements VoiceSession {
     
-    async startSession(config: VoiceSessionConfig): Promise<void> {
+    async startSession(config: VoiceSessionConfig): Promise<string | null> {
         if (!conversationInstance) {
             console.warn('Realtime voice session not initialized');
-            return;
+            throw new Error('Realtime voice session not initialized');
         }
 
         try {
@@ -31,28 +31,35 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
             const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
             
-            if (!config.token && !config.agentId) {
-                throw new Error('Neither token nor agentId provided');
+            if (!config.conversationToken && !config.agentId) {
+                throw new Error('No conversationToken or agentId provided');
             }
-            
+
             const sessionConfig: any = {
+                // conversationToken (WebRTC JWT from server) or agentId (bypass mode)
+                ...(config.conversationToken
+                    ? { conversationToken: config.conversationToken }
+                    : { agentId: config.agentId }),
+                userId: config.userId,
                 dynamicVariables: {
                     sessionId: config.sessionId,
                     initialConversationContext: config.initialContext || ''
                 },
                 overrides: {
                     agent: {
+                        ...(config.systemPrompt ? { prompt: { prompt: config.systemPrompt } } : {}),
+                        ...(config.firstMessage ? { firstMessage: config.firstMessage } : {}),
                         language: elevenLabsLanguage
                     }
                 },
-                ...(config.token ? { conversationToken: config.token } : { agentId: config.agentId }),
-                ...(config.userId ? { userId: config.userId } : {}),
             };
             
             await conversationInstance.startSession(sessionConfig);
+            return conversationInstance.getId?.() ?? null;
         } catch (error) {
             console.error('Failed to start realtime session:', error);
             storage.getState().setRealtimeStatus('error');
+            throw error;
         }
     }
 
@@ -108,9 +115,16 @@ export const RealtimeVoiceSession: React.FC = () => {
         },
         onDisconnect: () => {
             console.log('Realtime session disconnected');
+            // Bump generation only when an active session ends — skipping the
+            // initial 'disconnected' state avoids remounting on cold launch
+            // (which previously caused a phantom keyboard).
+            const prev = storage.getState().realtimeStatus;
             storage.getState().setRealtimeStatus('disconnected');
-            storage.getState().setRealtimeMode('idle', true); // immediate mode change
+            storage.getState().setRealtimeMode('idle', true);
             storage.getState().clearRealtimeModeDebounce();
+            if (prev === 'connected' || prev === 'connecting') {
+                storage.getState().incrementVoiceSessionGeneration();
+            }
         },
         onMessage: (data) => {
             console.log('Realtime message:', data);
@@ -120,7 +134,10 @@ export const RealtimeVoiceSession: React.FC = () => {
             // This prevents initialization errors from showing "Terminals error" on startup
             console.warn('Realtime voice not available:', error);
             // Don't set error status during initialization - just set disconnected
-            // This allows the app to continue working without voice features
+            // This allows the app to continue working without voice features.
+            // Don't bump generation here — onError can fire on transient/recoverable
+            // errors (LiveKit retries internally). onDisconnect is where we know
+            // the session is truly dead and a fresh provider is required.
             storage.getState().setRealtimeStatus('disconnected');
             storage.getState().setRealtimeMode('idle', true); // immediate mode change
         },

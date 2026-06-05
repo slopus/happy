@@ -33,6 +33,17 @@ import {
     removeDaemonTerminalSession,
 } from '@/daemon/daemonTerminalSessions';
 import type { ChildProcess } from 'node:child_process';
+import { shouldReconnect } from '@/utils/lidState';
+import { getProjectPath } from '@/claude/utils/path';
+import {
+    forkSession as claudeForkSession,
+    forkAndTruncateSession as claudeForkAndTruncateSession,
+    listClaudeRewindPoints,
+    ForkTruncateUuidNotFoundError,
+    ForkSourceMissingError,
+} from '@/claude/utils/claudeSessionFork';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface ServerToDaemonEvents {
     update: (data: Update) => void;
@@ -118,7 +129,7 @@ interface DaemonToServerEvents {
 
 type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
-    resumeSession?: (sessionId: string) => Promise<SpawnSessionResult>;
+    resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
     requestShutdown: () => void;
     portRegistry: PortRegistry;
@@ -135,11 +146,12 @@ export class ApiMachineClient {
     // happyCliVersion 을 갱신한다.
     private lastKnownCliVersion: string | null = null;
     private rpcHandlerManager: RpcHandlerManager;
-    private resumeSessionHandler: ((sessionId: string) => Promise<SpawnSessionResult>) | null = null;
+    private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
     // specs/remote-terminal-cwd-fallback/ — cached so the
     // terminal-open-fwd handler can run validatePath against the same
     // root the rest of the RPC surface uses (Files tab / writeFile).
     private allowedRoot: string;
+    private reconnectInterval: NodeJS.Timeout | null = null;
 
     constructor(
         private token: string,
@@ -182,14 +194,40 @@ export class ApiMachineClient {
 
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, happyToken, happySecret } = params || {};
+            const {
+                directory,
+                sessionId,
+                machineId,
+                approvedNewDirectoryCreation,
+                agent,
+                environmentVariables,
+                token,
+                happyToken,
+                happySecret,
+                resumeClaudeSessionId,
+                parentSessionId,
+                forkedFromMessageId,
+            } = params || {};
             logger.debug(`[API MACHINE] Spawning session: dir=${directory}, hasUserCreds=${!!(happyToken && happySecret)}`);
 
             if (!directory) {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, happyToken, happySecret });
+            const result = await spawnSession({
+                directory,
+                sessionId,
+                machineId,
+                approvedNewDirectoryCreation,
+                agent,
+                environmentVariables,
+                token,
+                happyToken,
+                happySecret,
+                resumeClaudeSessionId,
+                parentSessionId,
+                forkedFromMessageId,
+            });
 
             switch (result.type) {
                 case 'success':
@@ -205,9 +243,9 @@ export class ApiMachineClient {
             }
         });
 
-        this.syncResumeSessionRpcRegistration(detectResumeSupport().rpcAvailable);
+        this.syncResumeSessionRpcRegistration();
 
-        // Register stop session handler  
+        // Register stop session handler
         this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
             const { sessionId } = params || {};
 
@@ -222,6 +260,86 @@ export class ApiMachineClient {
 
             logger.debug(`[API MACHINE] Stopped session ${sessionId}`);
             return { message: 'Session stopped' };
+        });
+
+        // Register Claude session fork handlers (used by app-side fork /
+        // duplicate flows). These take the source session's working
+        // directory and underlying Claude UUID, copy the on-disk JSONL
+        // — optionally truncated at a chosen message — and return the new
+        // Claude UUID. The caller then spawns a fresh Happy session with
+        // `resumeClaudeSessionId` set so `claude --resume <newUuid>`
+        // continues the conversation.
+        this.rpcHandlerManager.registerHandler('claude-fork-session', async (params: any) => {
+            const { directory, claudeSessionId } = params || {};
+            if (typeof directory !== 'string' || directory.length === 0) {
+                throw new Error('directory is required');
+            }
+            if (typeof claudeSessionId !== 'string' || !UUID_RE.test(claudeSessionId)) {
+                throw new Error('claudeSessionId must be a valid UUID');
+            }
+            try {
+                const newClaudeSessionId = await claudeForkSession(getProjectPath(directory), claudeSessionId);
+                return { type: 'success', newClaudeSessionId };
+            } catch (error) {
+                if (error instanceof ForkSourceMissingError) {
+                    throw new Error('Claude session file not found on this machine');
+                }
+                throw error;
+            }
+        });
+
+        // List user-text rewind points directly from the on-disk JSONL.
+        // The server-side session log misses claudeUuid for messages typed
+        // live in the app (legacy `sentFrom: 'web'` path); disk is the
+        // source of truth and carries the right uuids for every message.
+        this.rpcHandlerManager.registerHandler('claude-list-rewind-points', async (params: any) => {
+            const { directory, claudeSessionId } = params || {};
+            if (typeof directory !== 'string' || directory.length === 0) {
+                throw new Error('directory is required');
+            }
+            if (typeof claudeSessionId !== 'string' || !UUID_RE.test(claudeSessionId)) {
+                throw new Error('claudeSessionId must be a valid UUID');
+            }
+            try {
+                const points = await listClaudeRewindPoints(getProjectPath(directory), claudeSessionId);
+                return { type: 'success', points };
+            } catch (error) {
+                if (error instanceof ForkSourceMissingError) {
+                    throw new Error('Claude session file not found on this machine');
+                }
+                throw error;
+            }
+        });
+
+        this.rpcHandlerManager.registerHandler('claude-duplicate-session', async (params: any) => {
+            const { directory, claudeSessionId, cutAfterUuid } = params || {};
+            if (typeof directory !== 'string' || directory.length === 0) {
+                throw new Error('directory is required');
+            }
+            if (typeof claudeSessionId !== 'string' || !UUID_RE.test(claudeSessionId)) {
+                throw new Error('claudeSessionId must be a valid UUID');
+            }
+            if (typeof cutAfterUuid !== 'string' || !UUID_RE.test(cutAfterUuid)) {
+                throw new Error('cutAfterUuid must be a valid UUID');
+            }
+            try {
+                const newClaudeSessionId = await claudeForkAndTruncateSession(
+                    getProjectPath(directory),
+                    claudeSessionId,
+                    cutAfterUuid,
+                );
+                return { type: 'success', newClaudeSessionId };
+            } catch (error) {
+                if (error instanceof ForkSourceMissingError) {
+                    throw new Error('Claude session file not found on this machine');
+                }
+                if (error instanceof ForkTruncateUuidNotFoundError) {
+                    throw new Error(
+                        'The chosen rewind point is no longer present in the source session — try forking without truncation',
+                    );
+                }
+                throw error;
+            }
         });
 
         // Register stop daemon handler
@@ -360,13 +478,13 @@ export class ApiMachineClient {
         // and happy-server already sees it to rewrite HTML).
     }
 
-    private syncResumeSessionRpcRegistration(rpcAvailable: boolean): void {
+    private syncResumeSessionRpcRegistration(): void {
         const method = 'resume-happy-session';
 
-        if (rpcAvailable && this.resumeSessionHandler) {
+        if (this.resumeSessionHandler) {
             if (!this.rpcHandlerManager.hasHandler(method)) {
                 this.rpcHandlerManager.registerHandler(method, async (params: any) => {
-                    const { sessionId } = params || {};
+                    const { sessionId, model, permissionMode } = params || {};
 
                     if (!sessionId || typeof sessionId !== 'string') {
                         throw new Error('Session ID is required');
@@ -377,7 +495,7 @@ export class ApiMachineClient {
                         throw new Error('Resume session handler not available');
                     }
 
-                    const result = await handler(sessionId);
+                    const result = await handler(sessionId, { model, permissionMode });
                     switch (result.type) {
                         case 'success':
                             return { type: 'success', sessionId: result.sessionId };
@@ -462,20 +580,21 @@ export class ApiMachineClient {
             auth: {
                 token: this.token,
                 clientType: 'machine-scoped' as const,
-                machineId: this.machine.id
+                machineId: this.machine.id,
+                happyClient: `cli-daemon/${configuration.currentCliVersion}`
             },
             path: '/v1/updates',
-            reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000
+            reconnection: false,
         });
 
         this.socket.on('connect', () => {
             logger.debug('[API MACHINE] Connected to server');
 
-            // Update daemon state to running
-            // We need to override previous state because the daemon (this process)
-            // has restarted with new PID & port
+            if (this.reconnectInterval) {
+                clearInterval(this.reconnectInterval);
+                this.reconnectInterval = null;
+            }
+
             this.updateDaemonState((state) => ({
                 ...state,
                 status: 'running',
@@ -484,17 +603,13 @@ export class ApiMachineClient {
                 startedAt: Date.now()
             }));
 
-
-            // Register all handlers
             this.rpcHandlerManager.onSocketConnect(this.socket);
-            this.syncResumeSessionRpcRegistration(detectResumeSupport().rpcAvailable);
-
-            // Start keep-alive
+            this.syncResumeSessionRpcRegistration();
             this.startKeepAlive();
         });
 
-        this.socket.on('disconnect', () => {
-            logger.debug('[API MACHINE] Disconnected from server');
+        this.socket.on('disconnect', (reason) => {
+            logger.debug(`[API MACHINE] Disconnected from server — reason: ${reason}`);
             this.rpcHandlerManager.onSocketDisconnect();
             this.stopKeepAlive();
             // specs/remote-terminal/ Phase 2 — relay path is broken once
@@ -508,6 +623,7 @@ export class ApiMachineClient {
             if (killed > 0) {
                 logger.debug(`[API MACHINE] Killed ${killed} terminal session(s) on disconnect`);
             }
+            this.startSmartReconnect();
         });
 
         // Single consolidated RPC handler
@@ -728,6 +844,7 @@ export class ApiMachineClient {
 
         this.socket.on('connect_error', (error) => {
             logger.debug(`[API MACHINE] Connection error: ${error.message}`);
+            this.startSmartReconnect();
         });
 
         this.socket.io.on('error', (error: any) => {
@@ -760,7 +877,7 @@ export class ApiMachineClient {
                 || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;
             const cliVersionChanged = prevCliVersion !== newCliVersion;
 
-            this.syncResumeSessionRpcRegistration(newResumeSupport.rpcAvailable);
+            this.syncResumeSessionRpcRegistration();
 
             if (cliAvailabilityChanged || resumeSupportChanged || cliVersionChanged) {
                 this.lastKnownCLIAvailability = newAvailability;
@@ -769,7 +886,7 @@ export class ApiMachineClient {
                 this.updateMachineMetadata((metadata) => ({
                     ...(metadata || {} as any),
                     cliAvailability: newAvailability,
-                    resumeSupport: newResumeSupport,
+                    resumeSupport: { ...newResumeSupport, rpcAvailable: !!this.resumeSessionHandler },
                     happyCliVersion: newCliVersion,
                 })).catch((err) => {
                     logger.debug('[API MACHINE] Failed to update machine capabilities:', err);
@@ -777,6 +894,29 @@ export class ApiMachineClient {
             }
         }, 20000);
         logger.debug('[API MACHINE] Keep-alive started (20s interval)');
+    }
+
+    private startSmartReconnect() {
+        if (this.reconnectInterval) return;
+
+        this.reconnectInterval = setInterval(() => {
+            if (this.socket.connected) {
+                clearInterval(this.reconnectInterval!);
+                this.reconnectInterval = null;
+                return;
+            }
+            if (!shouldReconnect()) {
+                logger.debug('[API MACHINE] Still not ready to reconnect');
+                return;
+            }
+            logger.debug('[API MACHINE] Attempting reconnect');
+            this.socket.connect();
+        }, 3000);
+
+        if (shouldReconnect()) {
+            logger.debug('[API MACHINE] Network up + lid open — reconnecting in 1s');
+            setTimeout(() => { if (!this.socket.connected) this.socket.connect() }, 1000);
+        }
     }
 
     private stopKeepAlive() {
@@ -790,6 +930,10 @@ export class ApiMachineClient {
     shutdown() {
         logger.debug('[API MACHINE] Shutting down');
         this.stopKeepAlive();
+        if (this.reconnectInterval) {
+            clearInterval(this.reconnectInterval);
+            this.reconnectInterval = null;
+        }
         if (this.socket) {
             this.socket.close();
             logger.debug('[API MACHINE] Socket closed');

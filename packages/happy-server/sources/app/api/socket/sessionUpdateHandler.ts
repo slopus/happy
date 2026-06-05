@@ -1,4 +1,4 @@
-import { sessionAliveEventsCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
+import { getMetricsLabelsFromSocket, sessionAliveEventsCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
 import { activityCache } from "@/app/presence/sessionCache";
 import { buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
@@ -11,6 +11,7 @@ import { SESSION_EVENT_TYPES } from "@/app/events/sessionEventTypes";
 import { Socket } from "socket.io";
 
 export function sessionUpdateHandler(userId: string, socket: Socket, connection: ClientConnection) {
+    const labels = getMetricsLabelsFromSocket(socket);
     socket.on('update-metadata', async (data: any, callback: (response: any) => void) => {
         try {
             const { sid, metadata, expectedVersion } = data;
@@ -145,7 +146,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
     }) => {
         try {
             // Track metrics
-            websocketEventsCounter.inc({ event_type: 'session-alive' });
+            websocketEventsCounter.inc({ event_type: 'session-alive', ...labels });
             sessionAliveEventsCounter.inc();
 
             // Basic validation
@@ -188,7 +189,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
     socket.on('message', async (data: any) => {
         await receiveMessageLock.inLock(async () => {
             try {
-                websocketEventsCounter.inc({ event_type: 'message' });
+                websocketEventsCounter.inc({ event_type: 'message', ...labels });
                 const { sid, message, localId } = data;
 
                 log({ module: 'websocket' }, `Received message from socket ${socket.id}: sessionId=${sid}, messageLength=${message.length} bytes, connectionType=${connection.connectionType}, connectionSessionId=${connection.connectionType === 'session-scoped' ? connection.sessionId : 'N/A'}`);

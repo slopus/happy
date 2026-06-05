@@ -10,6 +10,11 @@ oclif.manifest.json
 # Unpacked binaries (keep archives)
 /tools/unpacked/
 
+# Bundled artifacts produced by scripts/bundle-{server,webapp}.cjs.
+# Committed to npm via .npmignore allowlist, but never to git.
+/tools/server/
+/tools/webapp/
+
 
 
 pnpm-lock.yaml

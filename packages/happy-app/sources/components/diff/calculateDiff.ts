@@ -48,7 +48,7 @@ export function calculateUnifiedDiff(
 ): DiffResult {
     // First, get line-level changes
     const lineChanges = diffLines(oldText, newText);
-    
+
     // Convert to our internal format and track line numbers
     const allLines: DiffLine[] = [];
     const linePairs: LinePair[] = [];
@@ -56,15 +56,15 @@ export function calculateUnifiedDiff(
     let newLineNum = 1;
     let additions = 0;
     let deletions = 0;
-    
+
     // First pass: identify all lines and potential pairs
     let pendingRemovals: { line: string; lineNum: number; index: number }[] = [];
-    
+
     lineChanges.forEach((change) => {
         const lines = change.value.split('\n').filter((line, index, arr) =>
             !(index === arr.length - 1 && line === '')
         );
-        
+
         lines.forEach((line) => {
             if (change.removed) {
                 pendingRemovals.push({
@@ -87,13 +87,13 @@ export function calculateUnifiedDiff(
                     if (removalIndex !== -1) {
                         const removal = pendingRemovals[removalIndex];
                         pendingRemovals.splice(removalIndex, 1);
-                        
+
                         // Calculate inline diff
                         const tokens = calculateInlineDiff(removal.line, line);
-                        
+
                         // Update the removal line with tokens
                         allLines[removal.index].tokens = tokens.filter(t => !t.added);
-                        
+
                         // Add the addition line with tokens
                         allLines.push({
                             type: 'add',
@@ -101,11 +101,11 @@ export function calculateUnifiedDiff(
                             newLineNumber: newLineNum++,
                             tokens: tokens.filter(t => !t.removed)
                         });
-                        
+
                         paired = true;
                     }
                 }
-                
+
                 if (!paired) {
                     allLines.push({
                         type: 'add',
@@ -125,10 +125,10 @@ export function calculateUnifiedDiff(
             }
         });
     });
-    
+
     // Create hunks with context
     const hunks = createHunks(allLines, contextLines);
-    
+
     return {
         hunks,
         stats: { additions, deletions }
@@ -141,7 +141,7 @@ export function calculateUnifiedDiff(
 function calculateInlineDiff(oldLine: string, newLine: string): DiffToken[] {
     // Use word-level diff for better readability
     const wordDiff = diffWordsWithSpace(oldLine, newLine);
-    
+
     return wordDiff.map(part => ({
         value: part.value,
         added: part.added,
@@ -155,11 +155,11 @@ function calculateInlineDiff(oldLine: string, newLine: string): DiffToken[] {
  */
 function findBestMatch(target: string, candidates: string[]): number {
     if (candidates.length === 0) return -1;
-    
+
     let bestIndex = -1;
     let bestScore = 0;
     const threshold = 0.3; // Minimum 30% similarity
-    
+
     candidates.forEach((candidate, index) => {
         const score = calculateSimilarity(target, candidate);
         if (score > bestScore && score > threshold) {
@@ -167,7 +167,7 @@ function findBestMatch(target: string, candidates: string[]): number {
             bestIndex = index;
         }
     });
-    
+
     return bestIndex;
 }
 
@@ -177,25 +177,25 @@ function findBestMatch(target: string, candidates: string[]): number {
 function calculateSimilarity(str1: string, str2: string): number {
     if (str1 === str2) return 1;
     if (!str1 || !str2) return 0;
-    
+
     // Simple character-based similarity
     const chars1 = str1.split('');
     const chars2 = str2.split('');
     const maxLen = Math.max(chars1.length, chars2.length);
-    
+
     if (maxLen === 0) return 1;
-    
+
     let matches = 0;
     const minLen = Math.min(chars1.length, chars2.length);
-    
+
     for (let i = 0; i < minLen; i++) {
         if (chars1[i] === chars2[i]) matches++;
     }
-    
+
     // Also check for common substrings
     const commonSubstrings = findCommonSubstrings(str1, str2);
     const substringBonus = commonSubstrings.reduce((sum, sub) => sum + sub.length, 0) / maxLen;
-    
+
     return (matches / maxLen + substringBonus) / 2;
 }
 
@@ -205,7 +205,7 @@ function calculateSimilarity(str1: string, str2: string): number {
 function findCommonSubstrings(str1: string, str2: string): string[] {
     const minLength = 3; // Minimum substring length
     const substrings: string[] = [];
-    
+
     for (let len = Math.min(str1.length, str2.length); len >= minLength; len--) {
         for (let i = 0; i <= str1.length - len; i++) {
             const sub = str1.substring(i, i + len);
@@ -214,7 +214,7 @@ function findCommonSubstrings(str1: string, str2: string): string[] {
             }
         }
     }
-    
+
     return substrings;
 }
 
@@ -225,7 +225,7 @@ function createHunks(lines: DiffLine[], contextLines: number): DiffHunk[] {
     const hunks: DiffHunk[] = [];
     const changes = lines.map((line, index) => ({ ...line, index }))
         .filter(line => line.type !== 'normal');
-    
+
     if (changes.length === 0) {
         // No changes, return single hunk with all lines if they exist
         if (lines.length > 0) {
@@ -239,21 +239,21 @@ function createHunks(lines: DiffLine[], contextLines: number): DiffHunk[] {
         }
         return hunks;
     }
-    
+
     // Group changes into hunks with context
     let currentHunk: DiffLine[] = [];
     let lastIncludedIndex = -1;
-    
+
     changes.forEach((change, i) => {
         const startContext = Math.max(0, change.index - contextLines);
         const endContext = Math.min(lines.length - 1, change.index + contextLines);
-        
+
         // Add lines from last included index to current hunk
         for (let j = Math.max(lastIncludedIndex + 1, startContext); j <= endContext; j++) {
             currentHunk.push(lines[j]);
         }
         lastIncludedIndex = endContext;
-        
+
         // Check if we should start a new hunk
         const nextChange = changes[i + 1];
         if (nextChange && nextChange.index - endContext > contextLines * 2) {
@@ -271,7 +271,7 @@ function createHunks(lines: DiffLine[], contextLines: number): DiffHunk[] {
             currentHunk = [];
         }
     });
-    
+
     // Add remaining lines to last hunk
     if (currentHunk.length > 0) {
         const firstLine = currentHunk[0];
@@ -283,7 +283,7 @@ function createHunks(lines: DiffLine[], contextLines: number): DiffHunk[] {
             lines: currentHunk,
         });
     }
-    
+
     return hunks;
 }
 
@@ -293,4 +293,25 @@ function createHunks(lines: DiffLine[], contextLines: number): DiffHunk[] {
 export function getDiffStats(oldText: string, newText: string): { additions: number; deletions: number } {
     const result = calculateUnifiedDiff(oldText, newText);
     return result.stats;
+}
+
+/**
+ * Count additions/deletions in a unified-diff patch string.
+ * Ignores file headers (+++ / ---) and hunk headers (@@).
+ */
+export function getPatchDiffStats(patch: string): { additions: number; deletions: number } {
+    let additions = 0;
+    let deletions = 0;
+    let inHunk = false;
+    for (const line of patch.split('\n')) {
+        if (line.startsWith('@@')) {
+            inHunk = true;
+            continue;
+        }
+        if (!inHunk) continue;
+        if (line.startsWith('+++') || line.startsWith('---')) continue;
+        if (line.startsWith('+')) additions++;
+        else if (line.startsWith('-')) deletions++;
+    }
+    return { additions, deletions };
 }

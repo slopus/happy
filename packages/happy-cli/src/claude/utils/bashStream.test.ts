@@ -4,6 +4,7 @@
 // complex cases fall through to Claude's built-in Bash.
 
 import { describe, expect, it } from 'vitest';
+import { realpathSync } from 'node:fs';
 import { runBashStream, type BashStreamProgress } from './bashStream';
 
 describe('runBashStream', () => {
@@ -58,7 +59,7 @@ describe('runBashStream', () => {
       onProgress: () => {},
     });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe('/tmp');
+    expect(realpathSync(result.stdout.trim())).toBe(realpathSync('/tmp'));
   });
 
   it('drops the final trailing partial line into the aggregate but not into progress', async () => {

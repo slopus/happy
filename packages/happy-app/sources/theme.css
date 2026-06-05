@@ -1,4 +1,41 @@
-/* Theme-aware scrollbar styles using Unistyles CSS variables */
+/* Disable overscroll bounce / pull-to-refresh on the whole page.
+   Prevents scroll-chaining from inner scrollable elements to the body. */
+html, body {
+    overscroll-behavior: none;
+    /* macOS Safari's default subpixel AA aliases badly under the body zoom
+       below ("chopped" bold, faint regular text); Chrome re-rasterizes and is
+       unaffected. Force grayscale AA, and stop Safari faux-bolding the
+       already-bold IBMPlexSans-SemiBold family. All three inherit. */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-synthesis: none;
+}
+
+html.happy-app-zoomed {
+    overflow: hidden;
+}
+
+html.happy-app-zoomed body {
+    width: calc(100vw / var(--happy-app-zoom));
+    height: calc(100vh / var(--happy-app-zoom));
+    transform-origin: top left;
+}
+
+@supports (zoom: 1) {
+    html.happy-app-zoomed body {
+        zoom: var(--happy-app-zoom);
+    }
+}
+
+@supports not (zoom: 1) {
+    html.happy-app-zoomed body {
+        transform: scale(var(--happy-app-zoom));
+    }
+}
+
+/* Theme-aware scrollbar styles using Unistyles CSS variables.
+   Use text-secondary for the thumb so it stays visible on all
+   surface colors (divider == surfaceHighest in dark theme). */
 
 /* Webkit Scrollbars (Chrome, Safari, Edge) */
 ::-webkit-scrollbar {
@@ -7,37 +44,29 @@
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--colors-surface-high);
+    background: transparent;
     border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--colors-divider);
+    background: rgba(150, 150, 150, 0.4);
     border-radius: 6px;
     border: 2px solid transparent;
     background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--colors-text-secondary);
+    background: rgba(150, 150, 150, 0.4);
     background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-corner {
-    background: var(--colors-surface-high);
+    background: transparent;
 }
 
-/* Firefox */
+/* All browsers — scrollbar-color overrides webkit pseudo-elements
+   in modern Chrome/Edge, so this must also use text-secondary. */
 * {
     scrollbar-width: thin;
-    scrollbar-color: var(--colors-divider) var(--colors-surface-high);
-}
-
-/* Ensure scrollbars are visible on hover for macOS */
-::-webkit-scrollbar:horizontal {
-    height: 12px;
-}
-
-::-webkit-scrollbar:vertical {
-    width: 12px;
+    scrollbar-color: rgba(150, 150, 150, 0.4) transparent;
 }

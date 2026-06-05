@@ -1,16 +1,25 @@
 import { z } from "zod";
 import * as crypto from "crypto";
-import { VoiceTokenResponseSchema } from "@slopus/happy-wire";
+import { VoiceConversationResponseSchema, VoiceUsageResponseSchema } from "@slopus/happy-wire";
 import { type Fastify } from "../types";
 import { log } from "@/utils/log";
 
-const VOICE_FREE_LIMIT_SECONDS = 3600;
+const VOICE_FREE_LIMIT_SECONDS = 1200;  // 20 minutes free tier per 30 days (~$0.76 cost)
+const VOICE_HARD_LIMIT_SECONDS = 18000; // 5 hours absolute cap per 30 days (even with subscription)
+const VOICE_MAX_CONVERSATIONS = 100;    // Max conversations trackable per 30 days (ElevenLabs page_size limit)
+const VOICE_EXTRA_LIMIT_SECONDS = 5 * 60 * 60;
+const VOICE_EXTRA_LIMIT_PUBLIC_IDS = new Set([
+    "cmp66x5u018d9wz0unf56tp07",
+]);
+const ELEVEN_LABS_API = "https://api.elevenlabs.io/v1/convai";
 
-/**
- * Derives a stable pseudonymous ElevenLabs user ID from the Happy user ID.
- * Uses HMAC-SHA256 with the server master secret so the mapping is consistent
- * across sessions but the raw Happy ID is never exposed to ElevenLabs.
- */
+function getVoiceHardLimitSeconds(userId: string): number {
+    if (VOICE_EXTRA_LIMIT_PUBLIC_IDS.has(userId)) {
+        return VOICE_HARD_LIMIT_SECONDS + VOICE_EXTRA_LIMIT_SECONDS;
+    }
+    return VOICE_HARD_LIMIT_SECONDS;
+}
+
 function deriveElevenUserId(happyUserId: string): string {
     const hmac = crypto.createHmac("sha256", process.env.HANDY_MASTER_SECRET!);
     hmac.update(happyUserId);
@@ -24,124 +33,129 @@ function deriveElevenUserId(happyUserId: string): string {
 }
 
 /**
- * Fetches the first page of ElevenLabs conversations for a user and returns
- * the sum of call_duration_secs across all returned conversations.
+ * Get a user's voice usage in seconds over the last 30 days.
+ * Queries ElevenLabs directly by user_id (set via participant_name on token mint).
+ * ElevenLabs is the source of truth — no local DB needed.
+ *
+ * Returns { usedSeconds, conversationCount }.
  */
-async function getUsedVoiceSeconds(
+async function getVoiceUsage(
     elevenLabsApiKey: string,
-    elevenUserId: string
-): Promise<number> {
-    const url = new URL("https://api.elevenlabs.io/v1/convai/conversations");
-    url.searchParams.set("user_id", elevenUserId);
-    url.searchParams.set("page_size", "100");
+    elevenUserId: string,
+): Promise<{ usedSeconds: number; conversationCount: number }> {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400 * 1000).toISOString();
 
-    const response = await fetch(url.toString(), {
-        method: "GET",
-        headers: {
-            "xi-api-key": elevenLabsApiKey,
-            "Accept": "application/json",
-        },
-    });
+    // Query across all agents — usage is per-user, not per-agent
+    const res = await fetch(
+        `${ELEVEN_LABS_API}/conversations?user_id=${elevenUserId}&created_after=${thirtyDaysAgo}&page_size=100`,
+        { headers: { "xi-api-key": elevenLabsApiKey } }
+    );
 
-    if (!response.ok) {
-        throw new Error(
-            `ElevenLabs conversation history request failed: ${response.status}`
-        );
+    if (!res.ok) {
+        log({ module: 'voice' }, `ElevenLabs conversations query failed: ${res.status}`);
+        return { usedSeconds: 0, conversationCount: 0 };
     }
 
-    const data = (await response.json()) as {
-        conversations?: Array<{ call_duration_secs?: number }>;
+    const data = (await res.json()) as {
+        conversations?: Array<{ call_duration_secs: number }>;
     };
 
-    let totalSeconds = 0;
-    for (const conv of data.conversations ?? []) {
-        totalSeconds += conv.call_duration_secs ?? 0;
+    const conversations = data.conversations || [];
+    let usedSeconds = 0;
+    for (const c of conversations) {
+        usedSeconds += c.call_duration_secs ?? 0;
     }
-    return totalSeconds;
+    return { usedSeconds, conversationCount: conversations.length };
 }
 
-/**
- * Checks whether the user has an active "pro" entitlement via RevenueCat
- * using the server-side API key (not the client public key).
- */
 async function hasActiveSubscription(userId: string): Promise<boolean> {
     const revenueCatApiKey = process.env.REVENUECAT_API_KEY;
-    if (!revenueCatApiKey) {
-        log({ module: "voice" }, "REVENUECAT_API_KEY not configured, treating as no subscription");
-        return false;
-    }
+    if (!revenueCatApiKey) return false;
 
     try {
         const response = await fetch(
-            `https://api.revenuecat.com/v1/subscribers/${userId}`,
+            `https://api.revenuecat.com/v2/projects/proj493735ad/customers/${userId}/active_entitlements`,
             {
                 method: "GET",
                 headers: {
                     "Authorization": `Bearer ${revenueCatApiKey}`,
-                    "Content-Type": "application/json",
                 },
             }
         );
-
         if (!response.ok) {
-            log({ module: "voice" }, `RevenueCat check failed for user ${userId}: ${response.status}`);
+            log({ module: 'voice' }, `RevenueCat check failed for ${userId}: ${response.status}`);
             return false;
         }
-
-        const data = (await response.json()) as any;
-        return !!data.subscriber?.entitlements?.active?.pro;
-    } catch (error) {
-        log({ module: "voice" }, `RevenueCat check error for user ${userId}: ${error}`);
+        const data = (await response.json()) as { items?: Array<{ entitlement_id: string }> };
+        return (data.items?.length ?? 0) > 0;
+    } catch {
         return false;
     }
 }
 
 export function voiceRoutes(app: Fastify) {
-    app.post('/v1/voice/token', {
+    app.post('/v1/voice/conversations', {
         preHandler: app.authenticate,
         schema: {
             body: z.object({
                 agentId: z.string(),
             }),
             response: {
-                200: VoiceTokenResponseSchema,
-                500: z.object({
-                    error: z.string(),
-                }),
+                200: VoiceConversationResponseSchema,
+                500: z.object({ error: z.string() }),
             },
         },
     }, async (request, reply) => {
-        const userId = request.userId; // CUID from JWT
+        const userId = request.userId;
         const { agentId } = request.body;
 
         log({ module: 'voice' }, `Voice token request from user ${userId}`);
 
         const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
         if (!elevenLabsApiKey) {
-            log({ module: 'voice' }, 'Missing ELEVENLABS_API_KEY');
-            return reply.code(500).send({ error: 'Voice service not configured' });
+            return reply.code(500).send({ error: 'ELEVENLABS_API_KEY not configured' });
+        }
+        if (!process.env.REVENUECAT_API_KEY) {
+            return reply.code(500).send({ error: 'REVENUECAT_API_KEY not configured' });
         }
 
         const elevenUserId = deriveElevenUserId(userId);
+        const hardLimitSeconds = getVoiceHardLimitSeconds(userId);
 
-        // Check usage against ElevenLabs conversation history
-        let usedSeconds: number;
-        try {
-            usedSeconds = await getUsedVoiceSeconds(elevenLabsApiKey, elevenUserId);
-        } catch (error) {
-            log({ module: 'voice' }, `Failed to check voice usage for user ${userId}: ${error}`);
-            return reply.code(500).send({ error: 'Failed to check voice usage' });
+        // Check usage from ElevenLabs directly
+        const { usedSeconds, conversationCount } = await getVoiceUsage(elevenLabsApiKey, elevenUserId);
+        log({ module: 'voice' }, `User ${userId}: ${usedSeconds}s used, ${conversationCount} convos (free=${VOICE_FREE_LIMIT_SECONDS}s, hard=${hardLimitSeconds}s)`);
+
+        // Conversation count cap — we can only track 100 per query (ElevenLabs page_size limit)
+        if (conversationCount >= VOICE_MAX_CONVERSATIONS) {
+            return reply.send({
+                allowed: false as const,
+                reason: 'voice_conversation_limit_reached' as const,
+                usedSeconds,
+                limitSeconds: hardLimitSeconds,
+                agentId,
+            });
         }
 
-        log({ module: 'voice' }, `User ${userId} has used ${usedSeconds}s of ${VOICE_FREE_LIMIT_SECONDS}s`);
+        // Hard cap — normally 5 hours, with account-specific credits applied.
+        if (usedSeconds >= hardLimitSeconds) {
+            return reply.send({
+                allowed: false as const,
+                reason: 'voice_hard_limit_reached' as const,
+                usedSeconds,
+                limitSeconds: hardLimitSeconds,
+                agentId,
+            });
+        }
 
-        // If over the free limit, check subscription
+        // Free tier — 1 hour, then need subscription
         if (usedSeconds >= VOICE_FREE_LIMIT_SECONDS) {
             const subscribed = await hasActiveSubscription(userId);
+            log({ module: 'voice' }, `User ${userId}: subscription check = ${subscribed}`);
             if (!subscribed) {
                 return reply.send({
                     allowed: false as const,
-                    reason: 'voice_limit_reached' as const,
+                    reason: 'subscription_required' as const,
                     usedSeconds,
                     limitSeconds: VOICE_FREE_LIMIT_SECONDS,
                     agentId,
@@ -149,38 +163,83 @@ export function voiceRoutes(app: Fastify) {
             }
         }
 
-        // Mint an ElevenLabs conversation token
+        // Get conversation token (JWT for WebRTC) with user identity
         try {
-            const tokenResponse = await fetch(
-                `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${agentId}`,
-                {
-                    method: 'GET',
-                    headers: {
-                        'xi-api-key': elevenLabsApiKey,
-                        'Accept': 'application/json',
-                    },
-                }
+            const tokenRes = await fetch(
+                `${ELEVEN_LABS_API}/conversation/token?agent_id=${agentId}&participant_name=${elevenUserId}`,
+                { headers: { 'xi-api-key': elevenLabsApiKey } }
             );
 
-            if (!tokenResponse.ok) {
-                log({ module: 'voice' }, `Failed to get ElevenLabs token for user ${userId}: ${tokenResponse.status}`);
-                return reply.code(500).send({ error: 'Failed to get voice token' });
+            if (!tokenRes.ok) {
+                log({ module: 'voice' }, `Failed to get conversation token for user ${userId}: ${tokenRes.status}`);
+                return reply.code(500).send({ error: 'Failed to get voice credentials' });
             }
 
-            const tokenData = (await tokenResponse.json()) as { token: string };
+            const { token: conversationToken } = (await tokenRes.json()) as { token: string };
 
-            log({ module: 'voice' }, `Voice token issued for user ${userId}`);
+            // Extract conversation_id from JWT payload (LiveKit room name contains it)
+            const jwtPayload = JSON.parse(Buffer.from(conversationToken.split('.')[1], 'base64').toString());
+            const conversationId = (jwtPayload.video?.room || '').match(/(conv_[a-zA-Z0-9]+)/)?.[0];
+
+            if (!conversationId) {
+                log({ module: 'voice' }, `No conversation_id in JWT for user ${userId}`);
+                return reply.code(500).send({ error: 'Failed to get conversation ID' });
+            }
+
+            log({ module: 'voice' }, `Voice token issued for user ${userId}, conv=${conversationId}`);
             return reply.send({
                 allowed: true as const,
-                token: tokenData.token,
+                conversationToken,
+                conversationId,
                 agentId,
                 elevenUserId,
                 usedSeconds,
-                limitSeconds: VOICE_FREE_LIMIT_SECONDS,
+                limitSeconds: usedSeconds >= VOICE_FREE_LIMIT_SECONDS ? hardLimitSeconds : VOICE_FREE_LIMIT_SECONDS,
             });
         } catch (error) {
-            log({ module: 'voice' }, `ElevenLabs token request error for user ${userId}: ${error}`);
-            return reply.code(500).send({ error: 'Failed to get voice token' });
+            log({ module: 'voice' }, `ElevenLabs request error for user ${userId}: ${error}`);
+            return reply.code(500).send({ error: 'Failed to get voice credentials' });
+        }
+    });
+
+    /**
+     * Returns voice usage for the authenticated user over the last 30 days.
+     * Queries ElevenLabs directly — no local DB needed.
+     */
+    app.get('/v1/voice/usage', {
+        preHandler: app.authenticate,
+        schema: {
+            response: {
+                200: VoiceUsageResponseSchema,
+                500: z.object({ error: z.string() }),
+            },
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+
+        const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+        if (!elevenLabsApiKey) {
+            return reply.code(500).send({ error: 'ELEVENLABS_API_KEY not configured' });
+        }
+
+        const elevenUserId = deriveElevenUserId(userId);
+        const hardLimitSeconds = getVoiceHardLimitSeconds(userId);
+
+        try {
+            const [{ usedSeconds, conversationCount }, subscribed] = await Promise.all([
+                getVoiceUsage(elevenLabsApiKey, elevenUserId),
+                hasActiveSubscription(userId),
+            ]);
+            return reply.send({
+                usedSeconds,
+                limitSeconds: subscribed ? hardLimitSeconds : VOICE_FREE_LIMIT_SECONDS,
+                conversationCount,
+                conversationLimit: VOICE_MAX_CONVERSATIONS,
+                elevenUserId,
+            });
+        } catch (error) {
+            log({ module: 'voice' }, `Failed to get voice usage for user ${userId}: ${error}`);
+            return reply.code(500).send({ error: 'Failed to get voice usage' });
         }
     });
 }

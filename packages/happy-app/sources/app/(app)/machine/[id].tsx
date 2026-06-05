@@ -8,7 +8,7 @@ import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import { machineStopDaemon, machineUpdateMetadata, machineDelete } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -72,6 +72,7 @@ export default function MachineDetailScreen() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isStoppingDaemon, setIsStoppingDaemon] = useState(false);
     const [isRenamingMachine, setIsRenamingMachine] = useState(false);
+    const [isDeletingMachine, setIsDeletingMachine] = useState(false);
     const [customPath, setCustomPath] = useState('');
     const [isSpawning, setIsSpawning] = useState(false);
     const inputRef = useRef<MultiTextInputHandle>(null);
@@ -160,6 +161,33 @@ export default function MachineDetailScreen() {
         setIsRefreshing(true);
         await sync.refreshMachines();
         setIsRefreshing(false);
+    };
+
+    const handleDeleteMachine = async () => {
+        if (!machineId) return;
+        const confirmed = await Modal.confirm(
+            t('machine.deleteConfirmTitle'),
+            t('machine.deleteConfirmMessage'),
+            { cancelText: t('common.cancel'), confirmText: t('common.delete'), destructive: true }
+        );
+        if (!confirmed) return;
+
+        setIsDeletingMachine(true);
+        try {
+            const result = await machineDelete(machineId);
+            if (result.success) {
+                router.back();
+            } else {
+                Modal.alert(t('common.error'), result.message || t('machine.deleteFailed'));
+            }
+        } catch (error) {
+            Modal.alert(
+                t('common.error'),
+                error instanceof Error ? error.message : t('machine.deleteFailed')
+            );
+        } finally {
+            setIsDeletingMachine(false);
+        }
     };
 
     const handleRenameMachine = async () => {
@@ -593,6 +621,24 @@ export default function MachineDetailScreen() {
                             title={t('machine.metadataVersion')}
                             subtitle={String(machine.metadataVersion)}
                         />
+                </ItemGroup>
+
+                {/* Danger zone */}
+                <ItemGroup title={t('machine.dangerZone')} footer={t('machine.deleteFooter')}>
+                    <Item
+                        title={t('machine.delete')}
+                        titleStyle={{ color: '#FF3B30' }}
+                        onPress={handleDeleteMachine}
+                        disabled={isDeletingMachine}
+                        showChevron={false}
+                        rightElement={
+                            isDeletingMachine ? (
+                                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                            ) : (
+                                <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+                            )
+                        }
+                    />
                 </ItemGroup>
             </ItemList>
         </>

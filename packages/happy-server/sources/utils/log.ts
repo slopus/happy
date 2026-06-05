@@ -1,4 +1,5 @@
 import pino from 'pino';
+import pretty from 'pino-pretty';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -33,42 +34,38 @@ function formatLocalTime(timestamp?: number) {
     return `${hours}:${mins}:${secs}.${ms}`;
 }
 
-const transports: any[] = [];
-
-// Resolve pino-pretty target - use absolute path for bundled binaries
-let pinoPrettyTarget: string = 'pino-pretty';
-try {
-    pinoPrettyTarget = require.resolve('pino-pretty');
-} catch {}
-
-transports.push({
-    target: pinoPrettyTarget,
-    options: {
-        colorize: true,
-        translateTime: 'HH:MM:ss.l',
-        ignore: 'pid,hostname',
-        messageFormat: '{levelLabel} {msg} | [{time}]',
-        errorLikeObjectKeys: ['err', 'error'],
-    },
+// IMPORTANT: do NOT use pino's `transport` option here.
+//
+// pino transports run the target (pino-pretty, pino/file) in a worker_thread,
+// which resolves the module from a real path on disk. happy-server ships as a
+// single-file `bun build --compile` binary (see happy-cli `happy server`); inside
+// Bun's virtual $bunfs there is no node_modules/pino-pretty for the worker to
+// load, so the threaded transport crashes at startup.
+//
+// Synchronous in-process streams (pino-pretty as a stream + pino.destination,
+// composed with pino.multistream) need no worker and no on-disk resolution, so
+// they work identically whether bundled or run from source.
+const prettyStream = pretty({
+    colorize: true,
+    translateTime: 'HH:MM:ss.l',
+    ignore: 'pid,hostname',
+    messageFormat: '{levelLabel} {msg} | [{time}]',
+    errorLikeObjectKeys: ['err', 'error'],
 });
 
+const loggerStreams: pino.StreamEntry[] = [{ level: 'debug', stream: prettyStream }];
+
 if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING && consolidatedLogFile) {
-    transports.push({
-        target: 'pino/file',
-        options: {
-            destination: consolidatedLogFile,
-            mkdir: true,
-            messageFormat: '{levelLabel} {msg} | [server time: {time}]',
-        },
+    loggerStreams.push({
+        level: 'debug',
+        stream: pino.destination({ dest: consolidatedLogFile, mkdir: true }),
     });
 }
 
-// Main server logger with local time formatting
-export const logger = pino({
+// Shared core options: both loggers add localTime to every entry and emit the
+// same timestamp shape. Stream selection (pretty/file) is layered on top.
+const baseOptions = {
     level: 'debug',
-    transport: {
-        targets: transports,
-    },
     formatters: {
         log: (object: any) => {
             // Add localTime to every log entry
@@ -76,36 +73,17 @@ export const logger = pino({
                 ...object,
                 localTime: formatLocalTime(typeof object.time === 'number' ? object.time : undefined),
             };
-        }
+        },
     },
     timestamp: () => `,"time":${Date.now()},"localTime":"${formatLocalTime()}"`,
-});
+} satisfies pino.LoggerOptions;
+
+// Main server logger with local time formatting
+export const logger = pino(baseOptions, pino.multistream(loggerStreams));
 
 // Optional file-only logger for remote logs from CLI/mobile
-export const fileConsolidatedLogger = process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING && consolidatedLogFile ? 
-    pino({
-        level: 'debug',
-        transport: {
-            targets: [{
-                target: 'pino/file',
-                options: {
-                    destination: consolidatedLogFile,
-                    mkdir: true,
-                },
-            }],
-        },
-        formatters: {
-            log: (object: any) => {
-                // Add localTime to every log entry
-                // Note: source property already exists from CLI/mobile logs
-                return {
-                    ...object,
-                    localTime: formatLocalTime(typeof object.time === 'number' ? object.time : undefined),
-                };
-            }
-        },
-        timestamp: () => `,"time":${Date.now()},"localTime":"${formatLocalTime()}"`,
-    }) : undefined;
+export const fileConsolidatedLogger = process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING && consolidatedLogFile ?
+    pino(baseOptions, pino.destination({ dest: consolidatedLogFile, mkdir: true })) : undefined;
 
 export function log(src: any, ...args: any[]) {
     logger.info(src, ...args);

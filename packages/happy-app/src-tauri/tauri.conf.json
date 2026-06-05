@@ -6,17 +6,25 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:8081",
-    "beforeDevCommand": "yarn start",
-    "beforeBuildCommand": "yarn expo export --platform web --output-dir dist"
+    "beforeDevCommand": "pnpm start",
+    "beforeBuildCommand": "pnpm exec expo export --platform web --output-dir dist"
   },
   "app": {
     "windows": [
       {
         "title": "Happy",
-        "width": 800,
-        "height": 600,
+        "width": 1680,
+        "height": 1050,
+        "minWidth": 720,
+        "minHeight": 480,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": {
+          "x": 22,
+          "y": 22
+        },
+        "hiddenTitle": true
       }
     ],
     "security": {
@@ -32,6 +40,12 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "signingIdentity": "Developer ID Application: Bulka, LLC (466DQWDR8C)",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.plist",
+      "minimumSystemVersion": "10.15"
+    }
   }
 }

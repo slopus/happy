@@ -1,13 +1,11 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
+import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import {
     getAvailableModels,
     getAvailablePermissionModes,
-    getDefaultModelKey,
-    getDefaultPermissionModeKey,
     getEffortLevelsForModel,
-    getDefaultEffortKeyForModel,
     resolveCurrentOption,
     EffortLevel,
 } from '@/components/modelModeOptions';
@@ -16,12 +14,12 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
-import { SessionActionsAnchor, SessionActionsPopover } from '@/components/SessionActionsPopover';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
+import { useImagePicker } from '@/hooks/useImagePicker';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
-import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
+import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
@@ -29,20 +27,30 @@ import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { tracking, trackMessageSent } from '@/track';
+import { tracking } from '@/track';
+import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
+import { AllFilesDiffView } from '@/components/AllFilesDiffView';
+import { FileViewPanel } from '@/components/FileViewPanel';
+import { prefetchPierreDiff } from '@/components/diff/PierreDiffView';
+import { GitFileStatus } from '@/sync/gitStatusFiles';
+import { useOverlayNav } from '@/-session/sessionOverlayNav';
+import { formatPathRelativeToHome, getResumeCommandBlock, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
+import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -56,48 +64,150 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
-    const [sessionActionsAnchor, setSessionActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
+    const { width: windowWidth } = useWindowDimensions();
+    const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
+    const zenMode = useLocalSetting('zenMode');
+
+    // Escape key exits zen mode (web only)
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || !zenMode) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                storage.getState().applyLocalSettings({ zenMode: false });
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [zenMode]);
+
+    // Base condition: can we show the diff sidebar at all?
+    const canShowSidebar = fileDiffsSidebarEnabled
+        && (isRunningOnMac() || Platform.OS === 'web')
+        && windowWidth >= SIDEBAR_MIN_WINDOW_WIDTH
+        && isDataReady && !!session;
+
+    const showSidebar = canShowSidebar && !zenMode;
+
+    // Match left sidebar width: 30% of window, clamped to 250–360px
+    const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
+
+    // Animate diff sidebar width.
+    //
+    // On web we snap the value (duration: 0). The animated `width` change
+    // triggers a flex-row reflow on every frame, which in turn re-measures
+    // the entire chat tree (FlatList rows, message blocks). At ~60fps that
+    // grinds to ~15fps on dev builds. Snapping skips the layout thrash —
+    // the chat reflows once instead of 60 times. Native keeps the smooth
+    // animation because it runs on Reanimated's UI thread.
+    const sidebarAnim = useSharedValue(showSidebar ? 1 : 0);
+    React.useEffect(() => {
+        sidebarAnim.value = withTiming(showSidebar ? 1 : 0, {
+            duration: Platform.OS === 'web' ? 0 : 250,
+            easing: Easing.out(Easing.cubic),
+        });
+    }, [showSidebar]);
+    const animatedSidebarStyle = useAnimatedStyle(() => ({
+        width: sidebarAnim.value * sidebarWidth,
+        opacity: sidebarAnim.value,
+        overflow: 'hidden' as const,
+    }));
+
+    const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
+
+    // Overlay state is managed as a browser-style history stack so the
+    // sidebar's back / forward arrows can navigate between chat ↔ diff ↔ file
+    // without a per-overlay close button. Stack + cursor live in one piece
+    // of state so functional updates stay coordinated.
+    type OverlayEntry =
+        | { kind: 'none' }
+        | { kind: 'diff'; file: string }
+        | { kind: 'file'; path: string };
+    const [overlayHistory, setOverlayHistory] = React.useState<{ stack: OverlayEntry[]; cursor: number }>(
+        { stack: [{ kind: 'none' }], cursor: 0 }
+    );
+    const overlayCurrent = overlayHistory.stack[overlayHistory.cursor] ?? { kind: 'none' };
+    const diffViewOpen = overlayCurrent.kind === 'diff';
+    const fileViewPath = overlayCurrent.kind === 'file' ? overlayCurrent.path : null;
+    const scrollToFile = overlayCurrent.kind === 'diff' ? overlayCurrent.file : null;
+
+    const pushOverlay = React.useCallback((entry: OverlayEntry) => {
+        setOverlayHistory((prev) => {
+            const truncated = prev.stack.slice(0, prev.cursor + 1);
+            truncated.push(entry);
+            return { stack: truncated, cursor: truncated.length - 1 };
+        });
+    }, []);
+
+    const handleSidebarFilePress = React.useCallback((file: GitFileStatus) => {
+        if (file.status === 'deleted') return;
+        pushOverlay({ kind: 'diff', file: file.fullPath });
+    }, [pushOverlay]);
+    const handleAllFilesFilePress = React.useCallback((filePath: string) => {
+        pushOverlay({ kind: 'file', path: filePath });
+    }, [pushOverlay]);
+
+    // When sidebar capability is lost (screen too narrow, disabled), close views.
+    // Don't close on zen mode toggle — keep the view visible.
+    React.useEffect(() => {
+        if (!canShowSidebar) {
+            setOverlayHistory({ stack: [{ kind: 'none' }], cursor: 0 });
+        }
+    }, [canShowSidebar]);
+
+    // Right-side header content published by the active overlay (diff toggle / save button).
+    const [headerRightSlot, setHeaderRightSlot] = React.useState<React.ReactNode>(null);
+
+    // Wire intra-session back / forward into the global SidebarNavigator arrows.
+    const canOverlayBack = overlayHistory.cursor > 0;
+    const canOverlayForward = overlayHistory.cursor < overlayHistory.stack.length - 1;
+    React.useEffect(() => {
+        useOverlayNav.getState().publish({
+            canBack: canOverlayBack,
+            canForward: canOverlayForward,
+            back: () => {
+                if (!canOverlayBack) return false;
+                setOverlayHistory((prev) => (
+                    prev.cursor <= 0 ? prev : { ...prev, cursor: prev.cursor - 1 }
+                ));
+                return true;
+            },
+            forward: () => {
+                if (!canOverlayForward) return false;
+                setOverlayHistory((prev) => (
+                    prev.cursor >= prev.stack.length - 1 ? prev : { ...prev, cursor: prev.cursor + 1 }
+                ));
+                return true;
+            },
+        });
+        return () => useOverlayNav.getState().reset();
+    }, [canOverlayBack, canOverlayForward]);
+
+    // Warm Pierre's lazy web chunks while the user is still reading chat.
+    React.useEffect(() => {
+        prefetchPierreDiff();
+    }, []);
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
         if (!isDataReady) {
-            // Loading state - show empty header
-            return {
-                title: '',
-                subtitle: undefined,
-                avatarId: undefined,
-                onAvatarPress: undefined,
-                isConnected: false,
-                flavor: null
-            };
+            return { title: '', folderName: undefined, isConnected: false };
         }
-
         if (!session) {
-            // Deleted state - show deleted message in header
-            return {
-                title: t('errors.sessionDeleted'),
-                subtitle: undefined,
-                avatarId: undefined,
-                onAvatarPress: undefined,
-                isConnected: false,
-                flavor: null
-            };
+            return { title: t('errors.sessionDeleted'), folderName: undefined, isConnected: false };
         }
-
-        // Normal state - show session info
         const isConnected = session.presence === 'online';
+        const pathSegments = session.metadata?.path?.split(/[/\\]/).filter(Boolean);
+        const folderName = pathSegments?.[pathSegments.length - 1];
+        const sessionName = getSessionName(session);
         return {
-            title: getSessionName(session),
-            subtitle: session.metadata?.path ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir) : undefined,
-            avatarId: getSessionAvatarId(session),
-            onAvatarPress: () => router.push(`/session/${sessionId}/info`),
-            isConnected: isConnected,
-            flavor: session.metadata?.flavor || null,
-            tintColor: isConnected ? '#000' : '#8E8E93'
+            title: sessionName,
+            folderName,
+            isConnected,
         };
-    }, [session, isDataReady, sessionId, router]);
+    }, [session, isDataReady]);
 
-    return (
+    const mainContent = (
         <>
             {/* Status bar shadow for landscape mode */}
             {isLandscape && deviceType === 'phone' && (
@@ -130,20 +240,14 @@ export const SessionView = React.memo((props: { id: string }) => {
                     zIndex: 1000
                 }}>
                     <ChatHeaderView
-                        {...headerProps}
+                        title={headerProps.title}
+                        folderName={headerProps.folderName}
+                        isConnected={headerProps.isConnected}
+                        extraPathSegment={fileViewPath ?? undefined}
+                        rightSlot={(diffViewOpen || !!fileViewPath) ? headerRightSlot : null}
+                        onTitlePress={session ? () => router.push(`/session/${sessionId}/info`) : undefined}
                         onBackPress={() => router.back()}
                         onNewSessionPress={() => router.navigate('/new')}
-                        avatarMenuExpanded={Platform.OS === 'web' && !!sessionActionsAnchor}
-                        avatarMenuSession={session}
-                        onAfterAvatarArchive={() => {
-                            setSessionActionsAnchor(null);
-                            router.replace('/');
-                        }}
-                        onAfterAvatarDelete={() => {
-                            setSessionActionsAnchor(null);
-                            router.replace('/');
-                        }}
-                        onAvatarMenuRequest={Platform.OS === 'web' && session ? setSessionActionsAnchor : undefined}
                     />
                     {/* Voice status bar below header - not on tablet (shown in sidebar) */}
                     {!isTablet && realtimeStatus !== 'disconnected' && (
@@ -155,42 +259,167 @@ export const SessionView = React.memo((props: { id: string }) => {
             {/* Content based on state */}
             <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') ? safeArea.top + headerHeight + (!isTablet && realtimeStatus !== 'disconnected' ? 32 : 0) : 0 }}>
                 {!isDataReady ? (
-                    // Loading state
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     </View>
                 ) : !session ? (
-                    // Deleted state
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <Ionicons name="trash-outline" size={48} color={theme.colors.textSecondary} />
                         <Text style={{ color: theme.colors.text, fontSize: 20, marginTop: 16, fontWeight: '600' }}>{t('errors.sessionDeleted')}</Text>
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
                 ) : (
-                    // Normal session view
                     <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
                 )}
             </View>
-            {Platform.OS === 'web' && session && (
-                <SessionActionsPopover
-                    anchor={sessionActionsAnchor}
-                    onAfterArchive={() => {
-                        setSessionActionsAnchor(null);
-                        router.replace('/');
-                    }}
-                    onAfterDelete={() => {
-                        setSessionActionsAnchor(null);
-                        router.replace('/');
-                    }}
-                    onClose={() => setSessionActionsAnchor(null)}
-                    session={session}
-                    visible={!!sessionActionsAnchor}
-                />
-            )}
         </>
+    );
+
+    if (!canShowSidebar) {
+        return mainContent;
+    }
+
+    // Desktop layout: chat + animated sidebar at the same level (full height).
+    // When a sidebar file is selected, InlineFileDiff overlays the main content
+    // (chat stays mounted underneath so state is preserved).
+    return (
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+            <View
+                style={{
+                    flex: 1,
+                    // Web-only: isolate the chat subtree's layout from the
+                    // parent flex-row. If we ever bring back a width
+                    // animation on the right sidebar, `contain` prevents
+                    // layout work from leaking up to the chat tree on
+                    // every frame.
+                    ...(Platform.OS === 'web' ? { contain: 'layout style paint' as any } : {}),
+                }}
+            >
+                {mainContent}
+                {diffViewOpen && canShowSidebar && (
+                    <View
+                        pointerEvents="box-none"
+                        style={{
+                            position: 'absolute',
+                            top: safeArea.top + headerHeight,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: theme.colors.surface,
+                        }}
+                    >
+                        <AllFilesDiffView
+                            sessionId={sessionId}
+                            scrollToFile={scrollToFile}
+                            onHeaderRightSlotChange={setHeaderRightSlot}
+                        />
+                    </View>
+                )}
+                {fileViewPath && canShowSidebar && (
+                    <View
+                        pointerEvents="box-none"
+                        style={{
+                            position: 'absolute',
+                            top: safeArea.top + headerHeight,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: theme.colors.surface,
+                        }}
+                    >
+                        <FileViewPanel
+                            sessionId={sessionId}
+                            filePath={fileViewPath}
+                            onHeaderRightSlotChange={setHeaderRightSlot}
+                        />
+                    </View>
+                )}
+            </View>
+            <Animated.View style={[{ minWidth: 0, alignSelf: 'stretch' }, animatedSidebarStyle]}>
+                <View style={{ width: sidebarWidth, flex: 1 }}>
+                    <FilesSidebar
+                        sessionId={sessionId}
+                        selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
+                        onFilePress={handleSidebarFilePress}
+                        mode={sidebarMode}
+                        onModeChange={setSidebarMode}
+                        onAllFilesFilePress={handleAllFilesFilePress}
+                    />
+                </View>
+            </Animated.View>
+        </View>
     );
 });
 
+const SIDEBAR_MIN_WINDOW_WIDTH = 1100;
+
+// Hoisted so AgentInput's React.memo doesn't see a new array ref on every keystroke
+const AGENT_INPUT_AUTOCOMPLETE_PREFIXES = ['@', '/'];
+
+// Imperative handle exposed by ChatComposer so SessionViewLoaded can read /
+// clear the message text without subscribing to it (which would re-render
+// the whole loaded screen on every keystroke).
+type ChatComposerHandle = {
+    getMessage: () => string;
+    clearMessage: () => void;
+};
+
+type ChatComposerProps = Omit<
+    React.ComponentProps<typeof AgentInput>,
+    'initialValue' | 'onChangeText'
+> & {
+    sessionId: string;
+    composerHandleRef: React.RefObject<ChatComposerHandle | null>;
+};
+
+// Owns the chat-message draft autosave. The textarea itself is uncontrolled:
+// keystrokes never round-trip through React state, so the parent can stay
+// stable on every keystroke and deletion doesn't batch on a busy main thread.
+// `message` here is a low-priority mirror updated via startTransition; it's
+// only used to feed useDraft's debounced autosave. Reads/clears on send go
+// through the MultiTextInput handle imperatively.
+const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) {
+    const { sessionId, composerHandleRef, ...rest } = props;
+    // Synchronously hydrate the textarea with any saved draft so the user sees
+    // their work-in-progress on session open without an extra round-trip.
+    const initialDraft = React.useMemo(() => {
+        return storage.getState().sessions[sessionId]?.draft ?? '';
+    }, [sessionId]);
+    const inputHandleRef = React.useRef<MultiTextInputHandle>(null);
+    const [message, setMessage] = React.useState(initialDraft);
+
+    const applyDraft = React.useCallback((text: string) => {
+        inputHandleRef.current?.setTextAndSelection(text, { start: text.length, end: text.length });
+        setMessage(text);
+    }, []);
+
+    const { clearDraft } = useDraft(sessionId, message, applyDraft);
+
+    const handleChangeText = React.useCallback((text: string) => {
+        // Transition keeps the textarea responsive even when the draft
+        // autosave / re-render takes longer than a frame.
+        React.startTransition(() => setMessage(text));
+    }, []);
+
+    React.useImperativeHandle(composerHandleRef, () => ({
+        getMessage: () => inputHandleRef.current?.getText() ?? '',
+        clearMessage: () => {
+            inputHandleRef.current?.setTextAndSelection('', { start: 0, end: 0 });
+            setMessage('');
+            clearDraft();
+        },
+    }), [clearDraft]);
+
+    return (
+        <AgentInput
+            {...rest}
+            ref={inputHandleRef}
+            sessionId={sessionId}
+            initialValue={initialDraft}
+            onChangeText={handleChangeText}
+        />
+    );
+});
 
 function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session }) {
     const { theme } = useUnistyles();
@@ -199,10 +428,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const isTablet = useIsTablet();
-    const [message, setMessage] = React.useState('');
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
+    const zenMode = useLocalSetting('zenMode');
     const sessionInputHorizontalPadding = Platform.OS === 'web' || isRunningOnMac() || isTablet ? 12 : 8;
 
     // Check if CLI version is outdated and not already acknowledged
@@ -218,22 +447,26 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const availableModes = React.useMemo(() => (
         getAvailablePermissionModes(flavor, session.metadata, t)
     ), [flavor, session.metadata]);
+    const agentDefaultOverrides = useSetting('agentDefaultOverrides');
+    const effectiveAgentDefaults = React.useMemo(() => (
+        resolveAgentDefaultConfig(agentDefaultOverrides, flavor)
+    ), [agentDefaultOverrides, flavor]);
 
     const permissionMode = React.useMemo<PermissionMode | null>(() => (
         resolveCurrentOption(availableModes, [
             session.permissionMode,
+            effectiveAgentDefaults.permissionMode,
             session.metadata?.currentOperatingModeCode,
-            getDefaultPermissionModeKey(flavor),
         ])
-    ), [availableModes, session.permissionMode, session.metadata?.currentOperatingModeCode, flavor]);
+    ), [availableModes, session.permissionMode, effectiveAgentDefaults.permissionMode, session.metadata?.currentOperatingModeCode]);
 
     const modelMode = React.useMemo<ModelMode | null>(() => (
         resolveCurrentOption(availableModels, [
             session.modelMode,
+            effectiveAgentDefaults.modelMode,
             session.metadata?.currentModelCode,
-            getDefaultModelKey(flavor),
         ])
-    ), [availableModels, session.modelMode, session.metadata?.currentModelCode, flavor]);
+    ), [availableModels, session.modelMode, effectiveAgentDefaults.modelMode, session.metadata?.currentModelCode]);
 
     // Effort level state
     const modelKey = modelMode?.key ?? 'default';
@@ -243,22 +476,28 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const effortLevel = React.useMemo<EffortLevel | null>(() => (
         resolveCurrentOption(availableEffortLevels, [
             session.effortLevel,
-            getDefaultEffortKeyForModel(flavor, modelKey),
+            effectiveAgentDefaults.effortLevel,
         ])
-    ), [availableEffortLevels, session.effortLevel, flavor, modelKey]);
+    ), [availableEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel]);
 
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
     const expResumeSession = useSetting('expResumeSession');
-    const isArchivedSession = session.metadata?.lifecycleState === 'archived';
+    const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
     const isDisconnected = !sessionStatus.isConnected;
-    const isInactiveArchivedSession = isArchivedSession && isDisconnected;
     const resumeCommandBlock = getResumeCommandBlock(session);
 
-    // Use draft hook for auto-saving message drafts
-    const { clearDraft } = useDraft(sessionId, message, setMessage);
+    // Image attachment state (expImageUpload feature flag)
+    const expImageUpload = useSetting('expImageUpload');
+    const { selectedImages, pickImages, removeImage, clearImages, addImages } = useImagePicker();
+
+    // ChatComposer owns the message state + useDraft subscription. We only
+    // hold an imperative handle so handleSend can read the live text and
+    // clear it without subscribing to it (which would re-render the whole
+    // SessionViewLoaded tree on every keystroke).
+    const composerHandleRef = React.useRef<ChatComposerHandle | null>(null);
 
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
@@ -295,6 +534,50 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         },
     }), []);
 
+    // handleSend reads the live message via the composer ref, so it doesn't
+    // need to re-create on every keystroke.
+    const handleSend = React.useCallback(() => {
+        const liveMessage = composerHandleRef.current?.getMessage() ?? '';
+        if (liveMessage.trim() || (expImageUpload && selectedImages.length > 0)) {
+            const attachments = expImageUpload ? selectedImages : undefined;
+            composerHandleRef.current?.clearMessage();
+            if (expImageUpload) clearImages();
+            sync.sendMessage(sessionId, liveMessage, { source: 'chat', attachments });
+        }
+    }, [sessionId, expImageUpload, selectedImages, clearImages]);
+
+    const handleAbort = React.useCallback(() => {
+        storage.getState().resetSessionAgentOverrides(sessionId);
+        sessionAbort(sessionId);
+    }, [sessionId]);
+
+    const handleFileViewerPress = React.useCallback(() => {
+        router.push(`/session/${sessionId}/files`);
+    }, [router, sessionId]);
+
+    const handleAutocompleteSuggestions = React.useCallback((query: string) => (
+        getSuggestions(sessionId, query)
+    ), [sessionId]);
+
+    const connectionStatus = React.useMemo(() => ({
+        text: sessionStatus.statusText,
+        color: sessionStatus.statusColor,
+        dotColor: sessionStatus.statusDotColor,
+        isPulsing: sessionStatus.isPulsing,
+    }), [sessionStatus.statusText, sessionStatus.statusColor, sessionStatus.statusDotColor, sessionStatus.isPulsing]);
+
+    const usageData = React.useMemo(() => {
+        const source = sessionUsage ?? session.latestUsage;
+        if (!source) return undefined;
+        return {
+            inputTokens: source.inputTokens,
+            outputTokens: source.outputTokens,
+            cacheCreation: source.cacheCreation,
+            cacheRead: source.cacheRead,
+            contextSize: source.contextSize,
+        };
+    }, [sessionUsage, session.latestUsage]);
+
 
     // Handle microphone button press - memoized to prevent button flashing
     const handleMicrophonePress = React.useCallback(async () => {
@@ -304,16 +587,35 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         if (realtimeStatus === 'disconnected' || realtimeStatus === 'error') {
             try {
                 const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
-                await startRealtimeSession(sessionId, initialPrompt);
-                tracking?.capture('voice_session_started', { sessionId });
+                const conversationId = await startRealtimeSession(sessionId, initialPrompt);
+                if (conversationId) {
+                    const hasPro = storage.getState().purchases.entitlements['pro'] ?? false;
+                    tracking?.capture('voice_session_started', {
+                        session_id: sessionId,
+                        elevenlabs_conversation_id: conversationId,
+                        has_pro: hasPro,
+                        onboarding_prompt_load_count: getVoiceOnboardingPromptLoadCount(),
+                        voice_message_count: getVoiceMessageCount(),
+                    });
+                }
             } catch (error) {
                 console.error('Failed to start realtime session:', error);
                 Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
-                tracking?.capture('voice_session_error', { error: error instanceof Error ? error.message : 'Unknown error' });
+                tracking?.capture('voice_session_error', {
+                    session_id: sessionId,
+                    elevenlabs_conversation_id: getCurrentVoiceConversationId(),
+                    error: error instanceof Error ? error.message : 'Unknown error',
+                });
             }
         } else if (realtimeStatus === 'connected') {
+            const conversationId = getCurrentVoiceConversationId();
+            const durationSeconds = getCurrentVoiceSessionDurationSeconds();
             await stopRealtimeSession();
-            tracking?.capture('voice_session_stopped');
+            tracking?.capture('voice_session_stopped', {
+                session_id: sessionId,
+                elevenlabs_conversation_id: conversationId,
+                ...(durationSeconds !== undefined ? { duration_seconds: durationSeconds } : {}),
+            });
 
             // Notify voice assistant about voice session stop
             voiceHooks.onVoiceStopped();
@@ -332,9 +634,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         // Trigger session sync
         sync.onSessionVisible(sessionId);
 
+        // Mark session as currently being viewed (clears unread)
+        storage.getState().setCurrentViewingSession(sessionId);
 
         // Initialize git status sync for this session
         gitStatusSync.getSync(sessionId);
+
+        return () => {
+            // Clear viewing session on unmount
+            const current = storage.getState().currentViewingSessionId;
+            if (current === sessionId) {
+                storage.getState().setCurrentViewingSession(null);
+            }
+        };
     }, [sessionId, realtimeStatus]);
 
     let content = (
@@ -357,10 +669,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     ) : null;
 
     const composer = (
-        <AgentInput
+        <ChatComposer
+            composerHandleRef={composerHandleRef}
             placeholder={t('session.inputPlaceholder')}
-            value={message}
-            onChangeText={setMessage}
             sessionId={sessionId}
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
@@ -372,65 +683,47 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             availableEffortLevels={availableEffortLevels}
             onEffortLevelChange={updateEffortLevel}
             metadata={session.metadata}
-            connectionStatus={{
-                text: sessionStatus.statusText,
-                color: sessionStatus.statusColor,
-                dotColor: sessionStatus.statusDotColor,
-                isPulsing: sessionStatus.isPulsing
-            }}
-            blockSend={isDisconnected}
-            onSend={() => {
-                if (message.trim()) {
-                    setMessage('');
-                    clearDraft();
-                    sync.sendMessage(sessionId, message);
-                    trackMessageSent();
-                }
-            }}
+            connectionStatus={connectionStatus}
+            blockSend={false}
+            onSend={handleSend}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
             isMicActive={isDisconnected ? false : micButtonState.isMicActive}
-            onAbort={isDisconnected ? undefined : () => sessionAbort(sessionId)}
+            onAbort={isDisconnected ? undefined : handleAbort}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
-            onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
-            autocompletePrefixes={['@', '/']}
-            autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
-            usageData={sessionUsage ? {
-                inputTokens: sessionUsage.inputTokens,
-                outputTokens: sessionUsage.outputTokens,
-                cacheCreation: sessionUsage.cacheCreation,
-                cacheRead: sessionUsage.cacheRead,
-                contextSize: sessionUsage.contextSize
-            } : session.latestUsage ? {
-                inputTokens: session.latestUsage.inputTokens,
-                outputTokens: session.latestUsage.outputTokens,
-                cacheCreation: session.latestUsage.cacheCreation,
-                cacheRead: session.latestUsage.cacheRead,
-                contextSize: session.latestUsage.contextSize
-            } : undefined}
+            onFileViewerPress={experiments && !isTablet ? handleFileViewerPress : undefined}
+            selectedImages={expImageUpload ? selectedImages : undefined}
+            onPickImages={expImageUpload ? pickImages : undefined}
+            onRemoveImage={expImageUpload ? removeImage : undefined}
+            onAddImages={expImageUpload ? addImages : undefined}
+            autocompletePrefixes={AGENT_INPUT_AUTOCOMPLETE_PREFIXES}
+            autocompleteSuggestions={handleAutocompleteSuggestions}
+            usageData={usageData}
             alwaysShowContextSize={alwaysShowContextSize}
+            zenMode={zenMode}
         />
     );
 
-    const archivedHint = isInactiveArchivedSession ? (
+    // Disconnected sessions get the full Resume affordance regardless of
+    // whether they were explicitly archived or just lost their CLI (e.g.
+    // Ctrl-C in terminal — lifecycleState stays 'running', server flips
+    // active=false). InactiveArchivedHint handles both cases: shows the
+    // Resume button when canResume is true, falls back to the
+    // copy-this-command hint when the experiments toggle is off or the
+    // machine isn't reachable.
+    const inactiveHint = isDisconnected ? (
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
             <InactiveArchivedHint
                 resumeCommandBlock={expResumeSession ? resumeCommandBlock : null}
+                canResume={canResume}
+                resuming={resumingSession}
+                onResume={resumeSession}
             />
         </CenteredInputWidth>
     ) : null;
 
-    const input = isInactiveArchivedSession ? (
+    const input = (
         <>
-            {archivedHint}
-            {composer}
-        </>
-    ) : (
-        <>
-            {expResumeSession && isDisconnected && resumeCommandBlock && (
-                <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
-                    <ResumeCommandHint resumeCommandBlock={resumeCommandBlock} />
-                </CenteredInputWidth>
-            )}
+            {inactiveHint}
             {composer}
         </>
     );
@@ -522,29 +815,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     )
 }
 
-function ResumeCommandHint({ resumeCommandBlock }: {
-    resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>>;
-}) {
-    const { theme } = useUnistyles();
-
-    return (
-        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10, gap: 8 }}>
-            <ResumeCommandCopyBlock resumeCommandBlock={resumeCommandBlock} />
-            <Text style={{
-                color: theme.colors.textSecondary,
-                fontSize: 12,
-                lineHeight: 16,
-                textAlign: 'center',
-                paddingHorizontal: 8,
-            }}>
-                Run this command in your terminal to resume this session
-            </Text>
-        </View>
-    );
-}
-
 function InactiveArchivedHint(props: {
     resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>> | null;
+    canResume: boolean;
+    resuming: boolean;
+    onResume: () => void;
 }) {
     const { theme } = useUnistyles();
     const hintTextStyle = {
@@ -565,13 +840,35 @@ function InactiveArchivedHint(props: {
                 <Text style={hintTextStyle}>
                     {t('session.inactiveArchived')}
                 </Text>
-                {props.resumeCommandBlock && (
+                {props.canResume ? null : props.resumeCommandBlock && (
                     <Text style={hintTextStyle}>
                         {t('session.resumeFromTerminal')}
                     </Text>
                 )}
             </View>
-            {props.resumeCommandBlock && (
+            {props.canResume ? (
+                <Pressable
+                    onPress={props.onResume}
+                    disabled={props.resuming}
+                    style={({ pressed }) => ({
+                        height: 40,
+                        borderRadius: 10,
+                        backgroundColor: theme.colors.button.primary.background,
+                        opacity: props.resuming ? 0.6 : pressed ? 0.8 : 1,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginHorizontal: 8,
+                    })}
+                >
+                    {props.resuming ? (
+                        <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
+                    ) : (
+                        <Text style={{ color: theme.colors.button.primary.tint, fontSize: 15, fontWeight: '600' }}>
+                            {t('sessionInfo.resumeSession')}
+                        </Text>
+                    )}
+                </Pressable>
+            ) : props.resumeCommandBlock && (
                 <ResumeCommandCopyBlock resumeCommandBlock={props.resumeCommandBlock} />
             )}
         </View>

@@ -1,0 +1,37 @@
+.sidebar-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 12px;
+    transform: translateX(6px);
+    z-index: 20;
+    cursor: col-resize;
+    touch-action: none;
+    user-select: none;
+    -webkit-app-region: no-drag;
+}
+
+.sidebar-resizer__line {
+    pointer-events: none;
+    margin: 0 auto;
+    width: 1px;
+    height: 100%;
+    opacity: 0;
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        color-mix(in srgb, var(--color-text-foreground) 25%, transparent) 50%,
+        transparent 100%
+    );
+    transition: opacity 120ms ease;
+}
+
+.sidebar-resizer:hover .sidebar-resizer__line,
+.sidebar-resizer:active .sidebar-resizer__line {
+    opacity: 1;
+}
+
+.app--sidebar-hidden .sidebar-resizer {
+    display: none;
+}

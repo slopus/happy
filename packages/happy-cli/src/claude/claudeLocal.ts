@@ -1,9 +1,10 @@
-import { spawn } from "node:child_process";
+import { spawn as crossSpawn } from "cross-spawn";
 import { resolve, join } from "node:path";
 import { createInterface } from "node:readline";
 import { mkdirSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { logger } from "@/ui/logger";
+import { ensureLocalProxyBypass } from "./utils/proxyBypass";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { getProjectPath } from "./utils/path";
@@ -187,6 +188,25 @@ export async function claudeLocal(opts: {
     try {
         // Start the interactive process
         process.stdin.pause();
+
+        // Force blocking I/O on the inherited stdin fd. Node leaves O_NONBLOCK
+        // set after libuv-mode reads (which Ink and our drain helper both do
+        // upstream of this spawn). When the child claude code inherits the fd
+        // and tries to read in blocking mode, EAGAIN comes back instead of
+        // bytes — the visible symptom is duplicated cursors and garbled echo
+        // on macOS/Linux right after a remote→local switch (slopus/happy#301
+        // family). Setting setBlocking(true) here clears O_NONBLOCK before
+        // crossSpawn dups the fd into the child.
+        const stdinHandle = (process.stdin as any)._handle;
+        if (stdinHandle && typeof stdinHandle.setBlocking === 'function') {
+            try {
+                stdinHandle.setBlocking(true);
+                logger.debug('[ClaudeLocal] forced stdin to blocking mode before spawn');
+            } catch (err) {
+                logger.debug('[ClaudeLocal] setBlocking(true) failed: ' + String(err));
+            }
+        }
+
         await new Promise<void>((r, reject) => {
             const args: string[] = []
 
@@ -242,6 +262,10 @@ export async function claudeLocal(opts: {
                 : { ...process.env, ...opts.claudeEnvVars };
             const env = baseEnv;
 
+            if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {
+                ensureLocalProxyBypass(env);
+            }
+
             logger.debug(`[ClaudeLocal] Spawning launcher: ${claudeCliPath}`);
             logger.debug(`[ClaudeLocal] Args: ${JSON.stringify(args)}`);
 
@@ -283,7 +307,9 @@ export async function claudeLocal(opts: {
                     }
                 }
 
-                const child = spawn(
+                // Use cross-spawn so `node` resolves to `node.exe` on Windows
+                // (issue #1082 — same root cause as #1022 at a different site).
+                const child = crossSpawn(
                     spawnWithShell && spawnCommand ? spawnCommand : 'node',
                     spawnWithShell ? [] : spawnArgs,
                     {

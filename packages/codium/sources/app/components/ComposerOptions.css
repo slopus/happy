@@ -1,0 +1,80 @@
+.composer-options {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: calc(100% + 2px);
+    min-height: 61px;
+    margin: -26px -1px 0;
+    padding: 25px 8px 8px;
+    border-radius: 0 0 20px 20px;
+    background: color-mix(in srgb, var(--color-background-surface-under) 82%, transparent);
+    color: var(--color-text-foreground-tertiary);
+}
+
+.composer-options__item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    /* All elements on the secondary panel are non-elastic and keep their
+     * width — they don't shrink when the composer narrows, matching Codex. */
+    flex-shrink: 0;
+    flex-grow: 0;
+    height: 28px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    color: inherit;
+    font-size: var(--text-base);
+    line-height: 18px;
+    text-align: left;
+    user-select: none;
+}
+
+.composer-options__item:hover,
+.composer-options__item:focus-visible {
+    color: var(--color-text-foreground);
+}
+
+.composer-options__item:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 1px;
+}
+
+.composer-options__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    color: currentColor;
+}
+
+.composer-options__icon--project {
+    width: 19px;
+}
+
+.composer-options__label {
+    white-space: nowrap;
+}
+
+/*
+ * The third item (branch) sits in its own visual group, separated from the
+ * first two by a slightly larger gap.
+ */
+.composer-options__item:nth-child(3) {
+    margin-left: 4px;
+}
+
+html.electron-dark .composer-options {
+    background: color-mix(in srgb, var(--color-background-surface-under) 88%, transparent);
+}
+
+@media (max-width: 720px) {
+    .composer-options {
+        gap: 8px;
+        min-height: auto;
+        padding: 25px 8px 8px;
+        flex-wrap: wrap;
+    }
+}

@@ -1,49 +1,60 @@
 import * as React from 'react';
-import { ScrollView, View } from 'react-native';
-import { DiffView } from '@/components/diff/DiffView';
+import { View } from 'react-native';
+import { PierreDiffView } from '@/components/diff/PierreDiffView';
 import { useSetting } from '@/sync/storage';
 
 interface ToolDiffViewProps {
-    oldText: string;
-    newText: string;
+    /** Pre-built unified-diff patch string. Preferred when available. */
+    patch?: string;
+    /** Pair used to derive a patch if `patch` isn't supplied. */
+    oldText?: string;
+    newText?: string;
+    /** File name — used for language detection in syntax highlighting. */
+    fileName?: string;
     style?: any;
+    /** No-op in the new renderer (pierre/diffs always draws line numbers via gutter). Kept for source compat. */
     showLineNumbers?: boolean;
+    /** No-op in the new renderer; pierre/diffs uses classic indicators. */
     showPlusMinusSymbols?: boolean;
 }
 
-export const ToolDiffView = React.memo<ToolDiffViewProps>(({ 
-    oldText, 
-    newText, 
-    style, 
-    showLineNumbers = false,
-    showPlusMinusSymbols = false 
+export const ToolDiffView = React.memo<ToolDiffViewProps>(({
+    patch,
+    oldText,
+    newText,
+    fileName,
+    style,
+    showLineNumbers,
 }) => {
     const wrapLines = useSetting('wrapLinesInDiffs');
-    
-    const diffView = (
-        <DiffView 
-            oldText={oldText} 
-            newText={newText} 
-            wrapLines={wrapLines}
-            showLineNumbers={showLineNumbers}
-            showPlusMinusSymbols={showPlusMinusSymbols}
-            style={{ flex: 1, ...style }}
-        />
-    );
-    
-    if (wrapLines) {
-        // When wrapping lines, no horizontal scroll needed
-        return <View style={{ flex: 1 }}>{diffView}</View>;
+    const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
+
+    const effectiveFileName = fileName ?? 'file.txt';
+
+    // Chat tool diffs are always inline unified — the split view lives on the
+    // dedicated InlineFileDiff pane (controlled via the diffStyle setting).
+    const common = {
+        overflow: wrapLines ? ('wrap' as const) : ('scroll' as const),
+        disableLineNumbers: !(showLineNumbers ?? showLineNumbersInToolViews),
+        disableFileHeader: true,
+        diffStyle: 'unified' as const,
+    };
+
+    if (patch) {
+        return (
+            <View style={[{ flex: 1 }, style]}>
+                <PierreDiffView patch={patch} {...common} />
+            </View>
+        );
     }
-    
-    // When not wrapping, use horizontal scroll
+
     return (
-        <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={true}
-            contentContainerStyle={{ flexGrow: 1 }}
-        >
-            {diffView}
-        </ScrollView>
+        <View style={[{ flex: 1 }, style]}>
+            <PierreDiffView
+                oldFile={{ name: effectiveFileName, contents: oldText ?? '' }}
+                newFile={{ name: effectiveFileName, contents: newText ?? '' }}
+                {...common}
+            />
+        </View>
     );
 });

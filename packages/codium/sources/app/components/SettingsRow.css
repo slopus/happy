@@ -1,0 +1,38 @@
+.settings-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+    min-height: 44px;
+    padding: 7px 0;
+}
+
+.settings-row + .settings-row {
+    border-top: 1px solid var(--color-border-light);
+}
+
+.settings-row__copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.settings-row__label {
+    color: var(--color-text-foreground);
+    font-size: var(--text-base);
+    line-height: 18px;
+}
+
+.settings-row__description {
+    color: var(--color-text-foreground-tertiary);
+    font-size: var(--text-sm);
+    line-height: 17px;
+}
+
+.settings-row__control {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+}

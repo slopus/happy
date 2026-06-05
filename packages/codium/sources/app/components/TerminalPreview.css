@@ -1,0 +1,46 @@
+.terminal-preview {
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: 12.5px;
+    background: var(--color-token-terminal-background);
+}
+
+.terminal-preview__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 34px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--color-border-light);
+    background: var(--color-hover);
+}
+
+.terminal-preview__title {
+    color: var(--color-token-terminal-foreground);
+    font-size: var(--text-base);
+}
+
+.terminal-preview__status {
+    color: var(--color-text-foreground-tertiary);
+    font-size: var(--text-xs);
+}
+
+.terminal-preview__body {
+    min-height: 118px;
+    margin: 0;
+    padding: 12px;
+    color: var(--color-text-foreground-secondary);
+    font-family: var(--vscode-editor-font-family);
+    font-size: var(--vscode-editor-font-size);
+    line-height: 18px;
+    white-space: pre-wrap;
+}
+
+.terminal-preview__prompt {
+    color: var(--color-accent-green);
+}
+
+.terminal-preview__muted {
+    color: var(--color-text-foreground-tertiary);
+}

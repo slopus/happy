@@ -1,6 +1,13 @@
 import * as privacyKit from "privacy-kit";
 import { log } from "@/utils/log";
 
+/** Cache entries expire after 24 hours */
+const TOKEN_CACHE_TTL = 24 * 60 * 60 * 1000;
+/** Hard cap to prevent unbounded growth */
+const MAX_CACHE_SIZE = 10_000;
+/** Run cleanup every 10 minutes */
+const CLEANUP_INTERVAL = 10 * 60 * 1000;
+
 interface TokenCacheEntry {
     userId: string;
     extras?: any;
@@ -17,25 +24,26 @@ interface AuthTokens {
 class AuthModule {
     private tokenCache = new Map<string, TokenCacheEntry>();
     private tokens: AuthTokens | null = null;
-    
+    private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
     async init(): Promise<void> {
         if (this.tokens) {
             return; // Already initialized
         }
-        
+
         log({ module: 'auth' }, 'Initializing auth module...');
-        
+
         const generator = await privacyKit.createPersistentTokenGenerator({
             service: 'handy',
             seed: process.env.HANDY_MASTER_SECRET!
         });
 
-        
+
         const verifier = await privacyKit.createPersistentTokenVerifier({
             service: 'handy',
             publicKey: Uint8Array.from(generator.publicKey)
         });
-        
+
         const githubGenerator = await privacyKit.createEphemeralTokenGenerator({
             service: 'github-happy',
             seed: process.env.HANDY_MASTER_SECRET!,
@@ -49,7 +57,10 @@ class AuthModule {
 
 
         this.tokens = { generator, verifier, githubVerifier, githubGenerator };
-        
+
+        // Start periodic cleanup of expired cache entries
+        this.cleanupTimer = setInterval(() => this.cleanup(), CLEANUP_INTERVAL);
+
         log({ module: 'auth' }, 'Auth module initialized');
     }
     
@@ -76,13 +87,17 @@ class AuthModule {
     }
     
     async verifyToken(token: string): Promise<{ userId: string; extras?: any } | null> {
-        // Check cache first
+        // Check cache first (with TTL)
         const cached = this.tokenCache.get(token);
         if (cached) {
-            return {
-                userId: cached.userId,
-                extras: cached.extras
-            };
+            if (Date.now() - cached.cachedAt > TOKEN_CACHE_TTL) {
+                this.tokenCache.delete(token);
+            } else {
+                return {
+                    userId: cached.userId,
+                    extras: cached.extras
+                };
+            }
         }
         
         // Cache miss - verify token
@@ -99,7 +114,16 @@ class AuthModule {
             const userId = verified.user as string;
             const extras = verified.extras;
             
-            // Cache the result permanently
+            // Evict oldest entries if cache is at capacity
+            if (this.tokenCache.size >= MAX_CACHE_SIZE) {
+                const oldest = [...this.tokenCache.entries()]
+                    .sort((a, b) => a[1].cachedAt - b[1].cachedAt)
+                    .slice(0, Math.floor(MAX_CACHE_SIZE * 0.2));
+                for (const [key] of oldest) {
+                    this.tokenCache.delete(key);
+                }
+            }
+
             this.tokenCache.set(token, {
                 userId,
                 extras,
@@ -177,12 +201,19 @@ class AuthModule {
         }
     }
 
-    // Cleanup old entries (optional - can be called periodically)
+    /** Remove expired entries from the cache */
     cleanup(): void {
-        // Note: Since tokens are cached "forever" as requested,
-        // we don't do automatic cleanup. This method exists if needed later.
-        const stats = this.getCacheStats();
-        log({ module: 'auth' }, `Token cache size: ${stats.size} entries`);
+        const now = Date.now();
+        let removed = 0;
+        for (const [token, entry] of this.tokenCache.entries()) {
+            if (now - entry.cachedAt > TOKEN_CACHE_TTL) {
+                this.tokenCache.delete(token);
+                removed++;
+            }
+        }
+        if (removed > 0) {
+            log({ module: 'auth' }, `Token cache cleanup: removed ${removed}, remaining ${this.tokenCache.size}`);
+        }
     }
 }
 

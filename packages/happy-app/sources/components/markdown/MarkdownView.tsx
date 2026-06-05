@@ -1,6 +1,7 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import * as React from 'react';
-import { Image, Pressable, ScrollView, View, Platform } from 'react-native';
+import { Image, Pressable, View, Platform } from 'react-native';
+import { HorizontalScrollView } from '../HorizontalScrollView';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../StyledText';
@@ -15,6 +16,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
 import { isHttpMarkdownLink } from './linkUtils';
+import { openExternalUrl } from '@/utils/openExternalUrl';
 
 // Option type for callback
 export type Option = {
@@ -42,14 +44,7 @@ export const MarkdownView = React.memo((props: {
             return;
         }
 
-        if (Platform.OS === 'web') {
-            if (typeof window !== 'undefined') {
-                window.open(url, '_blank', 'noopener,noreferrer');
-            }
-            return;
-        }
-
-        void WebBrowser.openBrowserAsync(url);
+        void openExternalUrl(url);
     }, []);
 
     const handleLongPress = React.useCallback(() => {
@@ -136,23 +131,31 @@ function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: Markdow
     return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>;
 }
 
-function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
+const BULLETS = ['•', '◦', '▪'] as const;
+
+function RenderListBlock(props: { items: { depth: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
     const listStyle = [style.text, style.list];
     return (
-        <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
+        <View style={{ flexDirection: 'column', marginBottom: 8, gap: 6 }}>
             {props.items.map((item, index) => (
-                <Text selectable={props.selectable} style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>
+                <View key={index} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingLeft: item.depth * 16 }}>
+                    <Text selectable={false} style={[listStyle, { marginRight: 8, marginTop: 1 }]}>{BULLETS[Math.min(item.depth, BULLETS.length - 1)]}</Text>
+                    <Text selectable={props.selectable} style={[listStyle, { flex: 1 }]}><RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>
+                </View>
             ))}
         </View>
     );
 }
 
-function RenderNumberedListBlock(props: { items: { number: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
+function RenderNumberedListBlock(props: { items: { number: number, depth: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
     const listStyle = [style.text, style.list];
     return (
-        <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
+        <View style={{ flexDirection: 'column', marginBottom: 8, gap: 6 }}>
             {props.items.map((item, index) => (
-                <Text selectable={props.selectable} style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>
+                <View key={index} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingLeft: item.depth * 16 }}>
+                    <Text selectable={false} style={[listStyle, { marginRight: 8, marginTop: 1 }]}>{item.number}.</Text>
+                    <Text selectable={props.selectable} style={[listStyle, { flex: 1 }]}><RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>
+                </View>
             ))}
         </View>
     );
@@ -180,18 +183,15 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
             onMouseLeave={() => setIsHovered(false)}
         >
             {props.language && <Text selectable={props.selectable} style={style.codeLanguage}>{props.language}</Text>}
-            <ScrollView
-                style={{ flexGrow: 0, flexShrink: 0 }}
-                horizontal={true}
+            <HorizontalScrollView
                 contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}
-                showsHorizontalScrollIndicator={false}
             >
                 <SimpleSyntaxHighlighter
                     code={props.content}
                     language={props.language}
                     selectable={props.selectable}
                 />
-            </ScrollView>
+            </HorizontalScrollView>
             <View
                 style={[style.copyButtonWrapper, isHovered && style.copyButtonWrapperVisible]}
                 {...(Platform.OS === 'web' ? ({ className: 'copy-button-wrapper' } as any) : {})}
@@ -271,7 +271,7 @@ function RenderSpans(props: RenderSpanProps) {
                         selectable={props.selectable}
                         accessibilityRole={isExternalLink ? 'link' : undefined}
                         style={[props.baseStyle, isExternalLink && style.link, span.styles.map(s => style[s])]}
-                        {...(isExternalLink && Platform.OS === 'web' ? { onClick: () => { if (typeof window !== 'undefined') window.open(span.url!, '_blank', 'noopener,noreferrer'); } } as any : {})}
+                        {...(isExternalLink && Platform.OS === 'web' ? { onClick: () => props.onLinkPress(span.url!) } as any : {})}
                         onPress={isExternalLink && Platform.OS !== 'web'
                             ? () => props.onLinkPress(span.url!)
                             : undefined}
@@ -286,9 +286,27 @@ function RenderSpans(props: RenderSpanProps) {
     </>)
 }
 
-// Table rendering uses column-first layout to ensure consistent column widths.
-// Each column is rendered as a vertical container with all its cells (header + data).
-// This ensures that cells in the same column have the same width, determined by the widest content.
+// Plain-text length of a span array — used to estimate column widths.
+function spansLength(spans: MarkdownSpan[]): number {
+    let n = 0;
+    for (const s of spans) n += s.text.length;
+    return n;
+}
+
+const TABLE_MIN_COL_WIDTH = 80;
+const TABLE_MAX_COL_WIDTH = 360;
+const TABLE_CHAR_WIDTH = 8.5;  // approx px per char at 16px default font
+const TABLE_CELL_H_PADDING = 24;
+
+// Row-first layout with content-estimated column widths.
+//
+// - Each column's width is picked from the widest text in that column (header +
+//   rows), clamped to [MIN, MAX]. This gives column-alignment across rows and
+//   lets narrow columns (like "1, 2, 3") stay narrow.
+// - Each row is a flex row — default `alignItems: 'stretch'` makes all cells in
+//   a row match the tallest cell's height.
+// - Wrapped in a horizontal ScrollView so wide tables still scroll instead of
+//   being squashed unreadably.
 function RenderTableBlock(props: {
     headers: MarkdownSpan[][],
     rows: MarkdownSpan[][][],
@@ -299,46 +317,62 @@ function RenderTableBlock(props: {
 }) {
     const columnCount = props.headers.length;
     const rowCount = props.rows.length;
+    const isLastCol = (colIndex: number) => colIndex === columnCount - 1;
     const isLastRow = (rowIndex: number) => rowIndex === rowCount - 1;
+
+    const columnWidths = React.useMemo(() => {
+        const widths = new Array(columnCount).fill(0);
+        for (let c = 0; c < columnCount; c++) {
+            widths[c] = Math.max(widths[c], spansLength(props.headers[c] ?? []));
+        }
+        for (const row of props.rows) {
+            for (let c = 0; c < columnCount; c++) {
+                widths[c] = Math.max(widths[c], spansLength(row[c] ?? []));
+            }
+        }
+        return widths.map(len => Math.min(TABLE_MAX_COL_WIDTH, Math.max(TABLE_MIN_COL_WIDTH, len * TABLE_CHAR_WIDTH + TABLE_CELL_H_PADDING)));
+    }, [props.headers, props.rows, columnCount]);
 
     return (
         <View style={[style.tableContainer, props.first && style.first, props.last && style.last]}>
-            <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={Platform.OS !== 'web'}
-                nestedScrollEnabled={true}
-                style={style.tableScrollView}
-            >
-                <View style={style.tableContent}>
-                    {/* Render each column as a vertical container */}
-                    {props.headers.map((header, colIndex) => (
-                        <View
-                            key={`column-${colIndex}`}
-                            style={[
-                                style.tableColumn,
-                                colIndex === columnCount - 1 && style.tableColumnLast
-                            ]}
-                        >
-                            {/* Header cell for this column */}
-                            <View style={[style.tableCell, style.tableHeaderCell, style.tableCellFirst]}>
-                                <Text style={style.tableHeaderText}><RenderSpans spans={header} baseStyle={style.tableHeaderText} onLinkPress={props.onLinkPress} selectable={props.selectable} /></Text>
+            {/* flexGrow:0 stops iOS from stretching the horizontal ScrollView
+                vertically to fill the parent — the cause of the table's frame
+                extending down past the last row into empty space. */}
+            <HorizontalScrollView style={{ flexGrow: 0 }}>
+                <View>
+                    {/* Header row */}
+                    <View style={[style.tableRow, style.tableHeaderRow]}>
+                        {props.headers.map((header, colIndex) => (
+                            <View
+                                key={`header-${colIndex}`}
+                                style={[style.tableCell, style.tableHeaderCell, { width: columnWidths[colIndex] }, !isLastCol(colIndex) && style.tableCellBorderRight]}
+                            >
+                                <Text style={style.tableHeaderText}>
+                                    <RenderSpans spans={header} baseStyle={style.tableHeaderText} onLinkPress={props.onLinkPress} selectable={props.selectable} />
+                                </Text>
                             </View>
-                            {/* Data cells for this column */}
-                            {props.rows.map((row, rowIndex) => (
+                        ))}
+                    </View>
+                    {/* Data rows */}
+                    {props.rows.map((row, rowIndex) => (
+                        <View
+                            key={`row-${rowIndex}`}
+                            style={[style.tableRow, !isLastRow(rowIndex) && style.tableRowBorderBottom]}
+                        >
+                            {props.headers.map((_, colIndex) => (
                                 <View
                                     key={`cell-${rowIndex}-${colIndex}`}
-                                    style={[
-                                        style.tableCell,
-                                        isLastRow(rowIndex) && style.tableCellLast
-                                    ]}
+                                    style={[style.tableCell, { width: columnWidths[colIndex] }, !isLastCol(colIndex) && style.tableCellBorderRight]}
                                 >
-                                    <Text style={style.tableCellText}><RenderSpans spans={row[colIndex] ?? []} baseStyle={style.tableCellText} onLinkPress={props.onLinkPress} selectable={props.selectable} /></Text>
+                                    <Text style={style.tableCellText}>
+                                        <RenderSpans spans={row[colIndex] ?? []} baseStyle={style.tableCellText} onLinkPress={props.onLinkPress} selectable={props.selectable} />
+                                    </Text>
                                 </View>
                             ))}
                         </View>
                     ))}
                 </View>
-            </ScrollView>
+            </HorizontalScrollView>
         </View>
     );
 }
@@ -362,9 +396,11 @@ const style = StyleSheet.create((theme) => ({
         fontStyle: 'italic',
     },
     bold: {
-        fontWeight: 'bold',
+        ...Typography.default('semiBold'),
+        fontWeight: '700',
     },
     semibold: {
+        ...Typography.default('semiBold'),
         fontWeight: '600',
     },
     code: {
@@ -458,6 +494,7 @@ const style = StyleSheet.create((theme) => ({
         marginVertical: 8,
         position: 'relative',
         zIndex: 1,
+        width: '100%',
     },
     copyButtonWrapper: {
         position: 'absolute',
@@ -585,34 +622,29 @@ const style = StyleSheet.create((theme) => ({
         borderColor: theme.colors.divider,
         borderRadius: 8,
         overflow: 'hidden',
+        maxWidth: '100%',
         alignSelf: 'flex-start',
     },
-    tableScrollView: {
-        flexGrow: 0,
-    },
-    tableContent: {
+    tableRow: {
         flexDirection: 'row',
+        alignItems: 'stretch',
     },
-    tableColumn: {
-        flexDirection: 'column',
-        borderRightWidth: 1,
-        borderRightColor: theme.colors.divider,
+    tableRowBorderBottom: {
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
     },
-    tableColumnLast: {
-        borderRightWidth: 0,
+    tableHeaderRow: {
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
     },
     tableCell: {
         paddingHorizontal: 12,
         paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.divider,
         alignItems: 'flex-start',
     },
-    tableCellFirst: {
-        borderTopWidth: 0,
-    },
-    tableCellLast: {
-        borderBottomWidth: 0,
+    tableCellBorderRight: {
+        borderRightWidth: 1,
+        borderRightColor: theme.colors.divider,
     },
     tableHeaderCell: {
         backgroundColor: theme.colors.surfaceHigh,

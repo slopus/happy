@@ -8,7 +8,8 @@ import { z } from 'zod';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { logger } from '@/ui/logger';
 import { Metadata } from '@/api/types';
-import { TrackedSession } from './types';
+import { decodeBase64 } from '@/api/encryption';
+import { TrackedSession, SessionEncryptionData } from './types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { PortRegistry } from './portRegistry';
 import { proxyHttp, PreviewProxyError } from './previewProxy';
@@ -28,7 +29,7 @@ export function startDaemonControlServer({
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
-  onHappySessionWebhook: (sessionId: string, metadata: Metadata) => void;
+  onHappySessionWebhook: (sessionId: string, metadata: Metadata, encryption?: SessionEncryptionData) => void;
   portRegistry: PortRegistry;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
@@ -46,7 +47,14 @@ export function startDaemonControlServer({
       schema: {
         body: z.object({
           sessionId: z.string(),
-          metadata: z.any() // Metadata type from API
+          metadata: z.any(),
+          encryption: z.object({
+            encryptionKey: z.string(),
+            encryptionVariant: z.enum(['legacy', 'dataKey']),
+            seq: z.number(),
+            metadataVersion: z.number(),
+            agentStateVersion: z.number(),
+          }).optional()
         }),
         response: {
           200: z.object({
@@ -55,10 +63,22 @@ export function startDaemonControlServer({
         }
       }
     }, async (request) => {
-      const { sessionId, metadata } = request.body;
+      const { sessionId, metadata, encryption } = request.body;
 
       logger.debug(`[CONTROL SERVER] Session started: ${sessionId}`);
-      onHappySessionWebhook(sessionId, metadata);
+
+      let encryptionData: SessionEncryptionData | undefined;
+      if (encryption) {
+        encryptionData = {
+          encryptionKey: decodeBase64(encryption.encryptionKey),
+          encryptionVariant: encryption.encryptionVariant,
+          seq: encryption.seq,
+          metadataVersion: encryption.metadataVersion,
+          agentStateVersion: encryption.agentStateVersion,
+        };
+      }
+
+      onHappySessionWebhook(sessionId, metadata, encryptionData);
 
       return { status: 'ok' as const };
     });
@@ -275,8 +295,8 @@ export function startDaemonControlServer({
     }, async () => {
       const data = await portRegistry.readAll();
       return {
-        entries: Object.entries(data).map(([projectId, entry]) => ({
-          projectId,
+        entries: Object.entries(data).map(([key, entry]) => ({
+          projectId: entry.projectId ?? key,
           port: entry.port,
           allocatedAt: entry.allocatedAt
         }))

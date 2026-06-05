@@ -4,11 +4,13 @@ This folder documents how Happy works internally, with a focus on protocol, back
 
 ## Index
 - protocol.md: Wire protocol (WebSocket), payload formats, sequencing, and concurrency rules.
+- realtime-sync-and-rpc.md: High-level overview of realtime socket management and RPC control flow.
 - api.md: HTTP endpoints and authentication flows.
 - encryption.md: Encryption boundaries and on-wire encoding.
 - backend-architecture.md: Internal backend structure, data flow, and key subsystems.
 - deployment.md: How to deploy the backend and required infrastructure.
 - cli-architecture.md: CLI and daemon architecture and how they interact with the server.
+- multi-process.md: Deeper multi-replica Socket.IO + Redis streams behavior, failure modes, and integration-test history.
 - dev-environments.md: Local `environments/data/` workflow, lab-rat project provisioning, `env:cli` passthrough behavior, and daemon usage.
 - session-protocol.md: Unified encrypted chat event protocol.
 - session-protocol-claude.md: Claude-specific session-protocol flow (local vs remote launchers, dedupe/restarts).

@@ -2,6 +2,7 @@ import axios from 'axios'
 import { logger } from '@/ui/logger'
 import { Expo, ExpoPushMessage } from 'expo-server-sdk'
 import type { Metadata } from './types'
+import { configuration } from '@/configuration'
 
 export interface PushToken {
     id: string
@@ -82,32 +83,42 @@ export class PushNotificationClient {
     }
 
     /**
-     * Fetch all push tokens for the authenticated user
+     * Fetch all push tokens for the authenticated user.
+     * Retries up to 3 times with exponential backoff on transient errors.
      */
     async fetchPushTokens(): Promise<PushToken[]> {
-        try {
-            const response = await axios.get<{ tokens: PushToken[] }>(
-                `${this.baseUrl}/v1/push-tokens`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.token}`,
-                        'Content-Type': 'application/json'
+        const maxAttempts = 3
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                const response = await axios.get<{ tokens: PushToken[] }>(
+                    `${this.baseUrl}/v1/push-tokens`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`,
+                            'Content-Type': 'application/json',
+                            'X-Happy-Client': `cli-daemon/${configuration.currentCliVersion}`
+                        }
                     }
-                }
-            )
+                )
 
-            logger.debug(`Fetched ${response.data.tokens.length} push tokens`)
-            
-            // Log token information
-            response.data.tokens.forEach((token, index) => {
-                logger.debug(`[PUSH] Token ${index + 1}: id=${token.id}, created=${new Date(token.createdAt).toISOString()}, updated=${new Date(token.updatedAt).toISOString()}`)
-            })
-            
-            return response.data.tokens
-        } catch (error) {
-            logger.debug('[PUSH] [ERROR] Failed to fetch push tokens:', error)
-            throw new Error(`Failed to fetch push tokens: ${error instanceof Error ? error.message : 'Unknown error'}`)
+                logger.debug(`Fetched ${response.data.tokens.length} push tokens`)
+
+                // Log token information
+                response.data.tokens.forEach((token, index) => {
+                    logger.debug(`[PUSH] Token ${index + 1}: id=${token.id}, created=${new Date(token.createdAt).toISOString()}, updated=${new Date(token.updatedAt).toISOString()}`)
+                })
+
+                return response.data.tokens
+            } catch (error) {
+                logger.debug(`[PUSH] [ERROR] Failed to fetch push tokens (attempt ${attempt}/${maxAttempts}):`, error)
+                if (attempt < maxAttempts) {
+                    const delay = 1000 * Math.pow(2, attempt - 1) // 1s, 2s
+                    await new Promise(resolve => setTimeout(resolve, delay))
+                }
+            }
         }
+        logger.debug('[PUSH] [ERROR] All push token fetch attempts failed')
+        return []
     }
 
     /**
@@ -234,6 +245,12 @@ export class PushNotificationClient {
         })()
     }
 
+    /**
+     * Routes session-event pushes through the server so it can apply
+     * presence-based suppression (active desktop/web, mobile foreground).
+     * Falls back to direct Expo send only when sessionId is missing — that
+     * shouldn't happen for session notifications but guards against regressions.
+     */
     sendSessionNotification(params: {
         kind: SessionNotificationKind
         metadata: Metadata | null | undefined
@@ -242,11 +259,43 @@ export class PushNotificationClient {
         const { title, body } = getSessionNotificationCopy(params.kind, params.metadata)
         const sessionTitle = getSessionNotificationBody(params.metadata)
         const url = getSessionNotificationUrl(params.data)
-        this.sendToAllDevices(title, body, {
+        const payloadData = {
             ...params.data,
             kind: params.kind,
             sessionTitle,
             ...(url ? { url } : {}),
-        })
+        }
+
+        const sessionId = typeof params.data?.sessionId === 'string' ? params.data.sessionId : null
+        if (!sessionId) {
+            logger.debug('[PUSH] sendSessionNotification: missing sessionId, falling back to direct send')
+            this.sendToAllDevices(title, body, payloadData)
+            return
+        }
+
+        void (async () => {
+            try {
+                await axios.post(
+                    `${this.baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/push-event`,
+                    {
+                        kind: params.kind,
+                        title,
+                        body,
+                        data: payloadData,
+                    },
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`,
+                            'Content-Type': 'application/json',
+                            'X-Happy-Client': `cli-daemon/${configuration.currentCliVersion}`,
+                        },
+                        timeout: 15000,
+                    }
+                )
+                logger.debug(`[PUSH] sendSessionNotification dispatched via server (kind=${params.kind})`)
+            } catch (error) {
+                logger.debug('[PUSH] sendSessionNotification failed:', error)
+            }
+        })()
     }
 }

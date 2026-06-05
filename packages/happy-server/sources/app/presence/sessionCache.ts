@@ -19,7 +19,7 @@ interface MachineCacheEntry {
 class ActivityCache {
     private sessionCache = new Map<string, SessionCacheEntry>();
     private machineCache = new Map<string, MachineCacheEntry>();
-    private batchTimer: NodeJS.Timeout | null = null;
+    private batchTimer: ReturnType<typeof setInterval> | null = null;
     
     // Cache TTL (30 seconds)
     private readonly CACHE_TTL = 30 * 1000;

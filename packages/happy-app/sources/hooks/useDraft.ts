@@ -15,7 +15,10 @@ export function useDraft(
 ) {
     const { autoSaveInterval = 2000 } = options;
     const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const lastSavedValue = useRef<string>('');
+    // Seed with the initial value so a pre-hydrated draft (e.g. ChatComposer
+    // reads storage synchronously on mount) doesn't trip the autosave into
+    // re-writing what we just loaded.
+    const lastSavedValue = useRef<string>(value);
     const isFocused = useIsFocused();
 
     // Save draft to storage

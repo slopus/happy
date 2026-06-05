@@ -51,9 +51,11 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
             return null;
         }
 
-        // Get combined diff statistics for both staged and unstaged changes
+        // Get line stats separately for unstaged (working tree vs index) and
+        // staged (index vs HEAD) so a file with both kinds of changes doesn't
+        // double-count staged lines in its unstaged row.
         const diffStatResult = await sessionBash(sessionId, {
-            command: 'git diff --numstat HEAD && echo "---STAGED---" && git diff --cached --numstat',
+            command: 'git diff --numstat && echo "---STAGED---" && git diff --cached --numstat',
             cwd: session.metadata.path,
             timeout: 10000
         });

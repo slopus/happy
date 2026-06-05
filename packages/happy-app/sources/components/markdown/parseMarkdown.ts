@@ -9,10 +9,10 @@ export type MarkdownBlock = {
     content: MarkdownSpan[]
 } | {
     type: 'list',
-    items: MarkdownSpan[][]
+    items: { depth: number, spans: MarkdownSpan[] }[]
 } | {
     type: 'numbered-list',
-    items: { number: number, spans: MarkdownSpan[] }[]
+    items: { number: number, depth: number, spans: MarkdownSpan[] }[]
 } | {
     type: 'code-block',
     language: string | null,

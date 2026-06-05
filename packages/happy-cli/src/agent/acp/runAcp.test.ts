@@ -99,7 +99,8 @@ vi.mock('@/claude/registerKillSessionHandler', () => ({
 }));
 
 vi.mock('@/claude/utils/startHappyServer', () => ({
-  startHappyServer: mocks.mockStartHappyServer,
+    startHappyServer: mocks.mockStartHappyServer,
+    BASH_STREAM_AGENT_TOOL_NAME: 'mcp__happy__bash_stream',
 }));
 
 vi.mock('@/projectPath', () => ({

@@ -11,13 +11,15 @@ import { parseStatusSummary, getStatusCounts, isDirty } from './git-parsers/pars
 import { parseStatusSummaryV2, getStatusCountsV2, isDirtyV2, getCurrentBranchV2, getTrackingInfoV2 } from './git-parsers/parseStatusV2';
 import { parseCurrentBranch } from './git-parsers/parseBranch';
 import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
-import { projectManager, createProjectKey } from './projectManager';
+
 
 export class GitStatusSync {
     // Map project keys to sync instances
     private projectSyncMap = new Map<string, InvalidateSync>();
     // Map session IDs to project keys for cleanup
     private sessionToProjectKey = new Map<string, string>();
+    // Debounce timers to coalesce rapid invalidations (e.g. new-message + update-session arriving together)
+    private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     /**
      * Get project key string for a session
@@ -52,15 +54,23 @@ export class GitStatusSync {
     }
 
     /**
-     * Invalidate git status for a session (triggers refresh for the entire project)
+     * Invalidate git status for a session (triggers refresh for the entire project).
+     * Debounces rapid calls (e.g. new-message + update-session arriving together)
+     * to avoid duplicate RPC round-trips.
      */
     invalidate(sessionId: string): void {
         const projectKey = this.sessionToProjectKey.get(sessionId);
         if (projectKey) {
-            const sync = this.projectSyncMap.get(projectKey);
-            if (sync) {
-                sync.invalidate();
-            }
+            const existing = this.debounceTimers.get(projectKey);
+            if (existing) clearTimeout(existing);
+
+            this.debounceTimers.set(projectKey, setTimeout(() => {
+                this.debounceTimers.delete(projectKey);
+                const sync = this.projectSyncMap.get(projectKey);
+                if (sync) {
+                    sync.invalidate();
+                }
+            }, 300));
         }
     }
 
@@ -77,6 +87,11 @@ export class GitStatusSync {
             
             // Only stop the project sync if no other sessions are using it
             if (!hasOtherSessions) {
+                const timer = this.debounceTimers.get(projectKey);
+                if (timer) {
+                    clearTimeout(timer);
+                    this.debounceTimers.delete(projectKey);
+                }
                 const sync = this.projectSyncMap.get(projectKey);
                 if (sync) {
                     sync.stop();
@@ -91,11 +106,18 @@ export class GitStatusSync {
      * Similar to stop() but also clears any stored git status
      */
     clearForSession(sessionId: string): void {
+        const projectKey = this.sessionToProjectKey.get(sessionId);
+
         // First stop any active syncs
         this.stop(sessionId);
-        
-        // Clear git status from storage
-        storage.getState().applyGitStatus(sessionId, null);
+
+        // Only clear git status if no other sessions share this path
+        if (projectKey) {
+            const hasOtherSessions = Array.from(this.sessionToProjectKey.values()).includes(projectKey);
+            if (!hasOtherSessions) {
+                storage.getState().applyGitStatus(projectKey, null);
+            }
+        }
     }
 
     /**
@@ -118,13 +140,7 @@ export class GitStatusSync {
 
             if (!gitCheckResult.success || gitCheckResult.exitCode !== 0) {
                 // Not a git repository, clear any existing status
-                storage.getState().applyGitStatus(sessionId, null);
-                
-                // Also update the project git status
-                if (session.metadata?.machineId) {
-                    const projectKey = createProjectKey(session.metadata.machineId, session.metadata.path);
-                    projectManager.updateProjectGitStatus(projectKey, null);
-                }
+                storage.getState().applyGitStatus(projectKey, null);
                 return;
             }
 
@@ -162,14 +178,8 @@ export class GitStatusSync {
                 stagedDiffStatResult.success ? stagedDiffStatResult.stdout : ''
             );
 
-            // Apply to storage (this also updates the project git status via the modified applyGitStatus)
-            storage.getState().applyGitStatus(sessionId, gitStatus);
-            
-            // Additionally, update the project directly for efficiency
-            if (session.metadata?.machineId) {
-                const projectKey = createProjectKey(session.metadata.machineId, session.metadata.path);
-                projectManager.updateProjectGitStatus(projectKey, gitStatus);
-            }
+            // Apply to storage keyed by path
+            storage.getState().applyGitStatus(projectKey, gitStatus);
 
         } catch (error) {
             console.error('Error fetching git status for session', sessionId, ':', error);

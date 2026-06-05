@@ -1,0 +1,39 @@
+.chat {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat__scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 24px 16px 16px;
+}
+
+.chat__thread {
+    max-width: 760px;
+    margin: 0 auto;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.chat__dock {
+    padding: 12px 16px 20px;
+    display: flex;
+    justify-content: center;
+    background: linear-gradient(
+        to top,
+        var(--color-background-surface) 40%,
+        transparent
+    );
+    position: relative;
+    z-index: 1;
+}
+
+.chat__dock-inner {
+    width: min(100%, 728px);
+}

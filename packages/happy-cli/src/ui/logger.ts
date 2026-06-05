@@ -7,6 +7,7 @@
 
 import chalk from 'chalk'
 import { appendFileSync } from 'fs'
+import { inspect } from 'node:util'
 import { configuration } from '@/configuration'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
@@ -201,8 +202,8 @@ class Logger {
   }
 
   private logToFile(prefix: string, message: string, ...args: unknown[]): void {
-    const logLine = `${prefix} ${message} ${args.map(arg => 
-      typeof arg === 'string' ? arg : JSON.stringify(arg)
+    const logLine = `${prefix} ${message} ${args.map(arg =>
+      typeof arg === 'string' ? arg : inspect(arg, { depth: 5, breakLength: 120 })
     ).join(' ')}\n`
     
     // Send to remote server if configured

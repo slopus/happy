@@ -2,7 +2,12 @@ import { z } from 'zod';
 import { sync } from '@/sync/sync';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { storage } from '@/sync/storage';
-import { trackPermissionResponse } from '@/track';
+import { trackVoicePermissionResponse } from '@/track';
+import { getVoiceSession, isVoiceSessionStarted } from './RealtimeSession';
+import {
+    getVoiceMessageCount,
+    incrementVoiceMessageCount,
+} from '@/sync/persistence';
 
 /**
  * Static client tools for the realtime voice interface.
@@ -26,7 +31,15 @@ export const realtimeClientTools = {
 
         const { sessionId, message } = parsed.data;
         console.log('📤 Sending message to session:', sessionId);
-        sync.sendMessage(sessionId, message);
+        await sync.sendMessage(sessionId, message, { source: 'voice' });
+        incrementVoiceMessageCount();
+        const voiceMessageCount = getVoiceMessageCount();
+        if (isVoiceSessionStarted()) {
+            getVoiceSession()?.sendContextualUpdate([
+                '# Runtime counters updated',
+                `- voice_message_count: ${voiceMessageCount}`,
+            ].join('\n'));
+        }
         return "sent [DO NOT say anything else, simply say 'sent']";
     },
 
@@ -67,10 +80,10 @@ export const realtimeClientTools = {
         try {
             if (decision === 'allow') {
                 await sessionAllow(sessionId, requestId);
-                trackPermissionResponse(true);
+                trackVoicePermissionResponse(true);
             } else {
                 await sessionDeny(sessionId, requestId);
-                trackPermissionResponse(false);
+                trackVoicePermissionResponse(false);
             }
             return "done [DO NOT say anything else, simply say 'done']";
         } catch (error) {

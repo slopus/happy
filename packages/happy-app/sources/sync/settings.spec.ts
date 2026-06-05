@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { settingsParse, applySettings, settingsDefaults, type Settings } from './settings';
+import { settingsParse, applySettings, settingsDefaults, settingsToSyncPayload, type Settings } from './settings';
 
 describe('settings', () => {
     describe('settingsParse', () => {
@@ -179,25 +179,31 @@ describe('settings', () => {
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
-                wrapLinesInDiffs: false,
+                wrapLinesInDiffs: true,
+                diffStyle: 'unified',
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
+                agentInputEnterToSend: true,
                 avatarStyle: 'brutalist',
                 showFlavorIcons: false,
-                compactSessionView: false,
-                agentInputEnterToSend: true,
                 hideInactiveSessions: false,
                 expResumeSession: false,
+                fileDiffsSidebar: false,
+                groupToolCalls: false,
+                expImageUpload: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
+                voiceCustomAgentId: null,
+                voiceBypassToken: false,
                 preferredLanguage: null,
                 recentMachinePaths: [],
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                agentDefaultOverrides: {},
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });
@@ -205,6 +211,36 @@ describe('settings', () => {
         it('should be a valid Settings object', () => {
             const parsed = settingsParse(settingsDefaults);
             expect(parsed).toEqual(settingsDefaults);
+        });
+    });
+
+    describe('settingsToSyncPayload', () => {
+        it('omits empty agent default overrides', () => {
+            expect(settingsToSyncPayload(settingsDefaults)).not.toHaveProperty('agentDefaultOverrides');
+        });
+
+        it('omits empty per-agent override objects', () => {
+            expect(settingsToSyncPayload({
+                ...settingsDefaults,
+                agentDefaultOverrides: {
+                    codex: {},
+                },
+            })).not.toHaveProperty('agentDefaultOverrides');
+        });
+
+        it('keeps user-selected agent default overrides', () => {
+            const settings = {
+                ...settingsDefaults,
+                agentDefaultOverrides: {
+                    codex: { modelMode: 'gpt-5.4' },
+                },
+            };
+
+            expect(settingsToSyncPayload(settings)).toMatchObject({
+                agentDefaultOverrides: {
+                    codex: { modelMode: 'gpt-5.4' },
+                },
+            });
         });
     });
 

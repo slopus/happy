@@ -23,6 +23,7 @@ describe('SDKToLogConverter', () => {
         it('should convert SDK user message to log format', () => {
             const sdkMessage: SDKUserMessage = {
                 type: 'user',
+                parent_tool_use_id: null,
                 message: {
                     role: 'user',
                     content: 'Hello Claude'
@@ -54,6 +55,7 @@ describe('SDKToLogConverter', () => {
         it('should handle user message with complex content', () => {
             const sdkMessage: SDKUserMessage = {
                 type: 'user',
+                parent_tool_use_id: null,
                 message: {
                     role: 'user',
                     content: [
@@ -77,10 +79,10 @@ describe('SDKToLogConverter', () => {
                 message: {
                     role: 'assistant',
                     content: [
-                        { type: 'text', text: 'Hello! How can I help?' }
+                        { type: 'text', text: 'Hello! How can I help?' } as any
                     ]
                 }
-            }
+            } as any
 
             const logMessage = converter.convert(sdkMessage)
 
@@ -116,14 +118,14 @@ describe('SDKToLogConverter', () => {
 
     describe('System messages', () => {
         it('should convert SDK system message to log format', () => {
-            const sdkMessage: SDKSystemMessage = {
+            const sdkMessage = {
                 type: 'system',
                 subtype: 'init',
                 session_id: 'new-session-456',
                 model: 'claude-opus-4',
                 cwd: '/project',
                 tools: ['bash', 'edit']
-            }
+            } as unknown as SDKSystemMessage
 
             const logMessage = converter.convert(sdkMessage)
 
@@ -138,17 +140,18 @@ describe('SDKToLogConverter', () => {
         })
 
         it('should update session ID on init system message', () => {
-            const sdkMessage: SDKSystemMessage = {
+            const sdkMessage = {
                 type: 'system',
                 subtype: 'init',
                 session_id: 'updated-session-789'
-            }
+            } as unknown as SDKSystemMessage
 
             converter.convert(sdkMessage)
 
             // Next message should have updated session ID
             const userMessage: SDKUserMessage = {
                 type: 'user',
+                parent_tool_use_id: null,
                 message: { role: 'user', content: 'Test' }
             }
 
@@ -159,7 +162,7 @@ describe('SDKToLogConverter', () => {
 
     describe('Result messages', () => {
         it('should not convert result messages', () => {
-            const sdkMessage: SDKResultMessage = {
+            const sdkMessage = {
                 type: 'result',
                 subtype: 'success',
                 result: 'Task completed',
@@ -173,7 +176,7 @@ describe('SDKToLogConverter', () => {
                 duration_api_ms: 2500,
                 is_error: false,
                 session_id: 'result-session'
-            }
+            } as unknown as SDKResultMessage
 
             const logMessage = converter.convert(sdkMessage)
 
@@ -181,7 +184,7 @@ describe('SDKToLogConverter', () => {
         })
 
         it('should not convert error results', () => {
-            const sdkMessage: SDKResultMessage = {
+            const sdkMessage = {
                 type: 'result',
                 subtype: 'error_max_turns',
                 num_turns: 10,
@@ -190,7 +193,7 @@ describe('SDKToLogConverter', () => {
                 duration_api_ms: 4500,
                 is_error: true,
                 session_id: 'error-session'
-            }
+            } as unknown as SDKResultMessage
 
             const logMessage = converter.convert(sdkMessage)
 
@@ -203,14 +206,16 @@ describe('SDKToLogConverter', () => {
         it('should track parent UUIDs across messages', () => {
             const msg1: SDKUserMessage = {
                 type: 'user',
+                parent_tool_use_id: null,
                 message: { role: 'user', content: 'First' }
             }
-            const msg2: SDKAssistantMessage = {
+            const msg2 = {
                 type: 'assistant',
                 message: { role: 'assistant', content: [{ type: 'text', text: 'Second' }] }
-            }
+            } as unknown as SDKAssistantMessage
             const msg3: SDKUserMessage = {
                 type: 'user',
+                parent_tool_use_id: null,
                 message: { role: 'user', content: 'Third' }
             }
 
@@ -226,6 +231,7 @@ describe('SDKToLogConverter', () => {
         it('should reset parent chain when requested', () => {
             const msg1: SDKUserMessage = {
                 type: 'user',
+                parent_tool_use_id: null,
                 message: { role: 'user', content: 'First' }
             }
             const log1 = converter.convert(msg1)
@@ -234,6 +240,7 @@ describe('SDKToLogConverter', () => {
 
             const msg2: SDKUserMessage = {
                 type: 'user',
+                parent_tool_use_id: null,
                 message: { role: 'user', content: 'Second' }
             }
             const log2 = converter.convert(msg2)
@@ -247,14 +254,16 @@ describe('SDKToLogConverter', () => {
             const messages: SDKMessage[] = [
                 {
                     type: 'user',
+                    parent_tool_use_id: null,
                     message: { role: 'user', content: 'Hello' }
                 } as SDKUserMessage,
                 {
                     type: 'assistant',
                     message: { role: 'assistant', content: [{ type: 'text', text: 'Hi there!' }] }
-                } as SDKAssistantMessage,
+                } as unknown as SDKAssistantMessage,
                 {
                     type: 'user',
+                    parent_tool_use_id: null,
                     message: { role: 'user', content: 'How are you?' }
                 } as SDKUserMessage
             ]
@@ -272,6 +281,7 @@ describe('SDKToLogConverter', () => {
         it('should convert single message without state', () => {
             const sdkMessage: SDKUserMessage = {
                 type: 'user',
+                parent_tool_use_id: null,
                 message: { role: 'user', content: 'Test message' }
             }
 
@@ -292,6 +302,7 @@ describe('SDKToLogConverter', () => {
             
             const sdkMessage: SDKUserMessage = {
                 type: 'user',
+                parent_tool_use_id: null,
                 message: {
                     role: 'user',
                     content: [{
@@ -316,6 +327,7 @@ describe('SDKToLogConverter', () => {
             
             const sdkMessage: SDKUserMessage = {
                 type: 'user',
+                parent_tool_use_id: null,
                 message: {
                     role: 'user',
                     content: [{
@@ -341,6 +353,7 @@ describe('SDKToLogConverter', () => {
             
             const sdkMessage: SDKUserMessage = {
                 type: 'user',
+                parent_tool_use_id: null,
                 message: {
                     role: 'user',
                     content: [
@@ -367,6 +380,7 @@ describe('SDKToLogConverter', () => {
             
             const sdkMessage: SDKUserMessage = {
                 type: 'user',
+                parent_tool_use_id: null,
                 message: {
                     role: 'user',
                     content: [{

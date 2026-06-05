@@ -153,6 +153,18 @@ export interface SpawnSessionOptions {
      */
     happyToken?: string;
     happySecret?: string;
+    /**
+     * If set, the daemon spawns the agent with `--resume <id>` so the new
+     * Happy session continues from an existing Claude conversation file.
+     * Used by the session fork / duplicate flow: the fork RPC produces a
+     * new Claude JSONL on disk, the spawn RPC then attaches a fresh Happy
+     * session to it.
+     */
+    resumeClaudeSessionId?: string;
+    /** Happy session id this fork was branched from (lineage). */
+    parentSessionId?: string;
+    /** Happy message id used as the rewind point (only set for "duplicate"). */
+    forkedFromMessageId?: string;
 }
 
 export type SpawnSessionResult =
@@ -187,6 +199,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
             const options: ExecOptions = {
                 cwd: data.cwd === '/' ? undefined : data.cwd,
                 timeout: data.timeout || 30000, // Default 30 seconds timeout
+                windowsHide: true, // Prevent cmd.exe popup on Windows for every RPC bash call
             };
 
             logger.debug('Shell command executing...', { cwd: options.cwd, timeout: options.timeout });

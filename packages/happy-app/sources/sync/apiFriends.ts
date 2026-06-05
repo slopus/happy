@@ -1,6 +1,7 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
+import { getHappyClientId } from './apiSocket';
 import {
     UserProfile,
     UserResponse,
@@ -26,7 +27,8 @@ export async function searchUsersByUsername(
             {
                 method: 'GET',
                 headers: {
-                    'Authorization': `Bearer ${credentials.token}`
+                    'Authorization': `Bearer ${credentials.token}`,
+                    'X-Happy-Client': getHappyClientId(),
                 }
             }
         );
@@ -64,7 +66,8 @@ export async function getUserProfile(
             {
                 method: 'GET',
                 headers: {
-                    'Authorization': `Bearer ${credentials.token}`
+                    'Authorization': `Bearer ${credentials.token}`,
+                    'X-Happy-Client': getHappyClientId(),
                 }
             }
         );
@@ -118,7 +121,8 @@ export async function sendFriendRequest(
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             },
             body: JSON.stringify({ uid: recipientId })
         });
@@ -159,7 +163,8 @@ export async function getFriendsList(
         const response = await fetch(`${API_ENDPOINT}/v1/friends`, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${credentials.token}`
+                'Authorization': `Bearer ${credentials.token}`,
+                'X-Happy-Client': getHappyClientId(),
             }
         });
 
@@ -192,7 +197,8 @@ export async function removeFriend(
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             },
             body: JSON.stringify({ uid: friendId })
         });

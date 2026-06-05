@@ -44,8 +44,8 @@ export async function unstageUserCredentials(
   expectedParent: string = tmpdir(),
 ): Promise<void> {
   const resolved = resolve(homeDir)
-  const parent = resolve(dirname(resolved))
-  const expected = resolve(expectedParent)
+  const parent = await fs.realpath(dirname(resolved)).catch(() => resolve(dirname(resolved)))
+  const expected = await fs.realpath(expectedParent).catch(() => resolve(expectedParent))
   const name = basename(resolved)
   if (parent !== expected || !name.startsWith(STAGED_DIR_PREFIX)) {
     throw new Error(
