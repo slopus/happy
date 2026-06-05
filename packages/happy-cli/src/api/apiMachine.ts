@@ -3,6 +3,7 @@
  * Similar to ApiSessionClient but for machine-scoped connections
  */
 
+import os from 'os';
 import { io, Socket } from 'socket.io-client';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
@@ -110,7 +111,12 @@ export class ApiMachineClient {
             logger: (msg, data) => logger.debug(msg, data)
         });
 
-        registerCommonHandlers(this.rpcHandlerManager, process.cwd());
+        // Machine-level RPC: sandbox path operations to the user's home directory.
+        // (Session-level RPC uses the session's working directory — see apiSession.ts.)
+        // Using process.cwd() here would tie machine RPC behavior to the daemon's
+        // launch directory, which is incidental and breaks features like new-session
+        // directory autocomplete that need to traverse outside the daemon's cwd.
+        registerCommonHandlers(this.rpcHandlerManager, os.homedir());
     }
 
     setRPCHandlers({
