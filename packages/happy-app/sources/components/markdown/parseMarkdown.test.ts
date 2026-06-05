@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { parseMarkdown } from './parseMarkdown';
 
+const item = (spans: { styles: string[]; text: string; url: string | null }[]) => ({
+    depth: 0,
+    spans,
+});
+
 describe('parseMarkdown', () => {
     it('parses unordered lists across common markdown bullet markers and preserves clickable links', () => {
         const blocks = parseMarkdown([
@@ -17,15 +22,15 @@ describe('parseMarkdown', () => {
         }
 
         expect(blocks[0].items).toHaveLength(3);
-        expect(blocks[0].items[1]).toEqual([
+        expect(blocks[0].items[1]).toEqual(item([
             { styles: [], text: 'second item with ', url: null },
             { styles: [], text: 'docs', url: 'https://example.com/docs' },
-        ]);
-        expect(blocks[0].items[2]).toEqual([
+        ]));
+        expect(blocks[0].items[2]).toEqual(item([
             { styles: [], text: 'third item with ', url: null },
             { styles: [], text: 'https://example.com/raw', url: 'https://example.com/raw' },
             { styles: [], text: '.', url: null },
-        ]);
+        ]));
     });
 
     it('parses standalone markdown image blocks', () => {

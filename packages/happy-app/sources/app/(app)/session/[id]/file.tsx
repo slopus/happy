@@ -482,7 +482,7 @@ export default React.memo(function FileScreen() {
             <ScrollView
                 ref={scrollViewRef}
                 style={{ flex: 1 }}
-                contentContainerStyle={{ padding: 16 }}
+                contentContainerStyle={{ padding: 16, maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}
                 showsVerticalScrollIndicator={true}
             >
                 {displayMode === 'diff' && diffContent ? (
@@ -519,9 +519,9 @@ export default React.memo(function FileScreen() {
 
 const styles = StyleSheet.create((theme) => ({
     container: {
+        // Header (file path + toggle) spans the full screen width;
+        // the code/diff body is bounded by layout.maxWidth on the ScrollView's
+        // contentContainerStyle so it lines up with the chat / changes views.
         flex: 1,
-        maxWidth: layout.maxWidth,
-        alignSelf: 'center',
-        width: '100%',
     }
 }));

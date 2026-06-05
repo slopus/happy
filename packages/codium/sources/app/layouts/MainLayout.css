@@ -1,0 +1,20 @@
+.app__main {
+    flex: 1;
+    min-width: 0;
+    background: var(--color-background-surface);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-top-left-radius: 12.5px;
+    border-bottom-left-radius: 12.5px;
+    box-shadow:
+        0 0 0 0.5px var(--color-border-heavy),
+        0 2px 4px -1px var(--color-simple-scrim);
+    transition:
+        border-radius 180ms ease,
+        box-shadow 180ms ease;
+}
+
+.main-outlet {
+    min-height: 0;
+}

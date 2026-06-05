@@ -30,6 +30,12 @@ export type UserTextMessage = {
     text: string;
     displayText?: string; // Optional text to display in UI instead of actual text
     meta?: MessageMeta;
+    /**
+     * Claude conversation-file `uuid` corresponding to this message. Used as
+     * the rewind point when forking / duplicating a session. Optional —
+     * older messages and non-Claude agents may not have one.
+     */
+    claudeUuid?: string;
 }
 
 export type ModeSwitchMessage = {

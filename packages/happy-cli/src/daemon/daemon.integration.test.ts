@@ -229,7 +229,7 @@ describe('Daemon Integration Tests', { timeout: 180_000 }, () => {
   it('should not allow starting a second daemon', async () => {
     // Daemon is already running from beforeEach
     // Try to start another daemon
-    const secondChild = spawn('yarn', ['tsx', 'src/index.ts', 'daemon', 'start-sync'], {
+    const secondChild = spawn('pnpm', ['tsx', 'src/index.ts', 'daemon', 'start-sync'], {
       cwd: process.cwd(),
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe']
@@ -418,7 +418,7 @@ describe('Daemon Integration Tests', { timeout: 180_000 }, () => {
       // The daemon's heartbeat will detect package.json != compiled version,
       // then spawn a new daemon which will use the rebuilt dist.
       console.log(`[TEST] Rebuilding CLI with test version ${testVersion}...`);
-      execSync('yarn build', { stdio: 'pipe' });
+      execSync('pnpm build', { stdio: 'pipe' });
 
       // Verify the build actually has the test version
       const distFiles = execSync('grep -rl "' + testVersion + '" dist/ || echo "NOT_FOUND"', { encoding: 'utf8' }).trim();
@@ -444,7 +444,7 @@ describe('Daemon Integration Tests', { timeout: 180_000 }, () => {
       console.log(`[TEST] Restored package.json version to ${originalVersion}`);
 
       // Lets rebuild it so we keep it as we found it
-      execSync('yarn build', { stdio: 'ignore' });
+      execSync('pnpm build', { stdio: 'ignore' });
     }
   });
 

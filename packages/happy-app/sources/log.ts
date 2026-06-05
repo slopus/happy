@@ -2,6 +2,8 @@
  * Simple logging mechanism that writes to console and maintains internal array
  * Keeps last 5k records in memory with change notifications for UI updates
  */
+import { serializeForLogs } from '@/utils/truncateForLogs';
+
 type ConsoleLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 export const MAX_APP_LOG_ENTRIES = 5000;
 
@@ -24,16 +26,7 @@ class Logger {
     }
 
     private formatValue(value: unknown): string {
-        if (typeof value === 'string') {
-            return value;
-        }
-
-        try {
-            const serialized = JSON.stringify(value, null, 2);
-            return serialized ?? String(value);
-        } catch {
-            return String(value);
-        }
+        return serializeForLogs(value);
     }
 
     private formatConsoleMessage(level: ConsoleLogLevel, args: unknown[]): string {

@@ -10,12 +10,13 @@ import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
-import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
+import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
+import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
 
 interface PermissionsField {
     date: number;
@@ -81,6 +82,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     async function doAbort() {
         logger.debug('[remote]: doAbort');
+        session.onAbort();
         await abort();
     }
 
@@ -99,6 +101,16 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     // Create permission handler
     const permissionHandler = new PermissionHandler(session);
+
+    // Drop any permission requests left over in agent state from a
+    // previous CLI process that died while a tool prompt was open. The
+    // in-memory pendingRequests map is fresh and empty, but the server
+    // still has `requests: { [id]: {...} }` and the app shows a spinner
+    // + "Permission required" banner that no click can clear — the
+    // previous process is gone and the new one has no record of the id.
+    // reset() moves any stale entries to completedRequests with status
+    // 'canceled' so the UI reflects what actually happened.
+    permissionHandler.reset('Previous CLI process exited before responding');
 
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(
@@ -119,7 +131,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
 
     // Handle messages
-    let planModeToolCalls = new Set<string>();
     let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
     let notifiedQuestionToolCalls = new Set<string>();
 
@@ -127,22 +138,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
         // Write to message log
         formatClaudeMessageForInk(message, messageBuffer);
-
-        // Write to permission handler for tool id resolving
-        permissionHandler.onMessage(message);
-
-        // Detect plan mode tool call
-        if (message.type === 'assistant') {
-            let umessage = message as SDKAssistantMessage;
-            if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                for (let c of umessage.message.content) {
-                    if (c.type === 'tool_use' && (c.name === 'exit_plan_mode' || c.name === 'ExitPlanMode')) {
-                        logger.debug('[remote]: detected plan mode tool call ' + c.id!);
-                        planModeToolCalls.add(c.id! as string);
-                    }
-                }
-            }
-        }
 
         // Track active tool calls
         if (message.type === 'assistant') {
@@ -191,39 +186,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         }
 
         // Convert SDK message to log format and send to client
-        let msg = message;
-
-        // Hack plan mode exit
-        if (message.type === 'user') {
-            let umessage = message as SDKUserMessage;
-            if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                msg = {
-                    ...umessage,
-                    message: {
-                        ...umessage.message,
-                        content: umessage.message.content.map((c) => {
-                            if (c.type === 'tool_result' && c.tool_use_id && planModeToolCalls.has(c.tool_use_id!)) {
-                                if (c.content === PLAN_FAKE_REJECT) {
-                                    logger.debug('[remote]: hack plan mode exit');
-                                    logger.debugLargeJson('[remote]: hack plan mode exit', c);
-                                    return {
-                                        ...c,
-                                        is_error: false,
-                                        content: 'Plan approved',
-                                        mode: c.mode
-                                    }
-                                } else {
-                                    return c;
-                                }
-                            }
-                            return c;
-                        })
-                    }
-                }
-            }
-        }
-
-        const logMessage = sdkToLogConverter.convert(msg);
+        const logMessage = sdkToLogConverter.convert(message);
         if (logMessage) {
             // Add permissions field to tool result content
             if (logMessage.type === 'user' && logMessage.message?.content) {
@@ -313,7 +276,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     try {
         let pending: {
-            message: string;
+            message: MessageParam['content'];
             mode: EnhancedMode;
         } | null = null;
 
@@ -377,6 +340,43 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             modeHash = msg.hash;
                             mode = msg.mode;
                             permissionHandler.handleModeChange(mode.permissionMode);
+
+                            // Per-message attachments are already claimed by the message
+                            // when it was pushed onto the queue, so there is no race window
+                            // to wait out here — just consume what travelled with the batch.
+                            const attachments = msg.attachments ?? [];
+                            if (attachments.length > 0) {
+                                const contentBlocks: ContentBlockParam[] = [];
+                                for (const att of attachments) {
+                                    // Detect media type from the decrypted bytes' magic header
+                                    // rather than trusting the wire-supplied mimeType. iOS image
+                                    // pickers happily report things like "image/heic" or no
+                                    // mimeType at all, which the Anthropic API rejects with a
+                                    // strict enum validation error. If the bytes look like one
+                                    // of the four formats Claude accepts, send that label —
+                                    // otherwise skip the attachment with a debug log.
+                                    const detected = detectClaudeImageMime(att.data);
+                                    if (!detected) {
+                                        logger.debug(`[remote] Skipping unsupported attachment (no magic-byte match): ${att.name}, claimed mimeType=${att.mimeType}`);
+                                        continue;
+                                    }
+                                    contentBlocks.push({
+                                        type: 'image' as const,
+                                        source: {
+                                            type: 'base64' as const,
+                                            media_type: detected,
+                                            data: Buffer.from(att.data).toString('base64'),
+                                        },
+                                    });
+                                }
+                                contentBlocks.push({ type: 'text' as const, text: msg.message });
+                                logger.debug(`[remote] Combined ${contentBlocks.length - 1} image(s) with text message`);
+                                return {
+                                    message: contentBlocks,
+                                    mode: msg.mode,
+                                };
+                            }
+
                             return {
                                 message: msg.message,
                                 mode: msg.mode
@@ -390,6 +390,21 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         // Update converter's session ID when new session is found
                         sdkToLogConverter.updateSessionId(sessionId);
                         session.onSessionFound(sessionId);
+                    },
+                    onSDKMetadata: (metadata) => {
+                        logger.debug('[remote] SDK metadata received, updating session:', metadata);
+                        session.client.updateMetadata((currentMetadata) => ({
+                            ...currentMetadata,
+                            tools: metadata.tools,
+                            slashCommands: metadata.slashCommands,
+                            mcpServers: metadata.mcpServers,
+                            skills: metadata.skills,
+                        }));
+                    },
+                    onQueryReady: (q) => {
+                        permissionHandler.setPermissionModeUpdater(async (mode) => {
+                            await q.setPermissionMode(mode);
+                        });
                     },
                     onThinkingChange: session.onThinkingChange,
                     claudeEnvVars: session.claudeEnvVars,
@@ -470,13 +485,28 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         permissionHandler.reset();
 
         // Reset Terminal
-        process.stdin.off('data', abort);
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
-        }
+        const t0 = Date.now();
+        logger.debug(`[remote]: cleanup begin exitReason=${exitReason} hasInk=${!!inkInstance} rawMode=${(process.stdin as any).isRaw}`);
         if (inkInstance) {
             inkInstance.unmount();
         }
+        logger.debug(`[remote]: ink.unmount() done +${Date.now() - t0}ms rawMode=${(process.stdin as any).isRaw}`);
+
+        // Drain any keystrokes that landed in stdin while Ink owned it (e.g.
+        // extra spaces from the double-space switch confirmation, or anything
+        // typed before the user perceives that the switch has completed) so
+        // they don't leak into the next interactive child process when local
+        // mode takes stdin back via stdio: 'inherit'. Raw mode stays on for
+        // the whole window so the kernel does not echo any in-flight bytes
+        // at whatever screen position Ink last left the cursor.
+        await cleanupStdinAfterInk({
+            stdin: process.stdin,
+            drainMs: 150,
+            onDebug: (event) => {
+                logger.debug(`[remote]: stdin drain ${event.bytes}B / ${event.chunks} chunk(s) +${Date.now() - t0}ms`);
+            },
+        });
+        logger.debug(`[remote]: cleanup done +${Date.now() - t0}ms rawMode=${(process.stdin as any).isRaw}`);
         messageBuffer.clear();
 
         // Resolve abort future
@@ -486,4 +516,33 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     }
 
     return exitReason || 'exit';
+}
+
+/**
+ * Detect the image media type Claude accepts from the decrypted blob's
+ * magic-byte header. The wire-supplied mimeType is unreliable (iOS picker
+ * reports things like "image/heic" or no value at all), and the Anthropic
+ * API enforces a strict enum on `image.source.base64.media_type`. Returning
+ * null when the bytes don't match a supported format causes the caller to
+ * drop the attachment instead of shipping an invalid request that the API
+ * rejects with HTTP 400.
+ */
+function detectClaudeImageMime(bytes: Uint8Array): 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | null {
+    if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+        return 'image/png';
+    }
+    if (bytes.length >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+        return 'image/jpeg';
+    }
+    if (bytes.length >= 4 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+        return 'image/gif';
+    }
+    if (
+        bytes.length >= 12 &&
+        bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+        bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+    ) {
+        return 'image/webp';
+    }
+    return null;
 }

@@ -108,18 +108,8 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
     const extendedOptions = options as ExtendedNavigationOptions;
     const isTablet = useIsTablet();
 
-    // Check if we should hide back button on tablet
-    const shouldHideBackButton = React.useMemo(() => {
-        if (!isTablet) return false;
-
-        // Get navigation state to check stack depth
-        const state = navigation.getState();
-        const currentIndex = state?.index ?? 0;
-
-        // Hide back button if we're at the first or second screen in the stack
-        // In tablet mode, index 0 is the empty screen, index 1 is the first real screen
-        return currentIndex <= 1;
-    }, [isTablet, navigation]);
+    // Hide back button on tablet — navigation is handled via sidebar and persistent header
+    const shouldHideBackButton = isTablet;
 
     // Extract title - handle both string and function types
     let title: React.ReactNode | null = null;

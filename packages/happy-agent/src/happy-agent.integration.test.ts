@@ -34,8 +34,8 @@ let testProjectDir: string | null = null;
 let testWorktreeDir: string | null = null;
 const spawnedSessionIds = new Set<string>();
 
-function runYarn(args: string[], cwd = repoRoot): string {
-    return runCommand('yarn', args, cwd, process.env);
+function runPnpm(args: string[], cwd = repoRoot): string {
+    return runCommand('pnpm', args, cwd, process.env);
 }
 
 function runCommand(command: string, args: string[], cwd = repoRoot, env: NodeJS.ProcessEnv = process.env): string {
@@ -213,6 +213,7 @@ async function approveAgentLogin(
         headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
+            'X-Happy-Client': 'cli-control-plane/0.1.0',
         },
         body: JSON.stringify({
             publicKey: publicKeyBase64,
@@ -342,7 +343,7 @@ describe('happy-agent integration', { timeout: 180_000 }, () => {
     beforeAll(async () => {
         previousCurrentEnv = readCurrentEnvName();
 
-        runYarn(['env:up:authenticated']);
+        runPnpm(['env:up:authenticated']);
 
         integrationEnvName = readCurrentEnvName();
         if (!integrationEnvName) {
@@ -380,13 +381,13 @@ describe('happy-agent integration', { timeout: 180_000 }, () => {
         } finally {
             if (integrationEnvName) {
                 try {
-                    runYarn(['env:down']);
+                    runPnpm(['env:down']);
                 } catch {
                     // ignore cleanup failures here and continue best effort
                 }
 
                 try {
-                    runYarn(['env:remove', integrationEnvName]);
+                    runPnpm(['env:remove', integrationEnvName]);
                 } catch {
                     // ignore cleanup failures here and continue best effort
                 }
@@ -398,7 +399,7 @@ describe('happy-agent integration', { timeout: 180_000 }, () => {
                 && environmentExists(previousCurrentEnv)
             ) {
                 try {
-                    runYarn(['env:use', previousCurrentEnv]);
+                    runPnpm(['env:use', previousCurrentEnv]);
                 } catch {
                     // ignore restore failures
                 }

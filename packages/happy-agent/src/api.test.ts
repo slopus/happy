@@ -42,6 +42,11 @@ import {
     resolveSessionEncryption,
 } from './api';
 
+const authHeader = {
+    Authorization: 'Bearer test-jwt-token',
+    'X-Happy-Client': 'cli-control-plane/0.1.0',
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockedAxios = axios as any as {
     get: ReturnType<typeof vi.fn>;
@@ -261,7 +266,7 @@ describe('api', () => {
 
             expect(mockedAxios.get).toHaveBeenCalledWith(
                 'https://test-server.example.com/v1/sessions',
-                { headers: { Authorization: 'Bearer test-jwt-token' } },
+                { headers: authHeader },
             );
         });
 
@@ -307,7 +312,7 @@ describe('api', () => {
 
             expect(mockedAxios.get).toHaveBeenCalledWith(
                 'https://test-server.example.com/v2/sessions/active',
-                { headers: { Authorization: 'Bearer test-jwt-token' } },
+                { headers: authHeader },
             );
         });
 
@@ -382,7 +387,7 @@ describe('api', () => {
                     metadata: expect.any(String),
                     dataEncryptionKey: expect.any(String),
                 }),
-                { headers: { Authorization: 'Bearer test-jwt-token' } },
+                { headers: authHeader },
             );
         });
 
@@ -521,7 +526,7 @@ describe('api', () => {
 
             expect(mockedAxios.delete).toHaveBeenCalledWith(
                 'https://test-server.example.com/v1/sessions/session-to-delete',
-                { headers: { Authorization: 'Bearer test-jwt-token' } },
+                { headers: authHeader },
             );
         });
 

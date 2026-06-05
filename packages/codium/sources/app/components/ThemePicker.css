@@ -1,0 +1,95 @@
+.theme-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.theme-picker__group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.theme-picker__group-label {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-foreground-tertiary);
+}
+
+.theme-picker__row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 10px;
+}
+
+.theme-picker__card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 6px;
+    background: transparent;
+    border: 1px solid var(--color-border-light);
+    border-radius: 12.5px;
+    corner-shape: superellipse(1.5);
+    color: var(--color-text-foreground-secondary);
+    cursor: pointer;
+    transition:
+        background 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease;
+}
+
+.theme-picker__card:hover {
+    background: var(--color-hover);
+    color: var(--color-text-foreground);
+    border-color: var(--color-border);
+}
+
+.theme-picker__card--active,
+.theme-picker__card--active:hover {
+    border-color: var(--color-text-accent);
+    color: var(--color-text-foreground);
+    background: color-mix(in srgb, var(--color-text-accent) 8%, transparent);
+}
+
+.theme-picker__card:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+.theme-picker__swatch {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.theme-picker__swatch-label {
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1;
+}
+
+.theme-picker__swatch-dot {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.theme-picker__name {
+    font-size: var(--text-sm);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

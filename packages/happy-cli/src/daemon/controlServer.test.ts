@@ -8,6 +8,7 @@ import { createPortRegistry } from './portRegistry'
 import { startDaemonControlServer } from './controlServer'
 
 describe('controlServer port allocation endpoints', () => {
+  const userId = 'test-user'
   let dir: string
   let baseUrl: string
   let stopServer: () => Promise<void>
@@ -41,7 +42,7 @@ describe('controlServer port allocation endpoints', () => {
     const res = await fetch(`${baseUrl}/allocate-port`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId }),
+      body: JSON.stringify({ userId, projectId }),
     })
     return { status: res.status, body: (await res.json()) as { port?: number; reused?: boolean; error?: string } }
   }
@@ -50,7 +51,7 @@ describe('controlServer port allocation endpoints', () => {
     const res = await fetch(`${baseUrl}/release-port`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId }),
+      body: JSON.stringify({ userId, projectId }),
     })
     return { status: res.status, body: (await res.json()) as { released?: boolean } }
   }
@@ -124,13 +125,13 @@ describe('controlServer port allocation endpoints', () => {
 
   it('GET /get-port returns the registered port for an allocated projectId', async () => {
     const alloc = await allocate('proj-a')
-    const { status, body } = await getPort('?projectId=proj-a')
+    const { status, body } = await getPort(`?userId=${userId}&projectId=proj-a`)
     expect(status).toBe(200)
     expect(body.port).toBe(alloc.body.port)
   })
 
   it('GET /get-port returns port=null for an unknown projectId', async () => {
-    const { status, body } = await getPort('?projectId=ghost')
+    const { status, body } = await getPort(`?userId=${userId}&projectId=ghost`)
     expect(status).toBe(200)
     expect(body.port).toBeNull()
   })
@@ -141,12 +142,13 @@ describe('controlServer port allocation endpoints', () => {
   })
 
   it('GET /get-port rejects empty projectId', async () => {
-    const { status } = await getPort('?projectId=')
+    const { status } = await getPort(`?userId=${userId}&projectId=`)
     expect(status).toBe(400)
   })
 })
 
 describe('controlServer port allocation — range exhaustion', () => {
+  const userId = 'test-user'
   let dir: string
   let baseUrl: string
   let stopServer: () => Promise<void>
@@ -179,15 +181,15 @@ describe('controlServer port allocation — range exhaustion', () => {
   it('returns 503 when the range is exhausted', async () => {
     await fetch(`${baseUrl}/allocate-port`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: 'a' }),
+      body: JSON.stringify({ userId, projectId: 'a' }),
     })
     await fetch(`${baseUrl}/allocate-port`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: 'b' }),
+      body: JSON.stringify({ userId, projectId: 'b' }),
     })
     const res = await fetch(`${baseUrl}/allocate-port`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: 'c' }),
+      body: JSON.stringify({ userId, projectId: 'c' }),
     })
     expect(res.status).toBe(503)
     const body = (await res.json()) as { error?: string }

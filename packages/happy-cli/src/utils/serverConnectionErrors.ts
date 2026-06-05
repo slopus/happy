@@ -52,6 +52,7 @@ import axios from 'axios';
 import chalk from 'chalk';
 import { exponentialBackoffDelay } from '@/utils/time';
 import { logger } from '@/ui/logger';
+import { configuration } from '@/configuration';
 
 /**
  * Configuration for offline reconnection behavior.
@@ -85,6 +86,12 @@ export interface OfflineReconnectionConfig<TSession> {
      * Default: 5000ms. Set to small value in tests.
      */
     initialDelayMs?: number;
+
+    /**
+     * Optional: override retry delay calculation.
+     * Default uses exponential backoff with jitter. Set to a tiny fixed delay in tests.
+     */
+    retryDelayMs?: (failureCount: number) => number;
 }
 
 /**
@@ -155,12 +162,16 @@ export function startOfflineReconnection<TSession>(
     const defaultHealthCheck = async () => {
         await axios.get(`${config.serverUrl}/v1/sessions`, {
             timeout: 5000,
-            validateStatus: (status) => status < 500 // 4xx = server is up, 5xx = server error
+            validateStatus: (status) => status < 500, // 4xx = server is up, 5xx = server error
+            headers: {
+                'X-Happy-Client': `cli-daemon/${configuration.currentCliVersion}`
+            }
         });
     };
 
     const healthCheck = config.healthCheck ?? defaultHealthCheck;
     const initialDelayMs = config.initialDelayMs ?? 5000;
+    const retryDelayMs = config.retryDelayMs ?? ((count: number) => exponentialBackoffDelay(count, 5000, 60000, 10));
 
     /**
      * Core reconnection attempt logic.
@@ -201,7 +212,7 @@ export function startOfflineReconnection<TSession>(
             // Retryable error: network error, 5xx, or onReconnected failure
             // Retries are UNLIMITED - only the delay caps at 60s after 10 failures
             failureCount++;
-            const delay = exponentialBackoffDelay(failureCount, 5000, 60000, 10); // 10 = delay cap, NOT retry limit
+            const delay = retryDelayMs(failureCount); // Default cap is delay-only, NOT a retry limit.
             logger.debug(`[OfflineReconnection] Attempt ${failureCount} failed, retrying in ${delay}ms`);
 
             // Schedule next attempt (only if not cancelled)

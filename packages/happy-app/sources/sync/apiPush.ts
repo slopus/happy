@@ -2,6 +2,7 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { z } from 'zod';
 import { getServerUrl } from './serverConfig';
+import { getHappyClientId } from './apiSocket';
 
 const PushTokenSchema = z.object({
     id: z.string(),
@@ -23,7 +24,8 @@ export async function registerPushToken(credentials: AuthCredentials, token: str
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             },
             body: JSON.stringify({ token })
         });
@@ -46,7 +48,8 @@ export async function fetchPushTokens(credentials: AuthCredentials): Promise<Pus
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             }
         });
 
@@ -66,7 +69,8 @@ export async function unregisterPushToken(credentials: AuthCredentials, token: s
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             }
         });
 

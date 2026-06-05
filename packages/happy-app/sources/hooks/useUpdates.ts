@@ -1,10 +1,17 @@
 import { useEffect, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import * as Updates from 'expo-updates';
+import { trackOtaUpdateAvailable, trackOtaUpdateApplied } from '@/track';
+
+type PendingOtaUpdate = {
+    ota_version?: string;
+    ota_runtime_version?: string;
+};
 
 export function useUpdates() {
     const [updateAvailable, setUpdateAvailable] = useState(false);
     const [isChecking, setIsChecking] = useState(false);
+    const [pendingUpdate, setPendingUpdate] = useState<PendingOtaUpdate | null>(null);
 
     useEffect(() => {
         // Check for updates when app becomes active
@@ -39,7 +46,13 @@ export function useUpdates() {
         try {
             const update = await Updates.checkForUpdateAsync();
             if (update.isAvailable) {
+                const pendingUpdate = {
+                    ota_version: update.manifest.id,
+                    ota_runtime_version: 'runtimeVersion' in update.manifest ? update.manifest.runtimeVersion : undefined,
+                };
                 await Updates.fetchUpdateAsync();
+                trackOtaUpdateAvailable(pendingUpdate);
+                setPendingUpdate(pendingUpdate);
                 setUpdateAvailable(true);
             }
         } catch (error) {
@@ -50,6 +63,7 @@ export function useUpdates() {
     };
 
     const reloadApp = async () => {
+        trackOtaUpdateApplied(pendingUpdate ?? undefined);
         if (Platform.OS === 'web') {
             window.location.reload();
         } else {

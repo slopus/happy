@@ -86,6 +86,15 @@ export const ru: TranslationStructure = {
         connectAccount: 'Подключить аккаунт',
         github: 'GitHub',
         machines: 'Машины',
+        showOfflineMachines: ({ count }: { count: number }) => {
+            const lastTwo = count % 100;
+            const lastOne = count % 10;
+            if (lastTwo >= 11 && lastTwo <= 14) return `Показать ${count} оффлайн-машин`;
+            if (lastOne === 1) return `Показать ${count} оффлайн-машину`;
+            if (lastOne >= 2 && lastOne <= 4) return `Показать ${count} оффлайн-машины`;
+            return `Показать ${count} оффлайн-машин`;
+        },
+        hideOfflineMachines: 'Скрыть оффлайн-машины',
         features: 'Функции',
         social: 'Социальное',
         account: 'Аккаунт',
@@ -150,6 +159,12 @@ export const ru: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Отображать номера строк в различиях представлений инструментов',
         wrapLinesInDiffs: 'Перенос строк в различиях',
         wrapLinesInDiffsDescription: 'Переносить длинные строки вместо горизонтальной прокрутки в представлениях различий',
+        diffStyle: 'Вид сравнения',
+        diffStyleDescription: 'Показывать различия в одну колонку (unified) или рядом (split). Режим split доступен только на web.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Всегда показывать размер контекста',
         alwaysShowContextSizeDescription: 'Отображать использование контекста даже когда не близко к лимиту',
         avatarStyle: 'Стиль аватара',
@@ -161,8 +176,6 @@ export const ru: TranslationStructure = {
         },
         showFlavorIcons: 'Показывать иконки провайдеров ИИ',
         showFlavorIconsDescription: 'Отображать иконки провайдеров ИИ на аватарах сессий',
-        compactSessionView: 'Компактный вид сессий',
-        compactSessionViewDescription: 'Отображать активные сессии в более компактном виде',
     },
 
     settingsFeatures: {
@@ -184,6 +197,15 @@ export const ru: TranslationStructure = {
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
         hideInactiveSessions: 'Скрывать неактивные сессии',
         hideInactiveSessionsSubtitle: 'Показывать в списке только активные чаты',
+        groupToolCalls: 'Группировать вызовы инструментов',
+        groupToolCallsSubtitle: 'Сворачивать подряд идущие вызовы инструментов в один блок',
+        privacy: 'Конфиденциальность',
+        privacyDescription: 'Полностью отключает всю аналитику и телеметрию. Никакие данные не будут отправляться в PostHog или другие сервисы отслеживания.',
+        disableAnalytics: 'Отключить аналитику',
+        analyticsDisabled: 'Вся аналитика и телеметрия отключены',
+        analyticsEnabled: 'Анонимная аналитика использования активна',
+        imageUpload: 'Загрузка изображений',
+        imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа Claude',
     },
 
     errors: {
@@ -201,6 +223,9 @@ export const ru: TranslationStructure = {
         sessionNotFound: 'Сессия не найдена',
         voiceSessionFailed: 'Не удалось запустить голосовую сессию',
         voiceServiceUnavailable: 'Голосовой сервис временно недоступен',
+        voiceLimitReachedTitle: 'Лимит голоса достигнут',
+        voiceHardLimitReached: ({ hours }: { hours: number }) => `Вы использовали ${hours}+ часов голосового общения в этом месяце. Это максимально допустимый лимит. Вы можете настроить собственного агента ElevenLabs в настройках голоса, чтобы использовать свою квоту.`,
+        voiceConversationLimitReached: 'Вы достигли максимального количества голосовых разговоров в этом месяце. Возможно, в будущем мы добавим голосовое использование по запросу — пожалуйста, создайте заявку на github.com/nicepkg/happy/issues, если вы столкнулись с этим ограничением.',
         oauthInitializationFailed: 'Не удалось инициализировать процесс OAuth',
         tokenStorageFailed: 'Не удалось сохранить токены аутентификации',
         oauthStateMismatch: 'Ошибка проверки безопасности. Попробуйте снова',
@@ -366,18 +391,38 @@ export const ru: TranslationStructure = {
         permissionRequired: 'требуется разрешение',
         activeNow: 'Активен сейчас',
         unknown: 'неизвестно',
+        unread: 'новые результаты',
     },
 
     time: {
         justNow: 'только что',
         minutesAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'минуту', few: 'минуты', many: 'минут' })} назад`,
         hoursAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'час', few: 'часа', many: 'часов' })} назад`,
+        daysAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'день', few: 'дня', many: 'дней' })} назад`,
     },
 
     session: {
         inputPlaceholder: 'Введите сообщение...',
         inactiveArchived: 'Эта сессия неактивна.',
         resumeFromTerminal: 'Чтобы возобновить её из терминала:',
+        newChat: 'Новый чат',
+        forkAction: 'Форкнуть сессию',
+        forkSubtitle: 'Продолжить в новой сессии с тем же контекстом',
+        duplicateAction: 'Откатиться к сообщению…',
+        duplicateSubtitle: 'Вернуться к выбранной точке и попробовать иначе',
+        forkFromHere: 'Форкнуть отсюда',
+        duplicateSheetTitle: 'Выберите точку отката',
+        duplicateSheetSubtitle: 'Новая сессия сохранит выбранный ход целиком (ваше сообщение и ответ агента) и отбросит все следующие запросы.',
+        duplicateSheetConfirm: 'Откатить',
+        duplicateSheetEmpty: 'В этой сессии пока нет сообщений, к которым можно откатиться.',
+        duplicateRowDisabled: 'К этому сообщению нельзя откатиться.',
+        forkedFromLabel: 'Форкнуто из',
+        forkedFromSubtitle: 'Открыть исходную сессию, из которой сделан форк',
+        forkErrorOffline: 'Машина оффлайн. Форк доступен, только пока машина с сессией онлайн.',
+        forkErrorMissingUuid: 'Выбранная точка отката больше не существует в исходной сессии — попробуйте форк без обрезки.',
+        forkErrorMissingMetadata: 'Не хватает метаданных сессии для форка.',
+        forkErrorGeneric: 'Не удалось форкнуть сессию.',
+        forkClaudeOnly: 'Форк сейчас поддерживается только для Claude-сессий.',
     },
 
     commandPalette: {
@@ -458,11 +503,28 @@ export const ru: TranslationStructure = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'Показать архив',
+        hideArchived: 'Скрыть архив',
+        newSession: 'Новая сессия',
+    },
+
+    zen: {
+        toggle: 'Дзен-режим',
     },
 
     toolView: {
         input: 'Входные данные',
         output: 'Результат',
+    },
+
+    toolGroup: {
+        editedFiles: ({ count }: { count: number }) => `${plural({ count, one: 'Отредактирован', few: 'Отредактировано', many: 'Отредактировано' })} ${count} ${plural({ count, one: 'файл', few: 'файла', many: 'файлов' })}`,
+        readFiles: ({ count }: { count: number }) => `${plural({ count, one: 'Прочитан', few: 'Прочитано', many: 'Прочитано' })} ${count} ${plural({ count, one: 'файл', few: 'файла', many: 'файлов' })}`,
+        ranCommands: ({ count }: { count: number }) => `${plural({ count, one: 'Выполнена', few: 'Выполнено', many: 'Выполнено' })} ${count} ${plural({ count, one: 'команда', few: 'команды', many: 'команд' })}`,
+        searched: ({ count }: { count: number }) => `${plural({ count, one: 'Выполнен', few: 'Выполнено', many: 'Выполнено' })} ${count} ${plural({ count, one: 'поиск', few: 'поиска', many: 'поисков' })}`,
+        fetchedUrls: ({ count }: { count: number }) => `${plural({ count, one: 'Загружен', few: 'Загружено', many: 'Загружено' })} ${count} URL`,
+        ranTasks: ({ count }: { count: number }) => `${plural({ count, one: 'Выполнена', few: 'Выполнено', many: 'Выполнено' })} ${count} ${plural({ count, one: 'задача', few: 'задачи', many: 'задач' })}`,
+        usedTools: ({ count }: { count: number }) => `${plural({ count, one: 'Использован', few: 'Использовано', many: 'Использовано' })} ${count} ${plural({ count, one: 'инструмент', few: 'инструмента', many: 'инструментов' })}`,
     },
 
     tools: {
@@ -532,6 +594,7 @@ export const ru: TranslationStructure = {
     },
 
     files: {
+        changes: 'Изменения',
         searchPlaceholder: 'Поиск файлов...',
         detachedHead: 'отделённый HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} подготовлено • ${unstaged} не подготовлено`,
@@ -553,7 +616,19 @@ export const ru: TranslationStructure = {
         file: 'Файл',
         fileEmpty: 'Файл пустой',
         noChanges: 'Нет изменений для отображения',
+        noChangesTitle: 'Нет изменений',
+        noChangesSubtitle: 'Рабочее дерево чистое',
         deleted: 'Удалён',
+        changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'изменённый файл' : count < 5 ? 'изменённых файла' : 'изменённых файлов'}`,
+        allFiles: 'Все файлы',
+        editFile: 'Редактировать',
+        saveFile: 'Сохранить',
+        failedToRead: 'Не удалось прочитать файл',
+        failedToSave: 'Не удалось сохранить файл',
+        fileConflict: 'Конфликт файла',
+        fileConflictDescription: 'Файл был изменён на устройстве пока вы его редактировали. Перезагрузите чтобы увидеть актуальную версию.',
+        reload: 'Перезагрузить',
+        overwrite: 'Перезаписать',
     },
 
     settingsVoice: {
@@ -579,6 +654,13 @@ export const ru: TranslationStructure = {
         bypassTokenSubtitle: 'Пропустить сервер Happy, подключиться напрямую к ElevenLabs',
         promptGuideTitle: 'Руководство по промптам агента',
         promptGuideDescription: 'Вашему агенту ElevenLabs необходимы:\n\n• Инструмент: messageClaudeCode — параметр: message (string). Отправляет сообщение в активную сессию кодирования.\n• Инструмент: processPermissionRequest — параметр: decision ("allow" или "deny"). Одобряет или отклоняет ожидающее разрешение на использование инструмента.\n• Динамическая переменная: {{initialConversationContext}} — получает историю и контекст сессии при запуске.\n\nАгент выступает голосовым мостом между пользователем и агентами кодирования. Он должен быть кратким, отвечать только при обращении и сообщать, когда агент кодирования завершает работу.',
+        usageTitle: 'Использование (последние 30 дней)',
+        usageFooter: 'Время голосового общения за последние 30 дней. Бесплатный тариф: 20 мин. С подпиской: 5 часов. Макс. 100 разговоров в месяц.',
+        usageLabel: 'Голосовое время',
+        conversationsLabel: 'Разговоры',
+        usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} использовано из ${limit}`,
+        supportTitle: 'Улучшить голос',
+        supportSubtitle: 'Больше голосового времени и поддержка разработки',
     },
 
     settingsAccount: {
@@ -745,6 +827,12 @@ export const ru: TranslationStructure = {
         lastDetected: 'Последнее обнаружение',
         untitledSession: 'Безымянная сессия',
         back: 'Назад',
+        dangerZone: 'Опасная зона',
+        delete: 'Удалить машину',
+        deleteFooter: 'Удаляет машину из вашего аккаунта. История сессий сохраняется, но вы больше не сможете запускать новые сессии на ней.',
+        deleteConfirmTitle: 'Удалить эту машину?',
+        deleteConfirmMessage: 'Машина будет удалена из вашего аккаунта. История сессий сохраняется, но вы больше не сможете запускать новые сессии, пока не подключите демон заново.',
+        deleteFailed: 'Не удалось удалить машину.',
     },
 
     message: {
@@ -766,6 +854,7 @@ export const ru: TranslationStructure = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: 'Да, разрешить все правки в этой сессии',
+            yesAllowEverything: 'Да, разрешить всё в этой сессии',
             yesForTool: 'Да, больше не спрашивать для этого инструмента',
             noTellClaude: 'Нет, дать обратную связь',
         }
@@ -904,6 +993,21 @@ export const ru: TranslationStructure = {
         usageOverTime: 'Использование во времени',
         byModel: 'По модели',
         noData: 'Данные об использовании недоступны',
+    },
+
+    imageUpload: {
+        permissionTitle: 'Доступ к библиотеке фото',
+        permissionMessage: 'Разрешите доступ к вашей библиотеке фото, чтобы прикреплять изображения к сообщениям.',
+        limitTitle: 'Достигнут лимит изображений',
+        limitMessage: ({ max }: { max: number }) => `Можно прикрепить не более ${max} изображений на сообщение.`,
+        fileTooLargeTitle: 'Файл слишком большой',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" превышает лимит ${maxMb}МБ и не был добавлен.`,
+        uploadFailedTitle: 'Ошибка загрузки',
+        uploadFailedMessage: ({ count }: { count: number }) => count === 1
+            ? 'Одно изображение не удалось загрузить — оно не было отправлено.'
+            : `${count} изображений не удалось загрузить — они не были отправлены.`,
+        notSupportedTitle: 'Изображения не поддерживаются',
+        notSupportedMessage: 'Этот агент не поддерживает изображения. Отправлен только текст.',
     },
 
     feed: {

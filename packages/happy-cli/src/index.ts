@@ -26,6 +26,7 @@ import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 import { handleAuthCommand } from './commands/auth'
 import { handleConnectCommand } from './commands/connect'
 import { handleSandboxCommand } from './commands/sandbox'
+import { handleServerCommand } from './commands/server'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
 import { execFileSync } from 'node:child_process'
@@ -54,6 +55,18 @@ import { runPreToolUseCli } from './hooks/runPreToolUseCli'
   if (subcommand === 'doctor') {
     // Check for clean subcommand
     if (args[1] === 'clean') {
+      if (args.slice(2).some(a => a === '--help' || a === '-h')) {
+        console.log(`
+${chalk.bold('happy doctor clean')} - Kill all happy-related processes (daemon + sessions)
+
+${chalk.bold('Usage:')}
+  happy doctor clean
+
+${chalk.bold('Warning:')} This is destructive — it terminates the daemon and every running session.
+Conversation history is preserved on the server, but in-flight tool calls are interrupted.
+`)
+        process.exit(0)
+      }
       const result = await killRunawayHappyProcesses()
       console.log(`Cleaned up ${result.killed} runaway processes`)
       if (result.errors.length > 0) {
@@ -90,6 +103,17 @@ import { runPreToolUseCli } from './hooks/runPreToolUseCli'
   } else if (subcommand === 'sandbox') {
     try {
       await handleSandboxCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'server') {
+    try {
+      await handleServerCommand(args.slice(1));
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
@@ -600,6 +624,8 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
       } else if (arg === '--yolo') {
         // Shortcut for --dangerously-skip-permissions
         unknownArgs.push('--dangerously-skip-permissions')
+      } else if (arg === '--model') {
+        options.model = args[++i]
       } else if (arg === '--started-by') {
         options.startedBy = args[++i] as 'daemon' | 'terminal'
       } else if (arg === '--js-runtime') {
@@ -707,7 +733,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       // Run claude --help and display its output
       // Use execFileSync directly with claude CLI for runtime-agnostic compatibility
       try {
-        const claudeHelp = execFileSync(claudeCliPath, ['--help'], { encoding: 'utf8' })
+        const claudeHelp = execFileSync(claudeCliPath, ['--help'], { encoding: 'utf8', windowsHide: true })
         console.log(claudeHelp)
       } catch (e) {
         console.log(chalk.yellow('Could not retrieve claude help. Make sure claude is installed.'))

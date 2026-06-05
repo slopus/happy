@@ -1,5 +1,5 @@
 import { MMKV } from 'react-native-mmkv';
-import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
+import { Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SettingsSchema } from './settings';
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
@@ -8,6 +8,9 @@ import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 const REGISTERED_PUSH_TOKEN_KEY = 'registered-push-token-v1';
+const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
+const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-count';
+const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
 
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw';
 export type NewSessionSessionType = 'simple' | 'worktree';
@@ -20,6 +23,7 @@ export interface NewSessionDraft {
     permissionMode: PermissionModeKey;
     modelMode: string;
     sessionType: NewSessionSessionType;
+    worktreeKey: string | null;
     updatedAt: number;
 }
 
@@ -38,7 +42,7 @@ export function loadSettings(): { settings: Settings, version: number | null } {
 }
 
 export function saveSettings(settings: Settings, version: number) {
-    mmkv.set('settings', JSON.stringify({ settings, version }));
+    mmkv.set('settings', JSON.stringify({ settings: settingsToSyncPayload(settings), version }));
 }
 
 export function loadPendingSettings(): Partial<Settings> {
@@ -149,6 +153,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             : 'default';
         const modelMode: string = typeof parsed.modelMode === 'string' ? parsed.modelMode : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
+        const worktreeKey = typeof parsed.worktreeKey === 'string' ? parsed.worktreeKey : null;
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
 
         return {
@@ -159,6 +164,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             permissionMode,
             modelMode,
             sessionType,
+            worktreeKey,
             updatedAt,
         };
     } catch (e) {
@@ -204,6 +210,40 @@ export function saveSessionPermissionModes(modes: Record<string, string>) {
     mmkv.set('session-permission-modes', JSON.stringify(modes));
 }
 
+export function loadSessionModelModes(): Record<string, string> {
+    const modes = mmkv.getString('session-model-modes');
+    if (modes) {
+        try {
+            return JSON.parse(modes);
+        } catch (e) {
+            console.error('Failed to parse session model modes', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionModelModes(modes: Record<string, string>) {
+    mmkv.set('session-model-modes', JSON.stringify(modes));
+}
+
+export function loadSessionEffortLevels(): Record<string, string> {
+    const levels = mmkv.getString('session-effort-levels');
+    if (levels) {
+        try {
+            return JSON.parse(levels);
+        } catch (e) {
+            console.error('Failed to parse session effort levels', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionEffortLevels(levels: Record<string, string>) {
+    mmkv.set('session-effort-levels', JSON.stringify(levels));
+}
+
 export function loadProfile(): Profile {
     const profile = mmkv.getString('profile');
     if (profile) {
@@ -237,6 +277,44 @@ export function retrieveTempText(id: string): string | null {
         return content;
     }
     return null;
+}
+
+export function getVoiceSoftPaywallShownCount(): number {
+    return mmkv.getNumber(VOICE_SOFT_PAYWALL_SHOWN_KEY) ?? 0;
+}
+
+export function incrementVoiceSoftPaywallShown() {
+    mmkv.set(VOICE_SOFT_PAYWALL_SHOWN_KEY, getVoiceSoftPaywallShownCount() + 1);
+}
+
+export function getVoiceOnboardingPromptLoadCount(): number {
+    return mmkv.getNumber(VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY) ?? 0;
+}
+
+export function incrementVoiceOnboardingPromptLoadCount() {
+    mmkv.set(VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY, getVoiceOnboardingPromptLoadCount() + 1);
+}
+
+export function getVoiceMessageCount(): number {
+    return mmkv.getNumber(VOICE_MESSAGE_COUNT_KEY) ?? 0;
+}
+
+export function incrementVoiceMessageCount() {
+    mmkv.set(VOICE_MESSAGE_COUNT_KEY, getVoiceMessageCount() + 1);
+}
+
+export function getVoiceLocalCounters() {
+    return {
+        softPaywallShownCount: getVoiceSoftPaywallShownCount(),
+        onboardingPromptLoadCount: getVoiceOnboardingPromptLoadCount(),
+        voiceMessageCount: getVoiceMessageCount(),
+    };
+}
+
+export function resetVoiceLocalCounters() {
+    mmkv.delete(VOICE_SOFT_PAYWALL_SHOWN_KEY);
+    mmkv.delete(VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY);
+    mmkv.delete(VOICE_MESSAGE_COUNT_KEY);
 }
 
 export function clearPersistence() {

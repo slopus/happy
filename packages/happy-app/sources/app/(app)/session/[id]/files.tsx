@@ -9,7 +9,7 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
-import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
+import { useSessionGitStatus } from '@/sync/storage';
 import { useGitStatusFiles } from '@/hooks/useGitStatusFiles';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -28,9 +28,7 @@ export default React.memo(function FilesScreen() {
     const [searchQuery, setSearchQuery] = React.useState('');
     const [searchResults, setSearchResults] = React.useState<FileItem[]>([]);
     const [isSearching, setIsSearching] = React.useState(false);
-    const projectGitStatus = useSessionProjectGitStatus(sessionId!);
-    const sessionGitStatus = useSessionGitStatus(sessionId!);
-    const gitStatus = projectGitStatus || sessionGitStatus;
+    const gitStatus = useSessionGitStatus(sessionId!);
     const { theme } = useUnistyles();
 
     // Refs for shaking deleted file items

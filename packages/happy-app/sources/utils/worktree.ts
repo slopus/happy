@@ -51,11 +51,16 @@ export async function createWorktree(
     );
 
     if (!gitCheck.success) {
+        // exitCode -1 means the RPC call itself failed (network, daemon offline, etc.)
+        // Don't mask it as "Not a Git repository"
+        const isRpcFailure = gitCheck.exitCode === -1;
         return {
             success: false,
             worktreePath: '',
             branchName: '',
-            error: 'Not a Git repository'
+            error: isRpcFailure
+                ? (gitCheck.stderr || 'Failed to connect to machine')
+                : 'Not a Git repository'
         };
     }
 

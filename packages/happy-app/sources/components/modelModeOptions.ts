@@ -1,5 +1,6 @@
 import type { Metadata } from '@/sync/storageTypes';
 import { hackModes } from '@/sync/modeHacks';
+import { getCodeAgentDefaults } from '@/sync/agentDefaults';
 
 export type ModeOption = {
     key: string;
@@ -76,7 +77,7 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
-        { key: 'opus', name: 'opus 4.6', description: null },
+        { key: 'opus', name: 'opus 4.7', description: null },
         { key: 'sonnet', name: 'sonnet 4.6', description: null },
         { key: 'haiku', name: 'haiku 4.5', description: null },
     ];
@@ -85,6 +86,7 @@ export function getClaudeModelModes(): ModelMode[] {
 export function getCodexModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
+        { key: 'gpt-5.5', name: 'gpt-5.5', description: null },
         { key: 'gpt-5.4', name: 'gpt-5.4', description: null },
         { key: 'gpt-5.3-codex', name: 'gpt-5.3-codex', description: null },
         { key: 'gpt-5.2-codex', name: 'gpt-5.2-codex', description: null },
@@ -190,17 +192,11 @@ export function resolveCurrentOption<T extends ModeOption>(
 }
 
 export function getDefaultModelKey(flavor: AgentFlavor): string {
-    if (flavor === 'codex') {
-        return 'default';
-    }
-    if (flavor === 'gemini') {
-        return 'gemini-2.5-pro';
-    }
-    return 'default';
+    return getCodeAgentDefaults(flavor).modelMode;
 }
 
-export function getDefaultPermissionModeKey(_flavor: AgentFlavor): string {
-    return 'default';
+export function getDefaultPermissionModeKey(flavor: AgentFlavor): string {
+    return getCodeAgentDefaults(flavor).permissionMode;
 }
 
 // Effort levels per agent type
@@ -210,6 +206,7 @@ export function getClaudeEffortLevels(): EffortLevel[] {
         { key: 'low', name: 'low' },
         { key: 'medium', name: 'medium' },
         { key: 'high', name: 'high' },
+        { key: 'max', name: 'max' },
     ];
 }
 
@@ -229,14 +226,16 @@ export function getHardcodedEffortLevels(flavor: AgentFlavor): EffortLevel[] {
 }
 
 export function getDefaultEffortKey(flavor: AgentFlavor): string | null {
-    if (flavor === 'claude' || flavor === 'codex') return 'high';
-    return null;
+    return getCodeAgentDefaults(flavor).effortLevel;
 }
 
 // Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
-export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string): EffortLevel[] {
+export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string): EffortLevel[] {
+    // Claude and Codex expose effort/thought levels regardless of which
+    // specific model is picked — the same low/medium/high/max scale applies
+    // to the whole flavor (mirrors how Codex already worked, which the user
+    // asked Claude to match).
     if (flavor === 'claude') {
-        if (modelKey === 'default') return [];
         return getClaudeEffortLevels();
     }
     if (flavor === 'codex') {
@@ -249,7 +248,7 @@ export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string): 
 export function getDefaultEffortKeyForModel(flavor: AgentFlavor, modelKey: string): string | null {
     const levels = getEffortLevelsForModel(flavor, modelKey);
     if (levels.length === 0) return null;
-    return levels[levels.length - 1].key;
+    return getCodeAgentDefaults(flavor).effortLevel ?? levels[levels.length - 1].key;
 }
 
 export function getSupportsWorktree(flavor: AgentFlavor): boolean {

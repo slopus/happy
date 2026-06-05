@@ -1,0 +1,21 @@
+.app__sidebar-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 16px 8px;
+    padding: 4px 8px;
+    border-radius: 10px;
+    font-size: var(--text-sm);
+    color: var(--color-text-foreground-secondary);
+    background: transparent;
+    align-self: flex-start;
+    transition:
+        background 120ms ease,
+        color 120ms ease;
+}
+
+.app__sidebar-back:hover,
+.app__sidebar-back:focus-visible {
+    background: var(--color-hover);
+    color: var(--color-text-foreground);
+}

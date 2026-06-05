@@ -186,7 +186,7 @@ export abstract class BasePermissionHandler {
      * Reset state for new sessions.
      * This method is idempotent - safe to call multiple times.
      */
-    reset(): void {
+    reset(reason: string = 'Session reset'): void {
         // Guard against re-entrant/concurrent resets
         if (this.isResetting) {
             logger.debug(`${this.getLogPrefix()} Reset already in progress, skipping`);
@@ -219,7 +219,7 @@ export abstract class BasePermissionHandler {
                         ...request,
                         completedAt: Date.now(),
                         status: 'canceled',
-                        reason: 'Session reset'
+                        reason
                     };
                 }
 

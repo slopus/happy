@@ -82,12 +82,14 @@ export const en = {
         permissionRequired: 'permission required',
         activeNow: 'Active now',
         unknown: 'unknown',
+        unread: 'new results',
     },
 
     time: {
         justNow: 'just now',
         minutesAgo: ({ count }: { count: number }) => `${count} minute${count !== 1 ? 's' : ''} ago`,
         hoursAgo: ({ count }: { count: number }) => `${count} hour${count !== 1 ? 's' : ''} ago`,
+        daysAgo: ({ count }: { count: number }) => `${count} day${count !== 1 ? 's' : ''} ago`,
     },
 
     connect: {
@@ -103,6 +105,8 @@ export const en = {
         connectAccount: 'Connect account',
         github: 'GitHub',
         machines: 'Machines',
+        showOfflineMachines: ({ count }: { count: number }) => count === 1 ? 'Show 1 offline machine' : `Show ${count} offline machines`,
+        hideOfflineMachines: 'Hide offline machines',
         features: 'Features',
         social: 'Social',
         account: 'Account',
@@ -167,6 +171,12 @@ export const en = {
         showLineNumbersInToolViewsDescription: 'Display line numbers in tool view diffs',
         wrapLinesInDiffs: 'Wrap Lines in Diffs',
         wrapLinesInDiffsDescription: 'Wrap long lines instead of horizontal scrolling in diff views',
+        diffStyle: 'Diff View',
+        diffStyleDescription: 'Show diffs as a single column (unified) or side-by-side (split). Split view is web-only.',
+        diffStyleOptions: {
+            unified: 'Unified',
+            split: 'Split',
+        },
         alwaysShowContextSize: 'Always Show Context Size',
         alwaysShowContextSizeDescription: 'Display context usage even when not near limit',
         avatarStyle: 'Avatar Style',
@@ -178,8 +188,6 @@ export const en = {
         },
         showFlavorIcons: 'Show AI Provider Icons',
         showFlavorIconsDescription: 'Display AI provider icons on session avatars',
-        compactSessionView: 'Compact Session View',
-        compactSessionViewDescription: 'Show active sessions in a more compact layout',
     },
 
     settingsFeatures: {
@@ -201,6 +209,30 @@ export const en = {
         markdownCopyV2Subtitle: 'Long press opens copy modal',
         hideInactiveSessions: 'Hide inactive sessions',
         hideInactiveSessionsSubtitle: 'Show only active chats in your list',
+        groupToolCalls: 'Group Tool Calls',
+        groupToolCallsSubtitle: 'Collapse consecutive tool calls into one container',
+        privacy: 'Privacy',
+        privacyDescription: 'Completely disables all analytics and telemetry. No data will be sent to PostHog or any other tracking service.',
+        disableAnalytics: 'Disable Analytics',
+        analyticsDisabled: 'All tracking and telemetry disabled',
+        analyticsEnabled: 'Anonymous usage analytics active',
+        imageUpload: 'Image Upload',
+        imageUploadSubtitle: 'Attach images to messages for Claude to analyze',
+    },
+
+    imageUpload: {
+        permissionTitle: 'Photo Library Access',
+        permissionMessage: 'Allow access to your photo library to attach images to messages.',
+        limitTitle: 'Image Limit Reached',
+        limitMessage: ({ max }: { max: number }) => `You can attach up to ${max} images per message.`,
+        fileTooLargeTitle: 'File Too Large',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" exceeds the ${maxMb}MB limit and was not added.`,
+        uploadFailedTitle: 'Upload Failed',
+        uploadFailedMessage: ({ count }: { count: number }) => count === 1
+            ? 'One image could not be uploaded and was not sent.'
+            : `${count} images could not be uploaded and were not sent.`,
+        notSupportedTitle: 'Images Not Supported',
+        notSupportedMessage: 'This agent does not support image attachments. Only the text was sent.',
     },
 
     errors: {
@@ -218,6 +250,9 @@ export const en = {
         sessionNotFound: 'Session not found',
         voiceSessionFailed: 'Failed to start voice session',
         voiceServiceUnavailable: 'Voice service is temporarily unavailable',
+        voiceLimitReachedTitle: 'Voice Limit Reached',
+        voiceHardLimitReached: ({ hours }: { hours: number }) => `You've used ${hours}+ hours of voice this month. This is the maximum allowed. You can configure your own ElevenLabs agent in Voice settings to use your own quota.`,
+        voiceConversationLimitReached: 'You\'ve reached the maximum number of voice conversations this month. We may add on-demand voice usage in the future — please file an issue at github.com/nicepkg/happy/issues if you hit this limit.',
         oauthInitializationFailed: 'Failed to initialize OAuth flow',
         tokenStorageFailed: 'Failed to store authentication tokens',
         oauthStateMismatch: 'Security validation failed. Please try again',
@@ -270,6 +305,25 @@ export const en = {
         inputPlaceholder: 'Type a message ...',
         inactiveArchived: 'This session is inactive.',
         resumeFromTerminal: 'To resume it from the terminal:',
+        newChat: 'New chat',
+        // Fork / duplicate / rewind flow (Claude only)
+        forkAction: 'Fork session',
+        forkSubtitle: 'Continue in a new session with the same context',
+        duplicateAction: 'Duplicate from message…',
+        duplicateSubtitle: 'Rewind to a chosen point and try again',
+        forkFromHere: 'Fork from here',
+        duplicateSheetTitle: 'Choose a rewind point',
+        duplicateSheetSubtitle: 'The new session keeps the chosen turn complete (your message and the agent’s response) and drops every prompt after it.',
+        duplicateSheetConfirm: 'Duplicate',
+        duplicateSheetEmpty: 'No messages eligible for rewind in this session yet.',
+        duplicateRowDisabled: "This message can't be used as a rewind point.",
+        forkedFromLabel: 'Forked from',
+        forkedFromSubtitle: 'Open the session this fork was branched from',
+        forkErrorOffline: 'This machine is offline. Fork is only available while the machine that owns the session is online.',
+        forkErrorMissingUuid: 'The chosen rewind point is no longer present in the source session — try forking without truncation.',
+        forkErrorMissingMetadata: 'Missing session metadata required to fork.',
+        forkErrorGeneric: 'Failed to fork the session.',
+        forkClaudeOnly: 'Fork is currently only supported for Claude sessions.',
     },
 
     commandPalette: {
@@ -447,11 +501,28 @@ export const en = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'Show archived',
+        hideArchived: 'Hide archived',
+        newSession: 'New session',
+    },
+
+    zen: {
+        toggle: 'Zen mode',
     },
 
     toolView: {
         input: 'Input',
         output: 'Output',
+    },
+
+    toolGroup: {
+        editedFiles: ({ count }: { count: number }) => count === 1 ? 'Edited 1 file' : `Edited ${count} files`,
+        readFiles: ({ count }: { count: number }) => count === 1 ? 'Read 1 file' : `Read ${count} files`,
+        ranCommands: ({ count }: { count: number }) => count === 1 ? 'Ran 1 command' : `Ran ${count} commands`,
+        searched: ({ count }: { count: number }) => count === 1 ? 'Searched 1 time' : `Searched ${count} times`,
+        fetchedUrls: ({ count }: { count: number }) => count === 1 ? 'Fetched 1 URL' : `Fetched ${count} URLs`,
+        ranTasks: ({ count }: { count: number }) => count === 1 ? 'Ran 1 task' : `Ran ${count} tasks`,
+        usedTools: ({ count }: { count: number }) => count === 1 ? 'Used 1 tool' : `Used ${count} tools`,
     },
 
     tools: {
@@ -521,6 +592,7 @@ export const en = {
     },
 
     files: {
+        changes: 'Changes',
         searchPlaceholder: 'Search files...',
         detachedHead: 'detached HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} staged • ${unstaged} unstaged`,
@@ -542,7 +614,19 @@ export const en = {
         file: 'File',
         fileEmpty: 'File is empty',
         noChanges: 'No changes to display',
+        noChangesTitle: 'No changes',
+        noChangesSubtitle: 'Working tree is clean',
         deleted: 'Deleted',
+        changedFiles: ({ count }: { count: number }) => `${count} changed ${count === 1 ? 'file' : 'files'}`,
+        allFiles: 'All Files',
+        editFile: 'Edit',
+        saveFile: 'Save',
+        failedToRead: 'Failed to read file',
+        failedToSave: 'Failed to save file',
+        fileConflict: 'File conflict',
+        fileConflictDescription: 'This file was modified on the device while you were editing. Reload to see the latest version.',
+        reload: 'Reload',
+        overwrite: 'Overwrite',
     },
 
     settingsVoice: {
@@ -568,6 +652,14 @@ export const en = {
         bypassTokenSubtitle: 'Skip Happy server, connect straight to ElevenLabs',
         promptGuideTitle: 'Agent Prompt Guide',
         promptGuideDescription: 'Your ElevenLabs agent needs:\n\n• Tool: messageClaudeCode — parameter: message (string). Sends a message to the active coding session.\n• Tool: processPermissionRequest — parameter: decision ("allow" or "deny"). Approves or denies a pending tool permission.\n• Dynamic variable: {{initialConversationContext}} — receives session history and context on start.\n\nThe agent acts as a voice bridge between the user and coding agents. It should be concise, only respond when addressed, and report when a coding agent finishes work.',
+        // Voice usage
+        usageTitle: 'Usage (Last 30 Days)',
+        usageFooter: 'Voice time used in the last 30 days. Free tier: 20 min. Subscribed: 5 hours. Max 100 conversations per month.',
+        usageLabel: 'Voice Time',
+        conversationsLabel: 'Conversations',
+        usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} used of ${limit}`,
+        supportTitle: 'Upgrade Voice',
+        supportSubtitle: 'Get more voice time and support development',
     },
 
     settingsAccount: {
@@ -746,6 +838,12 @@ export const en = {
         lastDetected: 'Last Detected',
         untitledSession: 'Untitled Session',
         back: 'Back',
+        dangerZone: 'Danger Zone',
+        delete: 'Delete Machine',
+        deleteFooter: 'Remove this machine from your account. Session history will be preserved, but you will not be able to start new sessions on this machine.',
+        deleteConfirmTitle: 'Delete this machine?',
+        deleteConfirmMessage: 'The machine will be removed from your account. Session history will be preserved, but you will not be able to start new sessions until you reconnect the daemon.',
+        deleteFailed: 'Failed to delete machine.',
     },
 
     message: {
@@ -767,6 +865,7 @@ export const en = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: 'Yes, allow all edits during this session',
+            yesAllowEverything: 'Yes, allow everything during this session',
             yesForTool: "Yes, don't ask again for this tool",
             noTellClaude: 'No, and provide feedback',
         }

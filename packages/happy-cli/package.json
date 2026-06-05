@@ -1,7 +1,7 @@
 {
   "name": "@namsangboy/happy-cli",
-  "version": "1.1.4-aplus.21",
-  "description": "A+ Dev Studio fork of slopus/happy — adds remote-preview-relay proxy-http RPC. Mobile and Web client for Claude Code and Codex.",
+  "version": "1.1.8-aplus.22",
+  "description": "A+ Dev Studio fork of slopus/happy. Mobile and Web client for Claude Code and Codex.",
   "author": "Kirill Dubovitskiy (upstream), justinbuzzni (aplus fork)",
   "license": "MIT",
   "type": "module",
@@ -9,7 +9,7 @@
   "bugs": "https://github.com/buzzni/happy/issues",
   "repository": {
     "type": "git",
-    "url": "https://github.com/buzzni/happy",
+    "url": "git+https://github.com/buzzni/happy.git",
     "directory": "packages/happy-cli"
   },
   "publishConfig": {
@@ -17,8 +17,8 @@
     "access": "public"
   },
   "bin": {
-    "happy": "./bin/happy.mjs",
-    "happy-mcp": "./bin/happy-mcp.mjs"
+    "happy": "bin/happy.mjs",
+    "happy-mcp": "bin/happy-mcp.mjs"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -59,54 +59,38 @@
     "dist",
     "bin",
     "scripts",
-    "tools",
+    "tools/archives",
+    "tools/licenses",
     "package.json"
   ],
   "scripts": {
-    "why do we need to build before running tests / dev?": "We need the binary to be built so we run daemon commands which directly run the binary - we don't want them to go out of sync or have custom spawn logic depending how we started happy",
-    "typecheck": "tsc --noEmit",
-    "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
-    "test": "$npm_execpath run build && vitest run",
-    "start": "$npm_execpath run build && node ./bin/happy.mjs",
     "cli": "tsx src/index.ts",
     "dev": "tsx src/index.ts",
-    "dev:local-server": "$npm_execpath run build && tsx --env-file .env.dev-local-server src/index.ts",
-    "prepublishOnly": "$npm_execpath run build",
-    "release": "npx --no-install release-it",
-    "postinstall": "node scripts/unpack-tools.cjs && node scripts/fix-node-pty-perms.cjs",
-    "// ==== Dev/Stable Variant Management ====": "echo comment",
-    "stable": "node scripts/env-wrapper.cjs stable",
-    "dev:variant": "node scripts/env-wrapper.cjs dev",
-    "// ==== Stable Version Quick Commands ====": "echo comment",
-    "stable:daemon:start": "node scripts/env-wrapper.cjs stable daemon start",
-    "stable:daemon:stop": "node scripts/env-wrapper.cjs stable daemon stop",
-    "stable:daemon:status": "node scripts/env-wrapper.cjs stable daemon status",
-    "stable:auth": "node scripts/env-wrapper.cjs stable auth",
-    "// ==== Development Version Quick Commands ====": "echo comment",
-    "dev:daemon:start": "node scripts/env-wrapper.cjs dev daemon start",
-    "dev:daemon:stop": "node scripts/env-wrapper.cjs dev daemon stop",
-    "dev:daemon:status": "node scripts/env-wrapper.cjs dev daemon status",
-    "dev:auth": "node scripts/env-wrapper.cjs dev auth",
-    "// ==== Setup ====": "echo comment",
-    "setup:dev": "node scripts/setup-dev.cjs",
-    "doctor": "node scripts/env-wrapper.cjs stable doctor",
-    "// ==== Development Linking ====": "echo comment",
-    "link:dev": "node scripts/link-dev.cjs",
-    "unlink:dev": "node scripts/link-dev.cjs unlink"
+    "typecheck": "tsc --noEmit",
+    "bundle:server": "node scripts/bundle-server.cjs",
+    "bundle:server:all": "node scripts/bundle-server.cjs --all-platforms",
+    "bundle:webapp": "node scripts/bundle-webapp.cjs",
+    "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
+    "test": "pnpm run build && vitest run --project unit",
+    "test:integration": "pnpm run build && vitest run --project integration-empty --project integration-plan-mode --project integration-authenticated",
+    "cli:install": "node scripts/install-local.cjs",
+    "prepublishOnly": "pnpm test",
+    "postinstall": "node scripts/unpack-tools.cjs && node scripts/fix-node-pty-perms.cjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.14.1",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.96",
     "@anthropic-ai/sandbox-runtime": "^0.0.37",
+    "@anthropic-ai/sdk": "0.96.0",
     "@modelcontextprotocol/sdk": "1.25.3",
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",
     "@paralleldrive/cuid2": "^2.2.2",
-    "@slopus/happy-wire": "^0.1.0",
+    "@slopus/happy-wire": "workspace:*",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
     "@types/cross-spawn": "^6.0.6",
     "@types/http-proxy": "^1.17.17",
-    "@types/ps-list": "^6.2.1",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/react": "^19.2.7",
     "@types/tmp": "^0.2.6",
@@ -144,17 +128,11 @@
     "eslint": "^9",
     "eslint-config-prettier": "^10",
     "pkgroll": "^2.14.2",
-    "release-it": "^19.0.6",
     "shx": "^0.3.3",
     "ts-node": "^10",
     "tsx": "^4.20.6",
     "typescript": "5.9.3",
     "vitest": "^3.2.4"
   },
-  "resolutions": {
-    "whatwg-url": "14.2.0",
-    "parse-path": "7.0.3",
-    "@types/parse-path": "7.0.3"
-  },
-  "packageManager": "yarn@1.22.22"
+  "packageManager": "pnpm@10.11.0"
 }

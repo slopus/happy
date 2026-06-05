@@ -17,10 +17,12 @@ export function useGitStatusFiles(sessionId: string) {
     const [isFetching, setIsFetching] = React.useState(false);
 
     const refresh = React.useCallback(async () => {
+        const pathKey = storage.getState().getSessionPathKey(sessionId);
+        if (!pathKey) return;
         setIsFetching(true);
         try {
             const result = await getGitStatusFiles(sessionId);
-            storage.getState().applyGitStatusFiles(sessionId, result);
+            storage.getState().applyGitStatusFiles(pathKey, result);
         } catch (error) {
             console.error('Failed to load git status files:', error);
         } finally {

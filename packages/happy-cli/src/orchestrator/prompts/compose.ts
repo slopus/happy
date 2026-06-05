@@ -6,10 +6,11 @@
  *
  * - L1 (base): inlined `BASE_PROMPT`, injected into the subprocess via
  *   `--append-system-prompt` (idempotent — see `integrate.ts`).
- * - L2 (step guide): one of `STEP_PLAN`/`STEP_DESIGN`/`STEP_WORK`, prepended
+ * - L2 (step guide): one of `STEP_PLAN`/`STEP_DESIGN`/`STEP_WORK`, injected
  *   each turn.
- * - L3 (dynamic context): a JSON state summary plus the step's attached md
- *   files (plan → none, design → plan, work → plan + design).
+ * - L3 (dynamic context): a JSON state summary plus references to step-related
+ *   md files. File bodies are intentionally not embedded every turn; the agent
+ *   can read them from disk when the current task needs them.
  *
  * Missing attachments degrade gracefully — we emit a "not yet created" marker
  * so Claude can decide whether to suggest filling them in.
@@ -37,7 +38,7 @@ export async function composeStepGuide(step: AxStep): Promise<string> {
 
 export async function composeDynamicContext(workspaceRoot: string, state: AxState): Promise<string> {
     const summary = formatStateSummary(state);
-    const attachments = await collectAttachments(workspaceRoot, state.step);
+    const references = await collectReferences(workspaceRoot, state.step);
     return [
         '<ax-dynamic-context>',
         '',
@@ -46,7 +47,7 @@ export async function composeDynamicContext(workspaceRoot: string, state: AxStat
         '```json',
         summary,
         '```',
-        ...(attachments.length > 0 ? ['', '### Attachments', '', ...attachments] : []),
+        ...(references.length > 0 ? ['', '### Referenced Files', '', ...references] : []),
         '',
         '</ax-dynamic-context>',
         '',
@@ -71,23 +72,23 @@ function formatStateSummary(state: AxState): string {
     return JSON.stringify(summary, null, 2);
 }
 
-const STEP_ATTACHMENTS: Record<AxStep, readonly string[]> = {
+const STEP_REFERENCES: Record<AxStep, readonly string[]> = {
     plan: [],
     design: [PLAN_MD_FILENAME],
     work: [PLAN_MD_FILENAME, DESIGN_MD_FILENAME],
     free: [PLAN_MD_FILENAME, DESIGN_MD_FILENAME],
 };
 
-async function collectAttachments(workspaceRoot: string, step: AxStep): Promise<string[]> {
+async function collectReferences(workspaceRoot: string, step: AxStep): Promise<string[]> {
     const out: string[] = [];
-    for (const filename of STEP_ATTACHMENTS[step]) {
+    for (const filename of STEP_REFERENCES[step]) {
         const path = join(workspaceRoot, filename);
         try {
-            const body = await readFile(path, 'utf8');
-            out.push(`#### \`${filename}\``, '', '```markdown', body.trimEnd(), '```', '');
+            await readFile(path, 'utf8');
+            out.push(`- \`${filename}\` — available in the workspace; read it only when needed for the current task.`);
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-            out.push(`#### \`${filename}\` — not yet created`, '');
+            out.push(`- \`${filename}\` — not yet created`);
         }
     }
     return out;

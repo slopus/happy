@@ -46,6 +46,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
         async function doAbort() {
             logger.debug('[local]: doAbort');
+            session.onAbort();
 
             // Switching to remote mode
             if (!exitReason) {
@@ -132,6 +133,9 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                 logger.debug('[local]: launch error', e);
                 // If Claude exited with non-zero exit code, propagate it
                 if (e instanceof ExitCodeError) {
+                    if (exitReason) {
+                        break; // preserve existing exit reason (e.g. switch intent) — SIGTERM is expected
+                    }
                     session.client.closeClaudeSessionTurn('failed');
                     exitReason = { type: 'exit', code: e.exitCode };
                     break;

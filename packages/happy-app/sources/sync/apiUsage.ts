@@ -1,6 +1,7 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
+import { getHappyClientId } from './apiSocket';
 
 export interface UsageDataPoint {
     timestamp: number;
@@ -34,7 +35,8 @@ export async function queryUsage(
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             },
             body: JSON.stringify(params)
         });

@@ -41,6 +41,23 @@ export default defineConfig({
             {
                 extends: true,
                 test: {
+                    name: 'integration-plan-mode',
+                    fileParallelism: false,
+                    hookTimeout: 120_000,
+                    maxWorkers: 1,
+                    minWorkers: 1,
+                    testTimeout: 180_000,
+                    include: [
+                        'src/claude/planMode.integration.test.ts',
+                    ],
+                    sequence: {
+                        groupOrder: 1,
+                    },
+                },
+            },
+            {
+                extends: true,
+                test: {
                     name: 'integration-authenticated',
                     fileParallelism: false,
                     hookTimeout: 120_000,

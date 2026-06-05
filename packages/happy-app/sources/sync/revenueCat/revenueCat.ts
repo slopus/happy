@@ -4,7 +4,7 @@ import Purchases, {
     PurchasesStoreProduct,
     LOG_LEVEL
 } from 'react-native-purchases';
-import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
+import RevenueCatUI, { PAYWALL_RESULT, CustomVariableValue } from 'react-native-purchases-ui';
 import { 
     RevenueCatInterface, 
     CustomerInfo, 
@@ -79,16 +79,22 @@ class RevenueCatNative implements RevenueCatInterface {
             // If offering is provided, we need to get the native offering object
             let nativeOffering = undefined;
             if (options?.offering) {
-                // Get all native offerings and find the matching one
                 const nativeOfferings = await Purchases.getOfferings();
                 nativeOffering = nativeOfferings.all[options.offering.identifier];
             }
-            
-            const nativeResult = await RevenueCatUI.presentPaywall(nativeOffering ? {
-                offering: nativeOffering
-            } : undefined);
-            
-            // Map native paywall result to our enum
+
+            // Convert custom variables to RevenueCat format
+            const nativeCustomVars = options?.customVariables
+                ? Object.fromEntries(
+                    Object.entries(options.customVariables).map(([k, v]) => [k, CustomVariableValue.string(v)])
+                )
+                : undefined;
+
+            const nativeResult = await RevenueCatUI.presentPaywall({
+                ...(nativeOffering && { offering: nativeOffering }),
+                ...(nativeCustomVars && { customVariables: nativeCustomVars }),
+            });
+
             switch (nativeResult) {
                 case PAYWALL_RESULT.NOT_PRESENTED:
                     return PaywallResult.NOT_PRESENTED;
@@ -119,9 +125,16 @@ class RevenueCatNative implements RevenueCatInterface {
                 nativeOffering = nativeOfferings.all[options.offering.identifier];
             }
             
+            const nativeCustomVars = options?.customVariables
+                ? Object.fromEntries(
+                    Object.entries(options.customVariables).map(([k, v]) => [k, CustomVariableValue.string(v)])
+                )
+                : undefined;
+
             const nativeResult = await RevenueCatUI.presentPaywallIfNeeded({
                 offering: nativeOffering,
-                requiredEntitlementIdentifier: options?.requiredEntitlementIdentifier || 'pro'
+                requiredEntitlementIdentifier: options?.requiredEntitlementIdentifier || 'pro',
+                ...(nativeCustomVars && { customVariables: nativeCustomVars }),
             });
             
             // Map native paywall result to our enum

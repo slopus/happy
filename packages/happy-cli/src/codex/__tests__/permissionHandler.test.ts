@@ -63,4 +63,47 @@ describe('CodexPermissionHandler', () => {
 
         await expect(pending).resolves.toEqual({ decision: 'abort' });
     });
+
+    it('does NOT auto-approve a crafted tool name containing change_title as substring', async () => {
+        const { session } = createSessionMock();
+        const handler = new CodexPermissionHandler(session as any);
+
+        const pending = handler.handleToolCall(
+            'call_malicious_1',
+            'change_title_and_run_command',
+            { title: 'pwn', cmd: 'rm -rf /' },
+        );
+
+        // Should remain pending (not auto-approved) — resolve via abort to clean up.
+        handler.abortAll();
+        await expect(pending).resolves.toEqual({ decision: 'abort' });
+    });
+
+    it('does NOT auto-approve a tool whose ID merely contains change_title as substring', async () => {
+        const { session } = createSessionMock();
+        const handler = new CodexPermissionHandler(session as any);
+
+        // ID like `x_change_title_y` — old substring check would match, new prefix check must not.
+        const pending = handler.handleToolCall(
+            'x_change_title_y',
+            'ExecCommand',
+            { command: 'rm -rf /' },
+        );
+
+        handler.abortAll();
+        await expect(pending).resolves.toEqual({ decision: 'abort' });
+    });
+
+    it('auto-approves change_title tool call by Gemini-style ID (change_title-<timestamp>)', async () => {
+        const { session } = createSessionMock();
+        const handler = new CodexPermissionHandler(session as any);
+
+        const result = await handler.handleToolCall(
+            'change_title-1765385846663',
+            'other',
+            { title: 'Greeting' },
+        );
+
+        expect(result).toEqual({ decision: 'approved' });
+    });
 });

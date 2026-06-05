@@ -64,7 +64,10 @@ const sessionFileEventSchema = z.object({
     image: z.object({
         width: z.number(),
         height: z.number(),
-        thumbhash: z.string(),
+        // Optional — native iOS image-picker has no Canvas to compute it.
+        // FileView falls back to no blurry placeholder; the real picture
+        // is decrypted on render anyway.
+        thumbhash: z.string().optional(),
     }).optional(),
 });
 
@@ -106,6 +109,10 @@ const sessionEnvelopeSchema = z.object({
     subagent: z.string().refine((value) => isCuid(value), {
         message: 'subagent must be a cuid2 value',
     }).optional(),
+    // Underlying agent-protocol message id (Claude's `uuid` in the JSONL)
+    // — used as the rewind point for fork / duplicate. Optional for back-
+    // compat with envelopes emitted before this field was wired through.
+    claudeUuid: z.string().min(1).optional(),
     ev: sessionEventSchema,
 }).superRefine((envelope, ctx) => {
     if (envelope.ev.t === 'service' && envelope.role !== 'agent') {
@@ -267,7 +274,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
     type: z.literal('output'),
     data: z.intersection(z.discriminatedUnion('type', [
         z.object({ type: z.literal('system') }),
-        z.object({ type: z.literal('result') }),
+        z.object({ type: z.literal('result'), result: z.string().nullish(), subtype: z.string().nullish(), is_error: z.boolean().nullish() }),
         z.object({ type: z.literal('summary'), summary: z.string() }),
         z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string(), content: z.array(rawAgentContentSchema), usage: usageDataSchema.optional() }), parent_tool_use_id: z.string().nullable().optional() }),
         z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.union([z.string(), z.array(rawAgentContentSchema)]) }), parent_tool_use_id: z.string().nullable().optional(), toolUseResult: z.any().nullable().optional() }),
@@ -519,6 +526,12 @@ export type NormalizedMessage = ({
     isSidechain: boolean,
     meta?: MessageMeta,
     usage?: UsageData,
+    /**
+     * Underlying Claude `uuid` for this message — used as the rewind point
+     * for the session fork / duplicate flow. Optional because some message
+     * sources (legacy events, server-emitted control messages) have none.
+     */
+    claudeUuid?: string,
 };
 
 function normalizeSessionEnvelope(
@@ -593,7 +606,8 @@ function normalizeSessionEnvelope(
                     type: 'text',
                     text: envelope.ev.text
                 },
-                meta
+                meta,
+                claudeUuid: envelope.claudeUuid,
             } satisfies NormalizedMessage;
         }
 
@@ -616,7 +630,8 @@ function normalizeSessionEnvelope(
                     parentUUID
                 }
             ],
-            meta
+            meta,
+            claudeUuid: envelope.claudeUuid,
         } satisfies NormalizedMessage;
     }
 
@@ -670,28 +685,44 @@ function normalizeSessionEnvelope(
             }
             : {};
 
+        // File events carry no separate "completed" wire signal — the upload
+        // is already finished by the time the event is sent. Emit the
+        // tool-call AND a paired tool-result in the same message so the
+        // reducer's Phase 2 + Phase 3 see both halves and the tool flips
+        // straight to "completed". Without this the chat bubble shows a
+        // forever-spinning indicator next to the attachment.
         return {
             id: messageId,
             localId,
             createdAt: messageCreatedAt,
             role: 'agent',
             isSidechain,
-            content: [{
-                type: 'tool-call',
-                id: messageId,
-                name: 'file',
-                input: {
-                    ref: envelope.ev.ref,
-                    name: envelope.ev.name,
-                    size: envelope.ev.size,
-                    ...maybeImageMetadata
+            content: [
+                {
+                    type: 'tool-call',
+                    id: messageId,
+                    name: 'file',
+                    input: {
+                        ref: envelope.ev.ref,
+                        name: envelope.ev.name,
+                        size: envelope.ev.size,
+                        ...maybeImageMetadata
+                    },
+                    description: envelope.ev.image
+                        ? `Attached image: ${envelope.ev.name} (${envelope.ev.image.width}x${envelope.ev.image.height})`
+                        : `Attached file: ${envelope.ev.name}`,
+                    uuid: contentUUID,
+                    parentUUID
                 },
-                description: envelope.ev.image
-                    ? `Attached image: ${envelope.ev.name} (${envelope.ev.image.width}x${envelope.ev.image.height})`
-                    : `Attached file: ${envelope.ev.name}`,
-                uuid: contentUUID,
-                parentUUID
-            }],
+                {
+                    type: 'tool-result',
+                    tool_use_id: messageId,
+                    content: null,
+                    is_error: false,
+                    uuid: `${contentUUID}:result`,
+                    parentUUID: contentUUID
+                }
+            ],
             meta
         } satisfies NormalizedMessage;
     }
@@ -738,6 +769,28 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
 
             // Skip compact summary messages
             if (raw.content.data.isCompactSummary) {
+                return null;
+            }
+
+            // Handle Result messages (e.g. slash command errors like "Unknown skill: mcp")
+            if (raw.content.data.type === 'result') {
+                const resultText = raw.content.data.result;
+                if (resultText) {
+                    return {
+                        id,
+                        localId,
+                        createdAt,
+                        role: 'agent',
+                        content: [{
+                            type: 'text' as const,
+                            text: resultText,
+                            uuid: raw.content.data.uuid ?? id,
+                            parentUUID: raw.content.data.parentUuid ?? null,
+                        }],
+                        isSidechain: false,
+                        meta: raw.meta,
+                    } satisfies NormalizedMessage;
+                }
                 return null;
             }
 
@@ -817,7 +870,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                         content: {
                             type: 'text',
                             text: raw.content.data.message.content
-                        }
+                        },
+                        claudeUuid: raw.content.data.uuid,
                     };
                 }
 
@@ -836,7 +890,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                             content.push({
                                 ...c,  // WOLOG: Preserve all fields including unknown ones
                                 type: 'tool-result',
-                                content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content[0].text),
+                                content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content?.[0]?.text ?? ''),
                                 is_error: c.is_error || false,
                                 uuid: raw.content.data.uuid,
                                 parentUUID: raw.content.data.parentUuid ?? null,

@@ -25,13 +25,14 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const { theme } = useUnistyles();
     const [loadingButton, setLoadingButton] = useState<'allow' | 'deny' | 'abort' | null>(null);
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
+    const [loadingBypass, setLoadingBypass] = useState(false);
     const [loadingForSession, setLoadingForSession] = useState(false);
     
     // Check if this is a Codex session - check both metadata.flavor and tool name prefix
     const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
 
     const handleApprove = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
 
         setLoadingButton('allow');
         try {
@@ -44,7 +45,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
 
     const handleApproveAllEdits = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
 
         setLoadingAllEdits(true);
         try {
@@ -58,8 +59,22 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         }
     };
 
+    const handleBypassPermissions = async () => {
+        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
+
+        setLoadingBypass(true);
+        try {
+            await sessionAllow(sessionId, permission.id, 'bypassPermissions');
+            storage.getState().updateSessionPermissionMode(sessionId, 'bypassPermissions');
+        } catch (error) {
+            console.error('Failed to bypass permissions:', error);
+        } finally {
+            setLoadingBypass(false);
+        }
+    };
+
     const handleApproveForSession = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession || !toolName) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession || !toolName) return;
 
         setLoadingForSession(true);
         try {
@@ -79,7 +94,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
 
     const handleDeny = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
 
         setLoadingButton('deny');
         try {
@@ -152,8 +167,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
 
     // Detect which button was used based on mode (for Claude) or decision (for Codex)
-    const isApprovedViaAllow = isApproved && permission.mode !== 'acceptEdits' && !isToolAllowed(toolName, toolInput, permission.allowedTools);
+    const isApprovedViaAllow = isApproved && permission.mode !== 'acceptEdits' && permission.mode !== 'bypassPermissions' && !isToolAllowed(toolName, toolInput, permission.allowedTools);
     const isApprovedViaAllEdits = isApproved && permission.mode === 'acceptEdits';
+    const isApprovedViaBypass = isApproved && permission.mode === 'bypassPermissions';
     const isApprovedForSession = isApproved && isToolAllowed(toolName, toolInput, permission.allowedTools);
     
     // Codex-specific status detection with fallback
@@ -362,10 +378,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         styles.button,
                         isPending && styles.buttonAllow,
                         isApprovedViaAllow && styles.buttonSelected,
-                        (isDenied || isApprovedViaAllEdits || isApprovedForSession) && styles.buttonInactive
+                        (isDenied || isApprovedViaAllEdits || isApprovedViaBypass || isApprovedForSession) && styles.buttonInactive
                     ]}
                     onPress={handleApprove}
-                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
                     activeOpacity={isPending ? 0.7 : 1}
                 >
                     {loadingButton === 'allow' && isPending ? (
@@ -392,10 +408,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             styles.button,
                             isPending && styles.buttonAllowAll,
                             isApprovedViaAllEdits && styles.buttonSelected,
-                            (isDenied || isApprovedViaAllow || isApprovedForSession) && styles.buttonInactive
+                            (isDenied || isApprovedViaAllow || isApprovedViaBypass || isApprovedForSession) && styles.buttonInactive
                         ]}
                         onPress={handleApproveAllEdits}
-                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingAllEdits && isPending ? (
@@ -416,6 +432,37 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     </TouchableOpacity>
                 )}
 
+                {/* Bypass all permissions (yolo mode) - only show for ExitPlanMode */}
+                {(toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode') && (
+                    <TouchableOpacity
+                        style={[
+                            styles.button,
+                            isPending && styles.buttonForSession,
+                            isApprovedViaBypass && styles.buttonSelected,
+                            (isDenied || isApprovedViaAllow || isApprovedViaAllEdits || isApprovedForSession) && styles.buttonInactive
+                        ]}
+                        onPress={handleBypassPermissions}
+                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
+                        activeOpacity={isPending ? 0.7 : 1}
+                    >
+                        {loadingBypass && isPending ? (
+                            <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
+                                <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={styles.loadingIndicatorForSession.color} />
+                            </View>
+                        ) : (
+                            <View style={styles.buttonContent}>
+                                <Text style={[
+                                    styles.buttonText,
+                                    isPending && styles.buttonTextForSession,
+                                    isApprovedViaBypass && styles.buttonTextSelected
+                                ]} numberOfLines={1} ellipsizeMode="tail">
+                                    {t('claude.permissions.yesAllowEverything')}
+                                </Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+                )}
+
                 {/* Allow for session button - only show for non-edit, non-exit-plan tools */}
                 {toolName && toolName !== 'Edit' && toolName !== 'MultiEdit' && toolName !== 'Write' && toolName !== 'NotebookEdit' && toolName !== 'exit_plan_mode' && toolName !== 'ExitPlanMode' && (
                     <TouchableOpacity
@@ -423,10 +470,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             styles.button,
                             isPending && styles.buttonForSession,
                             isApprovedForSession && styles.buttonSelected,
-                            (isDenied || isApprovedViaAllow || isApprovedViaAllEdits) && styles.buttonInactive
+                            (isDenied || isApprovedViaAllow || isApprovedViaAllEdits || isApprovedViaBypass) && styles.buttonInactive
                         ]}
                         onPress={handleApproveForSession}
-                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingForSession && isPending ? (
@@ -455,7 +502,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         (isApproved) && styles.buttonInactive
                     ]}
                     onPress={handleDeny}
-                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
                     activeOpacity={isPending ? 0.7 : 1}
                 >
                     {loadingButton === 'deny' && isPending ? (

@@ -15,6 +15,8 @@ const path = require('path');
 const files = [
     'node_modules/pglite-prisma-adapter/dist/index.mjs',
     'node_modules/pglite-prisma-adapter/dist/index.cjs',
+    'packages/happy-server/node_modules/pglite-prisma-adapter/dist/index.mjs',
+    'packages/happy-server/node_modules/pglite-prisma-adapter/dist/index.cjs',
 ];
 
 let patched = 0;

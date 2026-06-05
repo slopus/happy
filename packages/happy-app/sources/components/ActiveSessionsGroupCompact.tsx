@@ -1,35 +1,36 @@
 import React from 'react';
-import { View, Pressable, Platform, Image as RNImage } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming } from 'react-native-reanimated';
+import { View, Pressable, Platform } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
-import { Session, Machine } from '@/sync/storageTypes';
+import { Machine } from '@/sync/storageTypes';
+import { SessionRowData } from '@/sync/storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLastSeen } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSessionProjectGitStatus, useSessionGitStatus, useSetting } from '@/sync/storage';
+import { useAllMachines, useSessionGitStatus } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
+import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { sessionKill } from '@/sync/ops';
 import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
 
-const flavorIcons = {
-    claude: require('@/assets/images/icon-claude.png'),
-    codex: require('@/assets/images/icon-gpt.png'),
-    gemini: require('@/assets/images/icon-gemini.png'),
-    openclaw: require('@/assets/images/icon-openclaw.png'),
+const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
+    disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
+    thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
+    waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
+    permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
 };
 
 interface ActiveSessionsGroupProps {
-    sessions: Session[];
+    sessions: SessionRowData[];
     selectedSessionId?: string;
 }
 
@@ -38,9 +39,7 @@ interface ActiveSessionsGroupProps {
  * branch name, line changes, and worktree status.
  */
 function useSectionGitInfo(sessionId: string) {
-    const projectGitStatus = useSessionProjectGitStatus(sessionId);
-    const sessionGitStatus = useSessionGitStatus(sessionId);
-    const gitStatus = projectGitStatus || sessionGitStatus;
+    const gitStatus = useSessionGitStatus(sessionId);
 
     return React.useMemo(() => {
         if (!gitStatus || gitStatus.lastUpdatedAt === 0) {
@@ -56,49 +55,56 @@ function useSectionGitInfo(sessionId: string) {
 }
 
 // Section header: avatar | path + branch + tree icon + line changes | + button
-const SectionHeader = React.memo(({ session, displayPath }: { session: Session; displayPath: string }) => {
+const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRowData; displayPath: string }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const router = useRouter();
     const draft = useNewSessionDraft();
 
-    const sessionPath = session.metadata?.path || '';
+    const sessionPath = session.path || '';
     const isWorktree = isWorktreePath(sessionPath);
     const repoPath = isWorktree ? getRepoPath(sessionPath) : sessionPath;
     const repoDisplayPath = isWorktree
-        ? formatPathRelativeToHome(repoPath, session.metadata?.homeDir)
+        ? formatPathRelativeToHome(repoPath, session.homeDir ?? undefined)
         : displayPath;
+    const repoFolderName = repoPath.split(/[/\\]/).filter(Boolean).pop() || repoDisplayPath;
     const worktreeName = isWorktree ? getWorktreeName(sessionPath) : null;
 
     const gitInfo = useSectionGitInfo(session.id);
     const branchName = worktreeName || gitInfo.branch;
     const hasBranch = !!branchName;
 
-    const avatarId = React.useMemo(() => getSessionAvatarId(session), [session]);
-
     const handleAdd = React.useCallback(() => {
-        const machineId = session.metadata?.machineId;
+        const machineId = session.machineId;
         if (machineId) {
             draft.setMachineId(machineId);
         }
-        // setMachineId resets path, so set path after
-        const pathToSet = formatPathRelativeToHome(repoPath, session.metadata?.homeDir);
+        const pathToSet = formatPathRelativeToHome(repoPath, session.homeDir ?? undefined);
         draft.setPath(pathToSet);
         draft.setSessionType(isWorktree ? 'worktree' : 'simple');
+        draft.setWorktreeKey(isWorktree ? sessionPath : null);
         router.navigate('/new');
-    }, [session.metadata, repoPath, isWorktree, draft, router]);
+    }, [session.machineId, session.homeDir, repoPath, isWorktree, sessionPath, draft, router]);
+
+    const [isHovered, setIsHovered] = React.useState(false);
 
     return (
-        <View style={hasBranch ? styles.sectionHeader : styles.sectionHeaderSingleLine}>
+        <View
+            style={hasBranch ? styles.sectionHeader : styles.sectionHeaderSingleLine}
+            // @ts-ignore - Web only events
+            onMouseEnter={() => setIsHovered(true)}
+            // @ts-ignore - Web only events
+            onMouseLeave={() => setIsHovered(false)}
+        >
             {/* Avatar — vertically centered */}
             <View style={styles.sectionHeaderAvatar}>
-                <Avatar id={avatarId} size={24} flavor={null} />
+                <Avatar id={session.avatarId} size={24} flavor={null} />
             </View>
 
             {/* Path + branch */}
             <View style={styles.sectionHeaderContent}>
                 <Text style={styles.sectionHeaderPath} numberOfLines={1}>
-                    {repoDisplayPath}
+                    {repoFolderName}
                 </Text>
                 {hasBranch && (
                     <View style={styles.branchRow}>
@@ -123,11 +129,11 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: Session; 
                 )}
             </View>
 
-            {/* + button — vertically centered, large hit area */}
+            {/* + button — vertically centered, large hit area; desktop: hover-only */}
             <Pressable
                 onPress={handleAdd}
                 hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                style={styles.addButton}
+                style={[styles.addButton, { opacity: Platform.OS !== 'web' || isHovered ? 1 : 0 }]}
             >
                 <Ionicons name="add-outline" size={14} color={theme.colors.textSecondary} />
             </Pressable>
@@ -177,12 +183,12 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
             machineName: string;
             projects: Map<string, {
                 displayPath: string;
-                sessions: Session[];
+                sessions: SessionRowData[];
             }>;
         }>();
 
         sessions.forEach(session => {
-            const machineId = session.metadata?.machineId || unknownText;
+            const machineId = session.machineId || unknownText;
             const machine = machineId !== unknownText ? machinesMap[machineId] : null;
             const machineName = machine?.metadata?.displayName ||
                 machine?.metadata?.host ||
@@ -194,10 +200,10 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                 byMachine.set(machineId, machineGroup);
             }
 
-            const projectPath = session.metadata?.path || '';
+            const projectPath = session.path || '';
             let projectGroup = machineGroup.projects.get(projectPath);
             if (!projectGroup) {
-                const displayPath = formatPathRelativeToHome(projectPath, session.metadata?.homeDir);
+                const displayPath = formatPathRelativeToHome(projectPath, session.homeDir ?? undefined);
                 projectGroup = { displayPath, sessions: [] };
                 machineGroup.projects.set(projectPath, projectGroup);
             }
@@ -208,7 +214,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
         // Sort sessions within each project group
         byMachine.forEach(mg => {
             mg.projects.forEach(pg => {
-                pg.sessions.sort((a, b) => b.createdAt - a.createdAt);
+                pg.sessions.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
             });
         });
 
@@ -264,57 +270,19 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
     );
 }
 
-// Small agent icon with pulsing animation matching StatusDot behavior
-const PulsingAgentIcon = React.memo(({ flavorIcon, isPulsing, tintColor, opacity: baseOpacity }: {
-    flavorIcon: any;
-    isPulsing: boolean;
-    tintColor?: string;
-    opacity: number;
-}) => {
-    const opacity = useSharedValue(baseOpacity);
-
-    React.useEffect(() => {
-        if (isPulsing) {
-            opacity.value = withRepeat(
-                withTiming(0.3, { duration: 1000 }),
-                -1,
-                true
-            );
-        } else {
-            opacity.value = withTiming(baseOpacity, { duration: 200 });
-        }
-    }, [isPulsing, baseOpacity]);
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        opacity: opacity.value,
-    }));
-
-    return (
-        <Animated.View style={[{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center', marginRight: 8 }, animatedStyle]}>
-            <RNImage
-                source={flavorIcon}
-                style={{ width: 8, height: 8 }}
-                resizeMode="contain"
-                tintColor={tintColor}
-            />
-        </Animated.View>
-    );
-});
-
-// Compact session row — agent icon replaces dot when showFlavorIcons is on
-const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
+// Compact session row with status dot indicator
+const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: SessionRowData; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const sessionStatus = useSessionStatus(session);
-    const sessionName = getSessionName(session);
+    const baseStatus = STATUS_CONFIG[session.state];
+    // Override to solid blue when session has unread results
+    const status = session.hasUnread
+        ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
+        : baseStatus;
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
-    const showFlavorIcons = useSetting('showFlavorIcons');
-
-    const flavor = session.metadata?.flavor || 'claude';
-    const flavorIcon = flavorIcons[flavor as keyof typeof flavorIcons] || flavorIcons.claude;
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
         const result = await sessionKill(session.id);
@@ -342,9 +310,38 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         });
     }, []);
 
-    const webMenuProps = Platform.OS === 'web' ? {
+    const showActionAlert = useSessionActionAlert(session.id);
+    const menuProps = Platform.OS === 'web' ? {
         onContextMenu: handleContextMenu,
-    } as any : {};
+    } as any : {
+        onLongPress: showActionAlert,
+    };
+
+    const renderLeadingIndicator = () => {
+        let indicator: React.ReactNode = null;
+
+        if (session.hasUnread) {
+            indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
+        } else if (session.state === 'waiting' && session.hasDraft) {
+            indicator = (
+                <Ionicons
+                    name="create-outline"
+                    size={14}
+                    color={theme.colors.textSecondary}
+                />
+            );
+        } else if (session.state === 'permission_required' || session.state === 'thinking') {
+            indicator = <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />;
+        } else if (session.state === 'waiting') {
+            indicator = <StatusDot color={theme.colors.textSecondary} isPulsing={false} />;
+        }
+
+        return (
+            <View style={styles.leadingIndicatorSlot}>
+                {indicator}
+            </View>
+        );
+    };
 
     const itemContent = (
         <Pressable
@@ -354,69 +351,20 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 selected && styles.sessionRowSelected
             ]}
             onPress={handlePress}
-            {...webMenuProps}
+            {...menuProps}
         >
             <View style={styles.sessionContent}>
                 <View style={styles.sessionTitleRow}>
-                    {/* Left indicator: agent icon OR status dot/draft */}
-                    {(() => {
-                        // Show draft icon when online with draft
-                        if (sessionStatus.state === 'waiting' && session.draft) {
-                            return (
-                                <Ionicons
-                                    name="create-outline"
-                                    size={14}
-                                    color={theme.colors.textSecondary}
-                                    style={{ marginRight: 8 }}
-                                />
-                            );
-                        }
-
-                        // When showFlavorIcons is on, show agent icon instead of dot
-                        if (showFlavorIcons) {
-                            return (
-                                <PulsingAgentIcon
-                                    flavorIcon={flavorIcon}
-                                    isPulsing={sessionStatus.state === 'permission_required' || sessionStatus.state === 'thinking'}
-                                    tintColor={
-                                        (sessionStatus.state === 'permission_required' || sessionStatus.state === 'thinking')
-                                            ? sessionStatus.statusDotColor
-                                            : flavor === 'codex' ? theme.colors.text : undefined
-                                    }
-                                    opacity={sessionStatus.state === 'waiting' ? 0.5 : (sessionStatus.isConnected ? 1 : 0.3)}
-                                />
-                            );
-                        }
-
-                        // Show status dot for permission_required/thinking states
-                        if (sessionStatus.state === 'permission_required' || sessionStatus.state === 'thinking') {
-                            return (
-                                <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
-                                    <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
-                                </View>
-                            );
-                        }
-
-                        // Show grey dot for online without draft
-                        if (sessionStatus.state === 'waiting') {
-                            return (
-                                <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
-                                    <StatusDot color={theme.colors.textSecondary} isPulsing={false} />
-                                </View>
-                            );
-                        }
-
-                        return null;
-                    })()}
+                    {renderLeadingIndicator()}
 
                     <Text
                         style={[
                             styles.sessionTitle,
-                            sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                            status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
                         ]}
                         numberOfLines={2}
                     >
-                        {sessionName}
+                        {session.name}
                     </Text>
                 </View>
             </View>
@@ -430,7 +378,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 <SessionActionsPopover
                     anchor={actionsAnchor}
                     onClose={() => setActionsAnchor(null)}
-                    session={session}
+                    sessionId={session.id}
                     visible={!!actionsAnchor}
                 />
             </>
@@ -497,6 +445,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         lineHeight: Platform.select({ ios: 18, default: 20 }),
         letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
         fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+        flexShrink: 1,
     },
     branchRow: {
         flexDirection: 'row',
@@ -575,12 +524,6 @@ const stylesheet = StyleSheet.create((theme) => ({
     sessionRowSelected: {
         backgroundColor: theme.colors.surfaceSelected,
     },
-    agentIconContainer: {
-        width: 16,
-        height: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
     sessionContent: {
         flex: 1,
         justifyContent: 'center',
@@ -600,11 +543,12 @@ const stylesheet = StyleSheet.create((theme) => ({
     sessionTitleDisconnected: {
         color: theme.colors.textSecondary,
     },
-    statusDotContainer: {
+    leadingIndicatorSlot: {
         alignItems: 'center',
         justifyContent: 'center',
         width: 16,
         height: 16,
+        marginRight: 8,
     },
     swipeAction: {
         width: 112,

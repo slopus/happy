@@ -1,20 +1,15 @@
 /**
  * Permission Handler for canCallTool integration
- * 
- * Replaces the MCP permission server with direct SDK integration.
+ *
+ * Uses official SDK's toolUseID from canUseTool callback options.
  * Handles tool permission requests, responses, and state management.
  */
 
-import { isDeepStrictEqual } from 'node:util';
 import { logger } from "@/lib";
-import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "../sdk";
 import { PermissionResult } from "../sdk/types";
-import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
-import { getToolName } from "./getToolName";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
-import { delay } from "@/utils/time";
 
 interface PermissionResponse {
     id: string;
@@ -35,7 +30,6 @@ interface PendingRequest {
 }
 
 export class PermissionHandler {
-    private toolCalls: { id: string, name: string, input: any, used: boolean }[] = [];
     private responses = new Map<string, PermissionResponse>();
     private pendingRequests = new Map<string, PendingRequest>();
     private session: Session;
@@ -44,12 +38,14 @@ export class PermissionHandler {
     private allowedBashPrefixes = new Set<string>();
     private permissionMode: PermissionMode = 'default';
     private onPermissionRequestCallback?: (toolCallId: string) => void;
+    /** Callback to change permission mode on the active query (set by claudeRemote) */
+    private setPermissionModeCallback?: (mode: PermissionMode) => Promise<void>;
 
     constructor(session: Session) {
         this.session = session;
         this.setupClientHandler();
     }
-    
+
     /**
      * Set callback to trigger when permission request is made
      */
@@ -59,6 +55,14 @@ export class PermissionHandler {
 
     handleModeChange(mode: PermissionMode) {
         this.permissionMode = mode;
+    }
+
+    /**
+     * Set callback to dynamically change permission mode on the active query.
+     * Called by claudeRemote after the Query object is created.
+     */
+    setPermissionModeUpdater(callback: (mode: PermissionMode) => Promise<void>) {
+        this.setPermissionModeCallback = callback;
     }
 
     /**
@@ -85,19 +89,25 @@ export class PermissionHandler {
             this.permissionMode = response.mode;
         }
 
-        // Handle 
+        // Handle
         if (pending.toolName === 'exit_plan_mode' || pending.toolName === 'ExitPlanMode') {
-            // Handle exit_plan_mode specially
             logger.debug('Plan mode result received', response);
             if (response.approved) {
-                logger.debug('Plan approved - injecting PLAN_FAKE_RESTART');
-                // Inject the approval message at the beginning of the queue
-                if (response.mode && ['default', 'acceptEdits', 'bypassPermissions'].includes(response.mode)) {
-                    this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: response.mode });
-                } else {
-                    this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: 'default' });
+                // Switch permission mode via SDK before allowing ExitPlanMode
+                const newMode = (response.mode && ['default', 'acceptEdits', 'bypassPermissions'].includes(response.mode))
+                    ? response.mode
+                    : 'default';
+
+                logger.debug(`Plan approved - switching to ${newMode} mode and allowing ExitPlanMode`);
+
+                if (this.setPermissionModeCallback) {
+                    this.setPermissionModeCallback(newMode).catch((err) => {
+                        logger.debug('Failed to set permission mode via SDK:', err);
+                    });
                 }
-                pending.resolve({ behavior: 'deny', message: PLAN_FAKE_REJECT });
+                this.permissionMode = newMode;
+
+                pending.resolve({ behavior: 'allow', updatedInput: (pending.input as Record<string, unknown>) || {} });
             } else {
                 pending.resolve({ behavior: 'deny', message: response.reason || 'Plan rejected' });
             }
@@ -116,24 +126,16 @@ export class PermissionHandler {
     }
 
     /**
-     * Creates the canCallTool callback for the SDK
+     * Creates the canCallTool callback for the SDK.
+     * Uses toolUseID from official SDK callback options directly.
      */
-    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }): Promise<PermissionResult> => {
+    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; toolUseID: string }): Promise<PermissionResult> => {
+        const toolCallId = options.toolUseID;
 
         // AskUserQuestion requires user interaction — never auto-approve, even in bypassPermissions mode.
         // This mirrors Claude SDK's internal requiresUserInteraction() check.
-        // upstream: slopus/happy 2a44395 (PR #1018 base used options.toolUseID;
-        // this aplus fork still resolves via toolCalls list).
         if (toolName === 'AskUserQuestion') {
-            let id = this.resolveToolCallId(toolName, input);
-            if (!id) {
-                await delay(1000);
-                id = this.resolveToolCallId(toolName, input);
-                if (!id) {
-                    throw new Error(`Could not resolve tool call ID for ${toolName}`);
-                }
-            }
-            return this.handlePermissionRequest(id, toolName, input, options.signal);
+            return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
         }
 
         // Check if tool is explicitly allowed
@@ -158,6 +160,11 @@ export class PermissionHandler {
         // Calculate descriptor
         const descriptor = getToolDescriptor(toolName);
 
+        // ExitPlanMode always requires user approval — never auto-approve it.
+        if (descriptor.exitPlan) {
+            return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
+        }
+
         //
         // Handle special cases
         //
@@ -170,18 +177,16 @@ export class PermissionHandler {
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
+        // Plan mode: auto-approve read-only tools (Read, Glob, Grep, etc.)
+        // Dangerous tools (Bash, Edit, Write) still require approval
+        if (this.permissionMode === 'plan' && !descriptor.dangerous) {
+            return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
+        }
+
         //
         // Approval flow
         //
 
-        let toolCallId = this.resolveToolCallId(toolName, input);
-        if (!toolCallId) { // What if we got permission before tool call
-            await delay(1000);
-            toolCallId = this.resolveToolCallId(toolName, input);
-            if (!toolCallId) {
-                throw new Error(`Could not resolve tool call ID for ${toolName}`);
-            }
-        }
         return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
     }
 
@@ -220,7 +225,7 @@ export class PermissionHandler {
             if (this.onPermissionRequestCallback) {
                 this.onPermissionRequestCallback(id);
             }
-            
+
             // Send push notification
             this.session.api.push().sendSessionNotification({
                 kind: 'permission',
@@ -264,13 +269,13 @@ export class PermissionHandler {
         // Match Bash(command) or Bash(command:*)
         const bashPattern = /^Bash\((.+?)\)$/;
         const match = permission.match(bashPattern);
-        
+
         if (!match) {
             return;
         }
 
         const command = match[1];
-        
+
         // Check if it's a prefix pattern (ends with :*)
         if (command.endsWith(':*')) {
             const prefix = command.slice(0, -2); // Remove :*
@@ -282,72 +287,11 @@ export class PermissionHandler {
     }
 
     /**
-     * Resolves tool call ID based on tool name and input
-     */
-    private resolveToolCallId(name: string, args: any): string | null {
-        // Search in reverse (most recent first)
-        for (let i = this.toolCalls.length - 1; i >= 0; i--) {
-            const call = this.toolCalls[i];
-            if (call.name === name && isDeepStrictEqual(call.input, args)) {
-                if (call.used) {
-                    return null;
-                }
-                // Found unused match - mark as used and return
-                call.used = true;
-                return call.id;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Handles messages to track tool calls
-     */
-    onMessage(message: SDKMessage): void {
-        if (message.type === 'assistant') {
-            const assistantMsg = message as SDKAssistantMessage;
-            if (assistantMsg.message && assistantMsg.message.content) {
-                for (const block of assistantMsg.message.content) {
-                    if (block.type === 'tool_use') {
-                        this.toolCalls.push({
-                            id: block.id!,
-                            name: block.name!,
-                            input: block.input,
-                            used: false
-                        });
-                    }
-                }
-            }
-        }
-        if (message.type === 'user') {
-            const userMsg = message as SDKUserMessage;
-            if (userMsg.message && userMsg.message.content && Array.isArray(userMsg.message.content)) {
-                for (const block of userMsg.message.content) {
-                    if (block.type === 'tool_result' && block.tool_use_id) {
-                        const toolCall = this.toolCalls.find(tc => tc.id === block.tool_use_id);
-                        if (toolCall && !toolCall.used) {
-                            toolCall.used = true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /**
      * Checks if a tool call is rejected
      */
     isAborted(toolCallId: string): boolean {
-
         // If tool not approved, it's aborted
         if (this.responses.get(toolCallId)?.approved === false) {
-            return true;
-        }
-
-        // Always abort exit_plan_mode
-        const toolCall = this.toolCalls.find(tc => tc.id === toolCallId);
-        if (toolCall && (toolCall.name === 'exit_plan_mode' || toolCall.name === 'ExitPlanMode')) {
             return true;
         }
 
@@ -358,12 +302,12 @@ export class PermissionHandler {
     /**
      * Resets all state for new sessions
      */
-    reset(): void {
-        this.toolCalls = [];
+    reset(reason: string = 'Session switched to local mode'): void {
         this.responses.clear();
         this.allowedTools.clear();
         this.allowedBashLiterals.clear();
         this.allowedBashPrefixes.clear();
+        this.permissionMode = 'default';
 
         // Cancel all pending requests
         for (const [, pending] of this.pendingRequests.entries()) {
@@ -382,7 +326,7 @@ export class PermissionHandler {
                     ...request,
                     completedAt: Date.now(),
                     status: 'canceled',
-                    reason: 'Session switched to local mode'
+                    reason
                 };
             }
 

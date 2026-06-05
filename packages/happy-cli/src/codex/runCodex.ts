@@ -2,6 +2,7 @@ import { render } from "ink";
 import React from "react";
 import { ApiClient } from '@/api/api';
 import { CodexAppServerClient } from './codexAppServerClient';
+import type { ReasoningEffort } from './codexAppServerTypes';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
@@ -23,42 +24,36 @@ import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
+import { encodeBase64, decodeBase64 } from '@/api/encryption';
+import type { Session as ApiSession } from '@/api/types';
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
-import { stopCaffeinate } from "@/utils/caffeinate";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
+import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
-
-type ReadyEventOptions = {
-    pending: unknown;
-    queueSize: () => number;
-    shouldExit: boolean;
-    sendReady: () => void;
-    notify?: () => void;
-};
+import { emitReadyIfIdle } from './emitReadyIfIdle';
 
 /**
- * Notify connected clients when Codex finishes processing and the queue is idle.
- * Returns true when a ready event was emitted.
+ * Extracts a human-readable error from a codex task_complete/turn_aborted event.
+ * Returns null if the event represents a successful/clean completion.
  */
-export function emitReadyIfIdle({ pending, queueSize, shouldExit, sendReady, notify }: ReadyEventOptions): boolean {
-    if (shouldExit) {
-        return false;
+function describeCodexFailure(msg: any): string | null {
+    const hasFailure = msg?.status === 'failed' || (msg?.error !== undefined && msg?.error !== null);
+    if (!hasFailure) return null;
+    const err = msg.error;
+    if (typeof err === 'string' && err.length > 0) return err;
+    if (err && typeof err === 'object' && typeof err.message === 'string' && err.message.length > 0) {
+        return err.message;
     }
-    if (pending) {
-        return false;
-    }
-    if (queueSize() > 0) {
-        return false;
-    }
-
-    sendReady();
-    notify?.();
-    return true;
+    return 'Unknown error';
 }
+
+const DEFAULT_CODEX_MODEL = 'gpt-5.5';
+const DEFAULT_CODEX_EFFORT: ReasoningEffort = 'medium';
+const DEFAULT_CODEX_PERMISSION_MODE: PermissionMode = 'yolo';
 
 /**
  * Main entry point for the codex command with ink UI
@@ -68,10 +63,11 @@ export async function runCodex(opts: {
     startedBy?: 'daemon' | 'terminal';
     noSandbox?: boolean;
     resumeThreadId?: string;
+    permissionMode?: PermissionMode;
 }): Promise<void> {
     // Early check: ensure Codex CLI is installed before proceeding
     try {
-        execSync('codex --version', { encoding: 'utf8', stdio: 'pipe' });
+        execSync('codex --version', { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
     } catch {
         console.error('\n\x1b[1m\x1b[33mCodex CLI is not installed\x1b[0m\n');
         console.error('Please install Codex CLI using one of these methods:\n');
@@ -84,11 +80,11 @@ export async function runCodex(opts: {
         process.exit(1);
     }
 
-    // Use shared PermissionMode type for cross-agent compatibility
-    type PermissionMode = import('@/api/types').PermissionMode;
     interface EnhancedMode {
         permissionMode: PermissionMode;
         model?: string;
+        /** Reasoning effort passed through to Codex's sendTurnAndWait. */
+        effort?: ReasoningEffort;
     }
 
     //
@@ -126,13 +122,39 @@ export async function runCodex(opts: {
     // Create session
     //
 
+    const initialPermissionMode = opts.permissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
     const { state, metadata } = createSessionMetadata({
         flavor: 'codex',
         machineId,
         startedBy: opts.startedBy,
         sandbox: sandboxConfig,
+        dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
     });
-    const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+
+    // Check for session reconnection env vars (set by daemon for resume-in-place)
+    const reconnectSessionId = process.env.HAPPY_RECONNECT_SESSION_ID;
+    const reconnectKeyBase64 = process.env.HAPPY_RECONNECT_ENCRYPTION_KEY;
+    const reconnectVariant = process.env.HAPPY_RECONNECT_ENCRYPTION_VARIANT as 'legacy' | 'dataKey' | undefined;
+    const reconnectSeq = process.env.HAPPY_RECONNECT_SEQ;
+    const reconnectMetadataVersion = process.env.HAPPY_RECONNECT_METADATA_VERSION;
+    const reconnectAgentStateVersion = process.env.HAPPY_RECONNECT_AGENT_STATE_VERSION;
+
+    let response: ApiSession | null;
+    if (reconnectSessionId && reconnectKeyBase64 && reconnectVariant) {
+        logger.debug(`[START] Reconnecting to existing session ${reconnectSessionId}`);
+        response = {
+            id: reconnectSessionId,
+            seq: parseInt(reconnectSeq || '0', 10),
+            encryptionKey: decodeBase64(reconnectKeyBase64),
+            encryptionVariant: reconnectVariant,
+            metadata,
+            metadataVersion: parseInt(reconnectMetadataVersion || '0', 10),
+            agentState: state,
+            agentStateVersion: parseInt(reconnectAgentStateVersion || '0', 10),
+        };
+    } else {
+        response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+    }
 
     // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
@@ -158,11 +180,28 @@ export async function runCodex(opts: {
     });
     session = initialSession;
 
+    // On reconnect, un-archive the session and skip replaying old messages.
+    if (reconnectSessionId) {
+        session.suppressNextArchiveSignal();
+        session.skipExistingMessages();
+        session.updateMetadata((meta) => ({
+            ...meta,
+            lifecycleState: 'running',
+            archivedBy: undefined,
+        }));
+    }
+
     // Always report to daemon if it exists (skip if offline)
     if (response) {
         try {
             logger.debug(`[START] Reporting session ${response.id} to daemon`);
-            const result = await notifyDaemonSessionStarted(response.id, metadata);
+            const result = await notifyDaemonSessionStarted(response.id, metadata, {
+                encryptionKey: encodeBase64(response.encryptionKey),
+                encryptionVariant: response.encryptionVariant,
+                seq: response.seq,
+                metadataVersion: response.metadataVersion,
+                agentStateVersion: response.agentStateVersion,
+            });
             if (result.error) {
                 logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
             } else {
@@ -176,20 +215,54 @@ export async function runCodex(opts: {
     const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
         permissionMode: mode.permissionMode,
         model: mode.model,
+        effort: mode.effort,
     }));
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
-    let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
-    let currentModel: string | undefined = undefined;
+    let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
+    let currentModel: string | undefined = DEFAULT_CODEX_MODEL;
+    let currentEffort: ReasoningEffort | undefined = DEFAULT_CODEX_EFFORT;
+
+    const resetCurrentModeDefaults = () => {
+        currentPermissionMode = DEFAULT_CODEX_PERMISSION_MODE;
+        currentModel = DEFAULT_CODEX_MODEL;
+        currentEffort = DEFAULT_CODEX_EFFORT;
+        logger.debug('[Codex] Reset current mode defaults after abort');
+    };
+
+    // Valid Codex permission modes from remote messages. Matches the modes
+    // the mobile UI exposes for Codex sessions (see modelModeOptions.ts:
+    // getCodexPermissionModes) and mirrors the Gemini validation pattern at
+    // runGemini.ts:222. Anything outside this set is silently ignored — the
+    // previous code blindly cast `message.meta.permissionMode as PermissionMode`
+    // at runtime, meaning a crafted value like `'totally_unsafe'` would be
+    // accepted and then fall through to the `default` branch in
+    // resolveCodexExecutionPolicy() — or worse, an attacker-chosen valid value
+    // could escalate sandbox scope (issue #1092).
+    const VALID_REMOTE_PERMISSION_MODES: readonly PermissionMode[] = [
+        'default',
+        'read-only',
+        'safe-yolo',
+        'yolo',
+    ];
+
+    const VALID_REMOTE_EFFORTS: readonly ReasoningEffort[] = [
+        'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
+    ];
 
     session.onUserMessage((message) => {
-        // Resolve permission mode (accept all modes, will be mapped in switch statement)
+        // Resolve permission mode (validate against Codex-native modes)
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            messagePermissionMode = message.meta.permissionMode as import('@/api/types').PermissionMode;
-            currentPermissionMode = messagePermissionMode;
-            logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
+            const incoming = message.meta.permissionMode as PermissionMode;
+            if (VALID_REMOTE_PERMISSION_MODES.includes(incoming)) {
+                messagePermissionMode = incoming;
+                currentPermissionMode = messagePermissionMode;
+                logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
+            } else {
+                logger.debug(`[Codex] Ignoring invalid permission mode from user message: ${String(message.meta.permissionMode)}`);
+            }
         } else {
             logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
         }
@@ -204,9 +277,31 @@ export async function runCodex(opts: {
             logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
         }
 
+        // Resolve effort — passed straight to sendTurnAndWait. Validate the
+        // incoming value against ReasoningEffort so a stale/garbage entry on
+        // the wire doesn't poison the per-turn options.
+        let messageEffort = currentEffort;
+        if (message.meta?.hasOwnProperty('effort')) {
+            const incoming = (message.meta as Record<string, unknown>).effort;
+            if (incoming === null || incoming === undefined) {
+                messageEffort = undefined;
+                currentEffort = undefined;
+                logger.debug(`[Codex] Effort reset to default`);
+            } else if (typeof incoming === 'string' && (VALID_REMOTE_EFFORTS as readonly string[]).includes(incoming)) {
+                messageEffort = incoming as ReasoningEffort;
+                currentEffort = messageEffort;
+                logger.debug(`[Codex] Effort updated from user message: ${messageEffort}`);
+            } else {
+                logger.debug(`[Codex] Ignoring invalid effort from user message: ${String(incoming)}`);
+            }
+        } else {
+            logger.debug(`[Codex] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
+        }
+
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode || 'default',
             model: messageModel,
+            effort: messageEffort,
         };
         messageQueue.push(message.content.text, enhancedMode);
     });
@@ -312,6 +407,7 @@ export async function runCodex(opts: {
             } catch (error) {
                 logger.debug('[Codex] Error during abort:', error);
             } finally {
+                resetCurrentModeDefaults();
                 // Wake up message queue wait if idle
                 abortController.abort();
                 abortController = new AbortController();
@@ -356,9 +452,6 @@ export async function runCodex(opts: {
             } catch (e) {
                 logger.debug('[Codex] Error disconnecting Codex during termination', e);
             }
-
-            // Stop caffeinate
-            stopCaffeinate();
 
             // Stop Happy MCP server
             happyServer.stop();
@@ -416,6 +509,10 @@ export async function runCodex(opts: {
     client = new CodexAppServerClient(sandboxConfig);
 
     permissionHandler = new CodexPermissionHandler(session);
+    // Drop any permission requests left in agent state from a previous CLI
+    // process that died while a tool prompt was open — see the matching
+    // call in claudeRemoteLauncher for the full rationale.
+    permissionHandler.reset('Previous CLI process exited before responding');
     reasoningProcessor = new ReasoningProcessor((message) => {
         const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
         for (const envelope of envelopes) {
@@ -477,9 +574,21 @@ export async function runCodex(opts: {
         } else if (msg.type === 'task_complete') {
             // Ready is emitted from the main loop's idle check so pushes only fire once
             // after the queue is actually drained.
-            messageBuffer.addMessage('Task completed', 'status');
+            const failure = describeCodexFailure(msg);
+            if (failure) {
+                messageBuffer.addMessage(`Task failed: ${failure}`, 'status');
+                session.sendSessionEvent({ type: 'message', message: `Codex error: ${failure}` });
+            } else {
+                messageBuffer.addMessage('Task completed', 'status');
+            }
         } else if (msg.type === 'turn_aborted') {
-            messageBuffer.addMessage('Turn aborted', 'status');
+            const failure = describeCodexFailure(msg);
+            if (failure) {
+                messageBuffer.addMessage(`Turn aborted: ${failure}`, 'status');
+                session.sendSessionEvent({ type: 'message', message: `Codex error: ${failure}` });
+            } else {
+                messageBuffer.addMessage('Turn aborted', 'status');
+            }
         }
 
         if (msg.type === 'task_started') {
@@ -550,11 +659,15 @@ export async function runCodex(opts: {
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
     const happyServer = await startHappyServer(session);
-    const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
+    // Launch the bridge via `node <path>` (rather than relying on the .mjs shebang)
+    // so it works on Windows, where Windows can't execute shebang scripts directly.
+    // codex would otherwise fail to start the MCP server, the change_title tool would
+    // not be visible to the model, and the model would improvise with shell echoes.
+    const bridgeEntrypoint = join(projectPath(), 'bin', 'happy-mcp.mjs');
     const mcpServers = {
         happy: {
-            command: bridgeCommand,
-            args: ['--url', happyServer.url]
+            command: process.execPath,
+            args: ['--no-warnings', '--no-deprecation', bridgeEntrypoint, '--url', happyServer.url]
         }
     } as const;
     let first = true;
@@ -638,6 +751,7 @@ export async function runCodex(opts: {
                     model: message.mode.model,
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,
+                    effort: message.mode.effort,
                 });
                 first = false;
 

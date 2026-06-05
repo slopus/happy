@@ -1,0 +1,63 @@
+.option-card {
+    display: flex;
+    min-width: 0;
+    min-height: 284px;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px;
+    border: 1px solid var(--color-border);
+    border-radius: 12.5px;
+    color: var(--color-text-foreground);
+    background: var(--color-background-surface);
+    text-align: center;
+    transition:
+        background 120ms ease,
+        border-color 120ms ease;
+}
+
+.option-card:hover,
+.option-card:focus-visible {
+    border-color: var(--color-border-heavy);
+    background: var(--color-button-bg);
+}
+
+.option-card:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+.option-card--selected {
+    background: var(--color-active);
+    border-color: transparent;
+}
+
+.option-card__mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    color: var(--color-background-surface);
+    background: var(--color-text-foreground);
+    font-size: var(--text-sm);
+}
+
+.option-card:not(.option-card--selected) .option-card__mark {
+    background: var(--color-button-bg);
+}
+
+.option-card__title {
+    font-size: var(--text-lg);
+    font-weight: 600;
+}
+
+.option-card__description {
+    max-width: 220px;
+    color: var(--color-text-foreground-secondary);
+    font-size: var(--text-base);
+    line-height: 1.5;
+}

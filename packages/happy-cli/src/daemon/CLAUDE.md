@@ -158,7 +158,7 @@ Version mismatch test simulates npm upgrade:
 - Test modifies package.json, rebuilds with new version
 - Daemon's compiled version != package.json on disk
 - Critical timing: heartbeat interval must exceed rebuild time
-- pkgroll doesn't update compiled imports, must use full yarn build
+- pkgroll doesn't update compiled imports, must use full pnpm build
 
 # Improvements
 

@@ -1,6 +1,7 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
+import { getHappyClientId } from './apiSocket';
 import { Artifact, ArtifactCreateRequest, ArtifactUpdateRequest, ArtifactUpdateResponse } from './artifactTypes';
 
 /**
@@ -13,7 +14,8 @@ export async function fetchArtifacts(credentials: AuthCredentials): Promise<Arti
         const response = await fetch(`${API_ENDPOINT}/v1/artifacts`, {
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             }
         });
 
@@ -36,7 +38,8 @@ export async function fetchArtifact(credentials: AuthCredentials, artifactId: st
         const response = await fetch(`${API_ENDPOINT}/v1/artifacts/${artifactId}`, {
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             }
         });
 
@@ -66,7 +69,8 @@ export async function createArtifact(
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             },
             body: JSON.stringify(request)
         });
@@ -98,7 +102,8 @@ export async function updateArtifact(
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             },
             body: JSON.stringify(request)
         });
@@ -128,7 +133,8 @@ export async function deleteArtifact(
         const response = await fetch(`${API_ENDPOINT}/v1/artifacts/${artifactId}`, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${credentials.token}`
+                'Authorization': `Bearer ${credentials.token}`,
+                'X-Happy-Client': getHappyClientId(),
             }
         });
 

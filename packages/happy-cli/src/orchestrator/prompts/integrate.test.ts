@@ -24,32 +24,36 @@ describe('applyAxOrchestration', () => {
         expect(result).toBeNull();
     });
 
-    it('plan-step: prepends step guide + dynamic context to user text', async () => {
+    it('plan-step: keeps user text visible-clean and injects guide/context into appendSystemPrompt', async () => {
         await bootstrapWorkspace(workspace, 'plan');
         const result = await applyAxOrchestration({
             workspaceRoot: workspace,
             userText: 'make a todo app',
         });
         expect(result).not.toBeNull();
-        expect(result!.userText).toMatch(/Step: plan/);
-        expect(result!.userText).toMatch(/<ax-dynamic-context>/);
-        expect(result!.userText).toMatch(/make a todo app/);
-        // Order: step guide → dynamic context → original user text
-        const guideIdx = result!.userText.indexOf('Step: plan');
-        const ctxIdx = result!.userText.indexOf('<ax-dynamic-context>');
-        const userIdx = result!.userText.indexOf('make a todo app');
+        expect(result!.step).toBe('plan');
+        expect(result!.userText).toBe('make a todo app');
+        expect(result!.appendSystemPrompt).toMatch(/Step: plan/);
+        expect(result!.appendSystemPrompt).toMatch(/<ax-dynamic-context>/);
+        // Order: base prompt -> step guide -> dynamic context.
+        const baseIdx = result!.appendSystemPrompt.indexOf('AX Studio AI assistant');
+        const guideIdx = result!.appendSystemPrompt.indexOf('Step: plan');
+        const ctxIdx = result!.appendSystemPrompt.indexOf('<ax-dynamic-context>');
+        expect(baseIdx).toBeLessThan(guideIdx);
         expect(guideIdx).toBeLessThan(ctxIdx);
-        expect(ctxIdx).toBeLessThan(userIdx);
     });
 
-    it('design-step: attaches AX_PROJECT_PLAN.md content in the context block', async () => {
+    it('design-step: references AX_PROJECT_PLAN.md without embedding content in the context block', async () => {
         await bootstrapWorkspace(workspace, 'design');
         await writeFile(join(workspace, 'AX_PROJECT_PLAN.md'), '# My Plan\n\nbody-marker\n');
         const result = await applyAxOrchestration({
             workspaceRoot: workspace,
             userText: 'show me designs',
         });
-        expect(result!.userText).toMatch(/body-marker/);
+        expect(result!.userText).toBe('show me designs');
+        expect(result!.step).toBe('design');
+        expect(result!.appendSystemPrompt).toMatch(/AX_PROJECT_PLAN\.md/);
+        expect(result!.appendSystemPrompt).not.toMatch(/body-marker/);
     });
 
     it('injects base.md into appendSystemPrompt when no current value', async () => {
@@ -59,6 +63,24 @@ describe('applyAxOrchestration', () => {
             userText: 'hi',
         });
         expect(result!.appendSystemPrompt).toMatch(/AX Studio AI assistant/);
+    });
+
+    it('replaces prior AX guide/context instead of accumulating stale prompt blocks', async () => {
+        await bootstrapWorkspace(workspace, 'plan');
+        const first = await applyAxOrchestration({
+            workspaceRoot: workspace,
+            userText: 'hi',
+        });
+        const second = await applyAxOrchestration({
+            workspaceRoot: workspace,
+            userText: 'hi again',
+            currentAppendSystemPrompt: first!.appendSystemPrompt,
+        });
+
+        const stepOccurrences = (second!.appendSystemPrompt.match(/Step: plan/g) || []).length;
+        const contextOccurrences = (second!.appendSystemPrompt.match(/<ax-dynamic-context>/g) || []).length;
+        expect(stepOccurrences).toBe(1);
+        expect(contextOccurrences).toBe(1);
     });
 
     it('preserves an existing user-supplied appendSystemPrompt', async () => {

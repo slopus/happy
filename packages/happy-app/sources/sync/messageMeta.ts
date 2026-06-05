@@ -1,25 +1,36 @@
 import type { Session } from './storageTypes';
+import type { Settings } from './settings';
+import { getAgentDefaultOverride } from './agentDefaults';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 
-function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boolean {
-    const sandbox = metadata?.sandbox;
-    return !!sandbox && typeof sandbox === 'object' && (sandbox as { enabled?: unknown }).enabled === true;
-}
+export type MessageModeMeta = {
+    permissionMode?: PermissionModeKey;
+    model?: string | null;
+    effort?: string | null;
+};
 
 export function resolveMessageModeMeta(
-    session: Pick<Session, 'permissionMode' | 'modelMode' | 'metadata'>,
-): { permissionMode: PermissionModeKey; model: string | null } {
-    const sandboxEnabled = isSandboxEnabled(session.metadata);
-    const permissionMode: PermissionModeKey =
-        session.permissionMode && session.permissionMode !== 'default'
-            ? session.permissionMode
-            : (sandboxEnabled ? 'bypassPermissions' : 'default');
+    session: Pick<Session, 'permissionMode' | 'modelMode' | 'metadata' | 'effortLevel'>,
+    settings?: Pick<Settings, 'agentDefaultOverrides'>,
+): MessageModeMeta {
+    const agentOverrides = getAgentDefaultOverride(settings?.agentDefaultOverrides, session.metadata?.flavor);
+    const meta: MessageModeMeta = {};
 
-    const modelMode = session.modelMode || 'default';
-    const model = modelMode !== 'default' ? modelMode : null;
+    if (session.permissionMode !== null && session.permissionMode !== undefined) {
+        meta.permissionMode = session.permissionMode;
+    } else if (agentOverrides.permissionMode !== undefined) {
+        meta.permissionMode = agentOverrides.permissionMode;
+    }
 
-    return {
-        permissionMode,
-        model,
-    };
+    const modelMode = session.modelMode ?? agentOverrides.modelMode;
+    if (modelMode !== undefined) {
+        meta.model = modelMode === 'default' ? null : modelMode;
+    }
+
+    const effort = session.effortLevel ?? agentOverrides.effortLevel;
+    if (effort !== undefined) {
+        meta.effort = effort;
+    }
+
+    return meta;
 }

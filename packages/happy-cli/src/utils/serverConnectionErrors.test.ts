@@ -5,7 +5,7 @@
  * These tests exercise the real code paths with minimal mocking:
  * - Only axios.isAxiosError is mocked (needed for error type detection)
  * - Health check is injected for deterministic behavior
- * - Real exponentialBackoffDelay is used (tests account for timing)
+ * - Retry delay is injected so unit tests do not wait on real backoff timers
  *
  * ## Requirements Verified
  * - REQ-1: Continue working when server unreachable (via graceful callback pattern)
@@ -48,6 +48,7 @@ interface TestHandleConfig<T = { id: string }> {
     onNotify?: (msg: string) => void;
     onCleanup?: () => void;
     initialDelayMs?: number;
+    retryDelayMs?: (failureCount: number) => number;
 }
 
 /**
@@ -65,7 +66,8 @@ function createTestHandle<T = { id: string }>(config: TestHandleConfig<T> = {}) 
         onNotify,
         onCleanup,
         healthCheck: config.healthCheck ?? (async () => { /* success */ }),
-        initialDelayMs: config.initialDelayMs ?? 1
+        initialDelayMs: config.initialDelayMs ?? 1,
+        retryDelayMs: config.retryDelayMs ?? (() => 1),
     });
 
     return { handle, onReconnected, onNotify, onCleanup };
@@ -77,12 +79,12 @@ function createTestHandle<T = { id: string }>(config: TestHandleConfig<T> = {}) 
  */
 async function waitForReconnection(
     handle: ReturnType<typeof startOfflineReconnection>,
-    timeoutMs: number = 15000
+    timeoutMs: number = 1000
 ): Promise<boolean> {
     const startTime = Date.now();
     while (Date.now() - startTime < timeoutMs) {
         if (handle.isReconnected()) return true;
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 5));
     }
     return false;
 }
@@ -197,9 +199,7 @@ describe('startOfflineReconnection', () => {
 
             const { handle } = createTestHandle({ healthCheck });
 
-            // With real exponential backoff (5s + 10s delays with jitter),
-            // we need ~20s to reach attempt 3
-            await waitForReconnection(handle, 25000);
+            await waitForReconnection(handle);
 
             expect(attemptCount).toBe(3);
 
@@ -229,13 +229,13 @@ describe('startOfflineReconnection', () => {
 
         it('should prevent reconnection if cancelled before first attempt', async () => {
             const { handle, onReconnected, onCleanup } = createTestHandle({
-                initialDelayMs: 500 // Long delay to allow cancel before attempt
+                initialDelayMs: 25 // Long enough to allow cancel before attempt
             });
 
             handle.cancel();
             expect(onCleanup).toHaveBeenCalledOnce();
 
-            await new Promise(resolve => setTimeout(resolve, 600));
+            await new Promise(resolve => setTimeout(resolve, 50));
 
             expect(onReconnected).not.toHaveBeenCalled();
             expect(handle.isReconnected()).toBe(false);

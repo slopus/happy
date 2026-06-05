@@ -127,6 +127,10 @@ interface SessionKillResponse {
     message: string;
 }
 
+interface MachineStopSessionResponse {
+    message: string;
+}
+
 // Response types for spawn session
 export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
@@ -140,7 +144,40 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean;
     token?: string;
     agent?: 'codex' | 'claude' | 'gemini' | 'openclaw';
+    /**
+     * If set, the daemon spawns the agent with `--resume <id>` so the new
+     * Happy session attaches to a pre-existing on-disk Claude conversation
+     * file. Used by the session fork / duplicate flow.
+     */
+    resumeClaudeSessionId?: string;
+    /** Happy session id this fork was branched from (lineage). */
+    parentSessionId?: string;
+    /** Happy message id used as the rewind point (only set for "duplicate"). */
+    forkedFromMessageId?: string;
 }
+
+// Options for forking a Claude session on a machine
+export interface ClaudeForkSessionOptions {
+    machineId: string;
+    /** Working directory of the source session — used to derive the Claude project dir. */
+    directory: string;
+    /** Source Claude session UUID (Session.metadata.claudeSessionId on the parent). */
+    claudeSessionId: string;
+}
+
+export type ClaudeForkSessionResult =
+    | { type: 'success'; newClaudeSessionId: string }
+    | { type: 'error'; errorMessage: string };
+
+export interface ClaudeRewindPoint {
+    uuid: string;
+    text: string;
+    timestamp: number;
+}
+
+export type ClaudeListRewindPointsResult =
+    | { type: 'success'; points: ClaudeRewindPoint[] }
+    | { type: 'error'; errorMessage: string };
 
 export interface ResumeSessionOptions {
     machineId: string;
@@ -154,7 +191,7 @@ export interface ResumeSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, parentSessionId, forkedFromMessageId } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -163,10 +200,13 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             approvedNewDirectoryCreation?: boolean,
             token?: string,
             agent?: 'codex' | 'claude' | 'gemini' | 'openclaw',
+            resumeClaudeSessionId?: string,
+            parentSessionId?: string,
+            forkedFromMessageId?: string,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, parentSessionId, forkedFromMessageId }
         );
         return result;
     } catch (error) {
@@ -178,20 +218,128 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
     }
 }
 
-export async function machineResumeSession(options: ResumeSessionOptions): Promise<SpawnSessionResult> {
-    const { machineId, sessionId } = options;
+/**
+ * Copy the source session's Claude JSONL on the daemon machine and return
+ * the new Claude session UUID. Caller then spawns a fresh Happy session
+ * with `resumeClaudeSessionId` set to that UUID to attach a new Happy
+ * session row to the copied conversation.
+ */
+export async function claudeForkSession(options: ClaudeForkSessionOptions): Promise<ClaudeForkSessionResult> {
+    const { machineId, directory, claudeSessionId } = options;
+    try {
+        const result = await apiSocket.machineRPC<ClaudeForkSessionResult, {
+            directory: string;
+            claudeSessionId: string;
+        }>(
+            machineId,
+            'claude-fork-session',
+            { directory, claudeSessionId },
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to fork session',
+        };
+    }
+}
+
+/**
+ * Read the on-disk Claude JSONL on the daemon machine and return user-text
+ * messages with their underlying claudeUuid + timestamp. Disk is the
+ * source of truth for the rewind picker — server-side envelopes miss
+ * claudeUuid for any user message that travelled via the legacy
+ * `sentFrom: 'web'` path.
+ */
+export async function claudeListRewindPoints(
+    options: ClaudeForkSessionOptions,
+): Promise<ClaudeListRewindPointsResult> {
+    const { machineId, directory, claudeSessionId } = options;
+    try {
+        const result = await apiSocket.machineRPC<ClaudeListRewindPointsResult, {
+            directory: string;
+            claudeSessionId: string;
+        }>(
+            machineId,
+            'claude-list-rewind-points',
+            { directory, claudeSessionId },
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to list rewind points',
+        };
+    }
+}
+
+/**
+ * Same as claudeForkSession, but truncates the copied JSONL right after the
+ * line with `cutAfterUuid` (keeping the chosen message as the last entry,
+ * dropping every line after — including the agent's response). Use this
+ * for "rewind to message N and try again" flows. Daemon hard-fails if the
+ * UUID isn't present in the source — never silently produces a
+ * non-truncated copy.
+ */
+export async function claudeDuplicateSession(
+    options: ClaudeForkSessionOptions & { cutAfterUuid: string },
+): Promise<ClaudeForkSessionResult> {
+    const { machineId, directory, claudeSessionId, cutAfterUuid } = options;
+    try {
+        const result = await apiSocket.machineRPC<ClaudeForkSessionResult, {
+            directory: string;
+            claudeSessionId: string;
+            cutAfterUuid: string;
+        }>(
+            machineId,
+            'claude-duplicate-session',
+            { directory, claudeSessionId, cutAfterUuid },
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to duplicate session',
+        };
+    }
+}
+
+export async function machineResumeSession(options: ResumeSessionOptions & { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> {
+    const { machineId, sessionId, model, permissionMode } = options;
 
     try {
-        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string }>(
+        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string }>(
             machineId,
             'resume-happy-session',
-            { sessionId },
+            { sessionId, model, permissionMode },
         );
         return result;
     } catch (error) {
         return {
             type: 'error',
             errorMessage: error instanceof Error ? error.message : 'Failed to resume session',
+        };
+    }
+}
+
+/**
+ * Permanently remove a machine from the server. Sessions spawned by the
+ * machine are preserved; only the Machine row and its AccessKeys are deleted.
+ */
+export async function machineDelete(machineId: string): Promise<{ success: boolean; message?: string }> {
+    try {
+        const response = await apiSocket.request(`/v1/machines/${machineId}`, {
+            method: 'DELETE'
+        });
+        if (response.ok) {
+            return { success: true };
+        }
+        const error = await response.text();
+        return { success: false, message: error || 'Failed to delete machine' };
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Unknown error'
         };
     }
 }
@@ -567,6 +715,56 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
 }
 
 /**
+ * Stop the local agent process for a Happy session.
+ *
+ * Prefer the session RPC because it lets the process clean itself up. If that
+ * route is already gone, fall back to the machine daemon's tracked PID list.
+ */
+export async function sessionStopProcess(sessionId: string, machineId?: string): Promise<SessionKillResponse> {
+    const killResult = await sessionKill(sessionId);
+    if (killResult.success) {
+        return killResult;
+    }
+
+    if (!machineId) {
+        return killResult;
+    }
+
+    try {
+        await apiSocket.machineRPC<MachineStopSessionResponse, { sessionId: string }>(
+            machineId,
+            'stop-session',
+            { sessionId },
+        );
+        return { success: true, message: 'Session stopped' };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        if (/not found/i.test(message)) {
+            return { success: true, message: 'Session process was not running' };
+        }
+        return { success: false, message };
+    }
+}
+
+/**
+ * Archive a session by deactivating it on the server.
+ * Use this when the CLI process is already dead and sessionKill can't reach it.
+ */
+export async function sessionArchive(sessionId: string): Promise<{ success: boolean; message?: string }> {
+    try {
+        const response = await apiSocket.request(`/v1/sessions/${sessionId}/archive`, {
+            method: 'POST'
+        });
+        if (!response.ok) {
+            return { success: false, message: `Server error: ${response.status}` };
+        }
+        return { success: true };
+    } catch (error) {
+        return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+/**
  * Permanently delete a session from the server
  * This will remove the session and all its associated data (messages, usage reports, access keys)
  * The session should be inactive/archived before deletion
@@ -593,6 +791,73 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
             message: error instanceof Error ? error.message : 'Unknown error'
         };
     }
+}
+
+// Forking source description used by forkAndSpawn.
+export interface ForkSource {
+    sessionId: string;
+    machineId: string;
+    directory: string;
+    claudeSessionId: string;
+}
+
+/**
+ * Two-step orchestrator for the session fork / duplicate flow:
+ *   1. Ask the daemon to copy (and optionally truncate) the source Claude
+ *      JSONL — returns a fresh Claude session UUID.
+ *   2. Spawn a new Happy session on the same machine with
+ *      `resumeClaudeSessionId` set to that UUID so `claude --resume` picks
+ *      up the copied conversation.
+ *
+ * Lineage (parentSessionId, forkedFromMessageId) rides through the spawn
+ * RPC into env vars, then into the new Happy session's metadata at start
+ * — so the parent link survives without any server-side schema change.
+ */
+export async function forkAndSpawn(
+    source: ForkSource,
+    opts: { cutAfterUuid?: string; forkedFromMessageId?: string } = {},
+): Promise<SpawnSessionResult> {
+    const forkResult = opts.cutAfterUuid
+        ? await claudeDuplicateSession({
+            machineId: source.machineId,
+            directory: source.directory,
+            claudeSessionId: source.claudeSessionId,
+            cutAfterUuid: opts.cutAfterUuid,
+        })
+        : await claudeForkSession({
+            machineId: source.machineId,
+            directory: source.directory,
+            claudeSessionId: source.claudeSessionId,
+        });
+
+    if (forkResult.type !== 'success') {
+        return { type: 'error', errorMessage: forkResult.errorMessage };
+    }
+
+    const spawnResult = await machineSpawnNewSession({
+        machineId: source.machineId,
+        directory: source.directory,
+        agent: 'claude',
+        approvedNewDirectoryCreation: false,
+        resumeClaudeSessionId: forkResult.newClaudeSessionId,
+        parentSessionId: source.sessionId,
+        forkedFromMessageId: opts.forkedFromMessageId,
+    });
+
+    // Pull the newly-created session row into local sync state before we
+    // hand control back to the caller — otherwise router.replace into the
+    // new session id races the broadcast and the app screams
+    // "Session X not found" until the next sync tick lands.
+    if (spawnResult.type === 'success') {
+        try {
+            await sync.refreshSessions();
+        } catch {
+            // Refresh is best-effort; the broadcast will still hydrate the
+            // session shortly even if this fetch flaked.
+        }
+    }
+
+    return spawnResult;
 }
 
 // Export types for external use

@@ -28,15 +28,20 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 10.11.0
+
             - name: Setup Node
               uses: actions/setup-node@v4
               with:
                   node-version: 20
-                  cache: yarn
+                  cache: pnpm
                   registry-url: https://registry.npmjs.org
 
             - name: Install monorepo dependencies
-              run: yarn install --frozen-lockfile
+              run: pnpm install --frozen-lockfile
 
             - name: Verify tag matches package version
               run: |
@@ -49,14 +54,12 @@ jobs:
                   echo "OK — publishing $VERSION from tag happy-cli-v$TAG"
 
             - name: Build happy-cli
-              working-directory: packages/happy-cli
-              run: yarn build
+              run: pnpm --filter @namsangboy/happy-cli build
 
             - name: Publish to npm
               working-directory: packages/happy-cli
               # `--ignore-scripts` skips prepublishOnly because we already ran
-              # `yarn build` explicitly above; running it again from within
-              # `npm publish` would repeat work and break `yarn.lock` hoisting.
+              # `pnpm --filter @namsangboy/happy-cli build` explicitly above.
               run: npm publish --access public --ignore-scripts
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

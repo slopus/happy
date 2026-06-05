@@ -1,6 +1,6 @@
 /**
  * Claude Code SDK integration for Happy CLI
- * Provides clean TypeScript implementation without Bun support
+ * Uses official @anthropic-ai/claude-agent-sdk
  */
 
 export { query } from './query'
@@ -13,10 +13,6 @@ export type {
     SDKAssistantMessage,
     SDKSystemMessage,
     SDKResultMessage,
-    SDKControlResponse,
-    ControlRequest,
-    InterruptRequest,
-    SDKControlRequest,
     CanCallToolCallback,
     PermissionResult
 } from './types'

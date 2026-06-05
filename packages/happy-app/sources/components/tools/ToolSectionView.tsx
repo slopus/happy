@@ -26,6 +26,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     fullWidthSection: {
         marginHorizontal: -12, // Compensate for parent padding
+        marginTop: -8, // Compensate for parent's paddingTop so the section sits flush under the tool header
     },
     fullWidthContent: {
         // No negative margins needed since we're moving the whole section

@@ -2,17 +2,28 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionKill } from '@/sync/ops';
+import { machineResumeSession, sessionArchive, sessionDelete, sessionKill, sessionStopProcess, forkAndSpawn, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
+import { resolveMessageModeMeta } from '@/sync/messageMeta';
 import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
-import { copySessionMetadataToClipboard } from '@/utils/copySessionMetadataToClipboard';
+import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
 import { useSessionStatus } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useRouter } from 'expo-router';
+import { useSession } from '@/sync/storage';
+import { DuplicateSheet } from '@/components/DuplicateSheet';
+
+export interface SessionActionItem {
+    id: string;
+    label: string;
+    icon: string;
+    onPress: () => void;
+    destructive?: boolean;
+}
 
 interface UseSessionQuickActionsOptions {
     onAfterArchive?: () => void;
@@ -78,15 +89,6 @@ function getResumeAvailability(session: Session, machine: Machine | null | undef
         };
     }
 
-    if (!machine.metadata?.resumeSupport?.rpcAvailable) {
-        return {
-            canResume: false,
-            canShowResume: true,
-            subtitle: t('sessionInfo.resumeSessionNeedsHappyAgent'),
-            message: t('sessionInfo.resumeSessionNeedsHappyAgent'),
-        };
-    }
-
     return {
         canResume: true,
         canShowResume: true,
@@ -101,6 +103,7 @@ export function useSessionQuickActions(
 ) {
     const {
         onAfterArchive,
+        onAfterDelete,
         onAfterCopySessionMetadata,
     } = options;
     const router = useRouter();
@@ -113,6 +116,22 @@ export function useSessionQuickActions(
     const resumeAvailability = React.useMemo(
         () => expResumeSession ? getResumeAvailability(session, machine, sessionStatus.isConnected) : { canResume: false, canShowResume: false, subtitle: '', message: '' },
         [machine, session, sessionStatus.isConnected, expResumeSession],
+    );
+
+    // Fork eligibility — separate from resume because fork works on both
+    // active AND inactive Claude sessions (the on-disk JSONL exists either
+    // way; copyFile is atomic). The user-facing toggle is the same
+    // expResumeSession experiment so all three flows (resume / fork /
+    // duplicate) ride a single switch on settings/features.
+    const claudeFlavor = !session.metadata?.flavor || session.metadata.flavor === 'claude';
+    const claudeSessionId = session.metadata?.claudeSessionId;
+    const canFork = Boolean(
+        expResumeSession
+        && claudeFlavor
+        && claudeSessionId
+        && machineId
+        && machine
+        && isMachineOnline(machine),
     );
 
     const openDetails = React.useCallback(() => {
@@ -128,6 +147,15 @@ export function useSessionQuickActions(
         })();
     }, [onAfterCopySessionMetadata, session]);
 
+    const copySessionMetadataAndLogs = React.useCallback(() => {
+        void (async () => {
+            const copied = await copySessionMetadataAndLogsToClipboard(session);
+            if (copied) {
+                onAfterCopySessionMetadata?.();
+            }
+        })();
+    }, [onAfterCopySessionMetadata, session]);
+
     const [resumingSession, performResume] = useHappyAction(async () => {
         if (!resumeAvailability.canResume) {
             throw new HappyError(resumeAvailability.message, false);
@@ -137,20 +165,19 @@ export function useSessionQuickActions(
             throw new HappyError(t('sessionInfo.resumeSessionMissingMachine'), false);
         }
 
+        const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
         const result = await machineResumeSession({
             machineId,
             sessionId: session.id,
+            model: modeMeta.model ?? undefined,
+            permissionMode: modeMeta.permissionMode,
         });
 
         switch (result.type) {
             case 'success': {
-                for (let attempt = 0; attempt < 3; attempt++) {
-                    await sync.refreshSessions();
-                    if (storage.getState().sessions[result.sessionId]) {
-                        break;
-                    }
-                    await new Promise((resolve) => setTimeout(resolve, 150));
-                }
+                // Session reconnects to the same ID, so messages are preserved.
+                // Refresh to pick up the updated session state.
+                await sync.refreshSessions();
 
                 if (session.permissionMode) {
                     storage.getState().updateSessionPermissionMode(result.sessionId, session.permissionMode);
@@ -172,9 +199,10 @@ export function useSessionQuickActions(
     const [archivingSession, performArchive] = useHappyAction(async () => {
         await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
 
-        const result = await sessionKill(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+        // Try to kill the CLI process; if it's already dead, force-archive via server
+        const killResult = await sessionKill(session.id);
+        if (!killResult.success) {
+            await sessionArchive(session.id);
         }
         onAfterArchive?.();
     });
@@ -183,21 +211,154 @@ export function useSessionQuickActions(
         performArchive();
     }, [performArchive]);
 
+    const [deletingSession, performDelete] = useHappyAction(async () => {
+        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+
+        if (sessionStatus.isConnected || session.active) {
+            const killResult = await sessionStopProcess(session.id, session.metadata?.machineId);
+            if (!killResult.success) {
+                throw new HappyError(killResult.message || t('sessionInfo.failedToKillSession'), false);
+            }
+        }
+
+        const result = await sessionDelete(session.id);
+        if (!result.success) {
+            throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
+        }
+
+        storage.getState().deleteSession(session.id);
+        onAfterDelete?.();
+    });
+
+    const deleteSession = React.useCallback(() => {
+        Modal.alert(
+            t('sessionInfo.deleteSession'),
+            t('sessionInfo.deleteSessionWarning'),
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                    text: t('sessionInfo.deleteSession'),
+                    style: 'destructive',
+                    onPress: performDelete,
+                },
+            ],
+        );
+    }, [performDelete]);
+
     const resumeSession = React.useCallback(() => {
         performResume();
     }, [performResume]);
 
+    // Fork the session (no truncation) — copies the on-disk Claude JSONL
+    // and spawns a fresh Happy session on the same machine. Works for
+    // both active and inactive sessions; the source row stays untouched.
+    const [forking, performFork] = useHappyAction(async () => {
+        if (!canFork) {
+            throw new HappyError(t('session.forkErrorMissingMetadata'), false);
+        }
+        const directory = session.metadata?.path;
+        if (!machineId || !directory || !claudeSessionId) {
+            throw new HappyError(t('session.forkErrorMissingMetadata'), false);
+        }
+        const source: ForkSource = { sessionId: session.id, machineId, directory, claudeSessionId };
+        const result = await forkAndSpawn(source);
+        if (result.type !== 'success') {
+            throw new HappyError(result.type === 'error' ? result.errorMessage : t('session.forkErrorGeneric'), false);
+        }
+        navigateToSession(result.sessionId);
+    });
+
+    const forkSession = React.useCallback(() => {
+        performFork();
+    }, [performFork]);
+
+    const openDuplicateSheet = React.useCallback(() => {
+        if (!canFork) return;
+        Modal.show({
+            component: DuplicateSheet,
+            props: { sessionId: session.id },
+        } as any);
+    }, [canFork, session.id]);
+
+    const canCopySessionMetadata = __DEV__ || devModeEnabled;
+
+    const actionItems = React.useMemo<SessionActionItem[]>(() => {
+        const items: SessionActionItem[] = [
+            { id: 'details', icon: 'information-circle-outline', label: t('profile.details'), onPress: openDetails },
+        ];
+
+        if (resumeAvailability.canShowResume) {
+            items.push({ id: 'resume', icon: 'play-circle-outline', label: t('sessionInfo.resumeSession'), onPress: resumeSession });
+        }
+
+        if (canFork) {
+            items.push({ id: 'fork', icon: 'git-branch-outline', label: t('session.forkAction'), onPress: forkSession });
+            items.push({ id: 'duplicate', icon: 'time-outline', label: t('session.duplicateAction'), onPress: openDuplicateSheet });
+        }
+
+        if (canCopySessionMetadata) {
+            items.push({ id: 'copy-metadata', icon: 'bug-outline', label: t('sessionInfo.copyMetadata'), onPress: copySessionMetadata });
+            items.push({ id: 'copy-metadata-and-logs', icon: 'document-text-outline', label: t('sessionInfo.copyMetadata') + ' & Client Logs', onPress: copySessionMetadataAndLogs });
+        }
+
+        items.push({ id: 'archive', icon: 'archive-outline', label: t('sessionInfo.archiveSession'), onPress: archiveSession, destructive: true });
+        items.push({ id: 'delete', icon: 'trash-outline', label: t('sessionInfo.deleteSession'), onPress: deleteSession, destructive: true });
+
+        return items;
+    }, [
+        archiveSession,
+        canCopySessionMetadata,
+        canFork,
+        copySessionMetadata,
+        copySessionMetadataAndLogs,
+        deleteSession,
+        forkSession,
+        openDetails,
+        openDuplicateSheet,
+        resumeAvailability.canShowResume,
+        resumeSession,
+    ]);
+
+    const showActionAlert = React.useCallback(() => {
+        const buttons: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'destructive' | 'default' }> = actionItems.map(item => ({
+            text: item.label,
+            onPress: item.onPress,
+            style: item.destructive ? 'destructive' as const : undefined,
+        }));
+        buttons.push({ text: t('common.cancel'), style: 'cancel' });
+        Modal.alert('Session', undefined, buttons);
+    }, [actionItems]);
+
     return {
+        actionItems,
+        showActionAlert,
         archiveSession,
         archivingSession,
-        canArchive: sessionStatus.isConnected,
-        canCopySessionMetadata: __DEV__ || devModeEnabled,
+        canArchive: true,
+        canCopySessionMetadata,
+        deleteSession,
+        deletingSession,
         canResume: resumeAvailability.canResume,
         canShowResume: resumeAvailability.canShowResume,
+        canFork,
         copySessionMetadata,
+        copySessionMetadataAndLogs,
+        forkSession,
+        forking,
         openDetails,
+        openDuplicateSheet,
         resumeSession,
         resumeSessionSubtitle: resumeAvailability.subtitle,
         resumingSession,
     };
+}
+
+/**
+ * Lightweight hook for list items that only have a sessionId.
+ * Returns a long-press handler that shows the action alert on mobile.
+ */
+export function useSessionActionAlert(sessionId: string) {
+    const session = useSession(sessionId);
+    const { showActionAlert } = useSessionQuickActions(session!, {});
+    return session ? showActionAlert : undefined;
 }

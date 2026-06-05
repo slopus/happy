@@ -89,10 +89,11 @@ export class SDKToLogConverter {
         const timestamp = new Date().toISOString()
         let parentUuid = this.lastUuid;
         let isSidechain = false;
-        if (sdkMessage.parent_tool_use_id) {
+        const parentToolUseId = (sdkMessage as any).parent_tool_use_id as string | null | undefined;
+        if (parentToolUseId) {
             isSidechain = true;
-            parentUuid = this.sidechainLastUUID.get((sdkMessage as any).parent_tool_use_id) ?? null;
-            this.sidechainLastUUID.set((sdkMessage as any).parent_tool_use_id!, uuid);
+            parentUuid = this.sidechainLastUUID.get(parentToolUseId) ?? null;
+            this.sidechainLastUUID.set(parentToolUseId, uuid);
         }
         const baseFields = {
             parentUuid: parentUuid,
@@ -108,7 +109,7 @@ export class SDKToLogConverter {
 
         let logMessage: RawJSONLines | null = null
 
-        switch (sdkMessage.type) {
+        switch ((sdkMessage as any).type) {
             case 'user': {
                 const userMsg = sdkMessage as SDKUserMessage
                 // P5 redact: tool_result 블록 본문을 정책에 따라 치환한 새 message 를 만든다.
@@ -123,11 +124,19 @@ export class SDKToLogConverter {
                     })
                     outMessage = { ...userMsg.message, content: newContent }
                 }
+                // The SDK marks context-only injections (e.g. Skill tool
+                // feeding the skill body back into the conversation) as
+                // `isSynthetic: true` in memory; on disk claude writes the
+                // equivalent flag as `isMeta`. The downstream mapper and
+                // happy-app both already short-circuit on `isMeta`, so
+                // forward the same signal whichever shape we received.
+                const meta = (userMsg as any).isSynthetic === true || (userMsg as any).isMeta === true
                 logMessage = {
                     ...baseFields,
                     type: 'user',
                     message: outMessage,
                     ...(userMsg.parent_tool_use_id ? { parent_tool_use_id: userMsg.parent_tool_use_id } : {}),
+                    ...(meta ? { isMeta: true } : {}),
                 }
 
                 // Check if this is a tool result and add mode if available
@@ -159,7 +168,7 @@ export class SDKToLogConverter {
                 logMessage = {
                     ...baseFields,
                     type: 'assistant',
-                    message: assistantMsg.message,
+                    message: assistantMsg.message as any,
                     // Assistant messages often have additional fields
                     requestId: (assistantMsg as any).requestId,
                     ...(assistantMsg.parent_tool_use_id ? { parent_tool_use_id: assistantMsg.parent_tool_use_id } : {}),

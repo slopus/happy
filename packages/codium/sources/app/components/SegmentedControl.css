@@ -1,0 +1,33 @@
+.segmented-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.segmented-control__option {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    color: var(--color-text-foreground-secondary);
+    background: transparent;
+    font-size: var(--text-sm);
+    line-height: 18px;
+    white-space: nowrap;
+    transition:
+        background 120ms ease,
+        color 120ms ease;
+}
+
+.segmented-control__option:hover {
+    background: var(--color-hover);
+    color: var(--color-text-foreground);
+}
+
+.segmented-control__option--active {
+    background: var(--color-active);
+    color: var(--color-text-foreground);
+}

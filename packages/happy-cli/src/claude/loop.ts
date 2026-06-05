@@ -13,6 +13,8 @@ import type { SandboxConfig } from "@/persistence"
 export type { PermissionMode } from "@/api/types"
 import type { PermissionMode } from "@/api/types"
 
+export type ClaudeEffort = 'low' | 'medium' | 'high' | 'max';
+
 export interface EnhancedMode {
     permissionMode: PermissionMode;
     model?: string;
@@ -21,6 +23,8 @@ export interface EnhancedMode {
     appendSystemPrompt?: string;
     allowedTools?: string[];
     disallowedTools?: string[];
+    /** Effort level passed through to the Claude Agent SDK as the `effort` option. */
+    effort?: ClaudeEffort;
 }
 
 interface LoopOptions {
@@ -38,6 +42,7 @@ interface LoopOptions {
     allowedTools?: string[]
     sandboxConfig?: SandboxConfig
     onSessionReady?: (session: Session) => void
+    onAbort?: () => void
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -61,6 +66,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
         allowedTools: opts.allowedTools,
         sandboxConfig: opts.sandboxConfig,
         onModeChange: opts.onModeChange,
+        onAbort: opts.onAbort,
         hookSettingsPath: opts.hookSettingsPath,
         jsRuntime: opts.jsRuntime
     });

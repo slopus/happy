@@ -6,7 +6,7 @@ describe('SandboxConfigSchema', () => {
         const parsed = SandboxConfigSchema.parse({});
 
         expect(parsed).toEqual({
-            enabled: false,
+            enabled: true,
             sessionIsolation: 'workspace',
             customWritePaths: [],
             denyReadPaths: ['~/.ssh', '~/.aws', '~/.gnupg'],

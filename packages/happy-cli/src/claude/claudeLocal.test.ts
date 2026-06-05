@@ -16,7 +16,7 @@ const {
     mockSandboxCleanup: vi.fn(),
 }));
 
-vi.mock('node:child_process', () => ({
+vi.mock('cross-spawn', () => ({
     spawn: mockSpawn
 }));
 

@@ -1,0 +1,23 @@
+.new-chat {
+    flex: 1;
+    display: grid;
+    grid-template-rows: minmax(8rem, 39%) auto minmax(0, 1fr);
+    width: 100%;
+    min-height: 0;
+    padding: 0 16px;
+}
+
+.new-chat__headline {
+    align-self: end;
+    padding-bottom: 44px;
+    font-size: var(--text-2xl);
+    font-weight: 400;
+    color: var(--color-text-foreground);
+    margin: 0;
+    text-align: center;
+}
+
+.new-chat__composer {
+    width: min(100%, 728px);
+    margin: 0 auto;
+}

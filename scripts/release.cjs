@@ -76,7 +76,7 @@ function ensureReleaseToolingInstalled(target) {
   console.error(
     "Missing release tooling: `release-it` is not installed in this checkout."
   );
-  console.error("Run `yarn install` from repository root, then run `yarn release` again.");
+  console.error("Run `pnpm install` from repository root, then run `pnpm release` again.");
   process.exit(1);
 }
 
@@ -99,12 +99,12 @@ function runRelease(target, releaseArgs = []) {
     .filter(Boolean)
     .join(path.delimiter);
 
-  const commandArgs = ["workspace", target.workspaceName, "run", "release"];
+  const commandArgs = ["--filter", target.workspaceName, "run", "release"];
   if (releaseArgs.length > 0) {
     commandArgs.push(...releaseArgs);
   }
 
-  const result = spawnSync("yarn", commandArgs, {
+  const result = spawnSync("pnpm", commandArgs, {
     cwd: repoRoot,
     stdio: "inherit",
     env: {
@@ -127,7 +127,7 @@ async function promptForTarget(targets) {
     for (const target of targets) {
       console.error(`- ${target.id} (workspace: ${target.workspaceName})`);
     }
-    console.error("Run `yarn release -- <target> [args...]` in non-interactive mode.");
+    console.error("Run `pnpm release -- <target> [args...]` in non-interactive mode.");
     process.exit(1);
   }
 
@@ -136,7 +136,7 @@ async function promptForTarget(targets) {
     ({ select } = await import("@inquirer/prompts"));
   } catch (error) {
     console.error("Missing interactive prompt dependency: `@inquirer/prompts`.");
-    console.error("Run `yarn install` from repository root, then run `yarn release` again.");
+    console.error("Run `pnpm install` from repository root, then run `pnpm release` again.");
     process.exit(1);
   }
 

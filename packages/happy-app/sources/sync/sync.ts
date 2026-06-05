@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
-import { apiSocket } from '@/sync/apiSocket';
+import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
+import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
@@ -15,18 +16,27 @@ import { syncCurrentPushToken } from './pushRegistration';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
-import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
+import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
-import { initializeTracking, tracking } from '@/track';
+import {
+    initializeTracking,
+    trackGitHubConnected,
+    trackMessageSent,
+    tracking,
+    trackPaywallCancelled,
+    trackPaywallError,
+    trackPaywallPresented,
+    trackPaywallPurchased,
+    trackPaywallRestored,
+} from '@/track';
+import type { MessageSentSource } from '@/track';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
-import { trackPaywallPresented, trackPaywallPurchased, trackPaywallCancelled, trackPaywallRestored, trackPaywallError } from '@/track';
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
 import { log } from '@/log';
 import { gitStatusSync } from './gitStatusSync';
-import { projectManager } from './projectManager';
 import { AsyncLock } from '@/utils/lock';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
@@ -40,11 +50,24 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
+import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
+import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
+import { encryptBlob } from '@/encryption/blob';
+import { readFileBytes } from '@/utils/readFileBytes';
+import { Modal } from '@/modal';
+import { t } from '@/text';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
     hasMore: boolean;
 };
+
+// Sentinel used as `before_seq` for the very first backward fetch of a
+// session. It must exceed any real `seq` value the server can produce.
+// `seq` is stored as Postgres int4 on the server, so the maximum is
+// 2_147_483_647. We use that exact upper bound to keep the request safely
+// within int4 while still being effectively "infinite" for any session.
+const SEQ_BACKWARD_INITIAL_SENTINEL = 2_147_483_647;
 
 type V3PostSessionMessagesResponse = {
     messages: Array<{
@@ -61,6 +84,13 @@ type OutboxMessage = {
     content: string;
 };
 
+type SendMessageOptions = {
+    displayText?: string;
+    source?: MessageSentSource;
+    /** Optional image attachments to send before the text message. */
+    attachments?: AttachmentPreview[];
+};
+
 class Sync {
     private static readonly BACKGROUND_SEND_TIMEOUT_MS = 30_000;
     encryption!: Encryption;
@@ -73,6 +103,11 @@ class Sync {
     private sendSync = new Map<string, InvalidateSync>();
     private sendAbortControllers = new Map<string, AbortController>();
     private sessionLastSeq = new Map<string, number>();
+    // Lowest seq value we have already fetched and applied for a session.
+    // Used as the cursor for backward pagination when the user scrolls up to
+    // load older history. Set after the initial latest-page fetch and
+    // advanced downward by loadOlderMessages.
+    private sessionOldestSeq = new Map<string, number>();
     private pendingOutbox = new Map<string, OutboxMessage[]>();
     private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
     private sessionQueueProcessing = new Set<string>();
@@ -115,9 +150,6 @@ class Sync {
         this.feedSync = new InvalidateSync(this.fetchFeed);
 
         const registerPushToken = async () => {
-            if (__DEV__) {
-                return;
-            }
             await this.registerPushToken();
         }
         this.pushTokenSync = new InvalidateSync(registerPushToken);
@@ -126,6 +158,14 @@ class Sync {
         // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
             this.appState = nextAppState;
+
+            // Notify server of focus state for push notification routing.
+            // Mobile: AppState.currentState reflects fg/bg directly.
+            // Web/desktop: visibilitychange/focus listeners below drive this same path
+            // by updating this.appState too — re-derive via getCurrentAppState() so
+            // the wire value matches what the server uses for suppression.
+            apiSocket.sendAppState(getCurrentAppState());
+
             if (nextAppState === 'active') {
                 const shouldFailAfterResume = this.backgroundSendStartedAt !== null
                     && this.hasPendingOutboxMessages()
@@ -153,6 +193,19 @@ class Sync {
                 this.maybeStartBackgroundSendWatchdog();
             }
         });
+
+        // Web/desktop: AppState alone doesn't capture tab focus/visibility.
+        // Notify server when the tab becomes hidden, regains visibility,
+        // or window focus changes — so push routing can suppress only when
+        // the user is actually looking at this client.
+        if (Platform.OS === 'web' && typeof document !== 'undefined') {
+            const broadcast = () => {
+                apiSocket.sendAppState(getCurrentAppState());
+            };
+            document.addEventListener('visibilitychange', broadcast);
+            window.addEventListener('focus', broadcast);
+            window.addEventListener('blur', broadcast);
+        }
     }
 
     async create(credentials: AuthCredentials, encryption: Encryption) {
@@ -212,14 +265,15 @@ class Sync {
         this.feedSync.invalidate();
         log.log('🔄 #init: All syncs invalidated, including artifacts');
 
-        // Wait for both sessions and machines to load, then mark as ready
-        Promise.all([
-            this.sessionsSync.awaitQueue(),
-            this.machinesSync.awaitQueue()
-        ]).then(() => {
+        // Mark UI ready as soon as sessions load. Machines sync may hang
+        // when encryption keys are unavailable (e.g. V1 auth fallback) —
+        // let it resolve in the background instead of blocking the UI.
+        this.sessionsSync.awaitQueue().then(() => {
             storage.getState().applyReady();
         }).catch((error) => {
-            console.error('Failed to load initial data:', error);
+            console.error('Failed to load sessions:', error);
+            // Still mark ready so the UI doesn't stay on a blank screen forever
+            storage.getState().applyReady();
         });
     }
 
@@ -438,23 +492,165 @@ class Sync {
         this.backgroundSendStartedAt = null;
     }
 
-    async sendMessage(sessionId: string, text: string, displayText?: string) {
+    /**
+     * Upload image attachments for a session: read bytes → encrypt → upload to server.
+     * Returns UploadedAttachment records to embed as file events before the text message.
+     * Failures are logged and skipped rather than aborting the whole message send.
+     */
+    private async uploadAttachmentsForSession(
+        sessionId: string,
+        attachments: AttachmentPreview[],
+    ): Promise<{ uploaded: UploadedAttachment[]; failed: number }> {
+        if (!this.credentials) return { uploaded: [], failed: attachments.length };
 
-        // Get encryption
-        const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) { // Should never happen
-            console.error(`Session ${sessionId} not found`);
-            return;
+        const blobKey = this.encryption.getSessionBlobKey(sessionId);
+        if (!blobKey) {
+            console.error(`[attachments] No blob key for session ${sessionId}`);
+            return { uploaded: [], failed: attachments.length };
+        }
+
+        const uploaded: UploadedAttachment[] = [];
+        let failed = 0;
+
+        for (const attachment of attachments) {
+            try {
+                const bytes = await readFileBytes(attachment.uri);
+                const encrypted = encryptBlob(bytes, blobKey);
+
+                const upload = await requestAttachmentUpload(
+                    this.credentials,
+                    sessionId,
+                    attachment.name,
+                    encrypted.length,
+                );
+
+                await uploadEncryptedBlob(upload, encrypted, this.credentials);
+                const { ref } = upload;
+
+                uploaded.push({
+                    ref,
+                    name: attachment.name,
+                    size: attachment.size,
+                    width: attachment.width,
+                    height: attachment.height,
+                    thumbhash: attachment.thumbhash,
+                });
+            } catch (err) {
+                console.error(`[attachments] Failed to upload ${attachment.name}:`, err);
+                failed++;
+                // Skip this attachment; do not abort the whole message send.
+            }
+        }
+
+        return { uploaded, failed };
+    }
+
+    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
+
+        // Get encryption — may not be ready yet if sessions are still syncing
+        let encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            // Wait for sessions sync to complete (initializes encryption keys)
+            await this.sessionsSync.awaitQueue();
+            encryption = this.encryption.getSessionEncryption(sessionId);
+            if (!encryption) {
+                console.error(`Session ${sessionId} not found after sync`);
+                return;
+            }
         }
 
         // Get session data from storage
-        const session = storage.getState().sessions[sessionId];
+        let session = storage.getState().sessions[sessionId];
         if (!session) {
-            console.error(`Session ${sessionId} not found in storage`);
-            return;
+            await this.sessionsSync.awaitQueue();
+            session = storage.getState().sessions[sessionId];
+            if (!session) {
+                console.error(`Session ${sessionId} not found in storage after sync`);
+                return;
+            }
         }
 
-        const { permissionMode, model } = resolveMessageModeMeta(session);
+        const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
+        const { displayText, source = 'chat', attachments } = options ?? {};
+
+        // Image attachments are wired into the Claude pipeline only; Codex /
+        // Gemini / OpenClaw runners read message.content.text and ignore
+        // file events, so dropping attachments silently would leave the user
+        // wondering why the image was skipped. Warn and send text only.
+        const flavor = session.metadata?.flavor;
+        const supportsAttachments = !flavor || flavor === 'claude';
+        const effectiveAttachments = supportsAttachments ? attachments : undefined;
+
+        if (attachments && attachments.length > 0 && !supportsAttachments) {
+            Modal.alert(
+                t('imageUpload.notSupportedTitle'),
+                t('imageUpload.notSupportedMessage'),
+                [{ text: t('common.ok'), style: 'cancel' }],
+            );
+        }
+
+        // Upload attachments and queue file events before the text message.
+        if (effectiveAttachments && effectiveAttachments.length > 0) {
+            const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, effectiveAttachments);
+
+            if (failed > 0) {
+                Modal.alert(
+                    t('imageUpload.uploadFailedTitle'),
+                    t('imageUpload.uploadFailedMessage', { count: failed }),
+                    [{ text: t('common.ok'), style: 'cancel' }],
+                );
+            }
+
+            if (uploaded.length > 0) {
+                let pending = this.pendingOutbox.get(sessionId);
+                if (!pending) {
+                    pending = [];
+                    this.pendingOutbox.set(sessionId, pending);
+                }
+
+                for (const att of uploaded) {
+                    const fileRecord: RawRecord = {
+                        role: 'session',
+                        content: {
+                            type: 'session',
+                            data: {
+                                id: randomUUID(),
+                                time: Date.now(),
+                                role: 'user',
+                                ev: {
+                                    t: 'file',
+                                    ref: att.ref,
+                                    name: att.name,
+                                    size: att.size,
+                                    // Include image metadata when we have dimensions; thumbhash is
+                                    // optional. The native iOS picker can't generate a thumbhash
+                                    // without Canvas, so requiring it here would reduce the chat
+                                    // bubble to a compact filename row instead of an inline picture.
+                                    // FileView only needs w/h to size the inline render — placeholder
+                                    // is absent, but the real image is decrypted on mount.
+                                    ...(att.width > 0 && att.height > 0
+                                        ? {
+                                            image: {
+                                                width: att.width,
+                                                height: att.height,
+                                                ...(att.thumbhash ? { thumbhash: att.thumbhash } : {}),
+                                            },
+                                        }
+                                        : {}),
+                                },
+                            },
+                        },
+                    };
+                    const encryptedFileRecord = await encryption.encryptRawRecord(fileRecord);
+                    const fileLocalId = randomUUID();
+                    const fileNormalized = normalizeRawMessage(fileLocalId, fileLocalId, Date.now(), fileRecord);
+                    if (fileNormalized) {
+                        this.enqueueMessages(sessionId, [fileNormalized]);
+                    }
+                    pending.push({ localId: fileLocalId, content: encryptedFileRecord });
+                }
+            }
+        }
 
         // Generate local ID
         const localId = randomUUID();
@@ -476,8 +672,6 @@ class Sync {
             sentFrom = 'web'; // fallback
         }
 
-        const fallbackModel: string | null = null;
-
         // Create user message content with metadata
         const content: RawRecord = {
             role: 'user',
@@ -487,10 +681,10 @@ class Sync {
             },
             meta: {
                 sentFrom,
-                permissionMode,
-                model,
-                fallbackModel,
                 appendSystemPrompt: systemPrompt,
+                ...(modeMeta.permissionMode !== undefined ? { permissionMode: modeMeta.permissionMode } : {}),
+                ...(modeMeta.model !== undefined ? { model: modeMeta.model } : {}),
+                ...(modeMeta.effort !== undefined ? { effort: modeMeta.effort } : {}),
                 ...(displayText && { displayText }) // Add displayText if provided
             }
         };
@@ -512,9 +706,18 @@ class Sync {
             localId,
             content: encryptedRawRecord
         });
+        trackMessageSent(source, session.metadata);
 
         this.getSendSync(sessionId).invalidate();
         this.maybeStartBackgroundSendWatchdog();
+    }
+
+    /** Server sent us settings — merge any pending local changes on top, then apply as one update. */
+    private applyServerSettings = (serverSettings: Settings, version: number) => {
+        const merged = Object.keys(this.pendingSettings).length > 0
+            ? applySettings(serverSettings, this.pendingSettings)
+            : serverSettings;
+        storage.getState().applySettings(merged, version);
     }
 
     applySettings = (delta: Partial<Settings>) => {
@@ -601,48 +804,50 @@ class Sync {
         }
     }
 
-    presentPaywall = async (): Promise<{ success: boolean; purchased?: boolean; error?: string }> => {
+    presentPaywall = async (flow?: string): Promise<{ success: boolean; purchased?: boolean; error?: string }> => {
         try {
             // Check if RevenueCat is initialized
             if (!this.revenueCatInitialized) {
                 const error = 'RevenueCat not initialized';
-                trackPaywallError(error);
+                trackPaywallError(error, flow);
                 return { success: false, error };
             }
 
             // Track paywall presentation
-            trackPaywallPresented();
+            trackPaywallPresented(flow);
 
-            // Present the paywall
-            const result = await RevenueCat.presentPaywall();
+            // Present the paywall (with flow custom variable if specified)
+            const result = await RevenueCat.presentPaywall(
+                flow ? { customVariables: { flow } } : undefined
+            );
 
             // Handle the result
             switch (result) {
                 case PaywallResult.PURCHASED:
-                    trackPaywallPurchased();
+                    trackPaywallPurchased(flow);
                     // Refresh customer info after purchase
                     await this.syncPurchases();
                     return { success: true, purchased: true };
                 case PaywallResult.RESTORED:
-                    trackPaywallRestored();
+                    trackPaywallRestored(flow);
                     // Refresh customer info after restore
                     await this.syncPurchases();
                     return { success: true, purchased: true };
                 case PaywallResult.CANCELLED:
-                    trackPaywallCancelled();
+                    trackPaywallCancelled(flow);
                     return { success: true, purchased: false };
                 case PaywallResult.NOT_PRESENTED:
-                    // Don't track error for NOT_PRESENTED as it's a platform limitation
+                    trackPaywallError('Paywall not presented', flow);
                     return { success: false, error: 'Paywall not available on this platform' };
                 case PaywallResult.ERROR:
                 default:
                     const errorMsg = 'Failed to present paywall';
-                    trackPaywallError(errorMsg);
+                    trackPaywallError(errorMsg, flow);
                     return { success: false, error: errorMsg };
             }
         } catch (error: any) {
             const errorMessage = error.message || 'Failed to present paywall';
-            trackPaywallError(errorMessage);
+            trackPaywallError(errorMessage, flow);
             return { success: false, error: errorMessage };
         }
     }
@@ -692,7 +897,8 @@ class Sync {
         const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
             headers: {
                 'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             }
         });
 
@@ -1066,7 +1272,8 @@ class Sync {
         const response = await fetch(`${API_ENDPOINT}/v1/machines`, {
             headers: {
                 'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             }
         });
 
@@ -1282,17 +1489,20 @@ class Sync {
         if (Object.keys(this.pendingSettings).length > 0) {
 
             while (retryCount < maxRetries) {
+                // Snapshot what we're about to send so we can detect concurrent changes
+                const sentPending = { ...this.pendingSettings };
                 let version = storage.getState().settingsVersion;
                 let settings = applySettings(storage.getState().settings, this.pendingSettings);
                 const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
                     method: 'POST',
                     body: JSON.stringify({
-                        settings: await this.encryption.encryptRaw(settings),
+                        settings: await this.encryption.encryptRaw(settingsToSyncPayload(settings)),
                         expectedVersion: version ?? 0
                     }),
                     headers: {
                         'Authorization': `Bearer ${this.credentials.token}`,
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-Happy-Client': getHappyClientId(),
                     }
                 });
                 const data = await response.json() as {
@@ -1304,8 +1514,16 @@ class Sync {
                     success: true
                 };
                 if (data.success) {
-                    this.pendingSettings = {};
-                    savePendingSettings({});
+                    // Only clear keys we actually sent — preserve any settings
+                    // added by applySettings() calls during the POST roundtrip
+                    const newPending: Partial<Settings> = {};
+                    for (const key of Object.keys(this.pendingSettings) as (keyof Settings)[]) {
+                        if (!(key in sentPending) || this.pendingSettings[key] !== sentPending[key]) {
+                            (newPending as any)[key] = this.pendingSettings[key];
+                        }
+                    }
+                    this.pendingSettings = newPending;
+                    savePendingSettings(this.pendingSettings);
                     break;
                 }
                 if (data.error === 'version-mismatch') {
@@ -1318,7 +1536,7 @@ class Sync {
                     const mergedSettings = applySettings(serverSettings, this.pendingSettings);
 
                     // Update local storage with merged result at server's version
-                    storage.getState().applySettings(mergedSettings, data.currentVersion);
+                    this.applyServerSettings(mergedSettings, data.currentVersion);
 
                     // Sync tracking state with merged settings
                     if (tracking) {
@@ -1348,7 +1566,8 @@ class Sync {
         const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
             headers: {
                 'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             }
         });
         if (!response.ok) {
@@ -1373,8 +1592,8 @@ class Sync {
             version: data.settingsVersion
         }));
 
-        // Apply settings to storage
-        storage.getState().applySettings(parsedSettings, data.settingsVersion);
+        // Apply settings to storage, re-layering any pending local changes on top
+        this.applyServerSettings(parsedSettings, data.settingsVersion);
 
         // Sync PostHog opt-out state with settings
         if (tracking) {
@@ -1393,7 +1612,8 @@ class Sync {
         const response = await fetch(`${API_ENDPOINT}/v1/account/profile`, {
             headers: {
                 'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
             }
         });
 
@@ -1442,6 +1662,7 @@ class Sync {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-Happy-Client': getHappyClientId(),
                 },
                 body: JSON.stringify({
                     platform,
@@ -1599,55 +1820,218 @@ class Sync {
                 throw new Error(`Session encryption not ready for ${sessionId}`);
             }
 
-            let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
-            let hasMore = true;
-            let totalNormalized = 0;
+            const knownLastSeq = this.sessionLastSeq.get(sessionId);
+            const isInitialLoad = knownLastSeq === undefined;
+            if (isInitialLoad) {
+                // Initial load. Pull only the most recent page so the user can
+                // start chatting immediately. Older history streams in lazily
+                // through loadOlderMessages() when the user scrolls up — and
+                // also through a background prefetch kicked off below, so the
+                // history fills in even when the user doesn't scroll.
+                //
+                // Previously this method walked forward from seq=0 until every
+                // page had been fetched and decrypted, which blocked the chat
+                // from displaying anything for sessions with thousands of
+                // messages. The user's reported pain point was "opening a long
+                // session feels frozen" — this is the fix.
+                await this.fetchInitialLatestPage(sessionId, encryption);
+            } else {
+                // Forward incremental sync. Used after reconnect, invalidate,
+                // or any subsequent visit. Only pulls messages newer than what
+                // we already have, so it's bounded and fast in normal use.
+                await this.fetchForwardSince(sessionId, encryption, knownLastSeq);
+            }
 
-            while (hasMore) {
-                const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
+            storage.getState().applyMessagesLoaded(sessionId);
+            log.log(`💬 fetchMessages completed for session ${sessionId}`);
+
+            if (isInitialLoad) {
+                // Fire-and-forget. The chat is interactive at this point;
+                // background pages stream in without blocking either the
+                // surrounding lock or the UI. loadOlderMessages takes the
+                // same lock internally, so the loop naturally serialises
+                // with on-scroll triggers and live socket updates.
+                void this.prefetchOlderMessagesInBackground(sessionId);
+            }
+        });
+    }
+
+    private prefetchOlderMessagesInBackground = async (sessionId: string) => {
+        const SLEEP_BETWEEN_PAGES_MS = 250;
+        // While loadOlderMessages handles the actual work, this loop is what
+        // keeps it going without user input. We keep stepping until either:
+        //   - the server says there is no more older history, or
+        //   - the session is no longer present in the store (user navigated
+        //     away and the session was unloaded), or
+        //   - we hit seq = 1 (the very first message), or
+        //   - the encryption key is gone (logged out).
+        // The loop yields between pages to keep the UI thread responsive
+        // and to spread out server load.
+        while (true) {
+            const sessionMessages = storage.getState().sessionMessages[sessionId];
+            if (!sessionMessages || !sessionMessages.hasMoreOlder) {
+                return;
+            }
+            if (!this.encryption.getSessionEncryption(sessionId)) {
+                return;
+            }
+            const oldestSeq = this.sessionOldestSeq.get(sessionId);
+            if (oldestSeq === undefined || oldestSeq <= 1) {
+                return;
+            }
+
+            try {
+                await this.loadOlderMessages(sessionId);
+            } catch (error) {
+                log.log(`💬 prefetchOlderMessagesInBackground: error for ${sessionId}, stopping: ${String(error)}`);
+                return;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, SLEEP_BETWEEN_PAGES_MS));
+        }
+    }
+
+    private fetchInitialLatestPage = async (
+        sessionId: string,
+        encryption: ReturnType<Encryption['getSessionEncryption']> & {}
+    ) => {
+        const response = await apiSocket.request(
+            `/v3/sessions/${sessionId}/messages?before_seq=${SEQ_BACKWARD_INITIAL_SENTINEL}&limit=100`
+        );
+        if (!response.ok) {
+            throw new Error(`Failed to fetch initial page for ${sessionId}: ${response.status}`);
+        }
+        const data = await response.json() as V3GetSessionMessagesResponse;
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+
+        await this.applyFetchedMessages(sessionId, encryption, messages);
+
+        // Anchor both ends so future incremental forward sync resumes from
+        // maxSeq, and loadOlderMessages can page backward from minSeq.
+        let maxSeq = 0;
+        let minSeq = Number.POSITIVE_INFINITY;
+        for (const message of messages) {
+            if (message.seq > maxSeq) maxSeq = message.seq;
+            if (message.seq < minSeq) minSeq = message.seq;
+        }
+        this.sessionLastSeq.set(sessionId, maxSeq);
+        if (messages.length > 0) {
+            this.sessionOldestSeq.set(sessionId, minSeq);
+        }
+        storage.getState().applyOlderMessagesPagination(sessionId, {
+            hasMore: !!data.hasMore && messages.length > 0
+        });
+    }
+
+    private fetchForwardSince = async (
+        sessionId: string,
+        encryption: ReturnType<Encryption['getSessionEncryption']> & {},
+        fromSeq: number
+    ) => {
+        let afterSeq = fromSeq;
+        while (true) {
+            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
+            if (!response.ok) {
+                throw new Error(`Failed to forward-sync ${sessionId}: ${response.status}`);
+            }
+            const data = await response.json() as V3GetSessionMessagesResponse;
+            const messages = Array.isArray(data.messages) ? data.messages : [];
+
+            await this.applyFetchedMessages(sessionId, encryption, messages);
+
+            let maxSeq = afterSeq;
+            for (const message of messages) {
+                if (message.seq > maxSeq) maxSeq = message.seq;
+            }
+            this.sessionLastSeq.set(sessionId, maxSeq);
+
+            if (!data.hasMore) break;
+            if (maxSeq === afterSeq) {
+                log.log(`💬 fetchForwardSince: pagination stalled for ${sessionId}, stopping to avoid infinite loop`);
+                break;
+            }
+            afterSeq = maxSeq;
+        }
+    }
+
+    private applyFetchedMessages = async (
+        sessionId: string,
+        encryption: ReturnType<Encryption['getSessionEncryption']> & {},
+        messages: ApiMessage[]
+    ) => {
+        if (messages.length === 0) return;
+        const decryptedMessages = await encryption.decryptMessages(messages);
+        const normalizedMessages: NormalizedMessage[] = [];
+        for (let i = 0; i < decryptedMessages.length; i++) {
+            const decrypted = decryptedMessages[i];
+            if (!decrypted) continue;
+            const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+            if (normalized) {
+                normalizedMessages.push(normalized);
+            }
+        }
+        if (normalizedMessages.length > 0) {
+            this.applyMessages(sessionId, normalizedMessages);
+        }
+    }
+
+    /**
+     * Fetch one page of older messages for a session and prepend them to the
+     * store. Called from the chat UI when the user scrolls past the top of
+     * the currently loaded history. No-op when we have already fetched the
+     * earliest message, when no initial fetch has happened yet, or when an
+     * older-fetch is already in flight for this session.
+     */
+    loadOlderMessages = async (sessionId: string) => {
+        const oldestSeq = this.sessionOldestSeq.get(sessionId);
+        if (oldestSeq === undefined || oldestSeq <= 1) {
+            return;
+        }
+        const sessionMessages = storage.getState().sessionMessages[sessionId];
+        if (!sessionMessages || sessionMessages.isLoadingOlder || !sessionMessages.hasMoreOlder) {
+            return;
+        }
+
+        storage.getState().applyOlderMessagesLoading(sessionId, true);
+        const lock = this.getSessionMessageLock(sessionId);
+        try {
+            await lock.inLock(async () => {
+                const encryption = this.encryption.getSessionEncryption(sessionId);
+                if (!encryption) {
+                    log.log(`💬 loadOlderMessages: encryption not ready for ${sessionId}`);
+                    return;
+                }
+                // Re-read the cursor inside the lock. A concurrent
+                // socket-pushed update or reload could have changed it.
+                const beforeSeq = this.sessionOldestSeq.get(sessionId);
+                if (beforeSeq === undefined || beforeSeq <= 1) {
+                    return;
+                }
+                const response = await apiSocket.request(
+                    `/v3/sessions/${sessionId}/messages?before_seq=${beforeSeq}&limit=100`
+                );
                 if (!response.ok) {
-                    throw new Error(`Failed to fetch messages for ${sessionId}: ${response.status}`);
+                    throw new Error(`Failed to load older messages for ${sessionId}: ${response.status}`);
                 }
                 const data = await response.json() as V3GetSessionMessagesResponse;
                 const messages = Array.isArray(data.messages) ? data.messages : [];
 
-                let maxSeq = afterSeq;
+                await this.applyFetchedMessages(sessionId, encryption, messages);
+
+                let minSeq = beforeSeq;
                 for (const message of messages) {
-                    if (message.seq > maxSeq) {
-                        maxSeq = message.seq;
-                    }
+                    if (message.seq < minSeq) minSeq = message.seq;
                 }
-
-                const decryptedMessages = await encryption.decryptMessages(messages);
-                const normalizedMessages: NormalizedMessage[] = [];
-                for (let i = 0; i < decryptedMessages.length; i++) {
-                    const decrypted = decryptedMessages[i];
-                    if (!decrypted) {
-                        continue;
-                    }
-                    const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-                    if (normalized) {
-                        normalizedMessages.push(normalized);
-                    }
+                if (messages.length > 0) {
+                    this.sessionOldestSeq.set(sessionId, minSeq);
                 }
-
-                if (normalizedMessages.length > 0) {
-                    totalNormalized += normalizedMessages.length;
-                    this.enqueueMessages(sessionId, normalizedMessages);
-                }
-
-                this.sessionLastSeq.set(sessionId, maxSeq);
-                hasMore = !!data.hasMore;
-                if (hasMore && maxSeq === afterSeq) {
-                    log.log(`💬 fetchMessages: pagination stalled for ${sessionId}, stopping to avoid infinite loop`);
-                    break;
-                }
-                afterSeq = maxSeq;
-            }
-
-            storage.getState().applyMessagesLoaded(sessionId);
-            log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages`);
-        });
+                storage.getState().applyOlderMessagesPagination(sessionId, {
+                    hasMore: !!data.hasMore && messages.length > 0
+                });
+            });
+        } finally {
+            storage.getState().applyOlderMessagesLoading(sessionId, false);
+        }
     }
 
     private registerPushToken = async () => {
@@ -1675,6 +2059,12 @@ class Sync {
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {
             log.log('🔌 Socket reconnected');
+
+            // Send current focus state on reconnect so the server's
+            // suppression rules pick up where we left off (handshake.auth.appState
+            // covers the very first connect; this covers reconnects).
+            apiSocket.sendAppState(getCurrentAppState());
+
             this.sessionsSync.invalidate();
             this.machinesSync.invalidate();
             log.log('🔌 Socket reconnected: Invalidating artifacts sync');
@@ -1703,12 +2093,16 @@ class Sync {
 
         if (updateData.body.t === 'new-message') {
 
-            // Get encryption
-            const encryption = this.encryption.getSessionEncryption(updateData.body.sid);
-            if (!encryption) { // Should never happen
-                console.error(`Session ${updateData.body.sid} not found`);
-                this.fetchSessions(); // Just fetch sessions again
-                return;
+            // Get encryption — may not be ready if sessions are still syncing
+            let encryption = this.encryption.getSessionEncryption(updateData.body.sid);
+            if (!encryption) {
+                await this.sessionsSync.awaitQueue();
+                encryption = this.encryption.getSessionEncryption(updateData.body.sid);
+                if (!encryption) {
+                    console.error(`Session ${updateData.body.sid} not found after sync`);
+                    this.fetchSessions();
+                    return;
+                }
             }
 
             // Decrypt message
@@ -1803,27 +2197,35 @@ class Sync {
             // Remove encryption keys from memory
             this.encryption.removeSessionEncryption(sessionId);
 
-            // Remove from project manager
-            projectManager.removeSession(sessionId);
-
             // Clear any cached git status
             gitStatusSync.clearForSession(sessionId);
             this.messagesSync.delete(sessionId);
             this.sendSync.delete(sessionId);
             this.pendingOutbox.delete(sessionId);
             this.sessionLastSeq.delete(sessionId);
+            this.sessionOldestSeq.delete(sessionId);
             this.sessionMessageLocks.delete(sessionId);
             this.sessionMessageQueue.delete(sessionId);
             this.sessionQueueProcessing.delete(sessionId);
 
             log.log(`🗑️ Session ${sessionId} deleted from local storage`);
         } else if (updateData.body.t === 'update-session') {
-            const session = storage.getState().sessions[updateData.body.id];
+            // Session + encryption may not be initialized yet if sessions are
+            // still syncing on startup. Mirror the new-message path: await the
+            // sessions sync queue and re-check before giving up — dropping here
+            // silently loses the metadata update that carries the chat title
+            // (#1251: every chat stuck on "New chat" after the lazy-load change).
+            let session = storage.getState().sessions[updateData.body.id];
+            let sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
+            if (!session || !sessionEncryption) {
+                await this.sessionsSync.awaitQueue();
+                session = storage.getState().sessions[updateData.body.id];
+                sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
+            }
             if (session) {
-                // Get session encryption
-                const sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
                 if (!sessionEncryption) {
-                    console.error(`Session encryption not found for ${updateData.body.id} - this should never happen`);
+                    console.error(`Session encryption not found for ${updateData.body.id} after sync`);
+                    this.fetchSessions();
                     return;
                 }
 
@@ -1873,6 +2275,7 @@ class Sync {
         } else if (updateData.body.t === 'update-account') {
             const accountUpdate = updateData.body;
             const currentProfile = storage.getState().profile;
+            const hadGitHub = !!currentProfile.github?.login;
 
             // Build updated profile with new data
             const updatedProfile: Profile = {
@@ -1886,6 +2289,10 @@ class Sync {
 
             // Apply the updated profile to storage
             storage.getState().applyProfile(updatedProfile);
+
+            if (!hadGitHub && updatedProfile.github?.login) {
+                trackGitHubConnected();
+            }
 
             // Handle settings updates (new for profile sync)
             if (accountUpdate.settings?.value) {
@@ -1902,13 +2309,74 @@ class Sync {
                         );
                     }
 
-                    storage.getState().applySettings(parsedSettings, accountUpdate.settings.version);
+                    this.applyServerSettings(parsedSettings, accountUpdate.settings.version);
                     log.log(`📋 Settings synced from server (schema v${settingsSchemaVersion}, version ${accountUpdate.settings.version})`);
                 } catch (error) {
                     console.error('❌ Failed to process settings update:', error);
                     // Don't crash on settings sync errors, just log
                 }
             }
+        } else if (updateData.body.t === 'new-machine') {
+            const machineUpdate = updateData.body;
+            const machineId = machineUpdate.machineId;
+
+            // Brand-new machines (cold onboarding) are delivered via 'new-machine'
+            // before any fetchMachines has seen them, so their per-machine
+            // encryption isn't initialized yet. The update carries the data
+            // encryption key — register it here (mirroring fetchMachines) or every
+            // later decrypt for this machine fails and it never lands in storage,
+            // leaving the new-session screen unable to start a session until an app
+            // restart / socket reconnect triggers a full machine refetch.
+            const machineKeysMap = new Map<string, Uint8Array | null>();
+            if (machineUpdate.dataEncryptionKey) {
+                const decryptedKey = await this.encryption.decryptEncryptionKey(machineUpdate.dataEncryptionKey);
+                if (decryptedKey) {
+                    machineKeysMap.set(machineId, decryptedKey);
+                    this.machineDataKeys.set(machineId, decryptedKey);
+                } else {
+                    console.error(`Failed to decrypt data encryption key for new machine ${machineId}`);
+                    machineKeysMap.set(machineId, null);
+                }
+            } else {
+                machineKeysMap.set(machineId, null);
+            }
+            await this.encryption.initializeMachines(machineKeysMap);
+
+            const machineEncryption = this.encryption.getMachineEncryption(machineId);
+            if (!machineEncryption) {
+                console.error(`Machine encryption not found for ${machineId} after init - cannot apply new-machine`);
+                return;
+            }
+
+            // Preserve an existing createdAt if we somehow already know this machine.
+            const existing = storage.getState().machines[machineId];
+            const newMachine: Machine = {
+                id: machineId,
+                seq: machineUpdate.seq,
+                createdAt: existing?.createdAt ?? machineUpdate.createdAt,
+                updatedAt: machineUpdate.updatedAt,
+                active: machineUpdate.active,
+                activeAt: machineUpdate.activeAt,
+                metadata: null,
+                metadataVersion: machineUpdate.metadataVersion,
+                daemonState: null,
+                daemonStateVersion: machineUpdate.daemonStateVersion
+            };
+
+            // Decrypt best-effort; still apply the machine on failure so it stays
+            // visible/usable (matches fetchMachines' fallback behavior).
+            try {
+                newMachine.metadata = machineUpdate.metadata
+                    ? await machineEncryption.decryptMetadata(machineUpdate.metadataVersion, machineUpdate.metadata)
+                    : null;
+                newMachine.daemonState = machineUpdate.daemonState
+                    ? await machineEncryption.decryptDaemonState(machineUpdate.daemonStateVersion, machineUpdate.daemonState)
+                    : null;
+            } catch (error) {
+                console.error(`Failed to decrypt new machine ${machineId}:`, error);
+            }
+
+            storage.getState().applyMachines([newMachine]);
         } else if (updateData.body.t === 'update-machine') {
             const machineUpdate = updateData.body;
             const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
@@ -1961,6 +2429,16 @@ class Sync {
 
             // Update storage using applyMachines which rebuilds sessionListViewData
             storage.getState().applyMachines([updatedMachine]);
+        } else if (updateData.body.t === 'delete-machine') {
+            const machineId = updateData.body.machineId;
+            log.log(`🗑️ Delete machine update received for ${machineId}`);
+            if (!storage.getState().machines[machineId]) {
+                log.log(`Machine ${machineId} not in storage, skipping delete`);
+            } else {
+                storage.getState().deleteMachine(machineId);
+                this.encryption.removeMachineEncryption(machineId);
+                this.machineDataKeys.delete(machineId);
+            }
         } else if (updateData.body.t === 'relationship-updated') {
             log.log('👥 Received relationship-updated update');
             const relationshipUpdate = updateData.body;
@@ -2179,6 +2657,13 @@ class Sync {
                 };
                 storage.getState().applyMachines([updatedMachine]);
             }
+        }
+
+        // Session-level lifecycle event (Claude finished, needs permission, asks question).
+        // This is the same signal that triggers the mobile push — bump browser-tab
+        // unread counter on these only, ignore the noisy per-message stream.
+        if (updateData.type === 'session-event') {
+            notifyUnreadMessage();
         }
 
         // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity

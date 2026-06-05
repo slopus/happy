@@ -166,8 +166,9 @@ export function startPreviewIdleSweeper(
         }
     }, intervalMs);
 
-    if (typeof (timer as { unref?: () => void }).unref === 'function') {
-        (timer as { unref: () => void }).unref();
+    const unrefTimer = timer as unknown as { unref?: () => void };
+    if (typeof unrefTimer.unref === 'function') {
+        unrefTimer.unref();
     }
 
     log.info({ module: 'preview-idle-sweeper', intervalMs, idleTimeoutMs }, 'preview idle sweeper started');

@@ -41,20 +41,21 @@ import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
+import { useShallow } from 'zustand/react/shallow';
+import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { Modal } from '@/modal';
 import type { Machine, Session } from '@/sync/storageTypes';
 import {
     getHardcodedPermissionModes,
     getHardcodedModelModes,
     getEffortLevelsForModel,
-    getDefaultEffortKeyForModel,
-    getDefaultPermissionModeKey,
-    getDefaultModelKey,
     getSupportsWorktree,
     type PermissionMode,
     type ModelMode,
     type EffortLevel,
 } from '@/components/modelModeOptions';
+import { isRunningOnMac } from '@/utils/platform';
+import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 
 // Agent icon assets
 const agentIcons = {
@@ -79,6 +80,9 @@ type PickerType = 'machine' | 'path' | 'worktree';
 type PermissionStyle = { color: string; icon: 'play-forward' | 'pause' };
 
 const COMPOSER_INPUT_VERTICAL_PADDING = Platform.OS === 'web' ? 10 : 8;
+// Taller composer on web/desktop where vertical space is plentiful; keep the
+// compact cap on native mobile so the input doesn't dominate the screen.
+const COMPOSER_INPUT_MAX_HEIGHT = Platform.OS === 'web' ? 480 : 240;
 const COMPOSER_SEND_BUTTON_SIZE = 32;
 const COMPOSER_SEND_BUTTON_MARGIN_BOTTOM = Math.max(
     0,
@@ -465,6 +469,34 @@ function getMachineName(machine: Machine): string {
     return machine.metadata?.displayName || machine.metadata?.host || 'unknown';
 }
 
+// Owns the `input` subscription so the parent screen can stay decoupled from
+// keystroke-rate state changes. Memoized: parent re-renders (e.g. when
+// `canSend` flips or a picker opens) won't force the input to re-render
+// because all of its props are stable.
+type PromptInputProps = {
+    placeholder: string;
+    onKeyPress?: (e: KeyPressEvent) => boolean;
+};
+const PromptInput = React.memo(React.forwardRef<MultiTextInputHandle, PromptInputProps>(
+    function PromptInput(props, ref) {
+        const value = useNewSessionDraft((s) => s.input);
+        const onChangeText = useNewSessionDraft((s) => s.setInput);
+        return (
+            <MultiTextInput
+                ref={ref}
+                value={value}
+                onChangeText={onChangeText}
+                placeholder={props.placeholder}
+                lineHeight={MULTI_TEXT_INPUT_LINE_HEIGHT}
+                paddingTop={COMPOSER_INPUT_VERTICAL_PADDING}
+                paddingBottom={COMPOSER_INPUT_VERTICAL_PADDING}
+                maxHeight={COMPOSER_INPUT_MAX_HEIGHT}
+                onKeyPress={props.onKeyPress}
+            />
+        );
+    },
+));
+
 function NewSessionScreen() {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
@@ -476,11 +508,34 @@ function NewSessionScreen() {
     const allMachines = useAllMachines({ includeOffline: true });
     const sessions = useSessions();
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
+    const agentDefaultOverrides = useSetting('agentDefaultOverrides');
 
-    // Persisted draft state (survives navigation)
-    const draft = useNewSessionDraft();
-    const prompt = draft.input;
-    const setPrompt = draft.setInput;
+    // Persisted draft state (survives navigation).
+    //
+    // We deliberately do NOT subscribe to `input` at the parent level here:
+    // typing flips `input` on every keystroke, and a parent re-render would
+    // cascade through the whole config box, machine/path pickers, and all
+    // the heavy `useMemo`s below. Instead, the input subtree (PromptInput)
+    // owns the subscription, the parent only listens to a derived
+    // `hasText` boolean for the auto-collapse effect, and `handleSend`
+    // reads the live value via `useNewSessionDraft.getState()` on demand.
+    const draft = useNewSessionDraft(useShallow((s) => ({
+        selectedMachineId: s.selectedMachineId,
+        setMachineId: s.setMachineId,
+        selectedPath: s.selectedPath,
+        setPath: s.setPath,
+        agentType: s.agentType,
+        setAgentType: s.setAgentType,
+        permissionMode: s.permissionMode,
+        setPermissionMode: s.setPermissionMode,
+        modelMode: s.modelMode,
+        setModelMode: s.setModelMode,
+        sessionType: s.sessionType,
+        setSessionType: s.setSessionType,
+        worktreeKey: s.worktreeKey,
+        setWorktreeKey: s.setWorktreeKey,
+    })));
+    const hasText = useNewSessionDraft((s) => s.input.trim().length > 0);
     const selectedAgent = draft.agentType;
     const setSelectedAgent = draft.setAgentType;
     const selectedMachineId = draft.selectedMachineId;
@@ -488,10 +543,11 @@ function NewSessionScreen() {
     const selectedPath = draft.selectedPath;
     const setSelectedPath = draft.setPath;
     const [worktreeKey, setWorktreeKey] = React.useState<string>(
-        draft.sessionType === 'worktree' ? '__new__' : '__none__'
+        draft.worktreeKey ?? (draft.sessionType === 'worktree' ? '__new__' : '__none__')
     );
     React.useEffect(() => {
         draft.setSessionType(worktreeKey !== '__none__' ? 'worktree' : 'simple');
+        draft.setWorktreeKey(worktreeKey === '__none__' || worktreeKey === '__new__' ? null : worktreeKey);
     }, [worktreeKey]);
 
     // Local-only UI state (not persisted)
@@ -643,41 +699,49 @@ function NewSessionScreen() {
         () => getEffortLevelsForModel(selectedAgent, currentModelKey),
         [selectedAgent, currentModelKey],
     );
+    const effectiveAgentDefaults = React.useMemo(() => (
+        resolveAgentDefaultConfig(agentDefaultOverrides, selectedAgent)
+    ), [agentDefaultOverrides, selectedAgent]);
 
     const supportsWorktree = getSupportsWorktree(selectedAgent);
     const showModel = modelModes.length > 1;
     const showEffort = effortLevels.length > 0;
     const showPermission = permissionModes.length > 1;
 
-    // Reset indices when agent changes — try draft keys first, then defaults
+    // Reset indices when agent/default settings change.
     React.useEffect(() => {
-        const draftPermIdx = permissionModes.findIndex(m => m.key === draft.permissionMode);
-        const defaultPermIdx = permissionModes.findIndex(m => m.key === getDefaultPermissionModeKey(selectedAgent));
-        setPermissionIndex(draftPermIdx >= 0 ? draftPermIdx : (defaultPermIdx >= 0 ? defaultPermIdx : 0));
+        const defaultPermIdx = permissionModes.findIndex(m => m.key === effectiveAgentDefaults.permissionMode);
+        setPermissionIndex(defaultPermIdx >= 0 ? defaultPermIdx : 0);
 
-        const draftModelIdx = modelModes.findIndex(m => m.key === draft.modelMode);
-        const defaultModelIdx = modelModes.findIndex(m => m.key === getDefaultModelKey(selectedAgent));
-        setModelIndex(draftModelIdx >= 0 ? draftModelIdx : (defaultModelIdx >= 0 ? defaultModelIdx : 0));
+        const defaultModelIdx = modelModes.findIndex(m => m.key === effectiveAgentDefaults.modelMode);
+        setModelIndex(defaultModelIdx >= 0 ? defaultModelIdx : 0);
 
         if (!supportsWorktree) setWorktreeKey('__none__');
-    }, [selectedAgent, permissionModes, modelModes, supportsWorktree]);
+    }, [permissionModes, modelModes, supportsWorktree, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode]);
 
     // Reset effort when model changes
     React.useEffect(() => {
-        const defaultEffort = getDefaultEffortKeyForModel(selectedAgent, currentModelKey);
+        const defaultEffort = effectiveAgentDefaults.effortLevel;
         if (defaultEffort && effortLevels.length > 0) {
             const idx = effortLevels.findIndex(e => e.key === defaultEffort);
             setEffortIndex(idx >= 0 ? idx : effortLevels.length - 1);
         } else {
             setEffortIndex(0);
         }
-    }, [selectedAgent, currentModelKey, effortLevels]);
+    }, [effectiveAgentDefaults.effortLevel, currentModelKey, effortLevels]);
 
-    const hasText = prompt.trim().length > 0;
-
-    // Auto collapse config once when user starts typing, never auto-expand again
+    // Auto collapse config once when user starts typing (mobile only)
+    // On desktop (web / Mac Catalyst) the panel stays expanded
+    // Also skip collapsing on the initial render when draft text is restored
     const hasCollapsedOnceRef = React.useRef(false);
+    const isInitialRef = React.useRef(true);
+    const isDesktop = Platform.OS === 'web' || isRunningOnMac();
     React.useEffect(() => {
+        if (isInitialRef.current) {
+            isInitialRef.current = false;
+            return;
+        }
+        if (isDesktop) return;
         if (hasText && !hasCollapsedOnceRef.current) {
             hasCollapsedOnceRef.current = true;
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -807,13 +871,6 @@ function NewSessionScreen() {
                 spawnDirectory = worktreeKey;
             }
 
-            // Persist last used settings
-            sync.applySettings({
-                lastUsedAgent: selectedAgent,
-                lastUsedPermissionMode: currentPermission.key,
-                lastUsedModelMode: currentModelKey,
-            });
-
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
                 directory: spawnDirectory,
@@ -825,16 +882,32 @@ function NewSessionScreen() {
                 case 'success':
                     await sync.refreshSessions();
 
-                    // Set permission mode and model on the session before sending
-                    storage.getState().updateSessionPermissionMode(result.sessionId, currentPermission.key);
-                    storage.getState().updateSessionModelMode(result.sessionId, currentModelKey);
+                    // Store only per-session overrides. Matching the effective
+                    // default stays null so future code default changes apply.
+                    const permissionOverride = currentPermission.key === effectiveAgentDefaults.permissionMode
+                        ? null
+                        : currentPermission.key;
+                    const modelOverride = currentModelKey === effectiveAgentDefaults.modelMode
+                        ? null
+                        : currentModelKey;
+                    const currentEffortKey = currentEffort?.key ?? null;
+                    const effortOverride = currentEffortKey === effectiveAgentDefaults.effortLevel
+                        ? null
+                        : currentEffortKey;
+                    storage.getState().updateSessionPermissionMode(result.sessionId, permissionOverride);
+                    storage.getState().updateSessionModelMode(result.sessionId, modelOverride);
+                    storage.getState().updateSessionEffortLevel(result.sessionId, effortOverride);
 
-                    // Clear input text so draft doesn't repeat the sent message
-                    setPrompt('');
+                    // Pull live prompt and clear it. We read via getState() so this
+                    // callback doesn't have to subscribe to `input` (which would
+                    // re-render the screen on every keystroke).
+                    const draftState = useNewSessionDraft.getState();
+                    const trimmedPrompt = draftState.input.trim();
+                    draftState.setInput('');
 
                     // Send initial message if provided
-                    if (prompt.trim()) {
-                        await sync.sendMessage(result.sessionId, prompt.trim());
+                    if (trimmedPrompt) {
+                        await sync.sendMessage(result.sessionId, trimmedPrompt, { source: 'new_session' });
                     }
 
                     router.back();
@@ -863,7 +936,7 @@ function NewSessionScreen() {
         } finally {
             setIsSpawning(false);
         }
-    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, prompt, router, navigateToSession, currentPermission.key, currentModelKey, worktreeKey]);
+    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession, currentPermission.key, currentModelKey, currentEffort?.key, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.effortLevel, worktreeKey]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
 
@@ -1155,15 +1228,9 @@ function NewSessionScreen() {
                     <View style={styles.inputBox}>
                         <View style={styles.inputField}>
                             <View style={{ flex: 1 }}>
-                                <MultiTextInput
+                                <PromptInput
                                     ref={composerInputRef}
-                                    value={prompt}
-                                    onChangeText={setPrompt}
                                     placeholder="What would you like to work on?"
-                                    lineHeight={MULTI_TEXT_INPUT_LINE_HEIGHT}
-                                    paddingTop={COMPOSER_INPUT_VERTICAL_PADDING}
-                                    paddingBottom={COMPOSER_INPUT_VERTICAL_PADDING}
-                                    maxHeight={240}
                                     onKeyPress={handleKeyPress}
                                 />
                             </View>

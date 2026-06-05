@@ -12,8 +12,24 @@
 - Bundled distribution (needed to make my own daily driver)
 - Forking a session - for example a session with triaging -> fork into multiple where we fix the specific groups of issues
 
-- File preview / editing in session
-- Better diff viewer
+- File preview / editing in session — see [layout-core.md](layout-core.md)
+- Better diff viewer — see [layout-core.md](layout-core.md)
+
+## Navigation Bugs
+
+Back navigation is broken across the app in several places:
+- Logout → restore from key doesn't pop enough screens (also errors out)
+- General back navigation inconsistency across flows
+
+## Workspaces & Checkouts
+
+Missing the concept of **workspace** (aka project) that spans multiple machines, and **checkout** as a daemon-managed entity.
+
+- Workspace = a logical project that can span multiple machines (e.g. my laptop + cloud dev box both working on the same repo)
+- Checkout = a specific working copy on a specific machine, managed by the daemon
+- Currently we have machines and paths but no first-class workspace grouping
+- Daemon should manage checkout lifecycle: create worktree, switch branch, clean up stale checkouts
+- Right panel context (changes, files) is per-checkout, but workspace groups checkouts across machines
 
 [hard]
 - Attachments in composer / in agent output [hard, encrypted attachments, extra storage - needs design]
@@ -76,6 +92,17 @@
 - UI self-customization ("change X" → happy obliges)
 - Custom widgets per session / project
 - Widgets on mobile (iOS/Android) + desktop
+
+## Push Notification Routing
+
+Current state: server stores bare Expo push tokens per account with no device metadata. All registered devices get all notifications — no routing intelligence.
+
+- Smart routing: use presence/activity signals (last active device, which device has the session open) to route notifications to the right device instead of blasting all
+  - Server already has presence data (sessionCache, machine connection state) — likely enough to make good routing decisions
+  - Suppress notification on the device that originated the action
+  - Prefer the device the user is currently active on
+- Web push notifications: currently missing entirely — add service worker + web push registration so browser sessions get notifications too
+- Device metadata on token registration: store platform (ios/android/web), device name, last active timestamp alongside the push token
 
 ## Better Machine Management
 

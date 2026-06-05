@@ -58,6 +58,7 @@ model Account {
     Workspace           Workspace[]
     MergeRequest        MergeRequest[]
     MergeRequestComment MergeRequestComment[]
+    VoiceConversation   VoiceConversation[]
 }
 
 model TerminalAuthRequest {
@@ -385,7 +386,6 @@ model UserKVStore {
     @@index([accountId])
 }
 
-//
 // Projects
 //
 
@@ -478,4 +478,19 @@ model MergeRequestComment {
     createdAt       DateTime     @default(now())
 
     @@index([mergeRequestId])
+}
+
+//
+// Voice Conversations — tracks ElevenLabs conversations per user for rate limiting
+//
+
+model VoiceConversation {
+    id                         String   @id @default(cuid())
+    accountId                  String
+    account                    Account  @relation(fields: [accountId], references: [id])
+    elevenLabsConversationId   String   @unique
+    durationSecs               Int?     // Filled in lazily from ElevenLabs API
+    createdAt                  DateTime @default(now())
+
+    @@index([accountId, createdAt(sort: Desc)])
 }

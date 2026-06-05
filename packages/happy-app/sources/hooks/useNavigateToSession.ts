@@ -1,12 +1,15 @@
 import type { Router } from "expo-router"
 import { useRouter } from "expo-router"
+import { storage } from '@/sync/storage';
+import { trackSessionSwitched } from '@/track';
 
 export function navigateToSession(router: Router, sessionId: string) {
-    router.navigate(`/session/${encodeURIComponent(sessionId)}`, {
-        dangerouslySingular() {
-            return 'session'
-        },
-    });
+    const session = storage.getState().sessions[sessionId];
+    if (session) {
+        trackSessionSwitched(session);
+    }
+
+    router.push(`/session/${encodeURIComponent(sessionId)}`);
 }
 
 export function useNavigateToSession() {

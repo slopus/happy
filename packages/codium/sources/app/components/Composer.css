@@ -1,0 +1,272 @@
+.composer {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.composer__primary {
+    position: relative;
+    z-index: 1;
+    /* Codex composer uses input-background at 90% alpha. Light: white@90; dark: dropdown-background@90. */
+    background: color-mix(in srgb, var(--color-token-input-background) 90%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 25px;
+    corner-shape: superellipse(1.5);
+    box-shadow:
+        0 0 0 1px var(--color-border),
+        0 4px 16px 0 var(--color-simple-scrim);
+    min-height: 96px;
+    padding: 12px 0 0;
+    margin-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+html.electron-dark .composer__primary {
+    background: var(--color-token-dropdown-background);
+}
+
+.composer__editor {
+    position: relative;
+    min-height: 40px;
+    height: 40px;
+    max-height: 25vh;
+    overflow-y: auto;
+    margin: 0 12px;
+    padding: 0;
+    font-size: var(--text-base);
+    line-height: 19.5px;
+    color: var(--color-text-foreground);
+    cursor: text;
+}
+
+.composer__editor .ProseMirror {
+    outline: none;
+    min-height: 40px;
+    padding: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.composer__editor .ProseMirror p {
+    margin: 0;
+}
+
+.composer__editor .ProseMirror p.is-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: var(--color-text-foreground-tertiary);
+    pointer-events: none;
+    float: left;
+    height: 0;
+}
+
+.composer__attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 12px;
+}
+
+.composer__footer {
+    display: grid;
+    grid-template-columns: minmax(0, auto) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 5px;
+    min-height: 28px;
+    padding: 0 8px;
+    margin-bottom: 8px;
+}
+
+.composer__footer-group {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.composer__footer-group--right {
+    grid-column: 3;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.composer-footer__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 8px;
+    border-radius: 9999px;
+    font-size: var(--text-sm);
+    line-height: 18px;
+    color: var(--color-text-foreground-tertiary);
+    background: transparent;
+    border: 1px solid transparent;
+    user-select: none;
+    white-space: nowrap;
+    transition:
+        background 120ms ease,
+        color 120ms ease;
+    max-width: 180px;
+}
+
+.composer-footer__btn--model-effort {
+    width: auto;
+    max-width: none;
+}
+
+/* No-models state: the pill auto-sizes to fit the call-to-action label
+ * instead of clipping "No model" / "High" with ellipses. */
+.composer-footer__btn--empty {
+    width: auto;
+    padding: 0 10px;
+}
+
+.composer-footer__btn-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Model+effort: model name reads at full foreground; effort and chevron stay muted. */
+.composer-footer__btn-text--strong {
+    color: var(--color-text-foreground);
+}
+.composer-footer__btn-text--muted {
+    color: var(--color-text-foreground-tertiary);
+}
+
+.composer-footer__btn:hover,
+.composer-footer__btn[data-state='open'] {
+    background: var(--color-hover);
+    color: var(--color-text-foreground);
+}
+
+/*
+ * Permission mode (Auto-review) — bordered pill, muted text, matching
+ * Codex's default state. Active/non-default permission modes can flip
+ * to accent later via a separate modifier.
+ */
+.composer-footer__btn--accent {
+    width: auto;
+    padding: 0 8px;
+    color: var(--color-text-foreground-tertiary);
+    border-color: var(--color-token-border, var(--color-border));
+}
+.composer-footer__btn--accent:hover,
+.composer-footer__btn--accent[data-state='open'] {
+    color: var(--color-text-foreground);
+    background: var(--color-hover);
+}
+
+.composer-footer__btn:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 1px;
+}
+
+.composer-footer__btn--icon {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+}
+
+.composer-footer__context {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 0 4px 0 6px;
+    color: var(--color-text-foreground-tertiary);
+}
+
+.composer-footer__btn--mic {
+    color: var(--color-text-foreground-tertiary);
+}
+
+.context-ring {
+    display: block;
+}
+
+.composer__send {
+    width: 28px;
+    height: 28px;
+    margin-left: 0;
+    padding: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: var(--color-text-foreground);
+    color: var(--color-background-surface);
+    user-select: none;
+    transition:
+        background 120ms ease,
+        opacity 120ms ease;
+}
+
+.composer__send:hover:not(:disabled) {
+    background: var(--color-text-foreground-secondary);
+}
+
+.composer__send:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+.composer__send:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.composer-menu {
+    min-width: 220px;
+    background: var(--color-background-elevated);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid transparent;
+    border-radius: 12px;
+    padding: 4px;
+    box-shadow:
+        0 0 0 0.5px var(--color-border),
+        0 12px 32px var(--color-simple-scrim);
+    z-index: 200;
+}
+
+.composer-menu__group {
+    padding: 2px 0;
+}
+
+.composer-menu__group + .composer-menu__group {
+    border-top: 1px solid var(--color-border-light);
+    margin-top: 2px;
+    padding-top: 4px;
+}
+
+.composer-menu__label {
+    padding: 4px 10px 2px;
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-foreground-tertiary);
+}
+
+.composer-menu__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 30px;
+    padding: 5px 8px;
+    border-radius: 10px;
+    font-size: var(--text-sm);
+    line-height: 18px;
+    color: var(--color-text-foreground-secondary);
+    cursor: default;
+    outline: none;
+}
+
+.composer-menu__item[data-highlighted] {
+    background: var(--color-hover);
+    color: var(--color-text-foreground);
+}
