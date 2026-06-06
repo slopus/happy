@@ -51,7 +51,7 @@ export interface StartOptions {
 
 const DEFAULT_CLAUDE_PERMISSION_MODE: PermissionMode = 'yolo';
 const DEFAULT_CLAUDE_MODEL = 'opus';
-const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'max' = 'medium';
+const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' = 'medium';
 
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
     logger.debug(`[CLAUDE] ===== CLAUDE MODE STARTING =====`);
@@ -418,7 +418,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
-    let currentEffort: 'low' | 'medium' | 'high' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
+    let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
 
     const resetCurrentModeDefaults = () => {
@@ -550,7 +550,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Validate against the SDK's accepted set so a stale/garbage value
         // from the wire doesn't poison the session.
         let messageEffort = currentEffort;
-        const VALID_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'max']);
+        const VALID_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
         if (message.meta?.hasOwnProperty('effort')) {
             const incoming = (message.meta as Record<string, unknown>).effort;
             if (incoming === null || incoming === undefined) {
@@ -558,7 +558,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 currentEffort = undefined;
                 logger.debug(`[loop] Effort reset to default`);
             } else if (typeof incoming === 'string' && VALID_EFFORTS.has(incoming)) {
-                messageEffort = incoming as 'low' | 'medium' | 'high' | 'max';
+                messageEffort = incoming as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
                 currentEffort = messageEffort;
                 logger.debug(`[loop] Effort updated from user message: ${messageEffort}`);
             } else {
