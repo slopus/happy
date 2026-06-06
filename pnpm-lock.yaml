@@ -931,7 +931,7 @@ importers:
         specifier: ^2.2.2
         version: 2.3.1
       '@slopus/happy-wire':
-        specifier: workspace:*
+        specifier: file:../happy-wire
         version: link:../happy-wire
       '@stablelib/base64':
         specifier: ^2.0.1

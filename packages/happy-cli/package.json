@@ -1,6 +1,6 @@
 {
   "name": "@namsangboy/happy-cli",
-  "version": "1.1.8-aplus.22",
+  "version": "1.1.8-aplus.24",
   "description": "A+ Dev Studio fork of slopus/happy. Mobile and Web client for Claude Code and Codex.",
   "author": "Kirill Dubovitskiy (upstream), justinbuzzni (aplus fork)",
   "license": "MIT",
@@ -86,7 +86,7 @@
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",
     "@paralleldrive/cuid2": "^2.2.2",
-    "@slopus/happy-wire": "workspace:*",
+    "@slopus/happy-wire": "file:../happy-wire",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
     "@types/cross-spawn": "^6.0.6",
@@ -118,6 +118,9 @@
     "ws": "^8.19.0",
     "zod": "3.25.76"
   },
+  "bundledDependencies": [
+    "@slopus/happy-wire"
+  ],
   "devDependencies": {
     "@eslint/compat": "^1",
     "@types/inquirer": "^9.0.9",

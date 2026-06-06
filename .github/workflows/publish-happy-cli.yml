@@ -56,11 +56,17 @@ jobs:
             - name: Build happy-cli
               run: pnpm --filter @namsangboy/happy-cli build
 
+            - name: Prepare publish artifact
+              run: node packages/happy-cli/scripts/prepare-publish-package.cjs --out "$RUNNER_TEMP/happy-cli-publish"
+
+            - name: Guard publish artifact
+              run: node packages/happy-cli/scripts/guard-publish-artifact.cjs "$RUNNER_TEMP/happy-cli-publish" --install-smoke
+
             - name: Publish to npm
-              working-directory: packages/happy-cli
-              # `--ignore-scripts` skips prepublishOnly because we already ran
-              # `pnpm --filter @namsangboy/happy-cli build` explicitly above.
-              run: npm publish --access public --ignore-scripts
+              working-directory: ${{ runner.temp }}/happy-cli-publish
+              # Publish the prepared artifact, not the raw pnpm workspace package.
+              # The guard above fails if workspace/file dependencies leak into npm metadata.
+              run: npm publish --access public --tag latest --ignore-scripts
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
                   NPM_CONFIG_PROVENANCE: 'true'
