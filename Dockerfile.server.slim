@@ -8,17 +8,18 @@
 FROM node:20 AS deps
 
 RUN apt-get update && apt-get install -y python3 ffmpeg make g++ build-essential && rm -rf /var/lib/apt/lists/*
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
 WORKDIR /repo
 
-COPY package.json yarn.lock ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY patches ./patches
 
 # The root package.json tracks every upstream workspace. For the server image we
-# rewrite the in-container copy so Yarn only resolves happy-server + happy-wire.
+# rewrite the in-container copy so pnpm only resolves happy-server + happy-wire.
 # This preserves the checked-in lockfile while avoiding happy-app / happy-cli
 # postinstall hooks, native archives, and React Native dependency trees.
-RUN node -e "const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); pkg.workspaces = { packages: ['packages/happy-server', 'packages/happy-wire'] }; pkg.scripts = {}; fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));"
+RUN node -e "const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); pkg.workspaces = { packages: ['packages/happy-server', 'packages/happy-wire'] }; pkg.scripts = {}; fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2)); fs.writeFileSync('pnpm-workspace.yaml', 'packages:\\n  - \"packages/happy-server\"\\n  - \"packages/happy-wire\"\\n');"
 
 RUN mkdir -p packages/happy-server packages/happy-wire
 
@@ -26,7 +27,7 @@ COPY packages/happy-server/package.json packages/happy-server/
 COPY packages/happy-wire/package.json packages/happy-wire/
 COPY packages/happy-server/prisma packages/happy-server/prisma
 
-RUN yarn install --frozen-lockfile --ignore-engines && node patches/fix-pglite-prisma-bytes.cjs
+RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile && node patches/fix-pglite-prisma-bytes.cjs
 
 # Stage 2: build the server and shared wire package
 FROM deps AS builder
@@ -34,8 +35,8 @@ FROM deps AS builder
 COPY packages/happy-wire ./packages/happy-wire
 COPY packages/happy-server ./packages/happy-server
 
-RUN yarn workspace @slopus/happy-wire build
-RUN yarn workspace happy-server build
+RUN pnpm --filter @slopus/happy-wire build
+RUN pnpm --filter happy-server-self-host build:runtime
 
 # Stage 3: runtime
 FROM node:20-slim AS runner
@@ -43,13 +44,15 @@ FROM node:20-slim AS runner
 WORKDIR /repo
 
 RUN apt-get update && apt-get install -y --no-install-recommends python3 ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
 ENV NODE_ENV=production
 
 COPY --from=builder /repo/node_modules /repo/node_modules
 COPY --from=builder /repo/packages/happy-wire /repo/packages/happy-wire
 COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
+COPY --from=builder /repo/package.json /repo/pnpm-workspace.yaml /repo/
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=/repo/packages/happy-server/prisma/schema.prisma && exec yarn --cwd packages/happy-server start"]
+CMD ["sh", "-c", "pnpm --filter happy-server-self-host exec prisma migrate deploy --schema=/repo/packages/happy-server/prisma/schema.prisma && exec pnpm --filter happy-server-self-host start"]
