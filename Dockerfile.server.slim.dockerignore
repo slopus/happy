@@ -1,7 +1,9 @@
 **
 
 !package.json
-!yarn.lock
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!.npmrc
 
 !patches/
 !patches/**
