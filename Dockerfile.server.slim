@@ -9,6 +9,7 @@ FROM node:20 AS deps
 
 RUN apt-get update && apt-get install -y python3 ffmpeg make g++ build-essential && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+RUN npm install -g bun@1.3.14
 
 WORKDIR /repo
 
