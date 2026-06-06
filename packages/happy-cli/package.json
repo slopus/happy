@@ -92,7 +92,7 @@
     "cross-spawn": "^7.0.6",
     "expo-server-sdk": "^3.15.0",
     "fastify": "^5.6.2",
-    "fastify-type-provider-zod": "4.0.2",
+    "fastify-type-provider-zod": "^6.1.0",
     "http-proxy": "^1.18.1",
     "http-proxy-middleware": "^3.0.5",
     "ink": "^6.5.1",
