@@ -51,8 +51,15 @@ jobs:
 
     - name: Pack packages
       run: |
-        pnpm --filter @namsangboy/happy-cli pack --pack-destination packages/happy-cli
+        node packages/happy-cli/scripts/prepare-publish-package.cjs --out "$RUNNER_TEMP/happy-cli-publish"
+        node packages/happy-cli/scripts/guard-publish-artifact.cjs "$RUNNER_TEMP/happy-cli-publish"
+        npm pack "$RUNNER_TEMP/happy-cli-publish" --ignore-scripts --pack-destination packages/happy-cli
+        cp .npmrc "$RUNNER_TEMP/npmrc.backup"
+        trap 'cp "$RUNNER_TEMP/npmrc.backup" .npmrc' EXIT
+        node -e "const fs=require('fs'); fs.writeFileSync('.npmrc', fs.readFileSync('.npmrc','utf8').replace(/^node-linker=.*/m, 'node-linker=hoisted'))"
         pnpm --filter happy-server-self-host pack --pack-destination packages/happy-server
+        trap - EXIT
+        cp "$RUNNER_TEMP/npmrc.backup" .npmrc
 
     - name: Install packed packages globally
       run: |
@@ -137,7 +144,10 @@ jobs:
       run: pnpm --filter @namsangboy/happy-cli build
 
     - name: Pack package
-      run: pnpm --filter @namsangboy/happy-cli pack --pack-destination packages/happy-cli
+      run: |
+        $publishDir = Join-Path $env:RUNNER_TEMP "happy-cli-publish"
+        node packages/happy-cli/scripts/prepare-publish-package.cjs --out $publishDir
+        npm pack $publishDir --ignore-scripts --pack-destination packages/happy-cli
 
     - name: Install packed package globally
       shell: cmd
