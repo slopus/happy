@@ -15,6 +15,11 @@ import {
     NativeSyntheticEvent,
     Image as RNImage,
 } from 'react-native';
+import ReanimatedAnimated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withTiming,
+} from 'react-native-reanimated';
 import { GlassView } from 'expo-glass-effect';
 import { Ionicons, Octicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -27,7 +32,7 @@ import {
 } from '@/components/MultiTextInput';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import Constants from 'expo-constants';
 import { useHeaderHeight } from '@/utils/responsive';
 import { t } from '@/text';
@@ -161,23 +166,28 @@ function BottomSheet({
         );
     }
 
-    // Android: slide-up sheet with backdrop
+    // Android: slide-up sheet with backdrop, follows keyboard
     const fadeAnim = React.useRef(new Animated.Value(0)).current;
-    const slideAnim = React.useRef(new Animated.Value(300)).current;
+    const slideAnim = useSharedValue(300);
+    const { height: keyboardAnimation } = useReanimatedKeyboardAnimation();
 
     React.useEffect(() => {
         if (visible) {
-            Animated.parallel([
-                Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
-                Animated.spring(slideAnim, { toValue: 0, damping: 25, stiffness: 300, useNativeDriver: true }),
-            ]).start();
+            Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+            slideAnim.value = withTiming(0, { duration: 200 });
         } else {
-            Animated.parallel([
-                Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-                Animated.timing(slideAnim, { toValue: 300, duration: 200, useNativeDriver: true }),
-            ]).start();
+            Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+            slideAnim.value = withTiming(300, { duration: 200 });
         }
     }, [visible, fadeAnim, slideAnim]);
+
+    const animatedSheetStyle = useAnimatedStyle(() => {
+        // keyboardAnimation.value is 0 when keyboard closed, negative when open
+        const kbOffset = keyboardAnimation.value < 0 ? keyboardAnimation.value + 8 : 0;
+        return {
+            transform: [{ translateY: slideAnim.value + kbOffset }],
+        };
+    });
 
     return (
         <RNModal
@@ -190,21 +200,21 @@ function BottomSheet({
                 <TouchableWithoutFeedback onPress={onClose}>
                     <Animated.View style={[sheetStyles.backdrop, { opacity: fadeAnim }]} />
                 </TouchableWithoutFeedback>
-                <Animated.View
+                <ReanimatedAnimated.View
                     style={[
                         sheetStyles.sheet,
                         {
                             backgroundColor: theme.colors.header.background,
                             paddingBottom: Math.max(16, safeArea.bottom),
-                            transform: [{ translateY: slideAnim }],
                         },
+                        animatedSheetStyle,
                     ]}
                 >
                     <View style={sheetStyles.handleRow}>
                         <View style={[sheetStyles.handle, { backgroundColor: theme.colors.textSecondary }]} />
                     </View>
                     {children}
-                </Animated.View>
+                </ReanimatedAnimated.View>
             </View>
         </RNModal>
     );
