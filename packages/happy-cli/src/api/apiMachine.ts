@@ -6,6 +6,7 @@
 import { io, Socket } from 'socket.io-client';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
+import { redactObjectForLog } from '@/utils/redactSecrets';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
@@ -124,7 +125,12 @@ export class ApiMachineClient {
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
             const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, parentSessionId, forkedFromMessageId } = params || {};
-            logger.debug(`[API MACHINE] Spawning session with params: ${JSON.stringify(params)}`);
+            // `params` can include `token`, `encryptionKey`, `environmentVariables`
+            // and other secret-bearing fields forwarded from the mobile app —
+            // redact before logging so they don't land in `~/.happy/logs/*-daemon.log`
+            // (default 0o644) and don't get forwarded if a user has enabled the
+            // dangerous-logging flag.
+            logger.debug(`[API MACHINE] Spawning session with params: ${JSON.stringify(redactObjectForLog(params))}`);
 
             if (!directory) {
                 throw new Error('Directory is required');
