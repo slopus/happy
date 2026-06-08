@@ -2316,6 +2316,67 @@ class Sync {
                     // Don't crash on settings sync errors, just log
                 }
             }
+        } else if (updateData.body.t === 'new-machine') {
+            const machineUpdate = updateData.body;
+            const machineId = machineUpdate.machineId;
+
+            // Brand-new machines (cold onboarding) are delivered via 'new-machine'
+            // before any fetchMachines has seen them, so their per-machine
+            // encryption isn't initialized yet. The update carries the data
+            // encryption key — register it here (mirroring fetchMachines) or every
+            // later decrypt for this machine fails and it never lands in storage,
+            // leaving the new-session screen unable to start a session until an app
+            // restart / socket reconnect triggers a full machine refetch.
+            const machineKeysMap = new Map<string, Uint8Array | null>();
+            if (machineUpdate.dataEncryptionKey) {
+                const decryptedKey = await this.encryption.decryptEncryptionKey(machineUpdate.dataEncryptionKey);
+                if (decryptedKey) {
+                    machineKeysMap.set(machineId, decryptedKey);
+                    this.machineDataKeys.set(machineId, decryptedKey);
+                } else {
+                    console.error(`Failed to decrypt data encryption key for new machine ${machineId}`);
+                    machineKeysMap.set(machineId, null);
+                }
+            } else {
+                machineKeysMap.set(machineId, null);
+            }
+            await this.encryption.initializeMachines(machineKeysMap);
+
+            const machineEncryption = this.encryption.getMachineEncryption(machineId);
+            if (!machineEncryption) {
+                console.error(`Machine encryption not found for ${machineId} after init - cannot apply new-machine`);
+                return;
+            }
+
+            // Preserve an existing createdAt if we somehow already know this machine.
+            const existing = storage.getState().machines[machineId];
+            const newMachine: Machine = {
+                id: machineId,
+                seq: machineUpdate.seq,
+                createdAt: existing?.createdAt ?? machineUpdate.createdAt,
+                updatedAt: machineUpdate.updatedAt,
+                active: machineUpdate.active,
+                activeAt: machineUpdate.activeAt,
+                metadata: null,
+                metadataVersion: machineUpdate.metadataVersion,
+                daemonState: null,
+                daemonStateVersion: machineUpdate.daemonStateVersion
+            };
+
+            // Decrypt best-effort; still apply the machine on failure so it stays
+            // visible/usable (matches fetchMachines' fallback behavior).
+            try {
+                newMachine.metadata = machineUpdate.metadata
+                    ? await machineEncryption.decryptMetadata(machineUpdate.metadataVersion, machineUpdate.metadata)
+                    : null;
+                newMachine.daemonState = machineUpdate.daemonState
+                    ? await machineEncryption.decryptDaemonState(machineUpdate.daemonStateVersion, machineUpdate.daemonState)
+                    : null;
+            } catch (error) {
+                console.error(`Failed to decrypt new machine ${machineId}:`, error);
+            }
+
+            storage.getState().applyMachines([newMachine]);
         } else if (updateData.body.t === 'update-machine') {
             const machineUpdate = updateData.body;
             const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
