@@ -116,6 +116,7 @@ export class ApiSessionClient extends EventEmitter {
     private pendingOutbox: Array<{ content: string; localId: string }> = [];
     private readonly sendSync: InvalidateSync;
     private readonly receiveSync: InvalidateSync;
+    private receivePollInterval: NodeJS.Timeout | null = null;
 
     constructor(token: string, session: Session) {
         super()
@@ -168,6 +169,7 @@ export class ApiSessionClient extends EventEmitter {
                 this.reconnectInterval = null;
             }
             this.rpcHandlerManager.onSocketConnect(this.socket);
+            this.startReceivePolling();
             this.receiveSync.invalidate();
         })
 
@@ -179,12 +181,14 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.on('disconnect', (reason) => {
             logger.debug(`[API] Socket disconnected: ${reason}`);
             this.rpcHandlerManager.onSocketDisconnect();
+            this.stopReceivePolling();
             this.startSmartReconnect();
         })
 
         this.socket.on('connect_error', (error) => {
             logger.debug('[API] Socket connection error:', error);
             this.rpcHandlerManager.onSocketDisconnect();
+            this.stopReceivePolling();
             this.startSmartReconnect();
         })
 
@@ -453,6 +457,23 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private static readonly MAX_OUTBOX_BATCH_SIZE = 50;
+    private static readonly RECEIVE_POLL_INTERVAL_MS = 5000;
+
+    private startReceivePolling() {
+        this.stopReceivePolling();
+        this.receivePollInterval = setInterval(() => {
+            if (this.socket.connected) {
+                this.receiveSync.invalidate();
+            }
+        }, ApiSessionClient.RECEIVE_POLL_INTERVAL_MS);
+        this.receivePollInterval.unref?.();
+    }
+
+    private stopReceivePolling() {
+        if (!this.receivePollInterval) return;
+        clearInterval(this.receivePollInterval);
+        this.receivePollInterval = null;
+    }
 
     private async flushOutbox() {
         // Send latest messages first so the user sees recent activity immediately,
@@ -762,6 +783,7 @@ export class ApiSessionClient extends EventEmitter {
         logger.debug('[API] socket.close() called');
         this.sendSync.stop();
         this.receiveSync.stop();
+        this.stopReceivePolling();
         if (this.reconnectInterval) {
             clearInterval(this.reconnectInterval);
             this.reconnectInterval = null;

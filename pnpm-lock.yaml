@@ -910,7 +910,7 @@ importers:
         specifier: ^0.14.1
         version: 0.14.1(zod@3.25.76)
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.2.96
+        specifier: 0.2.96
         version: 0.2.96(zod@3.25.76)
       '@anthropic-ai/sandbox-runtime':
         specifier: ^0.0.37

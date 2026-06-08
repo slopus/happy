@@ -884,6 +884,59 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(0);
     });
 
+    it('recovers a saved user message when the socket new-message update is missed', async () => {
+        vi.useFakeTimers();
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+
+        mockAxiosGet.mockResolvedValueOnce({
+            data: {
+                messages: [],
+                hasMore: false
+            }
+        });
+
+        emitSocketEvent('connect');
+        await waitForCheck(() => {
+            expect(mockAxiosGet).toHaveBeenCalledTimes(1);
+        });
+
+        const userMessage = {
+            role: 'user',
+            content: { type: 'text', text: 'missed socket update' }
+        };
+
+        mockAxiosGet.mockResolvedValueOnce({
+            data: {
+                messages: [
+                    {
+                        id: 'msg-1',
+                        seq: 1,
+                        content: {
+                            t: 'encrypted',
+                            c: encryptContent(session, userMessage)
+                        },
+                        localId: null,
+                        createdAt: 1000,
+                        updatedAt: 1000
+                    }
+                ],
+                hasMore: false
+            }
+        });
+
+        await vi.advanceTimersByTimeAsync(5000);
+
+        await waitForCheck(() => {
+            expect(mockAxiosGet).toHaveBeenCalledTimes(2);
+            expect(onUserMessage).toHaveBeenCalledWith(userMessage);
+        });
+        expect(mockAxiosGet.mock.calls[1][1].params.after_seq).toBe(0);
+        expect((client as any).lastSeq).toBe(1);
+        await client.close();
+    });
+
     it('stops send and receive sync loops on close', async () => {
         const client = new ApiSessionClient('fake-token', session);
         await client.close();
