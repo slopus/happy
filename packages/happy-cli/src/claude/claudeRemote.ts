@@ -180,8 +180,14 @@ export async function claudeRemote(opts: {
         for await (const message of response) {
             logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
 
-            // Handle messages
-            opts.onMessage(message);
+            // Handle messages. During /compact, Claude emits the generated
+            // summary as a normal assistant text message before the result.
+            // Mark it so downstream UI/protocol mapping can treat it as
+            // housekeeping instead of a real assistant response.
+            const outboundMessage = isCompactCommand && message.type === 'assistant'
+                ? { ...message, isCompactSummary: true } as SDKMessage
+                : message;
+            opts.onMessage(outboundMessage);
 
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
