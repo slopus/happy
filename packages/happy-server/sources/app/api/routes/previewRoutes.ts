@@ -52,15 +52,47 @@ const RPC_TIMEOUT_MS = 35_000;
 const ALL_METHODS: Array<'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'> =
     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 
-function findMachineSocket(userId: string, machineId: string): Socket | null {
+interface ProxyHttpRequestPayload {
+    port: number;
+    method: string;
+    path: string;
+    headers: Record<string, string>;
+    bodyB64: string | null;
+}
+
+function isProxyRpcResponse(raw: unknown): raw is ProxyRpcResponse {
+    if (!raw || typeof raw !== 'object') return false;
+    const candidate = raw as Partial<ProxyRpcResponse>;
+    return candidate.type === 'success' || candidate.type === 'error';
+}
+
+function findMachineSockets(userId: string, machineId: string): Socket[] {
     const connections = eventRouter.getConnections(userId);
-    if (!connections) return null;
+    if (!connections) return [];
+    const sockets: Socket[] = [];
     for (const c of connections) {
         if (c.connectionType === 'machine-scoped' && c.machineId === machineId) {
-            return c.socket;
+            if (c.socket.connected) sockets.push(c.socket);
         }
     }
-    return null;
+    return sockets;
+}
+
+export async function relayProxyHttpRequest(
+    machineSockets: Array<Pick<Socket, 'id' | 'timeout'>>,
+    payload: ProxyHttpRequestPayload,
+    timeoutMs = RPC_TIMEOUT_MS,
+): Promise<ProxyRpcResponse> {
+    const attempts = machineSockets.map(async (socket) => {
+        const raw = await socket
+            .timeout(timeoutMs)
+            .emitWithAck('proxy-http-request', payload);
+        if (!isProxyRpcResponse(raw)) {
+            throw new Error(`Malformed proxy response from socket ${socket.id}`);
+        }
+        return raw;
+    });
+    return Promise.any(attempts);
 }
 
 function filterForwardedHeaders(raw: Record<string, string | string[] | undefined>): Record<string, string> {
@@ -245,10 +277,16 @@ export function previewRoutes(app: Fastify) {
                     return reply.code(403).send({ error: 'Token does not match requested machine/port' });
                 }
 
-                // Find the machine socket.
-                const machineSocket = findMachineSocket(claims.userId, params.machineId);
-                if (!machineSocket) {
+                // Find machine sockets. A daemon reconnect can briefly leave
+                // stale machine-scoped connections around; try all live
+                // candidates so one stale socket cannot pin preview to a 35s
+                // relay timeout while a fresh daemon socket is already ready.
+                const machineSockets = findMachineSockets(claims.userId, params.machineId);
+                if (machineSockets.length === 0) {
                     return reply.code(502).send({ error: 'Machine offline' });
+                }
+                if (machineSockets.length > 1) {
+                    log({ module: 'preview', level: 'warn' }, `multiple machine sockets for preview relay: user=${claims.userId} machine=${params.machineId} count=${machineSockets.length}`);
                 }
 
                 // Build the upstream path (everything after `:port/`) + query string
@@ -273,23 +311,16 @@ export function previewRoutes(app: Fastify) {
                 // needs to read response bodies to rewrite HTML anyway.
                 let rpcResponse: ProxyRpcResponse;
                 try {
-                    const raw = await machineSocket
-                        .timeout(RPC_TIMEOUT_MS)
-                        .emitWithAck('proxy-http-request', {
-                            port: portNum,
-                            method: request.method,
-                            path: upstreamPath,
-                            headers: forwardHeaders,
-                            bodyB64,
-                        });
-                    rpcResponse = raw as ProxyRpcResponse;
+                    rpcResponse = await relayProxyHttpRequest(machineSockets, {
+                        port: portNum,
+                        method: request.method,
+                        path: upstreamPath,
+                        headers: forwardHeaders,
+                        bodyB64,
+                    });
                 } catch (err) {
-                    log({ module: 'preview', level: 'error' }, `proxy-http-request relay failed: ${(err as Error).message}`);
+                    log({ module: 'preview', level: 'error' }, `proxy-http-request relay failed for ${machineSockets.length} candidate(s): ${(err as Error).message}`);
                     return reply.code(504).send({ error: 'Upstream relay timeout' });
-                }
-                if (!rpcResponse || typeof rpcResponse !== 'object') {
-                    log({ module: 'preview', level: 'error' }, `proxy-http-request returned malformed response: ${JSON.stringify(rpcResponse)}`);
-                    return reply.code(502).send({ error: 'Bad response from daemon' });
                 }
 
                 if (rpcResponse.type === 'error') {
