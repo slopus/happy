@@ -72,7 +72,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.14.1",
-    "@anthropic-ai/claude-agent-sdk": "^0.2.96",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.167",
     "@anthropic-ai/sandbox-runtime": "^0.0.37",
     "@modelcontextprotocol/sdk": "1.25.3",
     "@noble/ed25519": "^3.0.0",
@@ -92,7 +92,7 @@
     "cross-spawn": "^7.0.6",
     "expo-server-sdk": "^3.15.0",
     "fastify": "^5.6.2",
-    "fastify-type-provider-zod": "4.0.2",
+    "fastify-type-provider-zod": "^6.1.0",
     "http-proxy": "^1.18.1",
     "http-proxy-middleware": "^3.0.5",
     "ink": "^6.5.1",
@@ -106,7 +106,7 @@
     "tmp": "^0.2.5",
     "tweetnacl": "^1.0.3",
     "ws": "^8.19.0",
-    "zod": "3.25.76"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@eslint/compat": "^1",
