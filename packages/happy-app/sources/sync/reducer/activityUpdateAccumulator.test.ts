@@ -99,6 +99,34 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
             );
         });
 
+        it('should emit immediately when archivedAt changes explicitly', () => {
+            const update1: ApiEphemeralActivityUpdate = {
+                type: 'activity',
+                id: 'session1',
+                active: false,
+                activeAt: 1000,
+                thinking: false,
+                archivedAt: null
+            };
+
+            const update2: ApiEphemeralActivityUpdate = {
+                type: 'activity',
+                id: 'session1',
+                active: false,
+                activeAt: 1000,
+                thinking: false,
+                archivedAt: 1000
+            };
+
+            accumulator.addUpdate(update1);
+            accumulator.addUpdate(update2);
+
+            expect(mockFlushHandler).toHaveBeenCalledTimes(2);
+            expect(mockFlushHandler).toHaveBeenNthCalledWith(2,
+                new Map([['session1', update2]])
+            );
+        });
+
         it('should emit immediately for first update to new session', () => {
             const update: ApiEphemeralActivityUpdate = {
                 type: 'activity',

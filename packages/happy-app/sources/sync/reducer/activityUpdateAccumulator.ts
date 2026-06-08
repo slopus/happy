@@ -2,7 +2,7 @@ import type { ApiEphemeralActivityUpdate } from '../apiTypes';
 
 export class ActivityUpdateAccumulator {
     private pendingUpdates = new Map<string, ApiEphemeralActivityUpdate>();
-    private lastEmittedStates = new Map<string, { active: boolean; thinking: boolean; activeAt: number }>();
+    private lastEmittedStates = new Map<string, { active: boolean; thinking: boolean; activeAt: number; archivedAt?: number | null }>();
     private timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     constructor(
@@ -22,6 +22,7 @@ export class ActivityUpdateAccumulator {
         const isSignificantChange = !lastState || 
             lastState.active !== update.active || 
             lastState.thinking !== update.thinking ||
+            (update.archivedAt !== undefined && lastState.archivedAt !== update.archivedAt) ||
             isCriticalTimestamp;
 
         if (isSignificantChange) {
@@ -64,7 +65,8 @@ export class ActivityUpdateAccumulator {
                 this.lastEmittedStates.set(sessionId, {
                     active: update.active,
                     thinking: update.thinking,
-                    activeAt: update.activeAt
+                    activeAt: update.activeAt,
+                    archivedAt: update.archivedAt === undefined ? this.lastEmittedStates.get(sessionId)?.archivedAt : update.archivedAt
                 });
             }
             
