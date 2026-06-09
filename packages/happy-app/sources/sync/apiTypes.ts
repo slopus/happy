@@ -185,6 +185,7 @@ export const ApiEphemeralActivityUpdateSchema = z.object({
     active: z.boolean(),
     activeAt: z.number(),
     thinking: z.boolean(),
+    archivedAt: z.number().nullable().optional(),
 });
 
 export const ApiEphemeralUsageUpdateSchema = z.object({
