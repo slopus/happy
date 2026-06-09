@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { stripResponseHeaders } from '@/app/api/routes/previewRoutes';
+import {
+    applySubdomainPreviewCorsHeaders,
+    stripResponseHeaders,
+} from '@/app/api/routes/previewRoutes';
+
+const MID = '12345678-1234-1234-1234-123456789abc';
 
 // Phase 3 (specs/preview-nextjs-turbopack-hydration/): the preview relay
 // proxies upstream response headers verbatim except for a small drop list.
@@ -96,5 +101,54 @@ describe('stripResponseHeaders', () => {
         expect(out['etag']).toBe('W/"abc"');
         expect(out['content-type']).toBe('application/javascript');
         expect(out['x-custom-header']).toBe('value');
+    });
+});
+
+describe('applySubdomainPreviewCorsHeaders', () => {
+    it('allows sibling preview subdomains for the same machine', () => {
+        const out = applySubdomainPreviewCorsHeaders(
+            { 'content-type': 'application/json' },
+            `https://${MID}-31010.preview.saycode.ai`,
+            `${MID}-41009.preview.saycode.ai`,
+            'x-client-version',
+        );
+
+        expect(out['Access-Control-Allow-Origin']).toBe(`https://${MID}-31010.preview.saycode.ai`);
+        expect(out['Access-Control-Allow-Credentials']).toBe('true');
+        expect(out['Access-Control-Allow-Methods']).toContain('GET');
+        expect(out['Access-Control-Allow-Methods']).toContain('OPTIONS');
+        expect(out['Access-Control-Allow-Headers']).toBe('x-client-version');
+        expect(out['Vary']).toBe('Origin');
+    });
+
+    it('keeps existing Vary values when adding Origin', () => {
+        const out = applySubdomainPreviewCorsHeaders(
+            { Vary: 'Accept-Encoding' },
+            `https://${MID}-31010.preview.saycode.ai`,
+            `${MID}-41009.preview.saycode.ai`,
+        );
+
+        expect(out['Vary']).toBe('Accept-Encoding, Origin');
+    });
+
+    it('does not allow preview origins from a different machine', () => {
+        const other = '87654321-4321-4321-4321-cba987654321';
+        const out = applySubdomainPreviewCorsHeaders(
+            {},
+            `https://${other}-31010.preview.saycode.ai`,
+            `${MID}-41009.preview.saycode.ai`,
+        );
+
+        expect(out['Access-Control-Allow-Origin']).toBeUndefined();
+    });
+
+    it('does not allow non-preview origins', () => {
+        const out = applySubdomainPreviewCorsHeaders(
+            {},
+            'https://saycode.ai',
+            `${MID}-41009.preview.saycode.ai`,
+        );
+
+        expect(out['Access-Control-Allow-Origin']).toBeUndefined();
     });
 });

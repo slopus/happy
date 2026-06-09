@@ -159,6 +159,57 @@ export function stripResponseHeaders(
     return out;
 }
 
+function deleteHeaderCaseInsensitive(headers: Record<string, string>, name: string): void {
+    const target = name.toLowerCase();
+    for (const key of Object.keys(headers)) {
+        if (key.toLowerCase() === target) delete headers[key];
+    }
+}
+
+function appendVaryOrigin(headers: Record<string, string>): void {
+    const existingKey = Object.keys(headers).find((key) => key.toLowerCase() === 'vary');
+    if (!existingKey) {
+        headers['Vary'] = 'Origin';
+        return;
+    }
+    const existing = headers[existingKey];
+    const parts = existing.split(',').map((part) => part.trim().toLowerCase());
+    if (!parts.includes('origin')) {
+        headers[existingKey] = `${existing}, Origin`;
+    }
+}
+
+export function applySubdomainPreviewCorsHeaders(
+    headers: Record<string, string>,
+    requestOrigin: string | undefined,
+    requestHost: string | undefined,
+    requestedHeaders?: string,
+): Record<string, string> {
+    if (!requestOrigin) return headers;
+    let originHost: string;
+    try {
+        originHost = new URL(requestOrigin).host;
+    } catch {
+        return headers;
+    }
+    const originPreview = parsePreviewHost(originHost);
+    const targetPreview = parsePreviewHost(requestHost);
+    if (!originPreview || !targetPreview) return headers;
+    if (originPreview.machineId !== targetPreview.machineId) return headers;
+
+    deleteHeaderCaseInsensitive(headers, 'Access-Control-Allow-Origin');
+    deleteHeaderCaseInsensitive(headers, 'Access-Control-Allow-Credentials');
+    deleteHeaderCaseInsensitive(headers, 'Access-Control-Allow-Methods');
+    deleteHeaderCaseInsensitive(headers, 'Access-Control-Allow-Headers');
+
+    headers['Access-Control-Allow-Origin'] = requestOrigin;
+    headers['Access-Control-Allow-Credentials'] = 'true';
+    headers['Access-Control-Allow-Methods'] = ALL_METHODS.join(', ');
+    headers['Access-Control-Allow-Headers'] = requestedHeaders || 'Content-Type, Authorization';
+    appendVaryOrigin(headers);
+    return headers;
+}
+
 export function previewRoutes(app: Fastify) {
     // Mint a short-lived ptoken that binds (userId, machineId, port) under HMAC.
     app.post('/v1/preview-token', {
@@ -277,6 +328,19 @@ export function previewRoutes(app: Fastify) {
                     return reply.code(403).send({ error: 'Token does not match requested machine/port' });
                 }
 
+                if (
+                    request.method === 'OPTIONS' &&
+                    typeof request.headers['access-control-request-method'] === 'string'
+                ) {
+                    const outHeaders = applySubdomainPreviewCorsHeaders(
+                        {},
+                        request.headers.origin as string | undefined,
+                        request.headers.host as string | undefined,
+                        request.headers['access-control-request-headers'] as string | undefined,
+                    );
+                    return reply.code(204).headers(outHeaders).send();
+                }
+
                 // Find machine sockets. A daemon reconnect can briefly leave
                 // stale machine-scoped connections around; try all live
                 // candidates so one stale socket cannot pin preview to a 35s
@@ -353,6 +417,12 @@ export function previewRoutes(app: Fastify) {
                 if (rpcResponse.truncated) {
                     outHeaders['X-Preview-Truncated'] = '1';
                 }
+                applySubdomainPreviewCorsHeaders(
+                    outHeaders,
+                    request.headers.origin as string | undefined,
+                    request.headers.host as string | undefined,
+                    request.headers['access-control-request-headers'] as string | undefined,
+                );
                 // Always send fresh Content-Length because the body may have been rewritten.
                 outHeaders['Content-Length'] = String(responseBody.length);
 
