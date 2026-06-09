@@ -388,7 +388,7 @@ function GroupThread({ group }: { group: GroupConfig }) {
                     onPress={() => setTargetRole('executor')}
                 >
                     <Text style={[styles.targetButtonText, { color: executorActive ? '#FFFFFF' : executorColor }]}>
-                        发给 {executorAgent === 'codex' ? 'Codex' : 'Claude'}（执行）
+                        发给 {executorAgent === 'codex' ? 'Codex' : 'Claude'}
                     </Text>
                 </Pressable>
                 <Pressable
@@ -401,7 +401,7 @@ function GroupThread({ group }: { group: GroupConfig }) {
                     onPress={() => setTargetRole('reviewer')}
                 >
                     <Text style={[styles.targetButtonText, { color: reviewerActive ? '#FFFFFF' : reviewerColor }]}>
-                        发给 {reviewerAgent === 'claude' ? 'Claude' : 'Codex'}（审查）
+                        发给 {reviewerAgent === 'claude' ? 'Claude' : 'Codex'}
                     </Text>
                 </Pressable>
             </View>
@@ -430,9 +430,7 @@ function GroupMessage({ message }: { message: MergedMessage }) {
     if (message.kind === 'user-text') {
         const text = message.displayText ?? message.text;
         if (!text) return null;
-        const targetLabel = message.role === 'executor'
-            ? `${message.agent === 'codex' ? 'Codex' : 'Claude'} · 执行`
-            : `${message.agent === 'claude' ? 'Claude' : 'Codex'} · 审查`;
+        const targetLabel = message.agent === 'codex' ? 'Codex' : 'Claude';
         return (
             <View style={styles.userMessage}>
                 <Text style={styles.userMessageHeader}>我 → {targetLabel}</Text>
@@ -443,9 +441,7 @@ function GroupMessage({ message }: { message: MergedMessage }) {
 
     const color = message.role === 'executor' ? '#10B981' : '#6366F1';
     const backgroundColor = theme.dark ? '#1F2937' : '#FFFFFF';
-    const agentLabel = message.role === 'executor'
-        ? `${message.agent === 'codex' ? 'Codex' : 'Claude'} · 执行`
-        : `${message.agent === 'claude' ? 'Claude' : 'Codex'} · 审查`;
+    const agentLabel = message.agent === 'codex' ? 'Codex' : 'Claude';
     return (
         <View style={[styles.message, { borderLeftColor: color, backgroundColor }]}>
             <View style={styles.messageHeaderRow}>
