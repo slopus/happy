@@ -126,6 +126,16 @@ export function rwPath(u: string, P: string, ORIGIN: string): string {
     }
     try {
         const parsed = new URL(u);
+        const token = parsed.searchParams.get('ptoken');
+        if (token) {
+            const slash = token.indexOf('/');
+            if (slash > 0) {
+                const pathTail = token.slice(slash);
+                parsed.searchParams.set('ptoken', token.slice(0, slash));
+                parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}${pathTail}`;
+                return parsed.toString();
+            }
+        }
         if (parsed.origin !== ORIGIN) return u;
         const path = parsed.pathname + parsed.search + parsed.hash;
         if (path.indexOf(P) === 0) return u;
@@ -232,7 +242,7 @@ function buildInterceptorScript(prefix: string): string {
         `window.WebSocket=function(u,p){` +
         `if(p==='vite-hmr'||p==='vite-ping'||` +
         `(u&&(u.indexOf('__vite')!==-1||u.indexOf('/_next/webpack')!==-1||u.indexOf('hot-update')!==-1)))return new NoopWS();` +
-        `return p?new _WS(u,p):new _WS(u)};` +
+        `u=rw(u);return p?new _WS(u,p):new _WS(u)};` +
         `window.WebSocket.prototype=_WS.prototype;` +
         `window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;` +
         // Phase 11B: rwIn handles string / URL / Request — covers fetch
