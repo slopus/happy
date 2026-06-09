@@ -515,17 +515,37 @@ export async function runCodex(opts: {
     // process that died while a tool prompt was open — see the matching
     // call in claudeRemoteLauncher for the full rationale.
     permissionHandler.reset('Previous CLI process exited before responding');
+    // Bridge: session-envelope 的 tool-call-end 不带 output content，App 详情页因此显示
+    // 「未产生输出」。这里在 processor emit tool-call-result 时，额外把 output 通过 ACP 通道
+    // 发一份，App reducer 会用 c.content 填进 tool.result。
+    const forwardToolResultToAcp = (message: any) => {
+        if (message?.type !== 'tool-call-result') return;
+        const callId = typeof message.callId === 'string' ? message.callId : null;
+        if (!callId) return;
+        const output = message.output;
+        const content = output && typeof output === 'object' && 'content' in output ? (output as any).content : output;
+        if (content === undefined || content === null || (typeof content === 'string' && content.length === 0)) return;
+        session.sendAgentMessage('codex', {
+            type: 'tool-result',
+            callId,
+            output: content,
+            id: callId,
+        });
+    };
+
     reasoningProcessor = new ReasoningProcessor((message) => {
         const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
         for (const envelope of envelopes) {
             session.sendSessionProtocolMessage(envelope);
         }
+        forwardToolResultToAcp(message);
     });
     const diffProcessor = new DiffProcessor((message) => {
         const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
         for (const envelope of envelopes) {
             session.sendSessionProtocolMessage(envelope);
         }
+        forwardToolResultToAcp(message);
     });
 
     // Approval handler: routes server → client approval requests to our permission handler
