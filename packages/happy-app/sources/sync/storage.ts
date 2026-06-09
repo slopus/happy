@@ -30,6 +30,7 @@ import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/Realtim
 import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
+import { isArchivedSession } from "./sessionArchiveState";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -87,6 +88,7 @@ export interface SessionRowData {
     createdAt?: number;
     hasDraft: boolean;
     active: boolean;
+    archivedAt: number | null;
     machineId: string | null;
     path: string | null;
     homeDir: string | null;
@@ -120,6 +122,7 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
         hasDraft: !!session.draft,
         active: session.active,
+        archivedAt: session.archivedAt,
         machineId: session.metadata?.machineId ?? null,
         path: session.metadata?.path ?? null,
         homeDir: session.metadata?.homeDir ?? null,
@@ -235,15 +238,16 @@ function buildSessionListViewData(
     sessions: Record<string, Session>,
     unreadSessionIds?: Set<string>,
 ): SessionListViewItem[] {
-    // Separate active and inactive sessions
+    // Separate current and archived sessions. `active` is only process
+    // liveness; `archivedAt` is the user intent to retire a session.
     const activeSessions: Session[] = [];
     const inactiveSessions: Session[] = [];
 
     Object.values(sessions).forEach(session => {
-        if (isSessionActive(session)) {
-            activeSessions.push(session);
-        } else {
+        if (isArchivedSession(session)) {
             inactiveSessions.push(session);
+        } else {
+            activeSessions.push(session);
         }
     });
 
@@ -441,7 +445,7 @@ export const storage = create<StorageState>()((set, get) => {
             // Build active set from all sessions (including existing ones)
             const activeSet = new Set<string>();
             Object.values(mergedSessions).forEach(session => {
-                if (isSessionActive(session)) {
+                if (!isArchivedSession(session)) {
                     activeSet.add(session.id);
                 }
             });

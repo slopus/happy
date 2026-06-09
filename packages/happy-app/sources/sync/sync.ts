@@ -918,6 +918,7 @@ class Sync {
             dataEncryptionKey: string | null;
             active: boolean;
             activeAt: number;
+            archivedAt?: number | null;
             createdAt: number;
             updatedAt: number;
             lastMessage: ApiMessage | null;
@@ -958,6 +959,7 @@ class Sync {
             // Put it all together
             const processedSession = {
                 ...session,
+                archivedAt: session.archivedAt ?? null,
                 thinking: false,
                 thinkingAt: 0,
                 metadata,
@@ -2615,6 +2617,7 @@ class Sync {
                     ...session,
                     active: update.active,
                     activeAt: update.activeAt,
+                    archivedAt: update.archivedAt === undefined ? session.archivedAt : update.archivedAt,
                     thinking: update.thinking ?? false,
                     thinkingAt: update.activeAt // Always use activeAt for consistency
                 });
