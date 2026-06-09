@@ -32,7 +32,6 @@ import { getProjectPath } from './utils/path';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RawJSONLinesSchema, type RawJSONLines } from './types';
-import { shouldPostArchiveEndpoint } from '@/session/archiveIntent';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -705,12 +704,17 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 // Send session death message
                 session.sendSessionDeath();
 
-                if (shouldPostArchiveEndpoint(opts)) {
-                    try {
-                        await api.deactivateSession(session.sessionId);
-                    } catch (err) {
-                        logger.debug('[START] archiveSession during cleanup failed:', err);
-                    }
+                // Belt-and-braces: also POST /v1/sessions/<id>/archive so
+                // the server flips active=false even if the socket emit
+                // didn't drain before close. The HTTP endpoint touches
+                // only `active` and `lastActiveAt` — it doesn't write
+                // archive metadata — so this is safe in the archive=false
+                // case too, and matches the "session goes inactive but
+                // stays resumable" semantics we want for Ctrl-C.
+                try {
+                    await api.deactivateSession(session.sessionId);
+                } catch (err) {
+                    logger.debug('[START] deactivateSession during cleanup failed:', err);
                 }
 
                 await session.flush();

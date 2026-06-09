@@ -404,10 +404,15 @@ export class ApiClient {
   }
 
   /**
-   * Mark a session as archived on the server.
+   * Mark a session as inactive on the server (active=false). Does NOT
+   * change `lifecycleState`, so the session remains visible in the app
+   * and resumable — same effect as the in-app "Archive" button hitting
+   * the /archive endpoint, but without the extra metadata.
    *
-   * The endpoint writes server-side archive intent (`archivedAt`), so callers
-   * must only use it for explicit archive flows, not Ctrl-C/SIGTERM cleanup.
+   * Used during graceful shutdown (Ctrl-C / SIGTERM) as a synchronous
+   * fallback for the socket-based session-end signal: even if the
+   * socket emit doesn't drain before the process exits, the HTTP
+   * response confirms the deactivate landed.
    */
   async deactivateSession(sessionId: string): Promise<boolean> {
     try {

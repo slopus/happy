@@ -7,7 +7,6 @@ interface SessionCacheEntry {
     lastUpdateSent: number;
     pendingUpdate: number | null;
     userId: string;
-    archivedAt: number | null;
 }
 
 interface MachineCacheEntry {
@@ -54,7 +53,7 @@ class ActivityCache {
         // Check cache first
         if (cached && cached.validUntil > now && cached.userId === userId) {
             sessionCacheCounter.inc({ operation: 'session_validation', result: 'hit' });
-            return cached.archivedAt === null;
+            return true;
         }
         
         sessionCacheCounter.inc({ operation: 'session_validation', result: 'miss' });
@@ -71,10 +70,9 @@ class ActivityCache {
                     validUntil: now + this.CACHE_TTL,
                     lastUpdateSent: session.lastActiveAt.getTime(),
                     pendingUpdate: null,
-                    userId,
-                    archivedAt: session.archivedAt?.getTime() ?? null
+                    userId
                 });
-                return session.archivedAt === null;
+                return true;
             }
             
             return false;
@@ -130,9 +128,6 @@ class ActivityCache {
         if (!cached) {
             return false; // Should validate first
         }
-        if (cached.archivedAt !== null) {
-            return false;
-        }
         
         // Only queue if time difference is significant
         const timeDiff = Math.abs(timestamp - cached.lastUpdateSent);
@@ -143,10 +138,6 @@ class ActivityCache {
         
         databaseUpdatesSkippedCounter.inc({ type: 'session' });
         return false; // No update needed
-    }
-
-    invalidateSession(sessionId: string): void {
-        this.sessionCache.delete(sessionId);
     }
 
     queueMachineUpdate(machineId: string, timestamp: number): boolean {
@@ -195,18 +186,12 @@ class ActivityCache {
         // Batch update sessions
         if (sessionUpdates.length > 0) {
             try {
-                const results = await Promise.all(sessionUpdates.map(update =>
-                    db.session.updateMany({
-                        where: { id: update.id, archivedAt: null },
+                await Promise.all(sessionUpdates.map(update =>
+                    db.session.update({
+                        where: { id: update.id },
                         data: { lastActiveAt: new Date(update.timestamp), active: true }
                     })
                 ));
-
-                for (let i = 0; i < results.length; i++) {
-                    if (results[i].count === 0) {
-                        this.sessionCache.delete(sessionUpdates[i].id);
-                    }
-                }
                 
                 log({ module: 'session-cache' }, `Flushed ${sessionUpdates.length} session updates`);
             } catch (error) {

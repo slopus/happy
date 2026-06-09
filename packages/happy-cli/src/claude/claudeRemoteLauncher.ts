@@ -445,13 +445,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             } catch (e) {
                 logger.debug('[remote]: launch error', e);
                 if (!exitReason) {
-                    if (abortController?.signal.aborted) {
-                        session.client.closeClaudeSessionTurn('cancelled');
-                        session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
-                    } else {
-                        session.client.closeClaudeSessionTurn('failed');
-                        session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
-                    }
+                    session.client.closeClaudeSessionTurn('failed');
+                    session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                     continue;
                 }
             } finally {

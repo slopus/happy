@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { SessionListViewItem, useSessionListViewData, useSetting } from '@/sync/storage';
-import { isArchivedSession } from '@/sync/sessionArchiveState';
 
 export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
     const data = useSessionListViewData();
@@ -18,7 +17,7 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
         for (const item of data) {
             if (item.type === 'active-sessions') {
                 result.push(item);
-            } else if (item.type === 'session' && isArchivedSession(item.session)) {
+            } else if (item.type === 'session' && !item.session.active) {
                 hasInactive = true;
             }
         }
@@ -43,7 +42,7 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
                 }
 
                 if (item.type === 'session') {
-                    if (isArchivedSession(item.session)) {
+                    if (!item.session.active) {
                         if (pendingProjectGroup) {
                             result.push(pendingProjectGroup);
                             pendingProjectGroup = null;

@@ -43,7 +43,6 @@ import {
     hashCodexEnhancedMode,
     type CodexEnhancedMode,
 } from './codexPrompt';
-import { resolveCodexTurnErrorDisposition } from './codexTurnErrorPolicy';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -387,7 +386,6 @@ export async function runCodex(opts: {
     // Turn cancellation uses client.interruptTurn() — no AbortController hack needed.
     let abortController = new AbortController();
     let shouldExit = false;
-    let abortRequested = false;
 
     /**
      * Handles aborting the current task/inference without exiting the process.
@@ -401,7 +399,6 @@ export async function runCodex(opts: {
         }
 
         logger.debug('[Codex] Abort requested - stopping current task');
-        abortRequested = true;
         abortInProgress = (async () => {
             try {
                 // Resolve any pending permission requests as 'abort' first.
@@ -469,7 +466,6 @@ export async function runCodex(opts: {
                 
                 // Send session death message
                 session.sendSessionDeath();
-                await api.deactivateSession(session.sessionId);
                 await session.flush();
                 await session.close();
             }
@@ -798,7 +794,6 @@ export async function runCodex(opts: {
 
             // Display user messages in the UI
             messageBuffer.addMessage(message.message, 'user');
-            abortRequested = false;
 
             try {
                 // Map permission mode to approval policy and sandbox.
@@ -853,16 +848,9 @@ export async function runCodex(opts: {
             } catch (error) {
                 // Only actual errors reach here (process crash, connection failure, etc.)
                 logger.warn('Error in codex session:', error);
-                const disposition = resolveCodexTurnErrorDisposition({ abortRequested, shouldExit });
-                if (disposition === 'user-abort') {
-                    messageBuffer.addMessage('Aborted by user', 'status');
-                    session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
-                } else {
-                    messageBuffer.addMessage('Process exited unexpectedly', 'status');
-                    session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
-                }
+                messageBuffer.addMessage('Process exited unexpectedly', 'status');
+                session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
             } finally {
-                abortRequested = false;
                 // Reset permission handler, reasoning processor, and diff processor
                 permissionHandler.reset();
                 reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls
