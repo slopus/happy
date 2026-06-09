@@ -10,8 +10,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import packageJson from '../package.json'
 
-export const DEFAULT_SERVER_URL = 'http://192.144.133.93:3000'
-export const DEFAULT_WEBAPP_URL = 'http://192.144.133.93:3000'
+export const DEFAULT_SERVER_URL = 'http://luckyc.online:3000'
+export const DEFAULT_WEBAPP_URL = 'http://luckyc.online:3000'
 
 class Configuration {
   public readonly serverUrl: string

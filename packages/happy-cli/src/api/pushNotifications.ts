@@ -76,7 +76,7 @@ export class PushNotificationClient {
     private readonly baseUrl: string
     private readonly expo: Expo
 
-    constructor(token: string, baseUrl: string = 'http://192.144.133.93:3000') {
+    constructor(token: string, baseUrl: string = 'http://luckyc.online:3000') {
         this.token = token
         this.baseUrl = baseUrl
         this.expo = new Expo()
