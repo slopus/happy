@@ -7,10 +7,11 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAuth } from '@/auth/AuthContext';
 import { kvGet, kvList } from '@/sync/apiKv';
 import { sync } from '@/sync/sync';
-import { useAllSessions, useSessionMessages } from '@/sync/storage';
+import { useAllSessions, useSession, useSessionMessages } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import type { Message } from '@/sync/typesMessage';
 import { Typography } from '@/constants/Typography';
+import { MessageView } from '@/components/MessageView';
 
 type GroupAgent = 'codex' | 'claude';
 type GroupRole = 'executor' | 'reviewer';
@@ -81,10 +82,14 @@ const styles = StyleSheet.create((theme) => ({
     },
     message: {
         borderRadius: 8,
-        padding: 12,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
         borderLeftWidth: 3,
-        maxWidth: '85%',
-        alignSelf: 'flex-start',
+        alignSelf: 'stretch',
+    },
+    messageHeaderRow: {
+        paddingHorizontal: 12,
+        paddingTop: 8,
     },
     userMessage: {
         borderRadius: 12,
@@ -419,11 +424,12 @@ function GroupThread({ group }: { group: GroupConfig }) {
 
 function GroupMessage({ message }: { message: MergedMessage }) {
     const { theme } = useUnistyles();
-    const isUser = message.kind === 'user-text';
-    const text = messageText(message);
-    if (!text) return null;
+    // 工具调用 / agent-text / agent-event 都委托给 MessageView 渲染，需要拿到会话 metadata。
+    const session = useSession(message.sessionId);
 
-    if (isUser) {
+    if (message.kind === 'user-text') {
+        const text = message.displayText ?? message.text;
+        if (!text) return null;
         const targetLabel = message.role === 'executor'
             ? `${message.agent === 'codex' ? 'Codex' : 'Claude'} · 执行`
             : `${message.agent === 'claude' ? 'Claude' : 'Codex'} · 审查`;
@@ -442,10 +448,14 @@ function GroupMessage({ message }: { message: MergedMessage }) {
         : `${message.agent === 'claude' ? 'Claude' : 'Codex'} · 审查`;
     return (
         <View style={[styles.message, { borderLeftColor: color, backgroundColor }]}>
-            <Text style={[styles.messageHeader, { color }]}>
-                {agentLabel}
-            </Text>
-            <Text style={styles.messageText}>{text}</Text>
+            <View style={styles.messageHeaderRow}>
+                <Text style={[styles.messageHeader, { color }]}>{agentLabel}</Text>
+            </View>
+            <MessageView
+                message={message}
+                metadata={session?.metadata ?? null}
+                sessionId={message.sessionId}
+            />
         </View>
     );
 }
@@ -498,15 +508,3 @@ function describeGroup(group: GroupConfig): string {
     return [executor?.agent ?? 'executor', reviewer?.agent ?? 'reviewer'].join(' + ');
 }
 
-function messageText(message: Message): string {
-    if (message.kind === 'user-text' || message.kind === 'agent-text') {
-        return message.kind === 'user-text' ? (message.displayText ?? message.text) : message.text;
-    }
-    if (message.kind === 'tool-call') {
-        return message.tool.description ?? message.tool.name;
-    }
-    if (message.event.type === 'message') {
-        return message.event.message;
-    }
-    return message.event.type;
-}
