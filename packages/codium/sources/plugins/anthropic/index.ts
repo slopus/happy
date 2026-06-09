@@ -10,6 +10,7 @@ import type {
 const STORAGE_KEY = 'codium.plugin.anthropic.apiKey'
 
 const MODELS: ModelDescriptor[] = [
+    { id: 'claude-fable-5',    label: 'Fable 5',    group: 'Anthropic', description: 'Most capable model, long-horizon agentic work.' },
     { id: 'claude-opus-4-8',   label: 'Opus 4.8',   group: 'Anthropic', description: 'Latest Opus generation.' },
     { id: 'claude-opus-4-7',   label: 'Opus 4.7',   group: 'Anthropic', description: 'Previous Opus generation.' },
     { id: 'claude-opus-4-6',   label: 'Opus 4.6',   group: 'Anthropic', description: 'Deepest reasoning, slowest.' },

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     getAvailableModels,
     getAvailablePermissionModes,
+    getClaudeModelModes,
     getCodexModelModes,
     getClaudePermissionModes,
     getDefaultEffortKey,
@@ -28,6 +29,20 @@ describe('modelModeOptions', () => {
         const modes = getClaudePermissionModes(translate);
         expect(modes.map((mode) => mode.key)).toEqual(['default', 'plan', 'dontAsk', 'acceptEdits', 'bypassPermissions']);
         expect(modes[0].name).toBe('tr:agentInput.permissionMode.default');
+    });
+
+    it('builds claude model fallbacks including fable 5', () => {
+        const models = getClaudeModelModes();
+        expect(models.map((model) => model.key)).toEqual([
+            'default',
+            'claude-fable-5',
+            'opus',
+            'sonnet',
+            'haiku',
+        ]);
+        // Fable 5 is a new family with no short alias, so the picker sends the
+        // full model id; the CLI passes it through to the API unchanged.
+        expect(models.find((model) => model.key === 'claude-fable-5')?.name).toBe('fable 5');
     });
 
     it('builds codex model fallbacks', () => {
