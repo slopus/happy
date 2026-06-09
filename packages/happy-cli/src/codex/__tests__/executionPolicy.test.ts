@@ -29,7 +29,7 @@ describe('resolveCodexExecutionPolicy', () => {
         });
     });
 
-    it('maps safe-yolo to on-failure while keeping the workspace sandbox', () => {
+    it('maps safe-yolo mode to on-failure + workspace-write without managed sandbox', () => {
         const policy = resolveCodexExecutionPolicy('safe-yolo', false);
 
         expect(policy).toEqual({
@@ -38,7 +38,7 @@ describe('resolveCodexExecutionPolicy', () => {
         });
     });
 
-    it('maps yolo to never with full sandbox access', () => {
+    it('maps yolo mode to never + danger-full-access without managed sandbox', () => {
         const policy = resolveCodexExecutionPolicy('yolo', false);
 
         expect(policy).toEqual({
@@ -47,7 +47,7 @@ describe('resolveCodexExecutionPolicy', () => {
         });
     });
 
-    it('maps bypassPermissions to never with full sandbox access', () => {
+    it('maps bypassPermissions mode to never + danger-full-access without managed sandbox', () => {
         const policy = resolveCodexExecutionPolicy('bypassPermissions', false);
 
         expect(policy).toEqual({

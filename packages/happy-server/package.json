@@ -82,7 +82,7 @@
     "dotenv": "^16.4.5",
     "elevenlabs": "^1.54.0",
     "fastify": "^5.2.0",
-    "fastify-type-provider-zod": "^4.0.2",
+    "fastify-type-provider-zod": "^6.1.0",
     "ioredis": "^5.6.1",
     "jsonwebtoken": "^9.0.2",
     "minio": "^8.0.5",
@@ -102,7 +102,7 @@
     "tmp": "^0.2.3",
     "tweetnacl": "^1.0.3",
     "uuid": "^9.0.1",
-    "zod": "3.25.76",
+    "zod": "^4.0.0",
     "zod-to-json-schema": "^3.24.3"
   },
   "publishConfig": {

@@ -17,7 +17,7 @@ export function resolveCodexExecutionPolicy(
             case 'default': return 'untrusted';                    // Ask for non-trusted commands
             case 'read-only': return 'never';                      // Never ask, read-only enforced by sandbox
             case 'safe-yolo': return 'on-failure';                 // Auto-run, ask only on failure
-            case 'yolo': return 'never';                           // Full bypass: never ask
+            case 'yolo': return 'never';                           // Full YOLO: never interrupt for approvals
             // Defensive fallback for Claude-specific modes (backward compatibility)
             case 'bypassPermissions': return 'never';              // Full access: map to yolo behavior
             case 'acceptEdits': return 'on-request';               // Let model decide (closest to auto-approve edits)

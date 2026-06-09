@@ -47,9 +47,11 @@ export interface QueryOptions {
     /**
      * Effort level passed straight through to the Claude Agent SDK option
      * of the same name — controls how much thinking/reasoning Claude
-     * applies on each turn ('low' | 'medium' | 'high' | 'max').
+     * applies on each turn ('low' | 'medium' | 'high' | 'xhigh' | 'max').
+     * 'xhigh' is supported on the newest Opus generation (e.g. Opus 4.8);
+     * the SDK silently downgrades it to 'high' on models without it.
      */
-    effort?: 'low' | 'medium' | 'high' | 'max'
+    effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 }
 
 /**
