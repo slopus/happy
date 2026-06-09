@@ -89,7 +89,6 @@ export interface SessionRowData {
     hasDraft: boolean;
     active: boolean;
     archivedAt: number | null;
-    lifecycleState: string | null;
     machineId: string | null;
     path: string | null;
     homeDir: string | null;
@@ -124,7 +123,6 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         hasDraft: !!session.draft,
         active: session.active,
         archivedAt: session.archivedAt,
-        lifecycleState: session.metadata?.lifecycleState ?? null,
         machineId: session.metadata?.machineId ?? null,
         path: session.metadata?.path ?? null,
         homeDir: session.metadata?.homeDir ?? null,
