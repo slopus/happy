@@ -83,10 +83,26 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 8,
         padding: 12,
         borderLeftWidth: 3,
+        maxWidth: '85%',
+        alignSelf: 'flex-start',
+    },
+    userMessage: {
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        maxWidth: '85%',
+        alignSelf: 'flex-end',
+        backgroundColor: '#3B82F6',
     },
     messageHeader: {
         fontSize: 12,
         marginBottom: 6,
+        ...Typography.default('semiBold'),
+    },
+    userMessageHeader: {
+        fontSize: 11,
+        marginBottom: 4,
+        color: '#DBEAFE',
         ...Typography.default('semiBold'),
     },
     messageText: {
@@ -95,13 +111,45 @@ const styles = StyleSheet.create((theme) => ({
         lineHeight: 20,
         ...Typography.default(),
     },
+    userMessageText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        lineHeight: 20,
+        ...Typography.default(),
+    },
+    targetSelector: {
+        flexDirection: 'row',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingTop: 10,
+        paddingBottom: 4,
+        backgroundColor: theme.colors.surface,
+        borderTopWidth: 1,
+        borderTopColor: theme.colors.divider,
+    },
+    targetButton: {
+        flex: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 8,
+        borderWidth: 1,
+        alignItems: 'center',
+    },
+    targetButtonInactive: {
+        backgroundColor: 'transparent',
+        borderColor: theme.colors.divider,
+    },
+    targetButtonText: {
+        fontSize: 13,
+        ...Typography.default('semiBold'),
+    },
     composer: {
         flexDirection: 'row',
         alignItems: 'flex-end',
         gap: 8,
-        padding: 12,
-        borderTopWidth: 1,
-        borderTopColor: theme.colors.divider,
+        paddingHorizontal: 12,
+        paddingBottom: 12,
+        paddingTop: 4,
         backgroundColor: theme.colors.surface,
     },
     input: {
@@ -242,10 +290,14 @@ export function GroupDetailView() {
 function GroupThread({ group }: { group: GroupConfig }) {
     const { theme } = useUnistyles();
     const [input, setInput] = React.useState('');
+    const [targetRole, setTargetRole] = React.useState<GroupRole>('executor');
     const executor = group.sessions.find((item) => item.role === 'executor');
     const reviewer = group.sessions.find((item) => item.role === 'reviewer');
     const executorMessages = useGroupSessionMessages(executor?.sessionId);
     const reviewerMessages = useGroupSessionMessages(reviewer?.sessionId);
+    const flatListRef = React.useRef<FlatList<MergedMessage>>(null);
+    // 用户是否贴底。用 ref 避免 onScroll 触发 re-render；初始 true 保证首屏加载完后能自动落到底部。
+    const isAtBottomRef = React.useRef(true);
 
     React.useEffect(() => {
         if (executor?.sessionId) sync.onSessionVisible(executor.sessionId);
@@ -259,34 +311,101 @@ function GroupThread({ group }: { group: GroupConfig }) {
         ].sort((a, b) => a.createdAt - b.createdAt);
     }, [executor, executorMessages, reviewer, reviewerMessages]);
 
+    React.useEffect(() => {
+        if (messages.length > 0 && isAtBottomRef.current) {
+            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+        }
+    }, [messages.length]);
+
+    const handleScroll = React.useCallback((event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
+        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+        const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+        isAtBottomRef.current = distanceFromBottom < 80;
+    }, []);
+
     const send = React.useCallback(() => {
         const text = input.trim();
         if (!text || !executor || !reviewer) return;
+        // Backward-compat: still allow @claude/@codex prefixes to override
         const reviewerPrefix = /^@(claude|reviewer)\s+/i;
-        const target = reviewerPrefix.test(text) ? reviewer : executor;
-        const cleanText = text.replace(reviewerPrefix, '').trim();
+        const executorPrefix = /^@(codex|executor)\s+/i;
+        let target;
+        let cleanText = text;
+        if (reviewerPrefix.test(text)) {
+            target = reviewer;
+            cleanText = text.replace(reviewerPrefix, '').trim();
+        } else if (executorPrefix.test(text)) {
+            target = executor;
+            cleanText = text.replace(executorPrefix, '').trim();
+        } else {
+            target = targetRole === 'reviewer' ? reviewer : executor;
+        }
         if (!cleanText) return;
         setInput('');
         sync.sendMessage(target.sessionId, cleanText, {
             source: 'chat',
         });
-    }, [executor, input, reviewer]);
+    }, [executor, input, reviewer, targetRole]);
+
+    const executorActive = targetRole === 'executor';
+    const reviewerActive = targetRole === 'reviewer';
+    const executorColor = '#10B981';
+    const reviewerColor = '#6366F1';
+    const executorAgent = executor?.agent ?? 'codex';
+    const reviewerAgent = reviewer?.agent ?? 'claude';
 
     return (
         <View style={styles.container}>
             <FlatList
+                ref={flatListRef}
                 style={styles.messageList}
                 contentContainerStyle={styles.messageContent}
                 data={messages}
                 keyExtractor={(item) => `${item.sessionId}:${item.id}`}
                 renderItem={({ item }) => <GroupMessage message={item} />}
+                onContentSizeChange={() => {
+                    // 只有用户已经在底部（看新消息流）时才跟随滚动；否则保持当前阅读位置不被打断。
+                    if (isAtBottomRef.current) {
+                        flatListRef.current?.scrollToEnd({ animated: false });
+                    }
+                }}
+                onScroll={handleScroll}
+                scrollEventThrottle={100}
             />
+            <View style={styles.targetSelector}>
+                <Pressable
+                    style={[
+                        styles.targetButton,
+                        executorActive
+                            ? { backgroundColor: executorColor, borderColor: executorColor }
+                            : styles.targetButtonInactive,
+                    ]}
+                    onPress={() => setTargetRole('executor')}
+                >
+                    <Text style={[styles.targetButtonText, { color: executorActive ? '#FFFFFF' : executorColor }]}>
+                        发给 {executorAgent === 'codex' ? 'Codex' : 'Claude'}（执行）
+                    </Text>
+                </Pressable>
+                <Pressable
+                    style={[
+                        styles.targetButton,
+                        reviewerActive
+                            ? { backgroundColor: reviewerColor, borderColor: reviewerColor }
+                            : styles.targetButtonInactive,
+                    ]}
+                    onPress={() => setTargetRole('reviewer')}
+                >
+                    <Text style={[styles.targetButtonText, { color: reviewerActive ? '#FFFFFF' : reviewerColor }]}>
+                        发给 {reviewerAgent === 'claude' ? 'Claude' : 'Codex'}（审查）
+                    </Text>
+                </Pressable>
+            </View>
             <View style={styles.composer}>
                 <TextInput
                     style={styles.input}
                     value={input}
                     onChangeText={setInput}
-                    placeholder="Message Codex, or @claude"
+                    placeholder={`发送给 ${targetRole === 'executor' ? executorAgent : reviewerAgent}...`}
                     placeholderTextColor={theme.colors.textSecondary}
                     multiline
                 />
@@ -300,14 +419,33 @@ function GroupThread({ group }: { group: GroupConfig }) {
 
 function GroupMessage({ message }: { message: MergedMessage }) {
     const { theme } = useUnistyles();
+    const isUser = message.kind === 'user-text';
+    const text = messageText(message);
+    if (!text) return null;
+
+    if (isUser) {
+        const targetLabel = message.role === 'executor'
+            ? `${message.agent === 'codex' ? 'Codex' : 'Claude'} · 执行`
+            : `${message.agent === 'claude' ? 'Claude' : 'Codex'} · 审查`;
+        return (
+            <View style={styles.userMessage}>
+                <Text style={styles.userMessageHeader}>我 → {targetLabel}</Text>
+                <Text style={styles.userMessageText}>{text}</Text>
+            </View>
+        );
+    }
+
     const color = message.role === 'executor' ? '#10B981' : '#6366F1';
     const backgroundColor = theme.dark ? '#1F2937' : '#FFFFFF';
+    const agentLabel = message.role === 'executor'
+        ? `${message.agent === 'codex' ? 'Codex' : 'Claude'} · 执行`
+        : `${message.agent === 'claude' ? 'Claude' : 'Codex'} · 审查`;
     return (
         <View style={[styles.message, { borderLeftColor: color, backgroundColor }]}>
             <Text style={[styles.messageHeader, { color }]}>
-                {message.role === 'executor' ? 'Executor' : 'Reviewer'} / {message.agent}
+                {agentLabel}
             </Text>
-            <Text style={styles.messageText}>{messageText(message)}</Text>
+            <Text style={styles.messageText}>{text}</Text>
         </View>
     );
 }

@@ -1,14 +1,12 @@
 import axios from 'axios'
 import chalk from 'chalk'
 import { spawn } from 'node:child_process'
-import os from 'node:os'
 import { resolve } from 'node:path'
 
 import { ApiClient } from '@/api/api'
 import type { Credentials } from '@/persistence'
 import { authAndSetupMachineIfNeeded } from '@/ui/auth'
 import { configuration } from '@/configuration'
-import { createSessionMetadata } from '@/utils/createSessionMetadata'
 import { readSettings } from '@/persistence'
 import { initialMachineMetadata } from '@/daemon/run'
 
@@ -52,37 +50,21 @@ async function runGroup(credentials: Credentials, options: GroupOptions): Promis
     metadata: initialMachineMetadata,
   })
 
-  const executorSession = await createGroupSession({
-    api,
-    machineId: settings.machineId,
-    groupId,
-    groupName: options.name,
-    role: 'executor',
-    agent: options.executor,
-  })
-  const reviewerSession = await createGroupSession({
-    api,
-    machineId: settings.machineId,
-    groupId,
-    groupName: options.name,
-    role: 'reviewer',
-    agent: options.reviewer,
-  })
-
   await upsertKv(credentials, `group:${groupId}`, JSON.stringify({
     id: groupId,
     name: options.name,
     cwd: options.cwd,
     createdAt: Date.now(),
     sessions: [
-      { sessionId: executorSession.id, role: 'executor', agent: options.executor },
-      { sessionId: reviewerSession.id, role: 'reviewer', agent: options.reviewer },
+      { tag: `group:${groupId}:executor`, role: 'executor', agent: options.executor },
+      { tag: `group:${groupId}:reviewer`, role: 'reviewer', agent: options.reviewer },
     ],
   }))
 
   console.log(chalk.green(`Group "${options.name}" is ready.`))
-  console.log(`Executor (${options.executor}): ${executorSession.id}`)
-  console.log(`Reviewer (${options.reviewer}): ${reviewerSession.id}`)
+  console.log(`Executor: ${options.executor}`)
+  console.log(`Reviewer: ${options.reviewer}`)
+  console.log(chalk.gray(`Starting both agents in ${options.cwd}...`))
 
   const children = [
     launchAgent(options.executor, {
@@ -111,40 +93,6 @@ async function runGroup(credentials: Credentials, options: GroupOptions): Promis
     })
     child.on('error', rejectChild)
   })))
-}
-
-async function createGroupSession(params: {
-  api: ApiClient
-  machineId: string
-  groupId: string
-  groupName: string
-  role: AgentRole
-  agent: AgentType
-}) {
-  const { state, metadata } = createSessionMetadata({
-    flavor: params.agent,
-    machineId: params.machineId,
-    startedBy: 'terminal',
-    groupId: params.groupId,
-    groupName: params.groupName,
-    agentRole: params.role,
-    agentType: params.agent,
-  })
-  const session = await params.api.getOrCreateSession({
-    tag: `group:${params.groupId}:${params.role}`,
-    metadata: {
-      ...metadata,
-      path: process.cwd(),
-      host: os.hostname(),
-      homeDir: os.homedir(),
-      happyHomeDir: configuration.happyHomeDir,
-    },
-    state,
-  })
-  if (!session) {
-    throw new Error(`Failed to create ${params.role} session`)
-  }
-  return session
 }
 
 function launchAgent(agent: AgentType, opts: {
