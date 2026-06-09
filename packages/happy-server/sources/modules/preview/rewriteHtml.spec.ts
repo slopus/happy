@@ -551,6 +551,18 @@ describe('rwPath — string path/URL rewriting', () => {
         expect(rwPath('https://other.com/api/x', P, ORIGIN)).toBe('https://other.com/api/x');
     });
 
+    it('moves an appended path out of a misplaced ptoken query before network fetch', () => {
+        expect(
+            rwPath('https://m1-41009.preview.saycode.ai?ptoken=tok-41009/api/tutorial', P, ORIGIN),
+        ).toBe('https://m1-41009.preview.saycode.ai/api/tutorial?ptoken=tok-41009');
+    });
+
+    it('preserves existing path and sibling query params when fixing misplaced ptoken', () => {
+        expect(
+            rwPath('https://m1-41009.preview.saycode.ai/base/?ptoken=tok-41009/api/tutorial&x=1', P, ORIGIN),
+        ).toBe('https://m1-41009.preview.saycode.ai/base/api/tutorial?ptoken=tok-41009&x=1');
+    });
+
     it('is idempotent on already-prefixed absolute URLs', () => {
         const url = `${ORIGIN}${P}/api/x`;
         expect(rwPath(url, P, ORIGIN)).toBe(url);
