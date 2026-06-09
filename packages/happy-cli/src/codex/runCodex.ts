@@ -533,19 +533,22 @@ export async function runCodex(opts: {
         });
     };
 
+    // ACP 必须在 envelope 之前发，否则 App reducer 会先用 envelope 的 tool-call-end 把
+    // tool.result 设成 null 并切到 completed，后到的 ACP tool-result 因为 state !== 'running'
+    // 就被丢弃。详见 apiSession.sendClaudeSessionMessage 里的同款注释。
     reasoningProcessor = new ReasoningProcessor((message) => {
+        forwardToolResultToAcp(message);
         const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
         for (const envelope of envelopes) {
             session.sendSessionProtocolMessage(envelope);
         }
-        forwardToolResultToAcp(message);
     });
     const diffProcessor = new DiffProcessor((message) => {
+        forwardToolResultToAcp(message);
         const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
         for (const envelope of envelopes) {
             session.sendSessionProtocolMessage(envelope);
         }
-        forwardToolResultToAcp(message);
     });
 
     // Approval handler: routes server → client approval requests to our permission handler

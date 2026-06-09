@@ -500,13 +500,11 @@ export class ApiSessionClient extends EventEmitter {
     sendClaudeSessionMessage(body: RawJSONLines) {
         const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-        for (const envelope of mapped.envelopes) {
-            this.sendSessionProtocolMessage(envelope);
-        }
 
-        // Bridge: Claude SDK 的 tool_result block 不会通过 session-envelope 协议把 content
-        // 带给 App（mapper 只 emit tool-call-end），导致 App 端 ToolFullView 显示「未产生输出」。
-        // 这里额外把 tool_result 也通过 ACP 通道发一份，App reducer 会用 c.content 填进 tool.result。
+        // Bridge: 必须在 envelope 之前发。session-envelope 协议的 tool-call-end 没有 output
+        // 字段，App reducer 会把 tool.result 设成 null 并把状态切到 completed；之后我们的
+        // ACP tool-result 到达时因为 state !== 'running' 就会被丢弃。先发 ACP，让 reducer
+        // 用 c.content 设置 result + completed；envelope tool-call-end 之后到，自动跳过。
         if (body.type === 'user' && (body as any).message?.content && Array.isArray((body as any).message.content)) {
             for (const block of (body as any).message.content) {
                 if (block?.type === 'tool_result' && typeof block.tool_use_id === 'string' && block.tool_use_id.length > 0) {
@@ -519,6 +517,10 @@ export class ApiSessionClient extends EventEmitter {
                     });
                 }
             }
+        }
+
+        for (const envelope of mapped.envelopes) {
+            this.sendSessionProtocolMessage(envelope);
         }
 
         // Track usage from assistant messages
