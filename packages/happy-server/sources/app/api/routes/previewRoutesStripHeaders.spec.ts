@@ -82,6 +82,14 @@ describe('stripResponseHeaders', () => {
         expect(out['Location']).toBe('/admin');
     });
 
+    it('normalizes dev-server self Location header even when no prefix is supplied', () => {
+        const out = stripResponseHeaders({
+            Location: 'http://0.0.0.0:30021/cases/1?step=2#chat',
+            'content-type': 'text/html',
+        });
+        expect(out['Location']).toBe('/cases/1?step=2#chat');
+    });
+
     it('leaves cross-origin Location header alone even with prefix', () => {
         const out = stripResponseHeaders(
             { Location: 'https://google.com/login', 'content-type': 'text/html' },

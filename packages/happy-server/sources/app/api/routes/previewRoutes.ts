@@ -151,7 +151,7 @@ export function stripResponseHeaders(
         // Prefix the path so the redirect stays inside the preview mount.
         // See specs/preview-relay-escape-plug/ Phase A.
         if (lower === 'location') {
-            out[key] = prefix ? rewriteLocationHeader(value, prefix) : value;
+            out[key] = rewriteLocationHeader(value, prefix ?? '');
             continue;
         }
         out[key] = value;

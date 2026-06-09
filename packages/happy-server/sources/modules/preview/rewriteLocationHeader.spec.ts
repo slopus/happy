@@ -79,6 +79,32 @@ describe('rewriteLocationHeader', () => {
         });
     });
 
+    describe('dev-server self URL → preview path 로 정규화', () => {
+        it('0.0.0.0 absolute URL 은 prefix 안의 path 로 변환', () => {
+            expect(
+                rewriteLocationHeader('http://0.0.0.0:30021/cases/1?step=2#chat', PREFIX),
+            ).toBe('/v1/preview/abc/30000/cases/1?step=2#chat');
+        });
+
+        it('localhost absolute URL 은 prefix 안의 path 로 변환', () => {
+            expect(
+                rewriteLocationHeader('http://localhost:30021/cases/1', PREFIX),
+            ).toBe('/v1/preview/abc/30000/cases/1');
+        });
+
+        it('subdomain mode(prefix 없음) 에서는 path-only Location 으로 변환', () => {
+            expect(
+                rewriteLocationHeader('http://127.0.0.1:30021/cases/1', ''),
+            ).toBe('/cases/1');
+        });
+
+        it('protocol-relative loopback URL 도 path-only 로 변환', () => {
+            expect(
+                rewriteLocationHeader('//0.0.0.0:30021/cases/1', PREFIX),
+            ).toBe('/v1/preview/abc/30000/cases/1');
+        });
+    });
+
     describe('edge cases', () => {
         it('빈 문자열은 그대로', () => {
             expect(rewriteLocationHeader('', PREFIX)).toBe('');
@@ -92,7 +118,7 @@ describe('rewriteLocationHeader', () => {
             ).toBe('/v1/preview/abc/30000/v1/preview/abc/30000xyz');
         });
 
-        it('prefix 가 빈 문자열이면 그대로 통과 (graceful)', () => {
+        it('prefix 가 빈 문자열이면 absolute path 는 그대로 통과 (graceful)', () => {
             expect(rewriteLocationHeader('/admin', '')).toBe('/admin');
         });
     });
