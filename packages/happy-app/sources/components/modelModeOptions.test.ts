@@ -8,6 +8,7 @@ import {
     getDefaultEffortKey,
     getDefaultModelKey,
     getDefaultPermissionModeKey,
+    getEffortLevelsForModel,
     mapMetadataOptions,
     resolveCurrentOption,
 } from './modelModeOptions';
@@ -31,18 +32,37 @@ describe('modelModeOptions', () => {
         expect(modes[0].name).toBe('tr:agentInput.permissionMode.default');
     });
 
-    it('builds claude model fallbacks including fable 5', () => {
+    it('builds claude model fallbacks including fable 5 and the 1M opus variant', () => {
         const models = getClaudeModelModes();
         expect(models.map((model) => model.key)).toEqual([
             'default',
             'claude-fable-5',
             'opus',
+            'claude-opus-4-8[1m]',
             'sonnet',
             'haiku',
         ]);
-        // Fable 5 is a new family with no short alias, so the picker sends the
-        // full model id; the CLI passes it through to the API unchanged.
+        // Fable 5 and the 1M variant are new entries with no short alias, so the
+        // picker sends the full model id; the CLI passes it through unchanged.
         expect(models.find((model) => model.key === 'claude-fable-5')?.name).toBe('fable 5');
+        expect(models.find((model) => model.key === 'claude-opus-4-8[1m]')?.name).toBe('opus 4.8 (1M)');
+    });
+
+    it('gates claude effort levels per model', () => {
+        const keys = (modelKey: string) => getEffortLevelsForModel('claude', modelKey).map((l) => l.key);
+        // Fable 5 / Opus 4.8 (+ 1M variant) / the opus alias: full set incl. xhigh + max.
+        expect(keys('claude-fable-5')).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+        expect(keys('opus')).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+        expect(keys('claude-opus-4-8[1m]')).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+        // Sonnet 4.6 and Opus 4.6: max but no xhigh.
+        expect(keys('sonnet')).toEqual(['low', 'medium', 'high', 'max']);
+        expect(keys('claude-opus-4-6')).toEqual(['low', 'medium', 'high', 'max']);
+        // Opus 4.5: neither xhigh nor max.
+        expect(keys('claude-opus-4-5')).toEqual(['low', 'medium', 'high']);
+        // Haiku exposes no effort parameter.
+        expect(keys('haiku')).toEqual([]);
+        // Unknown/custom models keep the full set (can't infer narrower support).
+        expect(keys('some-gateway-model')).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
     });
 
     it('builds codex model fallbacks', () => {

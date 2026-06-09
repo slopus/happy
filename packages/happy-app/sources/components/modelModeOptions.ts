@@ -79,6 +79,7 @@ export function getClaudeModelModes(): ModelMode[] {
         { key: 'default', name: 'default model', description: null },
         { key: 'claude-fable-5', name: 'fable 5', description: null },
         { key: 'opus', name: 'opus 4.8', description: null },
+        { key: 'claude-opus-4-8[1m]', name: 'opus 4.8 (1M)', description: null },
         { key: 'sonnet', name: 'sonnet 4.6', description: null },
         { key: 'haiku', name: 'haiku 4.5', description: null },
     ];
@@ -231,14 +232,46 @@ export function getDefaultEffortKey(flavor: AgentFlavor): string | null {
     return getCodeAgentDefaults(flavor).effortLevel;
 }
 
+// Effort support varies by Claude model (per platform.claude.com/docs/.../effort):
+//   - Fable 5 / Opus 4.8 / Opus 4.7: low, medium, high, xhigh, max
+//   - Sonnet 4.6 / Opus 4.6:         low, medium, high, max   (no xhigh)
+//   - Opus 4.5:                      low, medium, high        (no xhigh, no max)
+//   - Haiku 4.5:                     none — the effort parameter errors
+// Sending an unsupported level returns a 400, so the picker must only offer
+// what the selected model accepts.
+const CLAUDE_EFFORT_NO_XHIGH: EffortLevel[] = [
+    { key: 'low', name: 'low' },
+    { key: 'medium', name: 'medium' },
+    { key: 'high', name: 'high' },
+    { key: 'max', name: 'max' },
+];
+
+const CLAUDE_EFFORT_BASIC: EffortLevel[] = [
+    { key: 'low', name: 'low' },
+    { key: 'medium', name: 'medium' },
+    { key: 'high', name: 'high' },
+];
+
+// Maps a model key (picker alias like `opus`/`sonnet`, or a full model id like
+// `claude-opus-4-8[1m]` from gateway/SDK metadata) to its supported effort levels.
+function getClaudeEffortLevelsForModel(modelKey: string): EffortLevel[] {
+    const m = modelKey.toLowerCase();
+    // Haiku exposes no effort parameter at all.
+    if (m.includes('haiku')) return [];
+    // Sonnet 4.6 and Opus 4.6 support max but not xhigh.
+    if (m.includes('sonnet') || m.includes('opus-4-6')) return CLAUDE_EFFORT_NO_XHIGH;
+    // Opus 4.5 supports neither xhigh nor max.
+    if (m.includes('opus-4-5')) return CLAUDE_EFFORT_BASIC;
+    // Fable/Mythos, Opus 4.7/4.8 (incl. the `opus` alias → latest and the [1m]
+    // variant), and any unknown/custom model get the full set — we can't infer
+    // narrower support for models we don't recognise, so we preserve all levels.
+    return getClaudeEffortLevels();
+}
+
 // Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
-export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string): EffortLevel[] {
-    // Claude and Codex expose effort/thought levels regardless of which
-    // specific model is picked — the same low/medium/high/max scale applies
-    // to the whole flavor (mirrors how Codex already worked, which the user
-    // asked Claude to match).
+export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string): EffortLevel[] {
     if (flavor === 'claude') {
-        return getClaudeEffortLevels();
+        return getClaudeEffortLevelsForModel(modelKey);
     }
     if (flavor === 'codex') {
         return getCodexEffortLevels();
