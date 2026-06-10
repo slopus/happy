@@ -4,6 +4,7 @@ vi.mock('@/ui/logger', () => ({
     logger: { debug: vi.fn() },
 }));
 
+import { logger } from '@/ui/logger';
 import { downloadCodexFileEventAttachment } from './attachmentEvents';
 
 function fileEvent(overrides?: Partial<{
@@ -56,18 +57,29 @@ describe('downloadCodexFileEventAttachment', () => {
     });
 
     it('returns null when download or decrypt fails', async () => {
+        const sensitiveError = Object.assign(new Error('download failed'), {
+            config: {
+                headers: { Authorization: 'Bearer secret-token' },
+                url: 'https://example.test/download?signature=secret',
+            },
+        });
         const session = {
-            downloadAndDecryptAttachment: vi.fn().mockRejectedValue(new Error('download failed')),
+            downloadAndDecryptAttachment: vi.fn().mockRejectedValue(sensitiveError),
         };
 
         await expect(downloadCodexFileEventAttachment(session, fileEvent())).resolves.toBeNull();
+        const debugOutput = JSON.stringify(vi.mocked(logger.debug).mock.calls);
+        expect(debugOutput).not.toContain('secret-token');
+        expect(debugOutput).not.toContain('signature=secret');
     });
 
     it('returns null when decryption returns null', async () => {
+        const sensitiveName = 'https://example.test/image.png?token=secret';
         const session = {
             downloadAndDecryptAttachment: vi.fn().mockResolvedValue(null),
         };
 
-        await expect(downloadCodexFileEventAttachment(session, fileEvent())).resolves.toBeNull();
+        await expect(downloadCodexFileEventAttachment(session, fileEvent({ name: sensitiveName }))).resolves.toBeNull();
+        expect(JSON.stringify(vi.mocked(logger.debug).mock.calls)).not.toContain(sensitiveName);
     });
 });

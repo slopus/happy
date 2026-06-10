@@ -13,7 +13,7 @@ export async function downloadCodexFileEventAttachment(
     try {
         const decrypted = await session.downloadAndDecryptAttachment(ev.ref);
         if (!decrypted) {
-            logger.debug(`[Codex] Failed to decrypt attachment: ${ev.name}`);
+            logger.debug('[Codex] Failed to decrypt attachment');
             return null;
         }
         return {
@@ -22,7 +22,9 @@ export async function downloadCodexFileEventAttachment(
             name: ev.name,
         };
     } catch (error) {
-        logger.debug(`[Codex] Failed to download attachment: ${ev.name}`, { error });
+        logger.debug('[Codex] Failed to download attachment', {
+            errorName: error instanceof Error ? error.name : typeof error,
+        });
         return null;
     }
 }

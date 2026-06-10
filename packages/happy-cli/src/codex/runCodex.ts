@@ -23,7 +23,7 @@ import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
-import type { Session as ApiSession } from '@/api/types';
+import type { Session as ApiSession, UserMessage } from '@/api/types';
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -40,6 +40,7 @@ import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
 import { downloadCodexFileEventAttachment } from './utils/attachmentEvents';
 import { prepareCodexImageInputItems } from './utils/imageInput';
+import { createSerialAsyncHandler } from './utils/serialAsyncHandler';
 import {
     buildCodexTurnPrompt,
     hashCodexEnhancedMode,
@@ -227,7 +228,10 @@ export async function runCodex(opts: {
 
     session.onFileEvent((fileEvent) => {
         const ev = fileEvent.content.data.ev;
-        logger.debug(`[Codex] File event received: ${ev.name} (${ev.size} bytes, ref: ${ev.ref})`);
+        logger.debug('[Codex] File event received', {
+            size: ev.size,
+            hasMimeType: Boolean(ev.mimeType),
+        });
         session.trackAttachmentDownload(downloadCodexFileEventAttachment(session, fileEvent));
     });
 
@@ -266,7 +270,7 @@ export async function runCodex(opts: {
         'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
     ];
 
-    session.onUserMessage(async (message) => {
+    const handleUserMessage = createSerialAsyncHandler<UserMessage>(async (message) => {
         const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
 
         // Resolve permission mode (validate against Codex-native modes)
@@ -339,7 +343,12 @@ export async function runCodex(opts: {
         if (enqueueResult === 'clear') {
             logger.debug('[Codex] /clear command pushed to isolated queue');
         }
+    }, (error) => {
+        logger.warn('[Codex] Failed to handle user message', {
+            errorName: error instanceof Error ? error.name : typeof error,
+        });
     });
+    session.onUserMessage(handleUserMessage);
     let thinking = false;
     let currentTurnId: string | null = null;
     let codexStartedSubagents = new Set<string>();
