@@ -651,18 +651,13 @@ Replace the hardcoded input array in `sendTurn` with:
         input.push(...extraInputItems);
 ```
 
-In `sendTurnAndWait`, pass `extraInputItems` through to `sendTurn`:
+Keep the existing `sendTurnAndWait` body call:
 
 ```ts
-            await this.sendTurn(prompt, {
-                model: opts?.model,
-                cwd: opts?.cwd,
-                approvalPolicy: opts?.approvalPolicy,
-                sandbox: opts?.sandbox,
-                effort: opts?.effort,
-                extraInputItems: opts?.extraInputItems,
-            });
+            await this.sendTurn(prompt, opts);
 ```
+
+This already forwards `extraInputItems` once the option type is widened. Do not replace it with a hand-built object; that creates unnecessary drift from the existing timeout/option flow.
 
 - [ ] **Step 5: Run the app-server client test**
 
@@ -696,7 +691,7 @@ git commit -m "feat(cli): send codex image input items"
 Create `packages/happy-cli/src/codex/utils/imageInput.test.ts`:
 
 ```ts
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -704,6 +699,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/ui/logger', () => ({
     logger: { debug: vi.fn() },
+}));
+
+vi.mock('@/configuration', () => ({
+    configuration: { happyHomeDir: '/home/test/.happy' },
 }));
 
 import {
@@ -826,6 +825,12 @@ describe('resolveCodexImageCacheDir', () => {
             cacheRootDir: '/tmp/happy-cache',
             sessionId: 'session-1',
         })).toBe('/tmp/happy-cache/session-1');
+    });
+
+    it('defaults to Happy local state instead of arbitrary OS temp', () => {
+        expect(resolveCodexImageCacheDir({
+            sessionId: 'session-4',
+        })).toBe('/home/test/.happy/codex-image-cache/session-4');
     });
 });
 ```
@@ -1170,6 +1175,12 @@ In the main Codex loop in `packages/happy-cli/src/codex/runCodex.ts`, before `bu
                 const imageInputs = await prepareCodexImageInputItems(message.attachments, {
                     sessionId: session.sessionId,
                 });
+                if ((message.attachments?.length ?? 0) > 0) {
+                    logger.debug('[Codex] Prepared image inputs for turn', {
+                        inputCount: imageInputs.inputItems.length,
+                        skippedCount: imageInputs.skipped,
+                    });
+                }
                 const hasUserText = message.message.trim().length > 0;
                 if ((message.attachments?.length ?? 0) > 0 && imageInputs.inputItems.length === 0 && !hasUserText) {
                     session.sendSessionEvent({
@@ -1303,10 +1314,10 @@ Expected: FAIL because `uploadLocalImageAttachmentEnvelope` is not public.
 
 - [ ] **Step 3: Generalize the upload helper**
 
-In `packages/happy-cli/src/api/apiSession.ts`, rename `LocalTranscriptImageAttachment` to:
+In `packages/happy-cli/src/api/apiSession.ts`, rename `LocalTranscriptImageAttachment` to an exported type:
 
 ```ts
-type LocalImageAttachment = {
+export type LocalImageAttachment = {
     data: Uint8Array;
     mimeType: string;
     name: string;
@@ -1506,6 +1517,10 @@ import { createEnvelope } from '@slopus/happy-wire';
 
 vi.mock('@/ui/logger', () => ({
     logger: { debug: vi.fn() },
+}));
+
+vi.mock('@/configuration', () => ({
+    configuration: { happyHomeDir: '/home/test/.happy' },
 }));
 
 import { buildCodexThreadBackfillEnvelopes } from './threadImageBackfill';
@@ -1883,7 +1898,7 @@ Expected: `git diff --check` prints nothing. `git status --short` shows only int
 Start the local server, CLI daemon, and web app in separate terminals:
 
 ```bash
-pnpm --filter happy-server standalone:dev
+pnpm --filter happy-server-self-host standalone:dev
 ```
 
 ```bash
