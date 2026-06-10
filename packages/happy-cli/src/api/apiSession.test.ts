@@ -954,6 +954,46 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(debugOutput).not.toContain('signature=secret');
     });
 
+    it('applies file event socket updates directly without logging sensitive names or refs', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const onFileEvent = vi.fn();
+        const sensitiveName = 'https://upload.example.test/image.png?token=socket-secret';
+        const sensitiveRef = 'sessions/test-session-id/attachments/socket-secret-ref.enc?signature=socket-secret';
+        client.onFileEvent(onFileEvent);
+
+        (client as any).lastSeq = 1;
+        const fileMessage = {
+            role: 'session',
+            content: {
+                type: 'session',
+                data: {
+                    id: 'file-event-2',
+                    time: 1000,
+                    role: 'user',
+                    ev: {
+                        t: 'file',
+                        ref: sensitiveRef,
+                        name: sensitiveName,
+                        size: 64,
+                        mimeType: 'image/png',
+                    }
+                }
+            }
+        };
+
+        emitSocketEvent('update', createNewMessageUpdate(2, encryptContent(session, fileMessage)));
+
+        expect(onFileEvent).toHaveBeenCalledWith(fileMessage);
+        expect((client as any).lastSeq).toBe(2);
+        const debugOutput = JSON.stringify([
+            ...vi.mocked(logger.debug).mock.calls,
+            ...vi.mocked(logger.debugLargeJson).mock.calls,
+        ]);
+        expect(debugOutput).not.toContain(sensitiveName);
+        expect(debugOutput).not.toContain(sensitiveRef);
+        expect(debugOutput).not.toContain('socket-secret');
+    });
+
     it('applies consecutive new-message updates directly (fast path)', () => {
         const client = new ApiSessionClient('fake-token', session);
         const onUserMessage = vi.fn();

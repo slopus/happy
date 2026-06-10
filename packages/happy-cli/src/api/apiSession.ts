@@ -321,7 +321,14 @@ export class ApiSessionClient extends EventEmitter {
                         return;
                     }
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
-                    logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
+                    logger.debug('[SOCKET] [UPDATE] Decrypted message', {
+                        role: typeof (body as { role?: unknown })?.role === 'string'
+                            ? (body as { role: string }).role
+                            : 'unknown',
+                        contentType: typeof (body as { content?: { type?: unknown } })?.content?.type === 'string'
+                            ? (body as { content: { type: string } }).content.type
+                            : 'unknown',
+                    });
                     this.routeIncomingMessage(body);
                     this.lastSeq = messageSeq;
                 } else if (data.body.t === 'update-session') {
