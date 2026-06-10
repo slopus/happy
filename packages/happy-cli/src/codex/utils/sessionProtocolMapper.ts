@@ -199,8 +199,12 @@ function emitHistoricalToolCall(
     title: string,
     args: Record<string, unknown>,
     output: string | null,
+    timestamps?: {
+        startedAt: number;
+        completedAt: number;
+    },
 ): void {
-    const time = turnTimestampMs(turn);
+    const time = timestamps?.startedAt ?? turnTimestampMs(turn);
     const opts = { turn: turn.id, time, codexItemId: item.id } satisfies CreateEnvelopeOptions;
     envelopes.push(createEnvelope('agent', {
         t: 'tool-call-start',
@@ -231,7 +235,7 @@ function emitHistoricalToolCall(
     }, {
         ...opts,
         id: `${item.id}:end`,
-        time: completedTimestampMs(turn),
+        time: timestamps?.completedAt ?? completedTimestampMs(turn),
     }));
 }
 
@@ -290,6 +294,7 @@ export function mapCodexThreadItemToSessionEnvelopes(
                 commandToTitle(command),
                 { command, cwd: item.cwd },
                 typeof item.aggregatedOutput === 'string' ? item.aggregatedOutput : null,
+                { startedAt, completedAt },
             );
             return envelopes;
         }
@@ -303,6 +308,7 @@ export function mapCodexThreadItemToSessionEnvelopes(
                 'Apply patch',
                 { changes: item.changes, status: item.status },
                 null,
+                { startedAt, completedAt },
             );
             return envelopes;
         }
@@ -324,6 +330,7 @@ export function mapCodexThreadItemToSessionEnvelopes(
                     arguments: item.arguments,
                 },
                 output,
+                { startedAt, completedAt },
             );
             return envelopes;
         }
