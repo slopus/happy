@@ -50,6 +50,16 @@ export interface QueryOptions {
      * applies on each turn ('low' | 'medium' | 'high' | 'max').
      */
     effort?: 'low' | 'medium' | 'high' | 'max'
+    /**
+     * Thinking config passed through to the Claude Agent SDK. Set
+     * `display: 'summarized'` on adaptive thinking to expose the thinking
+     * content to clients — without it the SDK defaults to `omitted` and
+     * UIs only see an empty "thinking…" envelope with no body.
+     */
+    thinking?:
+        | { type: 'adaptive'; display?: 'summarized' | 'omitted' }
+        | { type: 'enabled'; budgetTokens?: number; display?: 'summarized' | 'omitted' }
+        | { type: 'disabled' }
 }
 
 /**

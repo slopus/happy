@@ -131,6 +131,14 @@ export async function claudeRemote(opts: {
         allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: initial.mode.disallowedTools,
         effort: initial.mode.effort,
+        // Surface adaptive thinking content to clients. Without `display: 'summarized'` the
+        // SDK defaults to `omitted` for adaptive thinking — the model still thinks (and the
+        // wire still carries a `thinking` envelope so UIs can render a "thinking…" badge),
+        // but the content body comes back empty, leaving expanded ThinkingTrail panels blank.
+        // Gate on `effort` so users who explicitly opted out of thinking aren't forced back in.
+        thinking: initial.mode.effort
+            ? { type: 'adaptive', display: 'summarized' }
+            : undefined,
         canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; toolUseID: string }) => opts.canCallTool(toolName, input, mode, options),
         abort: opts.signal,
         settingsPath: opts.hookSettingsPath,
