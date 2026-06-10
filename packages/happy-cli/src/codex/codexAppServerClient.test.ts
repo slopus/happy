@@ -553,6 +553,138 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('sends extra localImage input items and omits empty text for image-only turns', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 2801,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-images', path: '/tmp/thread-images' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-images', items: [], status: 'completed', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-images',
+                                turn: { id: 'turn-images', items: [], status: 'completed', error: null },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+        await client.sendTurnAndWait('', {
+            extraInputItems: [{ type: 'localImage', path: '/tmp/happy-image.png' }],
+        });
+
+        expect(requests.find((msg) => msg.method === 'turn/start')?.params).toMatchObject({
+            threadId: 'thread-images',
+            input: [{ type: 'localImage', path: '/tmp/happy-image.png' }],
+        });
+
+        await client.disconnect();
+    });
+
+    it('keeps text-only turn input unchanged when no extra input items are supplied', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 2802,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-text', path: '/tmp/thread-text' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-text', items: [], status: 'completed', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-text',
+                                turn: { id: 'turn-text', items: [], status: 'completed', error: null },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+        await client.sendTurnAndWait('hello');
+
+        expect(requests.find((msg) => msg.method === 'turn/start')?.params).toMatchObject({
+            threadId: 'thread-text',
+            input: [{ type: 'text', text: 'hello' }],
+        });
+
+        await client.disconnect();
+    });
+
     it('maps raw item notifications into legacy events and deduplicates turn completion', async () => {
         const requests: MockRpcMessage[] = [];
         const proc = createMockProcess({
