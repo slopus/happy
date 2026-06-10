@@ -484,6 +484,63 @@ describe('ApiSessionClient v3 messages API migration', () => {
         });
     });
 
+    it('uploads local Codex image files with codex item ids', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const pngBytes = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
+        mockAxiosPost.mockImplementation(async (url: string, payload: any) => {
+            if (url.endsWith('/attachments/request-upload')) {
+                expect(payload).toMatchObject({
+                    filename: 'codex-image-1.png',
+                });
+                return {
+                    data: {
+                        ref: 'sessions/test-session-id/attachments/codex-image.enc',
+                        uploadUrl: 'https://server.test/v1/sessions/test-session-id/attachments/codex-image.enc',
+                        method: 'PUT',
+                    },
+                };
+            }
+
+            return {
+                data: {
+                    messages: payload.messages.map((_message: unknown, index: number) => ({
+                        id: `msg-${index + 1}`,
+                        seq: index + 1,
+                        localId: `local-${index + 1}`,
+                        createdAt: 1,
+                        updatedAt: 1,
+                    })),
+                },
+            };
+        });
+        mockAxiosPut.mockResolvedValueOnce({ data: { ok: true } });
+
+        const envelope = await client.uploadLocalImageAttachmentEnvelope({
+            data: pngBytes,
+            mimeType: 'image/png',
+            name: 'codex-image-1.png',
+        }, {
+            codexItemId: 'codex-user-item-1',
+        });
+
+        expect(envelope).toMatchObject({
+            role: 'user',
+            codexItemId: 'codex-user-item-1',
+            ev: {
+                t: 'file',
+                ref: 'sessions/test-session-id/attachments/codex-image.enc',
+                name: 'codex-image-1.png',
+                size: pngBytes.length,
+                mimeType: 'image/png',
+            },
+        });
+
+        const uploadBody = mockAxiosPut.mock.calls[0][1];
+        const blobKey = await client.getBlobKey();
+        expect(decryptBlob(new Uint8Array(uploadBody), blobKey)).toEqual(pngBytes);
+    });
+
     it('sends session protocol messages through enqueueMessage with session envelope', async () => {
         const client = new ApiSessionClient('fake-token', session);
         mockAxiosPost.mockResolvedValueOnce({

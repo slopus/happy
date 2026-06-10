@@ -80,7 +80,7 @@ type AttachmentUploadResult = {
     formFields?: Record<string, string>;
 };
 
-type LocalTranscriptImageAttachment = {
+export type LocalImageAttachment = {
     data: Uint8Array;
     mimeType: string;
     name: string;
@@ -105,7 +105,7 @@ function extensionForImageMime(mimeType: string): string {
     }
 }
 
-function extractLocalTranscriptImageAttachments(body: RawJSONLines): LocalTranscriptImageAttachment[] {
+function extractLocalTranscriptImageAttachments(body: RawJSONLines): LocalImageAttachment[] {
     if (body.type !== 'user' || body.isMeta || body.isSidechain) {
         return [];
     }
@@ -121,7 +121,7 @@ function extractLocalTranscriptImageAttachments(body: RawJSONLines): LocalTransc
         return [];
     }
 
-    const attachments: LocalTranscriptImageAttachment[] = [];
+    const attachments: LocalImageAttachment[] = [];
     for (const block of content) {
         if (!isRecord(block) || block.type !== 'image') {
             continue;
@@ -448,9 +448,12 @@ export class ApiSessionClient extends EventEmitter {
         });
     }
 
-    private async uploadLocalTranscriptImageAttachment(
-        attachment: LocalTranscriptImageAttachment,
-        claudeUuid: string | undefined,
+    async uploadLocalImageAttachmentEnvelope(
+        attachment: LocalImageAttachment,
+        opts: {
+            claudeUuid?: string;
+            codexItemId?: string;
+        } = {},
     ): Promise<SessionEnvelope> {
         const blobKey = await this.getBlobKey();
         const encrypted = encryptBlob(attachment.data, blobKey);
@@ -463,7 +466,7 @@ export class ApiSessionClient extends EventEmitter {
             name: attachment.name,
             size: attachment.data.length,
             mimeType: attachment.mimeType,
-        }, { claudeUuid });
+        }, opts);
     }
 
     /**
@@ -731,7 +734,7 @@ export class ApiSessionClient extends EventEmitter {
             : undefined;
         for (const attachment of attachments) {
             try {
-                const envelope = await this.uploadLocalTranscriptImageAttachment(attachment, claudeUuid);
+                const envelope = await this.uploadLocalImageAttachmentEnvelope(attachment, { claudeUuid });
                 this.enqueueSessionProtocolEnvelope(envelope, false);
             } catch (error) {
                 logger.debug('[API] Failed to upload local Claude transcript image attachment', {
