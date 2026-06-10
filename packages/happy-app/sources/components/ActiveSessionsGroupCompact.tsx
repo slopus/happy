@@ -225,11 +225,10 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: SessionRowData; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
-    const status = session.hasUnread
-        ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
-        : baseStatus;
+    // Status dot reflects true liveness only. Unread is shown via a bold title
+    // + trailing accent dot so a finished/idle session never reuses the blue
+    // "thinking/running" color and reads as if it were still running.
+    const status = STATUS_CONFIG[session.state];
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
@@ -271,9 +270,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const renderLeadingIndicator = () => {
         let indicator: React.ReactNode = null;
 
-        if (session.hasUnread) {
-            indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
-        } else if (session.state === 'waiting' && session.hasDraft) {
+        if (session.state === 'waiting' && session.hasDraft) {
             indicator = (
                 <Ionicons
                     name="create-outline"
@@ -311,7 +308,8 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     <Text
                         style={[
                             styles.sessionTitle,
-                            status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                            status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected,
+                            session.hasUnread && styles.sessionTitleUnread
                         ]}
                         numberOfLines={2}
                     >
@@ -321,6 +319,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                         sessionId={session.id}
                         style={styles.sessionShortcutBadge}
                     />
+                    {session.hasUnread && <View style={styles.unreadDot} />}
                 </View>
                 {session.identityLine && (
                     <View style={styles.sessionIdentityRow}>
@@ -524,6 +523,17 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
+    },
+    sessionTitleUnread: {
+        fontWeight: '700',
+        color: theme.colors.text,
+    },
+    unreadDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginLeft: 8,
+        backgroundColor: theme.colors.textLink,
     },
     leadingIndicatorSlot: {
         alignItems: 'center',
