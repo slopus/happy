@@ -14,7 +14,6 @@ import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
-import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
@@ -22,7 +21,6 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
-import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
@@ -32,9 +30,19 @@ import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
-import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
+import {
+    mapCodexMcpMessageToSessionEnvelopes,
+    mapCodexProcessorMessageToSessionEnvelopes,
+    mapCodexThreadToSessionEnvelopes,
+} from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
+import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
+import {
+    buildCodexTurnPrompt,
+    hashCodexEnhancedMode,
+    type CodexEnhancedMode,
+} from './codexPrompt';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -80,12 +88,7 @@ export async function runCodex(opts: {
         process.exit(1);
     }
 
-    interface EnhancedMode {
-        permissionMode: PermissionMode;
-        model?: string;
-        /** Reasoning effort passed through to Codex's sendTurnAndWait. */
-        effort?: ReasoningEffort;
-    }
+    type EnhancedMode = CodexEnhancedMode;
 
     //
     // Define session
@@ -123,12 +126,18 @@ export async function runCodex(opts: {
     //
 
     const initialPermissionMode = opts.permissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
+    // Lineage from the daemon's spawn RPC (set by app-side fork / duplicate).
+    const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
+    const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
+
     const { state, metadata } = createSessionMetadata({
         flavor: 'codex',
         machineId,
         startedBy: opts.startedBy,
         sandbox: sandboxConfig,
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
+        ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
+        ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
     });
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
@@ -212,22 +221,20 @@ export async function runCodex(opts: {
         }
     }
 
-    const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
-        permissionMode: mode.permissionMode,
-        model: mode.model,
-        effort: mode.effort,
-    }));
+    const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
     let currentModel: string | undefined = DEFAULT_CODEX_MODEL;
     let currentEffort: ReasoningEffort | undefined = DEFAULT_CODEX_EFFORT;
+    let currentAppendSystemPrompt: string | undefined = undefined;
 
     const resetCurrentModeDefaults = () => {
         currentPermissionMode = DEFAULT_CODEX_PERMISSION_MODE;
         currentModel = DEFAULT_CODEX_MODEL;
         currentEffort = DEFAULT_CODEX_EFFORT;
+        currentAppendSystemPrompt = undefined;
         logger.debug('[Codex] Reset current mode defaults after abort');
     };
 
@@ -298,12 +305,29 @@ export async function runCodex(opts: {
             logger.debug(`[Codex] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
         }
 
+        let messageAppendSystemPrompt = currentAppendSystemPrompt;
+        if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
+            messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined;
+            currentAppendSystemPrompt = messageAppendSystemPrompt;
+            logger.debug(`[Codex] Append system prompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to none'}`);
+        } else {
+            logger.debug(`[Codex] User message received with no append system prompt override, using current: ${currentAppendSystemPrompt ? 'set' : 'none'}`);
+        }
+
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode || 'default',
             model: messageModel,
+            appendSystemPrompt: messageAppendSystemPrompt,
             effort: messageEffort,
         };
-        messageQueue.push(message.content.text, enhancedMode);
+        const enqueueResult = enqueueCodexUserText({
+            text: message.content.text,
+            mode: enhancedMode,
+            queue: messageQueue,
+        });
+        if (enqueueResult === 'clear') {
+            logger.debug('[Codex] /clear command pushed to isolated queue');
+        }
     });
     let thinking = false;
     let currentTurnId: string | null = null;
@@ -671,6 +695,7 @@ export async function runCodex(opts: {
         }
     } as const;
     let first = true;
+    let appendSystemPromptInjected = false;
 
     try {
         logger.debug('[codex]: client.connect begin');
@@ -687,6 +712,28 @@ export async function runCodex(opts: {
                 mcpServers,
             });
             first = false;
+            appendSystemPromptInjected = true;
+        }
+
+        const forkCodexThreadId = process.env.HAPPY_FORK_CODEX_THREAD_ID;
+        if (!reconnectSessionId && forkCodexThreadId) {
+            try {
+                const { thread } = await client.readThread({
+                    threadId: forkCodexThreadId,
+                    includeTurns: true,
+                });
+                const envelopes = mapCodexThreadToSessionEnvelopes(thread);
+                for (const envelope of envelopes) {
+                    session.sendSessionProtocolMessage(envelope);
+                }
+                session.updateMetadata((currentMetadata) => ({
+                    ...currentMetadata,
+                    codexThreadId: forkCodexThreadId,
+                }));
+                logger.debug(`[CODEX FORK BACKFILL] Replayed ${envelopes.length} historical envelopes from thread ${forkCodexThreadId}`);
+            } catch (error) {
+                logger.debug(`[CODEX FORK BACKFILL] Failed to read thread ${forkCodexThreadId}:`, error);
+            }
         }
 
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
@@ -716,6 +763,35 @@ export async function runCodex(opts: {
                 break;
             }
 
+            if (isCodexClearText(message.message)) {
+                logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
+                client.clearThreadState();
+                currentTurnId = null;
+                codexStartedSubagents = new Set<string>();
+                codexActiveSubagents = new Set<string>();
+                codexProviderSubagentToSessionSubagent = new Map<string, string>();
+                permissionHandler.reset();
+                reasoningProcessor.abort();
+                diffProcessor.reset();
+                appendSystemPromptInjected = false;
+                thinking = false;
+                session.keepAlive(thinking, 'remote');
+                messageBuffer.addMessage('Context was reset', 'status');
+                session.sendSessionEvent({ type: 'message', message: 'Context was reset' });
+                session.updateMetadata((currentMetadata) => {
+                    const nextMetadata = { ...currentMetadata };
+                    delete nextMetadata.codexThreadId;
+                    return nextMetadata;
+                });
+                emitReadyIfIdle({
+                    pending,
+                    queueSize: () => messageQueue.size(),
+                    shouldExit,
+                    sendReady,
+                });
+                continue;
+            }
+
             // Display user messages in the UI
             messageBuffer.addMessage(message.message, 'user');
 
@@ -743,9 +819,15 @@ export async function runCodex(opts: {
                     }));
                 }
 
-                const turnPrompt = first
-                    ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION
-                    : message.message;
+                const includeAppendSystemPrompt = Boolean(
+                    message.mode.appendSystemPrompt && !appendSystemPromptInjected,
+                );
+                const turnPrompt = buildCodexTurnPrompt({
+                    message: message.message,
+                    mode: message.mode,
+                    includeAppendSystemPrompt,
+                    includeTitleInstruction: first,
+                });
 
                 const result = await client.sendTurnAndWait(turnPrompt, {
                     model: message.mode.model,
@@ -754,6 +836,9 @@ export async function runCodex(opts: {
                     effort: message.mode.effort,
                 });
                 first = false;
+                if (includeAppendSystemPrompt) {
+                    appendSystemPromptInjected = true;
+                }
 
                 if (result.aborted) {
                     // Turn was aborted (user abort or permission cancel).

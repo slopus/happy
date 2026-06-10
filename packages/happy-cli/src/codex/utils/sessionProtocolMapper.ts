@@ -3,6 +3,7 @@ import { createId } from '@paralleldrive/cuid2';
 import type { ReasoningOutput } from './reasoningProcessor';
 import type { DiffToolCall, DiffToolResult } from './diffProcessor';
 import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
+import type { Thread, ThreadItem, ThreadTurn } from '../codexAppServerTypes';
 
 export type CodexTurnState = {
     currentTurnId: string | null;
@@ -135,6 +136,211 @@ function commandToTitle(command: string | null): string {
     }
     const short = command.length > 80 ? `${command.slice(0, 77)}...` : command;
     return `Run \`${short}\``;
+}
+
+function turnTimestampMs(turn: ThreadTurn): number {
+    const seconds = turn.startedAt ?? turn.completedAt;
+    return typeof seconds === 'number' && Number.isFinite(seconds)
+        ? seconds * 1000
+        : Date.now();
+}
+
+function completedTimestampMs(turn: ThreadTurn): number {
+    const seconds = turn.completedAt ?? turn.startedAt;
+    return typeof seconds === 'number' && Number.isFinite(seconds)
+        ? seconds * 1000
+        : Date.now();
+}
+
+function textFromInputItems(items: unknown): string | null {
+    if (!Array.isArray(items)) {
+        return null;
+    }
+    const text = items
+        .filter((item): item is { type: 'text'; text: string } => (
+            Boolean(item)
+            && typeof item === 'object'
+            && (item as { type?: unknown }).type === 'text'
+            && typeof (item as { text?: unknown }).text === 'string'
+        ))
+        .map((item) => item.text)
+        .join('\n')
+        .trim();
+    return text.length > 0 ? text : null;
+}
+
+function reasoningText(item: ThreadItem): string | null {
+    const summary = (item as { summary?: unknown }).summary;
+    const content = (item as { content?: unknown }).content;
+    const parts = [
+        ...(Array.isArray(summary) ? summary : []),
+        ...(Array.isArray(content) ? content : []),
+    ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    const text = parts.join('\n').trim();
+    return text.length > 0 ? text : null;
+}
+
+function turnStatus(turn: ThreadTurn): TurnEndStatus {
+    const status = typeof turn.status === 'string' ? turn.status : null;
+    if (status === 'failed') {
+        return 'failed';
+    }
+    if (status === 'cancelled' || status === 'canceled' || status === 'aborted' || status === 'interrupted') {
+        return 'cancelled';
+    }
+    return 'completed';
+}
+
+function emitHistoricalToolCall(
+    envelopes: SessionEnvelope[],
+    turn: ThreadTurn,
+    item: ThreadItem,
+    name: string,
+    title: string,
+    args: Record<string, unknown>,
+    output: string | null,
+): void {
+    const time = turnTimestampMs(turn);
+    const opts = { turn: turn.id, time, codexItemId: item.id } satisfies CreateEnvelopeOptions;
+    envelopes.push(createEnvelope('agent', {
+        t: 'tool-call-start',
+        call: item.id,
+        name,
+        title,
+        description: title,
+        args,
+    }, {
+        ...opts,
+        id: `${item.id}:start`,
+    }));
+
+    if (output && output.trim().length > 0) {
+        envelopes.push(createEnvelope('agent', {
+            t: 'text',
+            text: output,
+            thinking: true,
+        }, {
+            ...opts,
+            id: `${item.id}:output`,
+        }));
+    }
+
+    envelopes.push(createEnvelope('agent', {
+        t: 'tool-call-end',
+        call: item.id,
+    }, {
+        ...opts,
+        id: `${item.id}:end`,
+        time: completedTimestampMs(turn),
+    }));
+}
+
+export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>): SessionEnvelope[] {
+    const envelopes: SessionEnvelope[] = [];
+
+    for (const turn of thread.turns ?? []) {
+        const startedAt = turnTimestampMs(turn);
+        const completedAt = completedTimestampMs(turn);
+        envelopes.push(createEnvelope('agent', { t: 'turn-start' }, {
+            id: `${turn.id}:start`,
+            turn: turn.id,
+            time: startedAt,
+        }));
+
+        for (const item of turn.items ?? []) {
+            switch (item.type) {
+                case 'userMessage': {
+                    const text = textFromInputItems(item.content);
+                    if (text) {
+                        envelopes.push(createEnvelope('user', { t: 'text', text }, {
+                            id: item.id,
+                            time: startedAt,
+                            codexItemId: item.id,
+                        }));
+                    }
+                    break;
+                }
+                case 'agentMessage': {
+                    const text = typeof item.text === 'string' ? item.text.trim() : '';
+                    if (text.length > 0) {
+                        envelopes.push(createEnvelope('agent', { t: 'text', text }, {
+                            id: item.id,
+                            turn: turn.id,
+                            time: completedAt,
+                            codexItemId: item.id,
+                        }));
+                    }
+                    break;
+                }
+                case 'reasoning': {
+                    const text = reasoningText(item);
+                    if (text) {
+                        envelopes.push(createEnvelope('agent', { t: 'text', text, thinking: true }, {
+                            id: item.id,
+                            turn: turn.id,
+                            time: startedAt,
+                            codexItemId: item.id,
+                        }));
+                    }
+                    break;
+                }
+                case 'commandExecution': {
+                    const command = typeof item.command === 'string' ? item.command : '';
+                    emitHistoricalToolCall(
+                        envelopes,
+                        turn,
+                        item,
+                        'CodexBash',
+                        commandToTitle(command),
+                        { command, cwd: item.cwd },
+                        typeof item.aggregatedOutput === 'string' ? item.aggregatedOutput : null,
+                    );
+                    break;
+                }
+                case 'fileChange': {
+                    const title = 'Apply patch';
+                    emitHistoricalToolCall(
+                        envelopes,
+                        turn,
+                        item,
+                        'CodexPatch',
+                        title,
+                        { changes: item.changes, status: item.status },
+                        null,
+                    );
+                    break;
+                }
+                case 'mcpToolCall': {
+                    const title = `${item.server}.${item.tool}`;
+                    const output = item.error !== undefined && item.error !== null
+                        ? String(item.error)
+                        : (item.result !== undefined && item.result !== null ? String(item.result) : null);
+                    emitHistoricalToolCall(
+                        envelopes,
+                        turn,
+                        item,
+                        'McpTool',
+                        title,
+                        {
+                            server: item.server,
+                            tool: item.tool,
+                            arguments: item.arguments,
+                        },
+                        output,
+                    );
+                    break;
+                }
+            }
+        }
+
+        envelopes.push(createEnvelope('agent', { t: 'turn-end', status: turnStatus(turn) }, {
+            id: `${turn.id}:end`,
+            turn: turn.id,
+            time: completedAt,
+        }));
+    }
+
+    return envelopes;
 }
 
 function patchDescription(changes: unknown): string {

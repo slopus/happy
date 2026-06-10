@@ -150,6 +150,7 @@ export class SDKToLogConverter {
                     message: assistantMsg.message as any,
                     // Assistant messages often have additional fields
                     requestId: (assistantMsg as any).requestId,
+                    ...((assistantMsg as any).isCompactSummary ? { isCompactSummary: true } : {}),
                     ...(assistantMsg.parent_tool_use_id ? { parent_tool_use_id: assistantMsg.parent_tool_use_id } : {}),
                 }
                 // if (assistantMsg.message.content && Array.isArray(assistantMsg.message.content)) {

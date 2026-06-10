@@ -61,6 +61,84 @@ export type ResumeConversationParams = {
 
 export type ResumeConversationResponse = NewConversationResponse;
 
+export type ThreadItem =
+    | { type: "userMessage"; id: string; content: InputItem[] }
+    | { type: "agentMessage"; id: string; text: string; phase?: string | null; memoryCitation?: unknown | null }
+    | { type: "reasoning"; id: string; summary?: string[]; content?: string[] }
+    | { type: "commandExecution"; id: string; command: string; cwd?: string; status?: string; aggregatedOutput?: string | null; exitCode?: number | null; durationMs?: number | null }
+    | { type: "fileChange"; id: string; changes: unknown[]; status?: string }
+    | { type: "mcpToolCall"; id: string; server: string; tool: string; status?: string; arguments?: unknown; result?: unknown; error?: unknown; durationMs?: number | null }
+    | ({ type: string; id: string } & Record<string, unknown>);
+
+export type ThreadTurn = {
+    id: string;
+    items: ThreadItem[];
+    itemsView?: unknown;
+    status?: unknown;
+    error?: unknown;
+    startedAt?: number | null;
+    completedAt?: number | null;
+    durationMs?: number | null;
+};
+
+export type Thread = {
+    id: ThreadId;
+    forkedFromId?: string | null;
+    path?: string | null;
+    cwd?: string;
+    turns?: ThreadTurn[];
+    [key: string]: unknown;
+};
+
+export type ForkConversationParams = {
+    threadId: ThreadId;
+    model?: string | null;
+    modelProvider?: string | null;
+    cwd?: string | null;
+    approvalPolicy?: ApprovalPolicy | null;
+    sandbox?: SandboxMode | null;
+    config?: Record<string, unknown> | null;
+    baseInstructions?: string | null;
+    developerInstructions?: string | null;
+    ephemeral?: boolean;
+    threadSource?: unknown | null;
+};
+
+export type ForkConversationResponse = {
+    thread: Thread;
+    model: string;
+    modelProvider?: string;
+    cwd?: string;
+    approvalPolicy?: ApprovalPolicy;
+    sandbox?: unknown;
+    reasoningEffort?: ReasoningEffort | null;
+};
+
+export type ReadConversationParams = {
+    threadId: ThreadId;
+    includeTurns: boolean;
+};
+
+export type ReadConversationResponse = {
+    thread: Thread;
+};
+
+export type RollbackConversationParams = {
+    threadId: ThreadId;
+    numTurns: number;
+};
+
+export type RollbackConversationResponse = {
+    thread: Thread;
+};
+
+export type InjectItemsParams = {
+    threadId: ThreadId;
+    items: unknown[];
+};
+
+export type InjectItemsResponse = Record<string, never>;
+
 // --- Turn lifecycle ---
 
 export type SendUserTurnParams = {

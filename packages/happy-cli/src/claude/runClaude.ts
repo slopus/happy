@@ -601,7 +601,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 effort: messageEffort,
             };
             messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
-            logger.debugLargeJson('[start] /compact command pushed to queue:', message);
+            logger.debugLargeJson('[start] /clear command pushed to queue:', message);
             return;
         }
 

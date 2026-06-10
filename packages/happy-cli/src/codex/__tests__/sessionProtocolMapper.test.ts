@@ -3,6 +3,7 @@ import { createId, isCuid } from '@paralleldrive/cuid2';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
+    mapCodexThreadToSessionEnvelopes,
 } from '../utils/sessionProtocolMapper';
 
 describe('mapCodexMcpMessageToSessionEnvelopes', () => {
@@ -159,6 +160,84 @@ describe('mapCodexProcessorMessageToSessionEnvelopes', () => {
             t: 'text',
             text: 'Working through options',
             thinking: true,
+        });
+    });
+});
+
+describe('mapCodexThreadToSessionEnvelopes', () => {
+    it('backfills Codex thread turns as session envelopes with codex item ids', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-1',
+                startedAt: 100,
+                completedAt: 101,
+                status: 'completed',
+                items: [
+                    { id: 'user-1', type: 'userMessage', content: [{ type: 'text', text: 'hello codex' }] },
+                    { id: 'agent-1', type: 'agentMessage', text: 'hello human' },
+                ],
+            }],
+        });
+
+        expect(envelopes.map((envelope) => envelope.ev.t)).toEqual([
+            'turn-start',
+            'text',
+            'text',
+            'turn-end',
+        ]);
+        expect(envelopes[1]).toMatchObject({
+            role: 'user',
+            id: 'user-1',
+            codexItemId: 'user-1',
+            ev: { t: 'text', text: 'hello codex' },
+        });
+        expect(envelopes[2]).toMatchObject({
+            role: 'agent',
+            id: 'agent-1',
+            turn: 'turn-1',
+            codexItemId: 'agent-1',
+            ev: { t: 'text', text: 'hello human' },
+        });
+    });
+
+    it('backfills Codex command execution items as tool calls', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-1',
+                startedAt: 100,
+                items: [
+                    {
+                        id: 'cmd-1',
+                        type: 'commandExecution',
+                        command: 'pnpm test',
+                        cwd: '/tmp/project',
+                        aggregatedOutput: 'ok',
+                    },
+                ],
+            }],
+        });
+
+        expect(envelopes.map((envelope) => envelope.ev.t)).toEqual([
+            'turn-start',
+            'tool-call-start',
+            'text',
+            'tool-call-end',
+            'turn-end',
+        ]);
+        expect(envelopes[1]).toMatchObject({
+            role: 'agent',
+            turn: 'turn-1',
+            ev: { t: 'tool-call-start', call: 'cmd-1', name: 'CodexBash' },
+        });
+        expect(envelopes[2]).toMatchObject({
+            role: 'agent',
+            turn: 'turn-1',
+            ev: { t: 'text', text: 'ok', thinking: true },
+        });
+        expect(envelopes[3]).toMatchObject({
+            role: 'agent',
+            turn: 'turn-1',
+            ev: { t: 'tool-call-end', call: 'cmd-1' },
         });
     });
 });

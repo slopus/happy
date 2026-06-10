@@ -22,7 +22,7 @@ export const MessageView = React.memo((props: {
    * Long-press handler for user-text bubbles. Wired by ChatList from
    * the active session screen and used by the fork-from-message flow.
    */
-  onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
+  onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
 }) => {
   return (
     <View
@@ -48,7 +48,7 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
-  onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
+  onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -87,19 +87,20 @@ function UserTextBlock(props: {
   message: UserTextMessage;
   metadata: Metadata | null;
   sessionId: string;
-  onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
+  onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
-  const claudeUuid = props.message.claudeUuid;
-  const canFork = Boolean(claudeUuid) && Boolean(props.onForkFromUserMessage);
+  const rewindPointId = props.message.claudeUuid ?? props.message.codexItemId;
+  const canFork = Boolean(props.onForkFromUserMessage)
+    && (Boolean(rewindPointId) || props.metadata?.flavor === 'codex');
   const handleLongPress = React.useCallback(() => {
-    if (claudeUuid && props.onForkFromUserMessage) {
-      props.onForkFromUserMessage(props.message.id, claudeUuid);
+    if (props.onForkFromUserMessage) {
+      props.onForkFromUserMessage(props.message.id, rewindPointId, props.message.text);
     }
-  }, [claudeUuid, props.message.id, props.onForkFromUserMessage]);
+  }, [props.message.id, props.message.text, props.onForkFromUserMessage, rewindPointId]);
 
   // Claude Agent SDK emits synthetic user messages wrapped in tags like
   // <local-command-caveat>…</local-command-caveat> and

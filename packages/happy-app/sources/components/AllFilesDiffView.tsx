@@ -159,7 +159,7 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
                         }
 
                         const res = await sessionBash(sessionId, {
-                            command: `git diff HEAD --no-ext-diff -- "${gitDiffPath}"`,
+                            command: `git -c core.quotepath=false diff HEAD --no-ext-diff -- "${gitDiffPath}"`,
                             cwd: sessionPath,
                             timeout: 5000,
                         });

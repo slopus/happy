@@ -35,6 +35,10 @@ export interface CreateSessionMetadataOptions {
     sandbox?: SandboxConfig;
     /** Whether the backend runs with "dangerously skip permissions" behavior */
     dangerouslySkipPermissions?: boolean;
+    /** Happy session id this session was forked from. */
+    parentSessionId?: string;
+    /** Happy message id used as the fork rewind point. */
+    forkedFromMessageId?: string;
 }
 
 /**
@@ -90,6 +94,8 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         flavor: opts.flavor,
         sandbox: opts.sandbox?.enabled ? opts.sandbox : null,
         dangerouslySkipPermissions: opts.dangerouslySkipPermissions ?? null,
+        ...(opts.parentSessionId ? { parentSessionId: opts.parentSessionId } : {}),
+        ...(opts.forkedFromMessageId ? { forkedFromMessageId: opts.forkedFromMessageId } : {}),
     };
 
     return { state, metadata };

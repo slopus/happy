@@ -339,6 +339,21 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(result.currentTurnId).toBe('turn-1');
         expect(result.envelopes).toHaveLength(0);
     });
+
+    it('does not emit envelopes for compact summary assistant messages', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'compact-summary-1',
+            isCompactSummary: true,
+            message: {
+                role: 'assistant',
+                content: [{ type: 'text', text: 'Long compaction summary' }],
+            },
+        } as any, { currentTurnId: 'turn-1' });
+
+        expect(result.currentTurnId).toBe('turn-1');
+        expect(result.envelopes).toHaveLength(0);
+    });
 });
 
 describe('closeClaudeTurnWithStatus', () => {

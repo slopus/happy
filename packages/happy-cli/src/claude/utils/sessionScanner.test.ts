@@ -208,4 +208,39 @@ describe('sessionScanner', () => {
     //   expect(lastAssistantMsg.message.id).toBe('msg_01KWeuP88pkzRtXmggJRnQmV')
     // }
   })
+
+  it('drops a phantom session whose transcript never appears and keeps serving real ones', async () => {
+    // Reproduces the "dead Happy instance" bug: a session id is announced
+    // (e.g. a remote launch) but its .jsonl is never written. The scanner
+    // must give up on it instead of spinning forever, and must still process
+    // a real session that arrives afterwards.
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      missingFileTimeoutMs: 100,
+    })
+
+    // Phantom: announced but no file on disk, ever.
+    const phantomId = 'fd4aa0c2-000a-4cd3-a066-80c6d87c3456'
+    scanner.onNewSession(phantomId)
+
+    // Long enough for the first ~1s backoff + give-up to fire.
+    await new Promise((r) => setTimeout(r, 2500))
+
+    expect(collectedMessages).toHaveLength(0)
+
+    // A real session arriving after the phantom was dropped must still work.
+    const fixture = await readFile(join(__dirname, '__fixtures__', '0-say-lol-session.jsonl'), 'utf-8')
+    const lines = fixture.split('\n').filter((l) => l.trim())
+    const realId = '93a9705e-bc6a-406d-8dce-8acc014dedbd'
+    const realFile = join(projectDir, `${realId}.jsonl`)
+
+    await writeFile(realFile, lines[0] + '\n')
+    scanner.onNewSession(realId)
+    await new Promise((r) => setTimeout(r, 200))
+
+    expect(collectedMessages).toHaveLength(1)
+    expect(collectedMessages[0].type).toBe('user')
+  })
 })
