@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import { configuration } from '@/configuration';
 import { logger } from '@/ui/logger';
@@ -65,7 +65,24 @@ export function resolveCodexImageCacheDir(opts: {
     sessionId: string;
     cacheRootDir?: string;
 }): string {
-    return join(opts.cacheRootDir ?? join(configuration.happyHomeDir, 'codex-image-cache'), opts.sessionId);
+    const cacheRoot = resolve(opts.cacheRootDir ?? join(configuration.happyHomeDir, 'codex-image-cache'));
+    const sessionKey = sanitizeCachePathSegment(opts.sessionId);
+    const cacheDir = resolve(cacheRoot, sessionKey);
+    const relativePath = relative(cacheRoot, cacheDir);
+    if (relativePath.startsWith('..') || isAbsolute(relativePath)) {
+        return join(cacheRoot, 'invalid-session');
+    }
+    return cacheDir;
+}
+
+function sanitizeCachePathSegment(value: string): string {
+    const sanitized = value
+        .trim()
+        .replace(/[\\/]+/g, '_')
+        .replace(/\.+/g, '_')
+        .replace(/[^a-zA-Z0-9._-]/g, '_')
+        .replace(/^_+|_+$/g, '');
+    return sanitized.length > 0 ? sanitized : 'unknown-session';
 }
 
 export async function prepareCodexImageInputItems(
@@ -95,9 +112,10 @@ export async function prepareCodexImageInputItems(
         }
 
         try {
-            await mkdir(cacheDir, { recursive: true });
+            await mkdir(cacheDir, { recursive: true, mode: 0o700 });
+            await chmod(cacheDir, 0o700);
             const filePath = join(cacheDir, `${randomUUID()}.${detected.extension}`);
-            await writeFile(filePath, Buffer.from(attachment.data));
+            await writeFile(filePath, Buffer.from(attachment.data), { mode: 0o600 });
             inputItems.push({ type: 'localImage', path: filePath });
         } catch (error) {
             logger.debug('[Codex] Failed to cache image attachment for localImage input', {

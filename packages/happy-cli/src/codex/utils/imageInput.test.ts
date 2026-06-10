@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -89,6 +89,28 @@ describe('prepareCodexImageInputItems', () => {
         }
     });
 
+    it('uses restrictive permissions for plaintext cache files on POSIX', async () => {
+        const cacheRootDir = await makeTempDir();
+        const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+        const result = await prepareCodexImageInputItems([{
+            data: pngBytes,
+            mimeType: 'image/png',
+            name: 'image.png',
+        }], {
+            cacheRootDir,
+            sessionId: 'session-permissions',
+        });
+
+        expect(result.inputItems).toHaveLength(1);
+        if (process.platform === 'win32' || result.inputItems[0].type !== 'localImage') {
+            return;
+        }
+
+        expect((await stat(join(cacheRootDir, 'session-permissions'))).mode & 0o777).toBe(0o700);
+        expect((await stat(result.inputItems[0].path)).mode & 0o777).toBe(0o600);
+    });
+
     it('skips unsupported images without writing fallback files', async () => {
         const cacheRootDir = await makeTempDir();
         const sensitiveName = 'https://upload.example.test/presigned?token=secret';
@@ -145,5 +167,17 @@ describe('resolveCodexImageCacheDir', () => {
         expect(resolveCodexImageCacheDir({
             sessionId: 'session-4',
         })).toBe('/home/test/.happy/codex-image-cache/session-4');
+    });
+
+    it('keeps malformed session ids inside the cache root', () => {
+        const cacheRootDir = '/tmp/happy-cache';
+
+        const resolved = resolveCodexImageCacheDir({
+            cacheRootDir,
+            sessionId: '../outside/nested',
+        });
+
+        expect(resolved.startsWith(`${cacheRootDir}${sep}`)).toBe(true);
+        expect(resolved).not.toContain('..');
     });
 });
