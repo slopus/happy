@@ -274,10 +274,13 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: SessionRowData; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    // Status dot reflects true liveness only. Unread is shown via a bold title
-    // + trailing accent dot so a finished/idle session never reuses the blue
-    // "thinking/running" color and reads as if it were still running.
+    // Status dot reflects true liveness only, never reusing the blue
+    // "thinking/running" color for unread.
     const status = STATUS_CONFIG[session.state];
+    // Unread is shown as a bold title, but only once the agent has stopped —
+    // never while it's still running (thinking), so a re-activated session
+    // doesn't read as unread mid-turn.
+    const showUnreadTitle = session.hasUnread && session.state !== 'thinking';
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
@@ -358,13 +361,12 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                         style={[
                             styles.sessionTitle,
                             status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected,
-                            session.hasUnread && styles.sessionTitleUnread
+                            showUnreadTitle && styles.sessionTitleUnread
                         ]}
                         numberOfLines={2}
                     >
                         {session.name}
                     </Text>
-                    {session.hasUnread && <View style={styles.unreadDot} />}
                 </View>
             </View>
         </Pressable>
@@ -543,15 +545,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
     },
     sessionTitleUnread: {
-        fontWeight: '700',
+        // Bold via the SemiBold face, not fontWeight: web sets
+        // `font-synthesis: none` and bundles no Bold(700) face, so a numeric
+        // fontWeight would render identically to the regular title.
+        ...Typography.default('semiBold'),
         color: theme.colors.text,
-    },
-    unreadDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        marginLeft: 8,
-        backgroundColor: theme.colors.textLink,
     },
     leadingIndicatorSlot: {
         alignItems: 'center',
