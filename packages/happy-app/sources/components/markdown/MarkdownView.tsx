@@ -17,6 +17,8 @@ import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
 import { isHttpMarkdownLink } from './linkUtils';
 import { openExternalUrl } from '@/utils/openExternalUrl';
+import { SvgUri, SvgXml } from 'react-native-svg';
+import { parseSvgImageSource } from './svgImageSource';
 
 // Option type for callback
 export type Option = {
@@ -209,15 +211,30 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
 
 function RenderImageBlock(props: { url: string, alt: string, first: boolean, last: boolean }) {
     const accessibleLabel = props.alt || 'Markdown image';
+    // RN's <Image> only decodes raster formats, so an SVG (data URI or .svg)
+    // renders blank on native. Route SVG through react-native-svg instead:
+    // SvgXml for inline markup decoded from a data URI, SvgUri for a remote
+    // .svg. Non-SVG images keep using <Image> unchanged.
+    const svg = React.useMemo(() => parseSvgImageSource(props.url), [props.url]);
 
     return (
         <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
-            <Image
-                source={{ uri: props.url }}
-                style={style.image}
-                accessibilityLabel={accessibleLabel}
-                resizeMode="contain"
-            />
+            {svg ? (
+                <View style={[style.image, style.svgImage]} accessible accessibilityLabel={accessibleLabel}>
+                    {svg.kind === 'xml' ? (
+                        <SvgXml xml={svg.xml} width="100%" height="100%" />
+                    ) : (
+                        <SvgUri uri={svg.uri} width="100%" height="100%" />
+                    )}
+                </View>
+            ) : (
+                <Image
+                    source={{ uri: props.url }}
+                    style={style.image}
+                    accessibilityLabel={accessibleLabel}
+                    resizeMode="contain"
+                />
+            )}
             {props.alt ? (
                 <Text style={style.imageCaption}>{props.alt}</Text>
             ) : null}
@@ -542,6 +559,10 @@ const style = StyleSheet.create((theme) => ({
         height: 240,
         borderRadius: 12,
         backgroundColor: theme.colors.surfaceHighest,
+    },
+    svgImage: {
+        // Clip the rendered SVG to the rounded image frame.
+        overflow: 'hidden',
     },
     imageCaption: {
         ...Typography.default(),
