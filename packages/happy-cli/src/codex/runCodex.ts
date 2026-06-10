@@ -33,7 +33,6 @@ import { resolveCodexExecutionPolicy } from './executionPolicy';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
-    mapCodexThreadToSessionEnvelopes,
 } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
@@ -41,6 +40,7 @@ import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
 import { downloadCodexFileEventAttachment } from './utils/attachmentEvents';
 import { prepareCodexImageInputItems } from './utils/imageInput';
 import { createSerialAsyncHandler } from './utils/serialAsyncHandler';
+import { buildCodexThreadBackfillEnvelopes } from './utils/threadImageBackfill';
 import {
     buildCodexTurnPrompt,
     hashCodexEnhancedMode,
@@ -742,7 +742,12 @@ export async function runCodex(opts: {
                     threadId: forkCodexThreadId,
                     includeTurns: true,
                 });
-                const envelopes = mapCodexThreadToSessionEnvelopes(thread);
+                const envelopes = await buildCodexThreadBackfillEnvelopes({
+                    thread,
+                    uploadLocalImage: (attachment, imageOpts) => (
+                        session.uploadLocalImageAttachmentEnvelope(attachment, imageOpts)
+                    ),
+                });
                 for (const envelope of envelopes) {
                     session.sendSessionProtocolMessage(envelope);
                 }
