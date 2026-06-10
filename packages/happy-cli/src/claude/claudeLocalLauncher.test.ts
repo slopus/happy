@@ -53,7 +53,7 @@ describe('claudeLocalLauncher', () => {
         });
     });
 
-    it('does not abort local Claude Code when an app message requests remote control', async () => {
+    it('aborts local Claude Code when an app message requests remote control', async () => {
         const localRun = createDeferred<void>();
         const observed: {
             queueHandler?: QueueHandler;
@@ -114,7 +114,9 @@ describe('claudeLocalLauncher', () => {
         }
         handler('from app', { permissionMode: 'default' });
 
-        expect(signal.aborted).toBe(false);
+        await vi.waitFor(() => {
+            expect(signal.aborted).toBe(true);
+        });
         expect(session.client.closeClaudeSessionTurn).not.toHaveBeenCalledWith('cancelled');
 
         localRun.resolve();
