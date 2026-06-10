@@ -343,6 +343,30 @@ export class CodexAppServerClient {
             return method.startsWith('item/');
         }
 
+        if (method === 'item/reasoning/textDelta') {
+            const delta = typeof params.delta === 'string' ? params.delta : '';
+            if (delta.length > 0) {
+                this.eventHandler?.({
+                    type: 'agent_reasoning_delta',
+                    delta,
+                    item_id: params.itemId ?? '',
+                });
+            }
+            return true;
+        }
+
+        if (method === 'item/reasoning/summaryTextDelta') {
+            const delta = typeof params.delta === 'string' ? params.delta : '';
+            if (delta.length > 0) {
+                this.eventHandler?.({
+                    type: 'agent_reasoning_delta',
+                    delta,
+                    item_id: params.itemId ?? '',
+                });
+            }
+            return true;
+        }
+
         if (method === 'item/started' && item.type === 'commandExecution') {
             const callId = typeof item.id === 'string' ? item.id : '';
             this.eventHandler?.({
@@ -403,6 +427,20 @@ export class CodexAppServerClient {
                 }
                 return true;
             }
+        }
+
+        if (method === 'item/agentMessage/delta') {
+            // v2 streaming agent message delta — accumulate for live display
+            const text = typeof params.delta === 'string' ? params.delta : '';
+            const itemId = typeof params.itemId === 'string' ? params.itemId : '';
+            if (text.length > 0) {
+                this.eventHandler?.({
+                    type: 'agent_reasoning_delta',
+                    delta: text,
+                    item_id: itemId,
+                });
+            }
+            return true;
         }
 
         if (method === 'item/completed' && item.type === 'agentMessage') {
@@ -635,18 +673,12 @@ export class CodexAppServerClient {
     }): Promise<{ threadId: string; model: string }> {
         const params: NewConversationParams = {
             model: opts.model ?? null,
-            modelProvider: null,
-            profile: null,
             cwd: opts.cwd ?? process.cwd(),
             approvalPolicy: opts.approvalPolicy ?? null,
             sandbox: opts.sandbox ?? null,
             config: this.buildThreadConfig(opts.mcpServers),
             baseInstructions: null,
             developerInstructions: null,
-            compactPrompt: null,
-            includeApplyPatchTool: null,
-            experimentalRawEvents: false,
-            persistExtendedHistory: true,
         };
 
         const result = await this.request('thread/start', params) as NewConversationResponse;
@@ -674,14 +706,12 @@ export class CodexAppServerClient {
         const params: ResumeConversationParams = {
             threadId,
             model: opts?.model ?? defaults.model ?? null,
-            modelProvider: null,
             cwd: opts?.cwd ?? defaults.cwd ?? process.cwd(),
             approvalPolicy: opts?.approvalPolicy ?? defaults.approvalPolicy ?? null,
             sandbox: opts?.sandbox ?? defaults.sandbox ?? null,
             config: this.buildThreadConfig(opts?.mcpServers ?? defaults.mcpServers),
             baseInstructions: null,
             developerInstructions: null,
-            persistExtendedHistory: true,
         };
 
         const result = await this.request('thread/resume', params) as ResumeConversationResponse;
@@ -919,13 +949,13 @@ export class CodexAppServerClient {
         if (opts?.sandbox) {
             switch (opts.sandbox) {
                 case 'workspace-write':
-                    params.sandboxPolicy = { type: 'workspaceWrite' };
+                    params.sandboxPolicy = { type: 'workspaceWrite', writableRoots: [opts.cwd ?? process.cwd()], networkAccess: true, excludeTmpdirEnvVar: false, excludeSlashTmp: false };
                     break;
                 case 'danger-full-access':
                     params.sandboxPolicy = { type: 'dangerFullAccess' };
                     break;
                 case 'read-only':
-                    params.sandboxPolicy = { type: 'readOnly' };
+                    params.sandboxPolicy = { type: 'readOnly', networkAccess: true };
                     break;
             }
         }
