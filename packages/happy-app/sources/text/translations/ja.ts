@@ -220,7 +220,7 @@ export const ja: TranslationStructure = {
         analyticsDisabled: 'すべてのトラッキングとテレメトリが無効',
         analyticsEnabled: '匿名の使用状況分析がアクティブ',
         imageUpload: '画像アップロード',
-        imageUploadSubtitle: 'メッセージに画像を添付してClaudeに分析させる',
+        imageUploadSubtitle: '対応エージェントに分析させるため、メッセージに画像を添付する',
     },
 
     errors: {
@@ -982,7 +982,7 @@ export const ja: TranslationStructure = {
             ? '1枚の画像をアップロードできず、送信されませんでした。'
             : `${count}枚の画像をアップロードできず、送信されませんでした。`,
         notSupportedTitle: '画像はサポートされていません',
-        notSupportedMessage: 'このエージェントは画像の添付に対応していません。テキストのみが送信されました。',
+        notSupportedMessage: 'このエージェントは画像の添付に対応していません。画像は送信されませんでした。',
     },
 
     feed: {

@@ -5,6 +5,7 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
+import { getImageAttachmentSendPlan } from './attachmentSupport';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine } from './storageTypes';
@@ -573,20 +574,23 @@ class Sync {
         const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
         const { displayText, source = 'chat', attachments } = options ?? {};
 
-        // Image attachments are wired into the Claude pipeline only; Codex /
-        // Gemini / OpenClaw runners read message.content.text and ignore
-        // file events, so dropping attachments silently would leave the user
-        // wondering why the image was skipped. Warn and send text only.
         const flavor = session.metadata?.flavor;
-        const supportsAttachments = !flavor || flavor === 'claude';
-        const effectiveAttachments = supportsAttachments ? attachments : undefined;
+        const attachmentPlan = getImageAttachmentSendPlan({
+            flavor,
+            text,
+            attachmentCount: attachments?.length ?? 0,
+        });
+        const effectiveAttachments = attachmentPlan.shouldUseAttachments ? attachments : undefined;
 
-        if (attachments && attachments.length > 0 && !supportsAttachments) {
+        if (attachmentPlan.shouldShowUnsupportedAlert) {
             Modal.alert(
                 t('imageUpload.notSupportedTitle'),
                 t('imageUpload.notSupportedMessage'),
                 [{ text: t('common.ok'), style: 'cancel' }],
             );
+            if (!attachmentPlan.shouldSendText) {
+                return;
+            }
         }
 
         // Upload attachments and queue file events before the text message.

@@ -217,7 +217,7 @@ export const it: TranslationStructure = {
         analyticsDisabled: 'Tutto il tracciamento e la telemetria disabilitati',
         analyticsEnabled: 'Analisi anonime di utilizzo attive',
         imageUpload: 'Caricamento immagini',
-        imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare da Claude',
+        imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare dagli agenti supportati',
     },
 
     errors: {
@@ -979,7 +979,7 @@ export const it: TranslationStructure = {
             ? 'Un\'immagine non è stata caricata e non è stata inviata.'
             : `Non è stato possibile caricare ${count} immagini e non sono state inviate.`,
         notSupportedTitle: 'Immagini non supportate',
-        notSupportedMessage: 'Questo agente non supporta gli allegati immagine. È stato inviato solo il testo.',
+        notSupportedMessage: 'Questo agente non supporta gli allegati immagine. Le immagini non sono state inviate.',
     },
 
     feed: {
