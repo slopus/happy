@@ -25,7 +25,7 @@ import { startOfflineReconnection, connectionState } from '@/utils/serverConnect
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
-import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
+import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { getProjectPath } from './utils/path';
@@ -314,6 +314,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         return false;
     };
 
+    let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
+
     // Remote-mode session scanner: catches user-typed prompts that
     // appeared in the Claude JSONL while we weren't looking — typically
     // because the user opened `claude --resume <id>` in a terminal next
@@ -327,6 +329,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         sessionId: initialScannerSessionId,
         workingDirectory,
         onMessage: (raw) => {
+            if (currentRunMode !== 'remote') return;
             // Only user-typed prompts. SDK pipeline owns assistant and
             // tool_result-bearing user messages.
             if (raw.type !== 'user') return;
@@ -419,7 +422,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
     let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
-    let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
 
     const resetCurrentModeDefaults = () => {
         currentPermissionMode = initialPermissionMode;
@@ -479,9 +481,22 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
         let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            messagePermissionMode = applySandboxPermissionPolicy(message.meta.permissionMode, sandboxEnabled);
+            const previousPermissionMode = currentPermissionMode;
+            messagePermissionMode = resolveRemoteClaudePermissionMode(
+                currentPermissionMode,
+                message.meta.permissionMode,
+                sandboxEnabled,
+            );
             currentPermissionMode = messagePermissionMode;
-            logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
+            const ignoredDefaultDowngrade =
+                (previousPermissionMode === 'bypassPermissions' || previousPermissionMode === 'yolo')
+                && message.meta.permissionMode === 'default'
+                && currentPermissionMode === previousPermissionMode;
+            if (ignoredDefaultDowngrade) {
+                logger.debug(`[loop] Ignoring permission mode downgrade from ${previousPermissionMode} to default`);
+            } else {
+                logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
+            }
         } else {
             logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
         }
