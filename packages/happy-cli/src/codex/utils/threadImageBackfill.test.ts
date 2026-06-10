@@ -74,6 +74,8 @@ describe('buildCodexThreadBackfillEnvelopes', () => {
         ]);
         expect(envelopes[1]).toMatchObject({
             role: 'user',
+            id: 'user-1:image:1',
+            time: 100_000,
             codexItemId: 'user-1',
             ev: { t: 'file', ref: 'uploaded-ref' },
         });
@@ -85,7 +87,19 @@ describe('buildCodexThreadBackfillEnvelopes', () => {
         expect(uploadLocalImage).toHaveBeenCalledWith(expect.objectContaining({
             mimeType: 'image/png',
             name: 'codex-image-1.png',
-        }), { codexItemId: 'user-1' });
+        }), {
+            id: 'user-1:image:1',
+            time: 100_000,
+            codexItemId: 'user-1',
+        });
+
+        const userMessagesInCreatedAtOrder = envelopes
+            .filter((envelope) => envelope.role === 'user')
+            .sort((a, b) => a.time - b.time);
+        expect(userMessagesInCreatedAtOrder.map((envelope) => envelope.ev.t)).toEqual([
+            'file',
+            'text',
+        ]);
     });
 
     it('backfills image-only user messages without inventing empty text', async () => {

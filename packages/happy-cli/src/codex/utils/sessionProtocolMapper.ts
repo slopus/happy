@@ -238,9 +238,13 @@ function emitHistoricalToolCall(
 export function mapCodexThreadItemToSessionEnvelopes(
     turn: ThreadTurn,
     item: ThreadItem,
+    timestamps?: {
+        startedAt: number;
+        completedAt: number;
+    },
 ): SessionEnvelope[] {
-    const startedAt = turnTimestampMs(turn);
-    const completedAt = completedTimestampMs(turn);
+    const startedAt = timestamps?.startedAt ?? turnTimestampMs(turn);
+    const completedAt = timestamps?.completedAt ?? completedTimestampMs(turn);
 
     switch (item.type) {
         case 'userMessage': {
@@ -340,8 +344,9 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
             time: startedAt,
         }));
 
+        const timestamps = { startedAt, completedAt };
         for (const item of turn.items ?? []) {
-            envelopes.push(...mapCodexThreadItemToSessionEnvelopes(turn, item));
+            envelopes.push(...mapCodexThreadItemToSessionEnvelopes(turn, item, timestamps));
         }
 
         envelopes.push(createEnvelope('agent', { t: 'turn-end', status: turnStatus(turn) }, {

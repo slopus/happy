@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-import type { SessionEnvelope } from '@slopus/happy-wire';
+import type { CreateEnvelopeOptions, SessionEnvelope } from '@slopus/happy-wire';
 import { createEnvelope } from '@slopus/happy-wire';
 
 import { logger } from '@/ui/logger';
@@ -16,7 +16,7 @@ import {
 
 type LocalImageUpload = (
     attachment: { data: Uint8Array; mimeType: string; name: string },
-    opts: { codexItemId: string },
+    opts: Pick<CreateEnvelopeOptions, 'id' | 'time' | 'codexItemId'> & { codexItemId: string },
 ) => Promise<SessionEnvelope>;
 
 function localImagePaths(item: ThreadItem): string[] {
@@ -66,10 +66,12 @@ export async function buildCodexThreadBackfillEnvelopes(opts: {
     const envelopes: SessionEnvelope[] = [];
 
     for (const turn of opts.thread.turns ?? []) {
+        const startedAt = turnTimestampMs(turn);
+        const completedAt = completedTimestampMs(turn);
         envelopes.push(createEnvelope('agent', { t: 'turn-start' }, {
             id: `${turn.id}:start`,
             turn: turn.id,
-            time: turnTimestampMs(turn),
+            time: startedAt,
         }));
 
         for (const item of turn.items ?? []) {
@@ -78,20 +80,27 @@ export async function buildCodexThreadBackfillEnvelopes(opts: {
                 const attachment = await localImagePathToAttachment(paths[index], index + 1);
                 if (!attachment) continue;
                 try {
-                    envelopes.push(await opts.uploadLocalImage(attachment, { codexItemId: item.id }));
+                    envelopes.push(await opts.uploadLocalImage(attachment, {
+                        id: `${item.id}:image:${index + 1}`,
+                        time: startedAt,
+                        codexItemId: item.id,
+                    }));
                 } catch (error) {
                     logger.debug('[Codex image backfill] Failed to upload local image input', {
                         errorName: error instanceof Error ? error.name : typeof error,
                     });
                 }
             }
-            envelopes.push(...mapCodexThreadItemToSessionEnvelopes(turn, item));
+            envelopes.push(...mapCodexThreadItemToSessionEnvelopes(turn, item, {
+                startedAt,
+                completedAt,
+            }));
         }
 
         envelopes.push(createEnvelope('agent', { t: 'turn-end', status: turnStatus(turn) }, {
             id: `${turn.id}:end`,
             turn: turn.id,
-            time: completedTimestampMs(turn),
+            time: completedAt,
         }));
     }
 

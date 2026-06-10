@@ -13,7 +13,7 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
 import { shouldReconnect } from '@/utils/lidState';
-import { createEnvelope, type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
+import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
     closeClaudeTurnWithStatus,
     mapClaudeLogMessageToSessionEnvelopes,
@@ -457,10 +457,7 @@ export class ApiSessionClient extends EventEmitter {
 
     async uploadLocalImageAttachmentEnvelope(
         attachment: LocalImageAttachment,
-        opts: {
-            claudeUuid?: string;
-            codexItemId?: string;
-        } = {},
+        opts: Pick<CreateEnvelopeOptions, 'id' | 'time' | 'claudeUuid' | 'codexItemId'> = {},
     ): Promise<SessionEnvelope> {
         const blobKey = await this.getBlobKey();
         const encrypted = encryptBlob(attachment.data, blobKey);
