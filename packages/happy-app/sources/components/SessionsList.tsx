@@ -125,6 +125,17 @@ const stylesheet = StyleSheet.create((theme) => ({
     sessionTitleDisconnected: {
         color: theme.colors.textSecondary,
     },
+    sessionTitleUnread: {
+        fontWeight: '700',
+        color: theme.colors.text,
+    },
+    unreadDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginLeft: 8,
+        backgroundColor: theme.colors.textLink,
+    },
     sessionSubtitleRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -352,25 +363,22 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const styles = stylesheet;
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
-    const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
-    const status = session.hasUnread
-        ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
-        : baseStatus;
+    // Status dot reflects true liveness only. Unread is shown separately
+    // (bold title + accent dot) so a finished/idle session never reuses the
+    // blue "thinking/running" color and reads as if it were still running.
+    const status = STATUS_CONFIG[session.state];
 
     const vibingMessage = React.useMemo(() => {
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
     }, [session.state]);
 
-    const statusText = session.hasUnread
-        ? t('status.unread')
-        : session.state === 'thinking'
-            ? vibingMessage
-            : session.state === 'disconnected'
-                ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
-                : session.state === 'permission_required'
-                    ? t('status.permissionRequired')
-                    : t('status.online');
+    const statusText = session.state === 'thinking'
+        ? vibingMessage
+        : session.state === 'disconnected'
+            ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
+            : session.state === 'permission_required'
+                ? t('status.permissionRequired')
+                : t('status.online');
 
     const handlePress = React.useCallback(() => {
         navigateToSession(session.id);
@@ -427,10 +435,12 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 <View style={styles.sessionTitleRow}>
                     <Text style={[
                         styles.sessionTitle,
-                        status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                        status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected,
+                        session.hasUnread && styles.sessionTitleUnread
                     ]} numberOfLines={1}>
                         {session.name}
                     </Text>
+                    {session.hasUnread && <View style={styles.unreadDot} />}
                 </View>
 
                 {session.path ? (
