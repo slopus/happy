@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiSessionClient } from './apiSession';
 import { decodeBase64, decrypt, decryptBlob, encodeBase64, encrypt } from './encryption';
 import type { Update } from './types';
+import { logger } from '@/ui/logger';
 
 const {
     mockIo,
@@ -900,6 +901,57 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(onUserMessage).toHaveBeenCalledWith(userMessage);
         expect(onMessage).toHaveBeenCalledTimes(1);
         expect(onMessage).toHaveBeenCalledWith(agentMessage);
+    });
+
+    it('routes file events without logging sensitive names or refs', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const onFileEvent = vi.fn();
+        const sensitiveName = 'https://upload.example.test/image.png?token=secret';
+        const sensitiveRef = 'sessions/test-session-id/attachments/secret-ref.enc?signature=secret';
+        client.onFileEvent(onFileEvent);
+
+        const fileMessage = {
+            role: 'session',
+            content: {
+                type: 'session',
+                data: {
+                    id: 'file-event-1',
+                    time: 1000,
+                    role: 'user',
+                    ev: {
+                        t: 'file',
+                        ref: sensitiveRef,
+                        name: sensitiveName,
+                        size: 42,
+                        mimeType: 'image/png',
+                    }
+                }
+            }
+        };
+
+        mockAxiosGet.mockResolvedValueOnce({
+            data: {
+                messages: [
+                    {
+                        id: 'msg-1',
+                        seq: 1,
+                        content: { t: 'encrypted', c: encryptContent(session, fileMessage) },
+                        localId: null,
+                        createdAt: 1000,
+                        updatedAt: 1000
+                    }
+                ],
+                hasMore: false
+            }
+        });
+
+        await (client as any).fetchMessages();
+
+        expect(onFileEvent).toHaveBeenCalledWith(fileMessage);
+        const debugOutput = JSON.stringify(vi.mocked(logger.debug).mock.calls);
+        expect(debugOutput).not.toContain(sensitiveName);
+        expect(debugOutput).not.toContain(sensitiveRef);
+        expect(debugOutput).not.toContain('signature=secret');
     });
 
     it('applies consecutive new-message updates directly (fast path)', () => {

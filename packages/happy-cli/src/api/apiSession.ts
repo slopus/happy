@@ -562,7 +562,11 @@ export class ApiSessionClient extends EventEmitter {
         // Check for file events (image attachments from app)
         const fileResult = FileEventMessageSchema.safeParse(message);
         if (fileResult.success) {
-            logger.debug(`[API] Received file event: ${fileResult.data.content.data.ev.name} (ref: ${fileResult.data.content.data.ev.ref})`);
+            const ev = fileResult.data.content.data.ev;
+            logger.debug('[API] Received file event', {
+                size: ev.size,
+                hasMimeType: Boolean(ev.mimeType),
+            });
             if (this.pendingFileEventCallback) {
                 this.pendingFileEventCallback(fileResult.data);
             } else {
