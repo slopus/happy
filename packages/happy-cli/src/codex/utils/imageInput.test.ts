@@ -12,6 +12,7 @@ vi.mock('@/configuration', () => ({
     configuration: { happyHomeDir: '/home/test/.happy' },
 }));
 
+import { logger } from '@/ui/logger';
 import {
     detectSupportedImageType,
     prepareCodexImageInputItems,
@@ -31,6 +32,7 @@ afterEach(async () => {
         const dir = tempDirs.pop()!;
         await rm(dir, { recursive: true, force: true });
     }
+    vi.mocked(logger.debug).mockClear();
 });
 
 describe('detectSupportedImageType', () => {
@@ -123,6 +125,7 @@ describe('prepareCodexImageInputItems', () => {
             inputItems: [],
             skipped: 1,
         });
+        expect(JSON.stringify(vi.mocked(logger.debug).mock.calls)).not.toContain(fileRoot);
     });
 });
 

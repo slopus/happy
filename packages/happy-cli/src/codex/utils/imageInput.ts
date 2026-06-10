@@ -105,7 +105,7 @@ export async function prepareCodexImageInputItems(
                 name: attachment.name,
                 mimeType: detected.mimeType,
                 size: attachment.data.length,
-                error,
+                errorName: error instanceof Error ? error.name : typeof error,
             });
             skipped += 1;
         }
