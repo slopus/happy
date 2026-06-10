@@ -91,11 +91,12 @@ describe('prepareCodexImageInputItems', () => {
 
     it('skips unsupported images without writing fallback files', async () => {
         const cacheRootDir = await makeTempDir();
+        const sensitiveName = 'https://upload.example.test/presigned?token=secret';
 
         const result = await prepareCodexImageInputItems([{
             data: new TextEncoder().encode('not an image'),
             mimeType: 'image/png',
-            name: 'fake.png',
+            name: sensitiveName,
         }], {
             cacheRootDir,
             sessionId: 'session-2',
@@ -105,17 +106,19 @@ describe('prepareCodexImageInputItems', () => {
             inputItems: [],
             skipped: 1,
         });
+        expect(JSON.stringify(vi.mocked(logger.debug).mock.calls)).not.toContain(sensitiveName);
     });
 
     it('skips images when cache writes fail', async () => {
         const cacheRootDir = await makeTempDir();
         const fileRoot = join(cacheRootDir, 'not-a-directory');
         await writeFile(fileRoot, 'occupied');
+        const sensitiveName = 'data:image/png;base64,secret';
 
         const result = await prepareCodexImageInputItems([{
             data: new Uint8Array([0xff, 0xd8, 0xff, 0xdb]),
             mimeType: 'image/jpeg',
-            name: 'photo.jpg',
+            name: sensitiveName,
         }], {
             cacheRootDir: fileRoot,
             sessionId: 'session-3',
@@ -126,6 +129,7 @@ describe('prepareCodexImageInputItems', () => {
             skipped: 1,
         });
         expect(JSON.stringify(vi.mocked(logger.debug).mock.calls)).not.toContain(fileRoot);
+        expect(JSON.stringify(vi.mocked(logger.debug).mock.calls)).not.toContain(sensitiveName);
     });
 });
 

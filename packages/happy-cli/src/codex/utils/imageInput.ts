@@ -87,7 +87,6 @@ export async function prepareCodexImageInputItems(
         const detected = detectSupportedImageType(attachment.data);
         if (!detected) {
             logger.debug('[Codex] Skipping unsupported image attachment', {
-                name: attachment.name,
                 mimeType: attachment.mimeType,
                 size: attachment.data.length,
             });
@@ -102,7 +101,6 @@ export async function prepareCodexImageInputItems(
             inputItems.push({ type: 'localImage', path: filePath });
         } catch (error) {
             logger.debug('[Codex] Failed to cache image attachment for localImage input', {
-                name: attachment.name,
                 mimeType: detected.mimeType,
                 size: attachment.data.length,
                 errorName: error instanceof Error ? error.name : typeof error,
