@@ -1,6 +1,6 @@
 {
   "name": "happy-server-self-host",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "description": "Happy self-host server and bundled web app",
   "repository": {
     "type": "git",

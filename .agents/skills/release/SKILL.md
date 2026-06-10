@@ -97,6 +97,19 @@ specific dependencies such as Prisma and sharp normally. Do not pass
 `--ignore-scripts` when publishing it; its `prepublishOnly` script rebuilds the
 runtime, rebuilds the webapp, and runs tests before npm receives the tarball.
 
+Before handing a server publish to the user, pre-run the full `prepublishOnly`
+chain yourself to catch failures early — the `bundle:webapp` step runs a multi-minute
+`expo export`, and the server unit suite is **not** part of the GitHub CI gate, so
+`main` can be red even when the PR "passed":
+
+```bash
+cd packages/happy-server && pnpm run build && pnpm run bundle:webapp && pnpm test
+```
+
+(Observed: `1332` merged a `standalone.spec.ts` test that only passes on Windows
+because the impl used POSIX `path.basename`; it was red on `main` and would have
+aborted the publish at the `prepublishOnly` test step.)
+
 ### Step 6: Test (unit only)
 
 ```bash
@@ -117,9 +130,26 @@ pnpm publish --tag {channel} --no-git-checks
 ```
 
 - `--no-git-checks`: allows dirty working tree (we already verified state)
-- Do not pass `--ignore-scripts`. Package lifecycle scripts are the final
-  publish-time guard; `prepublishOnly` must run even if the same build/test gate
-  was already run manually.
+
+⚠️ **NEVER pass `--ignore-scripts`.** `prepublishOnly` runs `pnpm test` (build +
+unit tests), and **the build re-stamps the version into the bundle** (Step 4).
+Skipping it ships whatever stale `dist/` happens to be on disk. Two rationalizations
+look reasonable and are both WRONG:
+
+- *"We already built + tested this session, so the scripts are redundant — skip them
+  to go faster."* That earlier build may predate the version bump (or a dependency
+  change). The on-disk `dist/` is then stamped with the OLD version, and
+  `--ignore-scripts` ships it. **This actually happened: `1.1.10-beta.9` was published
+  with `--ignore-scripts` and shipped a bundle stamped `beta.8`** — `happy --version`
+  reported `beta.8` while npm metadata said `beta.9`. npm versions are immutable, so
+  the only fix was bumping to `beta.10` and re-releasing. A wasted version number and
+  a broken publish, to save one ~1-minute rebuild.
+- *"It makes the TLS-failure retries faster."* The `prepublishOnly` rebuild on each
+  retry is the price of correctness, not overhead to trim. If retries are painful,
+  change the network (see the TLS note above) — do NOT skip scripts.
+
+If you catch yourself reasoning toward `--ignore-scripts`, stop: there is no case in
+this repo where it is correct for a publish.
 
 **MUST use `pnpm publish` — never `npm publish`.** This is a pnpm workspace; `npm
 publish` mis-resolves the workspace protocol and the `bin` entries and ships a
@@ -154,6 +184,13 @@ npm view happy dist-tags           # did the channel tag move?
 Check `npm view happy@X.Y.Z version` first — it returns the version string if the
 publish landed (use this between TLS retries to avoid double-publishing, and to
 distinguish a real failure from a cosmetic upload error).
+
+⚠️ **This metadata check is necessary but NOT sufficient.** `npm view ... version`
+only confirms the tarball was *accepted* — it says nothing about what's *inside* it.
+A bundle stamped with the wrong version (the `--ignore-scripts` footgun above) passes
+this check cleanly. The authoritative check is the bundle itself in Step 11
+(`happy --version` after a real install). Never report a release as done on the
+metadata check alone.
 
 Then confirm the new version appears under the correct dist-tag. The tag often
 lags the publish by 10–40s — poll a few times before concluding it failed; npm

@@ -173,7 +173,11 @@ const standaloneEntrypoints = new Set([
 ]);
 
 export function isStandaloneEntrypoint(invokedFile: string): boolean {
-    return standaloneEntrypoints.has(path.basename(path.resolve(invokedFile)).toLowerCase());
+    // win32.basename splits on both "/" and "\", so a Windows-style argv[1] is
+    // parsed correctly even on a POSIX host (and vice-versa). The POSIX basename
+    // would leave backslashes intact and miss Windows entrypoints like
+    // happy-server.exe when tests or tooling run cross-platform.
+    return standaloneEntrypoints.has(path.win32.basename(invokedFile).toLowerCase());
 }
 
 const invokedFile = process.argv[1] || "";
