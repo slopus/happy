@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiSessionClient } from './apiSession';
-import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
+import { decodeBase64, decrypt, decryptBlob, encodeBase64, encrypt } from './encryption';
 import type { Update } from './types';
 
 const {
     mockIo,
     mockAxiosGet,
     mockAxiosPost,
+    mockAxiosPut,
     mockBackoff,
     mockDelay,
     mockShouldReconnect
@@ -14,6 +15,7 @@ const {
     mockIo: vi.fn(),
     mockAxiosGet: vi.fn(),
     mockAxiosPost: vi.fn(),
+    mockAxiosPut: vi.fn(),
     mockBackoff: vi.fn(async <T>(callback: () => Promise<T>) => {
         let lastError: unknown;
         for (let i = 0; i < 20; i += 1) {
@@ -36,7 +38,8 @@ vi.mock('socket.io-client', () => ({
 vi.mock('axios', () => ({
     default: {
         get: mockAxiosGet,
-        post: mockAxiosPost
+        post: mockAxiosPost,
+        put: mockAxiosPut
     }
 }));
 
@@ -368,6 +371,117 @@ describe('ApiSessionClient v3 messages API migration', () => {
             }
         });
         expect(typeof (sessionUser as any).content.time).toBe('number');
+    });
+
+    it('uploads local Claude transcript image blocks and sends file before user text', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const pngBytes = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x01, 0x02, 0x03]);
+
+        mockAxiosPost.mockImplementation(async (url: string, payload: any) => {
+            if (url.endsWith('/attachments/request-upload')) {
+                expect(payload).toMatchObject({
+                    filename: 'claude-image-1.png',
+                });
+                expect(payload.size).toBeGreaterThan(pngBytes.length);
+                return {
+                    data: {
+                        ref: 'sessions/test-session-id/attachments/image.enc',
+                        uploadUrl: 'https://server.test/v1/sessions/test-session-id/attachments/image.enc',
+                        method: 'PUT',
+                    },
+                };
+            }
+
+            return {
+                data: {
+                    messages: payload.messages.map((_message: unknown, index: number) => ({
+                        id: `msg-${index + 1}`,
+                        seq: index + 1,
+                        localId: `local-${index + 1}`,
+                        createdAt: 1,
+                        updatedAt: 1,
+                    })),
+                },
+            };
+        });
+        mockAxiosPut.mockResolvedValueOnce({ data: { ok: true } });
+
+        await client.sendClaudeSessionMessageFromLocalTranscript({
+            type: 'user',
+            uuid: 'u-image-1',
+            isSidechain: false,
+            isMeta: false,
+            message: {
+                role: 'user',
+                content: [
+                    { type: 'text', text: 'please inspect this' },
+                    {
+                        type: 'image',
+                        source: {
+                            type: 'base64',
+                            media_type: 'image/png',
+                            data: Buffer.from(pngBytes).toString('base64'),
+                        },
+                    },
+                ],
+            },
+        } as any);
+
+        await waitForCheck(() => {
+            expect(mockAxiosPut).toHaveBeenCalledTimes(1);
+            expect(mockAxiosPost.mock.calls.some(([url]) => url === 'https://server.test/v3/sessions/test-session-id/messages')).toBe(true);
+        });
+
+        const uploadBody = mockAxiosPut.mock.calls[0][1];
+        const blobKey = await client.getBlobKey();
+        expect(decryptBlob(new Uint8Array(uploadBody), blobKey)).toEqual(pngBytes);
+
+        const messagesPost = mockAxiosPost.mock.calls.find(([url]) => {
+            return url === 'https://server.test/v3/sessions/test-session-id/messages';
+        });
+        expect(messagesPost).toBeDefined();
+        const sentMessages = messagesPost![1].messages;
+        expect(sentMessages).toHaveLength(2);
+
+        const decrypted = sentMessages.map((message: { content: string }) => {
+            return decrypt(
+                session.encryptionKey,
+                session.encryptionVariant,
+                decodeBase64(message.content),
+            );
+        });
+
+        expect(decrypted[0]).toMatchObject({
+            role: 'session',
+            content: {
+                role: 'user',
+                claudeUuid: 'u-image-1',
+                ev: {
+                    t: 'file',
+                    ref: 'sessions/test-session-id/attachments/image.enc',
+                    name: 'claude-image-1.png',
+                    size: pngBytes.length,
+                    mimeType: 'image/png',
+                },
+            },
+            meta: {
+                sentFrom: 'cli',
+            },
+        });
+        expect(decrypted[1]).toMatchObject({
+            role: 'session',
+            content: {
+                role: 'user',
+                claudeUuid: 'u-image-1',
+                ev: {
+                    t: 'text',
+                    text: 'please inspect this',
+                },
+            },
+            meta: {
+                sentFrom: 'cli',
+            },
+        });
     });
 
     it('sends session protocol messages through enqueueMessage with session envelope', async () => {
