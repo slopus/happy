@@ -5,16 +5,16 @@ import type {
 
 export interface TerminalSpawnOptions {
     command: string;
-    args?: string[];
-    cwd?: string;
-    env?: Record<string, string | undefined>;
+    args: string[];
+    cwd: string;
+    env: Record<string, string | undefined>;
     shell?: boolean;
     windowName?: string;
 }
 
 export interface TerminalExit {
-    exitCode: number | null;
-    signal?: number | string | null;
+    code: number | null;
+    signal?: string | null;
 }
 
 export type TerminalDataHandler = (data: string) => void;
@@ -23,9 +23,9 @@ export type TerminalExitHandler = (exit: TerminalExit) => void;
 export interface TerminalTransport {
     readonly backend: InteractiveClaudeTerminalBackend;
     readonly capabilities: readonly InteractiveClaudeTerminalCapability[];
-    readonly terminalId?: string;
+    readonly terminalId: string | null;
 
-    spawn(options: TerminalSpawnOptions): Promise<void>;
+    spawn(options: TerminalSpawnOptions): Promise<{ pid?: number; terminalId: string }>;
     paste(text: string): Promise<void>;
     enter(): Promise<void>;
     interrupt(): Promise<void>;
@@ -36,27 +36,21 @@ export interface TerminalTransport {
 }
 
 export interface TerminalBackendAvailability {
-    tmux: {
-        configured: boolean;
-        available: boolean;
-    };
-    pty: {
-        available: boolean;
-    };
+    tmuxConfigured: boolean;
+    tmuxAvailable: boolean;
+    ptyAvailable: boolean;
 }
 
-export type TerminalBackendSelection =
-    | { supported: true; backend: InteractiveClaudeTerminalBackend }
-    | { supported: false; backend: 'unsupported' };
+export type TerminalBackendSelection = InteractiveClaudeTerminalBackend | 'unsupported';
 
 export function chooseTerminalBackend(availability: TerminalBackendAvailability): TerminalBackendSelection {
-    if (availability.tmux.configured && availability.tmux.available) {
-        return { supported: true, backend: 'tmux' };
+    if (availability.tmuxConfigured && availability.tmuxAvailable) {
+        return 'tmux';
     }
 
-    if (availability.pty.available) {
-        return { supported: true, backend: 'pty' };
+    if (availability.ptyAvailable) {
+        return 'pty';
     }
 
-    return { supported: false, backend: 'unsupported' };
+    return 'unsupported';
 }

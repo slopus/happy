@@ -15,7 +15,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
     readonly backend = 'tmux' as const;
     readonly capabilities = ['remote-control', 'local-attach'] as const;
 
-    terminalId?: string;
+    terminalId: string | null = null;
 
     private readonly tmux: TmuxUtilities;
     private target?: TmuxSessionIdentifier;
@@ -29,7 +29,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
         this.tmux = tmux;
     }
 
-    async spawn(options: TerminalSpawnOptions): Promise<void> {
+    async spawn(options: TerminalSpawnOptions): Promise<{ pid?: number; terminalId: string }> {
         this.stopPolling();
         this.lastCaptureText = null;
 
@@ -49,6 +49,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
         this.terminalId = result.sessionId;
         this.target = parseTmuxSessionIdentifier(result.sessionId);
         this.startPolling();
+        return { pid: result.pid, terminalId: result.sessionId };
     }
 
     async paste(text: string): Promise<void> {
@@ -103,7 +104,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
         this.exitHandlers.clear();
 
         const terminalId = this.terminalId;
-        this.terminalId = undefined;
+        this.terminalId = null;
         this.target = undefined;
         this.lastCaptureText = null;
 

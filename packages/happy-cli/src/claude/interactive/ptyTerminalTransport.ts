@@ -12,7 +12,7 @@ export class PtyTerminalTransport implements TerminalTransport {
     readonly backend = 'pty' as const;
     readonly capabilities = ['remote-control'] as const;
 
-    terminalId?: string;
+    terminalId: string | null = null;
 
     private ptyProcess: PtyProcess | null = null;
     private dataDisposable: PtyDisposable | null = null;
@@ -20,7 +20,7 @@ export class PtyTerminalTransport implements TerminalTransport {
     private readonly dataHandlers = new Set<TerminalDataHandler>();
     private readonly exitHandlers = new Set<TerminalExitHandler>();
 
-    async spawn(options: TerminalSpawnOptions): Promise<void> {
+    async spawn(options: TerminalSpawnOptions): Promise<{ pid: number; terminalId: string }> {
         if (this.ptyProcess) {
             await this.dispose();
         }
@@ -30,26 +30,28 @@ export class PtyTerminalTransport implements TerminalTransport {
         const args = options.shell ? ['-lc', options.command] : (options.args ?? []);
         const ptyProcess = nodePty.spawn(command, args, {
             name: 'xterm-256color',
-            cols: 80,
-            rows: 24,
-            cwd: options.cwd || process.cwd(),
+            cols: 120,
+            rows: 30,
+            cwd: options.cwd,
             env: buildPtyEnv(options.env),
         });
 
         this.ptyProcess = ptyProcess;
-        this.terminalId = `pty:${ptyProcess.pid}`;
+        const terminalId = `pty:${ptyProcess.pid}`;
+        this.terminalId = terminalId;
         this.dataDisposable = ptyProcess.onData((data) => {
             this.emitData(data);
         });
         this.exitDisposable = ptyProcess.onExit((event) => {
             this.disposePtyListeners();
             this.ptyProcess = null;
-            this.terminalId = undefined;
+            this.terminalId = null;
             this.emitExit({
-                exitCode: event.exitCode,
-                signal: event.signal ?? null,
+                code: event.exitCode,
+                signal: normalizeExitSignal(event.signal),
             });
         });
+        return { pid: ptyProcess.pid, terminalId };
     }
 
     async paste(text: string): Promise<void> {
@@ -87,7 +89,7 @@ export class PtyTerminalTransport implements TerminalTransport {
 
         this.disposePtyListeners();
         this.ptyProcess = null;
-        this.terminalId = undefined;
+        this.terminalId = null;
         this.dataHandlers.clear();
         this.exitHandlers.clear();
 
@@ -116,11 +118,18 @@ export class PtyTerminalTransport implements TerminalTransport {
         }
     }
 
-    private emitExit(exit: { exitCode: number; signal: number | null }): void {
+    private emitExit(exit: { code: number; signal: string | null }): void {
         for (const handler of this.exitHandlers) {
             handler(exit);
         }
     }
+}
+
+function normalizeExitSignal(signal: number | string | null | undefined): string | null {
+    if (signal === undefined || signal === null) {
+        return null;
+    }
+    return String(signal);
 }
 
 function buildPtyEnv(env?: Record<string, string | undefined>): Record<string, string> {
