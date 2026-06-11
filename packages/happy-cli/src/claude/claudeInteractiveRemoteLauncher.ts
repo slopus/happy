@@ -13,6 +13,7 @@ import { createSessionScanner } from './utils/sessionScanner';
 const UNSUPPORTED_TERMINAL_MESSAGE = 'Claude interactive remote is not supported in this terminal environment.';
 const WINDOW_NAME_PREFIX = 'happy-claude-';
 const TURN_COMPLETION_DEBOUNCE_MS = 25;
+const TERMINAL_INPUT_READY_TIMEOUT_MS = 8000;
 type InteractiveRemoteResult = { type: 'exit'; code: number };
 
 export async function claudeInteractiveRemoteLauncher(session: Session): Promise<InteractiveRemoteResult> {
@@ -57,6 +58,9 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     let lastSafeTerminalMessage: string | null = null;
     let completionTimer: ReturnType<typeof setTimeout> | null = null;
     let completionGeneration = 0;
+    let terminalInputReady = false;
+    let inputCancellationGeneration = 0;
+    const inputReadyWaiters = new Set<() => void>();
 
     const terminalMetadata = (state: InteractiveClaudeRuntimeMetadata['state'], message?: string): Partial<InteractiveClaudeRuntimeMetadata> => ({
         state,
@@ -89,6 +93,52 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         }
     };
 
+    const wakeInputReadyWaiters = () => {
+        const waiters = [...inputReadyWaiters];
+        inputReadyWaiters.clear();
+        for (const waiter of waiters) {
+            waiter();
+        }
+    };
+
+    const markTerminalInputReady = () => {
+        terminalInputReady = true;
+        wakeInputReadyWaiters();
+    };
+
+    const markTerminalInputBusy = () => {
+        terminalInputReady = false;
+    };
+
+    const cancelPendingInputWaits = () => {
+        inputCancellationGeneration++;
+        wakeInputReadyWaiters();
+    };
+
+    const waitForTerminalInputReady = async () => {
+        if (terminalInputReady || exitReason) {
+            return;
+        }
+
+        await new Promise<void>((resolve) => {
+            let timeout: ReturnType<typeof setTimeout> | null = null;
+            const done = () => {
+                if (timeout) {
+                    clearTimeout(timeout);
+                    timeout = null;
+                }
+                inputReadyWaiters.delete(done);
+                resolve();
+            };
+
+            timeout = setTimeout(() => {
+                logger.debug('[interactive-remote]: terminal input readiness timed out; sending prompt anyway');
+                done();
+            }, TERMINAL_INPUT_READY_TIMEOUT_MS);
+            inputReadyWaiters.add(done);
+        });
+    };
+
     const completeTurnAfterScannerFlush = async (generation: number) => {
         await scanner?.flush();
         if (generation !== completionGeneration || exitReason) {
@@ -108,6 +158,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
 
     const failRuntime = (message: string) => {
         cancelPendingCompletion();
+        cancelPendingInputWaits();
         localAttachMode = false;
         detachTerminalOnCleanup = false;
         updateRuntimeMetadata(session, terminalMetadata('failed', message));
@@ -159,9 +210,11 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
 
             switch (observation.type) {
                 case 'spinner_without_transcript':
+                    markTerminalInputBusy();
                     session.onThinkingChange(true);
                     return;
                 case 'input_prompt_visible':
+                    markTerminalInputReady();
                     session.onThinkingChange(false);
                     scheduleCompletedTurn();
                     return;
@@ -183,6 +236,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 return;
             }
             cancelPendingCompletion();
+            cancelPendingInputWaits();
             terminalExit = exit;
             const code = exitCodeFromTerminalExit(exit);
             const state = code === 0 ? 'degraded' : 'failed';
@@ -202,6 +256,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             logger.debug('[interactive-remote]: abort');
             session.onAbort();
             cancelPendingCompletion();
+            cancelPendingInputWaits();
             if (localAttachMode) {
                 session.onModeChange('remote');
                 updateRuntimeMetadata(session, terminalMetadata('interactive'));
@@ -279,8 +334,15 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             }
 
             cancelPendingCompletion();
+            const writeGeneration = inputCancellationGeneration;
+            await waitForTerminalInputReady();
+            if (writeGeneration !== inputCancellationGeneration || exitReason) {
+                continue;
+            }
+            cancelPendingCompletion();
             const payload = buildInteractivePaste(batch.message, transport.backend);
             try {
+                markTerminalInputBusy();
                 await transport.paste(payload);
                 if (transport.backend === 'tmux') {
                     await transport.enter();

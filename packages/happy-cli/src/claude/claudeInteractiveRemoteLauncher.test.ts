@@ -252,6 +252,12 @@ describe('claudeInteractiveRemoteLauncher', () => {
         const resultPromise = claudeInteractiveRemoteLauncher(session as any);
 
         await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+        expect(transport.paste).not.toHaveBeenCalled();
+        transport.emitData('❯ ');
+
+        await vi.waitFor(() => {
             expect(transport.paste).toHaveBeenCalledWith('hello with launch-time append prompt\r');
         });
         expect(session.client.sendSessionEvent).not.toHaveBeenCalledWith({
@@ -282,6 +288,40 @@ describe('claudeInteractiveRemoteLauncher', () => {
         });
         transport.emitExit({ code: 0, signal: null });
 
+        await resultPromise;
+    });
+
+    it('waits for the terminal input prompt before sending a queued batch', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'queued before terminal is ready',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+        await Promise.resolve();
+        expect(transport.paste).not.toHaveBeenCalled();
+        expect(transport.enter).not.toHaveBeenCalled();
+
+        transport.emitData('Claude Code v2.1.153\n❯ ');
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('queued before terminal is ready');
+            expect(transport.enter).toHaveBeenCalledOnce();
+        });
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        expect(session.client.closeClaudeSessionTurn).not.toHaveBeenCalledWith('completed');
+
+        transport.emitExit({ code: 0, signal: null });
         await resultPromise;
     });
 
@@ -451,7 +491,14 @@ describe('claudeInteractiveRemoteLauncher', () => {
             }],
         });
 
-        await expect(claudeInteractiveRemoteLauncher(session as any)).resolves.toEqual({
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+        transport.emitData('>');
+
+        await expect(resultPromise).resolves.toEqual({
             type: 'exit',
             code: 1,
         });
@@ -493,6 +540,7 @@ describe('claudeInteractiveRemoteLauncher', () => {
             hash: 'initial-mode-hash',
             isolate: false,
         });
+        transport.emitData('>');
 
         await vi.waitFor(() => {
             expect(transport.paste).toHaveBeenCalledWith('after abort\r');
@@ -606,6 +654,7 @@ describe('claudeInteractiveRemoteLauncher', () => {
             hash: 'initial-mode-hash',
             isolate: false,
         });
+        transport.emitData('❯ ');
 
         await vi.waitFor(() => {
             expect(transport.paste).toHaveBeenCalledWith('take remote control back');
@@ -643,6 +692,7 @@ describe('claudeInteractiveRemoteLauncher', () => {
             hash: 'initial-mode-hash',
             isolate: false,
         });
+        transport.emitData('>');
 
         await vi.waitFor(() => {
             expect(transport.paste).toHaveBeenCalledWith('after abort from attach');
