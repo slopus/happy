@@ -1,8 +1,8 @@
 import {
     getTmuxUtilities,
     parseTmuxSessionIdentifier,
+    TmuxUtilities,
     type TmuxSessionIdentifier,
-    type TmuxUtilities,
 } from '@/utils/tmux';
 import type {
     TerminalDataHandler,
@@ -25,7 +25,10 @@ export class TmuxTerminalTransport implements TerminalTransport {
     private readonly dataHandlers = new Set<TerminalDataHandler>();
     private readonly exitHandlers = new Set<TerminalExitHandler>();
 
-    constructor(tmux: TmuxUtilities = getTmuxUtilities()) {
+    constructor(
+        private readonly sessionName: string = TmuxUtilities.DEFAULT_SESSION_NAME,
+        tmux: TmuxUtilities = getTmuxUtilities(sessionName),
+    ) {
         this.tmux = tmux;
     }
 
@@ -37,9 +40,10 @@ export class TmuxTerminalTransport implements TerminalTransport {
             buildTmuxCommand(options),
             {
                 cwd: options.cwd,
+                sessionName: this.sessionName,
                 windowName: options.windowName,
             },
-            cleanEnv(options.env),
+            options.env,
         );
 
         if (!result.success || !result.sessionId) {
@@ -185,19 +189,4 @@ function quoteShellArg(value: string): string {
     }
 
     return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
-function cleanEnv(env?: Record<string, string | undefined>): Record<string, string> | undefined {
-    if (!env) {
-        return undefined;
-    }
-
-    const cleaned: Record<string, string> = {};
-    for (const [key, value] of Object.entries(env)) {
-        if (value !== undefined) {
-            cleaned[key] = value;
-        }
-    }
-
-    return Object.keys(cleaned).length > 0 ? cleaned : undefined;
 }

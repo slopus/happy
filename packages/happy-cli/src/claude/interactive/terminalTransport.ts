@@ -7,9 +7,9 @@ export interface TerminalSpawnOptions {
     command: string;
     args: string[];
     cwd: string;
-    env: Record<string, string | undefined>;
+    env: Record<string, string>;
     shell?: boolean;
-    windowName?: string;
+    windowName: string;
 }
 
 export interface TerminalExit {

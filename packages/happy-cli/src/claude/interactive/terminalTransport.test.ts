@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     chooseTerminalBackend,
     type TerminalBackendAvailability,
@@ -15,12 +15,22 @@ const nodePtyMock = vi.hoisted(() => ({
 
 vi.mock('node-pty', () => nodePtyMock);
 
+beforeEach(() => {
+    nodePtyMock.spawn.mockReset();
+});
+
 const requiredSpawnOptions: TerminalSpawnOptions = {
     command: 'claude',
     args: [],
     cwd: '/tmp',
-    env: {},
+    env: {
+        CLAUDE_CONFIG_DIR: '/tmp/claude',
+    },
+    windowName: 'claude',
 };
+type IsRequired<T, K extends keyof T> = Record<string, never> extends Pick<T, K> ? false : true;
+const windowNameIsRequired: IsRequired<TerminalSpawnOptions, 'windowName'> = true;
+const strictEnvContract: Record<string, string> = requiredSpawnOptions.env;
 const terminalExit: TerminalExit = { code: 0, signal: null };
 const availability: TerminalBackendAvailability = {
     tmuxConfigured: true,
@@ -87,7 +97,7 @@ describe('chooseTerminalBackend', () => {
 
 describe('terminal transport capabilities', () => {
     it('exposes tmux backend capabilities', () => {
-        const transport = new TmuxTerminalTransport();
+        const transport = new TmuxTerminalTransport('happy-test');
 
         expect(transport.backend).toBe('tmux');
         expect(transport.capabilities).toEqual(['remote-control', 'local-attach']);
@@ -107,6 +117,8 @@ describe('terminal transport capabilities', () => {
             pid: 123,
             terminalId: 'pty:123',
         });
+        expect(windowNameIsRequired).toBe(true);
+        expect(strictEnvContract).toEqual({ CLAUDE_CONFIG_DIR: '/tmp/claude' });
         expect(terminalExit).toEqual({ code: 0, signal: null });
     });
 });
@@ -118,12 +130,21 @@ describe('TmuxTerminalTransport', () => {
             capturePaneText: vi.fn(async () => ''),
             killWindow: vi.fn(async () => true),
         };
-        const transport = new TmuxTerminalTransport(tmux as any);
+        const transport = new TmuxTerminalTransport('happy-test', tmux as any);
 
         const result = await transport.spawn(requiredSpawnOptions);
 
         expect(result).toEqual({ pid: 456, terminalId: 'happy:claude' });
         expect(transport.terminalId).toBe('happy:claude');
+        expect(tmux.spawnInTmux).toHaveBeenCalledWith(
+            ['claude'],
+            {
+                cwd: '/tmp',
+                sessionName: 'happy-test',
+                windowName: 'claude',
+            },
+            { CLAUDE_CONFIG_DIR: '/tmp/claude' },
+        );
         await transport.dispose();
     });
 });
