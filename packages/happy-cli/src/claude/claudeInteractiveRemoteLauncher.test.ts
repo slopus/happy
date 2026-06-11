@@ -167,6 +167,30 @@ describe('claudeInteractiveRemoteLauncher', () => {
         expect(transport.dispose).toHaveBeenCalledOnce();
     });
 
+    it('launches interactive Claude with skipped permissions when the session starts in yolo mode', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            initialMode: {
+                ...initialMode,
+                permissionMode: 'yolo',
+            },
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(mockBuildClaudeLocalCommand).toHaveBeenCalled();
+        });
+
+        expect(mockBuildClaudeLocalCommand).toHaveBeenCalledWith(expect.objectContaining({
+            sessionArgs: ['--session-id', 'claude-known-session', '--dangerously-skip-permissions'],
+        }));
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
+
     it('registers the scanner callback and forwards raw Claude session messages including summaries', async () => {
         const transport = new FakeTerminalTransport('pty');
         mockCreateTerminalTransport.mockResolvedValue(transport);
@@ -957,7 +981,7 @@ class FakeTerminalTransport implements TerminalTransport {
     }
 }
 
-function createSession(opts: { batches?: InteractiveClaudeBatch[] } = {}) {
+function createSession(opts: { batches?: InteractiveClaudeBatch[], initialMode?: EnhancedMode } = {}) {
     let metadata: Record<string, unknown> = {};
     const snapshots: Record<string, unknown>[] = [];
     const batches = [...(opts.batches ?? [])];
@@ -969,7 +993,7 @@ function createSession(opts: { batches?: InteractiveClaudeBatch[] } = {}) {
     const session = {
         sessionId: null as string | null,
         path: '/tmp/project',
-        initialMode,
+        initialMode: opts.initialMode ?? initialMode,
         claudeEnvVars: { CLAUDE_CONFIG_DIR: '/tmp/claude' },
         claudeArgs: ['--model', 'opus'],
         mcpServers: { happy: { type: 'http', url: 'http://happy.test' } },

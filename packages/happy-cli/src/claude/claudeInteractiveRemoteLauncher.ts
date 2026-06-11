@@ -20,6 +20,7 @@ const UNSUPPORTED_TERMINAL_MESSAGE = 'Claude interactive remote is not supported
 const WINDOW_NAME_PREFIX = 'happy-claude-';
 const TURN_COMPLETION_DEBOUNCE_MS = 25;
 const TERMINAL_INPUT_READY_TIMEOUT_MS = 8000;
+const SKIP_PERMISSIONS_ARG = '--dangerously-skip-permissions';
 type InteractiveRemoteResult = { type: 'exit'; code: number };
 type LocalAttachTransport = TerminalTransport & {
     attachLocal?: () => Promise<void>;
@@ -248,7 +249,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     try {
         command = await buildClaudeLocalCommand({
             path: session.path,
-            sessionArgs: identity.launchArgs,
+            sessionArgs: withInteractivePermissionArgs(identity.launchArgs, session.initialMode.permissionMode),
             mcpServers: session.mcpServers,
             allowedTools: session.allowedTools,
             hookSettingsPath: session.hookSettingsPath,
@@ -491,6 +492,16 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         type: 'exit',
         code: terminalExit ? exitCodeFromTerminalExit(terminalExit) : 0,
     };
+}
+
+function withInteractivePermissionArgs(args: string[], permissionMode: string | undefined): string[] {
+    if (permissionMode !== 'yolo' && permissionMode !== 'bypassPermissions') {
+        return args;
+    }
+    if (args.includes(SKIP_PERMISSIONS_ARG)) {
+        return args;
+    }
+    return [...args, SKIP_PERMISSIONS_ARG];
 }
 
 function updateRuntimeMetadata(
