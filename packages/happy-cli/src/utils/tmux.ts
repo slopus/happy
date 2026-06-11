@@ -479,6 +479,15 @@ export class TmuxUtilities {
             fullCmd.push(...cmd.slice(1));
 
             return this.executeCommand(fullCmd);
+        } else if (cmd.length > 0 && cmd[0] === 'display-message') {
+            const fullCmd = [...baseCmd, cmd[0]];
+
+            // display-message accepts a positional message/format argument;
+            // -t must be before it or tmux treats the later -t as an extra arg.
+            fullCmd.push('-t', buildTmuxTarget(targetSession, window, pane));
+            fullCmd.push(...cmd.slice(1));
+
+            return this.executeCommand(fullCmd);
         } else {
             // Non-send-keys commands
             const fullCmd = [...baseCmd, ...cmd];

@@ -587,10 +587,10 @@ describe('TmuxUtilities terminal helpers', () => {
         expect(executeCommand).toHaveBeenCalledWith([
             'tmux',
             'display-message',
-            '-p',
-            '#{pane_id}',
             '-t',
             'session:window.2',
+            '-p',
+            '#{pane_id}',
         ]);
     });
 
