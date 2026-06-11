@@ -981,6 +981,7 @@ export const ca: TranslationStructure = {
             : `No s'han pogut pujar ${count} imatges i no s'han enviat.`,
         notSupportedTitle: 'Imatges no compatibles',
         notSupportedMessage: 'Aquest agent no admet imatges adjuntes. Només s\'ha enviat el text.',
+        notSupportedAttachmentOnlyMessage: 'This agent does not support image attachments. No message was sent.',
         interactiveClaudeNotSupportedMessage: 'Interactive Claude remote does not support image attachments yet. Attachments were not sent.',
     },
 

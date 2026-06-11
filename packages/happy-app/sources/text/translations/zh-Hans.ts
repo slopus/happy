@@ -982,6 +982,7 @@ export const zhHans: TranslationStructure = {
             : `${count} 张图片上传失败，未发送。`,
         notSupportedTitle: '不支持图片',
         notSupportedMessage: '该代理不支持图片附件。仅发送了文本。',
+        notSupportedAttachmentOnlyMessage: 'This agent does not support image attachments. No message was sent.',
         interactiveClaudeNotSupportedMessage: 'Interactive Claude remote does not support image attachments yet. Attachments were not sent.',
     },
 

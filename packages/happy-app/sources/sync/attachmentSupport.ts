@@ -16,6 +16,7 @@ type AttachmentSupportSession = {
 
 export type AttachmentUnsupportedTextKey =
     | 'imageUpload.notSupportedMessage'
+    | 'imageUpload.notSupportedAttachmentOnlyMessage'
     | 'imageUpload.interactiveClaudeNotSupportedMessage';
 
 export function getAttachmentSupportForSession(session: AttachmentSupportSession): {
@@ -36,4 +37,18 @@ export function getAttachmentSupportForSession(session: AttachmentSupportSession
 
 export function shouldSendTextAfterDroppingAttachments(text: string): boolean {
     return text.trim().length > 0;
+}
+
+export function getUnsupportedAttachmentTextKey(
+    session: AttachmentSupportSession,
+    text: string,
+): AttachmentUnsupportedTextKey {
+    const support = getAttachmentSupportForSession(session);
+    if (shouldSendTextAfterDroppingAttachments(text)) {
+        return support.unsupportedTextKey;
+    }
+    if (support.unsupportedTextKey === 'imageUpload.interactiveClaudeNotSupportedMessage') {
+        return support.unsupportedTextKey;
+    }
+    return 'imageUpload.notSupportedAttachmentOnlyMessage';
 }

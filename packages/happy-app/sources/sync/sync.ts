@@ -56,7 +56,11 @@ import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { getAttachmentSupportForSession, shouldSendTextAfterDroppingAttachments } from './attachmentSupport';
+import {
+    getAttachmentSupportForSession,
+    getUnsupportedAttachmentTextKey,
+    shouldSendTextAfterDroppingAttachments,
+} from './attachmentSupport';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -578,13 +582,13 @@ class Sync {
         // Gemini / OpenClaw runners read message.content.text and ignore
         // file events, so dropping attachments silently would leave the user
         // wondering why the image was skipped. Warn and send text only.
-        const { supportsAttachments, unsupportedTextKey } = getAttachmentSupportForSession(session);
+        const { supportsAttachments } = getAttachmentSupportForSession(session);
         const effectiveAttachments = supportsAttachments ? attachments : undefined;
 
         if (attachments && attachments.length > 0 && !supportsAttachments) {
             Modal.alert(
                 t('imageUpload.notSupportedTitle'),
-                t(unsupportedTextKey),
+                t(getUnsupportedAttachmentTextKey(session, text)),
                 [{ text: t('common.ok'), style: 'cancel' }],
             );
         }

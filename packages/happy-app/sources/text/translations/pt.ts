@@ -980,6 +980,7 @@ export const pt: TranslationStructure = {
             : `Não foi possível enviar ${count} imagens e não foram enviadas.`,
         notSupportedTitle: 'Imagens não suportadas',
         notSupportedMessage: 'Este agente não suporta anexos de imagem. Apenas o texto foi enviado.',
+        notSupportedAttachmentOnlyMessage: 'This agent does not support image attachments. No message was sent.',
         interactiveClaudeNotSupportedMessage: 'Interactive Claude remote does not support image attachments yet. Attachments were not sent.',
     },
 
