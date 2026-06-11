@@ -1,17 +1,14 @@
 import { spawn as crossSpawn } from "cross-spawn";
-import { resolve, join } from "node:path";
 import { createInterface } from "node:readline";
-import { mkdirSync, existsSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { logger } from "@/ui/logger";
-import { ensureLocalProxyBypass } from "./utils/proxyBypass";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { getProjectPath } from "./utils/path";
-import { projectPath } from "@/projectPath";
-import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
-import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
+import { buildClaudeLocalCommand, claudeCliPath } from "./claudeLocalCommand";
+export { claudeCliPath } from "./claudeLocalCommand";
 
 /**
  * Error thrown when the Claude process exits with a non-zero exit code.
@@ -26,13 +23,6 @@ export class ExitCodeError extends Error {
     }
 }
 
-
-// Get Claude CLI path from project root
-export const claudeCliPath = resolve(join(projectPath(), 'scripts', 'claude_local_launcher.cjs'))
-
-function quoteShellArg(value: string): string {
-    return `'${value.replace(/'/g, `'\\''`)}'`;
-}
 
 export async function claudeLocal(opts: {
     abort: AbortSignal,
@@ -207,7 +197,7 @@ export async function claudeLocal(opts: {
         }
 
         await new Promise<void>((r, reject) => {
-            const args: string[] = []
+            const sessionArgs: string[] = []
 
             // Session/resume args depend on whether we're in offline mode or hook mode
             if (!opts.hookSettingsPath) {
@@ -215,109 +205,50 @@ export async function claudeLocal(opts: {
                 const hasResumeFlag = opts.claudeArgs?.includes('--resume') || opts.claudeArgs?.includes('-r');
                 if (startFrom) {
                     // Resume existing session (Claude preserves the session ID)
-                    args.push('--resume', startFrom)
+                    sessionArgs.push('--resume', startFrom)
                 } else if (!hasResumeFlag && newSessionId) {
                     // New session with our generated UUID
-                    args.push('--session-id', newSessionId)
+                    sessionArgs.push('--session-id', newSessionId)
                 }
             } else {
                 // Normal mode with hook: Add --resume if we found a session to resume
                 // (Flags have been extracted, so we re-add --resume with the session ID we found)
                 if (startFrom) {
-                    args.push('--resume', startFrom);
+                    sessionArgs.push('--resume', startFrom);
                 }
             }
             // If hasResumeFlag && !startFrom: --resume is in claudeArgs, let Claude handle it
 
-            args.push('--append-system-prompt', systemPrompt);
-
-            if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {
-                args.push('--mcp-config', JSON.stringify({ mcpServers: opts.mcpServers }));
-            }
-
-            if (opts.allowedTools && opts.allowedTools.length > 0) {
-                args.push('--allowedTools', opts.allowedTools.join(','));
-            }
-
-            // Add custom Claude arguments
-            if (opts.claudeArgs) {
-                args.push(...opts.claudeArgs)
-            }
-
-            // Add hook settings for session tracking (when available)
+            logger.debug(`[ClaudeLocal] Spawning launcher: ${claudeCliPath}`);
             if (opts.hookSettingsPath) {
-                args.push('--settings', opts.hookSettingsPath);
                 logger.debug(`[ClaudeLocal] Using hook settings: ${opts.hookSettingsPath}`);
             }
 
-            if (!claudeCliPath || !existsSync(claudeCliPath)) {
-                throw new Error('Claude local launcher not found. Please ensure HAPPY_PROJECT_ROOT is set correctly for development.');
-            }
-
-            // Prepare environment variables
-            // Note: Local mode uses global Claude installation with --session-id flag
-            // Launcher only intercepts fetch for thinking state tracking
-            const env = {
-                ...process.env,
-                ...opts.claudeEnvVars
-            }
-
-            if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {
-                ensureLocalProxyBypass(env);
-            }
-
-            logger.debug(`[ClaudeLocal] Spawning launcher: ${claudeCliPath}`);
-            logger.debug(`[ClaudeLocal] Args: ${JSON.stringify(args)}`);
-
             (async () => {
-                let cleanupSandbox: (() => Promise<void>) | null = null;
-                let spawnCommand: string | null = null;
-                let spawnArgs: string[] = [claudeCliPath, ...args];
-                let spawnWithShell = false;
+                const localCommand = await buildClaudeLocalCommand({
+                    path: opts.path,
+                    sessionArgs,
+                    claudeArgs: opts.claudeArgs,
+                    mcpServers: opts.mcpServers,
+                    allowedTools: opts.allowedTools,
+                    claudeEnvVars: opts.claudeEnvVars,
+                    hookSettingsPath: opts.hookSettingsPath,
+                    sandboxConfig: opts.sandboxConfig,
+                });
 
-                if (opts.sandboxConfig?.enabled) {
-                    if (process.platform === 'win32') {
-                        logger.warn('[ClaudeLocal] Sandbox is not supported on Windows; continuing without sandbox.');
-                    } else {
-                        try {
-                            cleanupSandbox = await initializeSandbox(opts.sandboxConfig, opts.path);
-
-                            if (!spawnArgs.includes('--dangerously-skip-permissions')) {
-                                spawnArgs = [...spawnArgs, '--dangerously-skip-permissions'];
-                            }
-
-                            const fullCommand = [
-                                'node',
-                                ...spawnArgs.map((arg) => quoteShellArg(arg)),
-                            ].join(' ');
-
-                            spawnCommand = await wrapCommand(fullCommand);
-                            spawnWithShell = true;
-
-                            logger.info(
-                                `[ClaudeLocal] Sandbox enabled: workspace=${opts.sandboxConfig.workspaceRoot ?? opts.path}, network=${opts.sandboxConfig.networkMode}`,
-                            );
-                        } catch (error) {
-                            logger.warn('[ClaudeLocal] Failed to initialize sandbox; continuing without sandbox.', error);
-                            cleanupSandbox = null;
-                            spawnCommand = null;
-                            spawnWithShell = false;
-                            spawnArgs = [claudeCliPath, ...args];
-                        }
-                    }
-                }
+                logger.debug(`[ClaudeLocal] Args: ${JSON.stringify(localCommand.args.slice(1))}`);
 
                 // Use cross-spawn so `node` resolves to `node.exe` on Windows
                 // (issue #1082 — same root cause as #1022 at a different site).
                 const child = crossSpawn(
-                    spawnWithShell && spawnCommand ? spawnCommand : 'node',
-                    spawnWithShell ? [] : spawnArgs,
+                    localCommand.command,
+                    localCommand.args,
                     {
                         stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
                         signal: opts.abort,
-                        cwd: opts.path,
-                        env,
-                        shell: spawnWithShell,
+                        cwd: localCommand.cwd,
+                        env: localCommand.env,
+                        shell: localCommand.shell,
                         windowsHide: true,
                     },
                 );
@@ -393,9 +324,9 @@ export async function claudeLocal(opts: {
                     // Ignore
                 });
                 child.on('exit', async (code, signal) => {
-                    if (cleanupSandbox) {
+                    if (localCommand.cleanupSandbox) {
                         try {
-                            await cleanupSandbox();
+                            await localCommand.cleanupSandbox();
                         } catch (error) {
                             logger.warn('[ClaudeLocal] Failed to reset sandbox after session exit.', error);
                         }
