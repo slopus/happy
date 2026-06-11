@@ -62,6 +62,19 @@ describe('classifyTerminalOutput', () => {
         });
     });
 
+    it('does not treat rendered Claude tool diffs containing code errors as terminal errors', () => {
+        const output = [
+            '⏺ Update(packages/backend/src/streak.service.ts)',
+            '  ⎿ Added 1 line, removed 1 line',
+            '    63 } catch {',
+            '    64 - return { success: false, error: "Error ipdating streak" };',
+            '    64 + return { success: false, error: "Error updating streak" };',
+            '    65 }',
+        ].join('\n');
+
+        expect(classifyTerminalOutput(output)).toBeNull();
+    });
+
     it('reports terminal errors with sanitized diagnostics', () => {
         const result = classifyTerminalOutput('failed /Users/me/secret sk-ant-api03-abc https://example.com/x');
 

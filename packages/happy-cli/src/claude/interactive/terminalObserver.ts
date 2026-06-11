@@ -115,8 +115,10 @@ function isTerminalProcessErrorLine(lowerLine: string): boolean {
         return false;
     }
 
-    return /(?:^|\s)(?:error|fatal error):/.test(lowerLine)
-        || /\b(?:failed|failure|exception|traceback|panic|eacces|enoent|timed out|timeout|permission denied|command not found)\b/.test(lowerLine);
+    return /^(?:error|fatal error):/.test(lowerLine)
+        || /^(?:failed|failure|exception|traceback|panic)\b/.test(lowerLine)
+        || /^(?:eacces|enoent|timed out|timeout|permission denied|command not found)\b/.test(lowerLine)
+        || /(?:^|:\s)(?:eacces|enoent|permission denied|command not found)\b/.test(lowerLine);
 }
 
 function buildTerminalProcessErrorMessage(raw: string): string {
