@@ -150,16 +150,13 @@ describe('runClaude remote JSONL scanner', () => {
         originalListeners.clear();
     });
 
-    it('does not forward terminal JSONL messages while local mode owns the transcript', async () => {
-        const sentMessages: unknown[] = [];
+    it('does not start the SDK-era remote JSONL scanner for interactive Claude remote', async () => {
         const sessionClient = {
             sessionId: 'happy-session-1',
             suppressNextArchiveSignal: vi.fn(),
             skipExistingMessages: vi.fn(),
             updateMetadata: vi.fn(),
-            sendClaudeSessionMessage: vi.fn((message: unknown) => {
-                sentMessages.push(message);
-            }),
+            sendClaudeSessionMessage: vi.fn(),
             onUserMessage: vi.fn(),
             onFileEvent: vi.fn(),
             on: vi.fn(),
@@ -206,44 +203,9 @@ describe('runClaude remote JSONL scanner', () => {
 
         await vi.waitFor(() => {
             expect(mockLoop).toHaveBeenCalled();
-            expect(mockCreateSessionScanner).toHaveBeenCalled();
         });
 
-        const scannerOptions = mockCreateSessionScanner.mock.calls[0][0];
-        scannerOptions.onMessage({
-            type: 'user',
-            uuid: 'local-owned-user',
-            parentUuid: null,
-            isSidechain: false,
-            sessionId: 'claude-session-1',
-            timestamp: new Date().toISOString(),
-            message: {
-                role: 'user',
-                content: 'typed in local terminal',
-            },
-        });
-
-        expect(sentMessages).toHaveLength(0);
-
-        const loopOptions = mockLoop.mock.calls[0][0];
-        loopOptions.onModeChange('remote');
-        scannerOptions.onMessage({
-            type: 'user',
-            uuid: 'remote-terminal-user',
-            parentUuid: null,
-            isSidechain: false,
-            sessionId: 'claude-session-1',
-            timestamp: new Date().toISOString(),
-            message: {
-                role: 'user',
-                content: 'typed in parallel remote terminal',
-            },
-        });
-
-        expect(sentMessages).toHaveLength(1);
-        expect(sessionClient.sendClaudeSessionMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ uuid: 'remote-terminal-user' }),
-        );
+        expect(mockCreateSessionScanner).not.toHaveBeenCalled();
 
         loopDeferred.resolve(0);
         const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {

@@ -2,8 +2,8 @@ import { ApiSessionClient } from "@/api/apiSession"
 import { MessageQueue2 } from "@/utils/MessageQueue2"
 import { logger } from "@/ui/logger"
 import { Session } from "./session"
-import { claudeLocalLauncher, LauncherResult } from "./claudeLocalLauncher"
-import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
+import { claudeLocalLauncher } from "./claudeLocalLauncher"
+import { claudeInteractiveRemoteLauncher } from "./claudeInteractiveRemoteLauncher"
 import { ApiClient } from "@/lib"
 import type { JsRuntime } from "./runClaude"
 import type { SandboxConfig } from "@/persistence"
@@ -96,16 +96,16 @@ export async function loop(opts: LoopOptions): Promise<number> {
             }
 
             case 'remote': {
-                const reason = await claudeRemoteLauncher(session);
-                switch (reason) {
+                const result = await claudeInteractiveRemoteLauncher(session);
+                switch (result.type) {
                     case 'exit':
-                        return 0;
+                        return result.code;
                     case 'switch':
                         mode = 'local';
                         opts.onModeChange?.(mode);
                         break;
                     default:
-                        const _: never = reason satisfies never;
+                        const _: never = result satisfies never;
                 }
                 break;
             }

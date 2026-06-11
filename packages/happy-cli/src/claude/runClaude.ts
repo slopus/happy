@@ -281,69 +281,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
     }
 
-    // Ring buffer of user prompts that just arrived from the app via the
-    // legacy `sentFrom: 'web'` channel. The remote-mode session scanner
-    // (started below) walks the on-disk Claude JSONL looking for prompts
-    // that landed in the file but never reached the server — i.e. the
-    // ones the user typed in a `claude --resume <id>` terminal sitting
-    // alongside this Happy session. App-sent prompts also land in the
-    // JSONL once the SDK writes them, so we'd double-forward them
-    // without this dedupe. Match by content within a short time window;
-    // entries older than 5 minutes roll off so unrelated future prompts
-    // with identical text still get through from the terminal side.
-    const recentAppPromptsMaxAgeMs = 5 * 60 * 1000;
-    const recentAppPrompts: Array<{ text: string; addedAt: number }> = [];
-    const recordAppPrompt = (text: string) => {
-        const now = Date.now();
-        recentAppPrompts.push({ text, addedAt: now });
-        const cutoff = now - recentAppPromptsMaxAgeMs;
-        while (recentAppPrompts.length > 0 && recentAppPrompts[0].addedAt < cutoff) {
-            recentAppPrompts.shift();
-        }
-    };
-    const consumeAppPrompt = (text: string): boolean => {
-        const cutoff = Date.now() - recentAppPromptsMaxAgeMs;
-        for (let i = 0; i < recentAppPrompts.length; i++) {
-            const entry = recentAppPrompts[i];
-            if (entry.addedAt < cutoff) continue;
-            if (entry.text === text) {
-                recentAppPrompts.splice(i, 1);
-                return true;
-            }
-        }
-        return false;
-    };
-
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
-
-    // Remote-mode session scanner: catches user-typed prompts that
-    // appeared in the Claude JSONL while we weren't looking — typically
-    // because the user opened `claude --resume <id>` in a terminal next
-    // to the running Happy session. SDK-emitted assistant + tool_result
-    // user messages keep flowing through the existing sdkToLogConverter
-    // pipeline; the scanner here only forwards things that pipeline
-    // can't see.
-    const initialScannerSessionId = forkClaudeSessionId
-        ?? (metadata.claudeSessionId ?? null);
-    const remoteScanner = await createSessionScanner({
-        sessionId: initialScannerSessionId,
-        workingDirectory,
-        onMessage: (raw) => {
-            if (currentRunMode !== 'remote') return;
-            // Only user-typed prompts. SDK pipeline owns assistant and
-            // tool_result-bearing user messages.
-            if (raw.type !== 'user') return;
-            if ((raw as any).isSidechain) return;
-            const content = (raw as any).message?.content;
-            if (typeof content !== 'string') return;
-            // Drop empty / whitespace-only lines.
-            if (content.trim().length === 0) return;
-            // App-sent prompts will show up here because the SDK
-            // writes them to the JSONL — dedupe by content.
-            if (consumeAppPrompt(content)) return;
-            session.sendClaudeSessionMessage(raw);
-        },
-    });
 
     // Start Happy MCP server
     const happyServer = await startHappyServer(session);
@@ -357,21 +295,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const hookServer = await startHookServer({
         onSessionHook: (sessionId, data) => {
             logger.debug(`[START] Session hook received: ${sessionId}`, data);
-
-            // Tell the remote scanner about this sessionId so it knows
-            // which JSONL to watch (and so it can fire onNewSession for
-            // claude --resume hand-offs that mint a fresh session id).
-            //
-            // In remote mode every user prompt arrives via the SDK or the
-            // app channel — both of which already deliver their messages
-            // to the server before they hit disk. Anything the scanner
-            // finds in the JSONL at the moment it learns the session id
-            // is therefore already on the server; treating it as fresh
-            // (the previous behavior) replayed the whole history back to
-            // the chat on reconnect. The scanner's real job is forwarding
-            // *future* JSONL writes from a parallel `claude --resume`
-            // terminal, which the file watcher will pick up.
-            remoteScanner.onNewSession(sessionId, { treatExistingAsProcessed: true });
 
             // Update session ID in the Session instance
             if (currentSession) {
@@ -471,13 +394,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     });
 
     session.onUserMessage(async (message) => {
-
-        // Stamp the prompt so the remote-mode JSONL scanner can dedupe
-        // it later — the SDK is about to write this same text to disk
-        // with a real Claude uuid, and we don't want to re-forward it.
-        if (message?.content?.text) {
-            recordAppPrompt(message.content.text);
-        }
 
         // Claim every file attachment that arrived strictly before this text.
         // New file events from this point on belong to the next user message.
@@ -747,9 +663,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Stop Hook server and cleanup settings file
             hookServer.stop();
             cleanupHookSettingsFile(hookSettingsPath);
-
-            // Stop the remote JSONL scanner (file watchers + intervals).
-            await remoteScanner.cleanup();
 
             logger.debug('[START] Cleanup complete, exiting');
             process.exit(0);
