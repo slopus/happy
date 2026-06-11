@@ -162,4 +162,22 @@ describe('buildClaudeLocalCommand', () => {
         expect(command.shell).toBe(false);
         expect(command.cleanupSandbox).toBeNull();
     });
+
+    it('cleans up initialized sandbox when command wrapping fails before falling back', async () => {
+        mockWrapCommand.mockRejectedValue(new Error('wrap failed'));
+
+        const command = await buildClaudeLocalCommand({
+            path: '/tmp/workspace',
+            sessionArgs: ['--session-id', 'new-session'],
+            claudeArgs: [],
+            sandboxConfig,
+        });
+
+        expect(mockSandboxCleanup).toHaveBeenCalledTimes(1);
+        expect(command.command).toBe('node');
+        expect(command.args).toContain(claudeCliPath);
+        expect(command.args).not.toContain('--dangerously-skip-permissions');
+        expect(command.shell).toBe(false);
+        expect(command.cleanupSandbox).toBeNull();
+    });
 });

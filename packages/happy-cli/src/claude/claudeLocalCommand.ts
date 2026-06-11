@@ -85,8 +85,10 @@ export async function buildClaudeLocalCommand(opts: BuildClaudeLocalCommandOptio
         return baseCommand;
     }
 
+    let cleanupSandbox: (() => Promise<void>) | null = null;
+
     try {
-        const cleanupSandbox = await initializeSandbox(opts.sandboxConfig, opts.path);
+        cleanupSandbox = await initializeSandbox(opts.sandboxConfig, opts.path);
         const sandboxArgs = baseCommand.args.includes('--dangerously-skip-permissions')
             ? baseCommand.args
             : [...baseCommand.args, '--dangerously-skip-permissions'];
@@ -110,6 +112,13 @@ export async function buildClaudeLocalCommand(opts: BuildClaudeLocalCommandOptio
         };
     } catch (error) {
         logger.warn('[ClaudeLocal] Failed to initialize sandbox; continuing without sandbox.', error);
+        if (cleanupSandbox) {
+            try {
+                await cleanupSandbox();
+            } catch (cleanupError) {
+                logger.warn('[ClaudeLocal] Failed to reset sandbox after failed sandbox launch.', cleanupError);
+            }
+        }
         return baseCommand;
     }
 }

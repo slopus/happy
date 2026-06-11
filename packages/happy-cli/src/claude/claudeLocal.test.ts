@@ -157,6 +157,26 @@ describe('claudeLocal --continue handling', () => {
         expect(spawnArgs).not.toContain('--resume');
     });
 
+    it('should use explicit --session-id without adding a second session ID', async () => {
+        mockClaudeFindLastSession.mockReturnValue(null);
+
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: ['--session-id', 'explicit-id']
+        });
+
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+        const sessionIdIndexes = spawnArgs
+            .map((arg: string, index: number) => arg === '--session-id' ? index : -1)
+            .filter((index: number) => index !== -1);
+        expect(sessionIdIndexes).toHaveLength(1);
+        expect(spawnArgs[sessionIdIndexes[0] + 1]).toBe('explicit-id');
+        expect(onSessionFound).toHaveBeenCalledWith('explicit-id');
+    });
+
     it('should handle --resume with specific session ID without conflict', async () => {
         mockClaudeFindLastSession.mockReturnValue(null);
 
