@@ -242,6 +242,57 @@ export function previewRoutes(app: Fastify) {
         return reply.send({ token: signed.token, expiresAt: signed.expiresAt });
     });
 
+    // Trusted-server mint — bypasses strict accountId ACL.
+    //
+    // 회사 공유 머신은 그 회사의 sync identity (accountId=A) 로 등록되지만,
+    // viewer (회사 멤버) 의 happy account 는 다른 accountId (=B). 위 strict
+    // endpoint 는 accountId 매칭만 보므로 viewer 가 직접 호출하면 404.
+    //
+    // 본 endpoint 는 web-ui server 와 happy-server 간 공유 secret (env
+    // `WEB_UI_TRUSTED_PREVIEW_SECRET`) 로만 인증하고, accountId 매칭을
+    // skip 한다. 호출자 (web-ui server) 가 자체 권한 검증 (회사 멤버십
+    // 확인, canUserAccessProject 등) 을 마쳤다는 신뢰 모델. caller 식별이
+    // 필요 없으므로 발급 token 의 `userId` claim 은 machine.accountId 로
+    // 박는다 — 후속 relay 흐름 (`/v1/preview/:machineId/:port/*`) 이
+    // findMachineSockets(claims.userId, machineId) 로 daemon socket 을
+    // 찾는데, 머신 소유자의 accountId 여야 그 socket 이 발견된다.
+    //
+    // 보안 — secret 은 server-only env. client (브라우저) 노출 X. 이
+    // endpoint 는 token-auth preHandler 가 의도적으로 빠져 있다.
+    app.post('/v1/preview-token-trusted', {
+        schema: {
+            body: z.object({
+                machineId: z.string().min(1),
+                port: z.number().int().min(1).max(65535),
+            }),
+            response: {
+                200: z.object({
+                    token: z.string(),
+                    expiresAt: z.number(),
+                }),
+                401: z.object({ error: z.string() }),
+                404: z.object({ error: z.string() }),
+            },
+        },
+    }, async (request, reply) => {
+        const provided = request.headers['x-trusted-preview-secret'];
+        const expected = process.env.WEB_UI_TRUSTED_PREVIEW_SECRET;
+        if (!expected || !provided || provided !== expected) {
+            return reply.code(401).send({ error: 'Invalid trusted secret' });
+        }
+        const { machineId, port } = request.body;
+        const machine = await db.machine.findFirst({ where: { id: machineId } });
+        if (!machine) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+        const signed = signPreviewToken({ userId: machine.accountId, machineId, port });
+        log(
+            { module: 'preview', trusted: true, userId: machine.accountId, machineId, port },
+            'Minted preview token (trusted)',
+        );
+        return reply.send({ token: signed.token, expiresAt: signed.expiresAt });
+    });
+
     // Preview relay route lives inside its own encapsulation scope so we can
     // register a raw-buffer content-type parser without affecting other JSON
     // routes on the same app.
