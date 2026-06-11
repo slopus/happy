@@ -75,6 +75,20 @@ describe('classifyTerminalOutput', () => {
         expect(result?.message).toContain('[path]');
         expect(result?.message).not.toContain('/Applications/Claude.app/Contents/MacOS/Claude');
     });
+
+    it('redacts spaced macOS paths from terminal error diagnostics', () => {
+        const rawPath = '/Users/me/Library/Application Support/Claude/log.txt';
+        const result = classifyTerminalOutput(`failed ${rawPath}`);
+
+        expect(result).toEqual({
+            type: 'terminal_process_error',
+            message: 'Terminal reported an error. failed [path]',
+        });
+        expect(result?.message).toContain('[path]');
+        expect(result?.message).not.toContain('Application Support');
+        expect(result?.message).not.toContain('Claude/log.txt');
+        expect(result?.message).not.toContain('Library/Application Support/Claude/log.txt');
+    });
 });
 
 describe('sanitizeTerminalDiagnostic', () => {
