@@ -41,6 +41,27 @@ describe('classifyTerminalOutput', () => {
         });
     });
 
+    it('reports the styled Claude Code input prompt', () => {
+        expect(classifyTerminalOutput('❯ Try "fix lint errors"')).toEqual({
+            type: 'input_prompt_visible',
+            message: 'Claude is ready for input.',
+        });
+    });
+
+    it('does not treat Claude MCP status text as a terminal process error', () => {
+        const output = [
+            'Claude Code v2.1.153',
+            '1 MCP server failed · /mcp',
+            '────────────────────────────────────────────────────────────────────────────────',
+            '❯ Try "how does activityUpdateAccumulator.test.ts work?"',
+        ].join('\n');
+
+        expect(classifyTerminalOutput(output)).toEqual({
+            type: 'input_prompt_visible',
+            message: 'Claude is ready for input.',
+        });
+    });
+
     it('reports terminal errors with sanitized diagnostics', () => {
         const result = classifyTerminalOutput('failed /Users/me/secret sk-ant-api03-abc https://example.com/x');
 

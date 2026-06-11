@@ -61,7 +61,7 @@ export function classifyTerminalOutput(raw: string): TerminalObservation | null 
         return { type: 'permission_prompt_visible', message: PERMISSION_PROMPT_MESSAGE };
     }
 
-    if (isTerminalProcessError(lower)) {
+    if (isTerminalProcessError(raw)) {
         return {
             type: 'terminal_process_error',
             message: buildTerminalProcessErrorMessage(raw),
@@ -96,13 +96,27 @@ function isSpinnerWithoutTranscript(lower: string): boolean {
 }
 
 function isInputPrompt(raw: string): boolean {
-    return raw.split(/\r?\n/).some((line) => line.trim() === '>');
+    return raw.split(/\r?\n/).some((line) => {
+        const trimmed = line.trim();
+        return trimmed === '>' || trimmed.startsWith('❯');
+    });
 }
 
-function isTerminalProcessError(lower: string): boolean {
-    return /\b(?:error|failed|failure|exception|traceback|panic|eacces|enoent|timed out|timeout|permission denied|command not found)\b/.test(
-        lower,
-    );
+function isTerminalProcessError(raw: string): boolean {
+    return raw
+        .split(/\r?\n/)
+        .map((line) => line.replace(/\s+/g, ' ').trim().toLowerCase())
+        .filter(Boolean)
+        .some(isTerminalProcessErrorLine);
+}
+
+function isTerminalProcessErrorLine(lowerLine: string): boolean {
+    if (/\bmcp servers? failed\b/.test(lowerLine)) {
+        return false;
+    }
+
+    return /(?:^|\s)(?:error|fatal error):/.test(lowerLine)
+        || /\b(?:failed|failure|exception|traceback|panic|eacces|enoent|timed out|timeout|permission denied|command not found)\b/.test(lowerLine);
 }
 
 function buildTerminalProcessErrorMessage(raw: string): string {
