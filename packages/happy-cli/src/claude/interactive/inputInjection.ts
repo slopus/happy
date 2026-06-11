@@ -54,11 +54,11 @@ export function validateInteractiveBatch(input: {
     launchModeHash: string;
 }): InteractiveClaudeBatchValidation {
     const message = normalizePromptText(input.batch.message);
-    if (message.trim().length === 0 && !message.startsWith('/')) {
-        return { ok: false, reason: 'empty-message', message: 'Claude interactive remote cannot send an empty prompt.' };
-    }
     if (input.batch.attachments && input.batch.attachments.length > 0) {
         return { ok: false, reason: 'attachments', message: 'Claude interactive remote does not support image or file attachments yet.' };
+    }
+    if (message.trim().length === 0 && !message.startsWith('/')) {
+        return { ok: false, reason: 'empty-message', message: 'Claude interactive remote cannot send an empty prompt.' };
     }
     if (input.batch.hash !== input.launchModeHash) {
         return {

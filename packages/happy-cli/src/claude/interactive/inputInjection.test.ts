@@ -39,6 +39,23 @@ describe('validateInteractiveBatch', () => {
         });
     });
 
+    it('rejects empty attachment-only batches as attachments', () => {
+        expect(validateInteractiveBatch({
+            batch: {
+                message: '',
+                mode,
+                hash: 'h1',
+                isolate: false,
+                attachments: [{ data: new Uint8Array([1]), mimeType: 'image/png', name: 'x.png' }],
+            },
+            launchModeHash: 'h1',
+        })).toEqual({
+            ok: false,
+            reason: 'attachments',
+            message: 'Claude interactive remote does not support image or file attachments yet.',
+        });
+    });
+
     it('rejects mid-session mode changes', () => {
         expect(validateInteractiveBatch({
             batch: { message: 'hi', mode, hash: 'h2', isolate: false },

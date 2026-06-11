@@ -73,4 +73,59 @@ describe('resolveInteractiveClaudeIdentity', () => {
             mode: 'unsupported',
         });
     });
+
+    it('returns unsupported for bare --resume without a session id', () => {
+        const result = resolveInteractiveClaudeIdentity({
+            workingDirectory: '/repo',
+            claudeArgs: ['--resume', '--model', 'opus'],
+            generateId: () => 'unused',
+            findLastSession: vi.fn(),
+        });
+
+        expect(result).toMatchObject({ mode: 'unsupported' });
+    });
+
+    it('returns unsupported for bare -r without a session id', () => {
+        const result = resolveInteractiveClaudeIdentity({
+            workingDirectory: '/repo',
+            claudeArgs: ['-r'],
+            generateId: () => 'unused',
+            findLastSession: vi.fn(),
+        });
+
+        expect(result).toMatchObject({ mode: 'unsupported' });
+    });
+
+    it('returns unsupported for empty --resume= values', () => {
+        const result = resolveInteractiveClaudeIdentity({
+            workingDirectory: '/repo',
+            claudeArgs: ['--resume='],
+            generateId: () => 'unused',
+            findLastSession: vi.fn(),
+        });
+
+        expect(result).toMatchObject({ mode: 'unsupported' });
+    });
+
+    it('returns unsupported for empty --session-id= values', () => {
+        const result = resolveInteractiveClaudeIdentity({
+            workingDirectory: '/repo',
+            claudeArgs: ['--session-id='],
+            generateId: () => 'unused',
+            findLastSession: vi.fn(),
+        });
+
+        expect(result).toMatchObject({ mode: 'unsupported' });
+    });
+
+    it('returns unsupported when conflicting session-control flags are present', () => {
+        const result = resolveInteractiveClaudeIdentity({
+            workingDirectory: '/repo',
+            claudeArgs: ['--session-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '--resume', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'],
+            generateId: () => 'unused',
+            findLastSession: vi.fn(),
+        });
+
+        expect(result).toMatchObject({ mode: 'unsupported' });
+    });
 });

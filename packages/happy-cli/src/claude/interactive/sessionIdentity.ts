@@ -20,40 +20,124 @@ type ResolveResult =
         mode: 'unsupported';
     };
 
+type SessionControl =
+    | {
+        kind: 'resume';
+        claudeSessionId: string;
+        startIndex: number;
+        endIndex: number;
+    }
+    | {
+        kind: 'session-id';
+        claudeSessionId: string;
+        startIndex: number;
+        endIndex: number;
+    }
+    | {
+        kind: 'continue';
+        startIndex: number;
+        endIndex: number;
+    };
+
+function unsupported(error: string): ResolveResult {
+    return { error, mode: 'unsupported' };
+}
+
+function missingSessionIdError(flag: string): ResolveResult {
+    return unsupported(`Claude session control flag ${flag} requires a session id.`);
+}
+
 export function resolveInteractiveClaudeIdentity(input: ResolveInput): ResolveResult {
     const args = [...(input.claudeArgs ?? [])];
     const generateId = input.generateId ?? randomUUID;
     const findLastSession = input.findLastSession ?? claudeFindLastSession;
-    const consumedArgs: string[] = [];
+    const sessionControls: SessionControl[] = [];
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
-        if ((arg === '--resume' || arg === '-r') && args[i + 1] && !args[i + 1].startsWith('-')) {
+        if (arg === '--resume' || arg === '-r') {
             const claudeSessionId = args[i + 1];
-            consumedArgs.push(...args.slice(0, i), ...args.slice(i + 2));
-            return {
+            if (!claudeSessionId || claudeSessionId.startsWith('-')) {
+                return missingSessionIdError(arg);
+            }
+            sessionControls.push({
+                kind: 'resume',
                 claudeSessionId,
-                launchArgs: ['--resume', claudeSessionId, ...consumedArgs],
-                consumedArgs,
-                mode: 'resume',
-            };
+                startIndex: i,
+                endIndex: i + 2,
+            });
+            i++;
+            continue;
         }
         if (arg.startsWith('--resume=')) {
             const claudeSessionId = arg.slice('--resume='.length);
-            consumedArgs.push(...args.slice(0, i), ...args.slice(i + 1));
-            return {
+            if (claudeSessionId.length === 0) {
+                return missingSessionIdError('--resume');
+            }
+            sessionControls.push({
+                kind: 'resume',
                 claudeSessionId,
-                launchArgs: ['--resume', claudeSessionId, ...consumedArgs],
+                startIndex: i,
+                endIndex: i + 1,
+            });
+            continue;
+        }
+        if (arg === '--continue' || arg === '-c') {
+            sessionControls.push({
+                kind: 'continue',
+                startIndex: i,
+                endIndex: i + 1,
+            });
+            continue;
+        }
+        if (arg === '--session-id') {
+            const claudeSessionId = args[i + 1];
+            if (!claudeSessionId || claudeSessionId.startsWith('-')) {
+                return missingSessionIdError(arg);
+            }
+            sessionControls.push({
+                kind: 'session-id',
+                claudeSessionId,
+                startIndex: i,
+                endIndex: i + 2,
+            });
+            i++;
+            continue;
+        }
+        if (arg.startsWith('--session-id=')) {
+            const claudeSessionId = arg.slice('--session-id='.length);
+            if (claudeSessionId.length === 0) {
+                return missingSessionIdError('--session-id');
+            }
+            sessionControls.push({
+                kind: 'session-id',
+                claudeSessionId,
+                startIndex: i,
+                endIndex: i + 1,
+            });
+        }
+    }
+
+    if (sessionControls.length > 1) {
+        return unsupported('Claude interactive remote received conflicting session control flags.');
+    }
+
+    const sessionControl = sessionControls[0];
+    if (sessionControl) {
+        const consumedArgs = args.filter((_, index) => index < sessionControl.startIndex || index >= sessionControl.endIndex);
+        if (sessionControl.kind === 'resume') {
+            return {
+                claudeSessionId: sessionControl.claudeSessionId,
+                launchArgs: ['--resume', sessionControl.claudeSessionId, ...consumedArgs],
                 consumedArgs,
                 mode: 'resume',
             };
         }
-        if (arg === '--continue' || arg === '-c') {
+        if (sessionControl.kind === 'continue') {
             const claudeSessionId = findLastSession(input.workingDirectory);
             if (!claudeSessionId) {
-                return { error: 'No local Claude session found for --continue.', mode: 'unsupported' };
+                return unsupported('No local Claude session found for --continue.');
             }
-            consumedArgs.push(...args.slice(0, i), ...args.slice(i + 1));
             return {
                 claudeSessionId,
                 launchArgs: ['--resume', claudeSessionId, ...consumedArgs],
@@ -61,22 +145,10 @@ export function resolveInteractiveClaudeIdentity(input: ResolveInput): ResolveRe
                 mode: 'continue',
             };
         }
-        if (arg === '--session-id' && args[i + 1] && !args[i + 1].startsWith('-')) {
-            const claudeSessionId = args[i + 1];
-            consumedArgs.push(...args.slice(0, i), ...args.slice(i + 2));
+        if (sessionControl.kind === 'session-id') {
             return {
-                claudeSessionId,
-                launchArgs: ['--session-id', claudeSessionId, ...consumedArgs],
-                consumedArgs,
-                mode: 'fresh',
-            };
-        }
-        if (arg.startsWith('--session-id=')) {
-            const claudeSessionId = arg.slice('--session-id='.length);
-            consumedArgs.push(...args.slice(0, i), ...args.slice(i + 1));
-            return {
-                claudeSessionId,
-                launchArgs: ['--session-id', claudeSessionId, ...consumedArgs],
+                claudeSessionId: sessionControl.claudeSessionId,
+                launchArgs: ['--session-id', sessionControl.claudeSessionId, ...consumedArgs],
                 consumedArgs,
                 mode: 'fresh',
             };
