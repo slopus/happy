@@ -89,6 +89,17 @@ describe('classifyTerminalOutput', () => {
         expect(result?.message).not.toContain('Claude/log.txt');
         expect(result?.message).not.toContain('Library/Application Support/Claude/log.txt');
     });
+
+    it('redacts paths ending with spaced directory components from terminal error diagnostics', () => {
+        const result = classifyTerminalOutput('failed /Users/me/Library/Application Support with ENOENT');
+
+        expect(result?.type).toBe('terminal_process_error');
+        expect(result?.message).toContain('[path]');
+        expect(result?.message).not.toContain('Application');
+        expect(result?.message).not.toContain('Support');
+        expect(result?.message).not.toContain('/Users/me/Library/Application Support');
+        expect(result?.message).not.toContain('Library/Application Support');
+    });
 });
 
 describe('sanitizeTerminalDiagnostic', () => {
@@ -103,5 +114,15 @@ describe('sanitizeTerminalDiagnostic', () => {
 
         expect(result.length).toBeLessThanOrEqual(240);
         expect(result).toMatch(/\.\.\.$/);
+    });
+
+    it('redacts paths ending with spaced directory components', () => {
+        const result = sanitizeTerminalDiagnostic('failed /Users/me/Library/Application Support with ENOENT');
+
+        expect(result).toContain('[path]');
+        expect(result).not.toContain('Application');
+        expect(result).not.toContain('Support');
+        expect(result).not.toContain('/Users/me/Library/Application Support');
+        expect(result).not.toContain('Library/Application Support');
     });
 });
