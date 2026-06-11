@@ -26,10 +26,13 @@ describe('resolveInteractiveClaudeIdentity', () => {
             findLastSession: vi.fn(),
         });
 
+        expect(result.mode).toBe('resume');
+        if (result.mode !== 'resume') {
+            throw new Error('expected resume result');
+        }
         expect(result.claudeSessionId).toBe('22222222-2222-4222-8222-222222222222');
         expect(result.launchArgs).toEqual(['--resume', '22222222-2222-4222-8222-222222222222', '--model', 'sonnet']);
         expect(result.consumedArgs).toEqual(['--model', 'sonnet']);
-        expect(result.mode).toBe('resume');
     });
 
     it('resolves --continue to the latest concrete local session id', () => {
@@ -40,8 +43,11 @@ describe('resolveInteractiveClaudeIdentity', () => {
             findLastSession: () => '33333333-3333-4333-8333-333333333333',
         });
 
-        expect(result.launchArgs).toEqual(['--resume', '33333333-3333-4333-8333-333333333333']);
         expect(result.mode).toBe('continue');
+        if (result.mode !== 'continue') {
+            throw new Error('expected continue result');
+        }
+        expect(result.launchArgs).toEqual(['--resume', '33333333-3333-4333-8333-333333333333']);
     });
 
     it('uses explicit --session-id once when provided', () => {
