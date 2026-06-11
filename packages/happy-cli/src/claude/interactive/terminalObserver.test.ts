@@ -125,6 +125,32 @@ describe('classifyTerminalOutput', () => {
         expect(result?.message).not.toContain('Application');
         expect(result?.message).not.toContain('Support');
     });
+
+    it('preserves colon diagnostic codes after redacting file paths', () => {
+        const result = classifyTerminalOutput('failed /Users/me/file.txt: ENOENT');
+
+        expect(result).toEqual({
+            type: 'terminal_process_error',
+            message: 'Terminal reported an error. failed [path]: ENOENT',
+        });
+        expect(result?.message).toContain('[path]');
+        expect(result?.message).toContain('ENOENT');
+        expect(result?.message).not.toContain('/Users/me');
+        expect(result?.message).not.toContain('file.txt');
+    });
+
+    it('preserves permission diagnostics after redacting file paths', () => {
+        const result = classifyTerminalOutput('failed /Users/me/file.txt with permission denied');
+
+        expect(result).toEqual({
+            type: 'terminal_process_error',
+            message: 'Terminal reported an error. failed [path] with permission denied',
+        });
+        expect(result?.message).toContain('[path]');
+        expect(result?.message).toContain('permission denied');
+        expect(result?.message).not.toContain('/Users/me');
+        expect(result?.message).not.toContain('file.txt');
+    });
 });
 
 describe('sanitizeTerminalDiagnostic', () => {
@@ -168,5 +194,25 @@ describe('sanitizeTerminalDiagnostic', () => {
         expect(result).not.toContain('/Users/me');
         expect(result).not.toContain('Application');
         expect(result).not.toContain('Support');
+    });
+
+    it('preserves colon diagnostic codes after redacting file paths', () => {
+        const result = sanitizeTerminalDiagnostic('failed /Users/me/file.txt: ENOENT');
+
+        expect(result).toBe('failed [path]: ENOENT');
+        expect(result).toContain('[path]');
+        expect(result).toContain('ENOENT');
+        expect(result).not.toContain('/Users/me');
+        expect(result).not.toContain('file.txt');
+    });
+
+    it('preserves permission diagnostics after redacting file paths', () => {
+        const result = sanitizeTerminalDiagnostic('failed /Users/me/file.txt with permission denied');
+
+        expect(result).toBe('failed [path] with permission denied');
+        expect(result).toContain('[path]');
+        expect(result).toContain('permission denied');
+        expect(result).not.toContain('/Users/me');
+        expect(result).not.toContain('file.txt');
     });
 });
