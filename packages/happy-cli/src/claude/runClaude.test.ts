@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const {
     mockApiClientCreate,
     mockCreateSessionScanner,
+    mockDiscoverClaudeSkills,
     mockLoop,
     mockLoggerDebug,
     mockNotifyDaemonSessionStarted,
@@ -13,6 +14,7 @@ const {
 } = vi.hoisted(() => ({
     mockApiClientCreate: vi.fn(),
     mockCreateSessionScanner: vi.fn(),
+    mockDiscoverClaudeSkills: vi.fn(),
     mockLoop: vi.fn(),
     mockLoggerDebug: vi.fn(),
     mockNotifyDaemonSessionStarted: vi.fn(),
@@ -34,6 +36,10 @@ vi.mock('@/persistence', () => ({
 
 vi.mock('@/claude/utils/sessionScanner', () => ({
     createSessionScanner: mockCreateSessionScanner,
+}));
+
+vi.mock('@/claude/utils/claudeSkills', () => ({
+    discoverClaudeSkills: mockDiscoverClaudeSkills,
 }));
 
 vi.mock('@/claude/loop', () => ({
@@ -140,6 +146,7 @@ describe('runClaude remote JSONL scanner', () => {
             onNewSession: vi.fn(),
             cleanup: vi.fn(),
         });
+        mockDiscoverClaudeSkills.mockResolvedValue([]);
     });
 
     afterEach(() => {
@@ -217,7 +224,7 @@ describe('runClaude remote JSONL scanner', () => {
         exitSpy.mockRestore();
     });
 
-    it('passes /skills through to Claude when the remote runtime is interactive', async () => {
+    it('answers /skills from Happy instead of opening the interactive Claude picker', async () => {
         let onUserMessage: ((message: any) => Promise<void>) | undefined;
         const sessionClient = {
             sessionId: 'happy-session-1',
@@ -231,13 +238,7 @@ describe('runClaude remote JSONL scanner', () => {
             trackAttachmentDownload: vi.fn(),
             drainAttachmentsForUserMessage: vi.fn(async () => []),
             downloadAndDecryptAttachment: vi.fn(),
-            getMetadata: vi.fn(() => ({
-                claudeRuntime: {
-                    kind: 'interactive',
-                    state: 'interactive',
-                    backend: 'tmux',
-                },
-            })),
+            getMetadata: vi.fn(() => ({})),
             sendSessionEvent: vi.fn(),
             updateAgentState: vi.fn(),
             rpcHandlerManager: {
@@ -247,6 +248,7 @@ describe('runClaude remote JSONL scanner', () => {
             flush: vi.fn(async () => {}),
             close: vi.fn(async () => {}),
         };
+        mockDiscoverClaudeSkills.mockResolvedValue(['agent-browser', 'sessions']);
         const api = {
             getOrCreateMachine: vi.fn(async () => ({})),
             getOrCreateSession: vi.fn(async () => ({
@@ -271,7 +273,7 @@ describe('runClaude remote JSONL scanner', () => {
             token: 'token',
             encryption: { type: 'legacy', secret: new Uint8Array(32) },
         } as any, {
-            startingMode: 'remote',
+            startingMode: 'local',
             shouldStartDaemon: false,
         });
 
@@ -289,11 +291,23 @@ describe('runClaude remote JSONL scanner', () => {
             });
 
             const queue = mockLoop.mock.calls[0][0].messageQueue;
-            expect(sessionClient.sendClaudeSessionMessage).not.toHaveBeenCalled();
-            expect(queue.size()).toBe(1);
-            const queued = await queue.waitForMessagesAndGetAsString();
-            expect(queued?.message).toBe('/skills ');
-            expect(queued?.isolate).toBe(false);
+            expect(mockDiscoverClaudeSkills).toHaveBeenCalledWith(process.cwd());
+            expect(queue.size()).toBe(0);
+            expect(sessionClient.sendClaudeSessionMessage).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'assistant',
+                message: expect.objectContaining({
+                    content: [expect.objectContaining({
+                        text: expect.stringContaining('- /agent-browser'),
+                    })],
+                }),
+            }));
+            expect(sessionClient.sendClaudeSessionMessage).toHaveBeenCalledWith(expect.objectContaining({
+                message: expect.objectContaining({
+                    content: [expect.objectContaining({
+                        text: expect.stringContaining('- /sessions'),
+                    })],
+                }),
+            }));
         } catch (error) {
             assertionError = error;
         }

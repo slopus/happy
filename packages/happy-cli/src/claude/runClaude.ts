@@ -32,6 +32,7 @@ import { getProjectPath } from './utils/path';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RawJSONLinesSchema, type RawJSONLines } from './types';
+import { discoverClaudeSkills } from './utils/claudeSkills';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -541,7 +542,40 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             return;
         }
 
-        if (specialCommand.type === 'mcp' || specialCommand.type === 'skills') {
+        if (specialCommand.type === 'skills') {
+            logger.debug('[start] Detected /skills command, generating Happy-visible response');
+            const metadata = session.getMetadata();
+            const metadataSkills = metadata?.skills ?? metadata?.slashCommands;
+            const skills = metadataSkills && metadataSkills.length > 0
+                ? metadataSkills
+                : await discoverClaudeSkills(workingDirectory);
+            if ((!metadataSkills || metadataSkills.length === 0) && skills.length > 0) {
+                session.updateMetadata((currentMetadata) => ({
+                    ...currentMetadata,
+                    skills,
+                }));
+            }
+            const responseText = skills.length > 0
+                ? '**Available Skills**\n\n' + skills.map(s => `- /${s}`).join('\n')
+                : 'No skills available. Session may still be initializing — try again after sending a message.';
+
+            session.sendClaudeSessionMessage({
+                type: 'assistant',
+                uuid: randomUUID(),
+                parentUuid: null,
+                isSidechain: false,
+                sessionId: session.sessionId || 'unknown',
+                timestamp: new Date().toISOString(),
+                message: {
+                    role: 'assistant',
+                    model: 'system',
+                    content: [{ type: 'text', text: responseText }],
+                },
+            } as any);
+            return;
+        }
+
+        if (specialCommand.type === 'mcp') {
             const metadata = session.getMetadata();
             const runtimeKind = metadata?.claudeRuntime?.kind;
 
@@ -554,20 +588,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 logger.debug(`[start] Detected /${specialCommand.type} command in remote mode`);
                 let responseText: string;
 
-                if (specialCommand.type === 'mcp') {
-                    const servers = metadata?.mcpServers;
-                    if (servers && servers.length > 0) {
-                        responseText = '**MCP Servers**\n\n' + servers.map(s => `- **${s.name}** — ${s.status}`).join('\n');
-                    } else {
-                        responseText = 'No MCP servers configured. Session may still be initializing — try again after sending a message.';
-                    }
+                const servers = metadata?.mcpServers;
+                if (servers && servers.length > 0) {
+                    responseText = '**MCP Servers**\n\n' + servers.map(s => `- **${s.name}** — ${s.status}`).join('\n');
                 } else {
-                    const skills = metadata?.skills ?? metadata?.slashCommands;
-                    if (skills && skills.length > 0) {
-                        responseText = '**Available Skills**\n\n' + skills.map(s => `- /${s}`).join('\n');
-                    } else {
-                        responseText = 'No skills available. Session may still be initializing — try again after sending a message.';
-                    }
+                    responseText = 'No MCP servers configured. Session may still be initializing — try again after sending a message.';
                 }
 
                 session.sendClaudeSessionMessage({
