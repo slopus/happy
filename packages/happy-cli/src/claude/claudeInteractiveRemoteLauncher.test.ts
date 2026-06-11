@@ -380,6 +380,73 @@ describe('claudeInteractiveRemoteLauncher', () => {
         await resultPromise;
     });
 
+    it('switches tmux control to local attach without disposing the terminal', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+        let settled = false;
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any).then((result) => {
+            settled = true;
+            return result;
+        });
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalledOnce();
+        });
+
+        await session.invokeRpc('switch');
+        await Promise.resolve();
+
+        expect(settled).toBe(false);
+        expect(session.onModeChange).toHaveBeenCalledWith('local');
+        expect(transport.interrupt).not.toHaveBeenCalled();
+        expect(transport.dispose).not.toHaveBeenCalled();
+        expect(session.metadataSnapshots()).toContainEqual(expect.objectContaining({
+            claudeRuntime: expect.objectContaining({
+                state: 'interactive',
+                message: expect.stringContaining('tmux'),
+            }),
+        }));
+
+        transport.emitExit({ code: 0, signal: null });
+        await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 0 });
+        expect(transport.dispose).not.toHaveBeenCalled();
+    });
+
+    it('returns from local attach to remote control on the same tmux terminal when app sends a prompt', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalledOnce();
+        });
+
+        await session.invokeRpc('switch');
+        expect(session.onModeChange).toHaveBeenCalledWith('local');
+
+        session.enqueueBatch({
+            message: 'take remote control back',
+            mode: initialMode,
+            hash: 'initial-mode-hash',
+            isolate: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('take remote control back');
+            expect(transport.enter).toHaveBeenCalledOnce();
+        });
+        expect(session.onModeChange).toHaveBeenCalledWith('remote');
+        expect(transport.dispose).not.toHaveBeenCalled();
+
+        transport.emitExit({ code: 0, signal: null });
+        await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 0 });
+        expect(transport.dispose).toHaveBeenCalledOnce();
+    });
+
     it('uses distinct non-fixed terminal window names for separate launches', async () => {
         const firstTransport = new FakeTerminalTransport('tmux');
         const secondTransport = new FakeTerminalTransport('tmux');
@@ -541,6 +608,7 @@ function createSession(opts: { batches?: InteractiveClaudeBatch[] } = {}) {
             }
         }),
         onThinkingChange: vi.fn(),
+        onModeChange: vi.fn(),
         onAbort: vi.fn(),
         consumeOneTimeFlags: vi.fn(),
         enqueueBatch: (batch: InteractiveClaudeBatch) => {

@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
 import { buildClaudeLocalCommand, type ClaudeLocalCommand } from './claudeLocalCommand';
-import type { LauncherResult } from './claudeLocalLauncher';
 import type { Session } from './session';
 import { buildInteractivePaste, validateInteractiveBatch } from './interactive/inputInjection';
 import { resolveInteractiveClaudeIdentity } from './interactive/sessionIdentity';
@@ -14,8 +13,9 @@ import { createSessionScanner } from './utils/sessionScanner';
 const UNSUPPORTED_TERMINAL_MESSAGE = 'Claude interactive remote is not supported in this terminal environment.';
 const WINDOW_NAME_PREFIX = 'happy-claude-';
 const TURN_COMPLETION_DEBOUNCE_MS = 25;
+type InteractiveRemoteResult = { type: 'exit'; code: number };
 
-export async function claudeInteractiveRemoteLauncher(session: Session): Promise<LauncherResult> {
+export async function claudeInteractiveRemoteLauncher(session: Session): Promise<InteractiveRemoteResult> {
     logger.debug('[interactive-remote]: launch');
 
     const identity = resolveInteractiveClaudeIdentity({
@@ -48,10 +48,12 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     let unsubscribeData: (() => void) | null = null;
     let unsubscribeExit: (() => void) | null = null;
     let scannerSessionCallback: ((sessionId: string) => void) | null = null;
-    let exitReason: LauncherResult | null = null;
+    let exitReason: InteractiveRemoteResult | null = null;
     let terminalExit: TerminalExit | null = null;
     let waitController = new AbortController();
     let continueAfterWaitAbort = false;
+    let localAttachMode = false;
+    let detachTerminalOnCleanup = false;
     let lastSafeTerminalMessage: string | null = null;
     let completionTimer: ReturnType<typeof setTimeout> | null = null;
     let completionGeneration = 0;
@@ -179,6 +181,8 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             logger.debug('[interactive-remote]: abort');
             session.onAbort();
             cancelPendingCompletion();
+            localAttachMode = false;
+            detachTerminalOnCleanup = false;
             wakeQueueWaitAndContinue();
             session.queue.reset();
             session.client.closeClaudeSessionTurn('cancelled');
@@ -191,13 +195,11 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 sendSafeMessage(session, 'Claude interactive remote cannot switch to local attach from a PTY terminal.');
                 return;
             }
-            if (!exitReason) {
-                exitReason = { type: 'switch' };
-            }
             cancelPendingCompletion();
-            updateRuntimeMetadata(session, terminalMetadata('degraded', 'Switching to local terminal attach.'));
-            abortQueueWait();
-            await transport.interrupt();
+            localAttachMode = true;
+            detachTerminalOnCleanup = true;
+            session.onModeChange('local');
+            updateRuntimeMetadata(session, terminalMetadata('interactive', buildTmuxAttachMessage(transport.terminalId)));
         };
 
         session.client.rpcHandlerManager.registerHandler('abort', doAbort);
@@ -243,6 +245,13 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 continue;
             }
 
+            if (localAttachMode) {
+                localAttachMode = false;
+                detachTerminalOnCleanup = false;
+                session.onModeChange('remote');
+                updateRuntimeMetadata(session, terminalMetadata('interactive'));
+            }
+
             cancelPendingCompletion();
             const payload = buildInteractivePaste(batch.message, transport.backend);
             await transport.paste(payload);
@@ -270,7 +279,9 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
 
         session.onThinkingChange(false);
         await scanner?.cleanup();
-        await transport.dispose();
+        if (!detachTerminalOnCleanup) {
+            await transport.dispose();
+        }
         await command?.cleanupSandbox?.();
     }
 
@@ -323,6 +334,14 @@ function exitCodeFromTerminalExit(exit: TerminalExit): number {
 function createInteractiveWindowName(): string {
     const suffix = randomUUID().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 12);
     return `${WINDOW_NAME_PREFIX}${suffix || Date.now().toString(36)}`;
+}
+
+function buildTmuxAttachMessage(terminalId: string | null): string {
+    if (!terminalId) {
+        return 'Claude is running in tmux. Attach to the configured tmux session to control it locally.';
+    }
+    const [sessionName] = terminalId.split(':');
+    return `Claude is running in tmux target ${terminalId}. Attach with: tmux attach -t ${sessionName}`;
 }
 
 function toStringEnv(env: NodeJS.ProcessEnv): Record<string, string> {

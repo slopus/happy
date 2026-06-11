@@ -71,21 +71,16 @@ describe('loop interactive Claude remote selection', () => {
         expect(mockClaudeLocalLauncher).not.toHaveBeenCalled();
     });
 
-    it('switches interactive remote to local and local back to remote', async () => {
-        mockClaudeRemoteLauncher
-            .mockResolvedValueOnce('switch')
-            .mockResolvedValueOnce('exit');
-        mockClaudeInteractiveRemoteLauncher
-            .mockResolvedValueOnce({ type: 'switch' })
-            .mockResolvedValueOnce({ type: 'exit', code: 7 });
+    it('switches local launcher back to interactive remote without using SDK remote', async () => {
+        mockClaudeInteractiveRemoteLauncher.mockResolvedValueOnce({ type: 'exit', code: 7 });
         mockClaudeLocalLauncher.mockResolvedValueOnce({ type: 'switch' });
         const onModeChange = vi.fn();
 
-        const code = await loop(createLoopOptions({ onModeChange }));
+        const code = await loop(createLoopOptions({ startingMode: 'local', onModeChange }));
 
         expect(code).toBe(7);
-        expect(onModeChange.mock.calls.map(([mode]) => mode)).toEqual(['local', 'remote']);
-        expect(mockClaudeInteractiveRemoteLauncher).toHaveBeenCalledTimes(2);
+        expect(onModeChange.mock.calls.map(([mode]) => mode)).toEqual(['remote']);
+        expect(mockClaudeInteractiveRemoteLauncher).toHaveBeenCalledTimes(1);
         expect(mockClaudeLocalLauncher).toHaveBeenCalledTimes(1);
         expect(mockClaudeRemoteLauncher).not.toHaveBeenCalled();
     });

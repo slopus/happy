@@ -97,17 +97,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
 
             case 'remote': {
                 const result = await claudeInteractiveRemoteLauncher(session);
-                switch (result.type) {
-                    case 'exit':
-                        return result.code;
-                    case 'switch':
-                        mode = 'local';
-                        opts.onModeChange?.(mode);
-                        break;
-                    default:
-                        const _: never = result satisfies never;
-                }
-                break;
+                return result.code;
             }
 
             default: {
