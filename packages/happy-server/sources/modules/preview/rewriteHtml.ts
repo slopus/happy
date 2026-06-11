@@ -195,7 +195,13 @@ export function rewriteHtml(html: string, prefix: string): string {
     // <base> pins the document base URL so relative-path resources
     // (`<script src="app.js">`) survive the interceptor's history.replaceState.
     const baseHref = `<base href="${prefix}/">`;
-    const headInjection = baseHref + buildInterceptorScript(prefix);
+    // Inspector bridge — listen for `inspector-enable`/`inspector-disable`
+    // postMessages from the studio parent window, render a hover overlay,
+    // post `inspector-select` back on click. Cross-origin relay 케이스에서
+    // studio 가 iframe 의 contentDocument 에 inject 못 하므로 happy-server
+    // 가 응답 HTML 에 미리 박아준다. enabled=false 로 시작 — 사용자가
+    // 토글하기 전까진 완전 무영향.
+    const headInjection = baseHref + buildInterceptorScript(prefix) + buildInspectorBridgeScript();
     if (out.includes('<head>')) {
         out = out.replace('<head>', `<head>${headInjection}`);
     } else if (out.includes('<html>')) {
@@ -359,6 +365,111 @@ function buildInterceptorScript(prefix: string): string {
         `'See specs/preview-nextjs-turbopack-hydration/ for the original diagnosis.')` +
         `}catch(_){}` +
         `},8000);` +
+        `})()</script>`
+    );
+}
+
+/**
+ * Inspector bridge — studio (parent) 가 cross-origin 의 relay iframe 안
+ * contentDocument 에 직접 inject 못 하므로 happy-server 가 응답 HTML 에
+ * 미리 박아준다. enabled=false 로 시작 — 'inspector-enable' postMessage 가
+ * 도착해야 hover/click 이 활성. studio 가 토글 OFF 후엔 'inspector-disable'.
+ *
+ * postMessage 프로토콜 (studio web-ui 의 inspectorBridgeScript.ts 와 동일):
+ *  - inbound : 'inspector-enable' | 'inspector-disable'
+ *  - outbound: 'inspector-select' { tag, attrs, textContent, selector,
+ *              label, clickX, clickY, rect }
+ *
+ * 본문은 studio 측 src/lib/inspectorBridgeScript.ts 의 INSPECTOR_BRIDGE_SCRIPT
+ * 와 동기화 유지 필요 — drift 시 두 측 모두 일관 갱신.
+ */
+function buildInspectorBridgeScript(): string {
+    return (
+        `<script>(function(){` +
+        `var enabled=false;var overlay=null;var tooltip=null;var lastTarget=null;` +
+        `function createOverlay(){` +
+        `overlay=document.createElement('div');overlay.id='__inspector_overlay';` +
+        `overlay.style.cssText='position:fixed;pointer-events:none;z-index:999999;border:2px solid #3b82f6;background:rgba(59,130,246,0.08);transition:all 0.1s ease;display:none;';` +
+        `document.body.appendChild(overlay);` +
+        `tooltip=document.createElement('div');tooltip.id='__inspector_tooltip';` +
+        `tooltip.style.cssText='position:fixed;z-index:1000000;pointer-events:none;background:#1e293b;color:#e2e8f0;font:11px/1.4 monospace;padding:2px 6px;border-radius:3px;white-space:nowrap;display:none;';` +
+        `document.body.appendChild(tooltip);` +
+        `}` +
+        `function getSelector(el){` +
+        `if(el.id)return '#'+el.id;` +
+        `var tag=el.tagName.toLowerCase();` +
+        `if(el.className&&typeof el.className==='string'){` +
+        `var cls=el.className.trim().split(/\\s+/).filter(function(c){return c&&c.indexOf('__inspector')===-1;});` +
+        `if(cls.length>0)return tag+'.'+cls.join('.');` +
+        `}` +
+        `var parent=el.parentElement;` +
+        `if(!parent||parent===document.body)return tag;` +
+        `var siblings=Array.from(parent.children).filter(function(c){return c.tagName===el.tagName;});` +
+        `if(siblings.length===1)return getSelector(parent)+' > '+tag;` +
+        `var idx=siblings.indexOf(el)+1;` +
+        `return getSelector(parent)+' > '+tag+':nth-child('+idx+')';` +
+        `}` +
+        `function getLabel(el){` +
+        `var tag=el.tagName.toLowerCase();var label=tag;` +
+        `if(el.id)label+='#'+el.id;` +
+        `if(el.className&&typeof el.className==='string'){` +
+        `var cls=el.className.trim().split(/\\s+/).filter(function(c){return c&&c.indexOf('__inspector')===-1;});` +
+        `if(cls.length>0)label+='.'+cls.slice(0,3).join('.');` +
+        `}` +
+        `return label;` +
+        `}` +
+        `function isIgnored(el){` +
+        `return !el||el===document.body||el===document.documentElement||(el.id&&el.id.indexOf('__inspector')===0);` +
+        `}` +
+        `function hideOverlay(){` +
+        `if(overlay)overlay.style.display='none';` +
+        `if(tooltip)tooltip.style.display='none';` +
+        `lastTarget=null;` +
+        `}` +
+        `function onMove(e){` +
+        `if(!enabled)return;` +
+        `var el=e.target;` +
+        `if(isIgnored(el)){hideOverlay();return;}` +
+        `lastTarget=el;` +
+        `var rect=el.getBoundingClientRect();` +
+        `overlay.style.top=rect.top+'px';overlay.style.left=rect.left+'px';` +
+        `overlay.style.width=rect.width+'px';overlay.style.height=rect.height+'px';` +
+        `overlay.style.display='block';` +
+        `tooltip.textContent=getLabel(el);` +
+        `tooltip.style.left=Math.min(rect.left,window.innerWidth-200)+'px';` +
+        `tooltip.style.top=Math.max(0,rect.top-22)+'px';` +
+        `tooltip.style.display='block';` +
+        `}` +
+        `function onClick(e){` +
+        `if(!enabled)return;` +
+        `var el=e.target;` +
+        `if(isIgnored(el))return;` +
+        `e.preventDefault();e.stopPropagation();` +
+        `var text=(el.textContent||'').trim().slice(0,80);` +
+        `var tag=el.tagName.toLowerCase();var attrs='';` +
+        `if(el.id)attrs+=' id="'+el.id+'"';` +
+        `if(el.className&&typeof el.className==='string'){` +
+        `var cls=el.className.trim().split(/\\s+/).filter(function(c){return c.indexOf('__inspector')===-1;}).join(' ');` +
+        `if(cls)attrs+=' class="'+cls+'"';` +
+        `}` +
+        `var rect=el.getBoundingClientRect();` +
+        `parent.postMessage({` +
+        `type:'inspector-select',tag:tag,attrs:attrs,textContent:text,` +
+        `selector:getSelector(el),label:getLabel(el),` +
+        `clickX:e.clientX,clickY:e.clientY,` +
+        `rect:{top:rect.top,left:rect.left,width:rect.width,height:rect.height}` +
+        `},'*');` +
+        `}` +
+        `window.addEventListener('message',function(e){` +
+        `if(e.data&&e.data.type==='inspector-enable'){` +
+        `enabled=true;if(!overlay)createOverlay();document.body.style.cursor='crosshair';` +
+        `}` +
+        `if(e.data&&e.data.type==='inspector-disable'){` +
+        `enabled=false;hideOverlay();document.body.style.cursor='';` +
+        `}` +
+        `});` +
+        `document.addEventListener('mousemove',onMove,true);` +
+        `document.addEventListener('click',onClick,true);` +
         `})()</script>`
     );
 }
