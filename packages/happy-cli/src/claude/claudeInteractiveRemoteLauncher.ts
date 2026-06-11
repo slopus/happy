@@ -81,9 +81,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             sessionId: identity.claudeSessionId,
             workingDirectory: session.path,
             onMessage: (message) => {
-                if (message.type !== 'summary') {
-                    session.client.sendClaudeSessionMessage(message);
-                }
+                session.client.sendClaudeSessionMessage(message);
             },
         });
 
@@ -204,8 +202,8 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 await transport.enter();
             }
         }
-    } catch (error) {
-        logger.debug('[interactive-remote]: launch error', error);
+    } catch {
+        logger.debug('[interactive-remote]: launch error');
         if (!exitReason) {
             updateRuntimeMetadata(session, terminalMetadata('failed', 'Claude interactive terminal failed to start.'));
             sendSafeMessage(session, 'Claude interactive terminal failed to start.');

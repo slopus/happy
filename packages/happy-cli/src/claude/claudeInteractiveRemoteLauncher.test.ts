@@ -10,6 +10,7 @@ const {
     mockClaudeRemote,
     mockCreateSessionScanner,
     mockCreateTerminalTransport,
+    mockLoggerDebug,
     mockResolveInteractiveClaudeIdentity,
 } = vi.hoisted(() => ({
     mockBuildClaudeLocalCommand: vi.fn(),
@@ -17,6 +18,7 @@ const {
     mockClaudeRemote: vi.fn(),
     mockCreateSessionScanner: vi.fn(),
     mockCreateTerminalTransport: vi.fn(),
+    mockLoggerDebug: vi.fn(),
     mockResolveInteractiveClaudeIdentity: vi.fn(),
 }));
 
@@ -46,7 +48,7 @@ vi.mock('./utils/sessionScanner', () => ({
 
 vi.mock('@/ui/logger', () => ({
     logger: {
-        debug: vi.fn(),
+        debug: mockLoggerDebug,
         warn: vi.fn(),
     },
 }));
@@ -141,7 +143,7 @@ describe('claudeInteractiveRemoteLauncher', () => {
         expect(transport.dispose).toHaveBeenCalledOnce();
     });
 
-    it('registers the scanner callback and forwards raw Claude session messages', async () => {
+    it('registers the scanner callback and forwards raw Claude session messages including summaries', async () => {
         const transport = new FakeTerminalTransport('pty');
         mockCreateTerminalTransport.mockResolvedValue(transport);
         const scanner = {
@@ -174,8 +176,15 @@ describe('claudeInteractiveRemoteLauncher', () => {
             },
         } satisfies RawJSONLines;
         scannerOptions.onMessage(rawMessage);
+        const summaryMessage = {
+            type: 'summary',
+            summary: 'Compacted conversation',
+            leafUuid: 'assistant-message-1',
+        } satisfies RawJSONLines;
+        scannerOptions.onMessage(summaryMessage);
 
         expect(session.client.sendClaudeSessionMessage).toHaveBeenCalledWith(rawMessage);
+        expect(session.client.sendClaudeSessionMessage).toHaveBeenCalledWith(summaryMessage);
 
         await vi.waitFor(() => {
             expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
@@ -267,6 +276,22 @@ describe('claudeInteractiveRemoteLauncher', () => {
                 state: 'unsupported',
             }),
         }));
+    });
+
+    it('does not pass raw caught errors into launcher diagnostics', async () => {
+        const transport = new FakeTerminalTransport('pty');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const rawError = new Error('secret /Users/devdvlive/.claude/session.jsonl');
+        mockBuildClaudeLocalCommand.mockRejectedValue(rawError);
+        const session = createSession();
+
+        await expect(claudeInteractiveRemoteLauncher(session as any)).resolves.toEqual({
+            type: 'exit',
+            code: 1,
+        });
+
+        expect(mockLoggerDebug).not.toHaveBeenCalledWith('[interactive-remote]: launch error', rawError);
+        expect(mockLoggerDebug).toHaveBeenCalledWith('[interactive-remote]: launch error');
     });
 });
 
