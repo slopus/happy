@@ -217,6 +217,99 @@ describe('runClaude remote JSONL scanner', () => {
         exitSpy.mockRestore();
     });
 
+    it('passes /skills through to Claude when the remote runtime is interactive', async () => {
+        let onUserMessage: ((message: any) => Promise<void>) | undefined;
+        const sessionClient = {
+            sessionId: 'happy-session-1',
+            suppressNextArchiveSignal: vi.fn(),
+            skipExistingMessages: vi.fn(),
+            updateMetadata: vi.fn(),
+            sendClaudeSessionMessage: vi.fn(),
+            onUserMessage: vi.fn((handler) => { onUserMessage = handler; }),
+            onFileEvent: vi.fn(),
+            on: vi.fn(),
+            trackAttachmentDownload: vi.fn(),
+            drainAttachmentsForUserMessage: vi.fn(async () => []),
+            downloadAndDecryptAttachment: vi.fn(),
+            getMetadata: vi.fn(() => ({
+                claudeRuntime: {
+                    kind: 'interactive',
+                    state: 'interactive',
+                    backend: 'tmux',
+                },
+            })),
+            sendSessionEvent: vi.fn(),
+            updateAgentState: vi.fn(),
+            rpcHandlerManager: {
+                registerHandler: vi.fn(),
+            },
+            sendSessionDeath: vi.fn(),
+            flush: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+        };
+        const api = {
+            getOrCreateMachine: vi.fn(async () => ({})),
+            getOrCreateSession: vi.fn(async () => ({
+                id: 'happy-session-1',
+                seq: 0,
+                metadata: {},
+                metadataVersion: 0,
+                agentState: {},
+                agentStateVersion: 0,
+                encryptionKey: new Uint8Array(32),
+                encryptionVariant: 'legacy' as const,
+            })),
+            sessionSyncClient: vi.fn(() => sessionClient),
+            deactivateSession: vi.fn(async () => {}),
+        };
+        mockApiClientCreate.mockResolvedValue(api);
+
+        const loopDeferred = createDeferred<number>();
+        mockLoop.mockReturnValue(loopDeferred.promise);
+
+        const runPromise = runClaude({
+            token: 'token',
+            encryption: { type: 'legacy', secret: new Uint8Array(32) },
+        } as any, {
+            startingMode: 'remote',
+            shouldStartDaemon: false,
+        });
+
+        let assertionError: unknown;
+        try {
+            await vi.waitFor(() => {
+                expect(mockLoop).toHaveBeenCalled();
+                expect(onUserMessage).toBeDefined();
+            });
+
+            await onUserMessage!({
+                role: 'user',
+                content: { type: 'text', text: '/skills ' },
+                meta: { sentFrom: 'web' },
+            });
+
+            const queue = mockLoop.mock.calls[0][0].messageQueue;
+            expect(sessionClient.sendClaudeSessionMessage).not.toHaveBeenCalled();
+            expect(queue.size()).toBe(1);
+            const queued = await queue.waitForMessagesAndGetAsString();
+            expect(queued?.message).toBe('/skills ');
+            expect(queued?.isolate).toBe(false);
+        } catch (error) {
+            assertionError = error;
+        }
+
+        loopDeferred.resolve(0);
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+            throw new Error('process.exit');
+        }) as never);
+        await expect(runPromise).rejects.toThrow('process.exit');
+        exitSpy.mockRestore();
+
+        if (assertionError) {
+            throw assertionError;
+        }
+    });
+
     it('does not log raw attachment details while preparing Claude batches', async () => {
         const sessionClient = {
             sessionId: 'happy-session-1',

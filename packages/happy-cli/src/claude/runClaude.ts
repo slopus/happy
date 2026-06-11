@@ -542,12 +542,16 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
 
         if (specialCommand.type === 'mcp' || specialCommand.type === 'skills') {
-            // In local mode, let Claude Code handle these commands natively
-            if (currentRunMode === 'local') {
-                logger.debug(`[start] /${specialCommand.type} in local mode — passing through to Claude Code`);
+            const metadata = session.getMetadata();
+            const runtimeKind = metadata?.claudeRuntime?.kind;
+
+            // In local mode, and in interactive remote mode, let Claude Code
+            // handle these commands natively. The metadata-backed response is
+            // only for the SDK remote runtime.
+            if (currentRunMode === 'local' || runtimeKind === 'interactive') {
+                logger.debug(`[start] /${specialCommand.type} in ${currentRunMode} mode (${runtimeKind ?? 'unknown'} runtime) — passing through to Claude Code`);
             } else {
                 logger.debug(`[start] Detected /${specialCommand.type} command in remote mode`);
-                const metadata = session.getMetadata();
                 let responseText: string;
 
                 if (specialCommand.type === 'mcp') {

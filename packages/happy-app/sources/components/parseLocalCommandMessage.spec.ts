@@ -55,6 +55,16 @@ describe('parseLocalCommandMessage', () => {
         });
     });
 
+    it('hides compact local-command stdout status wrappers', () => {
+        const text = '<local-command-stdout>\u001b[2mCompacted (ctrl+o to see full summary)\u001b[22m</local-command-stdout>';
+        expect(parseLocalCommandMessage(text)).toEqual({ kind: 'caveat' });
+    });
+
+    it('renders non-compact local-command stdout without wrapper tags or ANSI codes', () => {
+        const text = '<local-command-stdout>\u001b[32mCommand output\u001b[39m</local-command-stdout>';
+        expect(parseLocalCommandMessage(text)).toEqual({ kind: 'text', text: 'Command output' });
+    });
+
     it('passes ordinary user text through untouched', () => {
         const text = 'just a normal message';
         expect(parseLocalCommandMessage(text)).toEqual({ kind: 'text', text });
