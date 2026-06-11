@@ -83,9 +83,9 @@ function isPermissionPrompt(lower: string): boolean {
 }
 
 function isSpinnerWithoutTranscript(lower: string): boolean {
-    return /\b(?:spinner without transcript|no transcript|waiting for transcript|press esc to interrupt|esc to interrupt|ctrl\+c to cancel)\b/.test(
+    return /\b(?:spinner without transcript|no transcript|waiting for transcript|press esc to interrupt|esc to interrupt|ctrl\+c to cancel|tokens? remaining)\b/.test(
         lower,
-    );
+    ) || /(?:^|\s)thinking\.{3}(?:\s|$)/.test(lower);
 }
 
 function isInputPrompt(raw: string): boolean {

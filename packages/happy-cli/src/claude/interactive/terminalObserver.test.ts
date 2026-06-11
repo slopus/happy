@@ -19,6 +19,39 @@ describe('classifyTerminalOutput', () => {
     it('ignores ordinary output', () => {
         expect(classifyTerminalOutput('Working on it...')).toBeNull();
     });
+
+    it('reports spinner output when only token progress is visible', () => {
+        expect(classifyTerminalOutput('12 tokens remaining')).toEqual({
+            type: 'spinner_without_transcript',
+            message: 'Claude appears to be running but has not emitted transcript output yet.',
+        });
+    });
+
+    it('reports spinner output when thinking text is visible', () => {
+        expect(classifyTerminalOutput('thinking...')).toEqual({
+            type: 'spinner_without_transcript',
+            message: 'Claude appears to be running but has not emitted transcript output yet.',
+        });
+    });
+
+    it('reports the input prompt when a bare prompt is visible', () => {
+        expect(classifyTerminalOutput('>')).toEqual({
+            type: 'input_prompt_visible',
+            message: 'Claude is ready for input.',
+        });
+    });
+
+    it('reports terminal errors with sanitized diagnostics', () => {
+        const result = classifyTerminalOutput('failed /Users/me/secret sk-ant-api03-abc https://example.com/x');
+
+        expect(result).toEqual({
+            type: 'terminal_process_error',
+            message: 'Terminal reported an error. failed [path] [secret] [url]',
+        });
+        expect(result?.message).not.toContain('/Users/me/secret');
+        expect(result?.message).not.toContain('sk-ant-api03-abc');
+        expect(result?.message).not.toContain('https://example.com/x');
+    });
 });
 
 describe('sanitizeTerminalDiagnostic', () => {
@@ -26,5 +59,12 @@ describe('sanitizeTerminalDiagnostic', () => {
         expect(sanitizeTerminalDiagnostic('failed /Users/me/secret sk-ant-api03-abc https://example.com/x')).toBe(
             'failed [path] [secret] [url]',
         );
+    });
+
+    it('bounds sanitized diagnostics to 240 characters', () => {
+        const result = sanitizeTerminalDiagnostic('detail '.repeat(80));
+
+        expect(result.length).toBeLessThanOrEqual(240);
+        expect(result).toMatch(/\.\.\.$/);
     });
 });
