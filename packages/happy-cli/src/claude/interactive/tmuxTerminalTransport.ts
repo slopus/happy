@@ -2,7 +2,6 @@ import {
     getTmuxUtilities,
     parseTmuxSessionIdentifier,
     TmuxUtilities,
-    type TmuxSessionIdentifier,
 } from '@/utils/tmux';
 import type {
     TerminalDataHandler,
@@ -11,6 +10,12 @@ import type {
     TerminalTransport,
 } from './terminalTransport';
 
+type TmuxPaneTarget = {
+    session?: string;
+    window?: string;
+    pane?: string;
+};
+
 export class TmuxTerminalTransport implements TerminalTransport {
     readonly backend = 'tmux' as const;
     readonly capabilities = ['remote-control', 'local-attach'] as const;
@@ -18,7 +23,8 @@ export class TmuxTerminalTransport implements TerminalTransport {
     terminalId: string | null = null;
 
     private readonly tmux: TmuxUtilities;
-    private target?: TmuxSessionIdentifier;
+    private target?: TmuxPaneTarget;
+    private cleanupTarget: string | null = null;
     private pollTimer: ReturnType<typeof setInterval> | null = null;
     private polling = false;
     private exited = false;
@@ -37,6 +43,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
         this.stopPolling();
         this.exited = false;
         this.lastCaptureText = null;
+        this.cleanupTarget = null;
 
         const result = await this.tmux.spawnInTmux(
             buildTmuxCommand(options),
@@ -53,7 +60,8 @@ export class TmuxTerminalTransport implements TerminalTransport {
         }
 
         this.terminalId = result.sessionId;
-        this.target = parseTmuxSessionIdentifier(result.sessionId);
+        this.target = result.paneId ? { pane: result.paneId } : parseTmuxSessionIdentifier(result.sessionId);
+        this.cleanupTarget = result.windowId ?? result.sessionId;
         this.startPolling();
         return { pid: result.pid, terminalId: result.sessionId };
     }
@@ -110,17 +118,18 @@ export class TmuxTerminalTransport implements TerminalTransport {
         this.exitHandlers.clear();
         this.exited = false;
 
-        const terminalId = this.terminalId;
+        const cleanupTarget = this.cleanupTarget ?? this.terminalId;
         this.terminalId = null;
         this.target = undefined;
+        this.cleanupTarget = null;
         this.lastCaptureText = null;
 
-        if (terminalId) {
-            await this.tmux.killWindow(terminalId);
+        if (cleanupTarget) {
+            await this.tmux.killWindow(cleanupTarget);
         }
     }
 
-    private requireTarget(): TmuxSessionIdentifier {
+    private requireTarget(): TmuxPaneTarget {
         if (!this.target) {
             throw new Error('Tmux terminal has not been spawned');
         }
@@ -190,6 +199,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
         this.stopPolling();
         this.terminalId = null;
         this.target = undefined;
+        this.cleanupTarget = null;
         this.lastCaptureText = null;
         this.emitExit({ code: null, signal: null });
     }

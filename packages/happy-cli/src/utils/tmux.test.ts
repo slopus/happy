@@ -456,6 +456,47 @@ describe('Round-trip consistency', () => {
 });
 
 describe('TmuxUtilities terminal helpers', () => {
+    it('returns stable tmux ids when spawning a new window', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockImplementation(async (cmd) => {
+            const tmuxCommand = cmd as string[];
+            if (tmuxCommand.includes('new-window')) {
+                return {
+                    returncode: 0,
+                    stdout: '123\t@42\t%7\n',
+                    stderr: '',
+                    command: tmuxCommand,
+                };
+            }
+
+            return {
+                returncode: 0,
+                stdout: '',
+                stderr: '',
+                command: tmuxCommand,
+            };
+        });
+
+        const result = await utils.spawnInTmux(['claude'], {
+            cwd: '/tmp/project',
+            sessionName: 'happy',
+            windowName: 'happy-claude-test',
+        });
+        const calls = executeCommand.mock.calls.map(([cmd]) => cmd as string[]);
+        const newWindowCall = calls.find((cmd) => cmd.includes('new-window'));
+
+        expect(result).toEqual({
+            success: true,
+            sessionId: 'happy:happy-claude-test',
+            pid: 123,
+            windowId: '@42',
+            paneId: '%7',
+        });
+        expect(newWindowCall).toContain('-P');
+        expect(newWindowCall).toContain('-F');
+        expect(newWindowCall).toContain('#{pane_pid}\t#{window_id}\t#{pane_id}');
+    });
+
     it('pastes text through a tmux buffer instead of send-keys', async () => {
         const utils = new TmuxUtilities('happy');
         const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
@@ -478,6 +519,27 @@ describe('TmuxUtilities terminal helpers', () => {
             ['tmux', 'delete-buffer', '-b', bufferName],
         ]);
         expect(calls.flat()).not.toContain('send-keys');
+    });
+
+    it('uses raw pane ids directly for pane operations', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
+            returncode: 0,
+            stdout: '',
+            stderr: '',
+            command: [],
+        });
+
+        const result = await utils.pasteText('hello', undefined, undefined, '%7');
+        const calls = executeCommand.mock.calls.map(([cmd]) => cmd as string[]);
+        const bufferName = calls[0][3];
+
+        expect(result).toBe(true);
+        expect(calls).toEqual([
+            ['tmux', 'set-buffer', '-b', bufferName, 'hello'],
+            ['tmux', 'paste-buffer', '-b', bufferName, '-t', '%7'],
+            ['tmux', 'delete-buffer', '-b', bufferName],
+        ]);
     });
 
     it('targets resize-pane with the requested dimensions', async () => {
@@ -543,6 +605,26 @@ describe('TmuxUtilities terminal helpers', () => {
             'kill-window',
             '-t',
             'happy:claude',
+        ]);
+    });
+
+    it('uses raw window ids directly when killing a window', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
+            returncode: 0,
+            stdout: '',
+            stderr: '',
+            command: [],
+        });
+
+        const result = await utils.killWindow('@42');
+
+        expect(result).toBe(true);
+        expect(executeCommand).toHaveBeenCalledWith([
+            'tmux',
+            'kill-window',
+            '-t',
+            '@42',
         ]);
     });
 });

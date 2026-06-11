@@ -109,14 +109,16 @@ describe('claudeInteractiveRemoteLauncher', () => {
             claudeEnvVars: { CLAUDE_CONFIG_DIR: '/tmp/claude' },
             sandboxConfig: undefined,
         });
-        expect(transport.spawn).toHaveBeenCalledWith({
+        expect(transport.spawn).toHaveBeenCalledWith(expect.objectContaining({
             command: 'node',
             args: ['claude-launcher.cjs', '--session-id', 'claude-known-session'],
             cwd: '/tmp/project',
             env: { HAPPY_TEST: '1' },
             shell: false,
-            windowName: 'happy-claude',
-        } satisfies TerminalSpawnOptions);
+            windowName: expect.stringMatching(/^happy-claude-[A-Za-z0-9_-]+$/),
+        }));
+        const spawnOptions = transport.spawn.mock.calls[0][0];
+        expect(spawnOptions.windowName).not.toBe('happy-claude');
         expect(session.onSessionFound).toHaveBeenCalledWith('claude-known-session');
         expect(mockClaudeLocal).not.toHaveBeenCalled();
         expect(mockClaudeRemote).not.toHaveBeenCalled();
@@ -130,7 +132,7 @@ describe('claudeInteractiveRemoteLauncher', () => {
                 backend: 'tmux',
                 capabilities: ['remote-control', 'local-attach'],
                 claudeSessionId: 'claude-known-session',
-                terminalId: 'tmux:happy-claude',
+                terminalId: expect.stringMatching(/^tmux:happy-claude-[A-Za-z0-9_-]+$/),
             }),
         }));
         expect(session.consumeOneTimeFlags).toHaveBeenCalledOnce();
@@ -377,14 +379,45 @@ describe('claudeInteractiveRemoteLauncher', () => {
         transport.emitExit({ code: 0, signal: null });
         await resultPromise;
     });
+
+    it('uses distinct non-fixed terminal window names for separate launches', async () => {
+        const firstTransport = new FakeTerminalTransport('tmux');
+        const secondTransport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport
+            .mockResolvedValueOnce(firstTransport)
+            .mockResolvedValueOnce(secondTransport);
+
+        const firstResult = claudeInteractiveRemoteLauncher(createSession() as any);
+        await vi.waitFor(() => {
+            expect(firstTransport.spawn).toHaveBeenCalledOnce();
+        });
+        firstTransport.emitExit({ code: 0, signal: null });
+        await firstResult;
+
+        const secondResult = claudeInteractiveRemoteLauncher(createSession() as any);
+        await vi.waitFor(() => {
+            expect(secondTransport.spawn).toHaveBeenCalledOnce();
+        });
+        secondTransport.emitExit({ code: 0, signal: null });
+        await secondResult;
+
+        const firstWindowName = firstTransport.spawn.mock.calls[0][0].windowName;
+        const secondWindowName = secondTransport.spawn.mock.calls[0][0].windowName;
+
+        expect(firstWindowName).toMatch(/^happy-claude-[A-Za-z0-9_-]+$/);
+        expect(secondWindowName).toMatch(/^happy-claude-[A-Za-z0-9_-]+$/);
+        expect(firstWindowName).not.toBe('happy-claude');
+        expect(secondWindowName).not.toBe('happy-claude');
+        expect(firstWindowName).not.toBe(secondWindowName);
+    });
 });
 
 class FakeTerminalTransport implements TerminalTransport {
     readonly capabilities: readonly ('remote-control' | 'local-attach')[];
     terminalId: string | null = null;
 
-    readonly spawn = vi.fn(async (_options: TerminalSpawnOptions) => {
-        this.terminalId = `${this.backend}:happy-claude`;
+    readonly spawn = vi.fn(async (options: TerminalSpawnOptions) => {
+        this.terminalId = `${this.backend}:${options.windowName}`;
         return { pid: 123, terminalId: this.terminalId };
     });
     readonly paste = vi.fn(async (_text: string) => { });

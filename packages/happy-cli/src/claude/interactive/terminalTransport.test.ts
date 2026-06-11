@@ -208,6 +208,44 @@ describe('TmuxTerminalTransport', () => {
         expect(transport.terminalId).toBeNull();
         await transport.dispose();
     });
+
+    it('uses stable tmux pane and window ids for operations after spawn', async () => {
+        const tmux = {
+            spawnInTmux: vi.fn(async () => ({
+                success: true,
+                sessionId: 'happy:claude',
+                pid: 459,
+                windowId: '@42',
+                paneId: '%7',
+            })),
+            isPaneAlive: vi.fn(async () => true),
+            capturePaneText: vi.fn(async () => ''),
+            pasteText: vi.fn(async () => true),
+            sendKeys: vi.fn(async () => true),
+            resizePane: vi.fn(async () => true),
+            killWindow: vi.fn(async () => true),
+        };
+        const transport = new TmuxTerminalTransport('happy-test', tmux as any);
+
+        await transport.spawn(requiredSpawnOptions);
+
+        await vi.waitFor(() => {
+            expect(tmux.isPaneAlive).toHaveBeenCalledWith(undefined, undefined, '%7');
+            expect(tmux.capturePaneText).toHaveBeenCalledWith(undefined, undefined, '%7');
+        });
+
+        await transport.paste('hello');
+        await transport.enter();
+        await transport.interrupt();
+        await transport.resize(120, 40);
+        await transport.dispose();
+
+        expect(tmux.pasteText).toHaveBeenCalledWith('hello', undefined, undefined, '%7');
+        expect(tmux.sendKeys).toHaveBeenCalledWith('C-m', undefined, undefined, '%7');
+        expect(tmux.sendKeys).toHaveBeenCalledWith('C-c', undefined, undefined, '%7');
+        expect(tmux.resizePane).toHaveBeenCalledWith(120, 40, undefined, undefined, '%7');
+        expect(tmux.killWindow).toHaveBeenCalledWith('@42');
+    });
 });
 
 describe('PtyTerminalTransport', () => {

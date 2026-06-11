@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
 import { buildClaudeLocalCommand, type ClaudeLocalCommand } from './claudeLocalCommand';
 import type { LauncherResult } from './claudeLocalLauncher';
@@ -11,7 +12,7 @@ import type { TerminalExit, TerminalTransport } from './interactive/terminalTran
 import { createSessionScanner } from './utils/sessionScanner';
 
 const UNSUPPORTED_TERMINAL_MESSAGE = 'Claude interactive remote is not supported in this terminal environment.';
-const WINDOW_NAME = 'happy-claude';
+const WINDOW_NAME_PREFIX = 'happy-claude-';
 const TURN_COMPLETION_DEBOUNCE_MS = 25;
 
 export async function claudeInteractiveRemoteLauncher(session: Session): Promise<LauncherResult> {
@@ -211,7 +212,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             cwd: command.cwd,
             env: toStringEnv(command.env),
             shell: command.shell,
-            windowName: WINDOW_NAME,
+            windowName: createInteractiveWindowName(),
         });
         updateRuntimeMetadata(session, {
             ...terminalMetadata('interactive'),
@@ -317,6 +318,11 @@ function exitCodeFromTerminalExit(exit: TerminalExit): number {
         return exit.code;
     }
     return exit.signal ? 1 : 0;
+}
+
+function createInteractiveWindowName(): string {
+    const suffix = randomUUID().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 12);
+    return `${WINDOW_NAME_PREFIX}${suffix || Date.now().toString(36)}`;
 }
 
 function toStringEnv(env: NodeJS.ProcessEnv): Record<string, string> {
