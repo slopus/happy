@@ -503,4 +503,24 @@ describe('TmuxUtilities terminal helpers', () => {
             'session:window.2',
         ]);
     });
+
+    it('targets a full session:window identifier when killing a window', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
+            returncode: 0,
+            stdout: '',
+            stderr: '',
+            command: [],
+        });
+
+        const result = await utils.killWindow('happy:claude');
+
+        expect(result).toBe(true);
+        expect(executeCommand).toHaveBeenCalledWith([
+            'tmux',
+            'kill-window',
+            '-t',
+            'happy:claude',
+        ]);
+    });
 });
