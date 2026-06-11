@@ -52,6 +52,29 @@ describe('classifyTerminalOutput', () => {
         expect(result?.message).not.toContain('sk-ant-api03-abc');
         expect(result?.message).not.toContain('https://example.com/x');
     });
+
+    it('prioritizes terminal errors over token progress output', () => {
+        expect(classifyTerminalOutput('Error: failed to spawn Claude; 12 tokens remaining')).toMatchObject({
+            type: 'terminal_process_error',
+        });
+    });
+
+    it('prioritizes terminal errors over visible input prompts', () => {
+        expect(classifyTerminalOutput('permission denied\n>')).toMatchObject({
+            type: 'terminal_process_error',
+        });
+    });
+
+    it('redacts macOS application paths from terminal error diagnostics', () => {
+        const result = classifyTerminalOutput('failed /Applications/Claude.app/Contents/MacOS/Claude');
+
+        expect(result).toEqual({
+            type: 'terminal_process_error',
+            message: 'Terminal reported an error. failed [path]',
+        });
+        expect(result?.message).toContain('[path]');
+        expect(result?.message).not.toContain('/Applications/Claude.app/Contents/MacOS/Claude');
+    });
 });
 
 describe('sanitizeTerminalDiagnostic', () => {
