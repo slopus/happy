@@ -6,6 +6,11 @@ import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
 import { getImageAttachmentSendPlan } from './attachmentSupport';
+import {
+    errorMessageFromUnknown,
+    formatAttachmentDiagnosticForLog,
+    getAttachmentDiagnostic,
+} from './attachmentDiagnostics';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine } from './storageTypes';
@@ -537,7 +542,21 @@ class Sync {
                     thumbhash: attachment.thumbhash,
                 });
             } catch (err) {
-                console.error(`[attachments] Failed to upload ${attachment.name}:`, err);
+                const diagnostic = getAttachmentDiagnostic(err);
+                if (diagnostic) {
+                    console.error('[attachments] Failed to upload image attachment:', formatAttachmentDiagnosticForLog(diagnostic, {
+                        platform: Platform.OS,
+                        client: getHappyClientId(),
+                    }));
+                } else {
+                    const message = errorMessageFromUnknown(err);
+                    console.error('[attachments] Failed to upload image attachment:', {
+                        leg: 'blob-upload',
+                        message,
+                        platform: Platform.OS,
+                        client: getHappyClientId(),
+                    });
+                }
                 failed++;
                 // Skip this attachment; do not abort the whole message send.
             }

@@ -5,8 +5,14 @@
  * every image. In-flight requests are de-duplicated per ref.
  */
 import * as React from 'react';
+import { Platform } from 'react-native';
 import { sync } from '@/sync/sync';
 import { downloadEncryptedAttachment } from '@/sync/apiAttachments';
+import {
+    createAttachmentDiagnostic,
+    formatAttachmentDiagnosticForLog,
+    getAttachmentDiagnostic,
+} from '@/sync/attachmentDiagnostics';
 import { decryptBlob } from '@/encryption/blob';
 import { encodeBase64 } from '@/encryption/base64';
 
@@ -44,32 +50,54 @@ function detectImageMime(bytes: Uint8Array): string {
     return 'image/png';
 }
 
+function warnAttachmentImageDiagnostic(reason: string, message?: string) {
+    console.warn('[attachment-image] load failed:', formatAttachmentDiagnosticForLog(createAttachmentDiagnostic({
+        leg: 'decrypt-render',
+        reason,
+        message,
+    }), {
+        platform: Platform.OS,
+    }));
+}
+
 async function loadAttachmentDataUri(sessionId: string, ref: string): Promise<string | null> {
     const credentials = sync.getCredentials();
     if (!credentials) {
-        console.warn(`[attachment-image] no credentials for ${ref}`);
+        warnAttachmentImageDiagnostic('no-credentials');
         return null;
     }
     const blobKey = sync.encryption.getSessionBlobKey(sessionId);
     if (!blobKey) {
-        console.warn(`[attachment-image] no blobKey for session ${sessionId} (ref=${ref})`);
+        warnAttachmentImageDiagnostic('missing-blob-key');
         return null;
     }
     if (blobKey.length !== 32) {
-        console.warn(`[attachment-image] blobKey wrong length: ${blobKey.length} (ref=${ref})`);
+        warnAttachmentImageDiagnostic('invalid-blob-key-length', String(blobKey.length));
         return null;
     }
     let encrypted: Uint8Array;
     try {
         encrypted = await downloadEncryptedAttachment(credentials, sessionId, ref);
     } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.warn(`[attachment-image] download failed for ${ref}: ${message}`);
+        const diagnostic = getAttachmentDiagnostic(err);
+        if (diagnostic) {
+            console.warn('[attachment-image] download failed:', formatAttachmentDiagnosticForLog(diagnostic, {
+                platform: Platform.OS,
+            }));
+        } else {
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn('[attachment-image] download failed:', formatAttachmentDiagnosticForLog(createAttachmentDiagnostic({
+                leg: 'blob-download',
+                message,
+            }), {
+                platform: Platform.OS,
+            }));
+        }
         return null;
     }
     const decrypted = decryptBlob(encrypted, blobKey);
     if (!decrypted) {
-        console.warn(`[attachment-image] decrypt returned null for ${ref} (encrypted.length=${encrypted.length})`);
+        warnAttachmentImageDiagnostic('decrypt-returned-null');
         return null;
     }
     const mime = detectImageMime(decrypted);
