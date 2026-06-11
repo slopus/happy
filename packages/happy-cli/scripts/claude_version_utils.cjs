@@ -33,6 +33,57 @@ function resolvePathSafe(filePath) {
 }
 
 /**
+ * Check whether Node can spawn this entrypoint directly.
+ *
+ * The @anthropic-ai/claude-code package may expose bin/claude.exe on every
+ * platform. On non-Windows installs where optional native dependencies were
+ * not installed, that file is a plain text error stub without a shebang; Node's
+ * child_process.spawn fails with ENOEXEC. Shells can sometimes mask that by
+ * interpreting text files themselves, but Happy launches through spawn.
+ *
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+function isDirectlySpawnableCliPath(filePath) {
+    if (!fs.existsSync(filePath)) return false;
+
+    const normalized = filePath.toLowerCase();
+    if (normalized.endsWith('.js') || normalized.endsWith('.cjs')) {
+        return true;
+    }
+    if (process.platform === 'win32') {
+        return normalized.endsWith('.exe') || normalized.endsWith('.cmd') || normalized.endsWith('.bat');
+    }
+
+    try {
+        const fd = fs.openSync(filePath, 'r');
+        try {
+            const header = Buffer.alloc(4);
+            const bytesRead = fs.readSync(fd, header, 0, header.length, 0);
+            if (bytesRead >= 2 && header[0] === 0x23 && header[1] === 0x21) {
+                return true;
+            }
+            if (bytesRead >= 4) {
+                const magic = header.toString('hex');
+                return magic === '7f454c46' // ELF
+                    || magic === 'feedface' // Mach-O 32-bit
+                    || magic === 'feedfacf' // Mach-O 64-bit
+                    || magic === 'cefaedfe' // Mach-O 32-bit reverse
+                    || magic === 'cffaedfe' // Mach-O 64-bit reverse
+                    || magic === 'cafebabe' // Mach-O universal
+                    || magic === 'bebafeca'; // Mach-O universal reverse
+            }
+        } finally {
+            fs.closeSync(fd);
+        }
+    } catch (e) {
+        return false;
+    }
+
+    return false;
+}
+
+/**
  * Resolve the Claude Code entrypoint inside a package directory.
  *
  * Prior to @anthropic-ai/claude-code@2.1.113 the package shipped a JS
@@ -61,7 +112,7 @@ function resolveClaudeEntrypoint(pkgDir) {
         const binRel = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.claude;
         if (!binRel) return null;
         const binPath = path.join(pkgDir, binRel);
-        if (fs.existsSync(binPath)) {
+        if (isDirectlySpawnableCliPath(binPath)) {
             return binPath;
         }
     } catch (e) {
@@ -113,7 +164,7 @@ function findClaudeInPath() {
             // On Windows, npm creates shell script shims (no extension) for global packages.
             // These cannot be spawned directly by Node.js. When we find such a shim,
             // resolve to the actual cli.js in the adjacent node_modules directory.
-            const isExecutable = resolvedPath.endsWith('.js') || resolvedPath.endsWith('.cjs') || resolvedPath.endsWith('.exe');
+            const isExecutable = isDirectlySpawnableCliPath(resolvedPath);
             if (!isExecutable) {
                 const shimDir = path.dirname(claudePath);
                 const pkgDir = path.join(shimDir, 'node_modules', '@anthropic-ai', 'claude-code');
@@ -619,4 +670,3 @@ module.exports = {
     getClaudeCliPath,
     runClaudeCli
 };
-

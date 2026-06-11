@@ -385,6 +385,14 @@ function buildTmuxTarget(session: string, window?: string, pane?: string): strin
     return target;
 }
 
+function buildTmuxNewWindowTarget(session: string, window?: string, pane?: string): string {
+    if (window || pane || isRawTmuxPaneId(session) || isRawTmuxWindowId(session)) {
+        return buildTmuxTarget(session, window, pane);
+    }
+
+    return `${session}:`;
+}
+
 // Control sequences that must be separate arguments with proper typing
 const CONTROL_SEQUENCES: Set<TmuxControlSequence> = new Set([
     'C-m', 'C-c', 'C-l', 'C-u', 'C-w', 'C-a', 'C-b', 'C-d', 'C-e', 'C-f',
@@ -485,6 +493,15 @@ export class TmuxUtilities {
             // display-message accepts a positional message/format argument;
             // -t must be before it or tmux treats the later -t as an extra arg.
             fullCmd.push('-t', buildTmuxTarget(targetSession, window, pane));
+            fullCmd.push(...cmd.slice(1));
+
+            return this.executeCommand(fullCmd);
+        } else if (cmd.length > 0 && cmd[0] === 'new-window') {
+            const fullCmd = [...baseCmd, cmd[0]];
+
+            // new-window accepts a positional shell-command; -t must be before it
+            // or tmux passes the trailing target tokens to the spawned command.
+            fullCmd.push('-t', buildTmuxNewWindowTarget(targetSession, window, pane));
             fullCmd.push(...cmd.slice(1));
 
             return this.executeCommand(fullCmd);

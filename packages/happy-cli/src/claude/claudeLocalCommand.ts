@@ -35,6 +35,7 @@ function quoteShellArg(value: string): string {
 
 export async function buildClaudeLocalCommand(opts: BuildClaudeLocalCommandOptions): Promise<ClaudeLocalCommand> {
     const args: string[] = [...opts.sessionArgs];
+    const nodeCommand = process.execPath;
 
     args.push('--append-system-prompt', systemPrompt);
 
@@ -68,7 +69,7 @@ export async function buildClaudeLocalCommand(opts: BuildClaudeLocalCommandOptio
     }
 
     const baseCommand: ClaudeLocalCommand = {
-        command: 'node',
+        command: nodeCommand,
         args: [claudeCliPath, ...args],
         cwd: opts.path,
         env,
@@ -93,7 +94,7 @@ export async function buildClaudeLocalCommand(opts: BuildClaudeLocalCommandOptio
             ? baseCommand.args
             : [...baseCommand.args, '--dangerously-skip-permissions'];
         const fullCommand = [
-            'node',
+            quoteShellArg(nodeCommand),
             ...sandboxArgs.map((arg) => quoteShellArg(arg)),
         ].join(' ');
 

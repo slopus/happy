@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   findGlobalClaudeCliPath,
   findClaudeInPath,
@@ -369,5 +371,41 @@ describe('HAPPY_CLAUDE_PATH env var', () => {
     process.env.HAPPY_CLAUDE_PATH = '/nonexistent/path/claude';
     const result = findGlobalClaudeCliPath();
     expect(result?.source).not.toBe('HAPPY_CLAUDE_PATH');
+  });
+});
+
+describe('findClaudeInPath', () => {
+  const originalPath = process.env.PATH;
+  const originalPlatform = process.platform;
+  let tempDir = '';
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'happy-claude-path-'));
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+  });
+
+  afterEach(() => {
+    process.env.PATH = originalPath;
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    if (tempDir) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      tempDir = '';
+    }
+  });
+
+  it('ignores non-Windows npm claude.exe stubs from PATH', () => {
+    const binDir = path.join(tempDir, 'node_modules', '.bin');
+    const packageBinDir = path.join(tempDir, 'node_modules', '@anthropic-ai', 'claude-code', 'bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.mkdirSync(packageBinDir, { recursive: true });
+
+    const stubPath = path.join(packageBinDir, 'claude.exe');
+    fs.writeFileSync(stubPath, 'echo "Error: claude native binary not installed." >&2\nexit 1\n');
+    fs.chmodSync(stubPath, 0o755);
+    fs.symlinkSync('../@anthropic-ai/claude-code/bin/claude.exe', path.join(binDir, 'claude'));
+
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ''}`;
+
+    expect(findClaudeInPath()).toBeNull();
   });
 });

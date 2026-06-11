@@ -43,6 +43,10 @@ vi.mock('node:fs', () => ({
     existsSync: vi.fn(() => true),
 }));
 
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 describe('buildClaudeLocalCommand', () => {
     const sandboxConfig: SandboxConfig = {
         enabled: true,
@@ -95,7 +99,7 @@ describe('buildClaudeLocalCommand', () => {
             hookSettingsPath: '/tmp/settings.json',
         });
 
-        expect(command.command).toBe('node');
+        expect(command.command).toBe(process.execPath);
         expect(command.args).toEqual([
             claudeCliPath,
             '--resume',
@@ -132,7 +136,7 @@ describe('buildClaudeLocalCommand', () => {
         expect(mockInitializeSandbox).toHaveBeenCalledWith(sandboxConfig, '/tmp/workspace');
         expect(mockWrapCommand).toHaveBeenCalledTimes(1);
         const wrappedInput = mockWrapCommand.mock.calls[0][0] as string;
-        expect(wrappedInput.startsWith('node ')).toBe(true);
+        expect(wrappedInput).toMatch(new RegExp(`^'?${escapeRegExp(process.execPath)}'? `));
         expect(wrappedInput).toContain(`'${claudeCliPath}'`);
         expect((wrappedInput.match(/--dangerously-skip-permissions/g) ?? []).length).toBe(1);
         expect(command).toEqual({
@@ -156,7 +160,7 @@ describe('buildClaudeLocalCommand', () => {
         });
 
         expect(mockWrapCommand).not.toHaveBeenCalled();
-        expect(command.command).toBe('node');
+        expect(command.command).toBe(process.execPath);
         expect(command.args).toContain(claudeCliPath);
         expect(command.args).not.toContain('--dangerously-skip-permissions');
         expect(command.shell).toBe(false);
@@ -174,7 +178,7 @@ describe('buildClaudeLocalCommand', () => {
         });
 
         expect(mockSandboxCleanup).toHaveBeenCalledTimes(1);
-        expect(command.command).toBe('node');
+        expect(command.command).toBe(process.execPath);
         expect(command.args).toContain(claudeCliPath);
         expect(command.args).not.toContain('--dangerously-skip-permissions');
         expect(command.shell).toBe(false);

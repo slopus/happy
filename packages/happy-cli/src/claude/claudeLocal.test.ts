@@ -328,7 +328,7 @@ describe('claudeLocal --continue handling', () => {
 
         expect(mockWrapCommand).not.toHaveBeenCalled();
         expect(mockSpawn).toHaveBeenCalledWith(
-            'node',
+            process.execPath,
             expect.any(Array),
             expect.objectContaining({ shell: false }),
         );
