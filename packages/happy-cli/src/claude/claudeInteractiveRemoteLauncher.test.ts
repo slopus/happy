@@ -234,6 +234,57 @@ describe('claudeInteractiveRemoteLauncher', () => {
         await resultPromise;
     });
 
+    it('uses the first queued batch hash as the interactive mode baseline', async () => {
+        const transport = new FakeTerminalTransport('pty');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'hello with launch-time append prompt',
+                mode: {
+                    ...initialMode,
+                    appendSystemPrompt: '# Options',
+                },
+                hash: 'first-web-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('hello with launch-time append prompt\r');
+        });
+        expect(session.client.sendSessionEvent).not.toHaveBeenCalledWith({
+            type: 'message',
+            message: 'Claude interactive remote cannot change model, effort, tools, prompts, or sandbox settings inside a running session.',
+        });
+
+        session.enqueueBatch({
+            message: 'changed settings later',
+            mode: {
+                ...initialMode,
+                appendSystemPrompt: '# Different options',
+            },
+            hash: 'changed-mode-hash',
+            isolate: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(session.client.sendSessionEvent).toHaveBeenCalledWith({
+                type: 'message',
+                message: 'Claude interactive remote cannot change model, effort, tools, prompts, or sandbox settings inside a running session.',
+            });
+        });
+        expect(transport.paste).toHaveBeenCalledTimes(1);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalledTimes(3);
+        });
+        transport.emitExit({ code: 0, signal: null });
+
+        await resultPromise;
+    });
+
     it('reports unsupported identity without creating a terminal transport', async () => {
         mockResolveInteractiveClaudeIdentity.mockReturnValue({
             mode: 'unsupported',

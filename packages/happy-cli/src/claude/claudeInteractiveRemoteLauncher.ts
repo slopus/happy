@@ -248,7 +248,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
 
         session.consumeOneTimeFlags();
 
-        const launchModeHash = session.queue.modeHasher(session.initialMode);
+        let interactiveModeHash: string | null = null;
         while (!exitReason) {
             const batch = await session.queue.waitForMessagesAndGetAsString(waitController.signal);
             if (!batch) {
@@ -259,9 +259,10 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 break;
             }
 
+            interactiveModeHash ??= batch.hash;
             const validation = validateInteractiveBatch({
                 batch,
-                launchModeHash,
+                launchModeHash: interactiveModeHash,
             });
             if (!validation.ok) {
                 cancelPendingCompletion();
