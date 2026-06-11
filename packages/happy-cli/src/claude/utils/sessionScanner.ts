@@ -21,6 +21,7 @@ export async function createSessionScanner(opts: {
     sessionId: string | null,
     workingDirectory: string
     onMessage: (message: RawJSONLines) => void
+    onTranscriptMissing?: (sessionId: string) => void
     /**
      * How long a session transcript may stay absent before its watcher gives
      * up and the session is dropped. Defaults to the startFileWatcher default
@@ -128,6 +129,7 @@ export async function createSessionScanner(opts: {
                             watchers.delete(p);
                             deadSessions.add(p);
                             pendingSessions.delete(p);
+                            opts.onTranscriptMissing?.(p);
                         },
                     },
                 ));

@@ -214,10 +214,12 @@ describe('sessionScanner', () => {
     // (e.g. a remote launch) but its .jsonl is never written. The scanner
     // must give up on it instead of spinning forever, and must still process
     // a real session that arrives afterwards.
+    const missingSessions: string[] = []
     scanner = await createSessionScanner({
       sessionId: null,
       workingDirectory: testDir,
       onMessage: (msg) => collectedMessages.push(msg),
+      onTranscriptMissing: (sessionId) => missingSessions.push(sessionId),
       missingFileTimeoutMs: 100,
     })
 
@@ -229,6 +231,7 @@ describe('sessionScanner', () => {
     await new Promise((r) => setTimeout(r, 2500))
 
     expect(collectedMessages).toHaveLength(0)
+    expect(missingSessions).toEqual([phantomId])
 
     // A real session arriving after the phantom was dropped must still work.
     const fixture = await readFile(join(__dirname, '__fixtures__', '0-say-lol-session.jsonl'), 'utf-8')

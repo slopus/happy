@@ -4,6 +4,7 @@ const {
     mockApiClientCreate,
     mockCreateSessionScanner,
     mockLoop,
+    mockLoggerDebug,
     mockNotifyDaemonSessionStarted,
     mockReadSettings,
     mockStartHappyServer,
@@ -13,6 +14,7 @@ const {
     mockApiClientCreate: vi.fn(),
     mockCreateSessionScanner: vi.fn(),
     mockLoop: vi.fn(),
+    mockLoggerDebug: vi.fn(),
     mockNotifyDaemonSessionStarted: vi.fn(),
     mockReadSettings: vi.fn(),
     mockStartHappyServer: vi.fn(),
@@ -65,7 +67,7 @@ vi.mock('./registerKillSessionHandler', () => ({
 
 vi.mock('@/ui/logger', () => ({
     logger: {
-        debug: vi.fn(),
+        debug: mockLoggerDebug,
         debugLargeJson: vi.fn(),
         infoDeveloper: vi.fn(),
     },
@@ -206,6 +208,104 @@ describe('runClaude remote JSONL scanner', () => {
         });
 
         expect(mockCreateSessionScanner).not.toHaveBeenCalled();
+
+        loopDeferred.resolve(0);
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+            throw new Error('process.exit');
+        }) as never);
+        await expect(runPromise).rejects.toThrow('process.exit');
+        exitSpy.mockRestore();
+    });
+
+    it('does not log raw attachment details while preparing Claude batches', async () => {
+        const sessionClient = {
+            sessionId: 'happy-session-1',
+            suppressNextArchiveSignal: vi.fn(),
+            skipExistingMessages: vi.fn(),
+            updateMetadata: vi.fn(),
+            sendClaudeSessionMessage: vi.fn(),
+            onUserMessage: vi.fn(),
+            onFileEvent: vi.fn(),
+            on: vi.fn(),
+            trackAttachmentDownload: vi.fn(),
+            drainAttachmentsForUserMessage: vi.fn(async () => []),
+            downloadAndDecryptAttachment: vi.fn(async () => {
+                throw new Error('secret /Users/devdvlive/cache/raw-image.png ref-sensitive');
+            }),
+            getMetadata: vi.fn(() => ({})),
+            sendSessionEvent: vi.fn(),
+            updateAgentState: vi.fn(),
+            rpcHandlerManager: {
+                registerHandler: vi.fn(),
+            },
+            sendSessionDeath: vi.fn(),
+            flush: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+        };
+        const api = {
+            getOrCreateMachine: vi.fn(async () => ({})),
+            getOrCreateSession: vi.fn(async () => ({
+                id: 'happy-session-1',
+                seq: 0,
+                metadata: {},
+                metadataVersion: 0,
+                agentState: {},
+                agentStateVersion: 0,
+                encryptionKey: new Uint8Array(32),
+                encryptionVariant: 'legacy' as const,
+            })),
+            sessionSyncClient: vi.fn(() => sessionClient),
+            deactivateSession: vi.fn(async () => {}),
+        };
+        mockApiClientCreate.mockResolvedValue(api);
+
+        const loopDeferred = createDeferred<number>();
+        mockLoop.mockReturnValue(loopDeferred.promise);
+
+        const runPromise = runClaude({
+            token: 'token',
+            encryption: { type: 'legacy', secret: new Uint8Array(32) },
+        } as any, {
+            startingMode: 'remote',
+            shouldStartDaemon: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(sessionClient.onFileEvent).toHaveBeenCalledWith(expect.any(Function));
+        });
+
+        const onFileEvent = sessionClient.onFileEvent.mock.calls[0][0];
+        onFileEvent({
+            role: 'session',
+            content: {
+                type: 'session',
+                data: {
+                    id: 'file-event-1',
+                    time: 1,
+                    role: 'user',
+                    ev: {
+                        t: 'file',
+                        ref: 'ref-sensitive',
+                        name: 'raw-image.png',
+                        size: 987654321,
+                        mimeType: 'image/png',
+                    },
+                },
+            },
+        });
+
+        const trackedPromise = sessionClient.trackAttachmentDownload.mock.calls[0][0];
+        await trackedPromise;
+
+        const debugOutput = mockLoggerDebug.mock.calls
+            .flat()
+            .map((value) => typeof value === 'string' ? value : JSON.stringify(value))
+            .join('\n');
+        expect(debugOutput).toContain('[loop] Failed to download attachment');
+        expect(debugOutput).not.toContain('raw-image.png');
+        expect(debugOutput).not.toContain('ref-sensitive');
+        expect(debugOutput).not.toContain('987654321');
+        expect(debugOutput).not.toContain('/Users/devdvlive/cache');
 
         loopDeferred.resolve(0);
         const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {

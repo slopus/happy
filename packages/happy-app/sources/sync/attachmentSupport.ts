@@ -35,7 +35,14 @@ export function getAttachmentSupportForSession(session: AttachmentSupportSession
     };
 }
 
-export function shouldSendTextAfterDroppingAttachments(text: string): boolean {
+export function shouldSendTextAfterDroppingAttachments(
+    session: AttachmentSupportSession,
+    text: string,
+): boolean {
+    const support = getAttachmentSupportForSession(session);
+    if (support.unsupportedTextKey === 'imageUpload.interactiveClaudeNotSupportedMessage') {
+        return false;
+    }
     return text.trim().length > 0;
 }
 
@@ -44,7 +51,7 @@ export function getUnsupportedAttachmentTextKey(
     text: string,
 ): AttachmentUnsupportedTextKey {
     const support = getAttachmentSupportForSession(session);
-    if (shouldSendTextAfterDroppingAttachments(text)) {
+    if (shouldSendTextAfterDroppingAttachments(session, text)) {
         return support.unsupportedTextKey;
     }
     if (support.unsupportedTextKey === 'imageUpload.interactiveClaudeNotSupportedMessage') {

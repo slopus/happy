@@ -163,11 +163,12 @@ describe('claudeInteractiveRemoteLauncher', () => {
             expect(mockCreateSessionScanner).toHaveBeenCalled();
         });
 
-        expect(mockCreateSessionScanner).toHaveBeenCalledWith({
+        expect(mockCreateSessionScanner).toHaveBeenCalledWith(expect.objectContaining({
             sessionId: 'claude-known-session',
             workingDirectory: '/tmp/project',
             onMessage: expect.any(Function),
-        });
+            onTranscriptMissing: expect.any(Function),
+        }));
         expect(session.addSessionFoundCallback).toHaveBeenCalledWith(expect.any(Function));
         expect(scanner.onNewSession).toHaveBeenCalledWith('claude-known-session');
 
@@ -296,6 +297,94 @@ describe('claudeInteractiveRemoteLauncher', () => {
 
         expect(mockLoggerDebug).not.toHaveBeenCalledWith('[interactive-remote]: launch error', rawError);
         expect(mockLoggerDebug).toHaveBeenCalledWith('[interactive-remote]: launch error');
+    });
+
+    it('fails the runtime and exits on usage or auth terminal output', async () => {
+        const transport = new FakeTerminalTransport('pty');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+        transport.emitData('Claude AI usage limit reached|1799999999');
+
+        await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 1 });
+        expect(session.client.sendSessionEvent).toHaveBeenCalledWith({
+            type: 'message',
+            message: 'Claude reported a usage or authentication problem.',
+        });
+        expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('failed');
+        expect(session.metadataSnapshots()).toContainEqual(expect.objectContaining({
+            claudeRuntime: expect.objectContaining({
+                state: 'failed',
+                message: 'Claude reported a usage or authentication problem.',
+            }),
+        }));
+        expect(transport.dispose).toHaveBeenCalledOnce();
+    });
+
+    it('fails the runtime with sanitized diagnostics on terminal process errors', async () => {
+        const transport = new FakeTerminalTransport('pty');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+        transport.emitData('failed /Users/me/Library/Application Support/Claude/log.txt sk-ant-api03-secret https://example.com/x');
+
+        await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 1 });
+        expect(session.client.sendSessionEvent).toHaveBeenCalledWith({
+            type: 'message',
+            message: 'Terminal reported an error. failed [path] [secret] [url]',
+        });
+        const messages = session.client.sendSessionEvent.mock.calls.map((call) => {
+            const event = call[0] as { message?: string };
+            return event.message ?? '';
+        });
+        expect(messages.join('\n')).not.toContain('/Users/me');
+        expect(messages.join('\n')).not.toContain('sk-ant-api03-secret');
+        expect(messages.join('\n')).not.toContain('https://example.com/x');
+        expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('failed');
+        expect(session.metadataSnapshots()).toContainEqual(expect.objectContaining({
+            claudeRuntime: expect.objectContaining({
+                state: 'failed',
+                message: 'Terminal reported an error. failed [path] [secret] [url]',
+            }),
+        }));
+    });
+
+    it('fails the runtime when the known transcript never appears', async () => {
+        const transport = new FakeTerminalTransport('pty');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(mockCreateSessionScanner).toHaveBeenCalled();
+        });
+        const scannerOptions = mockCreateSessionScanner.mock.calls[0][0];
+        scannerOptions.onTranscriptMissing('claude-known-session');
+
+        await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 1 });
+        expect(session.client.sendSessionEvent).toHaveBeenCalledWith({
+            type: 'message',
+            message: 'Claude transcript did not appear for the interactive session.',
+        });
+        expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('failed');
+        expect(session.metadataSnapshots()).toContainEqual(expect.objectContaining({
+            claudeRuntime: expect.objectContaining({
+                state: 'failed',
+                message: 'Claude transcript did not appear for the interactive session.',
+            }),
+        }));
+        expect(transport.dispose).toHaveBeenCalledOnce();
     });
 
     it('wakes an idle queue wait on abort and accepts future batches', async () => {

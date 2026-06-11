@@ -33,9 +33,18 @@ describe('getAttachmentSupportForSession', () => {
     });
 
     it('does not send an empty text message after unsupported attachment-only sends', () => {
-        expect(shouldSendTextAfterDroppingAttachments('')).toBe(false);
-        expect(shouldSendTextAfterDroppingAttachments('   \n')).toBe(false);
-        expect(shouldSendTextAfterDroppingAttachments('describe this')).toBe(true);
+        expect(shouldSendTextAfterDroppingAttachments({ metadata: { flavor: 'codex' } }, '')).toBe(false);
+        expect(shouldSendTextAfterDroppingAttachments({ metadata: { flavor: 'codex' } }, '   \n')).toBe(false);
+        expect(shouldSendTextAfterDroppingAttachments({ metadata: { flavor: 'codex' } }, 'describe this')).toBe(true);
+    });
+
+    it('blocks text too when interactive Claude remote receives unsupported attachments', () => {
+        expect(shouldSendTextAfterDroppingAttachments({
+            metadata: {
+                flavor: 'claude',
+                claudeRuntime: { kind: 'interactive', state: 'interactive', updatedAt: 1 },
+            },
+        }, 'describe this')).toBe(false);
     });
 
     it('uses attachment-only copy when no text will be sent', () => {
@@ -57,5 +66,14 @@ describe('getAttachmentSupportForSession', () => {
                 claudeRuntime: { kind: 'interactive', state: 'interactive', updatedAt: 1 },
             },
         }, '')).toBe('imageUpload.interactiveClaudeNotSupportedMessage');
+    });
+
+    it('uses interactive Claude copy when text is blocked with unsupported attachments', () => {
+        expect(getUnsupportedAttachmentTextKey({
+            metadata: {
+                flavor: 'claude',
+                claudeRuntime: { kind: 'interactive', state: 'interactive', updatedAt: 1 },
+            },
+        }, 'describe this')).toBe('imageUpload.interactiveClaudeNotSupportedMessage');
     });
 });

@@ -2049,10 +2049,14 @@ Use `unsupportedMessage` in the existing `Modal.alert(...)`.
 Immediately after the unsupported-attachment alert block, add:
 
 ```ts
-if (attachments && attachments.length > 0 && !supportsAttachments && !shouldSendTextAfterDroppingAttachments(text)) {
+if (attachments && attachments.length > 0 && !supportsAttachments && !shouldSendTextAfterDroppingAttachments(session, text)) {
     return;
 }
 ```
+
+For interactive Claude remote this returns before sending text too, so the app
+cannot bypass CLI-side attachment validation by stripping files first. Other
+unsupported agents retain the existing text-only fallback when text is present.
 
 - [ ] **Step 7: Run app checks**
 
@@ -2167,7 +2171,7 @@ Expected:
 
 - app shows the interactive-remote unsupported attachment message
 - no file event is queued for that session
-- the text can still be sent if present
+- the text is not sent for interactive Claude remote when an unsupported attachment is present
 - image-only sends do not create an empty text prompt
 
 - [ ] **Step 7: Manual direct PTY smoke**

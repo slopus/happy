@@ -578,10 +578,10 @@ class Sync {
         const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
         const { displayText, source = 'chat', attachments } = options ?? {};
 
-        // Image attachments are wired into the Claude pipeline only; Codex /
-        // Gemini / OpenClaw runners read message.content.text and ignore
-        // file events, so dropping attachments silently would leave the user
-        // wondering why the image was skipped. Warn and send text only.
+        // Image attachments are wired into the Claude SDK pipeline only. For
+        // interactive Claude remote, block the whole input so the app cannot
+        // bypass CLI-side attachment validation by stripping files first.
+        // Other unsupported agents keep the previous "send text only" path.
         const { supportsAttachments } = getAttachmentSupportForSession(session);
         const effectiveAttachments = supportsAttachments ? attachments : undefined;
 
@@ -593,7 +593,7 @@ class Sync {
             );
         }
 
-        if (attachments && attachments.length > 0 && !supportsAttachments && !shouldSendTextAfterDroppingAttachments(text)) {
+        if (attachments && attachments.length > 0 && !supportsAttachments && !shouldSendTextAfterDroppingAttachments(session, text)) {
             return;
         }
 

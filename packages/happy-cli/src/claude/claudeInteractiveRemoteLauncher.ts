@@ -106,6 +106,22 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         }, TURN_COMPLETION_DEBOUNCE_MS);
     };
 
+    const failRuntime = (message: string) => {
+        cancelPendingCompletion();
+        localAttachMode = false;
+        detachTerminalOnCleanup = false;
+        updateRuntimeMetadata(session, terminalMetadata('failed', message));
+        if (lastSafeTerminalMessage !== message) {
+            lastSafeTerminalMessage = message;
+            sendSafeMessage(session, message);
+        }
+        session.client.closeClaudeSessionTurn('failed');
+        if (!exitReason) {
+            exitReason = { type: 'exit', code: 1 };
+        }
+        abortQueueWait();
+    };
+
     try {
         command = await buildClaudeLocalCommand({
             path: session.path,
@@ -122,6 +138,11 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             workingDirectory: session.path,
             onMessage: (message) => {
                 session.client.sendClaudeSessionMessage(message);
+            },
+            onTranscriptMissing: (sessionId) => {
+                if (sessionId === identity.claudeSessionId) {
+                    failRuntime('Claude transcript did not appear for the interactive session.');
+                }
             },
         });
 
@@ -146,10 +167,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                     return;
                 case 'usage_or_auth_error':
                 case 'terminal_process_error':
-                    if (lastSafeTerminalMessage !== observation.message) {
-                        lastSafeTerminalMessage = observation.message;
-                        sendSafeMessage(session, observation.message);
-                    }
+                    failRuntime(observation.message);
                     return;
                 case 'permission_prompt_visible':
                     return;
@@ -161,6 +179,9 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         });
 
         unsubscribeExit = transport.onExit((exit) => {
+            if (exitReason) {
+                return;
+            }
             cancelPendingCompletion();
             terminalExit = exit;
             const code = exitCodeFromTerminalExit(exit);

@@ -375,18 +375,18 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // bucket bound to the next message — no shared push-array between batches.
     session.onFileEvent((fileEvent) => {
         const ev = fileEvent.content.data.ev;
-        logger.debug(`[loop] File event received: ${ev.name} (${ev.size} bytes, ref: ${ev.ref})`);
+        logger.debug('[loop] File attachment event received');
         const downloadPromise = (async (): Promise<{ data: Uint8Array; mimeType: string; name: string } | null> => {
             try {
                 const decrypted = await session.downloadAndDecryptAttachment(ev.ref);
                 if (!decrypted) {
-                    logger.debug(`[loop] Failed to decrypt attachment: ${ev.name}`);
+                    logger.debug('[loop] Failed to decrypt attachment');
                     return null;
                 }
-                logger.debug(`[loop] Attachment decrypted: ${ev.name} (${decrypted.length} bytes)`);
+                logger.debug('[loop] Attachment decrypted');
                 return { data: decrypted, mimeType: ev.mimeType ?? 'image/jpeg', name: ev.name };
-            } catch (error) {
-                logger.debug(`[loop] Failed to download attachment: ${ev.name}`, { error });
+            } catch {
+                logger.debug('[loop] Failed to download attachment');
                 return null;
             }
         })();
