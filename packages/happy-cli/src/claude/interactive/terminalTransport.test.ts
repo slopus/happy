@@ -74,12 +74,12 @@ describe('chooseTerminalBackend', () => {
         })).toBe('pty');
     });
 
-    it('falls back to pty when tmux is not configured', () => {
+    it('uses tmux when it is available even without an explicit session name', () => {
         expect(chooseTerminalBackend({
             tmuxConfigured: false,
             tmuxAvailable: true,
             ptyAvailable: true,
-        })).toBe('pty');
+        })).toBe('tmux');
     });
 
     it('reports unsupported when neither backend can run', () => {

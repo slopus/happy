@@ -44,7 +44,7 @@ export interface TerminalBackendAvailability {
 export type TerminalBackendSelection = InteractiveClaudeTerminalBackend | 'unsupported';
 
 export function chooseTerminalBackend(availability: TerminalBackendAvailability): TerminalBackendSelection {
-    if (availability.tmuxConfigured && availability.tmuxAvailable) {
+    if (availability.tmuxAvailable) {
         return 'tmux';
     }
 
