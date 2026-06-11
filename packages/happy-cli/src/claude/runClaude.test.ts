@@ -314,4 +314,89 @@ describe('runClaude remote JSONL scanner', () => {
         await expect(runPromise).rejects.toThrow('process.exit');
         exitSpy.mockRestore();
     });
+
+    it('waits for the active session cleanup before exiting from kill-session cleanup', async () => {
+        const sessionClient = {
+            sessionId: 'happy-session-1',
+            suppressNextArchiveSignal: vi.fn(),
+            skipExistingMessages: vi.fn(),
+            updateMetadata: vi.fn(),
+            sendClaudeSessionMessage: vi.fn(),
+            onUserMessage: vi.fn(),
+            onFileEvent: vi.fn(),
+            on: vi.fn(),
+            trackAttachmentDownload: vi.fn(),
+            drainAttachmentsForUserMessage: vi.fn(async () => []),
+            downloadAndDecryptAttachment: vi.fn(),
+            getMetadata: vi.fn(() => ({})),
+            sendSessionEvent: vi.fn(),
+            updateAgentState: vi.fn(),
+            rpcHandlerManager: {
+                registerHandler: vi.fn(),
+            },
+            sendSessionDeath: vi.fn(),
+            flush: vi.fn(async () => { }),
+            close: vi.fn(async () => { }),
+        };
+        const api = {
+            getOrCreateMachine: vi.fn(async () => ({})),
+            getOrCreateSession: vi.fn(async () => ({
+                id: 'happy-session-1',
+                seq: 0,
+                metadata: {},
+                metadataVersion: 0,
+                agentState: {},
+                agentStateVersion: 0,
+                encryptionKey: new Uint8Array(32),
+                encryptionVariant: 'legacy' as const,
+            })),
+            sessionSyncClient: vi.fn(() => sessionClient),
+            deactivateSession: vi.fn(async () => { }),
+        };
+        mockApiClientCreate.mockResolvedValue(api);
+
+        const loopDeferred = createDeferred<number>();
+        const cleanupDeferred = createDeferred<void>();
+        const activeSession = {
+            cleanup: vi.fn(() => cleanupDeferred.promise),
+        };
+        mockLoop.mockImplementation(async (opts: any) => {
+            opts.onSessionReady(activeSession);
+            return loopDeferred.promise;
+        });
+
+        const runPromise = runClaude({
+            token: 'token',
+            encryption: { type: 'legacy', secret: new Uint8Array(32) },
+        } as any, {
+            startingMode: 'remote',
+            shouldStartDaemon: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(mockRegisterKillSessionHandler).toHaveBeenCalled();
+        });
+
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+            throw new Error('process.exit');
+        }) as never);
+        const cleanupPromise = mockRegisterKillSessionHandler.mock.calls[0][1]();
+
+        await vi.waitFor(() => {
+            expect(activeSession.cleanup).toHaveBeenCalledOnce();
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(exitSpy).not.toHaveBeenCalled();
+        expect(api.deactivateSession).not.toHaveBeenCalled();
+        expect(sessionClient.sendSessionDeath).not.toHaveBeenCalled();
+
+        cleanupDeferred.resolve();
+        await expect(cleanupPromise).rejects.toThrow('process.exit');
+        expect(exitSpy).toHaveBeenCalledWith(0);
+
+        loopDeferred.resolve(0);
+        await expect(runPromise).rejects.toThrow('process.exit');
+        exitSpy.mockRestore();
+    });
 });

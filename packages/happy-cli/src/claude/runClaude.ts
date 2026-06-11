@@ -635,7 +635,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 }
 
                 // Cleanup session resources (intervals, callbacks)
-                currentSession?.cleanup();
+                await currentSession?.cleanup();
 
                 // Send session death message
                 session.sendSessionDeath();
@@ -734,7 +734,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Cleanup session resources (intervals, callbacks) - prevents memory leak
     // Note: currentSession is set by onSessionReady callback during loop()
-    (currentSession as Session | null)?.cleanup();
+    await (currentSession as Session | null)?.cleanup();
 
     // Send session death message
     session.sendSessionDeath();

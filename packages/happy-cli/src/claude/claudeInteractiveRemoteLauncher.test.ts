@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EnhancedMode } from './loop';
 import type { TerminalDataHandler, TerminalExit, TerminalExitHandler, TerminalSpawnOptions, TerminalTransport } from './interactive/terminalTransport';
 import type { InteractiveClaudeBatch } from './interactive/types';
@@ -10,6 +10,7 @@ const {
     mockClaudeRemote,
     mockCreateSessionScanner,
     mockCreateTerminalTransport,
+    mockInkRender,
     mockLoggerDebug,
     mockResolveInteractiveClaudeIdentity,
 } = vi.hoisted(() => ({
@@ -18,6 +19,7 @@ const {
     mockClaudeRemote: vi.fn(),
     mockCreateSessionScanner: vi.fn(),
     mockCreateTerminalTransport: vi.fn(),
+    mockInkRender: vi.fn(),
     mockLoggerDebug: vi.fn(),
     mockResolveInteractiveClaudeIdentity: vi.fn(),
 }));
@@ -42,6 +44,10 @@ vi.mock('./interactive/terminalTransportFactory', () => ({
     createTerminalTransport: mockCreateTerminalTransport,
 }));
 
+vi.mock('ink', () => ({
+    render: mockInkRender,
+}));
+
 vi.mock('./utils/sessionScanner', () => ({
     createSessionScanner: mockCreateSessionScanner,
 }));
@@ -61,9 +67,20 @@ const initialMode: EnhancedMode = {
     effort: 'medium',
 };
 
+const stdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+const stdinIsTTY = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+const stdinSetRawMode = (process.stdin as any).setRawMode;
+const stdinResume = process.stdin.resume;
+const stdinPause = process.stdin.pause;
+const stdinSetEncoding = process.stdin.setEncoding;
+
 describe('claudeInteractiveRemoteLauncher', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        restoreTTY();
+        mockInkRender.mockReturnValue({
+            unmount: vi.fn(),
+        });
         mockResolveInteractiveClaudeIdentity.mockReturnValue({
             claudeSessionId: 'claude-known-session',
             launchArgs: ['--session-id', 'claude-known-session'],
@@ -83,6 +100,10 @@ describe('claudeInteractiveRemoteLauncher', () => {
             flush: vi.fn(async () => { }),
             cleanup: vi.fn(async () => { }),
         });
+    });
+
+    afterEach(() => {
+        restoreTTY();
     });
 
     it('starts Claude in a terminal with a known Claude session id and does not invoke SDK launchers', async () => {
@@ -689,6 +710,67 @@ describe('claudeInteractiveRemoteLauncher', () => {
         expect(transport.dispose).not.toHaveBeenCalled();
     });
 
+    it('disposes the tmux terminal when session cleanup runs before launcher exit', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(transport.spawn).toHaveBeenCalledOnce();
+        });
+
+        await session.runCleanupHooks();
+
+        expect(transport.dispose).toHaveBeenCalledOnce();
+
+        transport.emitExit({ code: 0, signal: null });
+        await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 0 });
+        expect(transport.dispose).toHaveBeenCalledOnce();
+    });
+
+    it('renders the remote-mode terminal display and attaches tmux from its switch action', async () => {
+        forceTTY();
+        const unmount = vi.fn();
+        mockInkRender.mockReturnValue({ unmount });
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(transport.spawn).toHaveBeenCalledOnce();
+            expect(mockInkRender).toHaveBeenCalledOnce();
+        });
+
+        const element = mockInkRender.mock.calls[0][0] as any;
+        const scannerOptions = mockCreateSessionScanner.mock.calls[0][0];
+        scannerOptions.onMessage({
+            type: 'assistant',
+            uuid: 'assistant-for-terminal-display',
+            message: {
+                content: [{ type: 'text', text: 'hello from tmux transcript' }],
+            },
+        } satisfies RawJSONLines);
+        expect(element.props.messageBuffer.getMessages()).toContainEqual(expect.objectContaining({
+            type: 'assistant',
+            content: 'hello from tmux transcript',
+        }));
+
+        await element.props.onSwitchToLocal();
+
+        expect(unmount).toHaveBeenCalledOnce();
+        await vi.waitFor(() => {
+            expect(transport.attachLocal).toHaveBeenCalledOnce();
+            expect(session.onModeChange).toHaveBeenCalledWith('local');
+        });
+
+        transport.emitExit({ code: 0, signal: null });
+        await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 0 });
+    });
+
     it('returns from local attach to remote control on the same tmux terminal when app sends a prompt', async () => {
         const transport = new FakeTerminalTransport('tmux');
         mockCreateTerminalTransport.mockResolvedValue(transport);
@@ -799,6 +881,32 @@ describe('claudeInteractiveRemoteLauncher', () => {
     });
 });
 
+function forceTTY(): void {
+    Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: true });
+    Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value: true });
+    (process.stdin as any).setRawMode = vi.fn();
+    process.stdin.resume = vi.fn(() => process.stdin);
+    process.stdin.pause = vi.fn(() => process.stdin);
+    process.stdin.setEncoding = vi.fn(() => process.stdin) as any;
+}
+
+function restoreTTY(): void {
+    if (stdoutIsTTY) {
+        Object.defineProperty(process.stdout, 'isTTY', stdoutIsTTY);
+    } else {
+        delete (process.stdout as any).isTTY;
+    }
+    if (stdinIsTTY) {
+        Object.defineProperty(process.stdin, 'isTTY', stdinIsTTY);
+    } else {
+        delete (process.stdin as any).isTTY;
+    }
+    (process.stdin as any).setRawMode = stdinSetRawMode;
+    process.stdin.resume = stdinResume;
+    process.stdin.pause = stdinPause;
+    process.stdin.setEncoding = stdinSetEncoding;
+}
+
 class FakeTerminalTransport implements TerminalTransport {
     readonly capabilities: readonly ('remote-control' | 'local-attach')[];
     terminalId: string | null = null;
@@ -854,6 +962,7 @@ function createSession(opts: { batches?: InteractiveClaudeBatch[] } = {}) {
     const snapshots: Record<string, unknown>[] = [];
     const batches = [...(opts.batches ?? [])];
     const sessionFoundCallbacks: Array<(sessionId: string) => void> = [];
+    const cleanupHooks = new Set<() => Promise<void> | void>();
     const rpcHandlers = new Map<string, () => Promise<void> | void>();
     let waiter: ((batch: InteractiveClaudeBatch | null) => void) | null = null;
 
@@ -923,6 +1032,17 @@ function createSession(opts: { batches?: InteractiveClaudeBatch[] } = {}) {
                 sessionFoundCallbacks.splice(index, 1);
             }
         }),
+        addCleanupHook: vi.fn((hook: () => Promise<void> | void) => {
+            cleanupHooks.add(hook);
+            return () => {
+                cleanupHooks.delete(hook);
+            };
+        }),
+        runCleanupHooks: async () => {
+            for (const hook of [...cleanupHooks]) {
+                await hook();
+            }
+        },
         onSessionFound: vi.fn((sessionId: string) => {
             session.sessionId = sessionId;
             for (const callback of sessionFoundCallbacks) {

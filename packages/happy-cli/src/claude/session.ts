@@ -33,6 +33,8 @@ export class Session {
     
     /** Keep alive interval reference for cleanup */
     private keepAliveInterval: NodeJS.Timeout;
+    private cleanupHooks = new Set<() => Promise<void> | void>();
+    private cleanupPromise: Promise<void> | null = null;
 
     constructor(opts: {
         api: ApiClient,
@@ -81,10 +83,44 @@ export class Session {
     /**
      * Cleanup resources (call when session is no longer needed)
      */
-    cleanup = (): void => {
+    addCleanupHook = (hook: () => Promise<void> | void): (() => void) => {
+        if (this.cleanupPromise) {
+            void this.runCleanupHook(hook);
+            return () => { };
+        }
+
+        this.cleanupHooks.add(hook);
+        return () => {
+            this.cleanupHooks.delete(hook);
+        };
+    }
+
+    cleanup = async (): Promise<void> => {
+        if (this.cleanupPromise) {
+            return this.cleanupPromise;
+        }
+
+        this.cleanupPromise = this.runCleanup();
+        return this.cleanupPromise;
+    }
+
+    private runCleanup = async (): Promise<void> => {
         clearInterval(this.keepAliveInterval);
         this.sessionFoundCallbacks = [];
+        const hooks = [...this.cleanupHooks];
+        this.cleanupHooks.clear();
+        for (const hook of hooks) {
+            await this.runCleanupHook(hook);
+        }
         logger.debug('[Session] Cleaned up resources');
+    }
+
+    private runCleanupHook = async (hook: () => Promise<void> | void): Promise<void> => {
+        try {
+            await hook();
+        } catch (error) {
+            logger.debug('[Session] Cleanup hook failed:', error);
+        }
     }
 
     onThinkingChange = (thinking: boolean) => {

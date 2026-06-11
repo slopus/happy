@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import React from 'react';
+import { render } from 'ink';
 import { logger } from '@/ui/logger';
+import { MessageBuffer, type BufferedMessage } from '@/ui/ink/messageBuffer';
+import { RemoteModeDisplay } from '@/ui/ink/RemoteModeDisplay';
+import { cleanupStdinAfterInk } from '@/utils/terminalStdinCleanup';
 import { buildClaudeLocalCommand, type ClaudeLocalCommand } from './claudeLocalCommand';
 import type { Session } from './session';
 import { buildInteractivePaste, normalizePromptText, validateInteractiveBatch } from './interactive/inputInjection';
@@ -49,6 +54,16 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         return { type: 'exit', code: 1 };
     }
 
+    let transportDisposed = false;
+    const disposeTransport = async () => {
+        if (transportDisposed) {
+            return;
+        }
+        transportDisposed = true;
+        await transport.dispose();
+    };
+    const removeTransportCleanupHook = session.addCleanupHook(disposeTransport);
+
     let command: ClaudeLocalCommand | null = null;
     let scanner: Awaited<ReturnType<typeof createSessionScanner>> | null = null;
     let unsubscribeData: (() => void) | null = null;
@@ -65,6 +80,9 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     let completionGeneration = 0;
     let terminalInputReady = false;
     let inputCancellationGeneration = 0;
+    const hasTTY = Boolean(process.stdout.isTTY && process.stdin.isTTY);
+    const messageBuffer = new MessageBuffer();
+    let inkInstance: ReturnType<typeof render> | null = null;
     const inputReadyWaiters = new Set<() => void>();
     const pendingAppPromptEchoes: string[] = [];
 
@@ -119,6 +137,54 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     const cancelPendingInputWaits = () => {
         inputCancellationGeneration++;
         wakeInputReadyWaiters();
+    };
+
+    const mountRemoteDisplay = (opts: {
+        onExit: () => Promise<void> | void;
+        onSwitchToLocal: () => Promise<void> | void;
+    }) => {
+        if (!hasTTY || inkInstance || exitReason || localAttachMode) {
+            return;
+        }
+
+        console.clear();
+        inkInstance = render(React.createElement(RemoteModeDisplay, {
+            messageBuffer,
+            logPath: process.env.DEBUG ? session.logPath : undefined,
+            onExit: () => {
+                void opts.onExit();
+            },
+            onSwitchToLocal: () => {
+                void opts.onSwitchToLocal();
+            },
+        }), {
+            exitOnCtrlC: false,
+            patchConsole: false,
+        });
+
+        process.stdin.resume();
+        if (process.stdin.isTTY) {
+            process.stdin.setRawMode?.(true);
+        }
+        process.stdin.setEncoding('utf8');
+    };
+
+    const unmountRemoteDisplay = async (leaveRawMode = true) => {
+        if (!inkInstance) {
+            return;
+        }
+
+        const t0 = Date.now();
+        inkInstance.unmount();
+        inkInstance = null;
+        await cleanupStdinAfterInk({
+            stdin: process.stdin,
+            drainMs: 150,
+            leaveRawMode,
+            onDebug: (event) => {
+                logger.debug(`[interactive-remote]: stdin drain ${event.bytes}B / ${event.chunks} chunk(s) +${Date.now() - t0}ms`);
+            },
+        });
     };
 
     const waitForTerminalInputReady = async () => {
@@ -197,6 +263,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 if (consumeAppPromptEcho(message, pendingAppPromptEchoes)) {
                     return;
                 }
+                appendRemoteDisplayMessage(messageBuffer, message);
                 session.client.sendClaudeSessionMessage(message);
             },
             onTranscriptMissing: (sessionId) => {
@@ -279,6 +346,16 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             await transport.interrupt();
         };
 
+        const doExit = async () => {
+            logger.debug('[interactive-remote]: exit');
+            cancelPendingCompletion();
+            cancelPendingInputWaits();
+            if (!exitReason) {
+                exitReason = { type: 'exit', code: 0 };
+            }
+            abortQueueWait();
+        };
+
         const doSwitch = async () => {
             logger.debug('[interactive-remote]: switch');
             if (transport.backend === 'pty') {
@@ -286,6 +363,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 return;
             }
             cancelPendingCompletion();
+            await unmountRemoteDisplay(true);
             const attachMessage = buildTmuxAttachMessage(transport.terminalId);
             const attachedLocally = await attachLocalTerminal(transport);
             if (!attachedLocally) {
@@ -314,6 +392,10 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         updateRuntimeMetadata(session, {
             ...terminalMetadata('interactive'),
             terminalId: spawnResult.terminalId,
+        });
+        mountRemoteDisplay({
+            onExit: doExit,
+            onSwitchToLocal: doSwitch,
         });
 
         session.consumeOneTimeFlags();
@@ -347,6 +429,10 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 detachTerminalOnCleanup = false;
                 session.onModeChange('remote');
                 updateRuntimeMetadata(session, terminalMetadata('interactive'));
+                mountRemoteDisplay({
+                    onExit: doExit,
+                    onSwitchToLocal: doSwitch,
+                });
             }
 
             cancelPendingCompletion();
@@ -377,10 +463,13 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         }
     } finally {
         cancelPendingCompletion();
+        await unmountRemoteDisplay(false);
+        messageBuffer.clear();
         unsubscribeData?.();
         unsubscribeExit?.();
         session.client.rpcHandlerManager.registerHandler('abort', async () => { });
         session.client.rpcHandlerManager.registerHandler('switch', async () => { });
+        removeTransportCleanupHook();
 
         if (scannerSessionCallback) {
             session.removeSessionFoundCallback(scannerSessionCallback);
@@ -389,7 +478,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         session.onThinkingChange(false);
         await scanner?.cleanup();
         if (!detachTerminalOnCleanup) {
-            await transport.dispose();
+            await disposeTransport();
         }
         await command?.cleanupSandbox?.();
     }
@@ -505,4 +594,83 @@ function consumeAppPromptEcho(message: RawJSONLines, pendingAppPromptEchoes: str
 
     pendingAppPromptEchoes.splice(matchIndex, 1);
     return true;
+}
+
+function appendRemoteDisplayMessage(messageBuffer: MessageBuffer, message: RawJSONLines): void {
+    const displayMessage = formatRemoteDisplayMessage(message);
+    if (!displayMessage) {
+        return;
+    }
+
+    messageBuffer.addMessage(displayMessage.content, displayMessage.type);
+}
+
+function formatRemoteDisplayMessage(message: RawJSONLines): { content: string; type: BufferedMessage['type'] } | null {
+    if (message.type === 'summary') {
+        return {
+            type: 'result',
+            content: truncateRemoteDisplayText(message.summary),
+        };
+    }
+
+    if (message.type === 'system') {
+        return {
+            type: 'system',
+            content: 'System event',
+        };
+    }
+
+    if (message.type === 'user') {
+        const content = extractRemoteDisplayText(message.message?.content);
+        return content ? { type: 'user', content } : null;
+    }
+
+    if (message.type === 'assistant') {
+        const content = extractRemoteDisplayText(message.message?.content);
+        return content ? { type: 'assistant', content } : null;
+    }
+
+    const _: never = message satisfies never;
+    return _;
+}
+
+function extractRemoteDisplayText(content: unknown): string | null {
+    if (typeof content === 'string') {
+        return truncateRemoteDisplayText(content);
+    }
+
+    if (!Array.isArray(content)) {
+        return null;
+    }
+
+    const parts: string[] = [];
+    for (const block of content) {
+        if (!block || typeof block !== 'object') {
+            continue;
+        }
+
+        const record = block as Record<string, unknown>;
+        if (typeof record.text === 'string') {
+            parts.push(record.text);
+            continue;
+        }
+
+        if (record.type === 'tool_use' && typeof record.name === 'string') {
+            parts.push(`Tool: ${record.name}`);
+            continue;
+        }
+
+        if (record.type === 'tool_result') {
+            parts.push('Tool result');
+        }
+    }
+
+    const text = parts.join('\n').trim();
+    return text ? truncateRemoteDisplayText(text) : null;
+}
+
+function truncateRemoteDisplayText(text: string): string {
+    const trimmed = text.trim();
+    const maxLength = 2000;
+    return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength)}...` : trimmed;
 }
