@@ -2,13 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
 import { buildClaudeLocalCommand, type ClaudeLocalCommand } from './claudeLocalCommand';
 import type { Session } from './session';
-import { buildInteractivePaste, validateInteractiveBatch } from './interactive/inputInjection';
+import { buildInteractivePaste, normalizePromptText, validateInteractiveBatch } from './interactive/inputInjection';
 import { resolveInteractiveClaudeIdentity } from './interactive/sessionIdentity';
 import { classifyTerminalOutput } from './interactive/terminalObserver';
 import { createTerminalTransport } from './interactive/terminalTransportFactory';
 import type { InteractiveClaudeRuntimeMetadata } from './interactive/types';
 import type { TerminalExit, TerminalTransport } from './interactive/terminalTransport';
 import { createSessionScanner } from './utils/sessionScanner';
+import type { RawJSONLines } from './types';
 
 const UNSUPPORTED_TERMINAL_MESSAGE = 'Claude interactive remote is not supported in this terminal environment.';
 const WINDOW_NAME_PREFIX = 'happy-claude-';
@@ -61,6 +62,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     let terminalInputReady = false;
     let inputCancellationGeneration = 0;
     const inputReadyWaiters = new Set<() => void>();
+    const pendingAppPromptEchoes: string[] = [];
 
     const terminalMetadata = (state: InteractiveClaudeRuntimeMetadata['state'], message?: string): Partial<InteractiveClaudeRuntimeMetadata> => ({
         state,
@@ -188,6 +190,9 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             sessionId: identity.claudeSessionId,
             workingDirectory: session.path,
             onMessage: (message) => {
+                if (consumeAppPromptEcho(message, pendingAppPromptEchoes)) {
+                    return;
+                }
                 session.client.sendClaudeSessionMessage(message);
             },
             onTranscriptMissing: (sessionId) => {
@@ -347,6 +352,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 if (transport.backend === 'tmux') {
                     await transport.enter();
                 }
+                pendingAppPromptEchoes.push(normalizePromptText(batch.message));
             } catch {
                 failRuntime('Claude interactive terminal failed to receive input.');
             }
@@ -446,4 +452,19 @@ function toStringEnv(env: NodeJS.ProcessEnv): Record<string, string> {
     }
 
     return result;
+}
+
+function consumeAppPromptEcho(message: RawJSONLines, pendingAppPromptEchoes: string[]): boolean {
+    if (message.type !== 'user' || typeof message.message?.content !== 'string') {
+        return false;
+    }
+
+    const normalizedContent = normalizePromptText(message.message.content);
+    const matchIndex = pendingAppPromptEchoes.findIndex((pending) => pending === normalizedContent);
+    if (matchIndex === -1) {
+        return false;
+    }
+
+    pendingAppPromptEchoes.splice(matchIndex, 1);
+    return true;
 }
