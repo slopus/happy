@@ -19,10 +19,14 @@
 - Create `packages/happy-cli/src/claude/interactive/inputInjection.test.ts`: multiline, control-character, slash-command, attachment, and mode-change tests.
 - Create `packages/happy-cli/src/claude/interactive/terminalObserver.ts`: terminal output classifier and sanitized diagnostic helpers.
 - Create `packages/happy-cli/src/claude/interactive/terminalObserver.test.ts`: safe classification and no-raw-output tests.
+- Create `packages/happy-cli/src/claude/claudeLocalCommand.ts`: reusable Claude command builder shared by local and interactive remote launch paths.
+- Create `packages/happy-cli/src/claude/claudeLocalCommand.test.ts`: regression tests proving MCP, hooks, allowed tools, resume/session-id, env, and sandbox command shape are preserved.
+- Modify `packages/happy-cli/src/claude/claudeLocal.ts`: replace inline command construction with `buildClaudeLocalCommand` while keeping current local-mode behavior.
 - Modify `packages/happy-cli/src/utils/tmux.ts`: add paste-buffer, capture, resize, interrupt, and target-aware helpers needed by terminal transport.
 - Modify `packages/happy-cli/src/utils/tmux.test.ts`: pure tests for tmux command construction and paste behavior.
 - Create `packages/happy-cli/src/claude/interactive/terminalTransport.ts`: backend selection plus `TerminalTransport` interface.
-- Create `packages/happy-cli/src/claude/interactive/tmuxTerminalTransport.ts`: tmux-backed Claude terminal transport.
+- Create `packages/happy-cli/src/claude/interactive/terminalTransportFactory.ts`: runtime factory that selects tmux, PTY, or unsupported based on environment and platform availability.
+- Create `packages/happy-cli/src/claude/interactive/tmuxTerminalTransport.ts`: tmux-backed Claude terminal transport with target-aware paste and bounded capture polling for local-only terminal observations.
 - Create `packages/happy-cli/src/claude/interactive/ptyTerminalTransport.ts`: direct PTY transport using `node-pty`.
 - Create `packages/happy-cli/src/claude/interactive/terminalTransport.test.ts`: backend selection, remote-only PTY, and lifecycle tests with mocked backends.
 - Create `packages/happy-cli/src/claude/claudeInteractiveRemoteLauncher.ts`: main interactive remote launcher.
@@ -227,6 +231,22 @@ describe('resolveInteractiveClaudeIdentity', () => {
         expect(result.mode).toBe('continue');
     });
 
+    it('uses explicit --session-id once when provided', () => {
+        const result = resolveInteractiveClaudeIdentity({
+            workingDirectory: '/repo',
+            claudeArgs: ['--session-id', '44444444-4444-4444-8444-444444444444', '--model', 'opus'],
+            generateId: () => 'unused',
+            findLastSession: vi.fn(),
+        });
+
+        expect(result).toEqual({
+            claudeSessionId: '44444444-4444-4444-8444-444444444444',
+            launchArgs: ['--session-id', '44444444-4444-4444-8444-444444444444', '--model', 'opus'],
+            consumedArgs: ['--model', 'opus'],
+            mode: 'fresh',
+        });
+    });
+
     it('returns unsupported when --continue has no local session', () => {
         const result = resolveInteractiveClaudeIdentity({
             workingDirectory: '/repo',
@@ -394,6 +414,26 @@ export function resolveInteractiveClaudeIdentity(input: ResolveInput): ResolveRe
                 launchArgs: ['--resume', claudeSessionId, ...consumedArgs],
                 consumedArgs,
                 mode: 'continue',
+            };
+        }
+        if (arg === '--session-id' && args[i + 1] && !args[i + 1].startsWith('-')) {
+            const claudeSessionId = args[i + 1];
+            consumedArgs.push(...args.slice(0, i), ...args.slice(i + 2));
+            return {
+                claudeSessionId,
+                launchArgs: ['--session-id', claudeSessionId, ...consumedArgs],
+                consumedArgs,
+                mode: 'fresh',
+            };
+        }
+        if (arg.startsWith('--session-id=')) {
+            const claudeSessionId = arg.slice('--session-id='.length);
+            consumedArgs.push(...args.slice(0, i), ...args.slice(i + 1));
+            return {
+                claudeSessionId,
+                launchArgs: ['--session-id', claudeSessionId, ...consumedArgs],
+                consumedArgs,
+                mode: 'fresh',
             };
         }
     }
@@ -578,7 +618,7 @@ export function classifyTerminalOutput(raw: string): TerminalObservation | null 
     if (/allow .*?\?|permission|approve/i.test(raw)) {
         return { type: 'permission_prompt_visible', message: 'Claude is asking for permission.' };
     }
-    if (/esc to interrupt|tokens|thinking|working/i.test(raw) && !/error/i.test(raw)) {
+    if (/esc to interrupt|tokens remaining|thinking\.\.\./i.test(raw) && !/error/i.test(raw)) {
         return { type: 'spinner_without_transcript', message: 'Claude is running but has not written transcript output yet.' };
     }
     if (/^\s*[>❯]\s*$/.test(raw) || /input/i.test(raw)) {
@@ -609,7 +649,261 @@ git add packages/happy-cli/src/claude/interactive/terminalObserver.ts \
 git commit -m "feat: add safe claude terminal observations"
 ```
 
-### Task 4: Build Terminal Transport Backends
+### Task 4: Extract Reusable Claude Command Builder
+
+**Files:**
+- Create: `packages/happy-cli/src/claude/claudeLocalCommand.ts`
+- Create: `packages/happy-cli/src/claude/claudeLocalCommand.test.ts`
+- Modify: `packages/happy-cli/src/claude/claudeLocal.ts`
+
+- [ ] **Step 1: Write failing command builder tests**
+
+Create `packages/happy-cli/src/claude/claudeLocalCommand.test.ts`:
+
+```ts
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/projectPath', () => ({ projectPath: () => '/repo-root' }));
+vi.mock('node:fs', async () => {
+    const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+    return { ...actual, existsSync: vi.fn(() => true) };
+});
+vi.mock('@/sandbox/manager', () => ({
+    initializeSandbox: vi.fn(async () => vi.fn(async () => {})),
+    wrapCommand: vi.fn(async (command: string) => `sandbox ${command}`),
+}));
+vi.mock('./utils/proxyBypass', () => ({ ensureLocalProxyBypass: vi.fn() }));
+vi.mock('./utils/systemPrompt', () => ({ systemPrompt: 'HAPPY_SYSTEM_PROMPT' }));
+
+import { buildClaudeLocalCommand } from './claudeLocalCommand';
+
+describe('buildClaudeLocalCommand', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('preserves session, system prompt, MCP, allowed tools, hooks, cwd, and env', async () => {
+        const built = await buildClaudeLocalCommand({
+            path: '/work',
+            baseClaudeArgs: ['--session-id', '11111111-1111-4111-8111-111111111111', '--model', 'opus'],
+            mcpServers: { happy: { type: 'http', url: 'http://127.0.0.1:3000' } },
+            allowedTools: ['mcp__happy__edit'],
+            hookSettingsPath: '/tmp/hook-settings.json',
+            claudeEnvVars: { FOO: 'bar' },
+        });
+
+        expect(built.command).toBe('node');
+        expect(built.args).toEqual([
+            '/repo-root/scripts/claude_local_launcher.cjs',
+            '--session-id',
+            '11111111-1111-4111-8111-111111111111',
+            '--model',
+            'opus',
+            '--append-system-prompt',
+            'HAPPY_SYSTEM_PROMPT',
+            '--mcp-config',
+            JSON.stringify({ mcpServers: { happy: { type: 'http', url: 'http://127.0.0.1:3000' } } }),
+            '--allowedTools',
+            'mcp__happy__edit',
+            '--settings',
+            '/tmp/hook-settings.json',
+        ]);
+        expect(built.cwd).toBe('/work');
+        expect(built.env.FOO).toBe('bar');
+        expect(built.shell).toBe(false);
+    });
+
+    it('wraps sandboxed commands and adds skip-permissions once', async () => {
+        const built = await buildClaudeLocalCommand({
+            path: '/work',
+            baseClaudeArgs: ['--resume', '22222222-2222-4222-8222-222222222222'],
+            sandboxConfig: { enabled: true, workspaceRoot: '/work', networkMode: 'off' } as any,
+        });
+
+        expect(built.command).toContain('sandbox node');
+        expect(built.args).toEqual([]);
+        expect(built.shell).toBe(true);
+        expect(built.cleanupSandbox).toBeTypeOf('function');
+        expect(built.unwrappedArgs).toContain('--dangerously-skip-permissions');
+        expect(built.unwrappedArgs.filter((arg) => arg === '--dangerously-skip-permissions')).toHaveLength(1);
+    });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run:
+
+```bash
+pnpm --dir packages/happy-cli exec vitest run --project unit src/claude/claudeLocalCommand.test.ts
+```
+
+Expected: FAIL because `claudeLocalCommand.ts` does not exist.
+
+- [ ] **Step 3: Implement the command builder**
+
+Create `packages/happy-cli/src/claude/claudeLocalCommand.ts`:
+
+```ts
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { projectPath } from '@/projectPath';
+import { initializeSandbox, wrapCommand } from '@/sandbox/manager';
+import type { SandboxConfig } from '@/persistence';
+import { ensureLocalProxyBypass } from './utils/proxyBypass';
+import { systemPrompt } from './utils/systemPrompt';
+
+export const claudeCliPath = resolve(join(projectPath(), 'scripts', 'claude_local_launcher.cjs'));
+
+function quoteShellArg(value: string): string {
+    return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+export type BuiltClaudeLocalCommand = {
+    command: string;
+    args: string[];
+    cwd: string;
+    env: Record<string, string>;
+    shell: boolean;
+    unwrappedArgs: string[];
+    cleanupSandbox: (() => Promise<void>) | null;
+};
+
+export async function buildClaudeLocalCommand(opts: {
+    path: string;
+    baseClaudeArgs: string[];
+    mcpServers?: Record<string, any>;
+    allowedTools?: string[];
+    hookSettingsPath?: string;
+    claudeEnvVars?: Record<string, string>;
+    sandboxConfig?: SandboxConfig;
+}): Promise<BuiltClaudeLocalCommand> {
+    if (!claudeCliPath || !existsSync(claudeCliPath)) {
+        throw new Error('Claude local launcher not found. Please ensure HAPPY_PROJECT_ROOT is set correctly for development.');
+    }
+
+    const claudeArgs = [...opts.baseClaudeArgs, '--append-system-prompt', systemPrompt];
+
+    if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {
+        claudeArgs.push('--mcp-config', JSON.stringify({ mcpServers: opts.mcpServers }));
+    }
+
+    if (opts.allowedTools && opts.allowedTools.length > 0) {
+        claudeArgs.push('--allowedTools', opts.allowedTools.join(','));
+    }
+
+    if (opts.hookSettingsPath) {
+        claudeArgs.push('--settings', opts.hookSettingsPath);
+    }
+
+    const env = { ...process.env, ...(opts.claudeEnvVars ?? {}) } as Record<string, string>;
+    if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {
+        ensureLocalProxyBypass(env);
+    }
+
+    let cleanupSandbox: (() => Promise<void>) | null = null;
+    let unwrappedArgs = [claudeCliPath, ...claudeArgs];
+
+    if (opts.sandboxConfig?.enabled && process.platform !== 'win32') {
+        cleanupSandbox = await initializeSandbox(opts.sandboxConfig, opts.path);
+        if (!unwrappedArgs.includes('--dangerously-skip-permissions')) {
+            unwrappedArgs = [...unwrappedArgs, '--dangerously-skip-permissions'];
+        }
+        const fullCommand = ['node', ...unwrappedArgs.map((arg) => quoteShellArg(arg))].join(' ');
+        return {
+            command: await wrapCommand(fullCommand),
+            args: [],
+            cwd: opts.path,
+            env,
+            shell: true,
+            unwrappedArgs,
+            cleanupSandbox,
+        };
+    }
+
+    return {
+        command: 'node',
+        args: unwrappedArgs,
+        cwd: opts.path,
+        env,
+        shell: false,
+        unwrappedArgs,
+        cleanupSandbox,
+    };
+}
+```
+
+- [ ] **Step 4: Refactor local launcher to use builder**
+
+In `packages/happy-cli/src/claude/claudeLocal.ts`, keep the existing session flag extraction through `effectiveSessionId`, then replace the inline command/env/sandbox construction inside the spawn block with:
+
+```ts
+const baseClaudeArgs: string[] = [];
+if (!opts.hookSettingsPath) {
+    const hasResumeFlag = opts.claudeArgs?.includes('--resume') || opts.claudeArgs?.includes('-r');
+    if (startFrom) {
+        baseClaudeArgs.push('--resume', startFrom);
+    } else if (!hasResumeFlag && newSessionId) {
+        baseClaudeArgs.push('--session-id', newSessionId);
+    }
+} else if (startFrom) {
+    baseClaudeArgs.push('--resume', startFrom);
+}
+if (opts.claudeArgs) {
+    baseClaudeArgs.push(...opts.claudeArgs);
+}
+
+const built = await buildClaudeLocalCommand({
+    path: opts.path,
+    baseClaudeArgs,
+    mcpServers: opts.mcpServers,
+    allowedTools: opts.allowedTools,
+    hookSettingsPath: opts.hookSettingsPath,
+    claudeEnvVars: opts.claudeEnvVars,
+    sandboxConfig: opts.sandboxConfig,
+});
+
+cleanupSandbox = built.cleanupSandbox;
+const child = crossSpawn(built.command, built.args, {
+    stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
+    signal: opts.abort,
+    cwd: built.cwd,
+    env: built.env,
+    shell: built.shell,
+    windowsHide: true,
+});
+```
+
+Remove the old local `claudeCliPath`, `quoteShellArg`, `existsSync`, `ensureLocalProxyBypass`, `systemPrompt`, `initializeSandbox`, and `wrapCommand` imports from `claudeLocal.ts`, and import:
+
+```ts
+import { buildClaudeLocalCommand } from './claudeLocalCommand';
+export { claudeCliPath } from './claudeLocalCommand';
+```
+
+Keep the re-export in `claudeLocal.ts` so existing imports such as `packages/happy-cli/src/index.ts` continue to compile.
+
+- [ ] **Step 5: Run tests and typecheck**
+
+Run:
+
+```bash
+pnpm --dir packages/happy-cli exec vitest run --project unit src/claude/claudeLocalCommand.test.ts
+pnpm --dir packages/happy-cli typecheck
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/happy-cli/src/claude/claudeLocalCommand.ts \
+  packages/happy-cli/src/claude/claudeLocalCommand.test.ts \
+  packages/happy-cli/src/claude/claudeLocal.ts
+git commit -m "feat: share claude command builder"
+```
+
+### Task 5: Build Terminal Transport Backends
 
 **Files:**
 - Modify: `packages/happy-cli/package.json`
@@ -633,7 +927,13 @@ Expected: `packages/happy-cli/package.json` and `pnpm-lock.yaml` update.
 
 - [ ] **Step 2: Add tmux paste tests**
 
-Append to `packages/happy-cli/src/utils/tmux.test.ts`:
+Change the import in `packages/happy-cli/src/utils/tmux.test.ts` to include `vi`:
+
+```ts
+import { describe, expect, it, vi } from 'vitest';
+```
+
+Append to the same file:
 
 ```ts
 describe('TmuxUtilities paste helpers', () => {
@@ -649,24 +949,34 @@ describe('TmuxUtilities paste helpers', () => {
 
         expect(commands[0]).toEqual(expect.arrayContaining(['set-buffer']));
         expect(commands[1]).toEqual(expect.arrayContaining(['paste-buffer']));
+        expect(commands[1]).toEqual(['paste-buffer', '-b', expect.stringMatching(/^happy-paste-/)]);
+    });
+
+    it('targets resize-pane at the requested pane', async () => {
+        const commands: string[][] = [];
+        const tmux = new TmuxUtilities('happy-test');
+        vi.spyOn(tmux as any, 'executeCommand').mockImplementation(async (args: string[]) => {
+            commands.push(args);
+            return { exitCode: 0, stdout: '', stderr: '' };
+        });
+
+        await tmux.resizePane(120, 30, 'happy-test', 'window-1', '2');
+
+        expect(commands[0]).toEqual(['tmux', 'resize-pane', '-x', '120', '-y', '30', '-t', 'happy-test:window-1.2']);
     });
 });
 ```
 
-If `vi` is not imported in this test file, change the import line to:
-
-```ts
-import { describe, expect, it, vi } from 'vitest';
-```
-
 - [ ] **Step 3: Extend tmux utilities**
 
-In `packages/happy-cli/src/utils/tmux.ts`, add methods to `TmuxUtilities`:
+In `packages/happy-cli/src/utils/tmux.ts`, add `'paste-buffer'` and `'resize-pane'` to `COMMANDS_SUPPORTING_TARGET`.
+
+Then add methods to `TmuxUtilities`:
 
 ```ts
     async pasteText(text: string, session?: string, window?: string, pane?: string): Promise<boolean> {
         const bufferName = `happy-paste-${Date.now()}`;
-        const setResult = await this.executeTmuxCommand(['set-buffer', '-b', bufferName, text], session, window, pane);
+        const setResult = await this.executeTmuxCommand(['set-buffer', '-b', bufferName, text]);
         if (!setResult || setResult.returncode !== 0) {
             return false;
         }
@@ -678,6 +988,11 @@ In `packages/happy-cli/src/utils/tmux.ts`, add methods to `TmuxUtilities`:
     async resizePane(cols: number, rows: number, session?: string, window?: string, pane?: string): Promise<boolean> {
         const result = await this.executeTmuxCommand(['resize-pane', '-x', String(cols), '-y', String(rows)], session, window, pane);
         return result !== null && result.returncode === 0;
+    }
+
+    async capturePaneText(session?: string, window?: string, pane?: string): Promise<string> {
+        const result = await this.executeTmuxCommand(['capture-pane', '-p'], session, window, pane);
+        return result && result.returncode === 0 ? result.stdout : '';
     }
 ```
 
@@ -693,6 +1008,7 @@ export type TerminalSpawnOptions = {
     args: string[];
     cwd: string;
     env: Record<string, string>;
+    shell?: boolean;
     windowName: string;
 };
 
@@ -735,6 +1051,8 @@ Create `packages/happy-cli/src/claude/interactive/terminalTransport.test.ts`:
 ```ts
 import { describe, expect, it } from 'vitest';
 import { chooseTerminalBackend } from './terminalTransport';
+import { PtyTerminalTransport } from './ptyTerminalTransport';
+import { TmuxTerminalTransport } from './tmuxTerminalTransport';
 
 describe('chooseTerminalBackend', () => {
     it('prefers configured tmux when available', () => {
@@ -749,6 +1067,16 @@ describe('chooseTerminalBackend', () => {
         expect(chooseTerminalBackend({ tmuxConfigured: false, tmuxAvailable: false, ptyAvailable: false })).toBe('unsupported');
     });
 });
+
+describe('terminal transport capabilities', () => {
+    it('marks direct PTY as remote-control only', () => {
+        expect(new PtyTerminalTransport().capabilities).toEqual(['remote-control']);
+    });
+
+    it('marks tmux as local-attach capable', () => {
+        expect(new TmuxTerminalTransport('happy-test').capabilities).toEqual(['remote-control', 'local-attach']);
+    });
+});
 ```
 
 - [ ] **Step 6: Implement tmux transport**
@@ -756,7 +1084,7 @@ describe('chooseTerminalBackend', () => {
 Create `packages/happy-cli/src/claude/interactive/tmuxTerminalTransport.ts`:
 
 ```ts
-import { getTmuxUtilities } from '@/utils/tmux';
+import { getTmuxUtilities, parseTmuxSessionIdentifier } from '@/utils/tmux';
 import type { TerminalExit, TerminalSpawnOptions, TerminalTransport } from './terminalTransport';
 
 export class TmuxTerminalTransport implements TerminalTransport {
@@ -764,16 +1092,22 @@ export class TmuxTerminalTransport implements TerminalTransport {
     readonly capabilities = ['remote-control', 'local-attach'] as const;
     terminalId: string | null = null;
     private tmux;
+    private terminalTarget: { session: string; window?: string; pane?: string } | null = null;
     private dataHandlers = new Set<(chunk: string) => void>();
     private exitHandlers = new Set<(exit: TerminalExit) => void>();
+    private pollTimer: NodeJS.Timeout | null = null;
+    private lastCapture = '';
 
     constructor(private readonly sessionName: string) {
         this.tmux = getTmuxUtilities(sessionName);
     }
 
     async spawn(options: TerminalSpawnOptions): Promise<{ pid?: number; terminalId: string }> {
+        const commandText = options.shell
+            ? options.command
+            : [options.command, ...options.args].map((arg) => `'${arg.replace(/'/g, `'\\''`)}'`).join(' ');
         const result = await this.tmux.spawnInTmux(
-            [[options.command, ...options.args].map((arg) => `'${arg.replace(/'/g, `'\\''`)}'`).join(' ')],
+            [commandText],
             { sessionName: this.sessionName, windowName: options.windowName, cwd: options.cwd },
             options.env,
         );
@@ -781,25 +1115,39 @@ export class TmuxTerminalTransport implements TerminalTransport {
             throw new Error(result.error ?? 'Failed to spawn Claude in tmux');
         }
         this.terminalId = result.sessionId;
+        this.terminalTarget = parseTmuxSessionIdentifier(result.sessionId);
+        this.startCapturePolling();
         return { pid: result.pid, terminalId: result.sessionId };
     }
 
     async paste(text: string): Promise<void> {
-        if (!this.terminalId) throw new Error('tmux terminal is not spawned');
-        const ok = await this.tmux.pasteText(text);
+        if (!this.terminalTarget) throw new Error('tmux terminal is not spawned');
+        const ok = await this.tmux.pasteText(
+            text,
+            this.terminalTarget.session,
+            this.terminalTarget.window,
+            this.terminalTarget.pane,
+        );
         if (!ok) throw new Error('Failed to paste text into tmux terminal');
     }
 
     async enter(): Promise<void> {
-        if (!await this.tmux.sendKeys('C-m')) throw new Error('Failed to send Enter to tmux terminal');
+        if (!this.terminalTarget) throw new Error('tmux terminal is not spawned');
+        if (!await this.tmux.sendKeys('C-m', this.terminalTarget.session, this.terminalTarget.window, this.terminalTarget.pane)) {
+            throw new Error('Failed to send Enter to tmux terminal');
+        }
     }
 
     async interrupt(): Promise<void> {
-        if (!await this.tmux.sendKeys('C-c')) throw new Error('Failed to interrupt tmux terminal');
+        if (!this.terminalTarget) throw new Error('tmux terminal is not spawned');
+        if (!await this.tmux.sendKeys('C-c', this.terminalTarget.session, this.terminalTarget.window, this.terminalTarget.pane)) {
+            throw new Error('Failed to interrupt tmux terminal');
+        }
     }
 
     async resize(cols: number, rows: number): Promise<void> {
-        await this.tmux.resizePane(cols, rows);
+        if (!this.terminalTarget) throw new Error('tmux terminal is not spawned');
+        await this.tmux.resizePane(cols, rows, this.terminalTarget.session, this.terminalTarget.window, this.terminalTarget.pane);
     }
 
     onData(callback: (chunk: string) => void): () => void {
@@ -813,10 +1161,28 @@ export class TmuxTerminalTransport implements TerminalTransport {
     }
 
     async dispose(): Promise<void> {
+        if (this.pollTimer) clearInterval(this.pollTimer);
+        this.pollTimer = null;
         if (this.terminalId) await this.tmux.killWindow(this.terminalId);
         this.terminalId = null;
+        this.terminalTarget = null;
         this.dataHandlers.clear();
         this.exitHandlers.clear();
+    }
+
+    private startCapturePolling(): void {
+        this.pollTimer = setInterval(async () => {
+            if (!this.terminalTarget) return;
+            const capture = await this.tmux.capturePaneText(
+                this.terminalTarget.session,
+                this.terminalTarget.window,
+                this.terminalTarget.pane,
+            );
+            if (capture && capture !== this.lastCapture) {
+                this.lastCapture = capture;
+                for (const handler of this.dataHandlers) handler(capture);
+            }
+        }, 500);
     }
 }
 ```
@@ -839,7 +1205,9 @@ export class PtyTerminalTransport implements TerminalTransport {
 
     async spawn(options: TerminalSpawnOptions): Promise<{ pid?: number; terminalId: string }> {
         const pty = await import('node-pty');
-        const proc = pty.spawn(options.command, options.args, {
+        const command = options.shell ? (process.env.SHELL || '/bin/sh') : options.command;
+        const args = options.shell ? ['-lc', options.command] : options.args;
+        const proc = pty.spawn(command, args, {
             cwd: options.cwd,
             env: options.env,
             cols: 120,
@@ -921,11 +1289,13 @@ git add packages/happy-cli/package.json pnpm-lock.yaml \
 git commit -m "feat: add interactive claude terminal transports"
 ```
 
-### Task 5: Implement Interactive Claude Remote Launcher
+### Task 6: Implement Interactive Claude Remote Launcher
 
 **Files:**
 - Create: `packages/happy-cli/src/claude/claudeInteractiveRemoteLauncher.ts`
 - Create: `packages/happy-cli/src/claude/claudeInteractiveRemoteLauncher.test.ts`
+- Create: `packages/happy-cli/src/claude/interactive/terminalTransportFactory.ts`
+- Modify: `packages/happy-cli/src/claude/loop.ts`
 - Modify: `packages/happy-cli/src/claude/session.ts`
 - Modify: `packages/happy-cli/src/claude/runClaude.ts`
 
@@ -970,11 +1340,13 @@ const mocks = vi.hoisted(() => ({
     createSessionScanner: vi.fn(),
     resolveInteractiveClaudeIdentity: vi.fn(),
     createTerminalTransport: vi.fn(),
+    buildClaudeLocalCommand: vi.fn(),
 }));
 
 vi.mock('./utils/sessionScanner', () => ({ createSessionScanner: mocks.createSessionScanner }));
 vi.mock('./interactive/sessionIdentity', () => ({ resolveInteractiveClaudeIdentity: mocks.resolveInteractiveClaudeIdentity }));
 vi.mock('./interactive/terminalTransportFactory', () => ({ createTerminalTransport: mocks.createTerminalTransport }));
+vi.mock('./claudeLocalCommand', () => ({ buildClaudeLocalCommand: mocks.buildClaudeLocalCommand }));
 vi.mock('@/ui/logger', () => ({ logger: { debug: vi.fn(), warn: vi.fn() } }));
 
 import { claudeInteractiveRemoteLauncher } from './claudeInteractiveRemoteLauncher';
@@ -993,6 +1365,8 @@ function createSession(overrides: Partial<any> = {}) {
             waitForMessagesAndGetAsString: vi.fn(async () => null),
             size: vi.fn(() => 0),
             reset: vi.fn(),
+            modeHasher: vi.fn(() => 'launch'),
+            setOnMessage: vi.fn(),
         },
         client: {
             sendClaudeSessionMessage: vi.fn(),
@@ -1002,6 +1376,8 @@ function createSession(overrides: Partial<any> = {}) {
             rpcHandlerManager: { registerHandler: vi.fn() },
         },
         onSessionFound: vi.fn(),
+        addSessionFoundCallback: vi.fn(),
+        removeSessionFoundCallback: vi.fn(),
         onThinkingChange: vi.fn(),
         onAbort: vi.fn(),
         consumeOneTimeFlags: vi.fn(),
@@ -1013,6 +1389,15 @@ describe('claudeInteractiveRemoteLauncher', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.createSessionScanner.mockResolvedValue({ onNewSession: vi.fn(), cleanup: vi.fn(async () => {}) });
+        mocks.buildClaudeLocalCommand.mockResolvedValue({
+            command: 'node',
+            args: ['/repo-root/scripts/claude_local_launcher.cjs', '--session-id', '11111111-1111-4111-8111-111111111111'],
+            cwd: '/repo',
+            env: {},
+            shell: false,
+            unwrappedArgs: ['/repo-root/scripts/claude_local_launcher.cjs'],
+            cleanupSandbox: null,
+        });
         mocks.resolveInteractiveClaudeIdentity.mockReturnValue({
             claudeSessionId: '11111111-1111-4111-8111-111111111111',
             launchArgs: ['--session-id', '11111111-1111-4111-8111-111111111111'],
@@ -1041,6 +1426,11 @@ describe('claudeInteractiveRemoteLauncher', () => {
         await claudeInteractiveRemoteLauncher(session as any);
 
         expect(transport.spawn).toHaveBeenCalled();
+        expect(mocks.buildClaudeLocalCommand).toHaveBeenCalledWith(expect.objectContaining({
+            path: '/repo',
+            baseClaudeArgs: ['--session-id', '11111111-1111-4111-8111-111111111111'],
+            hookSettingsPath: '/tmp/hook-settings.json',
+        }));
         expect(session.onSessionFound).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111');
         expect(session.client.updateMetadata).toHaveBeenCalled();
     });
@@ -1073,6 +1463,8 @@ describe('claudeInteractiveRemoteLauncher', () => {
                     .mockResolvedValueOnce(null),
                 size: vi.fn(() => 0),
                 reset: vi.fn(),
+                modeHasher: vi.fn(() => 'launch'),
+                setOnMessage: vi.fn(),
             },
         });
 
@@ -1083,6 +1475,34 @@ describe('claudeInteractiveRemoteLauncher', () => {
             type: 'message',
             message: 'Claude interactive remote does not support image or file attachments yet.',
         });
+    });
+
+    it('registers scanner callback and forwards raw JSONL through the existing mapper', async () => {
+        const scanner = { onNewSession: vi.fn(), cleanup: vi.fn(async () => {}) };
+        mocks.createSessionScanner.mockResolvedValue(scanner);
+        const transport = {
+            backend: 'pty',
+            terminalId: null,
+            capabilities: ['remote-control'],
+            spawn: vi.fn(async () => ({ pid: 123, terminalId: 'pty:123' })),
+            paste: vi.fn(),
+            enter: vi.fn(),
+            interrupt: vi.fn(),
+            resize: vi.fn(),
+            onData: vi.fn(() => vi.fn()),
+            onExit: vi.fn(() => vi.fn()),
+            dispose: vi.fn(),
+        };
+        mocks.createTerminalTransport.mockResolvedValue(transport);
+
+        const session = createSession();
+        await claudeInteractiveRemoteLauncher(session as any);
+
+        expect(session.addSessionFoundCallback).toHaveBeenCalledWith(expect.any(Function));
+        const scannerCallback = session.addSessionFoundCallback.mock.calls[0][0];
+        scannerCallback('44444444-4444-4444-8444-444444444444');
+        expect(scanner.onNewSession).toHaveBeenCalledWith('44444444-4444-4444-8444-444444444444');
+        expect(session.removeSessionFoundCallback).toHaveBeenCalledWith(scannerCallback);
     });
 });
 ```
@@ -1124,13 +1544,12 @@ export async function createTerminalTransport(env: NodeJS.ProcessEnv = process.e
 Create `packages/happy-cli/src/claude/claudeInteractiveRemoteLauncher.ts`:
 
 ```ts
-import { claudeCliPath } from './claudeLocal';
+import { buildClaudeLocalCommand } from './claudeLocalCommand';
 import { resolveInteractiveClaudeIdentity } from './interactive/sessionIdentity';
 import { createTerminalTransport } from './interactive/terminalTransportFactory';
 import { buildInteractivePaste, validateInteractiveBatch } from './interactive/inputInjection';
 import { classifyTerminalOutput } from './interactive/terminalObserver';
 import { createSessionScanner } from './utils/sessionScanner';
-import { systemPrompt } from './utils/systemPrompt';
 import { Session } from './session';
 import { logger } from '@/ui/logger';
 
@@ -1153,6 +1572,16 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         return 'exit';
     }
 
+    const built = await buildClaudeLocalCommand({
+        path: session.path,
+        baseClaudeArgs: identity.launchArgs,
+        mcpServers: session.mcpServers,
+        allowedTools: session.allowedTools,
+        hookSettingsPath: session.hookSettingsPath,
+        claudeEnvVars: session.claudeEnvVars,
+        sandboxConfig: session.sandboxConfig,
+    });
+
     const scanner = await createSessionScanner({
         sessionId: identity.claudeSessionId,
         workingDirectory: session.path,
@@ -1160,9 +1589,24 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     });
 
     let exitReason: 'switch' | 'exit' | null = null;
+    const waitController = new AbortController();
+    const scannerSessionCallback = (sessionId: string) => {
+        void scanner.onNewSession(sessionId);
+    };
     const unsubData = transport.onData((chunk) => {
         const event = classifyTerminalOutput(chunk);
-        if (event) logger.debug(`[interactive-claude] terminal event ${event.type}: ${event.message}`);
+        if (!event) return;
+        logger.debug(`[interactive-claude] terminal event ${event.type}: ${event.message}`);
+        if (event.type === 'spinner_without_transcript') {
+            session.onThinkingChange(true);
+        }
+        if (event.type === 'input_prompt_visible') {
+            session.onThinkingChange(false);
+            session.client.closeClaudeSessionTurn('completed');
+        }
+        if (event.type === 'usage_or_auth_error' || event.type === 'terminal_process_error') {
+            session.client.sendSessionEvent({ type: 'message', message: event.message });
+        }
     });
     const unsubExit = transport.onExit((exit) => {
         session.client.updateMetadata((meta) => ({
@@ -1178,8 +1622,10 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             },
         }));
         exitReason = 'exit';
+        waitController.abort();
     });
 
+    session.addSessionFoundCallback(scannerSessionCallback);
     session.onSessionFound(identity.claudeSessionId);
     session.client.updateMetadata((meta) => ({
         ...meta,
@@ -1194,19 +1640,14 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     }));
 
     await transport.spawn({
-        command: 'node',
-        args: [
-            claudeCliPath,
-            ...identity.launchArgs,
-            '--append-system-prompt',
-            systemPrompt,
-            '--settings',
-            session.hookSettingsPath,
-        ],
-        cwd: session.path,
-        env: { ...process.env, ...(session.claudeEnvVars ?? {}) } as Record<string, string>,
+        command: built.command,
+        args: built.args,
+        cwd: built.cwd,
+        env: built.env,
+        shell: built.shell,
         windowName: `happy-claude-${Date.now()}`,
     });
+    session.consumeOneTimeFlags();
 
     session.client.updateMetadata((meta) => ({
         ...meta,
@@ -1222,10 +1663,28 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     }));
 
     const launchModeHash = session.queue.modeHasher(session.initialMode);
+    session.client.rpcHandlerManager.registerHandler('abort', async () => {
+        session.onAbort();
+        session.queue.reset();
+        session.client.closeClaudeSessionTurn('cancelled');
+        await transport.interrupt();
+    });
+    session.client.rpcHandlerManager.registerHandler('switch', async () => {
+        if (transport.backend === 'pty') {
+            session.client.sendSessionEvent({
+                type: 'message',
+                message: 'Switch to local is not supported for direct PTY Claude interactive remote sessions.',
+            });
+            return;
+        }
+        exitReason = 'switch';
+        waitController.abort();
+        await transport.interrupt();
+    });
 
     try {
         while (!exitReason) {
-            const batch = await session.queue.waitForMessagesAndGetAsString();
+            const batch = await session.queue.waitForMessagesAndGetAsString(waitController.signal);
             if (!batch) break;
             const validation = validateInteractiveBatch({ batch, launchModeHash });
             if (!validation.ok) {
@@ -1241,8 +1700,13 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     } finally {
         unsubData();
         unsubExit();
+        session.client.rpcHandlerManager.registerHandler('abort', async () => {});
+        session.client.rpcHandlerManager.registerHandler('switch', async () => {});
+        session.removeSessionFoundCallback(scannerSessionCallback);
+        session.onThinkingChange(false);
         await scanner.cleanup();
         await transport.dispose();
+        if (built.cleanupSandbox) await built.cleanupSandbox();
     }
 
     return exitReason ?? 'exit';
@@ -1281,7 +1745,7 @@ git add packages/happy-cli/src/claude/claudeInteractiveRemoteLauncher.ts \
 git commit -m "feat: launch claude remote through interactive terminal"
 ```
 
-### Task 6: Wire Runtime Selection And Daemon Ownership
+### Task 7: Wire Runtime Selection And Daemon Ownership
 
 **Files:**
 - Modify: `packages/happy-cli/src/claude/loop.ts`
@@ -1323,46 +1787,75 @@ Do not delete `claudeRemoteLauncher.ts` or `claudeRemote.ts`. Add a short commen
 // select this path automatically; see claudeInteractiveRemoteLauncher.ts.
 ```
 
-- [ ] **Step 3: Change daemon tmux handling for Claude**
+- [ ] **Step 3: Extract daemon agent/tmux decision helpers**
 
-In `packages/happy-cli/src/daemon/run.ts`, after computing `agent`, add:
-
-```ts
-const isInteractiveClaudeRemote = agent === 'claude';
-```
-
-Then change tmux usage decision so Claude remote does not put the Happy controller in tmux:
+Near the top of `packages/happy-cli/src/daemon/run.ts`, after `shellescape`, add:
 
 ```ts
-if (isInteractiveClaudeRemote) {
-  useTmux = false;
+type DaemonAgent = 'claude' | 'codex' | 'gemini' | 'openclaw';
+
+export function normalizeDaemonAgent(agent: SpawnSessionOptions['agent'] | undefined): DaemonAgent {
+    if (agent === 'codex' || agent === 'gemini' || agent === 'openclaw') return agent;
+    return 'claude';
+}
+
+export function shouldSpawnHappyControllerInTmux(input: {
+    agent: DaemonAgent;
+    tmuxAvailable: boolean;
+    tmuxSessionName: string | undefined;
+}): boolean {
+    if (input.agent === 'claude') return false;
+    return input.tmuxAvailable && input.tmuxSessionName !== undefined;
 }
 ```
 
-Place this after the existing `tmuxSessionName` availability logic and before `if (useTmux && tmuxSessionName !== undefined)`.
+Then in `spawnSession`, compute `agent` before the tmux decision:
+
+```ts
+const agent = normalizeDaemonAgent(options.agent);
+```
+
+Replace the existing tmux decision block:
+
+```ts
+const tmuxAvailable = await isTmuxAvailable();
+let useTmux = tmuxAvailable;
+let tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
+if (!tmuxAvailable || tmuxSessionName === undefined) {
+  useTmux = false;
+  ...
+}
+```
+
+with:
+
+```ts
+const tmuxAvailable = await isTmuxAvailable();
+const tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
+let useTmux = shouldSpawnHappyControllerInTmux({ agent, tmuxAvailable, tmuxSessionName });
+if (!tmuxAvailable && tmuxSessionName !== undefined) {
+  logger.debug(`[DAEMON RUN] tmux session name specified but tmux not available, falling back to regular spawning`);
+}
+if (agent === 'claude' && tmuxSessionName !== undefined) {
+  logger.debug(`[DAEMON RUN] Claude interactive remote keeps Happy controller outside tmux; tmux is reserved for the managed Claude terminal`);
+}
+```
+
+Inside the tmux branch, remove the duplicate local `agent` declaration and keep using the normalized outer `agent`.
 
 - [ ] **Step 4: Add daemon regression test**
-
-If `packages/happy-cli/src/daemon/run.ts` does not expose a small pure helper today, extract one:
-
-```ts
-export function shouldSpawnHappyControllerInTmux(input: {
-  agent: 'claude' | 'codex' | 'gemini' | 'openclaw';
-  tmuxAvailable: boolean;
-  tmuxSessionName: string | undefined;
-}): boolean {
-  if (input.agent === 'claude') return false;
-  return input.tmuxAvailable && input.tmuxSessionName !== undefined;
-}
-```
 
 Create `packages/happy-cli/src/daemon/run.interactiveClaude.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { shouldSpawnHappyControllerInTmux } from './run';
+import { normalizeDaemonAgent, shouldSpawnHappyControllerInTmux } from './run';
 
 describe('shouldSpawnHappyControllerInTmux', () => {
+    it('normalizes undefined agent to Claude', () => {
+        expect(normalizeDaemonAgent(undefined)).toBe('claude');
+    });
+
     it('does not spawn the Happy controller inside tmux for Claude interactive remote', () => {
         expect(shouldSpawnHappyControllerInTmux({
             agent: 'claude',
@@ -1404,7 +1897,7 @@ git add packages/happy-cli/src/claude/loop.ts \
 git commit -m "feat: route claude remote to interactive runtime"
 ```
 
-### Task 7: Gate Attachments In The App For Interactive Claude Remote
+### Task 8: Gate Attachments In The App For Interactive Claude Remote
 
 **Files:**
 - Create: `packages/happy-app/sources/sync/attachmentSupport.ts`
@@ -1419,7 +1912,7 @@ Create `packages/happy-app/sources/sync/attachmentSupport.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { getAttachmentSupportForSession } from './attachmentSupport';
+import { getAttachmentSupportForSession, shouldSendTextAfterDroppingAttachments } from './attachmentSupport';
 
 describe('getAttachmentSupportForSession', () => {
     it('allows normal Claude sessions to send attachments', () => {
@@ -1446,6 +1939,12 @@ describe('getAttachmentSupportForSession', () => {
             supportsAttachments: false,
             unsupportedTextKey: 'imageUpload.notSupportedMessage',
         });
+    });
+
+    it('does not send an empty text message after unsupported attachment-only sends', () => {
+        expect(shouldSendTextAfterDroppingAttachments('')).toBe(false);
+        expect(shouldSendTextAfterDroppingAttachments('   \n')).toBe(false);
+        expect(shouldSendTextAfterDroppingAttachments('describe this')).toBe(true);
     });
 });
 ```
@@ -1493,6 +1992,10 @@ export function getAttachmentSupportForSession(session: AttachmentSupportSession
             : 'imageUpload.notSupportedMessage',
     };
 }
+
+export function shouldSendTextAfterDroppingAttachments(text: string): boolean {
+    return text.trim().length > 0;
+}
 ```
 
 - [ ] **Step 4: Run helper test**
@@ -1510,7 +2013,7 @@ Expected: PASS.
 In `packages/happy-app/sources/text/_default.ts` under `imageUpload`, add:
 
 ```ts
-interactiveClaudeNotSupportedMessage: 'Interactive Claude remote does not support image attachments yet. Only the text was sent.',
+interactiveClaudeNotSupportedMessage: 'Interactive Claude remote does not support image attachments yet. Attachments were not sent.',
 ```
 
 Add the same key to `packages/happy-app/sources/text/translations/en.ts`.
@@ -1520,7 +2023,7 @@ Add the same key to `packages/happy-app/sources/text/translations/en.ts`.
 At the top of `packages/happy-app/sources/sync/sync.ts`, add:
 
 ```ts
-import { getAttachmentSupportForSession } from './attachmentSupport';
+import { getAttachmentSupportForSession, shouldSendTextAfterDroppingAttachments } from './attachmentSupport';
 ```
 
 In `packages/happy-app/sources/sync/sync.ts`, replace:
@@ -1542,6 +2045,14 @@ const unsupportedMessage = t(unsupportedTextKey);
 ```
 
 Use `unsupportedMessage` in the existing `Modal.alert(...)`.
+
+Immediately after the unsupported-attachment alert block, add:
+
+```ts
+if (attachments && attachments.length > 0 && !supportsAttachments && !shouldSendTextAfterDroppingAttachments(text)) {
+    return;
+}
+```
 
 - [ ] **Step 7: Run app checks**
 
@@ -1565,7 +2076,7 @@ git add packages/happy-app/sources/sync/attachmentSupport.ts \
 git commit -m "feat: gate attachments for interactive claude remote"
 ```
 
-### Task 8: End-To-End CLI Verification And Final Cleanup
+### Task 9: End-To-End CLI Verification And Final Cleanup
 
 **Files:**
 - Modify only files revealed by verification failures.
@@ -1576,6 +2087,7 @@ Run:
 
 ```bash
 pnpm --dir packages/happy-cli exec vitest run --project unit \
+  src/claude/claudeLocalCommand.test.ts \
   src/claude/interactive/sessionIdentity.test.ts \
   src/claude/interactive/inputInjection.test.ts \
   src/claude/interactive/terminalObserver.test.ts \
@@ -1602,6 +2114,7 @@ Expected: PASS. This command builds first, then runs the unit project.
 Run:
 
 ```bash
+pnpm --dir packages/happy-app test sources/sync/attachmentSupport.test.ts
 pnpm --dir packages/happy-app typecheck
 ```
 
@@ -1707,13 +2220,14 @@ If the output contains untracked files, move that file into the owning task abov
 ## Plan Self-Review Checklist
 
 - Spec coverage:
-  - no SDK fallback: Tasks 5 and 6
-  - separate Happy controller and Claude terminal ownership: Task 6
-  - known Claude session id and deterministic transcript file: Tasks 2 and 5
-  - paste-safe multiline input: Task 2 and Task 8
-  - tmux full capability and PTY remote-only behavior: Task 4 and Task 8
+  - no SDK fallback: Tasks 6 and 7
+  - separate Happy controller and Claude terminal ownership: Task 7
+  - known Claude session id and deterministic transcript file: Tasks 2 and 6
+  - local command parity for MCP, hooks, tools, and sandbox: Task 4
+  - paste-safe multiline input: Task 2 and Task 9
+  - tmux full capability and PTY remote-only behavior: Tasks 5 and 9
   - safe terminal diagnostics: Task 3
-  - unsupported mode/attachment rejection: Tasks 2, 5, and 7
+  - unsupported mode/attachment rejection: Tasks 2, 6, and 8
   - app metadata schema: Task 1
 - Placeholder scan:
   - searched for forbidden planning markers and unconstrained test instructions; none remain
