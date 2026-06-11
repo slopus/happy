@@ -447,6 +447,41 @@ describe('claudeInteractiveRemoteLauncher', () => {
         expect(transport.dispose).toHaveBeenCalledOnce();
     });
 
+    it('returns from local attach to remote control when app aborts', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalledOnce();
+        });
+
+        await session.invokeRpc('switch');
+        await session.invokeRpc('abort');
+
+        expect(session.onModeChange.mock.calls.map(([mode]) => mode)).toEqual(['local', 'remote']);
+        expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('cancelled');
+        expect(transport.interrupt).toHaveBeenCalledOnce();
+
+        session.enqueueBatch({
+            message: 'after abort from attach',
+            mode: initialMode,
+            hash: 'initial-mode-hash',
+            isolate: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('after abort from attach');
+            expect(transport.enter).toHaveBeenCalledOnce();
+        });
+
+        transport.emitExit({ code: 0, signal: null });
+        await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 0 });
+        expect(transport.dispose).toHaveBeenCalledOnce();
+    });
+
     it('uses distinct non-fixed terminal window names for separate launches', async () => {
         const firstTransport = new FakeTerminalTransport('tmux');
         const secondTransport = new FakeTerminalTransport('tmux');

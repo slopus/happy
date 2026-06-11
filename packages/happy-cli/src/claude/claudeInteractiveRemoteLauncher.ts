@@ -181,6 +181,10 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             logger.debug('[interactive-remote]: abort');
             session.onAbort();
             cancelPendingCompletion();
+            if (localAttachMode) {
+                session.onModeChange('remote');
+                updateRuntimeMetadata(session, terminalMetadata('interactive'));
+            }
             localAttachMode = false;
             detachTerminalOnCleanup = false;
             wakeQueueWaitAndContinue();
