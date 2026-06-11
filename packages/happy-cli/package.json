@@ -97,6 +97,7 @@
     "http-proxy-middleware": "^3.0.5",
     "ink": "^6.5.1",
     "inquirer": "^13.2.2",
+    "node-pty": "^1.1.0",
     "open": "^10.2.0",
     "ps-list": "^8.1.1",
     "qrcode-terminal": "^0.12.0",

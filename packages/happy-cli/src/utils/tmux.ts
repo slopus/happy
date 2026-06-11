@@ -70,7 +70,7 @@ export type TmuxWindowOperation =
     | 'pipe-pane' | 'pipe'
     // Buffer operations
     | 'list-buffers' | 'lb' | 'save-buffer' | 'sb'
-    | 'delete-buffer' | 'db'
+    | 'paste-buffer' | 'pb' | 'delete-buffer' | 'db'
     // Advanced operations
     | 'resize-pane' | 'resize' | 'rp'
     | 'swap-pane' | 'swap'
@@ -321,6 +321,8 @@ const WIN_OPS: Record<TmuxWindowOperation, string> = {
     'lb': 'list-buffers',
     'save-buffer': 'save-buffer',
     'sb': 'save-buffer',
+    'paste-buffer': 'paste-buffer',
+    'pb': 'paste-buffer',
     'delete-buffer': 'delete-buffer',
     'db': 'delete-buffer',
 
@@ -343,7 +345,8 @@ const COMMANDS_SUPPORTING_TARGET = new Set([
     'send-keys', 'capture-pane', 'new-window', 'kill-window',
     'select-window', 'split-window', 'select-pane', 'kill-pane',
     'select-layout', 'display-message', 'attach-session', 'detach-client',
-    'new-session', 'kill-session', 'list-windows', 'list-panes'
+    'new-session', 'kill-session', 'list-windows', 'list-panes',
+    'paste-buffer', 'resize-pane'
 ]);
 
 // Control sequences that must be separate arguments with proper typing
@@ -613,6 +616,21 @@ export class TmuxUtilities {
     }
 
     /**
+     * Capture full visible pane text.
+     */
+    async capturePaneText(
+        session?: string,
+        window?: string,
+        pane?: string
+    ): Promise<string> {
+        const result = await this.executeTmuxCommand(['capture-pane', '-p'], session, window, pane);
+        if (result && result.returncode === 0) {
+            return result.stdout || '';
+        }
+        return '';
+    }
+
+    /**
      * Check if user is actively typing
      */
     async isUserTyping(
@@ -659,6 +677,59 @@ export class TmuxUtilities {
             const result = await this.executeTmuxCommand(['send-keys', keys], session, window, pane);
             return result !== null && result.returncode === 0;
         }
+    }
+
+    /**
+     * Paste arbitrary text via a tmux buffer so multiline payloads are not sent as raw key events.
+     */
+    async pasteText(
+        text: string,
+        session?: string,
+        window?: string,
+        pane?: string
+    ): Promise<boolean> {
+        const bufferName = `happy-paste-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const setResult = await this.executeTmuxCommand(['set-buffer', '-b', bufferName, text]);
+        if (!setResult || setResult.returncode !== 0) {
+            return false;
+        }
+
+        let pasteSucceeded = false;
+        try {
+            const pasteResult = await this.executeTmuxCommand(['paste-buffer', '-b', bufferName], session, window, pane);
+            pasteSucceeded = pasteResult !== null && pasteResult.returncode === 0;
+        } finally {
+            const deleteResult = await this.executeTmuxCommand(['delete-buffer', '-b', bufferName]);
+            if (!deleteResult || deleteResult.returncode !== 0) {
+                return false;
+            }
+        }
+
+        return pasteSucceeded;
+    }
+
+    /**
+     * Resize a tmux pane to the requested dimensions.
+     */
+    async resizePane(
+        cols: number,
+        rows: number,
+        session?: string,
+        window?: string,
+        pane?: string
+    ): Promise<boolean> {
+        if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) {
+            logger.debug('[TMUX] Invalid pane dimensions provided to resizePane');
+            return false;
+        }
+
+        const result = await this.executeTmuxCommand(
+            ['resize-pane', '-x', String(cols), '-y', String(rows)],
+            session,
+            window,
+            pane
+        );
+        return result !== null && result.returncode === 0;
     }
 
     /**

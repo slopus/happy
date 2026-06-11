@@ -984,6 +984,9 @@ importers:
       inquirer:
         specifier: ^13.2.2
         version: 13.2.2(@types/node@20.19.39)
+      node-pty:
+        specifier: ^1.1.0
+        version: 1.1.0
       open:
         specifier: ^10.2.0
         version: 10.2.0

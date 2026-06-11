@@ -5,7 +5,7 @@
  * They do NOT require tmux to be installed on the system.
  * All tests mock environment variables and test string parsing only.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     parseTmuxSessionIdentifier,
     formatTmuxSessionIdentifier,
@@ -452,5 +452,55 @@ describe('Round-trip consistency', () => {
         expect(built.success).toBe(true);
         const parsed = parseTmuxSessionIdentifier(built.identifier!);
         expect(parsed).toEqual(params);
+    });
+});
+
+describe('TmuxUtilities terminal helpers', () => {
+    it('pastes text through a tmux buffer instead of send-keys', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
+            returncode: 0,
+            stdout: '',
+            stderr: '',
+            command: [],
+        });
+
+        const text = 'first line\nsecond line';
+        const result = await utils.pasteText(text, 'session', 'window', '2');
+        const calls = executeCommand.mock.calls.map(([cmd]) => cmd as string[]);
+        const bufferName = calls[0][3];
+
+        expect(result).toBe(true);
+        expect(bufferName).toMatch(/^happy-paste-/);
+        expect(calls).toEqual([
+            ['tmux', 'set-buffer', '-b', bufferName, text],
+            ['tmux', 'paste-buffer', '-b', bufferName, '-t', 'session:window.2'],
+            ['tmux', 'delete-buffer', '-b', bufferName],
+        ]);
+        expect(calls.flat()).not.toContain('send-keys');
+    });
+
+    it('targets resize-pane with the requested dimensions', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
+            returncode: 0,
+            stdout: '',
+            stderr: '',
+            command: [],
+        });
+
+        const result = await utils.resizePane(120, 40, 'session', 'window', '2');
+
+        expect(result).toBe(true);
+        expect(executeCommand).toHaveBeenCalledWith([
+            'tmux',
+            'resize-pane',
+            '-x',
+            '120',
+            '-y',
+            '40',
+            '-t',
+            'session:window.2',
+        ]);
     });
 });
