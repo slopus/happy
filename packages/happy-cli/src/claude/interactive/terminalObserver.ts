@@ -15,7 +15,7 @@ const TERMINAL_PROCESS_ERROR_FALLBACK = 'Terminal reported an error.';
 
 const urlPattern = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi;
 const localPathPattern =
-    /(?:\/(?!\/)(?:[A-Za-z0-9._@%+=,-]+(?: [A-Za-z0-9._@%+=,-]+)*\/)+[A-Za-z0-9._@%+=,-]+(?:[^\s"'<>]*)?(?: (?!sk-[A-Za-z0-9_-]{8,}|\[url\]|\[secret\])[A-Za-z0-9._@%+=,-]+(?:[^\s"'<>]*)?)*|[A-Za-z]:\\(?:Users|Temp|Windows|ProgramData)\\[^\s"'<>]+)/g;
+    /(?:\/(?!\/)(?:[A-Za-z0-9._@%+=,-]+(?: [A-Za-z0-9._@%+=,-]+)*\/)+[A-Za-z0-9._@%+=,-]+(?:[^\s"'<>]*)?(?: (?!sk-[A-Za-z0-9_-]{8,}|\[url\]|\[secret\]|(?:with|because) [A-Z0-9_]+(?:\b|$))[A-Za-z0-9._@%+=,-]+(?:[^\s"'<>]*)?)*|[A-Za-z]:\\(?:Users|Temp|Windows|ProgramData)\\[^\s"'<>]+)/g;
 const tokenPattern =
     /\b(?:sk-[A-Za-z0-9_-]{8,}|[A-Za-z0-9_-]*(?:token|secret|key|api)[A-Za-z0-9_-]*-[A-Za-z0-9_-]{6,}|(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{12,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|[A-Fa-f0-9]{32,}|[A-Za-z0-9_/-]{40,}={0,2})\b/g;
 

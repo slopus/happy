@@ -95,10 +95,35 @@ describe('classifyTerminalOutput', () => {
 
         expect(result?.type).toBe('terminal_process_error');
         expect(result?.message).toContain('[path]');
+        expect(result?.message).toContain('ENOENT');
         expect(result?.message).not.toContain('Application');
         expect(result?.message).not.toContain('Support');
+        expect(result?.message).not.toContain('/Users/me');
         expect(result?.message).not.toContain('/Users/me/Library/Application Support');
         expect(result?.message).not.toContain('Library/Application Support');
+    });
+
+    it('preserves diagnostic codes after redacting file paths', () => {
+        const result = classifyTerminalOutput('failed /Users/me/file.txt with ENOENT');
+
+        expect(result).toEqual({
+            type: 'terminal_process_error',
+            message: 'Terminal reported an error. failed [path] with ENOENT',
+        });
+        expect(result?.message).not.toContain('/Users/me');
+        expect(result?.message).not.toContain('file.txt');
+    });
+
+    it('preserves diagnostic codes after redacting spaced directory paths', () => {
+        const result = classifyTerminalOutput('failed /Users/me/Library/Application Support because ENOENT');
+
+        expect(result).toEqual({
+            type: 'terminal_process_error',
+            message: 'Terminal reported an error. failed [path] because ENOENT',
+        });
+        expect(result?.message).not.toContain('/Users/me');
+        expect(result?.message).not.toContain('Application');
+        expect(result?.message).not.toContain('Support');
     });
 });
 
@@ -120,9 +145,28 @@ describe('sanitizeTerminalDiagnostic', () => {
         const result = sanitizeTerminalDiagnostic('failed /Users/me/Library/Application Support with ENOENT');
 
         expect(result).toContain('[path]');
+        expect(result).toContain('ENOENT');
         expect(result).not.toContain('Application');
         expect(result).not.toContain('Support');
+        expect(result).not.toContain('/Users/me');
         expect(result).not.toContain('/Users/me/Library/Application Support');
         expect(result).not.toContain('Library/Application Support');
+    });
+
+    it('preserves diagnostic codes after redacting file paths', () => {
+        const result = sanitizeTerminalDiagnostic('failed /Users/me/file.txt with ENOENT');
+
+        expect(result).toBe('failed [path] with ENOENT');
+        expect(result).not.toContain('/Users/me');
+        expect(result).not.toContain('file.txt');
+    });
+
+    it('preserves diagnostic codes after redacting spaced directory paths', () => {
+        const result = sanitizeTerminalDiagnostic('failed /Users/me/Library/Application Support because ENOENT');
+
+        expect(result).toBe('failed [path] because ENOENT');
+        expect(result).not.toContain('/Users/me');
+        expect(result).not.toContain('Application');
+        expect(result).not.toContain('Support');
     });
 });
