@@ -387,6 +387,38 @@ describe('claudeInteractiveRemoteLauncher', () => {
         expect(transport.dispose).toHaveBeenCalledOnce();
     });
 
+    it('fails the current turn when terminal input write fails', async () => {
+        const transport = new FakeTerminalTransport('pty');
+        transport.paste.mockRejectedValueOnce(new Error('write failed with secret path /Users/me/.claude'));
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'hello',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        await expect(claudeInteractiveRemoteLauncher(session as any)).resolves.toEqual({
+            type: 'exit',
+            code: 1,
+        });
+
+        expect(session.client.sendSessionEvent).toHaveBeenCalledWith({
+            type: 'message',
+            message: 'Claude interactive terminal failed to receive input.',
+        });
+        expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('failed');
+        expect(session.metadataSnapshots()).toContainEqual(expect.objectContaining({
+            claudeRuntime: expect.objectContaining({
+                state: 'failed',
+                message: 'Claude interactive terminal failed to receive input.',
+            }),
+        }));
+        expect(transport.dispose).toHaveBeenCalledOnce();
+    });
+
     it('wakes an idle queue wait on abort and accepts future batches', async () => {
         const transport = new FakeTerminalTransport('pty');
         mockCreateTerminalTransport.mockResolvedValue(transport);

@@ -279,9 +279,13 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
 
             cancelPendingCompletion();
             const payload = buildInteractivePaste(batch.message, transport.backend);
-            await transport.paste(payload);
-            if (transport.backend === 'tmux') {
-                await transport.enter();
+            try {
+                await transport.paste(payload);
+                if (transport.backend === 'tmux') {
+                    await transport.enter();
+                }
+            } catch {
+                failRuntime('Claude interactive terminal failed to receive input.');
             }
         }
     } catch {
