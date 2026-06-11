@@ -14,11 +14,28 @@ export function normalizePromptText(message: string): string {
 export function hasUnsupportedControlCharacter(message: string): boolean {
     for (const ch of message) {
         const code = ch.charCodeAt(0);
-        if (code < 0x20 && ch !== '\n' && ch !== '\t') {
+        const isControlCharacter = code < 0x20 || code === 0x7f || (code >= 0x80 && code <= 0x9f);
+        if (isControlCharacter && ch !== '\n' && ch !== '\t') {
             return true;
         }
     }
     return false;
+}
+
+function hasUnsupportedSlashCommand(message: string): boolean {
+    if (!message.includes('\n')) {
+        return false;
+    }
+
+    const lines = message.split('\n');
+    const firstNonEmptyIndex = lines.findIndex(line => line.trim().length > 0);
+    if (firstNonEmptyIndex === -1) {
+        return false;
+    }
+
+    return lines
+        .slice(firstNonEmptyIndex)
+        .some(line => line.trimStart().startsWith('/'));
 }
 
 export function buildInteractivePaste(message: string, backend: InteractiveClaudeTerminalBackend): string {
@@ -53,7 +70,7 @@ export function validateInteractiveBatch(input: {
     if (hasUnsupportedControlCharacter(message)) {
         return { ok: false, reason: 'control-character', message: 'Claude interactive remote cannot send prompts with raw control characters.' };
     }
-    if (message.includes('\n') && message.trimStart().startsWith('/')) {
+    if (hasUnsupportedSlashCommand(message)) {
         return { ok: false, reason: 'control-character', message: 'Claude slash commands must be sent as a single command line.' };
     }
     return { ok: true };

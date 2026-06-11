@@ -57,7 +57,33 @@ describe('validateInteractiveBatch', () => {
         })).toMatchObject({ ok: false, reason: 'control-character' });
     });
 
-    it('allows slash commands only when the entire message is the command', () => {
+    it('rejects DEL and C1 control characters', () => {
+        expect(validateInteractiveBatch({
+            batch: { message: 'bad\u007finput', mode, hash: 'h1', isolate: false },
+            launchModeHash: 'h1',
+        })).toMatchObject({ ok: false, reason: 'control-character' });
+
+        expect(validateInteractiveBatch({
+            batch: { message: 'bad\u0085input', mode, hash: 'h1', isolate: false },
+            launchModeHash: 'h1',
+        })).toMatchObject({ ok: false, reason: 'control-character' });
+    });
+
+    it('rejects multiline slash commands even when a later line starts with the command', () => {
+        expect(validateInteractiveBatch({
+            batch: { message: 'hello\n/clear', mode, hash: 'h1', isolate: false },
+            launchModeHash: 'h1',
+        })).toMatchObject({ ok: false, reason: 'control-character' });
+    });
+
+    it('rejects multiline slash commands when the first non-empty line is the command', () => {
+        expect(validateInteractiveBatch({
+            batch: { message: '/clear\nhello', mode, hash: 'h1', isolate: false },
+            launchModeHash: 'h1',
+        })).toMatchObject({ ok: false, reason: 'control-character' });
+    });
+
+    it('keeps allowing slash commands when the entire message is the command', () => {
         expect(validateInteractiveBatch({
             batch: { message: '/clear', mode, hash: 'h1', isolate: true },
             launchModeHash: 'h1',
