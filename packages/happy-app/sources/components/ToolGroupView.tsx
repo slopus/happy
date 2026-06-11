@@ -18,6 +18,7 @@ import { t } from '@/text';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { getToolSummaryCategory, getToolSummaryDetail, ToolSummaryCategory } from '@/utils/toolDisplay';
 import { useRouter } from 'expo-router';
+import { encodeFilePath } from '@/utils/pathUtils';
 import { formatMCPTitle } from './tools/views/MCPToolView';
 
 interface ToolGroupViewProps {
@@ -48,7 +49,7 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
             ? singleToolMessage.tool.input.file_path
             : null;
         if (filePath) {
-            router.push(`/session/${sessionId}/file?path=${btoa(filePath)}`);
+            router.push(`/session/${sessionId}/file?path=${encodeFilePath(filePath)}`);
             return;
         }
         router.push(`/session/${sessionId}/message/${singleToolMessage.id}`);
@@ -320,7 +321,7 @@ function ToolSummaryRow(props: {
     const isPressable = Boolean(props.sessionId);
     const handlePress = React.useCallback(() => {
         if (filePath) {
-            router.push(`/session/${props.sessionId}/file?path=${btoa(filePath)}`);
+            router.push(`/session/${props.sessionId}/file?path=${encodeFilePath(filePath)}`);
             return;
         }
         router.push(`/session/${props.sessionId}/message/${props.message.id}`);

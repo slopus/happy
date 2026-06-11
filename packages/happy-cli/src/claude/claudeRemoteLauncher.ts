@@ -506,6 +506,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 logger.debug(`[remote]: stdin drain ${event.bytes}B / ${event.chunks} chunk(s) +${Date.now() - t0}ms`);
             },
         });
+        // Reset stdin encoding to binary so the next child process (claude
+        // via stdio:'inherit') receives raw bytes — not UTF-8-decoded strings.
+        // Without this, Node.js's internal StringDecoder can hold partial
+        // multi-byte sequences from the remote-mode session that corrupt
+        // subsequent CJK IME input (e.g. typing "大" produces "大大大").
+        process.stdin.setEncoding(null);
         logger.debug(`[remote]: cleanup done +${Date.now() - t0}ms rawMode=${(process.stdin as any).isRaw}`);
         messageBuffer.clear();
 
