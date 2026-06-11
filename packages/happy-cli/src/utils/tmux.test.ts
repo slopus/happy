@@ -495,6 +495,12 @@ describe('TmuxUtilities terminal helpers', () => {
         expect(newWindowCall).toContain('-P');
         expect(newWindowCall).toContain('-F');
         expect(newWindowCall).toContain('#{pane_pid}\t#{window_id}\t#{pane_id}');
+
+        const printIndex = newWindowCall!.indexOf('-P');
+        const formatIndex = newWindowCall!.indexOf('-F');
+        const commandIndex = newWindowCall!.indexOf('claude');
+        expect(printIndex).toBeLessThan(commandIndex);
+        expect(formatIndex).toBeLessThan(commandIndex);
     });
 
     it('pastes text through a tmux buffer instead of send-keys', async () => {

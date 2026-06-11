@@ -938,12 +938,13 @@ export class TmuxUtilities {
                 logger.debug(`[TMUX] Setting ${Object.keys(env).length} environment variables in tmux window`);
             }
 
-            // Add the command to run in the window (runs immediately when window is created)
-            createWindowArgs.push(fullCommand);
-
-            // Add -P flag to print stable pane/window identifiers immediately.
+            // Print stable pane/window identifiers immediately. These flags must
+            // come before the shell command; tmux treats following args as command text.
             createWindowArgs.push('-P');
             createWindowArgs.push('-F', '#{pane_pid}\t#{window_id}\t#{pane_id}');
+
+            // Add the command to run in the window (runs immediately when window is created)
+            createWindowArgs.push(fullCommand);
 
             // Create window with command and get PID immediately
             const createResult = await this.executeTmuxCommand(createWindowArgs, sessionName);
