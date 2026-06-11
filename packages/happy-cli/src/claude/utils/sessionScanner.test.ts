@@ -243,4 +243,33 @@ describe('sessionScanner', () => {
     expect(collectedMessages).toHaveLength(1)
     expect(collectedMessages[0].type).toBe('user')
   })
+
+  it('flushes pending scanner work on demand', async () => {
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+    })
+
+    const sessionId = '93a9705e-bc6a-406d-8dce-8acc014dedbd'
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+    await writeFile(sessionFile, JSON.stringify({
+      type: 'assistant',
+      uuid: 'assistant-flush-1',
+      message: {
+        role: 'assistant',
+        model: 'claude-opus',
+        content: [{ type: 'text', text: 'ready' }],
+      },
+    }) + '\n')
+
+    scanner.onNewSession(sessionId)
+    await scanner.flush()
+
+    expect(collectedMessages).toHaveLength(1)
+    expect(collectedMessages[0]).toMatchObject({
+      type: 'assistant',
+      uuid: 'assistant-flush-1',
+    })
+  })
 })

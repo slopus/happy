@@ -80,6 +80,7 @@ describe('claudeInteractiveRemoteLauncher', () => {
         });
         mockCreateSessionScanner.mockResolvedValue({
             onNewSession: vi.fn(),
+            flush: vi.fn(async () => { }),
             cleanup: vi.fn(async () => { }),
         });
     });
@@ -148,6 +149,7 @@ describe('claudeInteractiveRemoteLauncher', () => {
         mockCreateTerminalTransport.mockResolvedValue(transport);
         const scanner = {
             onNewSession: vi.fn(),
+            flush: vi.fn(async () => { }),
             cleanup: vi.fn(async () => { }),
         };
         mockCreateSessionScanner.mockResolvedValue(scanner);
@@ -326,9 +328,15 @@ describe('claudeInteractiveRemoteLauncher', () => {
         await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 0 });
     });
 
-    it('does not close the turn as completed when the prompt appears before scanner output', async () => {
+    it('closes the turn as completed only after prompt debounce and scanner flush', async () => {
         const transport = new FakeTerminalTransport('pty');
         mockCreateTerminalTransport.mockResolvedValue(transport);
+        const scanner = {
+            onNewSession: vi.fn(),
+            flush: vi.fn(async () => { }),
+            cleanup: vi.fn(async () => { }),
+        };
+        mockCreateSessionScanner.mockResolvedValue(scanner);
         const session = createSession();
 
         const resultPromise = claudeInteractiveRemoteLauncher(session as any);
@@ -354,6 +362,17 @@ describe('claudeInteractiveRemoteLauncher', () => {
         expect(session.client.sendClaudeSessionMessage).toHaveBeenCalledWith(expect.objectContaining({
             uuid: 'assistant-after-prompt',
         }));
+        expect(session.client.closeClaudeSessionTurn).not.toHaveBeenCalledWith('completed');
+
+        await vi.waitFor(() => {
+            expect(scanner.flush).toHaveBeenCalledOnce();
+            expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('completed');
+        });
+        expect(scanner.flush.mock.invocationCallOrder[0]).toBeLessThan(
+            session.client.closeClaudeSessionTurn.mock.invocationCallOrder.find((order: number, index: number) => {
+                return session.client.closeClaudeSessionTurn.mock.calls[index][0] === 'completed';
+            })!,
+        );
 
         transport.emitExit({ code: 0, signal: null });
         await resultPromise;

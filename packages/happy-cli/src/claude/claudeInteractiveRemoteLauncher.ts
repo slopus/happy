@@ -12,6 +12,7 @@ import { createSessionScanner } from './utils/sessionScanner';
 
 const UNSUPPORTED_TERMINAL_MESSAGE = 'Claude interactive remote is not supported in this terminal environment.';
 const WINDOW_NAME = 'happy-claude';
+const TURN_COMPLETION_DEBOUNCE_MS = 25;
 
 export async function claudeInteractiveRemoteLauncher(session: Session): Promise<LauncherResult> {
     logger.debug('[interactive-remote]: launch');
@@ -51,6 +52,8 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     let waitController = new AbortController();
     let continueAfterWaitAbort = false;
     let lastSafeTerminalMessage: string | null = null;
+    let completionTimer: ReturnType<typeof setTimeout> | null = null;
+    let completionGeneration = 0;
 
     const terminalMetadata = (state: InteractiveClaudeRuntimeMetadata['state'], message?: string): Partial<InteractiveClaudeRuntimeMetadata> => ({
         state,
@@ -73,6 +76,31 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             waitController.abort();
         }
         waitController = new AbortController();
+    };
+
+    const cancelPendingCompletion = () => {
+        completionGeneration++;
+        if (completionTimer) {
+            clearTimeout(completionTimer);
+            completionTimer = null;
+        }
+    };
+
+    const completeTurnAfterScannerFlush = async (generation: number) => {
+        await scanner?.flush();
+        if (generation !== completionGeneration || exitReason) {
+            return;
+        }
+        session.client.closeClaudeSessionTurn('completed');
+    };
+
+    const scheduleCompletedTurn = () => {
+        cancelPendingCompletion();
+        const generation = completionGeneration;
+        completionTimer = setTimeout(() => {
+            completionTimer = null;
+            void completeTurnAfterScannerFlush(generation);
+        }, TURN_COMPLETION_DEBOUNCE_MS);
     };
 
     try {
@@ -111,6 +139,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                     return;
                 case 'input_prompt_visible':
                     session.onThinkingChange(false);
+                    scheduleCompletedTurn();
                     return;
                 case 'usage_or_auth_error':
                 case 'terminal_process_error':
@@ -129,6 +158,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         });
 
         unsubscribeExit = transport.onExit((exit) => {
+            cancelPendingCompletion();
             terminalExit = exit;
             const code = exitCodeFromTerminalExit(exit);
             const state = code === 0 ? 'degraded' : 'failed';
@@ -147,6 +177,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         const doAbort = async () => {
             logger.debug('[interactive-remote]: abort');
             session.onAbort();
+            cancelPendingCompletion();
             wakeQueueWaitAndContinue();
             session.queue.reset();
             session.client.closeClaudeSessionTurn('cancelled');
@@ -162,6 +193,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             if (!exitReason) {
                 exitReason = { type: 'switch' };
             }
+            cancelPendingCompletion();
             updateRuntimeMetadata(session, terminalMetadata('degraded', 'Switching to local terminal attach.'));
             abortQueueWait();
             await transport.interrupt();
@@ -204,11 +236,13 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 launchModeHash,
             });
             if (!validation.ok) {
+                cancelPendingCompletion();
                 sendSafeMessage(session, validation.message);
                 session.client.closeClaudeSessionTurn('failed');
                 continue;
             }
 
+            cancelPendingCompletion();
             const payload = buildInteractivePaste(batch.message, transport.backend);
             await transport.paste(payload);
             if (transport.backend === 'tmux') {
@@ -223,6 +257,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             exitReason = { type: 'exit', code: 1 };
         }
     } finally {
+        cancelPendingCompletion();
         unsubscribeData?.();
         unsubscribeExit?.();
         session.client.rpcHandlerManager.registerHandler('abort', async () => { });
