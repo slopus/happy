@@ -1,8 +1,10 @@
 import {
+    formatTmuxSessionIdentifier,
     getTmuxUtilities,
     parseTmuxSessionIdentifier,
     TmuxUtilities,
 } from '@/utils/tmux';
+import { spawn, type ChildProcess } from 'node:child_process';
 import type {
     TerminalDataHandler,
     TerminalExitHandler,
@@ -28,6 +30,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
     private pollTimer: ReturnType<typeof setInterval> | null = null;
     private polling = false;
     private exited = false;
+    private attachProcess: ChildProcess | null = null;
     private lastCaptureText: string | null = null;
     private readonly dataHandlers = new Set<TerminalDataHandler>();
     private readonly exitHandlers = new Set<TerminalExitHandler>();
@@ -64,6 +67,68 @@ export class TmuxTerminalTransport implements TerminalTransport {
         this.cleanupTarget = result.windowId ?? result.sessionId;
         this.startPolling();
         return { pid: result.pid, terminalId: result.sessionId };
+    }
+
+    async attachLocal(): Promise<void> {
+        if (!this.terminalId) {
+            throw new Error('Tmux terminal has not been spawned');
+        }
+
+        await this.detachLocal();
+
+        const parsedTarget = parseTmuxSessionIdentifier(this.terminalId);
+        const attachTarget = formatTmuxSessionIdentifier({
+            session: parsedTarget.session,
+            window: parsedTarget.window,
+        });
+
+        if (parsedTarget.window) {
+            const selected = await this.tmux.executeTmuxCommand(
+                ['select-window'],
+                parsedTarget.session,
+                parsedTarget.window,
+            );
+            if (!selected || selected.returncode !== 0) {
+                throw new Error('Failed to select tmux local attach window');
+            }
+        }
+
+        if (process.env.TMUX) {
+            await runTmuxClientCommand(['switch-client', '-t', attachTarget]);
+            return;
+        }
+
+        const child = spawn('tmux', ['attach-session', '-t', attachTarget], {
+            stdio: 'inherit',
+            shell: false,
+        });
+        this.attachProcess = child;
+
+        child.once('exit', () => {
+            if (this.attachProcess === child) {
+                this.attachProcess = null;
+            }
+        });
+        child.once('error', () => {
+            if (this.attachProcess === child) {
+                this.attachProcess = null;
+            }
+        });
+
+        await waitForSpawn(child);
+    }
+
+    async detachLocal(): Promise<void> {
+        const child = this.attachProcess;
+        if (!child) {
+            return;
+        }
+
+        this.attachProcess = null;
+        if (!child.killed && child.exitCode === null && child.signalCode === null) {
+            child.kill('SIGTERM');
+        }
+        await waitForExit(child);
     }
 
     async paste(text: string): Promise<void> {
@@ -113,6 +178,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
     }
 
     async dispose(): Promise<void> {
+        await this.detachLocal();
         this.stopPolling();
         this.dataHandlers.clear();
         this.exitHandlers.clear();
@@ -209,6 +275,53 @@ export class TmuxTerminalTransport implements TerminalTransport {
             handler(exit);
         }
     }
+}
+
+function runTmuxClientCommand(args: string[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const child = spawn('tmux', args, {
+            stdio: 'ignore',
+            shell: false,
+        });
+        let stderr = '';
+
+        child.stderr?.on('data', (chunk) => {
+            stderr += String(chunk);
+        });
+        child.once('error', reject);
+        child.once('close', (code) => {
+            if (code === 0) {
+                resolve();
+                return;
+            }
+            reject(new Error(stderr.trim() || `tmux exited with code ${code ?? 'unknown'}`));
+        });
+    });
+}
+
+function waitForSpawn(child: ChildProcess): Promise<void> {
+    return new Promise((resolve, reject) => {
+        child.once('spawn', resolve);
+        child.once('error', reject);
+    });
+}
+
+function waitForExit(child: ChildProcess): Promise<void> {
+    if (child.exitCode !== null || child.signalCode !== null) {
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+        const timeout = setTimeout(done, 500);
+        function done() {
+            clearTimeout(timeout);
+            child.off('exit', done);
+            child.off('error', done);
+            resolve();
+        }
+        child.once('exit', done);
+        child.once('error', done);
+    });
 }
 
 const TMUX_ENV_ALLOWLIST = new Set(['NO_PROXY', 'no_proxy']);

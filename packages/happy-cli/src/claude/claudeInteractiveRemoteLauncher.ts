@@ -16,6 +16,10 @@ const WINDOW_NAME_PREFIX = 'happy-claude-';
 const TURN_COMPLETION_DEBOUNCE_MS = 25;
 const TERMINAL_INPUT_READY_TIMEOUT_MS = 8000;
 type InteractiveRemoteResult = { type: 'exit'; code: number };
+type LocalAttachTransport = TerminalTransport & {
+    attachLocal?: () => Promise<void>;
+    detachLocal?: () => Promise<void>;
+};
 
 export async function claudeInteractiveRemoteLauncher(session: Session): Promise<InteractiveRemoteResult> {
     logger.debug('[interactive-remote]: launch');
@@ -263,6 +267,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             cancelPendingCompletion();
             cancelPendingInputWaits();
             if (localAttachMode) {
+                await detachLocalTerminal(transport);
                 session.onModeChange('remote');
                 updateRuntimeMetadata(session, terminalMetadata('interactive'));
             }
@@ -281,10 +286,15 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 return;
             }
             cancelPendingCompletion();
+            const attachMessage = buildTmuxAttachMessage(transport.terminalId);
+            const attachedLocally = await attachLocalTerminal(transport);
+            if (!attachedLocally) {
+                sendSafeMessage(session, attachMessage);
+            }
             localAttachMode = true;
             detachTerminalOnCleanup = true;
             session.onModeChange('local');
-            updateRuntimeMetadata(session, terminalMetadata('interactive', buildTmuxAttachMessage(transport.terminalId)));
+            updateRuntimeMetadata(session, terminalMetadata('interactive', attachMessage));
         };
 
         session.client.rpcHandlerManager.registerHandler('abort', doAbort);
@@ -332,6 +342,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             }
 
             if (localAttachMode) {
+                await detachLocalTerminal(transport);
                 localAttachMode = false;
                 detachTerminalOnCleanup = false;
                 session.onModeChange('remote');
@@ -438,8 +449,35 @@ function buildTmuxAttachMessage(terminalId: string | null): string {
     if (!terminalId) {
         return 'Claude is running in tmux. Attach to the configured tmux session to control it locally.';
     }
-    const [sessionName] = terminalId.split(':');
-    return `Claude is running in tmux target ${terminalId}. Attach with: tmux attach -t ${sessionName}`;
+    return `Claude is running in tmux target ${terminalId}. Attach with: tmux attach -t ${terminalId}`;
+}
+
+async function attachLocalTerminal(transport: TerminalTransport): Promise<boolean> {
+    const localAttachTransport = transport as LocalAttachTransport;
+    if (typeof localAttachTransport.attachLocal !== 'function') {
+        return false;
+    }
+
+    try {
+        await localAttachTransport.attachLocal();
+        return true;
+    } catch {
+        logger.debug('[interactive-remote]: local attach failed');
+        return false;
+    }
+}
+
+async function detachLocalTerminal(transport: TerminalTransport): Promise<void> {
+    const localAttachTransport = transport as LocalAttachTransport;
+    if (typeof localAttachTransport.detachLocal !== 'function') {
+        return;
+    }
+
+    try {
+        await localAttachTransport.detachLocal();
+    } catch {
+        logger.debug('[interactive-remote]: local detach failed');
+    }
 }
 
 function toStringEnv(env: NodeJS.ProcessEnv): Record<string, string> {

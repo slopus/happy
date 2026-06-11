@@ -673,13 +673,15 @@ describe('claudeInteractiveRemoteLauncher', () => {
 
         expect(settled).toBe(false);
         expect(session.onModeChange).toHaveBeenCalledWith('local');
+        expect(transport.attachLocal).toHaveBeenCalledOnce();
         expect(transport.interrupt).not.toHaveBeenCalled();
         expect(transport.dispose).not.toHaveBeenCalled();
-        expect(session.metadataSnapshots()).toContainEqual(expect.objectContaining({
-            claudeRuntime: expect.objectContaining({
-                state: 'interactive',
-                message: expect.stringContaining('tmux'),
-            }),
+        const localAttachSnapshot = session.metadataSnapshots()
+            .map((snapshot) => (snapshot as any).claudeRuntime)
+            .find((runtime: any) => runtime?.message?.includes('Attach with:'));
+        expect(localAttachSnapshot).toEqual(expect.objectContaining({
+            state: 'interactive',
+            message: expect.stringContaining(`tmux attach -t ${transport.terminalId}`),
         }));
 
         transport.emitExit({ code: 0, signal: null });
@@ -714,6 +716,10 @@ describe('claudeInteractiveRemoteLauncher', () => {
             expect(transport.enter).toHaveBeenCalledOnce();
         });
         expect(session.onModeChange).toHaveBeenCalledWith('remote');
+        expect(transport.detachLocal).toHaveBeenCalledOnce();
+        expect(transport.detachLocal.mock.invocationCallOrder[0]).toBeLessThan(
+            transport.paste.mock.invocationCallOrder[0],
+        );
         expect(transport.dispose).not.toHaveBeenCalled();
 
         transport.emitExit({ code: 0, signal: null });
@@ -737,6 +743,10 @@ describe('claudeInteractiveRemoteLauncher', () => {
 
         expect(session.onModeChange.mock.calls.map(([mode]) => mode)).toEqual(['local', 'remote']);
         expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('cancelled');
+        expect(transport.detachLocal).toHaveBeenCalledOnce();
+        expect(transport.detachLocal.mock.invocationCallOrder[0]).toBeLessThan(
+            transport.interrupt.mock.invocationCallOrder[0],
+        );
         expect(transport.interrupt).toHaveBeenCalledOnce();
 
         session.enqueueBatch({
@@ -801,6 +811,8 @@ class FakeTerminalTransport implements TerminalTransport {
     readonly enter = vi.fn(async () => { });
     readonly interrupt = vi.fn(async () => { });
     readonly resize = vi.fn(async (_cols: number, _rows: number) => { });
+    readonly attachLocal = vi.fn(async () => { });
+    readonly detachLocal = vi.fn(async () => { });
     readonly dispose = vi.fn(async () => { });
 
     private dataHandlers = new Set<TerminalDataHandler>();
