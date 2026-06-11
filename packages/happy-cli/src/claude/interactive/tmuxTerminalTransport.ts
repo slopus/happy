@@ -21,6 +21,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
     private target?: TmuxSessionIdentifier;
     private pollTimer: ReturnType<typeof setInterval> | null = null;
     private polling = false;
+    private exited = false;
     private lastCaptureText: string | null = null;
     private readonly dataHandlers = new Set<TerminalDataHandler>();
     private readonly exitHandlers = new Set<TerminalExitHandler>();
@@ -34,6 +35,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
 
     async spawn(options: TerminalSpawnOptions): Promise<{ pid?: number; terminalId: string }> {
         this.stopPolling();
+        this.exited = false;
         this.lastCaptureText = null;
 
         const result = await this.tmux.spawnInTmux(
@@ -43,7 +45,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
                 sessionName: this.sessionName,
                 windowName: options.windowName,
             },
-            options.env,
+            filterTmuxEnvironment(options.env),
         );
 
         if (!result.success || !result.sessionId) {
@@ -106,6 +108,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
         this.stopPolling();
         this.dataHandlers.clear();
         this.exitHandlers.clear();
+        this.exited = false;
 
         const terminalId = this.terminalId;
         this.terminalId = null;
@@ -147,7 +150,14 @@ export class TmuxTerminalTransport implements TerminalTransport {
 
         this.polling = true;
         try {
-            const text = await this.tmux.capturePaneText(this.target.session, this.target.window, this.target.pane);
+            const target = this.target;
+            const isAlive = await this.tmux.isPaneAlive(target.session, target.window, target.pane);
+            if (!isAlive) {
+                this.handleExit();
+                return;
+            }
+
+            const text = await this.tmux.capturePaneText(target.session, target.window, target.pane);
             if (this.lastCaptureText === null) {
                 this.lastCaptureText = text;
                 if (text) {
@@ -170,6 +180,39 @@ export class TmuxTerminalTransport implements TerminalTransport {
             handler(data);
         }
     }
+
+    private handleExit(): void {
+        if (this.exited) {
+            return;
+        }
+
+        this.exited = true;
+        this.stopPolling();
+        this.terminalId = null;
+        this.target = undefined;
+        this.lastCaptureText = null;
+        this.emitExit({ code: null, signal: null });
+    }
+
+    private emitExit(exit: { code: number | null; signal: string | null }): void {
+        for (const handler of this.exitHandlers) {
+            handler(exit);
+        }
+    }
+}
+
+const TMUX_ENV_ALLOWLIST = new Set(['NO_PROXY', 'no_proxy']);
+
+function filterTmuxEnvironment(env: Record<string, string>): Record<string, string> {
+    const filtered: Record<string, string> = {};
+
+    for (const [key, value] of Object.entries(env)) {
+        if (TMUX_ENV_ALLOWLIST.has(key)) {
+            filtered[key] = value;
+        }
+    }
+
+    return filtered;
 }
 
 function buildTmuxCommand(options: TerminalSpawnOptions): string[] {

@@ -504,6 +504,28 @@ describe('TmuxUtilities terminal helpers', () => {
         ]);
     });
 
+    it('checks pane liveness with display-message against the requested target', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
+            returncode: 0,
+            stdout: '%1\n',
+            stderr: '',
+            command: [],
+        });
+
+        const result = await utils.isPaneAlive('session', 'window', '2');
+
+        expect(result).toBe(true);
+        expect(executeCommand).toHaveBeenCalledWith([
+            'tmux',
+            'display-message',
+            '-p',
+            '#{pane_id}',
+            '-t',
+            'session:window.2',
+        ]);
+    });
+
     it('targets a full session:window identifier when killing a window', async () => {
         const utils = new TmuxUtilities('happy');
         const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({

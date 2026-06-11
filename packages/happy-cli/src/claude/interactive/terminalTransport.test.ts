@@ -127,6 +127,7 @@ describe('TmuxTerminalTransport', () => {
     it('returns the tmux pid and terminal id from spawn', async () => {
         const tmux = {
             spawnInTmux: vi.fn(async () => ({ success: true, sessionId: 'happy:claude', pid: 456 })),
+            isPaneAlive: vi.fn(async () => true),
             capturePaneText: vi.fn(async () => ''),
             killWindow: vi.fn(async () => true),
         };
@@ -143,8 +144,68 @@ describe('TmuxTerminalTransport', () => {
                 sessionName: 'happy-test',
                 windowName: 'claude',
             },
-            { CLAUDE_CONFIG_DIR: '/tmp/claude' },
+            {},
         );
+        await transport.dispose();
+    });
+
+    it('filters sensitive and path-like environment before spawning in tmux', async () => {
+        const tmux = {
+            spawnInTmux: vi.fn(async () => ({ success: true, sessionId: 'happy:claude', pid: 457 })),
+            isPaneAlive: vi.fn(async () => true),
+            capturePaneText: vi.fn(async () => ''),
+            killWindow: vi.fn(async () => true),
+        };
+        const transport = new TmuxTerminalTransport('happy-test', tmux as any);
+
+        await transport.spawn({
+            ...requiredSpawnOptions,
+            env: {
+                ANTHROPIC_API_KEY: 'secret-key',
+                AUTHORIZATION: 'Bearer secret',
+                CLAUDE_CONFIG_DIR: '/tmp/claude',
+                COOKIE: 'session=secret',
+                HOME: '/Users/devdvlive',
+                NO_PROXY: 'localhost,127.0.0.1',
+                PATH: '/opt/secret/bin',
+                PASSWORD: 'password',
+                no_proxy: 'localhost',
+            },
+        });
+
+        expect(tmux.spawnInTmux).toHaveBeenCalledWith(
+            ['claude'],
+            expect.objectContaining({
+                cwd: '/tmp',
+                sessionName: 'happy-test',
+                windowName: 'claude',
+            }),
+            {
+                NO_PROXY: 'localhost,127.0.0.1',
+                no_proxy: 'localhost',
+            },
+        );
+        await transport.dispose();
+    });
+
+    it('emits an exit when the tmux pane disappears during polling', async () => {
+        const tmux = {
+            spawnInTmux: vi.fn(async () => ({ success: true, sessionId: 'happy:claude', pid: 458 })),
+            isPaneAlive: vi.fn(async () => false),
+            capturePaneText: vi.fn(async () => ''),
+            killWindow: vi.fn(async () => true),
+        };
+        const transport = new TmuxTerminalTransport('happy-test', tmux as any);
+        const exits: TerminalExit[] = [];
+
+        transport.onExit((exit) => exits.push(exit));
+        await transport.spawn(requiredSpawnOptions);
+
+        await vi.waitFor(() => {
+            expect(exits).toEqual([{ code: null, signal: null }]);
+        });
+        expect(tmux.capturePaneText).not.toHaveBeenCalled();
+        expect(transport.terminalId).toBeNull();
         await transport.dispose();
     });
 });

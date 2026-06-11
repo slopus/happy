@@ -293,6 +293,71 @@ describe('claudeInteractiveRemoteLauncher', () => {
         expect(mockLoggerDebug).not.toHaveBeenCalledWith('[interactive-remote]: launch error', rawError);
         expect(mockLoggerDebug).toHaveBeenCalledWith('[interactive-remote]: launch error');
     });
+
+    it('wakes an idle queue wait on abort and accepts future batches', async () => {
+        const transport = new FakeTerminalTransport('pty');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalledOnce();
+        });
+
+        await session.invokeRpc('abort');
+        expect(session.onAbort).toHaveBeenCalledOnce();
+        expect(session.queue.reset).toHaveBeenCalledOnce();
+        expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('cancelled');
+        expect(transport.interrupt).toHaveBeenCalledOnce();
+
+        session.enqueueBatch({
+            message: 'after abort',
+            mode: initialMode,
+            hash: 'initial-mode-hash',
+            isolate: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('after abort\r');
+        });
+
+        transport.emitExit({ code: 0, signal: null });
+        await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 0 });
+    });
+
+    it('does not close the turn as completed when the prompt appears before scanner output', async () => {
+        const transport = new FakeTerminalTransport('pty');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(mockCreateSessionScanner).toHaveBeenCalled();
+        });
+
+        transport.emitData('>\n');
+
+        expect(session.onThinkingChange).toHaveBeenCalledWith(false);
+        expect(session.client.closeClaudeSessionTurn).not.toHaveBeenCalledWith('completed');
+
+        const scannerOptions = mockCreateSessionScanner.mock.calls[0][0];
+        scannerOptions.onMessage({
+            type: 'assistant',
+            uuid: 'assistant-after-prompt',
+            message: {
+                model: 'claude-opus',
+            },
+        } satisfies RawJSONLines);
+
+        expect(session.client.sendClaudeSessionMessage).toHaveBeenCalledWith(expect.objectContaining({
+            uuid: 'assistant-after-prompt',
+        }));
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
 });
 
 class FakeTerminalTransport implements TerminalTransport {
@@ -348,6 +413,8 @@ function createSession(opts: { batches?: InteractiveClaudeBatch[] } = {}) {
     const snapshots: Record<string, unknown>[] = [];
     const batches = [...(opts.batches ?? [])];
     const sessionFoundCallbacks: Array<(sessionId: string) => void> = [];
+    const rpcHandlers = new Map<string, () => Promise<void> | void>();
+    let waiter: ((batch: InteractiveClaudeBatch | null) => void) | null = null;
 
     const session = {
         sessionId: null as string | null,
@@ -369,7 +436,9 @@ function createSession(opts: { batches?: InteractiveClaudeBatch[] } = {}) {
             }),
             getMetadata: vi.fn(() => metadata),
             rpcHandlerManager: {
-                registerHandler: vi.fn(),
+                registerHandler: vi.fn((method: string, handler: () => Promise<void> | void) => {
+                    rpcHandlers.set(method, handler);
+                }),
             },
         },
         queue: {
@@ -383,11 +452,23 @@ function createSession(opts: { batches?: InteractiveClaudeBatch[] } = {}) {
                     return null;
                 }
                 return new Promise<InteractiveClaudeBatch | null>((resolve) => {
-                    signal?.addEventListener('abort', () => resolve(null), { once: true });
+                    const onAbort = () => {
+                        if (waiter === resolve) {
+                            waiter = null;
+                        }
+                        resolve(null);
+                    };
+                    signal?.addEventListener('abort', onAbort, { once: true });
+                    waiter = (batch) => {
+                        signal?.removeEventListener('abort', onAbort);
+                        waiter = null;
+                        resolve(batch);
+                    };
                 });
             }),
             reset: vi.fn(() => {
                 batches.length = 0;
+                waiter = null;
             }),
             size: vi.fn(() => batches.length),
             setOnMessage: vi.fn(),
@@ -410,6 +491,20 @@ function createSession(opts: { batches?: InteractiveClaudeBatch[] } = {}) {
         onThinkingChange: vi.fn(),
         onAbort: vi.fn(),
         consumeOneTimeFlags: vi.fn(),
+        enqueueBatch: (batch: InteractiveClaudeBatch) => {
+            if (waiter) {
+                waiter(batch);
+                return;
+            }
+            batches.push(batch);
+        },
+        invokeRpc: async (method: string) => {
+            const handler = rpcHandlers.get(method);
+            if (!handler) {
+                throw new Error(`No RPC handler registered for ${method}`);
+            }
+            await handler();
+        },
         metadataSnapshots: () => snapshots,
     };
 

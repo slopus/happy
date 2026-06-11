@@ -48,7 +48,8 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     let scannerSessionCallback: ((sessionId: string) => void) | null = null;
     let exitReason: LauncherResult | null = null;
     let terminalExit: TerminalExit | null = null;
-    const waitController = new AbortController();
+    let waitController = new AbortController();
+    let continueAfterWaitAbort = false;
     let lastSafeTerminalMessage: string | null = null;
 
     const terminalMetadata = (state: InteractiveClaudeRuntimeMetadata['state'], message?: string): Partial<InteractiveClaudeRuntimeMetadata> => ({
@@ -64,6 +65,14 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         if (!waitController.signal.aborted) {
             waitController.abort();
         }
+    };
+
+    const wakeQueueWaitAndContinue = () => {
+        continueAfterWaitAbort = true;
+        if (!waitController.signal.aborted) {
+            waitController.abort();
+        }
+        waitController = new AbortController();
     };
 
     try {
@@ -102,7 +111,6 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                     return;
                 case 'input_prompt_visible':
                     session.onThinkingChange(false);
-                    session.client.closeClaudeSessionTurn('completed');
                     return;
                 case 'usage_or_auth_error':
                 case 'terminal_process_error':
@@ -139,6 +147,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         const doAbort = async () => {
             logger.debug('[interactive-remote]: abort');
             session.onAbort();
+            wakeQueueWaitAndContinue();
             session.queue.reset();
             session.client.closeClaudeSessionTurn('cancelled');
             await transport.interrupt();
@@ -183,6 +192,10 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
         while (!exitReason) {
             const batch = await session.queue.waitForMessagesAndGetAsString(waitController.signal);
             if (!batch) {
+                if (continueAfterWaitAbort && !exitReason) {
+                    continueAfterWaitAbort = false;
+                    continue;
+                }
                 break;
             }
 

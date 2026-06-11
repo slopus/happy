@@ -631,6 +631,18 @@ export class TmuxUtilities {
     }
 
     /**
+     * Check whether a tmux target still resolves to a live pane/window.
+     */
+    async isPaneAlive(
+        session?: string,
+        window?: string,
+        pane?: string
+    ): Promise<boolean> {
+        const result = await this.executeTmuxCommand(['display-message', '-p', '#{pane_id}'], session, window, pane);
+        return result !== null && result.returncode === 0;
+    }
+
+    /**
      * Check if user is actively typing
      */
     async isUserTyping(

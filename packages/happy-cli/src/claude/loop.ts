@@ -3,7 +3,6 @@ import { MessageQueue2 } from "@/utils/MessageQueue2"
 import { logger } from "@/ui/logger"
 import { Session } from "./session"
 import { claudeLocalLauncher, LauncherResult } from "./claudeLocalLauncher"
-import { claudeInteractiveRemoteLauncher } from "./claudeInteractiveRemoteLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
 import type { JsRuntime } from "./runClaude"
@@ -82,10 +81,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
 
         switch (mode) {
             case 'local': {
-                const localLauncher = process.env.HAPPY_CLAUDE_INTERACTIVE_REMOTE === '1'
-                    ? claudeInteractiveRemoteLauncher
-                    : claudeLocalLauncher;
-                const result = await localLauncher(session);
+                const result = await claudeLocalLauncher(session);
                 switch (result.type ) {
                     case 'switch':
                         mode = 'remote';
