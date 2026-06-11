@@ -86,7 +86,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const initialPermissionMode = applySandboxPermissionPolicy(
         resolveInitialClaudePermissionMode(options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE, options.claudeArgs),
         sandboxEnabled,
-    );
+    ) ?? DEFAULT_CLAUDE_PERMISSION_MODE;
     const dangerouslySkipPermissions =
         initialPermissionMode === 'bypassPermissions' ||
         initialPermissionMode === 'yolo' ||
@@ -422,6 +422,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
     let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
+    const initialEnhancedMode: EnhancedMode = {
+        permissionMode: initialPermissionMode,
+        model: options.model ?? DEFAULT_CLAUDE_MODEL,
+        effort: DEFAULT_CLAUDE_EFFORT,
+    };
 
     const resetCurrentModeDefaults = () => {
         currentPermissionMode = initialPermissionMode;
@@ -784,6 +789,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         permissionMode: initialPermissionMode,
         startingMode: options.startingMode,
         messageQueue,
+        initialMode: initialEnhancedMode,
         api,
         allowedTools: happyServer.toolNames.map(toolName => `mcp__happy__${toolName}`),
         onModeChange: (newMode) => {

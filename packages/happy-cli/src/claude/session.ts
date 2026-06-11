@@ -11,6 +11,7 @@ export class Session {
     readonly api: ApiClient;
     readonly client: ApiSessionClient;
     readonly queue: MessageQueue2<EnhancedMode>;
+    readonly initialMode: EnhancedMode;
     readonly claudeEnvVars?: Record<string, string>;
     claudeArgs?: string[];  // Made mutable to allow filtering
     readonly mcpServers: Record<string, any>;
@@ -39,6 +40,7 @@ export class Session {
         path: string,
         logPath: string,
         sessionId: string | null,
+        initialMode: EnhancedMode,
         claudeEnvVars?: Record<string, string>,
         claudeArgs?: string[],
         mcpServers: Record<string, any>,
@@ -58,6 +60,7 @@ export class Session {
         this.logPath = opts.logPath;
         this.sessionId = opts.sessionId;
         this.queue = opts.messageQueue;
+        this.initialMode = opts.initialMode;
         this.claudeEnvVars = opts.claudeEnvVars;
         this.claudeArgs = opts.claudeArgs;
         this.mcpServers = opts.mcpServers;
