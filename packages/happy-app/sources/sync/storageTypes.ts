@@ -34,6 +34,16 @@ export const MetadataSchema = z.object({
     }).optional(),
     machineId: z.string().optional(),
     claudeSessionId: z.string().optional(), // Claude Code session ID
+    claudeRuntime: z.object({
+        kind: z.string(),
+        state: z.string().optional(),
+        backend: z.string().optional(),
+        capabilities: z.array(z.string()).optional(),
+        claudeSessionId: z.string().optional(),
+        terminalId: z.string().optional(),
+        message: z.string().optional(),
+        updatedAt: z.number().optional(),
+    }).optional(),
     codexThreadId: z.string().optional(), // Codex app-server thread ID
     tools: z.array(z.string()).optional(),
     slashCommands: z.array(z.string()).optional(),
