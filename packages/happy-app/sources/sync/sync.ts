@@ -37,6 +37,7 @@ import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
 import { log } from '@/log';
 import { gitStatusSync } from './gitStatusSync';
+import { resyncOnForeground } from './foregroundResync';
 import { AsyncLock } from '@/utils/lock';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
@@ -177,17 +178,23 @@ class Sync {
                     this.failPendingOutboxMessages('Message failed to send in background after 30s. Please retry.');
                 }
                 log.log('📱 App became active');
-                this.purchasesSync.invalidate();
-                this.profileSync.invalidate();
-                this.machinesSync.invalidate();
-                this.pushTokenSync.invalidate();
-                this.sessionsSync.invalidate();
-                this.nativeUpdateSync.invalidate();
                 log.log('📱 App became active: Invalidating artifacts sync');
-                this.artifactsSync.invalidate();
-                this.friendsSync.invalidate();
-                this.friendRequestsSync.invalidate();
-                this.feedSync.invalidate();
+                resyncOnForeground({
+                    globalSyncs: [
+                        this.purchasesSync,
+                        this.profileSync,
+                        this.machinesSync,
+                        this.pushTokenSync,
+                        this.sessionsSync,
+                        this.nativeUpdateSync,
+                        this.artifactsSync,
+                        this.friendsSync,
+                        this.friendRequestsSync,
+                        this.feedSync,
+                    ],
+                    currentViewingSessionId: storage.getState().currentViewingSessionId,
+                    onSessionVisible: this.onSessionVisible,
+                });
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
                 this.maybeStartBackgroundSendWatchdog();
