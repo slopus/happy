@@ -17,6 +17,7 @@ import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
+import { isEmptyAgentDefaultOverrides } from './agentDefaults';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
 import {
@@ -714,9 +715,20 @@ class Sync {
 
     /** Server sent us settings — merge any pending local changes on top, then apply as one update. */
     private applyServerSettings = (serverSettings: Settings, version: number) => {
-        const merged = Object.keys(this.pendingSettings).length > 0
+        let merged = Object.keys(this.pendingSettings).length > 0
             ? applySettings(serverSettings, this.pendingSettings)
             : serverSettings;
+
+        // settingsToSyncPayload() omits agentDefaultOverrides when it is empty, so
+        // an absent/empty value from the server is ambiguous — it means "no info",
+        // not an explicit "user cleared their defaults". Never let it erase a
+        // non-empty local override, otherwise the user's agent defaults silently
+        // revert on the next server sync / app restart.
+        const localOverrides = storage.getState().settings.agentDefaultOverrides;
+        if (isEmptyAgentDefaultOverrides(merged.agentDefaultOverrides) && !isEmptyAgentDefaultOverrides(localOverrides)) {
+            merged = { ...merged, agentDefaultOverrides: localOverrides };
+        }
+
         storage.getState().applySettings(merged, version);
     }
 

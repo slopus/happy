@@ -106,3 +106,17 @@ export function setAgentDefaultOverride(
 
     return next;
 }
+
+// True when the overrides carry no actual per-agent values. settingsToSyncPayload()
+// omits agentDefaultOverrides entirely when it is empty, so an absent/empty value
+// arriving from the server is ambiguous ("no info", not an explicit "cleared").
+export function isEmptyAgentDefaultOverrides(
+    overrides: AgentDefaultOverrides | null | undefined,
+): boolean {
+    if (!overrides) {
+        return true;
+    }
+    return Object.values(overrides).every((value) => (
+        !value || typeof value !== 'object' || Object.keys(value).length === 0
+    ));
+}
