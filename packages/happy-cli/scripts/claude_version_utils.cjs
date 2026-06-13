@@ -110,11 +110,19 @@ function findClaudeInPath() {
         const resolvedPath = resolvePathSafe(claudePath) || claudePath;
 
         if (resolvedPath) {
-            // On Windows, npm creates shell script shims (no extension) for global packages.
-            // These cannot be spawned directly by Node.js. When we find such a shim,
+            // On Windows, npm creates extensionless shell-script shims for global
+            // packages that Node.js cannot spawn directly. When we find such a shim,
             // resolve to the actual cli.js in the adjacent node_modules directory.
+            //
+            // This must stay Windows-only: on macOS/Linux an extensionless file is
+            // NOT a shim. The native installer (>= 2.1.113) ships a self-contained
+            // compiled binary at ~/.local/share/claude/versions/<ver>, which IS
+            // directly executable. Treating it as a Windows shim made this function
+            // return null and silently fall back to other (often older) installs —
+            // e.g. a stale Homebrew copy — even when `which claude` already pointed
+            // at the newer native binary.
             const isExecutable = resolvedPath.endsWith('.js') || resolvedPath.endsWith('.cjs') || resolvedPath.endsWith('.exe');
-            if (!isExecutable) {
+            if (!isExecutable && process.platform === 'win32') {
                 const shimDir = path.dirname(claudePath);
                 const pkgDir = path.join(shimDir, 'node_modules', '@anthropic-ai', 'claude-code');
                 const entrypoint = resolveClaudeEntrypoint(pkgDir);
