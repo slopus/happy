@@ -1,6 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import {
+  resolveClaudeEntrypoint,
   findGlobalClaudeCliPath,
   findClaudeInPath,
   detectSourceFromPath,
@@ -10,7 +13,7 @@ import {
   findNativeInstallerCliPath,
   getVersion,
   compareVersions
-} from '../scripts/claude_version_utils.cjs';
+} from './claude_version_utils.cjs';
 
 describe('Claude Version Utils - Cross-Platform Detection', () => {
 
@@ -369,5 +372,112 @@ describe('HAPPY_CLAUDE_PATH env var', () => {
     process.env.HAPPY_CLAUDE_PATH = '/nonexistent/path/claude';
     const result = findGlobalClaudeCliPath();
     expect(result?.source).not.toBe('HAPPY_CLAUDE_PATH');
+  });
+});
+
+describe('resolveClaudeEntrypoint', () => {
+  const tmpDir = path.join(os.tmpdir(), 'happy-test-entrypoint');
+
+  beforeEach(() => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should return legacy cli.js when it exists', () => {
+    const cliJs = path.join(tmpDir, 'cli.js');
+    fs.writeFileSync(cliJs, '// legacy');
+    expect(resolveClaudeEntrypoint(tmpDir)).toBe(cliJs);
+  });
+
+  it('should resolve entrypoint from package.json bin as string', () => {
+    const pkgJson = { name: '@anthropic-ai/claude-code', version: '2.1.113', bin: 'bin/claude.exe' };
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify(pkgJson));
+    fs.mkdirSync(path.join(tmpDir, 'bin'), { recursive: true });
+    const exePath = path.join(tmpDir, 'bin', 'claude.exe');
+    fs.writeFileSync(exePath, 'binary');
+    expect(resolveClaudeEntrypoint(tmpDir)).toBe(exePath);
+  });
+
+  it('should resolve entrypoint from package.json bin as object', () => {
+    const pkgJson = { name: '@anthropic-ai/claude-code', version: '2.1.113', bin: { claude: 'bin/claude' } };
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify(pkgJson));
+    fs.mkdirSync(path.join(tmpDir, 'bin'), { recursive: true });
+    const binPath = path.join(tmpDir, 'bin', 'claude');
+    fs.writeFileSync(binPath, 'binary');
+    expect(resolveClaudeEntrypoint(tmpDir)).toBe(binPath);
+  });
+
+  it('should prefer legacy cli.js over bin when both exist', () => {
+    const cliJs = path.join(tmpDir, 'cli.js');
+    fs.writeFileSync(cliJs, '// legacy');
+    const pkgJson = { name: '@anthropic-ai/claude-code', version: '2.1.113', bin: 'bin/claude.exe' };
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify(pkgJson));
+    fs.mkdirSync(path.join(tmpDir, 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'bin', 'claude.exe'), 'binary');
+    expect(resolveClaudeEntrypoint(tmpDir)).toBe(cliJs);
+  });
+
+  it('should return null when neither cli.js nor bin exists', () => {
+    const pkgJson = { name: '@anthropic-ai/claude-code', version: '2.1.113', bin: 'bin/nonexistent' };
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify(pkgJson));
+    expect(resolveClaudeEntrypoint(tmpDir)).toBeNull();
+  });
+
+  it('should return null when package.json does not exist', () => {
+    expect(resolveClaudeEntrypoint(tmpDir)).toBeNull();
+  });
+
+  it('should return null when package.json has no bin field', () => {
+    const pkgJson = { name: '@anthropic-ai/claude-code', version: '2.1.113' };
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify(pkgJson));
+    expect(resolveClaudeEntrypoint(tmpDir)).toBeNull();
+  });
+
+  it('should return null when package.json is malformed', () => {
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), '{invalid json');
+    expect(resolveClaudeEntrypoint(tmpDir)).toBeNull();
+  });
+});
+
+describe('getVersion', () => {
+  const tmpDir = path.join(os.tmpdir(), 'happy-test-getversion');
+
+  beforeEach(() => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should read version from package.json next to cli.js', () => {
+    const cliJs = path.join(tmpDir, 'cli.js');
+    fs.writeFileSync(cliJs, '// cli');
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ version: '2.1.100' }));
+    expect(getVersion(cliJs)).toBe('2.1.100');
+  });
+
+  it('should read version from parent directory when binary is in bin/', () => {
+    fs.mkdirSync(path.join(tmpDir, 'bin'), { recursive: true });
+    const exePath = path.join(tmpDir, 'bin', 'claude.exe');
+    fs.writeFileSync(exePath, 'binary');
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ version: '2.1.119' }));
+    expect(getVersion(exePath)).toBe('2.1.119');
+  });
+
+  it('should return null when no package.json exists anywhere', () => {
+    const cliJs = path.join(tmpDir, 'cli.js');
+    fs.writeFileSync(cliJs, '// cli');
+    expect(getVersion(cliJs)).toBeNull();
+  });
+
+  it('should return null when package.json has no version field', () => {
+    const cliJs = path.join(tmpDir, 'cli.js');
+    fs.writeFileSync(cliJs, '// cli');
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ name: 'test' }));
+    expect(getVersion(cliJs)).toBeNull();
   });
 });
