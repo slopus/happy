@@ -28,6 +28,17 @@ describe('resolveMessageModeMeta', () => {
         });
     });
 
+    it('transports the auto effort level to the CLI', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: 'auto',
+            metadata: { flavor: 'claude' },
+        } as any);
+
+        expect(meta).toEqual({ effort: 'auto' });
+    });
+
     it('sends settings-level overrides when session has no override', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: null,

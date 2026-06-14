@@ -203,6 +203,10 @@ export function getDefaultPermissionModeKey(flavor: AgentFlavor): string {
 
 export function getClaudeEffortLevels(): EffortLevel[] {
     return [
+        // 'auto' pins no effort level — the model self-paces via adaptive
+        // thinking (Claude decides how much to think per turn). The CLI maps it
+        // to an omitted SDK `effort` option. See happy-cli loop.ts toSdkEffort().
+        { key: 'auto', name: 'auto', description: 'let Claude decide' },
         { key: 'low', name: 'low' },
         { key: 'medium', name: 'medium' },
         { key: 'high', name: 'high' },

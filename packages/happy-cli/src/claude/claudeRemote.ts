@@ -1,4 +1,4 @@
-import { EnhancedMode } from "./loop";
+import { EnhancedMode, toSdkEffort } from "./loop";
 import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import type { MessageParam } from '@anthropic-ai/sdk/resources'
 import { mapToClaudeMode } from "./utils/permissionMode";
@@ -131,11 +131,15 @@ export async function claudeRemote(opts: {
         appendSystemPrompt: initial.mode.appendSystemPrompt ? initial.mode.appendSystemPrompt + '\n\n' + systemPrompt : systemPrompt,
         allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: initial.mode.disallowedTools,
-        effort: initial.mode.effort,
+        effort: toSdkEffort(initial.mode.effort),
         canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; toolUseID: string }) => opts.canCallTool(toolName, input, mode, options),
         abort: opts.signal,
         settingsPath: opts.hookSettingsPath,
     }
+
+    // 'auto' pins no effort — toSdkEffort() returns undefined so the `effort`
+    // option is omitted and the model self-paces via adaptive thinking.
+    logger.debug(`[claudeRemote] effort: mode='${initial.mode.effort ?? '<unset>'}' -> sdk=${sdkOptions.effort ?? '<omitted: adaptive/auto>'}`);
 
     // Track thinking state
     let thinking = false;

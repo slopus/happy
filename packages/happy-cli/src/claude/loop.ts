@@ -13,7 +13,30 @@ import type { SandboxConfig } from "@/persistence"
 export type { PermissionMode } from "@/api/types"
 import type { PermissionMode } from "@/api/types"
 
-export type ClaudeEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+/**
+ * Effort levels the Claude Agent SDK accepts directly for its `effort` option.
+ */
+export type SdkEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+/**
+ * Happy's effort levels. Superset of {@link SdkEffort}: 'auto' is a Happy-only
+ * level meaning "let Claude decide how much to think" — no effort is pinned and
+ * the model self-paces via adaptive thinking (the SDK default for supporting
+ * models). It carries no SDK thinking level of its own. See {@link toSdkEffort}.
+ */
+export type ClaudeEffort = SdkEffort | 'auto';
+
+/**
+ * Resolve a Happy effort to the value handed to the SDK's `effort` option.
+ * 'auto' has no fixed thinking level, so it maps to `undefined` — the `effort`
+ * option is omitted and the model's adaptive thinking decides the depth.
+ */
+export function toSdkEffort(effort: ClaudeEffort | undefined): SdkEffort | undefined {
+    if (effort === undefined || effort === 'auto') {
+        return undefined;
+    }
+    return effort;
+}
 
 export interface EnhancedMode {
     permissionMode: PermissionMode;
