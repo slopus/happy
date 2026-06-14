@@ -10,6 +10,7 @@ import {
     getCodexModelModes,
     getCodexPermissionModes,
     getClaudeModelModes,
+    getClaudeEffortLevels,
     getClaudePermissionModes,
     getGeminiPermissionModes,
     getDefaultEffortKey,
@@ -207,6 +208,12 @@ describe('modelModeOptions', () => {
         expect(getDefaultPermissionModeKey('agy')).toBe('default');
         expect(getDefaultModelKey('agy')).toBe('Gemini 3.8 Flash');
         expect(getDefaultEffortKey('agy')).toBe('medium');
+    });
+
+    it('exposes the auto effort level first for claude', () => {
+        const levels = getClaudeEffortLevels();
+        expect(levels.map((level) => level.key)).toEqual(['auto', 'low', 'medium', 'high', 'xhigh', 'max']);
+        expect(levels[0]).toEqual({ key: 'auto', name: 'auto', description: 'let Claude decide' });
     });
 
     it('prefers metadata models over hardcoded fallbacks', () => {
