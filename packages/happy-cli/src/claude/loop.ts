@@ -13,7 +13,30 @@ import type { SandboxConfig } from "@/persistence"
 export type { PermissionMode } from "@/api/types"
 import type { PermissionMode } from "@/api/types"
 
-export type ClaudeEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+/**
+ * Effort levels the Claude Agent SDK accepts for its `effort` option.
+ */
+export type SdkEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+/**
+ * Happy's effort levels: the SDK's, plus 'auto'. 'auto' exists only in Happy
+ * and means "do not pin an effort level". It is never handed to the SDK; see
+ * {@link toSdkEffort}.
+ */
+export type ClaudeEffort = SdkEffort | 'auto';
+
+/**
+ * Resolve a Happy effort to the value for the SDK's `effort` option. 'auto'
+ * maps to `undefined`: the option is left out and Claude Code picks the effort,
+ * from the user's own Claude config or else the model's default. Adaptive
+ * thinking is the SDK default at every level, 'auto' included.
+ */
+export function toSdkEffort(effort: ClaudeEffort | undefined): SdkEffort | undefined {
+    if (effort === undefined || effort === 'auto') {
+        return undefined;
+    }
+    return effort;
+}
 
 export interface EnhancedMode {
     /** Unset means "no override" — Claude uses its own configured mode. */
@@ -24,7 +47,7 @@ export interface EnhancedMode {
     appendSystemPrompt?: string;
     allowedTools?: string[];
     disallowedTools?: string[];
-    /** Effort level passed through to the Claude Agent SDK as the `effort` option. */
+    /** Effort level for the turn. {@link toSdkEffort} turns it into the SDK `effort` option. */
     effort?: ClaudeEffort;
 }
 
