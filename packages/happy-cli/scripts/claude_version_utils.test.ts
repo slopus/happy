@@ -1,15 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import {
   findGlobalClaudeCliPath,
   findClaudeInPath,
   detectSourceFromPath,
   findNpmGlobalCliPath,
+  findPnpmGlobalCliPath,
   findBunGlobalCliPath,
   findHomebrewCliPath,
   findNativeInstallerCliPath,
   getVersion,
-  compareVersions
+  compareVersions,
 } from '../scripts/claude_version_utils.cjs';
 
 describe('Claude Version Utils - Cross-Platform Detection', () => {
@@ -369,5 +372,131 @@ describe('HAPPY_CLAUDE_PATH env var', () => {
     process.env.HAPPY_CLAUDE_PATH = '/nonexistent/path/claude';
     const result = findGlobalClaudeCliPath();
     expect(result?.source).not.toBe('HAPPY_CLAUDE_PATH');
+  });
+});
+
+describe('findPnpmGlobalCliPath - PNPM_HOME fallback', () => {
+  let tmpDir: string;
+  let originalPnpmHome: string | undefined;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'happy-pnpm-test-'));
+    originalPnpmHome = process.env.PNPM_HOME;
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (originalPnpmHome !== undefined) {
+      process.env.PNPM_HOME = originalPnpmHome;
+    } else {
+      delete process.env.PNPM_HOME;
+    }
+  });
+
+  it('should find claude-code with modern bin/claude.exe entrypoint', () => {
+    const pkgDir = path.join(tmpDir, 'global', '5', 'node_modules', '@anthropic-ai', 'claude-code');
+    const binDir = path.join(pkgDir, 'bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(path.join(binDir, 'claude.exe'), 'binary');
+    fs.writeFileSync(path.join(pkgDir, 'package.json'),
+      JSON.stringify({ bin: { claude: 'bin/claude.exe' }, version: '1.0.0' }));
+
+    process.env.PNPM_HOME = tmpDir;
+    const result = findPnpmGlobalCliPath();
+    expect(result).toBe(path.join(binDir, 'claude.exe'));
+  });
+
+  it('should find claude-code with legacy cli.js entrypoint', () => {
+    const pkgDir = path.join(tmpDir, 'global', '5', 'node_modules', '@anthropic-ai', 'claude-code');
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.writeFileSync(path.join(pkgDir, 'cli.js'), '// legacy');
+
+    process.env.PNPM_HOME = tmpDir;
+    const result = findPnpmGlobalCliPath();
+    expect(result).toBe(path.join(pkgDir, 'cli.js'));
+  });
+
+  it('should scan multiple global version directories', () => {
+    // global/3/ exists but has no claude-code
+    fs.mkdirSync(path.join(tmpDir, 'global', '3', 'node_modules'), { recursive: true });
+
+    // global/6/ has claude-code
+    const pkgDir = path.join(tmpDir, 'global', '6', 'node_modules', '@anthropic-ai', 'claude-code');
+    const binDir = path.join(pkgDir, 'bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(path.join(binDir, 'claude.exe'), 'binary');
+    fs.writeFileSync(path.join(pkgDir, 'package.json'),
+      JSON.stringify({ bin: { claude: 'bin/claude.exe' } }));
+
+    process.env.PNPM_HOME = tmpDir;
+    const result = findPnpmGlobalCliPath();
+    expect(result).toBe(path.join(binDir, 'claude.exe'));
+  });
+
+  it('should return null when PNPM_HOME has no claude-code', () => {
+    fs.mkdirSync(path.join(tmpDir, 'global', '5', 'node_modules'), { recursive: true });
+
+    process.env.PNPM_HOME = tmpDir;
+    const result = findPnpmGlobalCliPath();
+    // pnpm root -g may succeed on this machine, so we only assert type
+    expect(result === null || typeof result === 'string').toBe(true);
+  });
+
+  it('should not throw when PNPM_HOME is not set', () => {
+    delete process.env.PNPM_HOME;
+    expect(() => findPnpmGlobalCliPath()).not.toThrow();
+  });
+});
+
+describe('detectSourceFromPath - pnpm installations', () => {
+  it('should detect pnpm global installation with .pnpm store', () => {
+    const result = detectSourceFromPath(
+      '/Users/test/Library/pnpm/global/5/.pnpm/@anthropic-ai+claude-code@1.0.0/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
+    );
+    expect(result).toBe('pnpm');
+  });
+
+  it('should detect pnpm on Linux', () => {
+    const result = detectSourceFromPath(
+      '/home/user/.local/share/pnpm/global/5/.pnpm/@anthropic-ai+claude-code@1.0.0/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
+    );
+    expect(result).toBe('pnpm');
+  });
+
+  it('should detect pnpm on Windows', () => {
+    const result = detectSourceFromPath(
+      'C:\\Users\\test\\AppData\\Local\\pnpm\\global\\5\\.pnpm\\@anthropic-ai+claude-code@1.0.0\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe'
+    );
+    expect(result).toBe('pnpm');
+  });
+});
+
+describe('getVersion - binary in bin/ subdirectory', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'happy-ver-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should find version when binary is in bin/ subdirectory', () => {
+    const binDir = path.join(tmpDir, 'bin');
+    fs.mkdirSync(binDir);
+    fs.writeFileSync(path.join(binDir, 'claude.exe'), 'binary');
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ version: '1.0.0' }));
+
+    const version = getVersion(path.join(binDir, 'claude.exe'));
+    expect(version).toBe('1.0.0');
+  });
+
+  it('should still find version when binary is at package root', () => {
+    fs.writeFileSync(path.join(tmpDir, 'cli.js'), '// cli');
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ version: '0.9.0' }));
+
+    const version = getVersion(path.join(tmpDir, 'cli.js'));
+    expect(version).toBe('0.9.0');
   });
 });

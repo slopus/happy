@@ -1,15 +1,18 @@
 /**
- * Shared utilities for finding and resolving Claude Code CLI path
- * Used by both local and remote launchers
+ * Shared utilities for finding and resolving Claude Code CLI path.
+ * Used by both local and remote launchers.
  *
- * Supports multiple installation methods:
- * 1. npm global: npm install -g @anthropic-ai/claude-code
- * 2. Homebrew: brew install claude-code
- * 3. Native installer:
+ * Supports multiple installation methods (checked in this order):
+ * 1. HAPPY_CLAUDE_PATH env var (explicit override)
+ * 2. PATH lookup: which/where claude
+ * 3. npm global:   npm install -g @anthropic-ai/claude-code
+ * 4. pnpm global:  pnpm add -g @anthropic-ai/claude-code
+ * 5. Bun global:   bun add -g @anthropic-ai/claude-code
+ * 6. Homebrew:     brew install claude-code
+ * 7. Native installer:
  *    - macOS/Linux: curl -fsSL https://claude.ai/install.sh | bash
  *    - PowerShell:  irm https://claude.ai/install.ps1 | iex
  *    - Windows CMD: curl -fsSL https://claude.ai/install.cmd | cmd
- * 4. PATH fallback: bun, pnpm, or any other package manager
  */
 
 const { execSync } = require('child_process');
@@ -30,6 +33,59 @@ function resolvePathSafe(filePath) {
         // Symlink resolution failed, return original path
         return filePath;
     }
+}
+
+/**
+ * Find path to pnpm globally installed Claude Code CLI.
+ *
+ * Strategy (two-layer, mirrors findNpmGlobalCliPath):
+ *
+ * 1. Primary — `pnpm root -g`:
+ *    Returns the global node_modules path (e.g. ~/Library/pnpm/global/5/node_modules).
+ *    Inside that directory, @anthropic-ai/claude-code is a symlink into pnpm's
+ *    .pnpm virtual store. resolveClaudeEntrypoint() handles both legacy cli.js
+ *    and modern bin/claude.exe entrypoints.
+ *
+ * 2. Fallback — PNPM_HOME env var:
+ *    When pnpm is not in PATH (e.g. shell profile not sourced in daemon context),
+ *    PNPM_HOME (set by `pnpm setup`) points to the pnpm home directory.
+ *    Global packages live under PNPM_HOME/global/<lockfileVersion>/node_modules/.
+ *    The lockfile version number (e.g. "5" for pnpm v8-v10, "6" for v11) varies
+ *    across pnpm major releases, so we scan all subdirectories.
+ *
+ * @returns {string|null} Path to the Claude Code entrypoint, or null if not found
+ */
+function findPnpmGlobalCliPath() {
+    // Primary: ask pnpm directly — same pattern as findNpmGlobalCliPath().
+    try {
+        const globalRoot = execSync('pnpm root -g', { encoding: 'utf8' }).trim();
+        const pkgDir = path.join(globalRoot, '@anthropic-ai', 'claude-code');
+        const entrypoint = resolveClaudeEntrypoint(pkgDir);
+        if (entrypoint) return entrypoint;
+    } catch (e) {
+        // pnpm not in PATH or command failed
+    }
+
+    // Fallback: derive the path from PNPM_HOME env var.
+    const pnpmHome = process.env.PNPM_HOME;
+    if (pnpmHome) {
+        const globalDir = path.join(pnpmHome, 'global');
+        if (fs.existsSync(globalDir)) {
+            try {
+                // Scan all version subdirectories (e.g. "5", "6") to handle
+                // different pnpm lockfile format versions across major releases.
+                for (const version of fs.readdirSync(globalDir)) {
+                    const pkgDir = path.join(globalDir, version, 'node_modules', '@anthropic-ai', 'claude-code');
+                    const entrypoint = resolveClaudeEntrypoint(pkgDir);
+                    if (entrypoint) return entrypoint;
+                }
+            } catch (e) {
+                // Directory read failed
+            }
+        }
+    }
+
+    return null;
 }
 
 /**
@@ -121,7 +177,11 @@ function findClaudeInPath() {
                 if (entrypoint) {
                     return { path: entrypoint, source: 'npm' };
                 }
-                // Shim found but no resolvable entrypoint — skip and let other finders handle it
+
+                // Non-executable shim without adjacent node_modules (e.g. pnpm shim).
+                // Dedicated finders (findPnpmGlobalCliPath, etc.) handle these cases,
+                // so we return null and let the priority chain in findGlobalClaudeCliPath
+                // try them.
                 return null;
             }
 
@@ -170,6 +230,14 @@ function detectSourceFromPath(resolvedPath) {
     // Must check before general Homebrew paths to distinguish from npm-through-Homebrew
     if (normalizedPath.includes('@anthropic-ai') && normalizedPath.includes('.claude-code-')) {
         return 'Homebrew';
+    }
+
+    // pnpm: content-addressable virtual store uses .pnpm/ directory.
+    // The resolved real path (after following symlinks from node_modules)
+    // looks like: .../.pnpm/@anthropic-ai+claude-code@x.y.z/node_modules/@anthropic-ai/claude-code/bin/claude.exe
+    // Must check before npm because pnpm paths also contain node_modules.
+    if (normalizedPath.includes('.pnpm') && normalizedPath.includes('claude-code')) {
+        return 'pnpm';
     }
 
     // npm: clean claude-code directory (even through Homebrew's npm)
@@ -430,32 +498,39 @@ function findLatestVersionBinary(versionsDir, binaryName = null) {
 }
 
 /**
- * Find path to globally installed Claude Code CLI
- * Priority: HAPPY_CLAUDE_PATH env var > PATH > npm > Bun > Homebrew > Native
+ * Find path to globally installed Claude Code CLI.
+ * Priority: HAPPY_CLAUDE_PATH > PATH > npm > pnpm > Bun > Homebrew > Native
  * @returns {{path: string, source: string}|null} Path and source, or null if not found
  */
 function findGlobalClaudeCliPath() {
-    // 1. Environment variable (explicit override)
+    // 1. Environment variable (explicit override, highest priority)
     const envPath = process.env.HAPPY_CLAUDE_PATH;
     if (envPath && fs.existsSync(envPath)) {
         const resolved = resolvePathSafe(envPath) || envPath;
         return { path: resolved, source: 'HAPPY_CLAUDE_PATH' };
     }
 
-    // 2. Check PATH (respects user's shell config)
+    // 2. PATH lookup (respects user's shell config — covers all managers)
     const pathResult = findClaudeInPath();
     if (pathResult) return pathResult;
 
-    // 3. Fall back to package manager detection
+    // 3. npm global: `npm root -g` → node_modules/@anthropic-ai/claude-code
     const npmPath = findNpmGlobalCliPath();
     if (npmPath) return { path: npmPath, source: 'npm' };
 
+    // 4. pnpm global: `pnpm root -g` or PNPM_HOME env var
+    const pnpmPath = findPnpmGlobalCliPath();
+    if (pnpmPath) return { path: pnpmPath, source: 'pnpm' };
+
+    // 5. Bun global: ~/.bun/bin/claude symlink
     const bunPath = findBunGlobalCliPath();
     if (bunPath) return { path: bunPath, source: 'Bun' };
 
+    // 6. Homebrew: /opt/homebrew, /usr/local, ~/.linuxbrew
     const homebrewPath = findHomebrewCliPath();
     if (homebrewPath) return { path: homebrewPath, source: 'Homebrew' };
 
+    // 7. Native installer: ~/.local/bin, %LOCALAPPDATA%\Claude, etc.
     const nativePath = findNativeInstallerCliPath();
     if (nativePath) return { path: nativePath, source: 'native installer' };
 
@@ -469,9 +544,15 @@ function findGlobalClaudeCliPath() {
  */
 function getVersion(cliPath) {
     try {
-        const pkgPath = path.join(path.dirname(cliPath), 'package.json');
+        let dir = path.dirname(cliPath);
+        const pkgPath = path.join(dir, 'package.json');
         if (fs.existsSync(pkgPath)) {
             const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            return pkg.version;
+        }
+        const parentPkgPath = path.join(path.dirname(dir), 'package.json');
+        if (fs.existsSync(parentPkgPath)) {
+            const pkg = JSON.parse(fs.readFileSync(parentPkgPath, 'utf8'));
             return pkg.version;
         }
     } catch (e) {}
@@ -611,6 +692,7 @@ module.exports = {
     findClaudeInPath,
     detectSourceFromPath,
     findNpmGlobalCliPath,
+    findPnpmGlobalCliPath,
     findBunGlobalCliPath,
     findHomebrewCliPath,
     findNativeInstallerCliPath,
