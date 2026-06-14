@@ -507,7 +507,14 @@ const CODEX_EFFORTS_BY_MODEL: Record<string, readonly string[]> = {
 const CODEX_EFFORTS_FALLBACK = ['low', 'medium', 'high', 'xhigh'] as const;
 
 export function getClaudeEffortLevels(): EffortLevel[] {
-    return effortLevels(CLAUDE_EFFORTS);
+    return [
+        // 'auto' pins no effort level — the model self-paces via adaptive
+        // thinking (Claude decides how much to think per turn). The CLI maps it
+        // to an omitted SDK `effort` option. See happy-cli loop.ts toSdkEffort().
+        // Carried separately because it is the one level with a description.
+        { key: 'auto', name: 'auto', description: 'let Claude decide' },
+        ...effortLevels(CLAUDE_EFFORTS),
+    ];
 }
 
 /**
