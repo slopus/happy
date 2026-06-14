@@ -21,10 +21,12 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { sessionAbort, sessionUpdateMetadata } from '@/sync/ops';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatusFiles, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
+import { appendRunReviewEvent, createRunReviewEvent, getFinalRunReviewEvent, getRunReviewEvents, RUN_REVIEW_CLOCK_INTERVAL_MS, type RunReviewActionEvent } from '@/sync/runReviewState';
+import { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { tracking } from '@/track';
@@ -133,6 +135,12 @@ export const SessionView = React.memo((props: { id: string }) => {
     const handleAllFilesFilePress = React.useCallback((filePath: string) => {
         pushOverlay({ kind: 'file', path: filePath });
     }, [pushOverlay]);
+    const handleOpenChangeEvidence = React.useCallback(() => {
+        pushOverlay({ kind: 'diff', file: '' });
+    }, [pushOverlay]);
+    const handleOpenFileListEvidence = React.useCallback(() => {
+        router.push(`/session/${sessionId}/files`);
+    }, [router, sessionId]);
 
     // When sidebar capability is lost (screen too narrow, disabled), close views.
     // Don't close on zen mode toggle — keep the view visible.
@@ -255,7 +263,12 @@ export const SessionView = React.memo((props: { id: string }) => {
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
                 ) : (
-                    <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
+                    <SessionViewLoaded
+                        key={sessionId}
+                        sessionId={sessionId}
+                        session={session}
+                        onOpenChangeEvidence={canShowSidebar ? handleOpenChangeEvidence : handleOpenFileListEvidence}
+                    />
                 )}
             </View>
         </>
@@ -407,7 +420,57 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
     );
 });
 
-function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session }) {
+type RunReviewRiskTone = 'neutral' | 'warning' | 'danger' | 'success';
+
+type RunReviewRiskBadge = {
+    key: string;
+    label: string;
+    tone: RunReviewRiskTone;
+    evidence: string;
+    available: boolean;
+};
+
+type RunReviewModel = {
+    title: string;
+    summary: string;
+    source: string;
+    timing: string;
+    runtime: string;
+    evidenceSummary: string;
+    riskBadges: RunReviewRiskBadge[];
+    changedFileCount: number;
+    toolCallCount: number;
+    permissionDecisionCount: number;
+    latestToolMessageId: string | null;
+    exportText: string;
+};
+
+const SILENT_RUN_WARNING_MS = 60 * 60 * 1000;
+const SILENT_RUN_DANGER_MS = 4 * 60 * 60 * 1000;
+const BROAD_FILE_CHANGE_COUNT = 10;
+const BROAD_FILE_CHANGE_LINES = 500;
+
+function useRunReviewClock(session: Session): number {
+    const [now, setNow] = React.useState(() => Date.now());
+    const shouldTick = session.presence === 'online' && (session.thinking || session.active);
+
+    React.useEffect(() => {
+        if (!shouldTick) {
+            setNow(Date.now());
+            return;
+        }
+        const timer = setInterval(() => setNow(Date.now()), RUN_REVIEW_CLOCK_INTERVAL_MS);
+        return () => clearInterval(timer);
+    }, [shouldTick]);
+
+    return now;
+}
+
+function SessionViewLoaded({ sessionId, session, onOpenChangeEvidence }: {
+    sessionId: string,
+    session: Session,
+    onOpenChangeEvidence?: () => void,
+}) {
     const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
@@ -416,9 +479,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const isTablet = useIsTablet();
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
+    const gitStatusFiles = useSessionGitStatusFiles(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
     const zenMode = useLocalSetting('zenMode');
+    const { width: windowWidth } = useWindowDimensions();
     const sessionInputHorizontalPadding = Platform.OS === 'web' || isRunningOnMac() || isTablet ? 12 : 8;
+    const reviewClockNow = useRunReviewClock(session);
+    const reviewEvents = React.useMemo(() => getRunReviewEvents(session.metadata), [session.metadata]);
 
     // Check if CLI version is outdated and not already acknowledged
     const cliVersion = session.metadata?.version;
@@ -564,6 +631,82 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         };
     }, [sessionUsage, session.latestUsage]);
 
+    const runReview = React.useMemo(() => (
+        createRunReviewModel(session, messages, gitStatusFiles, reviewClockNow, reviewEvents)
+    ), [session, messages, gitStatusFiles, reviewClockNow, reviewEvents]);
+    const isReviewCompact = windowWidth < 700 || (deviceType === 'phone' && !isLandscape);
+    const finalizedReview = React.useMemo(() => (
+        getFinalRunReviewEvent(reviewEvents)
+    ), [reviewEvents]);
+
+    const appendReviewEvent = React.useCallback(async (event: RunReviewActionEvent) => {
+        if (!session.metadata) {
+            Modal.alert('Run review', 'Session metadata is not available yet. Try again after sync finishes.');
+            return;
+        }
+
+        const nextEvents = appendRunReviewEvent(reviewEvents, event);
+        if (nextEvents === reviewEvents) return;
+
+        const optimisticMetadata = {
+            ...session.metadata,
+            runReviewEvents: nextEvents,
+        };
+        storage.getState().applySessions([{ ...session, metadata: optimisticMetadata }]);
+
+        try {
+            await sessionUpdateMetadata(sessionId, optimisticMetadata, session.metadataVersion, 3, (latestMetadata) => ({
+                ...latestMetadata,
+                runReviewEvents: appendRunReviewEvent(getRunReviewEvents(latestMetadata), event),
+            }));
+        } catch (error) {
+            storage.getState().applySessions([session]);
+            console.error('Failed to persist run review event:', error);
+            Modal.alert('Run review', 'Could not save this review action. Try again after sync reconnects.');
+        }
+    }, [reviewEvents, session, sessionId]);
+
+    const handleAcceptReview = React.useCallback(() => {
+        if (finalizedReview) return;
+        void appendReviewEvent(createRunReviewEvent('accepted', Date.now()));
+    }, [appendReviewEvent, finalizedReview]);
+
+    const handleFlagReview = React.useCallback(async () => {
+        if (finalizedReview) return;
+        const note = await Modal.prompt(
+            'Flag suspicious run',
+            'Add the reason this run needs follow-up.',
+            { placeholder: 'Reason', confirmText: 'Flag' }
+        );
+        const trimmed = note?.trim();
+        if (!trimmed) return;
+        void appendReviewEvent(createRunReviewEvent('flagged', Date.now(), trimmed));
+    }, [appendReviewEvent, finalizedReview]);
+
+    const handleAddReviewNote = React.useCallback(async () => {
+        const note = await Modal.prompt(
+            'Add review note',
+            finalizedReview ? 'Final decision is read-only; notes are appended as follow-up evidence.' : 'Add a note without changing the review state.',
+            { placeholder: 'Review note', confirmText: 'Add' }
+        );
+        const trimmed = note?.trim();
+        if (!trimmed) return;
+        void appendReviewEvent(createRunReviewEvent('note', Date.now(), trimmed));
+    }, [appendReviewEvent, finalizedReview]);
+
+    const handleCopyReviewEvidence = React.useCallback(async () => {
+        await Clipboard.setStringAsync(runReview.exportText);
+        Modal.alert('Run review', 'Evidence summary copied.');
+    }, [runReview.exportText]);
+
+    const handleOpenReviewEvidence = React.useCallback(() => {
+        if (runReview.changedFileCount > 0 && onOpenChangeEvidence) {
+            onOpenChangeEvidence();
+            return;
+        }
+        void handleCopyReviewEvidence();
+    }, [handleCopyReviewEvidence, onOpenChangeEvidence, runReview.changedFileCount]);
+
 
     // Handle microphone button press - memoized to prevent button flashing
     const handleMicrophonePress = React.useCallback(async () => {
@@ -636,13 +779,23 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [sessionId, realtimeStatus]);
 
     let content = (
-        <>
+        <View style={{ flex: 1 }}>
+            <RunReviewStrip
+                model={runReview}
+                compact={isReviewCompact}
+                finalizedEvent={finalizedReview}
+                onAccept={handleAcceptReview}
+                onFlag={handleFlagReview}
+                onAddNote={handleAddReviewNote}
+                onCopyEvidence={handleCopyReviewEvidence}
+                onOpenEvidence={handleOpenReviewEvidence}
+            />
             <Deferred>
                 {messages.length > 0 && (
                     <ChatList session={session} />
                 )}
             </Deferred>
-        </>
+        </View>
     );
     const placeholder = messages.length === 0 ? (
         <>
@@ -799,6 +952,375 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }
         </>
     )
+}
+
+const RunReviewStrip = React.memo(function RunReviewStrip(props: {
+    model: RunReviewModel;
+    compact: boolean;
+    finalizedEvent: RunReviewActionEvent | null;
+    onAccept: () => void;
+    onFlag: () => void;
+    onAddNote: () => void;
+    onCopyEvidence: () => void;
+    onOpenEvidence: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const { model, compact, finalizedEvent } = props;
+    const disabled = !!finalizedEvent;
+    const visibleBadges = compact ? model.riskBadges.slice(0, 2) : model.riskBadges;
+    const overflowCount = model.riskBadges.length - visibleBadges.length;
+    const finalizedLabel = finalizedEvent
+        ? finalizedEvent.kind === 'accepted' ? 'Accepted' : 'Flagged'
+        : null;
+
+    const showActionMenu = React.useCallback(() => {
+        const buttons = [
+            { text: 'Open evidence', onPress: props.onOpenEvidence },
+            { text: 'Copy evidence', onPress: props.onCopyEvidence },
+            { text: 'Add note', onPress: props.onAddNote },
+            ...(!disabled ? [
+                { text: 'Accept', onPress: props.onAccept },
+                { text: 'Flag suspicious', onPress: props.onFlag, style: 'destructive' as const },
+            ] : []),
+            { text: 'Cancel', style: 'cancel' as const },
+        ];
+        Modal.alert('Run review', model.evidenceSummary, buttons);
+    }, [disabled, model.evidenceSummary, props.onAccept, props.onAddNote, props.onCopyEvidence, props.onFlag, props.onOpenEvidence]);
+
+    return (
+        <View style={{
+            paddingHorizontal: compact ? 8 : 12,
+            paddingTop: 8,
+            paddingBottom: 6,
+            borderBottomWidth: 1,
+            borderBottomColor: theme.colors.divider,
+            backgroundColor: theme.colors.surface,
+        }}>
+            <View style={{
+                width: '100%',
+                maxWidth: layout.maxWidth,
+                alignSelf: 'center',
+                borderWidth: 1,
+                borderColor: theme.colors.divider,
+                borderRadius: 8,
+                backgroundColor: theme.colors.surfaceHigh,
+                paddingHorizontal: compact ? 10 : 12,
+                paddingVertical: compact ? 8 : 10,
+                gap: compact ? 8 : 10,
+            }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 14,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: getRiskToneColor(model.riskBadges[0]?.tone ?? 'neutral'),
+                    }}>
+                        <Ionicons name="shield-checkmark-outline" size={16} color="#fff" />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text
+                            numberOfLines={1}
+                            style={{
+                                color: theme.colors.text,
+                                fontSize: compact ? 13 : 14,
+                                lineHeight: compact ? 18 : 19,
+                                fontWeight: '700',
+                            }}
+                        >
+                            {finalizedLabel ? `${finalizedLabel}: ${model.summary}` : model.summary}
+                        </Text>
+                        {!compact && (
+                            <Text numberOfLines={1} style={{ color: theme.colors.textSecondary, fontSize: 12, lineHeight: 17 }}>
+                                {model.timing} · {model.runtime}
+                            </Text>
+                        )}
+                    </View>
+                    {compact ? (
+                        <Pressable
+                            onPress={showActionMenu}
+                            hitSlop={10}
+                            style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            <Ionicons name="ellipsis-horizontal" size={18} color={theme.colors.textSecondary} />
+                        </Pressable>
+                    ) : null}
+                </View>
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                    {visibleBadges.map((badge) => (
+                        <RunReviewBadge key={badge.key} badge={badge} />
+                    ))}
+                    {overflowCount > 0 && (
+                        <RunReviewBadge badge={{
+                            key: 'overflow',
+                            label: `+${overflowCount}`,
+                            tone: 'neutral',
+                            evidence: 'Additional review signals',
+                            available: true,
+                        }} />
+                    )}
+                </View>
+
+                {!compact && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <RunReviewAction label="Evidence" icon="git-compare-outline" onPress={props.onOpenEvidence} />
+                        <RunReviewAction label="Copy" icon="copy-outline" onPress={props.onCopyEvidence} />
+                        <RunReviewAction label="Note" icon="create-outline" onPress={props.onAddNote} />
+                        <RunReviewAction label="Accept" icon="checkmark" onPress={props.onAccept} disabled={disabled} />
+                        <RunReviewAction label="Flag" icon="flag-outline" onPress={props.onFlag} disabled={disabled} danger />
+                    </View>
+                )}
+            </View>
+        </View>
+    );
+});
+
+const RunReviewBadge = React.memo(function RunReviewBadge({ badge }: { badge: RunReviewRiskBadge }) {
+    const { theme } = useUnistyles();
+    return (
+        <Pressable
+            onPress={() => Modal.alert(badge.label, badge.available ? badge.evidence : 'Evidence unavailable.')}
+            style={{
+                minHeight: 24,
+                borderRadius: 8,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                backgroundColor: getRiskToneColor(badge.tone),
+                opacity: badge.available ? 1 : 0.7,
+            }}
+        >
+            <Text style={{ color: badge.tone === 'neutral' ? theme.colors.text : '#fff', fontSize: 11, lineHeight: 15, fontWeight: '700' }}>
+                {badge.label}
+            </Text>
+        </Pressable>
+    );
+});
+
+const RunReviewAction = React.memo(function RunReviewAction(props: {
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    onPress: () => void;
+    disabled?: boolean;
+    danger?: boolean;
+}) {
+    const { theme } = useUnistyles();
+    return (
+        <Pressable
+            onPress={props.disabled ? undefined : props.onPress}
+            disabled={props.disabled}
+            style={({ pressed }: { pressed: boolean }) => ({
+                minHeight: 32,
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                backgroundColor: props.danger ? '#FF453A' : theme.colors.surface,
+                opacity: props.disabled ? 0.45 : pressed ? 0.8 : 1,
+            })}
+        >
+            <Ionicons name={props.icon} size={14} color={props.danger ? '#fff' : theme.colors.text} />
+            <Text style={{ color: props.danger ? '#fff' : theme.colors.text, fontSize: 12, lineHeight: 16, fontWeight: '700' }}>
+                {props.label}
+            </Text>
+        </Pressable>
+    );
+});
+
+function createRunReviewModel(
+    session: Session,
+    messages: Message[],
+    gitStatusFiles: ReturnType<typeof useSessionGitStatusFiles>,
+    now: number,
+    reviewEvents: RunReviewActionEvent[],
+): RunReviewModel {
+    const toolMessages = collectToolMessages(messages);
+    const changedFiles = collectChangedFiles(gitStatusFiles);
+    const lineChangeCount = changedFiles.reduce((sum, file) => sum + file.linesAdded + file.linesRemoved, 0);
+    const permissions = collectPermissionSignals(session, toolMessages);
+    const lastMessageAt = messages.reduce((max, message) => Math.max(max, message.createdAt || 0), 0);
+    const lastActivityAt = Math.max(lastMessageAt, session.thinkingAt || 0, session.activeAt || 0, session.updatedAt || 0);
+    const isActive = session.presence === 'online' && (session.thinking || session.active);
+    const silentMs = isActive && lastActivityAt > 0 ? Math.max(0, now - lastActivityAt) : 0;
+    const hasDangerousPermissions = !!session.metadata?.dangerouslySkipPermissions
+        || session.permissionMode === 'bypassPermissions'
+        || session.permissionMode === 'yolo'
+        || permissions.some((permission) => permission.mode === 'bypassPermissions' || permission.decision === 'approved_for_session');
+    const broadFiles = changedFiles.length >= BROAD_FILE_CHANGE_COUNT || lineChangeCount >= BROAD_FILE_CHANGE_LINES;
+    const latestToolMessageId = toolMessages[toolMessages.length - 1]?.id ?? null;
+    const finalized = [...reviewEvents].reverse().find((event) => event.kind === 'accepted' || event.kind === 'flagged') ?? null;
+    const title = finalized
+        ? finalized.kind === 'accepted' ? 'Reviewed' : 'Suspicious'
+        : silentMs >= SILENT_RUN_WARNING_MS || hasDangerousPermissions || broadFiles ? 'Review needed' : isActive ? 'Active run' : 'Run review';
+    const source = session.metadata?.startedBy ?? session.metadata?.flavor ?? 'unknown';
+    const runtimeParts = [
+        session.metadata?.flavor ?? 'agent',
+        session.modelMode ?? session.metadata?.currentModelCode,
+        session.permissionMode ?? session.metadata?.currentOperatingModeCode,
+    ].filter(Boolean);
+
+    const riskBadges: RunReviewRiskBadge[] = [
+        {
+            key: 'silent',
+            label: silentMs >= SILENT_RUN_WARNING_MS ? `Silent ${formatDuration(silentMs)}` : 'No silent risk',
+            tone: silentMs >= SILENT_RUN_DANGER_MS ? 'danger' : silentMs >= SILENT_RUN_WARNING_MS ? 'warning' : 'success',
+            evidence: isActive
+                ? `Last visible activity ${lastActivityAt ? formatClock(lastActivityAt) : 'unavailable'}; warning threshold ${formatDuration(SILENT_RUN_WARNING_MS)}.`
+                : 'Run is not currently active.',
+            available: lastActivityAt > 0 || !isActive,
+        },
+        {
+            key: 'permission',
+            label: hasDangerousPermissions ? 'Permission escalation' : `${permissions.length} permissions`,
+            tone: hasDangerousPermissions ? 'danger' : permissions.length > 0 ? 'warning' : 'success',
+            evidence: permissions.length > 0
+                ? permissions.map((permission) => `${permission.tool}: ${permission.status}${permission.mode ? ` (${permission.mode})` : ''}`).join('\n')
+                : 'No permission decisions visible in session evidence.',
+            available: permissions.length > 0,
+        },
+        {
+            key: 'files',
+            label: changedFiles.length > 0 ? `${changedFiles.length} changed files` : 'No file changes',
+            tone: broadFiles ? 'warning' : changedFiles.length > 0 ? 'neutral' : 'success',
+            evidence: changedFiles.length > 0
+                ? changedFiles.slice(0, 12).map((file) => `${file.fullPath} +${file.linesAdded}/-${file.linesRemoved}`).join('\n')
+                : 'Git status has no changed files.',
+            available: changedFiles.length > 0,
+        },
+        {
+            key: 'long-running',
+            label: silentMs >= SILENT_RUN_DANGER_MS ? 'Long silence' : 'Runtime ok',
+            tone: silentMs >= SILENT_RUN_DANGER_MS ? 'danger' : silentMs >= SILENT_RUN_WARNING_MS ? 'warning' : 'success',
+            evidence: `Silent duration ${formatDuration(silentMs)}; critical threshold ${formatDuration(SILENT_RUN_DANGER_MS)}.`,
+            available: isActive,
+        },
+        {
+            key: 'replay',
+            label: toolMessages.length > 0 ? 'Replay available' : messages.length > 0 ? 'Replay partial' : 'Replay unavailable',
+            tone: toolMessages.length > 0 ? 'success' : messages.length > 0 ? 'warning' : 'neutral',
+            evidence: toolMessages.length > 0
+                ? `Latest tool message: ${latestToolMessageId}`
+                : messages.length > 0 ? 'Chat messages are available, but no tool-call replay pointer is visible.' : 'No messages have loaded for this session.',
+            available: messages.length > 0,
+        },
+    ];
+
+    const summary = `${title} · ${toolMessages.length} tools · ${changedFiles.length} files`;
+    const timing = lastActivityAt > 0 ? `last activity ${formatClock(lastActivityAt)}` : 'last activity unavailable';
+    const runtime = runtimeParts.join(' · ') || 'runtime unknown';
+    const evidenceSummary = `${toolMessages.length} tool calls, ${permissions.length} permissions, ${changedFiles.length} changed files`;
+    const notes = reviewEvents.filter((event) => event.note).map((event) => `- ${event.kind} ${formatClock(event.createdAt)}: ${event.note}`).join('\n');
+
+    return {
+        title,
+        summary,
+        source,
+        timing,
+        runtime,
+        evidenceSummary,
+        riskBadges,
+        changedFileCount: changedFiles.length,
+        toolCallCount: toolMessages.length,
+        permissionDecisionCount: permissions.length,
+        latestToolMessageId,
+        exportText: [
+            `Run review: ${summary}`,
+            `Session: ${session.id}`,
+            `Source: ${source}`,
+            `Timing: ${timing}`,
+            `Runtime: ${runtime}`,
+            `Evidence: ${evidenceSummary}`,
+            '',
+            'Risks:',
+            ...riskBadges.map((badge) => `- ${badge.label}: ${badge.evidence.replace(/\n/g, '; ')}`),
+            notes ? `\nReview notes:\n${notes}` : '',
+        ].filter(Boolean).join('\n'),
+    };
+}
+
+function collectToolMessages(messages: Message[]): ToolCallMessage[] {
+    const out: ToolCallMessage[] = [];
+    const visit = (message: Message) => {
+        if (message.kind === 'tool-call') {
+            out.push(message);
+            message.children.forEach(visit);
+        }
+    };
+    messages.forEach(visit);
+    return out;
+}
+
+function collectChangedFiles(gitStatusFiles: ReturnType<typeof useSessionGitStatusFiles>) {
+    const files = [...(gitStatusFiles?.stagedFiles ?? []), ...(gitStatusFiles?.unstagedFiles ?? [])];
+    const byPath = new Map<string, GitFileStatus>();
+    for (const file of files) {
+        const existing = byPath.get(file.fullPath);
+        if (!existing) {
+            byPath.set(file.fullPath, file);
+        } else {
+            byPath.set(file.fullPath, {
+                ...file,
+                linesAdded: existing.linesAdded + file.linesAdded,
+                linesRemoved: existing.linesRemoved + file.linesRemoved,
+            });
+        }
+    }
+    return Array.from(byPath.values());
+}
+
+function collectPermissionSignals(session: Session, toolMessages: ToolCallMessage[]) {
+    const permissions = toolMessages
+        .map((message) => message.tool.permission ? {
+            tool: message.tool.name,
+            status: message.tool.permission.status,
+            mode: message.tool.permission.mode,
+            decision: message.tool.permission.decision,
+        } : null)
+        .filter(Boolean) as Array<{ tool: string; status: string; mode?: string; decision?: string }>;
+    const pendingRequests = Object.values((session.agentState?.requests ?? {}) as Record<string, { tool: string }>);
+    for (const request of pendingRequests) {
+        permissions.push({ tool: request.tool, status: 'pending' });
+    }
+    const completedRequests = Object.values((session.agentState?.completedRequests ?? {}) as Record<string, {
+        tool: string;
+        status: string;
+        mode?: string | null;
+        decision?: string | null;
+    }>);
+    for (const request of completedRequests) {
+        permissions.push({
+            tool: request.tool,
+            status: request.status,
+            mode: request.mode ?? undefined,
+            decision: request.decision ?? undefined,
+        });
+    }
+    return permissions;
+}
+
+function getRiskToneColor(tone: RunReviewRiskTone) {
+    switch (tone) {
+        case 'success': return '#30D158';
+        case 'warning': return '#FF9F0A';
+        case 'danger': return '#FF453A';
+        case 'neutral':
+        default: return 'rgba(142, 142, 147, 0.18)';
+    }
+}
+
+function formatDuration(ms: number) {
+    if (ms <= 0) return '0m';
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return remainder > 0 ? `${hours}h ${remainder}m` : `${hours}h`;
+}
+
+function formatClock(value: number) {
+    return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function InactiveArchivedHint(props: {
