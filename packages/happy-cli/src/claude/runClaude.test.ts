@@ -224,6 +224,95 @@ describe('runClaude remote JSONL scanner', () => {
         exitSpy.mockRestore();
     });
 
+    it('forwards SessionStart hooks even when Claude reports the current session id again', async () => {
+        let onSessionHook: ((sessionId: string, data: any) => void) | undefined;
+        const sessionClient = {
+            sessionId: 'happy-session-1',
+            suppressNextArchiveSignal: vi.fn(),
+            skipExistingMessages: vi.fn(),
+            updateMetadata: vi.fn(),
+            sendClaudeSessionMessage: vi.fn(),
+            onUserMessage: vi.fn(),
+            onFileEvent: vi.fn(),
+            on: vi.fn(),
+            trackAttachmentDownload: vi.fn(),
+            drainAttachmentsForUserMessage: vi.fn(async () => []),
+            downloadAndDecryptAttachment: vi.fn(),
+            getMetadata: vi.fn(() => ({})),
+            sendSessionEvent: vi.fn(),
+            updateAgentState: vi.fn(),
+            rpcHandlerManager: {
+                registerHandler: vi.fn(),
+            },
+            sendSessionDeath: vi.fn(),
+            flush: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+        };
+        const api = {
+            getOrCreateMachine: vi.fn(async () => ({})),
+            getOrCreateSession: vi.fn(async () => ({
+                id: 'happy-session-1',
+                seq: 0,
+                metadata: {},
+                metadataVersion: 0,
+                agentState: {},
+                agentStateVersion: 0,
+                encryptionKey: new Uint8Array(32),
+                encryptionVariant: 'legacy' as const,
+            })),
+            sessionSyncClient: vi.fn(() => sessionClient),
+            deactivateSession: vi.fn(async () => {}),
+        };
+        const sessionInstance = {
+            sessionId: 'claude-known-session',
+            onSessionFound: vi.fn((sessionId: string) => {
+                sessionInstance.sessionId = sessionId;
+            }),
+            cleanup: vi.fn(async () => {}),
+        };
+        mockApiClientCreate.mockResolvedValue(api);
+        mockStartHookServer.mockImplementation(async (opts) => {
+            onSessionHook = opts.onSessionHook;
+            return {
+                port: 23456,
+                stop: vi.fn(),
+            };
+        });
+
+        const loopDeferred = createDeferred<number>();
+        mockLoop.mockImplementation((opts) => {
+            opts.onSessionReady(sessionInstance);
+            return loopDeferred.promise;
+        });
+
+        const runPromise = runClaude({
+            token: 'token',
+            encryption: { type: 'legacy', secret: new Uint8Array(32) },
+        } as any, {
+            startingMode: 'remote',
+            shouldStartDaemon: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(mockLoop).toHaveBeenCalled();
+            expect(onSessionHook).toBeDefined();
+        });
+
+        onSessionHook!('claude-known-session', {
+            hook_event_name: 'SessionStart',
+            source: 'startup',
+        });
+
+        expect(sessionInstance.onSessionFound).toHaveBeenCalledWith('claude-known-session');
+
+        loopDeferred.resolve(0);
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+            throw new Error('process.exit');
+        }) as never);
+        await expect(runPromise).rejects.toThrow('process.exit');
+        exitSpy.mockRestore();
+    });
+
     it('answers /skills from Happy instead of opening the interactive Claude picker', async () => {
         let onUserMessage: ((message: any) => Promise<void>) | undefined;
         const sessionClient = {

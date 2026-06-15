@@ -1,3 +1,6 @@
+import { chmod, stat } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import type {
     TerminalDataHandler,
     TerminalExitHandler,
@@ -8,6 +11,8 @@ import { sanitizeTerminalEnvironment } from './terminalEnvironment';
 
 type PtyProcess = import('node-pty').IPty;
 type PtyDisposable = { dispose(): void };
+
+const requireForNodePty = createRequire(import.meta.url);
 
 export class PtyTerminalTransport implements TerminalTransport {
     readonly backend = 'pty' as const;
@@ -26,6 +31,7 @@ export class PtyTerminalTransport implements TerminalTransport {
             await this.dispose();
         }
 
+        await ensureNodePtySpawnHelperExecutable();
         const nodePty = await import('node-pty');
         const env = sanitizeTerminalEnvironment(options.env);
         const command = options.shell ? (env.SHELL || '/bin/sh') : options.command;
@@ -125,6 +131,45 @@ export class PtyTerminalTransport implements TerminalTransport {
             handler(exit);
         }
     }
+}
+
+async function ensureNodePtySpawnHelperExecutable(): Promise<void> {
+    if (process.platform === 'win32') {
+        return;
+    }
+
+    const packageRoot = dirname(dirname(requireForNodePty.resolve('node-pty')));
+    const helperPath = await findNodePtySpawnHelper(packageRoot);
+    if (helperPath === null) {
+        return;
+    }
+
+    const helperStat = await stat(helperPath);
+    if ((helperStat.mode & 0o111) !== 0) {
+        return;
+    }
+
+    await chmod(helperPath, helperStat.mode | 0o111);
+}
+
+async function findNodePtySpawnHelper(packageRoot: string): Promise<string | null> {
+    const candidates = [
+        join(packageRoot, 'build', 'Release', 'spawn-helper'),
+        join(packageRoot, 'prebuilds', `${process.platform}-${process.arch}`, 'spawn-helper'),
+    ];
+
+    for (const candidate of candidates) {
+        try {
+            const entry = await stat(candidate);
+            if (entry.isFile()) {
+                return candidate;
+            }
+        } catch {
+            // Try the next node-pty layout.
+        }
+    }
+
+    return null;
 }
 
 function normalizeExitSignal(signal: number | string | null | undefined): string | null {

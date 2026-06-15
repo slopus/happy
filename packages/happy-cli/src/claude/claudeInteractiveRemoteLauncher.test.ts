@@ -370,6 +370,39 @@ describe('claudeInteractiveRemoteLauncher', () => {
         await resultPromise;
     });
 
+    it('treats a matching SessionStart hook after spawn as terminal input ready', async () => {
+        const transport = new FakeTerminalTransport('pty');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'queued before silent terminal prompt',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        try {
+            await vi.waitFor(() => {
+                expect(transport.spawn).toHaveBeenCalledOnce();
+                expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+            });
+            await Promise.resolve();
+            expect(transport.paste).not.toHaveBeenCalled();
+
+            session.onSessionFound('claude-known-session');
+
+            await vi.waitFor(() => {
+                expect(transport.paste).toHaveBeenCalledWith('queued before silent terminal prompt\r');
+            });
+        } finally {
+            transport.emitExit({ code: 0, signal: null });
+            await resultPromise;
+        }
+    });
+
     it('does not paste a queued batch for a stale prompt in terminal history', async () => {
         const transport = new FakeTerminalTransport('tmux');
         mockCreateTerminalTransport.mockResolvedValue(transport);

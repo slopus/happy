@@ -79,6 +79,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
     let continueAfterWaitAbort = false;
     let localAttachMode = false;
     let detachTerminalOnCleanup = false;
+    let terminalSpawned = false;
     let lastSafeTerminalMessage: string | null = null;
     let completionTimer: ReturnType<typeof setTimeout> | null = null;
     let completionGeneration = 0;
@@ -300,6 +301,9 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
 
         scannerSessionCallback = (sessionId: string) => {
             void scanner?.onNewSession(sessionId);
+            if (terminalSpawned && sessionId === identity.claudeSessionId && !localAttachMode) {
+                markTerminalInputReady();
+            }
         };
         session.addSessionFoundCallback(scannerSessionCallback);
 
@@ -437,6 +441,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             shell: command.shell,
             windowName: createInteractiveWindowName(),
         });
+        terminalSpawned = true;
         updateRuntimeMetadata(session, {
             ...terminalMetadata('interactive'),
             terminalId: spawnResult.terminalId,

@@ -8,6 +8,7 @@ import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage
 import { Machine, Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
+import { getClaudeTmuxSpawnEnvironment } from '@/sync/spawnEnvironment';
 import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
 import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
@@ -113,6 +114,7 @@ export function useSessionQuickActions(
     const machine = useMachine(machineId);
     const devModeEnabled = useLocalSetting('devModeEnabled');
     const expResumeSession = useSetting('expResumeSession');
+    const claudeTmuxSessionName = useSetting('claudeTmuxSessionName');
     const resumeAvailability = React.useMemo(
         () => expResumeSession ? getResumeAvailability(session, machine, sessionStatus.isConnected) : { canResume: false, canShowResume: false, subtitle: '', message: '' },
         [machine, session, sessionStatus.isConnected, expResumeSession],
@@ -228,7 +230,13 @@ export function useSessionQuickActions(
         if (!forkSource) {
             throw new HappyError(t('session.forkErrorMissingMetadata'), false);
         }
-        const result = await forkAndSpawn(forkSource as ForkSource);
+        const source = forkSource as ForkSource;
+        const result = await forkAndSpawn(source, {
+            environmentVariables: getClaudeTmuxSpawnEnvironment({
+                agent: source.kind,
+                claudeTmuxSessionName,
+            }),
+        });
         if (result.type !== 'success') {
             throw new HappyError(result.type === 'error' ? result.errorMessage : t('session.forkErrorGeneric'), false);
         }

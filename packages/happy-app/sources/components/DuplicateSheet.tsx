@@ -4,7 +4,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { useRouter } from 'expo-router';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { useSession } from '@/sync/storage';
+import { useSession, useSetting } from '@/sync/storage';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { getDuplicateSheetFrame } from '@/utils/duplicateSheetLayout';
 import {
@@ -13,6 +13,7 @@ import {
     codexListRewindPoints,
     type ForkSource,
 } from '@/sync/ops';
+import { getClaudeTmuxSpawnEnvironment } from '@/sync/spawnEnvironment';
 import { getSessionForkSource } from '@/utils/sessionFork';
 
 export interface DuplicateSheetProps {
@@ -44,6 +45,7 @@ type RewindPoint = {
 export const DuplicateSheet = React.memo(function DuplicateSheet(props: DuplicateSheetProps) {
     const { sessionId, initialClaudeUuid, initialRewindPointId, initialMessageText, initialForkedFromMessageId, onClose } = props;
     const session = useSession(sessionId);
+    const claudeTmuxSessionName = useSetting('claudeTmuxSessionName');
     const router = useRouter();
     const windowSize = useWindowDimensions();
     const sheetFrame = React.useMemo(
@@ -140,14 +142,20 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
         const forkedFromMessageId = matchesInitialSelection(selected, initialSelectedId, initialMessageText)
             ? initialForkedFromMessageId
             : undefined;
+        const environmentVariables = getClaudeTmuxSpawnEnvironment({
+            agent: source.kind,
+            claudeTmuxSessionName,
+        });
         const result = source.kind === 'codex'
             ? await forkAndSpawn(source as ForkSource, {
                 cutAfterItemId: selected.id,
                 forkedFromMessageId,
+                environmentVariables,
             })
             : await forkAndSpawn(source as ForkSource, {
                 cutAfterUuid: selected.id,
                 forkedFromMessageId,
+                environmentVariables,
             });
 
         if (result.type === 'success') {

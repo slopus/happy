@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFile, rm, stat } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { chmod, readFile, rm, stat } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import {
     chooseTerminalBackend,
     type TerminalBackendAvailability,
@@ -16,6 +17,8 @@ const nodePtyMock = vi.hoisted(() => ({
 }));
 
 vi.mock('node-pty', () => nodePtyMock);
+
+const requireForTest = createRequire(import.meta.url);
 
 beforeEach(() => {
     nodePtyMock.spawn.mockReset();
@@ -389,6 +392,30 @@ describe('PtyTerminalTransport', () => {
         transport.dispose();
     });
 
+    it('repairs non-executable node-pty spawn-helper before spawning', async () => {
+        const helperPath = await findNodePtySpawnHelper();
+        if (helperPath === null) {
+            return;
+        }
+
+        const originalMode = (await stat(helperPath)).mode & 0o777;
+        const nonExecutableMode = originalMode & ~0o111;
+        const ptyProcess = createMockPtyProcess({ pid: 792 });
+        nodePtyMock.spawn.mockReturnValue(ptyProcess);
+        await chmod(helperPath, nonExecutableMode);
+
+        try {
+            const transport = new PtyTerminalTransport();
+
+            await transport.spawn(requiredSpawnOptions);
+
+            expect((await stat(helperPath)).mode & 0o111).not.toBe(0);
+            transport.dispose();
+        } finally {
+            await chmod(helperPath, originalMode);
+        }
+    });
+
     it('emits terminal exits using code and signal fields', async () => {
         const ptyProcess = createMockPtyProcess({ pid: 790 });
         nodePtyMock.spawn.mockReturnValue(ptyProcess);
@@ -402,6 +429,27 @@ describe('PtyTerminalTransport', () => {
         expect(exits).toEqual([{ code: 130, signal: 'SIGINT' }]);
     });
 });
+
+async function findNodePtySpawnHelper(): Promise<string | null> {
+    const packageRoot = dirname(dirname(requireForTest.resolve('node-pty')));
+    const candidates = [
+        join(packageRoot, 'build', 'Release', 'spawn-helper'),
+        join(packageRoot, 'prebuilds', `${process.platform}-${process.arch}`, 'spawn-helper'),
+    ];
+
+    for (const candidate of candidates) {
+        try {
+            const entry = await stat(candidate);
+            if (entry.isFile()) {
+                return candidate;
+            }
+        } catch {
+            // Try the next node-pty layout.
+        }
+    }
+
+    return null;
+}
 
 function expectTmuxLaunchScriptCommand(
     call: unknown[],

@@ -45,6 +45,7 @@ export const SettingsSchema = z.object({
     lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
     lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
     agentDefaultOverrides: AgentDefaultOverridesSchema.describe('User-selected agent defaults. Missing values use code defaults and are not sent as agent metadata.'),
+    claudeTmuxSessionName: z.string().nullable().describe('Optional tmux session name used for Claude interactive terminal spawns'),
     // Dismissed CLI warning banners (supports both per-machine and global dismissal)
     dismissedCLIWarnings: z.object({
         perMachine: z.record(z.string(), z.object({
@@ -113,6 +114,7 @@ export const settingsDefaults: Settings = {
     lastUsedPermissionMode: null,
     lastUsedModelMode: null,
     agentDefaultOverrides: {},
+    claudeTmuxSessionName: null,
     dismissedCLIWarnings: { perMachine: {}, global: {} },
 };
 Object.freeze(settingsDefaults);
