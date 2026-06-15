@@ -261,7 +261,10 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             sessionId: identity.claudeSessionId,
             workingDirectory: session.path,
             onMessage: (message) => {
-                if (consumeAppPromptEcho(message, pendingAppPromptEchoes)) {
+                if (suppressRemoteControlledUserPrompt(message, {
+                    localAttachMode,
+                    pendingAppPromptEchoes,
+                })) {
                     return;
                 }
                 appendRemoteDisplayMessage(messageBuffer, message);
@@ -595,17 +598,28 @@ function toStringEnv(env: NodeJS.ProcessEnv): Record<string, string> {
     return result;
 }
 
-function consumeAppPromptEcho(message: RawJSONLines, pendingAppPromptEchoes: string[]): boolean {
+function suppressRemoteControlledUserPrompt(
+    message: RawJSONLines,
+    opts: {
+        localAttachMode: boolean;
+        pendingAppPromptEchoes: string[];
+    },
+): boolean {
     if (message.type !== 'user' || typeof message.message?.content !== 'string') {
         return false;
     }
-
-    const matchIndex = findPendingAppPromptEchoIndex(pendingAppPromptEchoes, message.message.content);
-    if (matchIndex === -1) {
+    if (message.isSidechain) {
+        return false;
+    }
+    if (opts.localAttachMode) {
         return false;
     }
 
-    pendingAppPromptEchoes.splice(matchIndex, 1);
+    const matchIndex = findPendingAppPromptEchoIndex(opts.pendingAppPromptEchoes, message.message.content);
+    if (matchIndex !== -1) {
+        opts.pendingAppPromptEchoes.splice(matchIndex, 1);
+    }
+
     return true;
 }
 

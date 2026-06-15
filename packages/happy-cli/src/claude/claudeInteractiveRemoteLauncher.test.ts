@@ -506,6 +506,67 @@ describe('claudeInteractiveRemoteLauncher', () => {
         await resultPromise;
     });
 
+    it('does not forward main transcript user prompts while controlled remotely', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(mockCreateSessionScanner).toHaveBeenCalled();
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+
+        const scannerOptions = mockCreateSessionScanner.mock.calls[0][0];
+        const remotePromptEcho = {
+            type: 'user',
+            uuid: 'remote-controlled-user-prompt',
+            isSidechain: false,
+            message: {
+                role: 'user',
+                content: 'приветик',
+            },
+        } satisfies RawJSONLines;
+        scannerOptions.onMessage(remotePromptEcho);
+
+        expect(session.client.sendClaudeSessionMessage).not.toHaveBeenCalledWith(remotePromptEcho);
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
+
+    it('forwards main transcript user prompts while locally attached', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(mockCreateSessionScanner).toHaveBeenCalled();
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+        await session.invokeRpc('switch');
+
+        const scannerOptions = mockCreateSessionScanner.mock.calls[0][0];
+        const localPrompt = {
+            type: 'user',
+            uuid: 'local-attach-user-prompt',
+            isSidechain: false,
+            message: {
+                role: 'user',
+                content: 'typed in tmux',
+            },
+        } satisfies RawJSONLines;
+        scannerOptions.onMessage(localPrompt);
+
+        expect(session.client.sendClaudeSessionMessage).toHaveBeenCalledWith(localPrompt);
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
+
     it('reports unsupported identity without creating a terminal transport', async () => {
         mockResolveInteractiveClaudeIdentity.mockReturnValue({
             mode: 'unsupported',
