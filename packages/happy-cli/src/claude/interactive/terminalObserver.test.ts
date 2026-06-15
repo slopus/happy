@@ -75,6 +75,21 @@ describe('classifyTerminalOutput', () => {
         expect(classifyTerminalOutput(output)).toBeNull();
     });
 
+    it('does not treat rendered Claude tool diffs containing usage fixtures as usage errors', () => {
+        const output = [
+            'diff --git a/packages/happy-cli/src/claude/interactive/terminalObserver.test.ts b/packages/happy-cli/src/claude/interactive/terminalObserver.test.ts',
+            '--- /dev/null',
+            '+++ b/packages/happy-cli/src/claude/interactive/terminalObserver.test.ts',
+            "@@ -0,0 +1,252 @@",
+            "+        expect(classifyTerminalOutput('Claude AI usage limit reached|1799999999')).toEqual({",
+            "+            type: 'usage_or_auth_error',",
+            "+            message: 'Claude reported a usage or authentication problem.',",
+            '+        });',
+        ].join('\n');
+
+        expect(classifyTerminalOutput(output)).toBeNull();
+    });
+
     it('reports terminal errors with sanitized diagnostics', () => {
         const result = classifyTerminalOutput('failed /Users/me/secret sk-ant-api03-abc https://example.com/x');
 

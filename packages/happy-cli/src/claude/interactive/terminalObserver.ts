@@ -53,7 +53,7 @@ export function classifyTerminalOutput(raw: string): TerminalObservation | null 
         return null;
     }
 
-    if (isUsageOrAuthError(lower)) {
+    if (isUsageOrAuthError(raw)) {
         return { type: 'usage_or_auth_error', message: USAGE_OR_AUTH_MESSAGE };
     }
 
@@ -79,9 +79,17 @@ export function classifyTerminalOutput(raw: string): TerminalObservation | null 
     return null;
 }
 
-function isUsageOrAuthError(lower: string): boolean {
-    return /\b(?:usage limit|rate limit|quota exceeded|authentication|unauthorized|forbidden|invalid api key|api key invalid|login required|not logged in|auth(?:entication)? (?:failed|required|error)|payment required|credit balance)\b/.test(
-        lower,
+function isUsageOrAuthError(raw: string): boolean {
+    return raw
+        .split(/\r?\n/)
+        .map((line) => line.replace(/\s+/g, ' ').trim().toLowerCase())
+        .filter(Boolean)
+        .some(isUsageOrAuthErrorLine);
+}
+
+function isUsageOrAuthErrorLine(lowerLine: string): boolean {
+    return /^(?:error:\s*)?(?:claude(?: ai)?\s+)?(?:usage limit|rate limit|quota exceeded|authentication|unauthorized|forbidden|invalid api key|api key invalid|login required|not logged in|auth(?:entication)? (?:failed|required|error)|payment required|credit balance)\b/.test(
+        lowerLine,
     );
 }
 
