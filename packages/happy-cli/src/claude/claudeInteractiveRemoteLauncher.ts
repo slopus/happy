@@ -140,6 +140,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
 
     const markTerminalInputBusy = () => {
         terminalInputReady = false;
+        cancelPendingCompletion();
     };
 
     const cancelPendingInputWaits = (result: Extract<TerminalInputReadyWaitResult, 'cancelled' | 'exited'> = 'cancelled') => {
@@ -395,6 +396,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             }
             cancelPendingCompletion();
             cancelPendingInputWaits('cancelled');
+            markTerminalInputBusy();
             await unmountRemoteDisplay(true);
             const attachMessage = buildTmuxAttachMessage(transport.terminalId);
             const attachedLocally = await attachLocalTerminal(transport);
