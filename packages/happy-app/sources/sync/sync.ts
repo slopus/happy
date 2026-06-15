@@ -52,6 +52,10 @@ import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
+import {
+    createAttachmentUploadLogMetadata,
+    formatAttachmentUploadLogMessage,
+} from './attachmentUploadLogging';
 import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
 import { Modal } from '@/modal';
@@ -510,14 +514,19 @@ class Sync {
 
         const blobKey = this.encryption.getSessionBlobKey(sessionId);
         if (!blobKey) {
-            console.error(`[attachments] No blob key for session ${sessionId}`);
+            const metadata = createAttachmentUploadLogMetadata({
+                phase: 'missing_blob_key',
+                attachmentCount: attachments.length,
+                sessionId,
+            });
+            console.error(formatAttachmentUploadLogMessage(metadata), metadata);
             return { uploaded: [], failed: attachments.length };
         }
 
         const uploaded: UploadedAttachment[] = [];
         let failed = 0;
 
-        for (const attachment of attachments) {
+        for (const [attachmentIndex, attachment] of attachments.entries()) {
             try {
                 const bytes = await readFileBytes(attachment.uri);
                 const encrypted = encryptBlob(bytes, blobKey);
@@ -541,7 +550,13 @@ class Sync {
                     thumbhash: attachment.thumbhash,
                 });
             } catch (err) {
-                console.error(`[attachments] Failed to upload ${attachment.name}:`, err);
+                const metadata = createAttachmentUploadLogMetadata({
+                    phase: 'upload_failed',
+                    attachmentIndex,
+                    attachment,
+                    error: err,
+                });
+                console.error(formatAttachmentUploadLogMessage(metadata), metadata);
                 failed++;
                 // Skip this attachment; do not abort the whole message send.
             }
