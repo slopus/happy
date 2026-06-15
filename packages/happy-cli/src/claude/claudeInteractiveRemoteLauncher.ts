@@ -269,9 +269,10 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             },
             onTranscriptMissing: (sessionId) => {
                 if (sessionId === identity.claudeSessionId) {
-                    failRuntime('Claude transcript did not appear for the interactive session.');
+                    logger.debug('[interactive-remote]: active Claude transcript has not appeared yet; keeping terminal runtime alive');
                 }
             },
+            keepMissingCurrentSession: true,
         });
 
         scannerSessionCallback = (sessionId: string) => {

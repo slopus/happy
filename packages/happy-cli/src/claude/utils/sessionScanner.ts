@@ -28,6 +28,12 @@ export async function createSessionScanner(opts: {
      * (60s). Exposed mainly so tests can exercise the drop path quickly.
      */
     missingFileTimeoutMs?: number
+    /**
+     * Interactive terminal sessions can emit SessionStart before Claude writes
+     * the transcript file. Keep the current session retryable so a late JSONL
+     * file is still picked up by periodic flushes.
+     */
+    keepMissingCurrentSession?: boolean
 }) {
 
     // Resolve project directory
@@ -127,6 +133,10 @@ export async function createSessionScanner(opts: {
                             logger.debug(`[SESSION_SCANNER] Session ${p} transcript never appeared — dropping it`);
                             watchers.get(p)?.();
                             watchers.delete(p);
+                            if (opts.keepMissingCurrentSession && p === currentSessionId) {
+                                opts.onTranscriptMissing?.(p);
+                                return;
+                            }
                             deadSessions.add(p);
                             pendingSessions.delete(p);
                             opts.onTranscriptMissing?.(p);

@@ -247,6 +247,43 @@ describe('sessionScanner', () => {
     expect(collectedMessages[0].type).toBe('user')
   })
 
+  it('keeps a missing current session retryable when configured', async () => {
+    const missingSessions: string[] = []
+    const sessionId = 'fd4aa0c2-1111-4cd3-a066-80c6d87c3456'
+    scanner = await createSessionScanner({
+      sessionId,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      onTranscriptMissing: (missingSessionId) => missingSessions.push(missingSessionId),
+      missingFileTimeoutMs: 100,
+      keepMissingCurrentSession: true,
+    })
+
+    await new Promise((r) => setTimeout(r, 2500))
+
+    expect(collectedMessages).toHaveLength(0)
+    expect(missingSessions).toEqual([sessionId])
+
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+    await writeFile(sessionFile, JSON.stringify({
+      type: 'assistant',
+      uuid: 'assistant-late-transcript',
+      message: {
+        role: 'assistant',
+        model: 'claude-opus',
+        content: [{ type: 'text', text: 'late transcript appeared' }],
+      },
+    }) + '\n')
+
+    await scanner.flush()
+
+    expect(collectedMessages).toHaveLength(1)
+    expect(collectedMessages[0]).toMatchObject({
+      type: 'assistant',
+      uuid: 'assistant-late-transcript',
+    })
+  })
+
   it('flushes pending scanner work on demand', async () => {
     scanner = await createSessionScanner({
       sessionId: null,

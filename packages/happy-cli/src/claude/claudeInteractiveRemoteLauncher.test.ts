@@ -548,12 +548,16 @@ describe('claudeInteractiveRemoteLauncher', () => {
         }));
     });
 
-    it('fails the runtime when the known transcript never appears', async () => {
+    it('keeps a live terminal runtime when the known transcript has not appeared yet', async () => {
         const transport = new FakeTerminalTransport('pty');
         mockCreateTerminalTransport.mockResolvedValue(transport);
         const session = createSession();
+        let settled = false;
 
-        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any).then((result) => {
+            settled = true;
+            return result;
+        });
 
         await vi.waitFor(() => {
             expect(mockCreateSessionScanner).toHaveBeenCalled();
@@ -561,18 +565,21 @@ describe('claudeInteractiveRemoteLauncher', () => {
         const scannerOptions = mockCreateSessionScanner.mock.calls[0][0];
         scannerOptions.onTranscriptMissing('claude-known-session');
 
-        await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 1 });
-        expect(session.client.sendSessionEvent).toHaveBeenCalledWith({
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        expect(session.client.sendSessionEvent).not.toHaveBeenCalledWith({
             type: 'message',
             message: 'Claude transcript did not appear for the interactive session.',
         });
-        expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('failed');
+        expect(session.client.closeClaudeSessionTurn).not.toHaveBeenCalledWith('failed');
         expect(session.metadataSnapshots()).toContainEqual(expect.objectContaining({
             claudeRuntime: expect.objectContaining({
-                state: 'failed',
-                message: 'Claude transcript did not appear for the interactive session.',
+                state: 'interactive',
             }),
         }));
+
+        transport.emitExit({ code: 0, signal: null });
+        await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 0 });
         expect(transport.dispose).toHaveBeenCalledOnce();
     });
 
