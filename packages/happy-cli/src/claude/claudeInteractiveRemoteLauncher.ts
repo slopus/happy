@@ -319,6 +319,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                         failRuntime(observation.message);
                         return;
                     case 'permission_prompt_visible':
+                        markTerminalInputBusy();
                         return;
                     case 'input_prompt_visible':
                         if (!terminalInputIsReady) {

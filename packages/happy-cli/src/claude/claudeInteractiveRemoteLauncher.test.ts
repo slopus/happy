@@ -587,6 +587,59 @@ describe('claudeInteractiveRemoteLauncher', () => {
         await resultPromise;
     });
 
+    it('clears cached readiness and completion debounce when a permission prompt appears', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'first batch before permission prompt',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+
+        transport.emitData('Claude Code v2.1.153\n❯ Try "first prompt"');
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('first batch before permission prompt');
+            expect(transport.enter).toHaveBeenCalledOnce();
+        });
+
+        transport.emitData('Claude Code v2.1.153\n❯ Try "idle ready prompt"');
+        transport.emitData('Do you want to allow Bash?');
+        await new Promise((resolve) => setTimeout(resolve, 40));
+
+        expect(session.client.closeClaudeSessionTurn).not.toHaveBeenCalledWith('completed');
+
+        session.enqueueBatch({
+            message: 'second batch after permission prompt',
+            mode: initialMode,
+            hash: 'initial-mode-hash',
+            isolate: false,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(transport.paste).toHaveBeenCalledTimes(1);
+        expect(transport.enter).toHaveBeenCalledTimes(1);
+
+        transport.emitData('Claude Code v2.1.153\n❯ Try "fresh prompt"');
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('second batch after permission prompt');
+            expect(transport.enter).toHaveBeenCalledTimes(2);
+        });
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
+
     it('fails the current turn without pasting when input readiness times out', async () => {
         vi.useFakeTimers();
         try {
