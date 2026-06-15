@@ -40,6 +40,11 @@ describe('createTerminalTransport', () => {
             PATH: '/opt/bin:/usr/bin',
             TMUX: '/tmp/tmux-501/default,123,0',
         });
+        expect((transport as any).tmux.clientEnv).toEqual({
+            HOME: '/Users/devdvlive',
+            PATH: '/opt/bin:/usr/bin',
+            TMUX: '/tmp/tmux-501/default,123,0',
+        });
     });
 
     it('trims TMUX_SESSION_NAME before creating tmux transport', async () => {

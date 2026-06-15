@@ -1,4 +1,4 @@
-import { isTmuxAvailable } from '@/utils/tmux';
+import { isTmuxAvailable, TmuxUtilities } from '@/utils/tmux';
 import { PtyTerminalTransport } from './ptyTerminalTransport';
 import { sanitizeTmuxClientEnvironment } from './terminalEnvironment';
 import { TmuxTerminalTransport } from './tmuxTerminalTransport';
@@ -11,9 +11,12 @@ export async function createTerminalTransport(env: NodeJS.ProcessEnv = process.e
     const tmuxSessionName = typeof env.TMUX_SESSION_NAME === 'string' && env.TMUX_SESSION_NAME.trim().length > 0
         ? env.TMUX_SESSION_NAME.trim()
         : null;
+    const tmuxClientEnv = tmuxSessionName === null
+        ? null
+        : sanitizeTmuxClientEnvironment(env);
     const tmuxAvailable = tmuxSessionName === null
         ? false
-        : await isTmuxAvailable(sanitizeTmuxClientEnvironment(env));
+        : await isTmuxAvailable(tmuxClientEnv!);
     const backend = chooseTerminalBackend({
         tmuxConfigured: tmuxSessionName !== null,
         tmuxAvailable,
@@ -22,7 +25,10 @@ export async function createTerminalTransport(env: NodeJS.ProcessEnv = process.e
 
     switch (backend) {
         case 'tmux':
-            return new TmuxTerminalTransport(tmuxSessionName!);
+            return new TmuxTerminalTransport(
+                tmuxSessionName!,
+                new TmuxUtilities(tmuxSessionName!, tmuxClientEnv!),
+            );
         case 'pty':
             return new PtyTerminalTransport();
         case 'unsupported':

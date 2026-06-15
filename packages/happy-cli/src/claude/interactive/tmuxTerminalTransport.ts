@@ -4,6 +4,9 @@ import {
     TmuxUtilities,
 } from '@/utils/tmux';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
     TerminalDataHandler,
     TerminalExitHandler,
@@ -19,6 +22,11 @@ type TmuxPaneTarget = {
     session?: string;
     window?: string;
     pane?: string;
+};
+
+type TmuxLaunchScript = {
+    dir: string;
+    path: string;
 };
 
 export class TmuxTerminalTransport implements TerminalTransport {
@@ -51,17 +59,25 @@ export class TmuxTerminalTransport implements TerminalTransport {
         this.lastCaptureText = null;
         this.cleanupTarget = null;
         const env = sanitizeTerminalEnvironment(options.env);
+        const launchScript = await createTmuxLaunchScript(options, env);
 
-        const result = await this.tmux.spawnInTmux(
-            buildHermeticTmuxCommand(options, env),
-            {
-                cwd: options.cwd,
-                sessionName: this.sessionName,
-                windowName: options.windowName,
-            },
-        );
+        let result;
+        try {
+            result = await this.tmux.spawnInTmux(
+                buildTmuxLaunchScriptCommand(launchScript.path),
+                {
+                    cwd: options.cwd,
+                    sessionName: this.sessionName,
+                    windowName: options.windowName,
+                },
+            );
+        } catch (error) {
+            await cleanupTmuxLaunchScript(launchScript);
+            throw error;
+        }
 
         if (!result.success || !result.sessionId) {
+            await cleanupTmuxLaunchScript(launchScript);
             throw new Error(result.error || 'Failed to spawn command in tmux');
         }
 
@@ -329,19 +345,57 @@ function waitForExit(child: ChildProcess): Promise<void> {
     });
 }
 
-function buildHermeticTmuxCommand(options: TerminalSpawnOptions, env: Record<string, string>): string[] {
+async function createTmuxLaunchScript(options: TerminalSpawnOptions, env: Record<string, string>): Promise<TmuxLaunchScript> {
+    const dir = await mkdtemp(join(tmpdir(), 'happy-claude-tmux-'));
+    const scriptPath = join(dir, 'launch.sh');
+
+    try {
+        await chmod(dir, 0o700);
+        await writeFile(scriptPath, buildHermeticLaunchScript(options, env, scriptPath, dir), { mode: 0o600 });
+        await chmod(scriptPath, 0o600);
+        return { dir, path: scriptPath };
+    } catch (error) {
+        await rm(dir, { recursive: true, force: true });
+        throw error;
+    }
+}
+
+async function cleanupTmuxLaunchScript(script: TmuxLaunchScript): Promise<void> {
+    await rm(script.dir, { recursive: true, force: true });
+}
+
+function buildTmuxLaunchScriptCommand(scriptPath: string): string[] {
+    return ['/bin/sh', quoteShellArg(scriptPath)];
+}
+
+function buildHermeticLaunchScript(
+    options: TerminalSpawnOptions,
+    env: Record<string, string>,
+    scriptPath: string,
+    scriptDir: string,
+): string {
     const command = options.shell
         ? [env.SHELL || '/bin/sh', '-lc', options.command]
         : [options.command, ...(options.args ?? [])];
+    const envAssignments = Object.entries(env)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => quoteShellArg(`${key}=${value}`));
+    const commandArgs = command.map(quoteShellArg);
 
     return [
-        'env',
-        '-i',
-        ...Object.entries(env)
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([key, value]) => quoteShellArg(`${key}=${value}`)),
-        ...command.map(quoteShellArg),
-    ];
+        '#!/bin/sh',
+        'set -u',
+        `script_path=${quoteShellArg(scriptPath)}`,
+        `script_dir=${quoteShellArg(scriptDir)}`,
+        'cleanup() {',
+        '    rm -f -- "$script_path" 2>/dev/null || true',
+        '    rmdir -- "$script_dir" 2>/dev/null || true',
+        '}',
+        'trap cleanup EXIT HUP INT TERM',
+        'cleanup',
+        `exec env -i ${[...envAssignments, ...commandArgs].join(' ')}`,
+        '',
+    ].join('\n');
 }
 
 function quoteShellArg(value: string): string {

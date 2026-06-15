@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFile, rm, stat } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import {
     chooseTerminalBackend,
     type TerminalBackendAvailability,
@@ -17,6 +19,13 @@ vi.mock('node-pty', () => nodePtyMock);
 
 beforeEach(() => {
     nodePtyMock.spawn.mockReset();
+});
+
+const tempLaunchScriptDirs = new Set<string>();
+
+afterEach(async () => {
+    await Promise.all(Array.from(tempLaunchScriptDirs, (dir) => rm(dir, { recursive: true, force: true })));
+    tempLaunchScriptDirs.clear();
 });
 
 const requiredSpawnOptions: TerminalSpawnOptions = {
@@ -137,18 +146,19 @@ describe('TmuxTerminalTransport', () => {
 
         expect(result).toEqual({ pid: 456, terminalId: 'happy:claude' });
         expect(transport.terminalId).toBe('happy:claude');
-        expect(tmux.spawnInTmux.mock.calls[0]).toEqual([
-            ['env', '-i', 'CLAUDE_CONFIG_DIR=/tmp/claude', 'claude'],
-            {
-                cwd: '/tmp',
-                sessionName: 'happy-test',
-                windowName: 'claude',
-            },
-        ]);
+        const scriptPath = expectTmuxLaunchScriptCommand(tmux.spawnInTmux.mock.calls[0], {
+            cwd: '/tmp',
+            sessionName: 'happy-test',
+            windowName: 'claude',
+        });
+        const script = await readFile(scriptPath, 'utf8');
+        expect(script).toContain('CLAUDE_CONFIG_DIR=/tmp/claude');
+        expect(script).toContain('exec env -i');
+        expect(script).toContain('claude');
         await transport.dispose();
     });
 
-    it('runs the tmux pane command with only Claude runtime env', async () => {
+    it('runs the tmux pane command through a temp script without putting Claude env in tmux argv', async () => {
         const tmux = {
             spawnInTmux: vi.fn(async () => ({ success: true, sessionId: 'happy:claude', pid: 457 })),
             isPaneAlive: vi.fn(async () => true),
@@ -201,35 +211,64 @@ describe('TmuxTerminalTransport', () => {
             },
         });
 
-        const [command] = tmux.spawnInTmux.mock.calls[0] as unknown as [string[], unknown, unknown];
-        expect(command.slice(0, 2)).toEqual(['env', '-i']);
-        expect(command).toContain('ALL_PROXY=socks://proxy.example');
-        expect(command).toContain('ANTHROPIC_API_KEY=anthropic-key');
-        expect(command).toContain('ANTHROPIC_BASE_URL=https://anthropic.example');
-        expect(command).toContain('CLAUDE_CODE_OAUTH_TOKEN=oauth-token');
-        expect(command).toContain('CLAUDE_CONFIG_DIR=/tmp/claude');
-        expect(command).toContain('HAPPY_CLAUDE_PATH=/opt/claude/bin/claude');
-        expect(command).toContain('MCP_CONNECTION_NONBLOCKING=1');
-        expect(command).toContain('PATH=/opt/bin:/usr/bin');
-        expect(command).toContain('claude');
-        expect(command.join(' ')).not.toContain('AUTHORIZATION=');
-        expect(command.join(' ')).not.toContain('COOKIE=');
-        expect(command.join(' ')).not.toContain('CUSTOM_KEY=');
-        expect(command.join(' ')).not.toContain('CUSTOM_SECRET=');
-        expect(command.join(' ')).not.toContain('GITHUB_TOKEN=');
-        expect(command.join(' ')).not.toContain('HAPPY_FORKED_FROM_SESSION_ID=');
-        expect(command.join(' ')).not.toContain('HAPPY_RECONNECT_ENCRYPTION_KEY=');
-        expect(command.join(' ')).not.toContain('HAPPY_SERVER_URL=');
-        expect(command.join(' ')).not.toContain('PASSWORD=');
-        expect(tmux.spawnInTmux.mock.calls[0]).toEqual([
-            command,
-            expect.objectContaining({
-                cwd: '/tmp',
-                sessionName: 'happy-test',
-                windowName: 'claude',
-            }),
-        ]);
+        const scriptPath = expectTmuxLaunchScriptCommand(tmux.spawnInTmux.mock.calls[0], {
+            cwd: '/tmp',
+            sessionName: 'happy-test',
+            windowName: 'claude',
+        });
+        const command = (tmux.spawnInTmux.mock.calls[0] as unknown as [string[], unknown])[0];
+        const tmuxArgv = command.join(' ');
+        expect(tmuxArgv).not.toContain('ALL_PROXY');
+        expect(tmuxArgv).not.toContain('ANTHROPIC_API_KEY');
+        expect(tmuxArgv).not.toContain('anthropic-key');
+        expect(tmuxArgv).not.toContain('ANTHROPIC_BASE_URL');
+        expect(tmuxArgv).not.toContain('CLAUDE_CODE_OAUTH_TOKEN');
+        expect(tmuxArgv).not.toContain('oauth-token');
+        expect(tmuxArgv).not.toContain('CLAUDE_CONFIG_DIR');
+        expect(tmuxArgv).not.toContain('HAPPY_CLAUDE_PATH');
+        expect(tmuxArgv).not.toContain('MCP_CONNECTION_NONBLOCKING');
+        expect(tmuxArgv).not.toContain('PATH=/opt/bin:/usr/bin');
+
+        const script = await readFile(scriptPath, 'utf8');
+        expect(script).toContain('exec env -i');
+        expect(script).toContain('ALL_PROXY=socks://proxy.example');
+        expect(script).toContain('ANTHROPIC_API_KEY=anthropic-key');
+        expect(script).toContain('ANTHROPIC_BASE_URL=https://anthropic.example');
+        expect(script).toContain('CLAUDE_CODE_OAUTH_TOKEN=oauth-token');
+        expect(script).toContain('CLAUDE_CONFIG_DIR=/tmp/claude');
+        expect(script).toContain('HAPPY_CLAUDE_PATH=/opt/claude/bin/claude');
+        expect(script).toContain('MCP_CONNECTION_NONBLOCKING=1');
+        expect(script).toContain('PATH=/opt/bin:/usr/bin');
+        expect(script).toContain('claude');
+        expect(script).not.toContain('AUTHORIZATION=');
+        expect(script).not.toContain('COOKIE=');
+        expect(script).not.toContain('CUSTOM_KEY=');
+        expect(script).not.toContain('CUSTOM_SECRET=');
+        expect(script).not.toContain('GITHUB_TOKEN=');
+        expect(script).not.toContain('HAPPY_FORKED_FROM_SESSION_ID=');
+        expect(script).not.toContain('HAPPY_RECONNECT_ENCRYPTION_KEY=');
+        expect(script).not.toContain('HAPPY_SERVER_URL=');
+        expect(script).not.toContain('PASSWORD=');
         await transport.dispose();
+    });
+
+    it('cleans up the temp launch script when tmux spawn fails before launch', async () => {
+        const tmux = {
+            spawnInTmux: vi.fn(async () => ({ success: false, error: 'tmux failed' })),
+            isPaneAlive: vi.fn(async () => true),
+            capturePaneText: vi.fn(async () => ''),
+            killWindow: vi.fn(async () => true),
+        };
+        const transport = new TmuxTerminalTransport('happy-test', tmux as any);
+
+        await expect(transport.spawn(requiredSpawnOptions)).rejects.toThrow('tmux failed');
+
+        const scriptPath = expectTmuxLaunchScriptCommand(tmux.spawnInTmux.mock.calls[0], {
+            cwd: '/tmp',
+            sessionName: 'happy-test',
+            windowName: 'claude',
+        });
+        await expect(stat(scriptPath)).rejects.toMatchObject({ code: 'ENOENT' });
     });
 
     it('emits an exit when the tmux pane disappears during polling', async () => {
@@ -363,6 +402,28 @@ describe('PtyTerminalTransport', () => {
         expect(exits).toEqual([{ code: 130, signal: 'SIGINT' }]);
     });
 });
+
+function expectTmuxLaunchScriptCommand(
+    call: unknown[],
+    options: { cwd: string; sessionName: string; windowName: string },
+): string {
+    expect(call).toHaveLength(2);
+    const [command, spawnOptions] = call as [string[], unknown];
+    expect(command).toHaveLength(2);
+    expect(command[0]).toBe('/bin/sh');
+    const scriptPath = unquoteShellArg(command[1]);
+    expect(scriptPath).toMatch(/launch\.sh$/);
+    expect(spawnOptions).toEqual(expect.objectContaining(options));
+    tempLaunchScriptDirs.add(dirname(scriptPath));
+    return scriptPath;
+}
+
+function unquoteShellArg(value: string): string {
+    if (!value.startsWith("'") || !value.endsWith("'")) {
+        return value;
+    }
+    return value.slice(1, -1).replace(/'\\''/g, "'");
+}
 
 function createMockPtyProcess({ pid }: { pid: number }) {
     let exitHandler: ((event: { exitCode: number; signal?: string }) => void) | undefined;
