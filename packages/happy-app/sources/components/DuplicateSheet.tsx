@@ -1,67 +1,101 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { useRouter } from 'expo-router';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { useSession } from '@/sync/storage';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { forkAndSpawn, claudeListRewindPoints, type ForkSource, type ClaudeRewindPoint } from '@/sync/ops';
+import { getDuplicateSheetFrame } from '@/utils/duplicateSheetLayout';
+import {
+    forkAndSpawn,
+    claudeListRewindPoints,
+    codexListRewindPoints,
+    type ForkSource,
+} from '@/sync/ops';
+import { getSessionForkSource } from '@/utils/sessionFork';
 
 export interface DuplicateSheetProps {
     sessionId: string;
     /** Pre-select this rewind uuid when the sheet opens (long-press entry). */
     initialClaudeUuid?: string;
+    /** Pre-select this provider rewind id when the sheet opens (Claude uuid or Codex item id). */
+    initialRewindPointId?: string;
+    /** Fallback preselect text for Codex live messages that do not yet carry an item id. */
+    initialMessageText?: string;
+    /** In-app message id used for fork lineage when opened from a message long-press. */
+    initialForkedFromMessageId?: string;
     /** Injected by the modal infra. */
     onClose?: () => void;
 }
 
+type RewindPoint = {
+    id: string;
+    text: string;
+    timestamp: number;
+};
+
 /**
- * Picker for "duplicate session from message N". Pulls user-text rewind
- * points directly from the on-disk Claude JSONL via RPC — disk is the
- * source of truth, since live-typed user messages travel through the
- * legacy `sentFrom: 'web'` server path and never carry a claudeUuid in
- * their session-protocol envelope.
- *
- * Tap to choose a point, confirm to fork-and-spawn a new Happy session
- * truncated to everything before that uuid.
+ * Picker for "duplicate session from message N". Pulls provider-native
+ * user-text rewind points via RPC: Claude reads the on-disk JSONL, Codex
+ * reads the app-server thread. Tap to choose a point, confirm to
+ * fork-and-spawn a new Happy session truncated around that provider id.
  */
 export const DuplicateSheet = React.memo(function DuplicateSheet(props: DuplicateSheetProps) {
-    const { sessionId, initialClaudeUuid, onClose } = props;
+    const { sessionId, initialClaudeUuid, initialRewindPointId, initialMessageText, initialForkedFromMessageId, onClose } = props;
     const session = useSession(sessionId);
     const router = useRouter();
+    const windowSize = useWindowDimensions();
+    const sheetFrame = React.useMemo(
+        () => getDuplicateSheetFrame(windowSize),
+        [windowSize.width, windowSize.height],
+    );
 
-    const machineId = session?.metadata?.machineId;
-    const directory = session?.metadata?.path;
-    const claudeSessionId = session?.metadata?.claudeSessionId;
+    const source = React.useMemo(() => session ? getSessionForkSource(session) : null, [
+        session?.id,
+        session?.metadata?.flavor,
+        session?.metadata?.machineId,
+        session?.metadata?.path,
+        session?.metadata?.claudeSessionId,
+        session?.metadata?.codexThreadId,
+    ]);
+    const canFork = Boolean(source);
 
-    const canFork =
-        Boolean(session) &&
-        Boolean(machineId) &&
-        Boolean(directory) &&
-        Boolean(claudeSessionId) &&
-        session?.metadata?.flavor !== 'codex' &&
-        session?.metadata?.flavor !== 'gemini';
-
-    const [points, setPoints] = React.useState<ClaudeRewindPoint[] | null>(null);
+    const [points, setPoints] = React.useState<RewindPoint[] | null>(null);
     const [pointsError, setPointsError] = React.useState<string | null>(null);
-    const [selectedUuid, setSelectedUuid] = React.useState<string | null>(initialClaudeUuid ?? null);
+    const initialSelectedId = initialRewindPointId ?? initialClaudeUuid ?? null;
+    const [selectedId, setSelectedId] = React.useState<string | null>(initialSelectedId);
 
     React.useEffect(() => {
         let cancelled = false;
         async function load() {
-            if (!canFork || !machineId || !directory || !claudeSessionId) {
+            if (!source) {
                 if (!cancelled) {
                     setPointsError(t('session.forkErrorMissingMetadata'));
                     setPoints([]);
                 }
                 return;
             }
-            const result = await claudeListRewindPoints({ machineId, directory, claudeSessionId });
+            const result = source.kind === 'codex'
+                ? await codexListRewindPoints({
+                    machineId: source.machineId,
+                    directory: source.directory,
+                    codexThreadId: source.codexThreadId,
+                })
+                : await claudeListRewindPoints({
+                    machineId: source.machineId,
+                    directory: source.directory,
+                    claudeSessionId: source.claudeSessionId,
+                });
             if (cancelled) return;
             if (result.type === 'success') {
                 // Newest first — easier to find a recent rewind point.
-                setPoints([...result.points].reverse());
+                const normalized = result.points.map((point) => ({
+                    id: 'itemId' in point ? point.itemId : point.uuid,
+                    text: point.text,
+                    timestamp: point.timestamp,
+                }));
+                setPoints([...normalized].reverse());
                 setPointsError(null);
             } else {
                 setPoints([]);
@@ -70,20 +104,31 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
         }
         void load();
         return () => { cancelled = true; };
-    }, [canFork, machineId, directory, claudeSessionId]);
+    }, [source]);
 
     React.useEffect(() => {
-        if (points && selectedUuid && !points.some((p) => p.uuid === selectedUuid)) {
-            setSelectedUuid(null);
+        if (points && selectedId && !points.some((p) => p.id === selectedId)) {
+            setSelectedId(null);
         }
-    }, [points, selectedUuid]);
+    }, [points, selectedId]);
 
-    const selected = (points && selectedUuid)
-        ? points.find((p) => p.uuid === selectedUuid) ?? null
+    React.useEffect(() => {
+        if (!points || selectedId || !initialMessageText) {
+            return;
+        }
+        const target = normalizeMessageText(initialMessageText);
+        const match = points.find((point) => normalizeMessageText(point.text) === target);
+        if (match) {
+            setSelectedId(match.id);
+        }
+    }, [initialMessageText, points, selectedId]);
+
+    const selected = (points && selectedId)
+        ? points.find((p) => p.id === selectedId) ?? null
         : null;
 
     const [loading, doDuplicate] = useHappyAction(async () => {
-        if (!canFork || !machineId || !directory || !claudeSessionId) {
+        if (!source) {
             Modal.alert(t('common.error'), t('session.forkErrorMissingMetadata'));
             return;
         }
@@ -92,10 +137,18 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
             return;
         }
 
-        const source: ForkSource = { sessionId, machineId, directory, claudeSessionId };
-        const result = await forkAndSpawn(source, {
-            cutAfterUuid: selected.uuid,
-        });
+        const forkedFromMessageId = matchesInitialSelection(selected, initialSelectedId, initialMessageText)
+            ? initialForkedFromMessageId
+            : undefined;
+        const result = source.kind === 'codex'
+            ? await forkAndSpawn(source as ForkSource, {
+                cutAfterItemId: selected.id,
+                forkedFromMessageId,
+            })
+            : await forkAndSpawn(source as ForkSource, {
+                cutAfterUuid: selected.id,
+                forkedFromMessageId,
+            });
 
         if (result.type === 'success') {
             onClose?.();
@@ -108,7 +161,7 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
     });
 
     return (
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, sheetFrame]}>
             <View style={styles.header}>
                 <Text style={styles.title}>{t('session.duplicateSheetTitle')}</Text>
                 <Text style={styles.subtitle}>{t('session.duplicateSheetSubtitle')}</Text>
@@ -125,14 +178,14 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
                     <Text style={styles.emptyText}>{t('session.duplicateSheetEmpty')}</Text>
                 ) : (
                     points.map((p) => {
-                        const isSelected = p.uuid === selectedUuid;
+                        const isSelected = p.id === selectedId;
                         const preview = p.text.trim().replace(/\s+/g, ' ');
                         const truncated = preview.length > 140 ? `${preview.slice(0, 140)}…` : preview;
 
                         return (
                             <Pressable
-                                key={p.uuid}
-                                onPress={() => setSelectedUuid(p.uuid)}
+                                key={p.id}
+                                onPress={() => setSelectedId(p.id)}
                                 style={({ pressed }) => [
                                     styles.row,
                                     isSelected && styles.rowSelected,
@@ -177,6 +230,22 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
     );
 });
 
+function normalizeMessageText(text: string): string {
+    return text.trim().replace(/\s+/g, ' ');
+}
+
+function matchesInitialSelection(
+    selected: RewindPoint,
+    initialSelectedId: string | null,
+    initialMessageText: string | undefined,
+): boolean {
+    if (initialSelectedId) {
+        return selected.id === initialSelectedId;
+    }
+    return Boolean(initialMessageText)
+        && normalizeMessageText(selected.text) === normalizeMessageText(initialMessageText ?? '');
+}
+
 function formatRelativeTime(timestampMs: number): string {
     const diffMs = Date.now() - timestampMs;
     const minutes = Math.floor(diffMs / 60_000);
@@ -192,10 +261,9 @@ const styles = StyleSheet.create((theme) => ({
     sheet: {
         backgroundColor: theme.colors.surface,
         borderRadius: 16,
-        width: '100%',
-        maxWidth: 560,
-        maxHeight: '85%',
         overflow: 'hidden',
+        alignSelf: 'center',
+        minWidth: 0,
     },
     header: {
         paddingHorizontal: 20,
@@ -218,6 +286,7 @@ const styles = StyleSheet.create((theme) => ({
         flexGrow: 0,
         flexShrink: 1,
         maxHeight: 420,
+        minHeight: 0,
     },
     listContent: {
         paddingVertical: 8,

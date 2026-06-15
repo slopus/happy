@@ -503,6 +503,7 @@ export const ja: TranslationStructure = {
     },
 
     toolGroup: {
+        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => `${count}個のファイルを編集`,
         readFiles: ({ count }: { count: number }) => `${count}個のファイルを読み取り`,
         ranCommands: ({ count }: { count: number }) => `${count}個のコマンドを実行`,
@@ -510,6 +511,7 @@ export const ja: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => `${count}個のURLを取得`,
         ranTasks: ({ count }: { count: number }) => `${count}個のタスクを実行`,
         usedTools: ({ count }: { count: number }) => `${count}個のツールを使用`,
+        workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 
     tools: {

@@ -15,6 +15,7 @@ import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 import { formatMCPTitle } from './views/MCPToolView';
 import { t } from '@/text';
+import { getTerminalToolCommand, shouldRenderToolCardHeader } from '@/utils/toolDisplay';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -163,58 +164,79 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         }
     }
 
-    return (
-        <View style={styles.container}>
-            {isPressable ? (
-                <TouchableOpacity style={styles.header} onPress={handlePress} activeOpacity={0.8}>
-                    <View style={styles.headerLeft}>
-                        <View style={styles.iconContainer}>
-                            {icon}
-                        </View>
-                        <View style={styles.titleContainer}>
-                            <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
-                            {description && (
-                                <Text style={styles.toolDescription} numberOfLines={1}>
-                                    {description}
-                                </Text>
-                            )}
-                        </View>
-                        {tool.state === 'running' && (
-                            <View style={styles.elapsedContainer}>
-                                <ElapsedView from={tool.createdAt} />
-                            </View>
-                        )}
-                        {statusIcon}
+    const terminalCommand = getTerminalToolCommand(tool);
+    const isCompactTerminalTool = terminalCommand !== null;
+    const isInlineCodexPatch = Platform.OS === 'web' && tool.name === 'CodexPatch';
+    const renderCardHeader = shouldRenderToolCardHeader(tool.name, Platform.OS);
+    const renderPermissionFooter = () => (
+        tool.permission && sessionId && tool.name !== 'AskUserQuestion'
+            ? <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} toolInput={tool.input} metadata={props.metadata} />
+            : null
+    );
+
+    const renderHeaderContent = () => {
+        if (isCompactTerminalTool) {
+            return (
+                <View style={styles.compactHeaderLeft}>
+                    <View style={styles.compactIconContainer}>
+                        {icon}
                     </View>
-                </TouchableOpacity>
-            ) : (
-                <View style={styles.header}>
-                    <View style={styles.headerLeft}>
-                        <View style={styles.iconContainer}>
-                            {icon}
+                    <Text style={styles.compactToolName} numberOfLines={1}>{toolTitle}</Text>
+                    {status ? <Text style={styles.compactStatus} numberOfLines={1}>{status}</Text> : null}
+                    <Text style={styles.compactCommandText} numberOfLines={1}>
+                        {terminalCommand}
+                    </Text>
+                    {tool.state === 'running' && (
+                        <View style={styles.elapsedContainer}>
+                            <ElapsedView from={tool.createdAt} />
                         </View>
-                        <View style={styles.titleContainer}>
-                            <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
-                            {description && (
-                                <Text style={styles.toolDescription} numberOfLines={1}>
-                                    {description}
-                                </Text>
-                            )}
-                        </View>
-                        {tool.state === 'running' && (
-                            <View style={styles.elapsedContainer}>
-                                <ElapsedView from={tool.createdAt} />
-                            </View>
-                        )}
-                        {statusIcon}
-                    </View>
+                    )}
+                    {statusIcon}
                 </View>
-            )}
+            );
+        }
+
+        return (
+            <View style={styles.headerLeft}>
+                <View style={styles.iconContainer}>
+                    {icon}
+                </View>
+                <View style={styles.titleContainer}>
+                    <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
+                    {description && (
+                        <Text style={styles.toolDescription} numberOfLines={1}>
+                            {description}
+                        </Text>
+                    )}
+                </View>
+                {tool.state === 'running' && (
+                    <View style={styles.elapsedContainer}>
+                        <ElapsedView from={tool.createdAt} />
+                    </View>
+                )}
+                {statusIcon}
+            </View>
+        );
+    };
+
+    return (
+        <View style={isCompactTerminalTool ? styles.compactContainer : isInlineCodexPatch ? styles.inlineContainer : styles.container}>
+            {renderCardHeader ? (
+                isPressable ? (
+                    <TouchableOpacity style={isCompactTerminalTool ? styles.compactHeader : styles.header} onPress={handlePress} activeOpacity={0.8}>
+                        {renderHeaderContent()}
+                    </TouchableOpacity>
+                ) : (
+                    <View style={isCompactTerminalTool ? styles.compactHeader : styles.header}>
+                        {renderHeaderContent()}
+                    </View>
+                )
+            ) : null}
 
             {/* Content area - either custom children or tool-specific view */}
             {(() => {
                 // Check if minimal first - minimal tools don't show content
-                if (minimal) {
+                if (minimal || isCompactTerminalTool) {
                     return null;
                 }
 
@@ -223,7 +245,13 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 if (SpecificToolView) {
                     return (
                         <View style={styles.content}>
-                            <SpecificToolView tool={tool} metadata={props.metadata} messages={props.messages ?? []} sessionId={sessionId} />
+                            <SpecificToolView
+                                tool={tool}
+                                metadata={props.metadata}
+                                messages={props.messages ?? []}
+                                sessionId={sessionId}
+                                permissionFooter={isInlineCodexPatch ? renderPermissionFooter() : undefined}
+                            />
                             {tool.state === 'error' && tool.result &&
                                 !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
                                 !hideDefaultError && (
@@ -267,9 +295,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
             {/* Permission footer - always renders when permission exists to maintain consistent height */}
             {/* AskUserQuestion has its own Submit button UI - no permission footer needed */}
-            {tool.permission && sessionId && tool.name !== 'AskUserQuestion' && (
-                <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} toolInput={tool.input} metadata={props.metadata} />
-            )}
+            {!isInlineCodexPatch ? renderPermissionFooter() : null}
         </View>
     );
 });
@@ -287,12 +313,31 @@ const styles = StyleSheet.create((theme) => ({
         marginVertical: 4,
         overflow: 'hidden'
     },
+    compactContainer: {
+        backgroundColor: 'transparent',
+        marginVertical: 1,
+        overflow: 'visible',
+    },
+    inlineContainer: {
+        backgroundColor: 'transparent',
+        marginVertical: 1,
+        overflow: 'visible',
+    },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: 12,
         backgroundColor: theme.colors.surfaceHighest,
+    },
+    compactHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        minHeight: 28,
+        paddingHorizontal: 4,
+        paddingVertical: 3,
+        borderRadius: 4,
+        backgroundColor: 'transparent',
     },
     headerLeft: {
         flexDirection: 'row',
@@ -303,6 +348,19 @@ const styles = StyleSheet.create((theme) => ({
     iconContainer: {
         width: 24,
         height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    compactHeaderLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        flex: 1,
+        minWidth: 0,
+    },
+    compactIconContainer: {
+        width: 18,
+        height: 18,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -321,6 +379,28 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 14,
         fontWeight: '500',
         color: theme.colors.text,
+    },
+    compactToolName: {
+        fontSize: 13,
+        lineHeight: 18,
+        fontWeight: '500',
+        color: theme.colors.text,
+        flexShrink: 0,
+        maxWidth: 150,
+    },
+    compactStatus: {
+        fontSize: 12,
+        lineHeight: 18,
+        color: theme.colors.textSecondary,
+        flexShrink: 0,
+    },
+    compactCommandText: {
+        flex: 1,
+        minWidth: 0,
+        fontSize: 13,
+        lineHeight: 18,
+        color: theme.colors.textSecondary,
+        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
     },
     status: {
         fontWeight: '400',

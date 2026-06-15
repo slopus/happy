@@ -23,6 +23,15 @@ import type {
     NewConversationResponse,
     ResumeConversationParams,
     ResumeConversationResponse,
+    ForkConversationParams,
+    ForkConversationResponse,
+    ReadConversationParams,
+    ReadConversationResponse,
+    RollbackConversationParams,
+    RollbackConversationResponse,
+    InjectItemsParams,
+    InjectItemsResponse,
+    Thread,
     InterruptConversationParams,
     ReviewDecision,
     EventMsg,
@@ -94,11 +103,57 @@ function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | unde
         }
 
         const entry: Record<string, unknown> = {};
-        if (typeof change.diff === 'string') {
-            entry.diff = change.diff;
+        const changeRecord = change as Record<string, unknown>;
+        const kind = changeRecord.kind && typeof changeRecord.kind === 'object' && !Array.isArray(changeRecord.kind)
+            ? changeRecord.kind as Record<string, unknown>
+            : null;
+        const type = typeof changeRecord.type === 'string'
+            ? changeRecord.type
+            : (typeof kind?.type === 'string' ? kind.type : null);
+        const movePath = changeRecord.move_path ?? kind?.move_path ?? null;
+
+        if (kind) {
+            entry.kind = kind;
+        } else if (type) {
+            entry.kind = { type, move_path: movePath };
         }
-        if (change.kind && typeof change.kind === 'object' && !Array.isArray(change.kind)) {
-            entry.kind = change.kind;
+
+        const diff = typeof changeRecord.diff === 'string'
+            ? changeRecord.diff
+            : (typeof changeRecord.unified_diff === 'string' ? changeRecord.unified_diff : null);
+        if (diff !== null) {
+            entry.diff = diff;
+        }
+
+        if (changeRecord.add && typeof changeRecord.add === 'object' && !Array.isArray(changeRecord.add)) {
+            entry.add = changeRecord.add;
+        }
+        if (changeRecord.modify && typeof changeRecord.modify === 'object' && !Array.isArray(changeRecord.modify)) {
+            entry.modify = changeRecord.modify;
+        }
+        if (changeRecord.delete && typeof changeRecord.delete === 'object' && !Array.isArray(changeRecord.delete)) {
+            entry.delete = changeRecord.delete;
+        }
+
+        const content = typeof changeRecord.content === 'string' ? changeRecord.content : null;
+        if (type === 'add' && content !== null) {
+            entry.add = { content };
+        }
+        if (type === 'delete' && content !== null) {
+            entry.delete = { content };
+        }
+
+        const oldContent = typeof changeRecord.oldContent === 'string'
+            ? changeRecord.oldContent
+            : (typeof changeRecord.old_content === 'string' ? changeRecord.old_content : null);
+        const newContent = typeof changeRecord.newContent === 'string'
+            ? changeRecord.newContent
+            : (typeof changeRecord.new_content === 'string' ? changeRecord.new_content : null);
+        if ((oldContent !== null || newContent !== null) && type !== 'add' && type !== 'delete') {
+            entry.modify = {
+                old_content: oldContent ?? '',
+                new_content: newContent ?? '',
+            };
         }
 
         normalized[path] = entry;
@@ -643,6 +698,76 @@ export class CodexAppServerClient {
         return { threadId: result.thread.id, model: result.model };
     }
 
+    async forkThread(opts: {
+        threadId: string;
+        model?: string;
+        cwd?: string;
+        approvalPolicy?: ApprovalPolicy;
+        sandbox?: SandboxMode;
+        mcpServers?: Record<string, unknown>;
+    }): Promise<{ threadId: string; model: string; thread: Thread }> {
+        const defaults = this.threadDefaults ?? {};
+        const params: ForkConversationParams = {
+            threadId: opts.threadId,
+            model: opts.model ?? defaults.model ?? null,
+            modelProvider: null,
+            cwd: opts.cwd ?? defaults.cwd ?? process.cwd(),
+            approvalPolicy: opts.approvalPolicy ?? defaults.approvalPolicy ?? null,
+            sandbox: opts.sandbox ?? defaults.sandbox ?? null,
+            config: this.buildThreadConfig(opts.mcpServers ?? defaults.mcpServers),
+            baseInstructions: null,
+            developerInstructions: null,
+            ephemeral: false,
+            threadSource: null,
+        };
+
+        const result = await this.request('thread/fork', params) as ForkConversationResponse;
+        this._threadId = result.thread.id;
+        this._turnId = null;
+        this.rememberThreadDefaults({
+            model: opts.model ?? defaults.model,
+            cwd: opts.cwd ?? defaults.cwd,
+            approvalPolicy: opts.approvalPolicy ?? defaults.approvalPolicy,
+            sandbox: opts.sandbox ?? defaults.sandbox,
+            mcpServers: opts.mcpServers ?? defaults.mcpServers,
+        });
+        logger.debug('[CodexAppServer] Thread forked:', opts.threadId, '->', this._threadId);
+        return { threadId: result.thread.id, model: result.model, thread: result.thread };
+    }
+
+    async readThread(opts: {
+        threadId: string;
+        includeTurns?: boolean;
+    }): Promise<ReadConversationResponse> {
+        const params: ReadConversationParams = {
+            threadId: opts.threadId,
+            includeTurns: opts.includeTurns ?? true,
+        };
+        return await this.request('thread/read', params) as ReadConversationResponse;
+    }
+
+    async rollbackThread(opts: {
+        threadId: string;
+        numTurns: number;
+    }): Promise<RollbackConversationResponse> {
+        const params: RollbackConversationParams = {
+            threadId: opts.threadId,
+            numTurns: opts.numTurns,
+        };
+        return await this.request('thread/rollback', params) as RollbackConversationResponse;
+    }
+
+    async injectItems(opts: {
+        threadId: string;
+        items: unknown[];
+    }): Promise<InjectItemsResponse> {
+        const params: InjectItemsParams = {
+            threadId: opts.threadId,
+            items: opts.items,
+        };
+        return await this.request('thread/inject_items', params) as InjectItemsResponse;
+    }
+
     async reconnectAndResumeThread(): Promise<boolean> {
         const threadId = this._threadId;
         await this.disconnectInternal({ preserveThreadState: !!threadId });
@@ -902,6 +1027,18 @@ export class CodexAppServerClient {
 
     hasActiveThread(): boolean {
         return this._threadId !== null;
+    }
+
+    clearThreadState(): void {
+        logger.debug(
+            `[CodexAppServer] Clearing thread state: thread=${this._threadId ?? 'none'} turn=${this._turnId ?? 'none'}`,
+        );
+        this.resolvePendingTurn(true);
+        this._threadId = null;
+        this._turnId = null;
+        this.threadDefaults = null;
+        this.completedTurnIds.clear();
+        this.rawFileChangesByItemId.clear();
     }
 
     // ─── JSON-RPC transport ─────────────────────────────────────

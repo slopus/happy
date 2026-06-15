@@ -473,6 +473,13 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         };
     }
 
+    if ((message as any).isCompactSummary) {
+        return {
+            currentTurnId: state.currentTurnId,
+            envelopes,
+        };
+    }
+
     if (message.type === 'assistant') {
         const turnId = ensureTurn(state, envelopes);
         maybeEmitSubagentStart(state, turnId, subagent, envelopes);

@@ -367,6 +367,192 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('forks, reads, and rolls back Codex threads through app-server RPC', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 2501,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+
+                if (msg.method === 'thread/fork' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: {
+                                    id: 'thread-forked',
+                                    path: '/tmp/thread-forked',
+                                    forkedFromId: 'thread-source',
+                                    turns: [],
+                                },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'workspaceWrite' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'thread/read' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: {
+                                    id: 'thread-forked',
+                                    turns: [
+                                        { id: 'turn-1', items: [{ type: 'userMessage', id: 'user-1', content: [{ type: 'text', text: 'hello' }] }] },
+                                    ],
+                                },
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'thread/rollback' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: {
+                                    id: 'thread-forked',
+                                    turns: [
+                                        { id: 'turn-1', items: [{ type: 'userMessage', id: 'user-1', content: [{ type: 'text', text: 'hello' }] }] },
+                                    ],
+                                },
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'thread/inject_items' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {},
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        const forked = await client.forkThread({
+            threadId: 'thread-source',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        });
+        const read = await client.readThread({ threadId: forked.threadId, includeTurns: true });
+        const rolledBack = await client.rollbackThread({ threadId: forked.threadId, numTurns: 2 });
+        const injected = await client.injectItems({
+            threadId: forked.threadId,
+            items: [{
+                type: 'message',
+                role: 'user',
+                content: [{ type: 'input_text', text: 'hello' }],
+            }],
+        });
+
+        expect(forked.threadId).toBe('thread-forked');
+        expect(read.thread.turns).toHaveLength(1);
+        expect(rolledBack.thread.turns).toHaveLength(1);
+        expect(injected).toEqual({});
+        expect(requests.find((msg) => msg.method === 'thread/fork')?.params).toEqual(expect.objectContaining({
+            threadId: 'thread-source',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        }));
+        expect(requests.find((msg) => msg.method === 'thread/read')?.params).toEqual({
+            threadId: 'thread-forked',
+            includeTurns: true,
+        });
+        expect(requests.find((msg) => msg.method === 'thread/rollback')?.params).toEqual({
+            threadId: 'thread-forked',
+            numTurns: 2,
+        });
+        expect(requests.find((msg) => msg.method === 'thread/inject_items')?.params).toEqual({
+            threadId: 'thread-forked',
+            items: [{
+                type: 'message',
+                role: 'user',
+                content: [{ type: 'input_text', text: 'hello' }],
+            }],
+        });
+
+        await client.disconnect();
+    });
+
+    it('clears active thread state so the next prompt starts a fresh thread', async () => {
+        const requests: MockRpcMessage[] = [];
+        let nextThreadNumber = 1;
+        const proc = createMockProcess({
+            pid: 2601,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    const threadId = `thread-${nextThreadNumber++}`;
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: threadId, path: `/tmp/${threadId}` },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'readOnly' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'read-only',
+        });
+
+        expect(client.threadId).toBe('thread-1');
+        expect(client.hasActiveThread()).toBe(true);
+
+        client.clearThreadState();
+
+        expect(client.threadId).toBeNull();
+        expect(client.turnId).toBeNull();
+        expect(client.hasActiveThread()).toBe(false);
+
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'read-only',
+        });
+
+        expect(client.threadId).toBe('thread-2');
+        expect(requests.filter((msg) => msg.method === 'thread/start')).toHaveLength(2);
+
+        await client.disconnect();
+    });
+
     it('maps raw item notifications into legacy events and deduplicates turn completion', async () => {
         const requests: MockRpcMessage[] = [];
         const proc = createMockProcess({
@@ -549,6 +735,10 @@ describe('CodexAppServerClient sandbox integration', () => {
                                         path: 'README.md',
                                         kind: { type: 'update', move_path: null },
                                         diff: '@@ -1 +1 @@',
+                                    }, {
+                                        path: 'MONETIZATION.md',
+                                        type: 'add',
+                                        content: '# Monetization\n\nPaid plans.\n',
                                     }],
                                 },
                             },
@@ -566,6 +756,10 @@ describe('CodexAppServerClient sandbox integration', () => {
                                         path: 'README.md',
                                         kind: { type: 'update', move_path: null },
                                         diff: '@@ -1 +1 @@',
+                                    }, {
+                                        path: 'MONETIZATION.md',
+                                        type: 'add',
+                                        content: '# Monetization\n\nPaid plans.\n',
                                     }],
                                 },
                             },
@@ -615,6 +809,10 @@ describe('CodexAppServerClient sandbox integration', () => {
                     'README.md': {
                         diff: '@@ -1 +1 @@',
                         kind: { type: 'update', move_path: null },
+                    },
+                    'MONETIZATION.md': {
+                        kind: { type: 'add', move_path: null },
+                        add: { content: '# Monetization\n\nPaid plans.\n' },
                     },
                 },
             }),

@@ -104,6 +104,7 @@ export async function claudeRemote(opts: {
         if (opts.onSessionReset) {
             opts.onSessionReset();
         }
+        opts.onReady();
         return;
     }
 
@@ -179,8 +180,14 @@ export async function claudeRemote(opts: {
         for await (const message of response) {
             logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
 
-            // Handle messages
-            opts.onMessage(message);
+            // Handle messages. During /compact, Claude emits the generated
+            // summary as a normal assistant text message before the result.
+            // Mark it so downstream UI/protocol mapping can treat it as
+            // housekeeping instead of a real assistant response.
+            const outboundMessage = isCompactCommand && message.type === 'assistant'
+                ? { ...message, isCompactSummary: true } as SDKMessage
+                : message;
+            opts.onMessage(outboundMessage);
 
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
@@ -206,8 +213,19 @@ export async function claudeRemote(opts: {
                 if (systemInit.session_id) {
                     logger.debug(`[claudeRemote] Waiting for session file to be written to disk: ${systemInit.session_id}`);
                     const projectDir = getProjectPath(opts.path);
-                    const found = await awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`));
+                    const found = await awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`), 30000);
                     logger.debug(`[claudeRemote] Session file found: ${systemInit.session_id} ${found}`);
+                    if (!found) {
+                        // The transcript never landed on disk within the grace
+                        // window. We still register the id so the (now
+                        // bounded) scanner watcher can pick it up if it shows
+                        // up late and otherwise drops it cleanly instead of
+                        // wedging — but surface the anomaly so a stuck remote
+                        // launch is visible in the app rather than a silent
+                        // "dead instance".
+                        logger.debug(`[claudeRemote] WARNING: session transcript ${systemInit.session_id} never appeared after 30s`);
+                        opts.onCompletionEvent?.('⚠️ Claude session did not produce a transcript — the agent may be unresponsive. Try sending your message again.');
+                    }
                     opts.onSessionFound(systemInit.session_id);
                 }
             }

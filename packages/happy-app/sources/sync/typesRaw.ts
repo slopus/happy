@@ -113,6 +113,8 @@ const sessionEnvelopeSchema = z.object({
     // — used as the rewind point for fork / duplicate. Optional for back-
     // compat with envelopes emitted before this field was wired through.
     claudeUuid: z.string().min(1).optional(),
+    // Codex app-server item id for precise thread rollback points.
+    codexItemId: z.string().min(1).optional(),
     ev: sessionEventSchema,
 }).superRefine((envelope, ctx) => {
     if (envelope.ev.t === 'service' && envelope.role !== 'agent') {
@@ -532,6 +534,7 @@ export type NormalizedMessage = ({
      * sources (legacy events, server-emitted control messages) have none.
      */
     claudeUuid?: string,
+    codexItemId?: string,
 };
 
 function normalizeSessionEnvelope(
@@ -608,6 +611,7 @@ function normalizeSessionEnvelope(
                 },
                 meta,
                 claudeUuid: envelope.claudeUuid,
+                codexItemId: envelope.codexItemId,
             } satisfies NormalizedMessage;
         }
 
@@ -632,6 +636,7 @@ function normalizeSessionEnvelope(
             ],
             meta,
             claudeUuid: envelope.claudeUuid,
+            codexItemId: envelope.codexItemId,
         } satisfies NormalizedMessage;
     }
 

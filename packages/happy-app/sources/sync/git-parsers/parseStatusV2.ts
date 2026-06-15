@@ -4,6 +4,7 @@
  */
 
 import { LineParser } from './LineParser';
+import { decodeGitPath } from './gitPath';
 
 export interface GitFileEntryV2 {
     path: string;
@@ -131,12 +132,12 @@ export function parseStatusSummaryV2(statusOutput: string): GitStatusSummaryV2 {
         // Untracked files (? ...)
         else if (line.startsWith('? ')) {
             const match = UNTRACKED_REGEX.exec(line);
-            if (match) result.not_added.push(match[1]);
+            if (match) result.not_added.push(decodeGitPath(match[1]));
         }
         // Ignored files (! ...)
         else if (line.startsWith('! ')) {
             const match = IGNORED_REGEX.exec(line);
-            if (match) result.ignored.push(match[1]);
+            if (match) result.ignored.push(decodeGitPath(match[1]));
         }
     }
 
@@ -155,7 +156,7 @@ function parseOrdinaryChange(matches: (string | undefined)[]): GitFileEntryV2 | 
         modeWorktree: matches[6],
         hashHead: matches[7],
         hashIndex: matches[8],
-        path: matches[9]
+        path: decodeGitPath(matches[9])
     };
 }
 
@@ -172,8 +173,8 @@ function parseRenameCopy(matches: (string | undefined)[]): GitFileEntryV2 | null
         hashHead: matches[7],
         hashIndex: matches[8],
         renameScore: parseInt(matches[10] || '0', 10),
-        from: matches[11],
-        path: matches[12]
+        from: decodeGitPath(matches[11]),
+        path: decodeGitPath(matches[12])
     };
 }
 
@@ -189,7 +190,7 @@ function parseUnmerged(matches: (string | undefined)[]): GitFileEntryV2 | null {
         modeWorktree: matches[7], // worktree mode
         hashHead: matches[8], // stage 1 hash
         hashIndex: matches[9], // stage 2 hash
-        path: matches[11]
+        path: decodeGitPath(matches[11])
     };
 }
 
