@@ -284,6 +284,48 @@ describe('sessionScanner', () => {
     })
   })
 
+  it('processes synthetic Claude API error assistant messages', async () => {
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+    })
+
+    const sessionId = 'fd4aa0c2-2222-4cd3-a066-80c6d87c3456'
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+    await writeFile(sessionFile, JSON.stringify({
+      type: 'assistant',
+      uuid: 'assistant-api-error',
+      error: 'authentication_failed',
+      isApiErrorMessage: true,
+      apiErrorStatus: 403,
+      message: {
+        role: 'assistant',
+        type: 'message',
+        model: '<synthetic>',
+        content: [{ type: 'text', text: 'Please run /login · API Error: 403 Request not allowed' }],
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          service_tier: null,
+        },
+      },
+    }) + '\n')
+
+    scanner.onNewSession(sessionId)
+    await scanner.flush()
+
+    expect(collectedMessages).toHaveLength(1)
+    expect(collectedMessages[0]).toMatchObject({
+      type: 'assistant',
+      uuid: 'assistant-api-error',
+      isApiErrorMessage: true,
+      apiErrorStatus: 403,
+    })
+  })
+
   it('flushes pending scanner work on demand', async () => {
     scanner = await createSessionScanner({
       sessionId: null,

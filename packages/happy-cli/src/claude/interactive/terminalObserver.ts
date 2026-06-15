@@ -88,9 +88,13 @@ function isUsageOrAuthError(raw: string): boolean {
 }
 
 function isUsageOrAuthErrorLine(lowerLine: string): boolean {
+    const diagnosticLine = lowerLine.replace(/^[\s⎿]+/, '').trim();
+
     return /^(?:error:\s*)?(?:claude(?: ai)?\s+)?(?:usage limit|rate limit|quota exceeded|authentication|unauthorized|forbidden|invalid api key|api key invalid|login required|not logged in|auth(?:entication)? (?:failed|required|error)|payment required|credit balance)\b/.test(
-        lowerLine,
-    );
+        diagnosticLine,
+    )
+        || /^please run \/login\b/.test(diagnosticLine)
+        || /^api error:\s*403\b.*\b(?:request not allowed|forbidden|unauthorized)\b/.test(diagnosticLine);
 }
 
 function isPermissionPrompt(lower: string): boolean {

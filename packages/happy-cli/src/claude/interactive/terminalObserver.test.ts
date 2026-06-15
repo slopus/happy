@@ -9,6 +9,13 @@ describe('classifyTerminalOutput', () => {
         });
     });
 
+    it('reports Claude login API errors from rendered terminal output', () => {
+        expect(classifyTerminalOutput('  ⎿  Please run /login · API Error: 403 Request not allowed')).toEqual({
+            type: 'usage_or_auth_error',
+            message: 'Claude reported a usage or authentication problem.',
+        });
+    });
+
     it('reports permission prompts without returning raw terminal text', () => {
         expect(classifyTerminalOutput('Do you want to allow Bash?')).toEqual({
             type: 'permission_prompt_visible',
@@ -85,6 +92,17 @@ describe('classifyTerminalOutput', () => {
             "+            type: 'usage_or_auth_error',",
             "+            message: 'Claude reported a usage or authentication problem.',",
             '+        });',
+        ].join('\n');
+
+        expect(classifyTerminalOutput(output)).toBeNull();
+    });
+
+    it('does not treat rendered diffs containing login API fixtures as usage errors', () => {
+        const output = [
+            'diff --git a/test.ts b/test.ts',
+            '--- a/test.ts',
+            '+++ b/test.ts',
+            "+        expect(text).toContain('Please run /login · API Error: 403 Request not allowed');",
         ].join('\n');
 
         expect(classifyTerminalOutput(output)).toBeNull();

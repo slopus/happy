@@ -11,7 +11,7 @@ export const UsageSchema = z.object({
   cache_creation_input_tokens: z.number().int().nonnegative().optional(),
   cache_read_input_tokens: z.number().int().nonnegative().optional(),
   output_tokens: z.number().int().nonnegative(),
-  service_tier: z.string().optional(),
+  service_tier: z.string().nullable().optional(),
 }).passthrough();
 
 // Main schema with minimal validation for only the fields we use
