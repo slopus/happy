@@ -53,8 +53,8 @@ import { resolveMessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import {
-    createAttachmentUploadLogMetadata,
-    formatAttachmentUploadLogMessage,
+    logAttachmentUploadFailure,
+    logMissingAttachmentBlobKey,
 } from './attachmentUploadLogging';
 import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
@@ -514,12 +514,10 @@ class Sync {
 
         const blobKey = this.encryption.getSessionBlobKey(sessionId);
         if (!blobKey) {
-            const metadata = createAttachmentUploadLogMetadata({
-                phase: 'missing_blob_key',
+            logMissingAttachmentBlobKey({
                 attachmentCount: attachments.length,
                 sessionId,
             });
-            console.error(formatAttachmentUploadLogMessage(metadata), metadata);
             return { uploaded: [], failed: attachments.length };
         }
 
@@ -550,13 +548,11 @@ class Sync {
                     thumbhash: attachment.thumbhash,
                 });
             } catch (err) {
-                const metadata = createAttachmentUploadLogMetadata({
-                    phase: 'upload_failed',
+                logAttachmentUploadFailure({
                     attachmentIndex,
                     attachment,
                     error: err,
                 });
-                console.error(formatAttachmentUploadLogMessage(metadata), metadata);
                 failed++;
                 // Skip this attachment; do not abort the whole message send.
             }

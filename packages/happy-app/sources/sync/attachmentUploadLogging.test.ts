@@ -1,10 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     createAttachmentUploadLogMetadata,
     formatAttachmentUploadLogMessage,
+    logAttachmentUploadFailure,
+    logMissingAttachmentBlobKey,
 } from './attachmentUploadLogging';
 
 describe('attachment upload logging', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
     it('formats missing blob key metadata without raw session ids', () => {
         const metadata = createAttachmentUploadLogMetadata({
             phase: 'missing_blob_key',
@@ -70,6 +76,137 @@ describe('attachment upload logging', () => {
 
         expect(metadata.errorName?.length).toBeLessThanOrEqual(80);
         expect(metadata.errorName).toMatch(/^[A-Za-z0-9_.:-]+$/);
+    });
+
+    it('falls back for adversarial error names instead of preserving safe-looking secrets', () => {
+        const metadata = createAttachmentUploadLogMetadata({
+            phase: 'upload_failed',
+            attachmentIndex: 3,
+            attachment: {
+                name: 'private-photo.png',
+                uri: 'file:///Users/me/private/photo.png',
+                size: 12345,
+                width: 640,
+                height: 480,
+                mimeType: 'image/png',
+            },
+            error: { name: 'sk-secret /Users/me/private/photo.png' },
+            uploadRef: 'blob-ref-secret',
+            sessionId: 'session-secret-456',
+        });
+        const serialized = JSON.stringify(metadata);
+
+        expect(metadata).toEqual({
+            phase: 'upload_failed',
+            attachmentIndex: 3,
+            size: 12345,
+            width: 640,
+            height: 480,
+            errorName: 'UnknownError',
+        });
+        expect(Object.keys(metadata).sort()).toEqual([
+            'attachmentIndex',
+            'errorName',
+            'height',
+            'phase',
+            'size',
+            'width',
+        ]);
+        expect(serialized).not.toContain('sk-secret');
+        expect(serialized).not.toContain('/Users');
+        expect(serialized).not.toContain('photo.png');
+        expect(serialized).not.toContain('blob-ref-secret');
+        expect(serialized).not.toContain('session-secret-456');
+    });
+
+    it('falls back for URL and file URI error names', () => {
+        for (const name of [
+            'https://example.com/private/photo.png?token=secret',
+            'file:///Users/me/private/photo.png',
+            'C:\\Users\\me\\private\\photo.jpg',
+        ]) {
+            expect(createAttachmentUploadLogMetadata({
+                phase: 'upload_failed',
+                error: { name },
+            }).errorName).toBe('UnknownError');
+        }
+    });
+
+    it('omits non-finite numbers and non-positive dimensions', () => {
+        expect(createAttachmentUploadLogMetadata({
+            phase: 'missing_blob_key',
+            attachmentCount: Number.POSITIVE_INFINITY,
+        })).toEqual({
+            phase: 'missing_blob_key',
+        });
+
+        expect(createAttachmentUploadLogMetadata({
+            phase: 'upload_failed',
+            attachmentIndex: Number.NaN,
+            attachment: {
+                size: Number.NEGATIVE_INFINITY,
+                width: 0,
+                height: -1,
+            },
+            error: { name: 'TypeError' },
+        })).toEqual({
+            phase: 'upload_failed',
+            errorName: 'TypeError',
+        });
+    });
+
+    it('logs missing blob key with only safe metadata arguments', () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        logMissingAttachmentBlobKey({
+            attachmentCount: 2,
+            sessionId: 'session-secret-123',
+        });
+
+        expect(consoleError).toHaveBeenCalledTimes(1);
+        expect(consoleError).toHaveBeenCalledWith('[attachments] missing_blob_key', {
+            phase: 'missing_blob_key',
+            attachmentCount: 2,
+        });
+        expect(JSON.stringify(consoleError.mock.calls)).not.toContain('session-secret-123');
+    });
+
+    it('logs upload failure with only safe metadata arguments', () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        logAttachmentUploadFailure({
+            attachmentIndex: 4,
+            attachment: {
+                name: 'private-photo.png',
+                uri: 'file:///Users/me/private/photo.png',
+                size: 12345,
+                width: 640,
+                height: 480,
+                mimeType: 'image/png',
+            },
+            error: { name: 'sk-secret /Users/me/private/photo.png' },
+            uploadRef: 'blob-ref-secret',
+            sessionId: 'session-secret-456',
+        });
+
+        expect(consoleError).toHaveBeenCalledTimes(1);
+        expect(consoleError).toHaveBeenCalledWith('[attachments] upload_failed', {
+            phase: 'upload_failed',
+            attachmentIndex: 4,
+            size: 12345,
+            width: 640,
+            height: 480,
+            errorName: 'UnknownError',
+        });
+
+        const serializedCalls = JSON.stringify(consoleError.mock.calls);
+        expect(serializedCalls).not.toContain('private-photo.png');
+        expect(serializedCalls).not.toContain('file:///Users/me/private/photo.png');
+        expect(serializedCalls).not.toContain('/Users');
+        expect(serializedCalls).not.toContain('image/png');
+        expect(serializedCalls).not.toContain('sk-secret');
+        expect(serializedCalls).not.toContain('blob-ref-secret');
+        expect(serializedCalls).not.toContain('session-secret-456');
     });
 
     it('falls back safely when errorName is empty or unknown', () => {
