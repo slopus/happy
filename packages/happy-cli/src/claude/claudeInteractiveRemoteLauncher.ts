@@ -404,13 +404,13 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
 
         const doSwitch = async () => {
             logger.debug('[interactive-remote]: switch');
+            cancelPendingCompletion();
+            cancelPendingInputWaits('cancelled');
+            markTerminalInputBusy();
             if (transport.backend === 'pty') {
                 sendSafeMessage(session, 'Claude interactive remote cannot switch to local attach from a PTY terminal.');
                 return;
             }
-            cancelPendingCompletion();
-            cancelPendingInputWaits('cancelled');
-            markTerminalInputBusy();
             await unmountRemoteDisplay(true);
             const attachMessage = buildTmuxAttachMessage(transport.terminalId);
             const attachedLocally = await attachLocalTerminal(transport);

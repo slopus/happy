@@ -792,6 +792,62 @@ describe('claudeInteractiveRemoteLauncher', () => {
         await resultPromise;
     });
 
+    it('does not report readiness timeout when PTY switch wakes an input wait', async () => {
+        vi.useFakeTimers();
+        try {
+            const transport = new FakeTerminalTransport('pty');
+            mockCreateTerminalTransport.mockResolvedValue(transport);
+            const session = createSession({
+                batches: [{
+                    message: 'waiting when pty switch is requested',
+                    mode: initialMode,
+                    hash: 'initial-mode-hash',
+                    isolate: false,
+                }],
+            });
+
+            const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+            await vi.waitFor(() => {
+                expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+            });
+
+            await session.invokeRpc('switch');
+
+            expect(session.client.sendSessionEvent).toHaveBeenCalledWith({
+                type: 'message',
+                message: 'Claude interactive remote cannot switch to local attach from a PTY terminal.',
+            });
+            expect(transport.paste).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(8001);
+
+            expect(session.client.sendSessionEvent).not.toHaveBeenCalledWith({
+                type: 'message',
+                message: 'Claude interactive terminal is not ready for input yet.',
+            });
+            expect(session.client.closeClaudeSessionTurn).not.toHaveBeenCalledWith('failed');
+            expect(transport.paste).not.toHaveBeenCalled();
+
+            session.enqueueBatch({
+                message: 'after pty switch wake',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            });
+            transport.emitData('>');
+
+            await vi.waitFor(() => {
+                expect(transport.paste).toHaveBeenCalledWith('after pty switch wake\r');
+            });
+
+            transport.emitExit({ code: 0, signal: null });
+            await resultPromise;
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('requires fresh readiness before pasting after switching from cached ready local attach', async () => {
         const transport = new FakeTerminalTransport('tmux');
         mockCreateTerminalTransport.mockResolvedValue(transport);
