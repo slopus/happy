@@ -334,6 +334,13 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 }
             }
 
+            if (localAttachMode) {
+                if (terminalInputPromptVisible) {
+                    markTerminalInputBusy();
+                }
+                return;
+            }
+
             if (terminalInputIsReady) {
                 markTerminalInputReady();
                 session.onThinkingChange(false);

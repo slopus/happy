@@ -776,10 +776,15 @@ describe('claudeInteractiveRemoteLauncher', () => {
             hash: 'initial-mode-hash',
             isolate: false,
         });
-        transport.emitData('>');
 
         await vi.waitFor(() => {
             expect(transport.detachLocal).toHaveBeenCalledOnce();
+        });
+        expect(transport.paste).not.toHaveBeenCalled();
+
+        transport.emitData('>');
+
+        await vi.waitFor(() => {
             expect(transport.paste).toHaveBeenCalledWith('after switch wake');
         });
 
@@ -818,6 +823,45 @@ describe('claudeInteractiveRemoteLauncher', () => {
         await vi.waitFor(() => {
             expect(transport.detachLocal).toHaveBeenCalledOnce();
             expect(transport.paste).toHaveBeenCalledWith('after cached local switch');
+            expect(transport.enter).toHaveBeenCalledOnce();
+        });
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
+
+    it('ignores prompts observed during local attach when app later detaches for a batch', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession();
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+
+        await session.invokeRpc('switch');
+        expect(session.onModeChange).toHaveBeenCalledWith('local');
+
+        transport.emitData('Claude Code v2.1.153\n❯ Try "local prompt"');
+
+        session.enqueueBatch({
+            message: 'after local attach prompt',
+            mode: initialMode,
+            hash: 'initial-mode-hash',
+            isolate: false,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(transport.detachLocal).toHaveBeenCalledOnce();
+        expect(transport.paste).not.toHaveBeenCalled();
+        expect(transport.enter).not.toHaveBeenCalled();
+
+        transport.emitData('Claude Code v2.1.153\n❯ Try "fresh after detach"');
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('after local attach prompt');
             expect(transport.enter).toHaveBeenCalledOnce();
         });
 
@@ -1449,14 +1493,19 @@ describe('claudeInteractiveRemoteLauncher', () => {
             hash: 'initial-mode-hash',
             isolate: false,
         });
+
+        await vi.waitFor(() => {
+            expect(transport.detachLocal).toHaveBeenCalledOnce();
+        });
+        expect(session.onModeChange).toHaveBeenCalledWith('remote');
+        expect(transport.paste).not.toHaveBeenCalled();
+
         transport.emitData('❯ ');
 
         await vi.waitFor(() => {
             expect(transport.paste).toHaveBeenCalledWith('take remote control back');
             expect(transport.enter).toHaveBeenCalledOnce();
         });
-        expect(session.onModeChange).toHaveBeenCalledWith('remote');
-        expect(transport.detachLocal).toHaveBeenCalledOnce();
         expect(transport.detachLocal.mock.invocationCallOrder[0]).toBeLessThan(
             transport.paste.mock.invocationCallOrder[0],
         );
