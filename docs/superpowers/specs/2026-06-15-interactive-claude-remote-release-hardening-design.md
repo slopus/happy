@@ -31,8 +31,9 @@ and daemon-provided Claude env. The PTY backend receives that env directly, but
 the tmux backend currently keeps only `NO_PROXY` and `no_proxy`.
 
 That can drop values such as `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CONFIG_DIR`,
-`ANTHROPIC_*`, `HAPPY_*`, and MCP/proxy settings. The result can be an auth
-failure or a Claude process using the wrong local account/config.
+`ANTHROPIC_*`, `HAPPY_CLAUDE_PATH`, and MCP/proxy settings. The result can be an
+auth failure, failure to find the intended Claude binary, or a Claude process
+using the wrong local account/config.
 
 ### tmux Is Selected Too Broadly
 
@@ -68,6 +69,8 @@ paths, URLs, bytes, and raw errors.
 `chooseTerminalBackend()` must treat `tmuxConfigured` as required for tmux:
 
 ```text
+tmuxConfigured = TMUX_SESSION_NAME is present and non-empty after trimming
+
 if tmuxConfigured and tmuxAvailable -> tmux
 else if ptyAvailable -> pty
 else -> unsupported
@@ -98,8 +101,9 @@ Allow:
 
 - `CLAUDE_*`
 - `ANTHROPIC_*`
-- `HAPPY_*`
+- `HAPPY_CLAUDE_PATH`
 - `MCP_*`
+- `API_TIMEOUT_MS`
 - `PATH`
 - `HOME`
 - `SHELL`
@@ -107,6 +111,13 @@ Allow:
 - `LOGNAME`
 - `TMPDIR`
 - `SSH_AUTH_SOCK`
+- `TERM`
+- `COLORTERM`
+- `LANG`
+- `LC_*`
+- `NODE_EXTRA_CA_CERTS`
+- `SSL_CERT_FILE`
+- `SSL_CERT_DIR`
 - proxy variables: `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, plus
   lowercase variants
 
@@ -117,23 +128,28 @@ Do not allow broad sensitive names such as:
 - `PASSWORD`
 - unrelated `*_TOKEN`, `*_SECRET`, or `*_KEY` values that are not in the
   allowed prefixes above
+- Happy session/reconnect/fork env such as `HAPPY_RECONNECT_*` and
+  `HAPPY_FORK*`
 
 This keeps `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CONFIG_DIR`, profile-provided
-Anthropic env, Happy reconnect/env metadata, MCP connection settings, and proxy
+Anthropic env, `HAPPY_CLAUDE_PATH`, MCP connection settings, and proxy/certificate
 configuration available to the managed Claude process while avoiding a full
-`process.env` dump into a long-lived tmux session.
+`process.env` dump into a long-lived tmux session. It intentionally does not pass
+Happy session ids, reconnect encryption keys, fork metadata, or app/server env to
+the managed Claude process.
 
-Tests must cover both sides: Claude/Happy/proxy env survives, unrelated secrets
-are removed.
+Tests must cover both sides: Claude/Anthropic/`HAPPY_CLAUDE_PATH`/MCP/proxy env
+survives, unrelated secrets are removed.
 
 ### Input Readiness Gate
 
 Readiness should be separated from general terminal diagnostics.
 
-Add a small helper that receives the latest terminal capture and returns whether
-the current terminal tail is accepting input. It should inspect only the tail of
-the current capture, not every visible line. A ready prompt is valid only when it
-appears in the final meaningful line or final prompt block.
+Add a small helper that receives the latest terminal update and returns whether
+the current terminal tail is accepting input. For tmux this update is the full
+pane capture; for PTY it is the latest terminal data chunk. The helper should
+inspect only the tail of that string, not every visible line. A ready prompt is
+valid only when it appears in the final meaningful line or final prompt block.
 
 It should accept the known Claude prompt forms:
 
@@ -149,8 +165,10 @@ It should reject stale or non-prompt contexts:
 - terminal output that still shows thinking/progress/spinner text
 
 The existing `classifyTerminalOutput()` can keep producing sanitized user-facing
-diagnostics. The launcher should use the new readiness helper only for
-`markTerminalInputReady()`.
+diagnostics. The launcher should use the new readiness helper, not
+`classifyTerminalOutput()`, for both `markTerminalInputReady()` and
+`scheduleCompletedTurn()`. A stale prompt must not mark input ready or complete a
+turn.
 
 ### No Blind Paste Timeout
 
@@ -165,13 +183,26 @@ Claude interactive terminal is not ready for input yet.
 The runtime should stay alive unless there is a separate terminal failure. This
 lets a later user retry when the terminal reaches an actual prompt.
 
+`waitForTerminalInputReady()` should return an explicit result instead of
+resolving all wakeups the same way:
+
+```text
+ready | timeout | cancelled | exited
+```
+
+Only `ready` permits `transport.paste()`. `timeout` fails the current turn.
+`cancelled` and `exited` should preserve the existing abort/switch/cleanup paths
+without reporting a readiness failure.
+
 The timeout path should:
 
 - wake the pending wait
 - avoid `transport.paste()`
 - close the current Claude session turn as failed
-- leave terminal metadata in an interactive/degraded state with the same safe
-  message, rather than crashing the process
+- set terminal metadata to `degraded` with the same safe message, rather than
+  crashing the process
+- clear the degraded message and return metadata to `interactive` when a later
+  real ready prompt is observed
 
 ### Attachment Upload Logging
 
@@ -197,9 +228,9 @@ Allowed log fields:
 - attachment size and dimensions when already available as metadata
 - `errorName` from the thrown value, bounded to a short string
 
-The helper can live locally in `sync.ts` or in a small attachment logging helper
-if that keeps tests clearer. Do not import the older diagnostics model unless it
-is already present in this branch.
+Prefer a small pure helper for formatting attachment upload log metadata and
+normalizing `errorName`. Wire `sync.ts` through that helper. Do not import the
+older diagnostics model unless it is already present in this branch.
 
 ## Data Flow
 
@@ -262,9 +293,10 @@ Add or update targeted tests:
   - tmux is chosen only when `tmuxConfigured` and available
   - PTY is chosen when tmux is available but not configured
   - PTY is chosen when `TMUX_SESSION_NAME` is an empty string
-  - tmux env filter keeps Claude/Anthropic/Happy/MCP/proxy env
+  - tmux env filter keeps Claude/Anthropic/`HAPPY_CLAUDE_PATH`/MCP/proxy/cert
+    env
   - tmux env filter drops unrelated cookie/password/authorization/token/key
-    values
+    values and Happy reconnect/fork env
 - `terminalObserver.test.ts` or a new readiness-helper test file
   - accepts only tail prompt forms
   - rejects stale prompt lines followed by later output
@@ -273,12 +305,18 @@ Add or update targeted tests:
 - `claudeInteractiveRemoteLauncher.test.ts`
   - readiness timeout does not call `transport.paste()`
   - readiness timeout closes the current turn as failed with the safe message
+  - readiness timeout sets runtime metadata to `degraded`, then a later real
+    ready prompt can restore `interactive`
+  - abort/switch/exit wakeups do not get reported as readiness timeouts
   - a later actual ready signal can still allow a subsequent prompt
-- app-side attachment test
-  - attachment upload failure logs do not include raw session id, attachment
-    name, URI/path, upload ref, or raw error text
+- app-side attachment logging helper test
+  - formatted upload failure logs do not include raw session id, attachment
+    name, URI/path, upload ref, or raw error text/stack
+  - metadata keeps only phase, count/index, size, dimensions, and bounded
+    `errorName`
+- app-side attachment behavior test
   - failed uploads still increment the failed count and continue existing user
-    behavior
+    behavior where current behavior permits continuing
 
 Run the existing verification set after implementation:
 
@@ -286,6 +324,7 @@ Run the existing verification set after implementation:
 git diff --check
 pnpm --filter happy exec vitest run --project unit
 pnpm --dir packages/happy-app test sources/sync/attachmentSupport.test.ts --run
+pnpm --dir packages/happy-app test sources/sync/attachmentUploadLogging.test.ts --run
 pnpm --filter happy run typecheck
 pnpm --filter happy-app run typecheck
 ```
