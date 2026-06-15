@@ -3,6 +3,7 @@ import {
     getAvailableModels,
     getAvailablePermissionModes,
     getCodexModelModes,
+    getClaudeModelModes,
     getClaudePermissionModes,
     getDefaultEffortKey,
     getDefaultModelKey,
@@ -44,6 +45,12 @@ describe('modelModeOptions', () => {
         ]);
         expect(models[0].name).toBe('default model');
         expect(models[1].name).toBe('gpt-5.5');
+    });
+
+    it('builds claude model fallbacks', () => {
+        const models = getClaudeModelModes();
+        expect(models.map((model) => model.key)).toEqual(['default', 'opus', 'sonnet', 'haiku']);
+        expect(models[1].name).toBe('opus 4.8');
     });
 
     it('uses code defaults for agent defaults', () => {
