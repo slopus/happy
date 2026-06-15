@@ -55,6 +55,11 @@ export class PermissionHandler {
 
     handleModeChange(mode: PermissionMode) {
         this.permissionMode = mode;
+        if (this.setPermissionModeCallback) {
+            this.setPermissionModeCallback(mode).catch((err) => {
+                logger.debug('Failed to set permission mode via SDK:', err);
+            });
+        }
     }
 
     /**
