@@ -182,6 +182,42 @@ describe('attachment upload logging', () => {
         }
     });
 
+    it('falls back for exact short attachment names without broad substring matching', () => {
+        const attachment = {
+            name: 'img',
+            uri: 'file:///tmp/img',
+            size: 12345,
+            width: 640,
+            height: 480,
+            mimeType: 'image/png',
+        };
+
+        const exactMetadata = createAttachmentUploadLogMetadata({
+            phase: 'upload_failed',
+            attachment,
+            error: { name: 'img' },
+        });
+        expect(exactMetadata.errorName).toBe('UnknownError');
+        expect(JSON.stringify(exactMetadata)).not.toContain('img');
+
+        expect(createAttachmentUploadLogMetadata({
+            phase: 'upload_failed',
+            attachment,
+            error: { name: 'ImageDecodeError' },
+        }).errorName).toBe('ImageDecodeError');
+    });
+
+    it('falls back for exact short URI path parts', () => {
+        expect(createAttachmentUploadLogMetadata({
+            phase: 'upload_failed',
+            attachment: {
+                name: 'safe-name',
+                uri: 'file:///tmp/ic',
+            },
+            error: { name: 'ic' },
+        }).errorName).toBe('UnknownError');
+    });
+
     it('omits non-finite numbers and non-positive dimensions', () => {
         expect(createAttachmentUploadLogMetadata({
             phase: 'missing_blob_key',

@@ -29,7 +29,7 @@ const OPAQUE_ID_PATTERN = /^[A-Za-z0-9_-]{24,}$/;
 const CLASS_LIKE_SLASH_LABEL_PATTERN = /^[A-Z][A-Za-z0-9_.:-]*(?: [A-Z][A-Za-z0-9_.:-]*){0,3}\/[A-Z][A-Za-z0-9_.:-]*(?: [A-Z][A-Za-z0-9_.:-]*){0,3}$/;
 const SAFE_ERROR_NAME_PATTERN = /^[A-Za-z0-9_.:-]+$/;
 const ERROR_NAME_MAX_LENGTH = 80;
-const PRIVATE_TOKEN_MIN_LENGTH = 4;
+const PRIVATE_TOKEN_SUBSTRING_MIN_LENGTH = 4;
 
 export function createAttachmentUploadLogMetadata(input: {
     phase: AttachmentUploadLogPhase;
@@ -185,7 +185,11 @@ function matchesPrivateContext(
 
     for (const token of privateContextTokens(privacyContext)) {
         const tokenForms = comparableForms(token);
-        if (tokenForms.some((tokenForm) => haystacks.some((haystack) => haystack.includes(tokenForm)))) {
+        if (tokenForms.some((tokenForm) => haystacks.includes(tokenForm))) {
+            return true;
+        }
+        if (token.length >= PRIVATE_TOKEN_SUBSTRING_MIN_LENGTH
+            && tokenForms.some((tokenForm) => haystacks.some((haystack) => haystack.includes(tokenForm)))) {
             return true;
         }
     }
@@ -238,7 +242,7 @@ function addPrivateToken(tokens: Set<string>, token: unknown): void {
     }
 
     const trimmed = token.trim();
-    if (trimmed.length >= PRIVATE_TOKEN_MIN_LENGTH) {
+    if (trimmed.length > 0) {
         tokens.add(trimmed);
     }
 }
