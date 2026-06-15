@@ -133,6 +133,59 @@ describe('attachment upload logging', () => {
         }
     });
 
+    it('falls back for JWT-like error names without preserving token fragments', () => {
+        const metadata = createAttachmentUploadLogMetadata({
+            phase: 'upload_failed',
+            error: { name: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature' },
+        });
+        const serialized = JSON.stringify(metadata);
+
+        expect(metadata.errorName).toBe('UnknownError');
+        expect(serialized).not.toContain('eyJ');
+        expect(serialized).not.toContain('signature');
+    });
+
+    it('falls back for filename, dotfile, key, and document-like error names', () => {
+        for (const name of [
+            'customer-data.csv',
+            '.env',
+            'id_rsa',
+            'private.pem',
+            'secret.key',
+            'customer.db',
+            'report.docx',
+        ]) {
+            expect(createAttachmentUploadLogMetadata({
+                phase: 'upload_failed',
+                error: { name },
+            }).errorName).toBe('UnknownError');
+        }
+    });
+
+    it('falls back for embedded opaque identifier segments', () => {
+        expect(createAttachmentUploadLogMetadata({
+            phase: 'upload_failed',
+            error: { name: 'UploadFailed_abcdefghijklmnopqrstuvwxyz123456' },
+        }).errorName).toBe('UnknownError');
+    });
+
+    it('keeps conventional safe class-like error names', () => {
+        expect(createAttachmentUploadLogMetadata({
+            phase: 'upload_failed',
+            error: { name: 'TypeError' },
+        }).errorName).toBe('TypeError');
+
+        expect(createAttachmentUploadLogMetadata({
+            phase: 'upload_failed',
+            error: { name: 'NetworkError' },
+        }).errorName).toBe('NetworkError');
+
+        expect(createAttachmentUploadLogMetadata({
+            phase: 'upload_failed',
+            error: { name: 'UploadFailed/With Path' },
+        }).errorName).toBe('UploadFailed_With_Path');
+    });
+
     it('falls back for UUID-like and relative-path error names', () => {
         for (const name of [
             '019eb218-2979-7ba0-adfe-4b1625535e92',

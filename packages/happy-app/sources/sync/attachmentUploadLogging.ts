@@ -20,13 +20,18 @@ export type AttachmentUploadLogMetadata = {
 };
 
 const TOKEN_LIKE_PATTERN = /(^|[^A-Za-z0-9])(?:sk-[A-Za-z0-9_-]{3,}|gh[pousr]_[A-Za-z0-9_]{6,}|xox[baprs]-[A-Za-z0-9-]{6,}|(?:token|secret|api[_-]?key|authorization|bearer)(?:$|[^A-Za-z0-9]))/i;
+const JWT_LIKE_PATTERN = /(?:^|[^A-Za-z0-9_-])eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?=$|[^A-Za-z0-9_-])/;
 const URL_LIKE_PATTERN = /\b(?:blob|data|file|ftp|https?|mailto):/i;
 const UNIX_PATH_PATTERN = /(?:^|[\s'"(])(?:~|\/(?:Applications|Users|Volumes|etc|home|opt|private|tmp|var))\//i;
 const WINDOWS_PATH_PATTERN = /(?:^|[\s'"(])[A-Za-z]:[\\/]|\\\\[A-Za-z0-9_.-]+[\\/]/;
-const FILENAME_PATTERN = /(?:^|[\\/ \t])[^\\/ \t]+\.(?:bmp|gif|gz|heic|heif|jpeg|jpg|json|log|mov|mp4|pdf|png|svg|tar|tif|tiff|txt|webp|zip)(?:$|[?#\s'")])/i;
+const DOTFILE_PATTERN = /(?:^|[\\/ \t])\.[A-Za-z0-9_.-]+(?:$|[?#\s'")])/;
+const PRIVATE_KEY_NAME_PATTERN = /(?:^|[\\/ \t])id_(?:dsa|ecdsa|ed25519|rsa)(?:$|[?#\s'")])/i;
+const FILENAME_PATTERN = /(?:^|[\\/ \t])[^\\/ \t]+\.(?:bmp|csv|db|doc|docx|gif|gz|heic|heif|jpeg|jpg|json|key|log|mov|mp4|pdf|pem|png|sqlite|svg|tar|tif|tiff|txt|webp|zip)(?:$|[?#\s'")])/i;
 const UUID_LIKE_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
 const OPAQUE_ID_PATTERN = /^[A-Za-z0-9_-]{24,}$/;
+const OPAQUE_ID_SEGMENT_PATTERN = /(?:^|[^A-Za-z0-9])([A-Za-z0-9]{24,})(?=$|[^A-Za-z0-9])/;
 const CLASS_LIKE_SLASH_LABEL_PATTERN = /^[A-Z][A-Za-z0-9_.:-]*(?: [A-Z][A-Za-z0-9_.:-]*){0,3}\/[A-Z][A-Za-z0-9_.:-]*(?: [A-Z][A-Za-z0-9_.:-]*){0,3}$/;
+const SAFE_CLASS_LABEL_PATTERN = /^[A-Z][A-Za-z0-9]*(?:[_.:-][A-Z][A-Za-z0-9]*){0,4}$/;
 const SAFE_ERROR_NAME_PATTERN = /^[A-Za-z0-9_.:-]+$/;
 const ERROR_NAME_MAX_LENGTH = 80;
 const PRIVATE_TOKEN_SUBSTRING_MIN_LENGTH = 4;
@@ -147,6 +152,7 @@ function normalizeErrorName(
     if (
         !normalized
         || !SAFE_ERROR_NAME_PATTERN.test(normalized)
+        || !SAFE_CLASS_LABEL_PATTERN.test(normalized)
         || isSuspiciousErrorName(normalized)
         || matchesPrivateContext(normalized, privacyContext)
     ) {
@@ -162,12 +168,16 @@ function isSuspiciousErrorName(name: string): boolean {
     const hasPathSeparator = /[\\/]/.test(name);
 
     return TOKEN_LIKE_PATTERN.test(name)
+        || JWT_LIKE_PATTERN.test(name)
         || URL_LIKE_PATTERN.test(name)
         || UNIX_PATH_PATTERN.test(name)
         || WINDOWS_PATH_PATTERN.test(name)
+        || DOTFILE_PATTERN.test(name)
+        || PRIVATE_KEY_NAME_PATTERN.test(name)
         || FILENAME_PATTERN.test(name)
         || UUID_LIKE_PATTERN.test(name)
         || OPAQUE_ID_PATTERN.test(name)
+        || OPAQUE_ID_SEGMENT_PATTERN.test(name)
         || (hasPathSeparator && !CLASS_LIKE_SLASH_LABEL_PATTERN.test(name))
         || slashCount >= 2
         || wordCount > 3;
