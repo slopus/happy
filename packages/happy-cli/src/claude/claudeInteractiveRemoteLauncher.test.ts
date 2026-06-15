@@ -370,6 +370,216 @@ describe('claudeInteractiveRemoteLauncher', () => {
         await resultPromise;
     });
 
+    it('does not paste a queued batch for a stale prompt in terminal history', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'queued while busy',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        transport.emitData('Claude Code v2.1.153\n❯ Try "old prompt"\nWorking on it...');
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(transport.paste).not.toHaveBeenCalled();
+        expect(session.client.closeClaudeSessionTurn).not.toHaveBeenCalledWith('completed');
+
+        transport.emitData('Claude Code v2.1.153\n❯ Try "new prompt"');
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('queued while busy');
+            expect(transport.enter).toHaveBeenCalledOnce();
+        });
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
+
+    it('fails the current turn without pasting when input readiness times out', async () => {
+        vi.useFakeTimers();
+        try {
+            const transport = new FakeTerminalTransport('pty');
+            mockCreateTerminalTransport.mockResolvedValue(transport);
+            const session = createSession({
+                batches: [{
+                    message: 'do not paste blindly',
+                    mode: initialMode,
+                    hash: 'initial-mode-hash',
+                    isolate: false,
+                }],
+            });
+
+            const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+            await vi.waitFor(() => {
+                expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+            });
+
+            await vi.advanceTimersByTimeAsync(8001);
+
+            expect(transport.paste).not.toHaveBeenCalled();
+            expect(session.client.sendSessionEvent).toHaveBeenCalledWith({
+                type: 'message',
+                message: 'Claude interactive terminal is not ready for input yet.',
+            });
+            expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('failed');
+            expect(session.metadataSnapshots()).toContainEqual(expect.objectContaining({
+                claudeRuntime: expect.objectContaining({
+                    state: 'degraded',
+                    message: 'Claude interactive terminal is not ready for input yet.',
+                }),
+            }));
+
+            session.enqueueBatch({
+                message: 'retry after timeout',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            });
+            transport.emitData('❯ Try "ready now"');
+
+            await vi.waitFor(() => {
+                expect(transport.paste).toHaveBeenCalledWith('retry after timeout\r');
+            });
+            expect(session.metadataSnapshots()).toContainEqual(expect.objectContaining({
+                claudeRuntime: expect.objectContaining({
+                    state: 'interactive',
+                    message: undefined,
+                }),
+            }));
+
+            transport.emitExit({ code: 0, signal: null });
+            await resultPromise;
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not report readiness timeout when abort wakes an input wait', async () => {
+        const transport = new FakeTerminalTransport('pty');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'waiting when aborted',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+
+        await session.invokeRpc('abort');
+
+        expect(session.client.sendSessionEvent).not.toHaveBeenCalledWith({
+            type: 'message',
+            message: 'Claude interactive terminal is not ready for input yet.',
+        });
+        expect(transport.paste).not.toHaveBeenCalled();
+        expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('cancelled');
+
+        session.enqueueBatch({
+            message: 'after abort wake',
+            mode: initialMode,
+            hash: 'initial-mode-hash',
+            isolate: false,
+        });
+        transport.emitData('>');
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('after abort wake\r');
+        });
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
+
+    it('does not report readiness timeout when switch wakes an input wait', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'waiting when switching local',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+
+        await session.invokeRpc('switch');
+
+        expect(session.client.sendSessionEvent).not.toHaveBeenCalledWith({
+            type: 'message',
+            message: 'Claude interactive terminal is not ready for input yet.',
+        });
+        expect(transport.paste).not.toHaveBeenCalled();
+        expect(session.onModeChange).toHaveBeenCalledWith('local');
+
+        session.enqueueBatch({
+            message: 'after switch wake',
+            mode: initialMode,
+            hash: 'initial-mode-hash',
+            isolate: false,
+        });
+        transport.emitData('>');
+
+        await vi.waitFor(() => {
+            expect(transport.detachLocal).toHaveBeenCalledOnce();
+            expect(transport.paste).toHaveBeenCalledWith('after switch wake');
+        });
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
+
+    it('does not report readiness timeout when terminal exit wakes an input wait', async () => {
+        const transport = new FakeTerminalTransport('pty');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'waiting when terminal exits',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+
+        transport.emitExit({ code: 0, signal: null });
+
+        await expect(resultPromise).resolves.toEqual({ type: 'exit', code: 0 });
+        expect(transport.paste).not.toHaveBeenCalled();
+        expect(session.client.sendSessionEvent).not.toHaveBeenCalledWith({
+            type: 'message',
+            message: 'Claude interactive terminal is not ready for input yet.',
+        });
+    });
+
     it('does not forward transcript echoes for prompts sent from the app', async () => {
         const transport = new FakeTerminalTransport('tmux');
         mockCreateTerminalTransport.mockResolvedValue(transport);
