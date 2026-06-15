@@ -4,11 +4,7 @@ const TAIL_PROGRESS_PATTERN =
 const STYLED_PROMPT_PATTERN = /^❯(?:\s+Try\s+"[^"]*")?$/;
 
 export function isTerminalInputReady(raw: string): boolean {
-    const meaningfulLines = raw
-        .replace(/\r/g, '\n')
-        .split('\n')
-        .map((line) => stripAnsi(line).trim())
-        .filter(Boolean);
+    const meaningfulLines = meaningfulTerminalLines(raw);
 
     if (meaningfulLines.length === 0) {
         return false;
@@ -21,7 +17,27 @@ export function isTerminalInputReady(raw: string): boolean {
     }
 
     const lastLine = meaningfulLines[meaningfulLines.length - 1];
-    return lastLine === '>' || STYLED_PROMPT_PATTERN.test(lastLine);
+    return isReadyPromptLine(lastLine);
+}
+
+export function hasTerminalInputPrompt(raw: string): boolean {
+    return meaningfulTerminalLines(raw).some(isPromptLookingLine);
+}
+
+function meaningfulTerminalLines(raw: string): string[] {
+    return raw
+        .replace(/\r/g, '\n')
+        .split('\n')
+        .map((line) => stripAnsi(line).trim())
+        .filter(Boolean);
+}
+
+function isReadyPromptLine(line: string): boolean {
+    return line === '>' || STYLED_PROMPT_PATTERN.test(line);
+}
+
+function isPromptLookingLine(line: string): boolean {
+    return line === '>' || line.startsWith('❯');
 }
 
 function stripAnsi(value: string): string {

@@ -8,7 +8,7 @@ import { cleanupStdinAfterInk } from '@/utils/terminalStdinCleanup';
 import { buildClaudeLocalCommand, type ClaudeLocalCommand } from './claudeLocalCommand';
 import type { Session } from './session';
 import { buildInteractivePaste, normalizePromptText, validateInteractiveBatch } from './interactive/inputInjection';
-import { isTerminalInputReady } from './interactive/inputReadiness';
+import { hasTerminalInputPrompt, isTerminalInputReady } from './interactive/inputReadiness';
 import { resolveInteractiveClaudeIdentity } from './interactive/sessionIdentity';
 import { classifyTerminalOutput } from './interactive/terminalObserver';
 import { createTerminalTransport } from './interactive/terminalTransportFactory';
@@ -305,6 +305,7 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
 
         unsubscribeData = transport.onData((data) => {
             const terminalInputIsReady = isTerminalInputReady(data);
+            const terminalInputPromptVisible = hasTerminalInputPrompt(data);
             const observation = classifyTerminalOutput(data);
 
             if (observation) {
@@ -336,6 +337,11 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
                 markTerminalInputReady();
                 session.onThinkingChange(false);
                 scheduleCompletedTurn();
+                return;
+            }
+
+            if (terminalInputPromptVisible) {
+                markTerminalInputBusy();
             }
         });
 

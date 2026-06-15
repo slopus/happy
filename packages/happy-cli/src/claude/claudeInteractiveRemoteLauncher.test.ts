@@ -496,6 +496,97 @@ describe('claudeInteractiveRemoteLauncher', () => {
         await resultPromise;
     });
 
+    it('clears cached readiness when ANSI stale prompt history is followed by busy output', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'first batch before ansi stale busy',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+
+        transport.emitData('Claude Code v2.1.153\n❯ Try "first prompt"');
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('first batch before ansi stale busy');
+            expect(transport.enter).toHaveBeenCalledOnce();
+        });
+
+        transport.emitData('Claude Code v2.1.153\n❯ Try "cached ready prompt"');
+        transport.emitData('Claude Code v2.1.153\n\x1b[32m❯\x1b[0m Try "old prompt"\nWorking on it...');
+
+        session.enqueueBatch({
+            message: 'second batch after ansi stale busy',
+            mode: initialMode,
+            hash: 'initial-mode-hash',
+            isolate: false,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(transport.paste).toHaveBeenCalledTimes(1);
+        expect(transport.enter).toHaveBeenCalledTimes(1);
+
+        transport.emitData('Claude Code v2.1.153\n❯ Try "fresh prompt"');
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('second batch after ansi stale busy');
+            expect(transport.enter).toHaveBeenCalledTimes(2);
+        });
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
+
+    it('cancels completion debounce when ANSI stale prompt history is followed by busy output', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'batch before ansi stale debounce',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+
+        transport.emitData('Claude Code v2.1.153\n❯ Try "first prompt"');
+
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('batch before ansi stale debounce');
+            expect(transport.enter).toHaveBeenCalledOnce();
+        });
+
+        transport.emitData('Claude Code v2.1.153\n❯ Try "idle ready prompt"');
+        transport.emitData('Claude Code v2.1.153\n\x1b[32m❯\x1b[0m Try "old prompt"\nWorking on it...');
+        await new Promise((resolve) => setTimeout(resolve, 40));
+
+        expect(session.client.closeClaudeSessionTurn).not.toHaveBeenCalledWith('completed');
+
+        transport.emitData('Claude Code v2.1.153\n❯ Try "fresh prompt"');
+
+        await vi.waitFor(() => {
+            expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('completed');
+        });
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
+
     it('fails the current turn without pasting when input readiness times out', async () => {
         vi.useFakeTimers();
         try {

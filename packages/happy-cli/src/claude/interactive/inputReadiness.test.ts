@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTerminalInputReady } from './inputReadiness';
+import { hasTerminalInputPrompt, isTerminalInputReady } from './inputReadiness';
 
 describe('isTerminalInputReady', () => {
     it('accepts a bare prompt at the terminal tail', () => {
@@ -42,5 +42,15 @@ describe('isTerminalInputReady', () => {
 
     it('strips ANSI escapes before checking the terminal tail', () => {
         expect(isTerminalInputReady('\x1b[32m❯\x1b[0m')).toBe(true);
+    });
+});
+
+describe('hasTerminalInputPrompt', () => {
+    it('detects ANSI-styled prompt history before newer busy output', () => {
+        expect(hasTerminalInputPrompt('\x1b[32m❯\x1b[0m Try "old prompt"\nWorking on it...')).toBe(true);
+    });
+
+    it('does not treat markdown quote lines as prompts', () => {
+        expect(hasTerminalInputPrompt('> quoted text\nWorking on it...')).toBe(false);
     });
 });
