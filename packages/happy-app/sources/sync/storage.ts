@@ -113,7 +113,7 @@ export interface SessionRowData {
     workspaceName: string | null;
 }
 
-function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): SessionRowData {
+function buildSessionRowData(session: Session, unreadSessionIds: Set<string>): SessionRowData {
     const isOnline = session.presence === "online";
     const hasPermissions = !!(session.agentState?.requests && Object.keys(session.agentState.requests).length > 0);
 
@@ -152,7 +152,7 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         homeDir: session.metadata?.homeDir ?? null,
         completedTodosCount: session.todos?.filter(todo => todo.status === 'completed').length ?? 0,
         totalTodosCount: session.todos?.length ?? 0,
-        hasUnread: unreadSessionIds?.has(session.id) ?? false,
+        hasUnread: unreadSessionIds.has(session.id),
         projectId: session.metadata?.project?.id ?? null,
         projectName: session.metadata?.project?.name ?? null,
         workspaceId: session.metadata?.workspace?.id ?? null,
