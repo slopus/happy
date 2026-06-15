@@ -525,6 +525,7 @@ class Sync {
         let failed = 0;
 
         for (const [attachmentIndex, attachment] of attachments.entries()) {
+            let uploadRef: string | undefined;
             try {
                 const bytes = await readFileBytes(attachment.uri);
                 const encrypted = encryptBlob(bytes, blobKey);
@@ -535,12 +536,12 @@ class Sync {
                     attachment.name,
                     encrypted.length,
                 );
+                uploadRef = upload.ref;
 
                 await uploadEncryptedBlob(upload, encrypted, this.credentials);
-                const { ref } = upload;
 
                 uploaded.push({
-                    ref,
+                    ref: uploadRef,
                     name: attachment.name,
                     size: attachment.size,
                     width: attachment.width,
@@ -552,6 +553,8 @@ class Sync {
                     attachmentIndex,
                     attachment,
                     error: err,
+                    sessionId,
+                    uploadRef,
                 });
                 failed++;
                 // Skip this attachment; do not abort the whole message send.

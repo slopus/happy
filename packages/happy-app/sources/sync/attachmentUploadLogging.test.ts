@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     createAttachmentUploadLogMetadata,
@@ -132,6 +133,55 @@ describe('attachment upload logging', () => {
         }
     });
 
+    it('falls back for UUID-like and relative-path error names', () => {
+        for (const name of [
+            '019eb218-2979-7ba0-adfe-4b1625535e92',
+            'relative/path',
+        ]) {
+            expect(createAttachmentUploadLogMetadata({
+                phase: 'upload_failed',
+                error: { name },
+            }).errorName).toBe('UnknownError');
+        }
+    });
+
+    it('falls back when errorName matches private upload context', () => {
+        const sessionId = '019eb218-2979-7ba0-adfe-4b1625535e92';
+        const uploadRef = 'blob-ref-secret';
+        const attachment = {
+            name: 'private-photo',
+            uri: 'file:///Users/me/private/photo.png',
+            size: 12345,
+            width: 640,
+            height: 480,
+            mimeType: 'image/png',
+        };
+
+        for (const name of [
+            attachment.name,
+            `UploadFailed:${sessionId}`,
+            `UploadFailed:${uploadRef}`,
+            `UploadFailed:${attachment.name}`,
+            'UploadFailed:photo',
+            'UploadFailed:photo.png',
+        ]) {
+            const metadata = createAttachmentUploadLogMetadata({
+                phase: 'upload_failed',
+                attachment,
+                error: { name },
+                sessionId,
+                uploadRef,
+            });
+            const serialized = JSON.stringify(metadata);
+
+            expect(metadata.errorName).toBe('UnknownError');
+            expect(serialized).not.toContain(sessionId);
+            expect(serialized).not.toContain(uploadRef);
+            expect(serialized).not.toContain(attachment.name);
+            expect(serialized).not.toContain('photo.png');
+        }
+    });
+
     it('omits non-finite numbers and non-positive dimensions', () => {
         expect(createAttachmentUploadLogMetadata({
             phase: 'missing_blob_key',
@@ -220,4 +270,29 @@ describe('attachment upload logging', () => {
             error: {},
         }).errorName).toBe('UnknownError');
     });
+
+    it('keeps sync attachment upload call sites on safe logging helpers', () => {
+        const syncSource = readFileSync(new URL('./sync.ts', import.meta.url), 'utf8');
+        const uploadFunctionSource = getUploadAttachmentsForSessionSource(syncSource);
+
+        expect(uploadFunctionSource).toContain('logMissingAttachmentBlobKey({');
+        expect(uploadFunctionSource).toContain('logAttachmentUploadFailure({');
+        expect(uploadFunctionSource).toContain('sessionId,');
+        expect(uploadFunctionSource).toContain('uploadRef,');
+        expect(uploadFunctionSource).not.toContain('[attachments] Failed to upload');
+        expect(uploadFunctionSource).not.toContain('No blob key for session');
+        expect(uploadFunctionSource).not.toContain('console.error');
+        expect(uploadFunctionSource).not.toContain('attachment.name}:');
+        expect(uploadFunctionSource).not.toContain('attachment.name}:`, err');
+    });
 });
+
+function getUploadAttachmentsForSessionSource(source: string): string {
+    const start = source.indexOf('private async uploadAttachmentsForSession');
+    const end = source.indexOf('\n    async sendMessage', start);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+
+    return source.slice(start, end);
+}

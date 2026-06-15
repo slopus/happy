@@ -24,8 +24,12 @@ const URL_LIKE_PATTERN = /\b(?:blob|data|file|ftp|https?|mailto):/i;
 const UNIX_PATH_PATTERN = /(?:^|[\s'"(])(?:~|\/(?:Applications|Users|Volumes|etc|home|opt|private|tmp|var))\//i;
 const WINDOWS_PATH_PATTERN = /(?:^|[\s'"(])[A-Za-z]:[\\/]|\\\\[A-Za-z0-9_.-]+[\\/]/;
 const FILENAME_PATTERN = /(?:^|[\\/ \t])[^\\/ \t]+\.(?:bmp|gif|gz|heic|heif|jpeg|jpg|json|log|mov|mp4|pdf|png|svg|tar|tif|tiff|txt|webp|zip)(?:$|[?#\s'")])/i;
+const UUID_LIKE_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
+const OPAQUE_ID_PATTERN = /^[A-Za-z0-9_-]{24,}$/;
+const CLASS_LIKE_SLASH_LABEL_PATTERN = /^[A-Z][A-Za-z0-9_.:-]*(?: [A-Z][A-Za-z0-9_.:-]*){0,3}\/[A-Z][A-Za-z0-9_.:-]*(?: [A-Z][A-Za-z0-9_.:-]*){0,3}$/;
 const SAFE_ERROR_NAME_PATTERN = /^[A-Za-z0-9_.:-]+$/;
 const ERROR_NAME_MAX_LENGTH = 80;
+const PRIVATE_TOKEN_MIN_LENGTH = 4;
 
 export function createAttachmentUploadLogMetadata(input: {
     phase: AttachmentUploadLogPhase;
@@ -66,7 +70,7 @@ export function createAttachmentUploadLogMetadata(input: {
     }
 
     if (input.phase === 'upload_failed') {
-        metadata.errorName = normalizeErrorName(getErrorName(input.error));
+        metadata.errorName = normalizeErrorName(getErrorName(input.error), input);
     }
 
     return metadata;
@@ -117,13 +121,20 @@ function getErrorName(error: unknown): unknown {
     return undefined;
 }
 
-function normalizeErrorName(name: unknown): string {
+function normalizeErrorName(
+    name: unknown,
+    privacyContext: {
+        attachment?: AttachmentLike;
+        sessionId?: string;
+        uploadRef?: string;
+    },
+): string {
     if (typeof name !== 'string') {
         return 'UnknownError';
     }
 
     const trimmed = name.trim();
-    if (!trimmed || isSuspiciousErrorName(trimmed)) {
+    if (!trimmed || isSuspiciousErrorName(trimmed) || matchesPrivateContext(trimmed, privacyContext)) {
         return 'UnknownError';
     }
 
@@ -133,7 +144,12 @@ function normalizeErrorName(name: unknown): string {
         .slice(0, ERROR_NAME_MAX_LENGTH)
         .replace(/^_+|_+$/g, '');
 
-    if (!normalized || !SAFE_ERROR_NAME_PATTERN.test(normalized) || isSuspiciousErrorName(normalized)) {
+    if (
+        !normalized
+        || !SAFE_ERROR_NAME_PATTERN.test(normalized)
+        || isSuspiciousErrorName(normalized)
+        || matchesPrivateContext(normalized, privacyContext)
+    ) {
         return 'UnknownError';
     }
 
@@ -143,12 +159,100 @@ function normalizeErrorName(name: unknown): string {
 function isSuspiciousErrorName(name: string): boolean {
     const slashCount = (name.match(/[\\/]/g) ?? []).length;
     const wordCount = name.trim().split(/\s+/).filter(Boolean).length;
+    const hasPathSeparator = /[\\/]/.test(name);
 
     return TOKEN_LIKE_PATTERN.test(name)
         || URL_LIKE_PATTERN.test(name)
         || UNIX_PATH_PATTERN.test(name)
         || WINDOWS_PATH_PATTERN.test(name)
         || FILENAME_PATTERN.test(name)
+        || UUID_LIKE_PATTERN.test(name)
+        || OPAQUE_ID_PATTERN.test(name)
+        || (hasPathSeparator && !CLASS_LIKE_SLASH_LABEL_PATTERN.test(name))
         || slashCount >= 2
         || wordCount > 3;
+}
+
+function matchesPrivateContext(
+    name: string,
+    privacyContext: {
+        attachment?: AttachmentLike;
+        sessionId?: string;
+        uploadRef?: string;
+    },
+): boolean {
+    const haystacks = comparableForms(name);
+
+    for (const token of privateContextTokens(privacyContext)) {
+        const tokenForms = comparableForms(token);
+        if (tokenForms.some((tokenForm) => haystacks.some((haystack) => haystack.includes(tokenForm)))) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function privateContextTokens(privacyContext: {
+    attachment?: AttachmentLike;
+    sessionId?: string;
+    uploadRef?: string;
+}): string[] {
+    const tokens = new Set<string>();
+
+    addPrivateToken(tokens, privacyContext.sessionId);
+    addPrivateToken(tokens, privacyContext.uploadRef);
+    addNameTokens(tokens, privacyContext.attachment?.name);
+    addUriTokens(tokens, privacyContext.attachment?.uri);
+
+    return Array.from(tokens);
+}
+
+function addNameTokens(tokens: Set<string>, name: unknown): void {
+    if (typeof name !== 'string') {
+        return;
+    }
+
+    addPrivateToken(tokens, name);
+    addPrivateToken(tokens, stripExtension(name));
+}
+
+function addUriTokens(tokens: Set<string>, uri: unknown): void {
+    if (typeof uri !== 'string') {
+        return;
+    }
+
+    const withoutQuery = uri.split(/[?#]/, 1)[0];
+    const withoutScheme = withoutQuery
+        .replace(/^[A-Za-z][A-Za-z0-9+.-]*:\/\//, '')
+        .replace(/^[A-Za-z][A-Za-z0-9+.-]*:/, '');
+
+    for (const part of withoutScheme.split(/[\\/]+/)) {
+        addNameTokens(tokens, part);
+    }
+}
+
+function addPrivateToken(tokens: Set<string>, token: unknown): void {
+    if (typeof token !== 'string') {
+        return;
+    }
+
+    const trimmed = token.trim();
+    if (trimmed.length >= PRIVATE_TOKEN_MIN_LENGTH) {
+        tokens.add(trimmed);
+    }
+}
+
+function stripExtension(value: string): string {
+    return value.replace(/\.[A-Za-z0-9]{1,8}$/, '');
+}
+
+function comparableForms(value: string): string[] {
+    const lower = value.toLowerCase();
+    const normalized = lower
+        .replace(/[^a-z0-9_.:-]/g, '_')
+        .replace(/^_+|_+$/g, '');
+    const compact = lower.replace(/[^a-z0-9]/g, '');
+
+    return Array.from(new Set([lower, normalized, compact].filter(Boolean)));
 }
