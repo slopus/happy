@@ -324,18 +324,57 @@ function waitForExit(child: ChildProcess): Promise<void> {
     });
 }
 
-const TMUX_ENV_ALLOWLIST = new Set(['NO_PROXY', 'no_proxy']);
+const TMUX_ENV_EXACT_ALLOWLIST = new Set([
+    'ALL_PROXY',
+    'API_TIMEOUT_MS',
+    'COLORTERM',
+    'HAPPY_CLAUDE_PATH',
+    'HOME',
+    'HTTP_PROXY',
+    'HTTPS_PROXY',
+    'LANG',
+    'LOGNAME',
+    'NO_PROXY',
+    'NODE_EXTRA_CA_CERTS',
+    'PATH',
+    'SHELL',
+    'SSH_AUTH_SOCK',
+    'SSL_CERT_DIR',
+    'SSL_CERT_FILE',
+    'TERM',
+    'TMPDIR',
+    'USER',
+    'all_proxy',
+    'http_proxy',
+    'https_proxy',
+    'no_proxy',
+]);
+
+const TMUX_ENV_PREFIX_ALLOWLIST = [
+    'ANTHROPIC_',
+    'CLAUDE_',
+    'LC_',
+    'MCP_',
+] as const;
 
 function filterTmuxEnvironment(env: Record<string, string>): Record<string, string> {
     const filtered: Record<string, string> = {};
 
     for (const [key, value] of Object.entries(env)) {
-        if (TMUX_ENV_ALLOWLIST.has(key)) {
+        if (isAllowedTmuxEnvironmentKey(key)) {
             filtered[key] = value;
         }
     }
 
     return filtered;
+}
+
+function isAllowedTmuxEnvironmentKey(key: string): boolean {
+    if (TMUX_ENV_EXACT_ALLOWLIST.has(key)) {
+        return true;
+    }
+
+    return TMUX_ENV_PREFIX_ALLOWLIST.some((prefix) => key.startsWith(prefix));
 }
 
 function buildTmuxCommand(options: TerminalSpawnOptions): string[] {

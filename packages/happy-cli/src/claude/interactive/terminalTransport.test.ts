@@ -74,12 +74,12 @@ describe('chooseTerminalBackend', () => {
         })).toBe('pty');
     });
 
-    it('uses tmux when it is available even without an explicit session name', () => {
+    it('falls back to pty when tmux is available but no session is configured', () => {
         expect(chooseTerminalBackend({
             tmuxConfigured: false,
             tmuxAvailable: true,
             ptyAvailable: true,
-        })).toBe('tmux');
+        })).toBe('pty');
     });
 
     it('reports unsupported when neither backend can run', () => {
@@ -144,12 +144,14 @@ describe('TmuxTerminalTransport', () => {
                 sessionName: 'happy-test',
                 windowName: 'claude',
             },
-            {},
+            {
+                CLAUDE_CONFIG_DIR: '/tmp/claude',
+            },
         );
         await transport.dispose();
     });
 
-    it('filters sensitive and path-like environment before spawning in tmux', async () => {
+    it('passes only Claude runtime env through tmux filtering', async () => {
         const tmux = {
             spawnInTmux: vi.fn(async () => ({ success: true, sessionId: 'happy:claude', pid: 457 })),
             isPaneAlive: vi.fn(async () => true),
@@ -161,14 +163,43 @@ describe('TmuxTerminalTransport', () => {
         await transport.spawn({
             ...requiredSpawnOptions,
             env: {
-                ANTHROPIC_API_KEY: 'secret-key',
+                ALL_PROXY: 'socks://proxy.example',
+                ANTHROPIC_API_KEY: 'anthropic-key',
+                ANTHROPIC_BASE_URL: 'https://anthropic.example',
+                API_TIMEOUT_MS: '60000',
                 AUTHORIZATION: 'Bearer secret',
+                CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token',
                 CLAUDE_CONFIG_DIR: '/tmp/claude',
+                COLORTERM: 'truecolor',
                 COOKIE: 'session=secret',
+                CUSTOM_KEY: 'custom-key',
+                CUSTOM_SECRET: 'custom-secret',
+                GITHUB_TOKEN: 'github-token',
+                HAPPY_CLAUDE_PATH: '/opt/claude/bin/claude',
+                HAPPY_FORKED_FROM_SESSION_ID: 'fork-session',
+                HAPPY_RECONNECT_ENCRYPTION_KEY: 'reconnect-key',
+                HAPPY_SERVER_URL: 'https://happy.example',
                 HOME: '/Users/devdvlive',
+                HTTP_PROXY: 'http://proxy.example',
+                HTTPS_PROXY: 'https://secure-proxy.example',
+                LANG: 'en_US.UTF-8',
+                LC_ALL: 'en_US.UTF-8',
+                LOGNAME: 'devdvlive',
+                MCP_CONNECTION_NONBLOCKING: '1',
                 NO_PROXY: 'localhost,127.0.0.1',
-                PATH: '/opt/secret/bin',
+                NODE_EXTRA_CA_CERTS: '/tmp/certs.pem',
                 PASSWORD: 'password',
+                PATH: '/opt/bin:/usr/bin',
+                SHELL: '/bin/zsh',
+                SSH_AUTH_SOCK: '/tmp/ssh.sock',
+                SSL_CERT_DIR: '/tmp/certs',
+                SSL_CERT_FILE: '/tmp/cert.pem',
+                TERM: 'xterm-256color',
+                TMPDIR: '/tmp',
+                USER: 'devdvlive',
+                all_proxy: 'socks://lower-proxy.example',
+                http_proxy: 'http://lower-proxy.example',
+                https_proxy: 'https://lower-secure-proxy.example',
                 no_proxy: 'localhost',
             },
         });
@@ -181,7 +212,34 @@ describe('TmuxTerminalTransport', () => {
                 windowName: 'claude',
             }),
             {
+                ALL_PROXY: 'socks://proxy.example',
+                ANTHROPIC_API_KEY: 'anthropic-key',
+                ANTHROPIC_BASE_URL: 'https://anthropic.example',
+                API_TIMEOUT_MS: '60000',
+                CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token',
+                CLAUDE_CONFIG_DIR: '/tmp/claude',
+                COLORTERM: 'truecolor',
+                HAPPY_CLAUDE_PATH: '/opt/claude/bin/claude',
+                HOME: '/Users/devdvlive',
+                HTTP_PROXY: 'http://proxy.example',
+                HTTPS_PROXY: 'https://secure-proxy.example',
+                LANG: 'en_US.UTF-8',
+                LC_ALL: 'en_US.UTF-8',
+                LOGNAME: 'devdvlive',
+                MCP_CONNECTION_NONBLOCKING: '1',
                 NO_PROXY: 'localhost,127.0.0.1',
+                NODE_EXTRA_CA_CERTS: '/tmp/certs.pem',
+                PATH: '/opt/bin:/usr/bin',
+                SHELL: '/bin/zsh',
+                SSH_AUTH_SOCK: '/tmp/ssh.sock',
+                SSL_CERT_DIR: '/tmp/certs',
+                SSL_CERT_FILE: '/tmp/cert.pem',
+                TERM: 'xterm-256color',
+                TMPDIR: '/tmp',
+                USER: 'devdvlive',
+                all_proxy: 'socks://lower-proxy.example',
+                http_proxy: 'http://lower-proxy.example',
+                https_proxy: 'https://lower-secure-proxy.example',
                 no_proxy: 'localhost',
             },
         );
