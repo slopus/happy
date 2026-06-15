@@ -80,10 +80,15 @@ describe('shouldProbeHappyControllerTmuxAvailability', () => {
 describe('getHappyControllerTmuxAvailabilityProbeEnv', () => {
     it('keeps only sanitized tmux client environment for availability probing', () => {
         const sanitized = getHappyControllerTmuxAvailabilityProbeEnv({
+            ANTHROPIC_API_KEY: 'anthropic-key',
+            ANTHROPIC_BASE_URL: 'https://anthropic.example',
+            CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token',
+            CLAUDE_CONFIG_DIR: '/tmp/claude',
             CUSTOM_SECRET: 'custom-secret',
             HAPPY_RECONNECT_ENCRYPTION_KEY: 'reconnect-key',
             HAPPY_SERVER_URL: 'https://happy.example',
             HOME: '/Users/devdvlive',
+            MCP_CONNECTION_NONBLOCKING: '1',
             PATH: '/opt/bin:/usr/bin',
             TMUX: '/tmp/tmux-501/default,123,0',
         });

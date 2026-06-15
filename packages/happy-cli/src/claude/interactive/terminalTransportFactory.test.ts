@@ -20,19 +20,25 @@ describe('createTerminalTransport', () => {
 
     it('uses tmux only when TMUX_SESSION_NAME is non-empty', async () => {
         const transport = await createTerminalTransport({
+            ANTHROPIC_API_KEY: 'anthropic-key',
             CLAUDE_CONFIG_DIR: '/tmp/claude',
+            CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token',
             CUSTOM_SECRET: 'custom-secret',
             HAPPY_RECONNECT_ENCRYPTION_KEY: 'reconnect-key',
             HAPPY_SERVER_URL: 'https://happy.example',
+            HOME: '/Users/devdvlive',
+            MCP_CONNECTION_NONBLOCKING: '1',
             PATH: '/opt/bin:/usr/bin',
+            TMUX: '/tmp/tmux-501/default,123,0',
             TMUX_SESSION_NAME: 'happy',
         });
 
         expect(transport?.backend).toBe('tmux');
         expect(mockIsTmuxAvailable).toHaveBeenCalledOnce();
         expect(mockIsTmuxAvailable).toHaveBeenCalledWith({
-            CLAUDE_CONFIG_DIR: '/tmp/claude',
+            HOME: '/Users/devdvlive',
             PATH: '/opt/bin:/usr/bin',
+            TMUX: '/tmp/tmux-501/default,123,0',
         });
     });
 

@@ -59,7 +59,6 @@ export class TmuxTerminalTransport implements TerminalTransport {
                 sessionName: this.sessionName,
                 windowName: options.windowName,
             },
-            env,
         );
 
         if (!result.success || !result.sessionId) {

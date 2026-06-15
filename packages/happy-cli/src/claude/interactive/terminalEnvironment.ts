@@ -31,6 +31,23 @@ const TERMINAL_ENV_PREFIX_ALLOWLIST = [
     'MCP_',
 ] as const;
 
+const TMUX_CLIENT_ENV_EXACT_ALLOWLIST = new Set([
+    'HOME',
+    'LANG',
+    'LOGNAME',
+    'PATH',
+    'SHELL',
+    'TERM',
+    'TMPDIR',
+    'TMUX',
+    'TMUX_TMPDIR',
+    'USER',
+]);
+
+const TMUX_CLIENT_ENV_PREFIX_ALLOWLIST = [
+    'LC_',
+] as const;
+
 export function sanitizeTerminalEnvironment(env: Record<string, string | undefined>): Record<string, string> {
     const sanitized: Record<string, string> = {};
 
@@ -43,11 +60,13 @@ export function sanitizeTerminalEnvironment(env: Record<string, string | undefin
     return sanitized;
 }
 
-export function sanitizeTmuxClientEnvironment(env: NodeJS.ProcessEnv): Record<string, string> {
-    const sanitized = sanitizeTerminalEnvironment(env);
+export function sanitizeTmuxClientEnvironment(env: Record<string, string | undefined>): Record<string, string> {
+    const sanitized: Record<string, string> = {};
 
-    if (typeof env.TMUX === 'string' && env.TMUX.length > 0) {
-        sanitized.TMUX = env.TMUX;
+    for (const [key, value] of Object.entries(env)) {
+        if (value !== undefined && isAllowedTmuxClientEnvironmentKey(key)) {
+            sanitized[key] = value;
+        }
     }
 
     return sanitized;
@@ -59,4 +78,12 @@ function isAllowedTerminalEnvironmentKey(key: string): boolean {
     }
 
     return TERMINAL_ENV_PREFIX_ALLOWLIST.some((prefix) => key.startsWith(prefix));
+}
+
+function isAllowedTmuxClientEnvironmentKey(key: string): boolean {
+    if (TMUX_CLIENT_ENV_EXACT_ALLOWLIST.has(key)) {
+        return true;
+    }
+
+    return TMUX_CLIENT_ENV_PREFIX_ALLOWLIST.some((prefix) => key.startsWith(prefix));
 }

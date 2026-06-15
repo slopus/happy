@@ -137,17 +137,14 @@ describe('TmuxTerminalTransport', () => {
 
         expect(result).toEqual({ pid: 456, terminalId: 'happy:claude' });
         expect(transport.terminalId).toBe('happy:claude');
-        expect(tmux.spawnInTmux).toHaveBeenCalledWith(
+        expect(tmux.spawnInTmux.mock.calls[0]).toEqual([
             ['env', '-i', 'CLAUDE_CONFIG_DIR=/tmp/claude', 'claude'],
             {
                 cwd: '/tmp',
                 sessionName: 'happy-test',
                 windowName: 'claude',
             },
-            {
-                CLAUDE_CONFIG_DIR: '/tmp/claude',
-            },
-        );
+        ]);
         await transport.dispose();
     });
 
@@ -208,9 +205,11 @@ describe('TmuxTerminalTransport', () => {
         expect(command.slice(0, 2)).toEqual(['env', '-i']);
         expect(command).toContain('ALL_PROXY=socks://proxy.example');
         expect(command).toContain('ANTHROPIC_API_KEY=anthropic-key');
+        expect(command).toContain('ANTHROPIC_BASE_URL=https://anthropic.example');
         expect(command).toContain('CLAUDE_CODE_OAUTH_TOKEN=oauth-token');
         expect(command).toContain('CLAUDE_CONFIG_DIR=/tmp/claude');
         expect(command).toContain('HAPPY_CLAUDE_PATH=/opt/claude/bin/claude');
+        expect(command).toContain('MCP_CONNECTION_NONBLOCKING=1');
         expect(command).toContain('PATH=/opt/bin:/usr/bin');
         expect(command).toContain('claude');
         expect(command.join(' ')).not.toContain('AUTHORIZATION=');
@@ -222,45 +221,14 @@ describe('TmuxTerminalTransport', () => {
         expect(command.join(' ')).not.toContain('HAPPY_RECONNECT_ENCRYPTION_KEY=');
         expect(command.join(' ')).not.toContain('HAPPY_SERVER_URL=');
         expect(command.join(' ')).not.toContain('PASSWORD=');
-        expect(tmux.spawnInTmux).toHaveBeenCalledWith(
+        expect(tmux.spawnInTmux.mock.calls[0]).toEqual([
             command,
             expect.objectContaining({
                 cwd: '/tmp',
                 sessionName: 'happy-test',
                 windowName: 'claude',
             }),
-            {
-                ALL_PROXY: 'socks://proxy.example',
-                ANTHROPIC_API_KEY: 'anthropic-key',
-                ANTHROPIC_BASE_URL: 'https://anthropic.example',
-                API_TIMEOUT_MS: '60000',
-                CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token',
-                CLAUDE_CONFIG_DIR: '/tmp/claude',
-                COLORTERM: 'truecolor',
-                HAPPY_CLAUDE_PATH: '/opt/claude/bin/claude',
-                HOME: '/Users/devdvlive',
-                HTTP_PROXY: 'http://proxy.example',
-                HTTPS_PROXY: 'https://secure-proxy.example',
-                LANG: 'en_US.UTF-8',
-                LC_ALL: 'en_US.UTF-8',
-                LOGNAME: 'devdvlive',
-                MCP_CONNECTION_NONBLOCKING: '1',
-                NO_PROXY: 'localhost,127.0.0.1',
-                NODE_EXTRA_CA_CERTS: '/tmp/certs.pem',
-                PATH: '/opt/bin:/usr/bin',
-                SHELL: '/bin/zsh',
-                SSH_AUTH_SOCK: '/tmp/ssh.sock',
-                SSL_CERT_DIR: '/tmp/certs',
-                SSL_CERT_FILE: '/tmp/cert.pem',
-                TERM: 'xterm-256color',
-                TMPDIR: '/tmp',
-                USER: 'devdvlive',
-                all_proxy: 'socks://lower-proxy.example',
-                http_proxy: 'http://lower-proxy.example',
-                https_proxy: 'https://lower-secure-proxy.example',
-                no_proxy: 'localhost',
-            },
-        );
+        ]);
         await transport.dispose();
     });
 

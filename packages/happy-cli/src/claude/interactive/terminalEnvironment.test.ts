@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeTerminalEnvironment } from './terminalEnvironment';
+import {
+    sanitizeTerminalEnvironment,
+    sanitizeTmuxClientEnvironment,
+} from './terminalEnvironment';
 
 describe('sanitizeTerminalEnvironment', () => {
     it('keeps only Claude runtime env and drops Happy/session secrets', () => {
@@ -74,6 +77,50 @@ describe('sanitizeTerminalEnvironment', () => {
             http_proxy: 'http://lower-proxy.example',
             https_proxy: 'https://lower-secure-proxy.example',
             no_proxy: 'localhost',
+        });
+    });
+});
+
+describe('sanitizeTmuxClientEnvironment', () => {
+    it('keeps only local tmux client env and drops managed Claude/auth env', () => {
+        const sanitized = sanitizeTmuxClientEnvironment({
+            ALL_PROXY: 'socks://proxy.example',
+            ANTHROPIC_API_KEY: 'anthropic-key',
+            ANTHROPIC_BASE_URL: 'https://anthropic.example',
+            API_TIMEOUT_MS: '60000',
+            AUTHORIZATION: 'Bearer secret',
+            CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token',
+            CLAUDE_CONFIG_DIR: '/tmp/claude',
+            COLORTERM: 'truecolor',
+            CUSTOM_SECRET: 'custom-secret',
+            HAPPY_RECONNECT_ENCRYPTION_KEY: 'reconnect-key',
+            HAPPY_SERVER_URL: 'https://happy.example',
+            HOME: '/Users/devdvlive',
+            LANG: 'en_US.UTF-8',
+            LC_ALL: 'en_US.UTF-8',
+            LOGNAME: 'devdvlive',
+            MCP_CONNECTION_NONBLOCKING: '1',
+            PATH: '/opt/bin:/usr/bin',
+            SHELL: '/bin/zsh',
+            TERM: 'xterm-256color',
+            TMPDIR: '/tmp',
+            TMUX: '/tmp/tmux-501/default,123,0',
+            TMUX_TMPDIR: '/tmp/tmux',
+            USER: 'devdvlive',
+        });
+
+        expect(sanitized).toEqual({
+            HOME: '/Users/devdvlive',
+            LANG: 'en_US.UTF-8',
+            LC_ALL: 'en_US.UTF-8',
+            LOGNAME: 'devdvlive',
+            PATH: '/opt/bin:/usr/bin',
+            SHELL: '/bin/zsh',
+            TERM: 'xterm-256color',
+            TMPDIR: '/tmp',
+            TMUX: '/tmp/tmux-501/default,123,0',
+            TMUX_TMPDIR: '/tmp/tmux',
+            USER: 'devdvlive',
         });
     });
 });
