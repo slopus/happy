@@ -24,6 +24,7 @@ import {
     formatTmuxSessionIdentifier,
     validateTmuxSessionIdentifier,
     buildTmuxSessionIdentifier,
+    isTmuxAvailable,
     TmuxSessionIdentifierError,
     TmuxUtilities,
     type TmuxSessionIdentifier,
@@ -483,6 +484,25 @@ describe('TmuxUtilities terminal helpers', () => {
         childProcessMock.spawn.mockReturnValue(child);
 
         await (utils as any).runCommand(['tmux', 'list-sessions']);
+
+        expect(childProcessMock.spawn).toHaveBeenCalledWith(
+            'tmux',
+            ['list-sessions'],
+            expect.objectContaining({
+                env: clientEnv,
+            }),
+        );
+    });
+
+    it('checks tmux availability with the provided client environment', async () => {
+        const clientEnv = {
+            HOME: '/Users/devdvlive',
+            PATH: '/opt/bin:/usr/bin',
+        };
+        const child = createMockChildProcess();
+        childProcessMock.spawn.mockReturnValue(child);
+
+        await isTmuxAvailable(clientEnv);
 
         expect(childProcessMock.spawn).toHaveBeenCalledWith(
             'tmux',

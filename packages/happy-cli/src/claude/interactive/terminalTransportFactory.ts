@@ -1,5 +1,6 @@
 import { isTmuxAvailable } from '@/utils/tmux';
 import { PtyTerminalTransport } from './ptyTerminalTransport';
+import { sanitizeTmuxClientEnvironment } from './terminalEnvironment';
 import { TmuxTerminalTransport } from './tmuxTerminalTransport';
 import {
     chooseTerminalBackend,
@@ -10,9 +11,12 @@ export async function createTerminalTransport(env: NodeJS.ProcessEnv = process.e
     const tmuxSessionName = typeof env.TMUX_SESSION_NAME === 'string' && env.TMUX_SESSION_NAME.trim().length > 0
         ? env.TMUX_SESSION_NAME.trim()
         : null;
+    const tmuxAvailable = tmuxSessionName === null
+        ? false
+        : await isTmuxAvailable(sanitizeTmuxClientEnvironment(env));
     const backend = chooseTerminalBackend({
         tmuxConfigured: tmuxSessionName !== null,
-        tmuxAvailable: await isTmuxAvailable(),
+        tmuxAvailable,
         ptyAvailable: process.platform !== 'win32',
     });
 

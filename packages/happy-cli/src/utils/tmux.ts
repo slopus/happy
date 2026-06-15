@@ -1094,9 +1094,9 @@ export function getTmuxUtilities(sessionName?: string): TmuxUtilities {
     return _tmuxUtils;
 }
 
-export async function isTmuxAvailable(): Promise<boolean> {
+export async function isTmuxAvailable(clientEnv?: Record<string, string>): Promise<boolean> {
     try {
-        const utils = new TmuxUtilities();
+        const utils = new TmuxUtilities(undefined, clientEnv);
         const result = await utils.executeTmuxCommand(['list-sessions']);
         return result !== null;
     } catch {
