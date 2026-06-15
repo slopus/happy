@@ -22,6 +22,7 @@ import { startDaemonControlServer } from './controlServer';
 import { statSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
+import { sanitizeTmuxClientEnvironment } from '@/claude/interactive/terminalEnvironment';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { detectCLIAvailability } from '@/utils/detectCLI';
@@ -55,6 +56,17 @@ export function shouldSpawnHappyControllerInTmux(input: {
     return false;
   }
   return input.tmuxAvailable && input.tmuxSessionName !== undefined;
+}
+
+export function shouldProbeHappyControllerTmuxAvailability(input: {
+  agent: DaemonAgent;
+  tmuxSessionName: string | undefined;
+}): boolean {
+  return input.agent !== 'claude' && input.tmuxSessionName !== undefined;
+}
+
+export function getHappyControllerTmuxAvailabilityProbeEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  return sanitizeTmuxClientEnvironment(env);
 }
 
 // Prepare initial metadata
@@ -406,17 +418,18 @@ export async function startDaemon(): Promise<void> {
           };
         }
 
-        // Check if tmux is available and should be used
-        const tmuxAvailable = await isTmuxAvailable();
-
         // Get tmux session name from environment variables (now set by profile system)
         // Empty string means "use current/most recent session" (tmux default behavior)
         const tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
+        const shouldProbeTmuxAvailability = shouldProbeHappyControllerTmuxAvailability({ agent, tmuxSessionName });
+        const tmuxAvailable = shouldProbeTmuxAvailability
+          ? await isTmuxAvailable(getHappyControllerTmuxAvailabilityProbeEnv({ ...process.env, ...extraEnv }))
+          : false;
         let useTmux = shouldSpawnHappyControllerInTmux({ agent, tmuxAvailable, tmuxSessionName });
 
         // Empty string is valid (means use current/most recent tmux session).
         // Claude keeps the Happy controller as a regular process; its launcher owns tmux/PTY.
-        if (!tmuxAvailable && tmuxSessionName !== undefined) {
+        if (shouldProbeTmuxAvailability && !tmuxAvailable) {
           logger.debug(`[DAEMON RUN] tmux session name specified but tmux not available, falling back to regular spawning`);
         }
         if (agent === 'claude' && tmuxSessionName !== undefined) {

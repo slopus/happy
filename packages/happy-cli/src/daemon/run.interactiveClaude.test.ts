@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeDaemonAgent, shouldSpawnHappyControllerInTmux } from './run';
+import {
+    getHappyControllerTmuxAvailabilityProbeEnv,
+    normalizeDaemonAgent,
+    shouldProbeHappyControllerTmuxAvailability,
+    shouldSpawnHappyControllerInTmux,
+} from './run';
 
 describe('normalizeDaemonAgent', () => {
     it('normalizes undefined agent to Claude', () => {
@@ -46,5 +51,47 @@ describe('shouldSpawnHappyControllerInTmux', () => {
             tmuxAvailable: true,
             tmuxSessionName: undefined,
         })).toBe(false);
+    });
+});
+
+describe('shouldProbeHappyControllerTmuxAvailability', () => {
+    it('does not probe tmux availability for Claude interactive remote even when tmux is configured', () => {
+        expect(shouldProbeHappyControllerTmuxAvailability({
+            agent: 'claude',
+            tmuxSessionName: 'happy',
+        })).toBe(false);
+    });
+
+    it.each(['codex', 'gemini', 'openclaw'] as const)('probes tmux availability for %s when tmux is configured', (agent) => {
+        expect(shouldProbeHappyControllerTmuxAvailability({
+            agent,
+            tmuxSessionName: 'happy',
+        })).toBe(true);
+    });
+
+    it.each(['claude', 'codex', 'gemini', 'openclaw'] as const)('does not probe tmux availability for %s when no session name is configured', (agent) => {
+        expect(shouldProbeHappyControllerTmuxAvailability({
+            agent,
+            tmuxSessionName: undefined,
+        })).toBe(false);
+    });
+});
+
+describe('getHappyControllerTmuxAvailabilityProbeEnv', () => {
+    it('keeps only sanitized tmux client environment for availability probing', () => {
+        const sanitized = getHappyControllerTmuxAvailabilityProbeEnv({
+            CUSTOM_SECRET: 'custom-secret',
+            HAPPY_RECONNECT_ENCRYPTION_KEY: 'reconnect-key',
+            HAPPY_SERVER_URL: 'https://happy.example',
+            HOME: '/Users/devdvlive',
+            PATH: '/opt/bin:/usr/bin',
+            TMUX: '/tmp/tmux-501/default,123,0',
+        });
+
+        expect(sanitized).toEqual({
+            HOME: '/Users/devdvlive',
+            PATH: '/opt/bin:/usr/bin',
+            TMUX: '/tmp/tmux-501/default,123,0',
+        });
     });
 });
