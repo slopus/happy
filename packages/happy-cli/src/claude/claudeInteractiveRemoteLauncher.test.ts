@@ -423,6 +423,89 @@ describe('claudeInteractiveRemoteLauncher', () => {
         await resultPromise;
     });
 
+    it('does not forward transcript echoes when Claude trims app prompt whitespace', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'как дела\n',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+        transport.emitData('❯ ');
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('как дела\n');
+            expect(transport.enter).toHaveBeenCalledOnce();
+        });
+
+        const scannerOptions = mockCreateSessionScanner.mock.calls[0][0];
+        const promptEcho = {
+            type: 'user',
+            uuid: 'trimmed-prompt-echo',
+            message: {
+                role: 'user',
+                content: 'как дела',
+            },
+        } satisfies RawJSONLines;
+        scannerOptions.onMessage(promptEcho);
+
+        expect(session.client.sendClaudeSessionMessage).not.toHaveBeenCalledWith(promptEcho);
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
+
+    it('does not forward transcript echoes written before tmux enter resolves', async () => {
+        const transport = new FakeTerminalTransport('tmux');
+        mockCreateTerminalTransport.mockResolvedValue(transport);
+        const session = createSession({
+            batches: [{
+                message: 'как дела',
+                mode: initialMode,
+                hash: 'initial-mode-hash',
+                isolate: false,
+            }],
+        });
+
+        const resultPromise = claudeInteractiveRemoteLauncher(session as any);
+
+        await vi.waitFor(() => {
+            expect(mockCreateSessionScanner).toHaveBeenCalled();
+            expect(session.queue.waitForMessagesAndGetAsString).toHaveBeenCalled();
+        });
+        const scannerOptions = mockCreateSessionScanner.mock.calls[0][0];
+        const promptEcho = {
+            type: 'user',
+            uuid: 'early-prompt-echo',
+            message: {
+                role: 'user',
+                content: 'как дела',
+            },
+        } satisfies RawJSONLines;
+        transport.enter.mockImplementationOnce(async () => {
+            scannerOptions.onMessage(promptEcho);
+        });
+
+        transport.emitData('❯ ');
+        await vi.waitFor(() => {
+            expect(transport.paste).toHaveBeenCalledWith('как дела');
+            expect(transport.enter).toHaveBeenCalledOnce();
+        });
+
+        expect(session.client.sendClaudeSessionMessage).not.toHaveBeenCalledWith(promptEcho);
+
+        transport.emitExit({ code: 0, signal: null });
+        await resultPromise;
+    });
+
     it('reports unsupported identity without creating a terminal transport', async () => {
         mockResolveInteractiveClaudeIdentity.mockReturnValue({
             mode: 'unsupported',

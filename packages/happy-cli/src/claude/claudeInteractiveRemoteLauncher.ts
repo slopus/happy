@@ -445,14 +445,16 @@ export async function claudeInteractiveRemoteLauncher(session: Session): Promise
             }
             cancelPendingCompletion();
             const payload = buildInteractivePaste(batch.message, transport.backend);
+            const pendingPromptEcho = normalizePromptText(batch.message);
+            pendingAppPromptEchoes.push(pendingPromptEcho);
             try {
                 markTerminalInputBusy();
                 await transport.paste(payload);
                 if (transport.backend === 'tmux') {
                     await transport.enter();
                 }
-                pendingAppPromptEchoes.push(normalizePromptText(batch.message));
             } catch {
+                removePendingAppPromptEcho(pendingAppPromptEchoes, pendingPromptEcho);
                 failRuntime('Claude interactive terminal failed to receive input.');
             }
         }
@@ -598,14 +600,29 @@ function consumeAppPromptEcho(message: RawJSONLines, pendingAppPromptEchoes: str
         return false;
     }
 
-    const normalizedContent = normalizePromptText(message.message.content);
-    const matchIndex = pendingAppPromptEchoes.findIndex((pending) => pending === normalizedContent);
+    const matchIndex = findPendingAppPromptEchoIndex(pendingAppPromptEchoes, message.message.content);
     if (matchIndex === -1) {
         return false;
     }
 
     pendingAppPromptEchoes.splice(matchIndex, 1);
     return true;
+}
+
+function removePendingAppPromptEcho(pendingAppPromptEchoes: string[], prompt: string): void {
+    const matchIndex = findPendingAppPromptEchoIndex(pendingAppPromptEchoes, prompt);
+    if (matchIndex !== -1) {
+        pendingAppPromptEchoes.splice(matchIndex, 1);
+    }
+}
+
+function findPendingAppPromptEchoIndex(pendingAppPromptEchoes: string[], prompt: string): number {
+    const normalizedPrompt = normalizePromptForEchoMatch(prompt);
+    return pendingAppPromptEchoes.findIndex((pending) => normalizePromptForEchoMatch(pending) === normalizedPrompt);
+}
+
+function normalizePromptForEchoMatch(message: string): string {
+    return normalizePromptText(message).trim();
 }
 
 function appendRemoteDisplayMessage(messageBuffer: MessageBuffer, message: RawJSONLines): void {
