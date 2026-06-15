@@ -17,11 +17,13 @@ describe('settings', () => {
 
         it('should parse valid settings object', () => {
             const validSettings = {
-                viewInline: true
+                viewInline: true,
+                claudeTmuxSessionName: 'happy-dev',
             };
             expect(settingsParse(validSettings)).toEqual({
                 ...settingsDefaults,
-                viewInline: true
+                viewInline: true,
+                claudeTmuxSessionName: 'happy-dev',
             });
         });
 
@@ -204,6 +206,7 @@ describe('settings', () => {
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
                 agentDefaultOverrides: {},
+                claudeTmuxSessionName: null,
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });

@@ -1,3 +1,5 @@
+// Legacy Claude Agent SDK remote launcher. Product Claude remote mode must not
+// select this path automatically; see claudeInteractiveRemoteLauncher.ts.
 import { render } from "ink";
 import { Session } from "./session";
 import { MessageBuffer } from "@/ui/ink/messageBuffer";

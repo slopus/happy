@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const {
     mockApiClientCreate,
     mockCreateSessionScanner,
+    mockDiscoverClaudeSkills,
     mockLoop,
+    mockLoggerDebug,
     mockNotifyDaemonSessionStarted,
     mockReadSettings,
     mockStartHappyServer,
@@ -12,7 +14,9 @@ const {
 } = vi.hoisted(() => ({
     mockApiClientCreate: vi.fn(),
     mockCreateSessionScanner: vi.fn(),
+    mockDiscoverClaudeSkills: vi.fn(),
     mockLoop: vi.fn(),
+    mockLoggerDebug: vi.fn(),
     mockNotifyDaemonSessionStarted: vi.fn(),
     mockReadSettings: vi.fn(),
     mockStartHappyServer: vi.fn(),
@@ -32,6 +36,10 @@ vi.mock('@/persistence', () => ({
 
 vi.mock('@/claude/utils/sessionScanner', () => ({
     createSessionScanner: mockCreateSessionScanner,
+}));
+
+vi.mock('@/claude/utils/claudeSkills', () => ({
+    discoverClaudeSkills: mockDiscoverClaudeSkills,
 }));
 
 vi.mock('@/claude/loop', () => ({
@@ -65,7 +73,7 @@ vi.mock('./registerKillSessionHandler', () => ({
 
 vi.mock('@/ui/logger', () => ({
     logger: {
-        debug: vi.fn(),
+        debug: mockLoggerDebug,
         debugLargeJson: vi.fn(),
         infoDeveloper: vi.fn(),
     },
@@ -138,6 +146,7 @@ describe('runClaude remote JSONL scanner', () => {
             onNewSession: vi.fn(),
             cleanup: vi.fn(),
         });
+        mockDiscoverClaudeSkills.mockResolvedValue([]);
     });
 
     afterEach(() => {
@@ -150,16 +159,13 @@ describe('runClaude remote JSONL scanner', () => {
         originalListeners.clear();
     });
 
-    it('does not forward terminal JSONL messages while local mode owns the transcript', async () => {
-        const sentMessages: unknown[] = [];
+    it('does not start the SDK-era remote JSONL scanner for interactive Claude remote', async () => {
         const sessionClient = {
             sessionId: 'happy-session-1',
             suppressNextArchiveSignal: vi.fn(),
             skipExistingMessages: vi.fn(),
             updateMetadata: vi.fn(),
-            sendClaudeSessionMessage: vi.fn((message: unknown) => {
-                sentMessages.push(message);
-            }),
+            sendClaudeSessionMessage: vi.fn(),
             onUserMessage: vi.fn(),
             onFileEvent: vi.fn(),
             on: vi.fn(),
@@ -206,49 +212,386 @@ describe('runClaude remote JSONL scanner', () => {
 
         await vi.waitFor(() => {
             expect(mockLoop).toHaveBeenCalled();
-            expect(mockCreateSessionScanner).toHaveBeenCalled();
         });
 
-        const scannerOptions = mockCreateSessionScanner.mock.calls[0][0];
-        scannerOptions.onMessage({
-            type: 'user',
-            uuid: 'local-owned-user',
-            parentUuid: null,
-            isSidechain: false,
-            sessionId: 'claude-session-1',
-            timestamp: new Date().toISOString(),
-            message: {
-                role: 'user',
-                content: 'typed in local terminal',
-            },
-        });
-
-        expect(sentMessages).toHaveLength(0);
-
-        const loopOptions = mockLoop.mock.calls[0][0];
-        loopOptions.onModeChange('remote');
-        scannerOptions.onMessage({
-            type: 'user',
-            uuid: 'remote-terminal-user',
-            parentUuid: null,
-            isSidechain: false,
-            sessionId: 'claude-session-1',
-            timestamp: new Date().toISOString(),
-            message: {
-                role: 'user',
-                content: 'typed in parallel remote terminal',
-            },
-        });
-
-        expect(sentMessages).toHaveLength(1);
-        expect(sessionClient.sendClaudeSessionMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ uuid: 'remote-terminal-user' }),
-        );
+        expect(mockCreateSessionScanner).not.toHaveBeenCalled();
 
         loopDeferred.resolve(0);
         const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
             throw new Error('process.exit');
         }) as never);
+        await expect(runPromise).rejects.toThrow('process.exit');
+        exitSpy.mockRestore();
+    });
+
+    it('forwards SessionStart hooks even when Claude reports the current session id again', async () => {
+        let onSessionHook: ((sessionId: string, data: any) => void) | undefined;
+        const sessionClient = {
+            sessionId: 'happy-session-1',
+            suppressNextArchiveSignal: vi.fn(),
+            skipExistingMessages: vi.fn(),
+            updateMetadata: vi.fn(),
+            sendClaudeSessionMessage: vi.fn(),
+            onUserMessage: vi.fn(),
+            onFileEvent: vi.fn(),
+            on: vi.fn(),
+            trackAttachmentDownload: vi.fn(),
+            drainAttachmentsForUserMessage: vi.fn(async () => []),
+            downloadAndDecryptAttachment: vi.fn(),
+            getMetadata: vi.fn(() => ({})),
+            sendSessionEvent: vi.fn(),
+            updateAgentState: vi.fn(),
+            rpcHandlerManager: {
+                registerHandler: vi.fn(),
+            },
+            sendSessionDeath: vi.fn(),
+            flush: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+        };
+        const api = {
+            getOrCreateMachine: vi.fn(async () => ({})),
+            getOrCreateSession: vi.fn(async () => ({
+                id: 'happy-session-1',
+                seq: 0,
+                metadata: {},
+                metadataVersion: 0,
+                agentState: {},
+                agentStateVersion: 0,
+                encryptionKey: new Uint8Array(32),
+                encryptionVariant: 'legacy' as const,
+            })),
+            sessionSyncClient: vi.fn(() => sessionClient),
+            deactivateSession: vi.fn(async () => {}),
+        };
+        const sessionInstance = {
+            sessionId: 'claude-known-session',
+            onSessionFound: vi.fn((sessionId: string) => {
+                sessionInstance.sessionId = sessionId;
+            }),
+            cleanup: vi.fn(async () => {}),
+        };
+        mockApiClientCreate.mockResolvedValue(api);
+        mockStartHookServer.mockImplementation(async (opts) => {
+            onSessionHook = opts.onSessionHook;
+            return {
+                port: 23456,
+                stop: vi.fn(),
+            };
+        });
+
+        const loopDeferred = createDeferred<number>();
+        mockLoop.mockImplementation((opts) => {
+            opts.onSessionReady(sessionInstance);
+            return loopDeferred.promise;
+        });
+
+        const runPromise = runClaude({
+            token: 'token',
+            encryption: { type: 'legacy', secret: new Uint8Array(32) },
+        } as any, {
+            startingMode: 'remote',
+            shouldStartDaemon: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(mockLoop).toHaveBeenCalled();
+            expect(onSessionHook).toBeDefined();
+        });
+
+        onSessionHook!('claude-known-session', {
+            hook_event_name: 'SessionStart',
+            source: 'startup',
+        });
+
+        expect(sessionInstance.onSessionFound).toHaveBeenCalledWith('claude-known-session');
+
+        loopDeferred.resolve(0);
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+            throw new Error('process.exit');
+        }) as never);
+        await expect(runPromise).rejects.toThrow('process.exit');
+        exitSpy.mockRestore();
+    });
+
+    it('answers /skills from Happy instead of opening the interactive Claude picker', async () => {
+        let onUserMessage: ((message: any) => Promise<void>) | undefined;
+        const sessionClient = {
+            sessionId: 'happy-session-1',
+            suppressNextArchiveSignal: vi.fn(),
+            skipExistingMessages: vi.fn(),
+            updateMetadata: vi.fn(),
+            sendClaudeSessionMessage: vi.fn(),
+            onUserMessage: vi.fn((handler) => { onUserMessage = handler; }),
+            onFileEvent: vi.fn(),
+            on: vi.fn(),
+            trackAttachmentDownload: vi.fn(),
+            drainAttachmentsForUserMessage: vi.fn(async () => []),
+            downloadAndDecryptAttachment: vi.fn(),
+            getMetadata: vi.fn(() => ({})),
+            sendSessionEvent: vi.fn(),
+            updateAgentState: vi.fn(),
+            rpcHandlerManager: {
+                registerHandler: vi.fn(),
+            },
+            sendSessionDeath: vi.fn(),
+            flush: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+        };
+        mockDiscoverClaudeSkills.mockResolvedValue(['agent-browser', 'sessions']);
+        const api = {
+            getOrCreateMachine: vi.fn(async () => ({})),
+            getOrCreateSession: vi.fn(async () => ({
+                id: 'happy-session-1',
+                seq: 0,
+                metadata: {},
+                metadataVersion: 0,
+                agentState: {},
+                agentStateVersion: 0,
+                encryptionKey: new Uint8Array(32),
+                encryptionVariant: 'legacy' as const,
+            })),
+            sessionSyncClient: vi.fn(() => sessionClient),
+            deactivateSession: vi.fn(async () => {}),
+        };
+        mockApiClientCreate.mockResolvedValue(api);
+
+        const loopDeferred = createDeferred<number>();
+        mockLoop.mockReturnValue(loopDeferred.promise);
+
+        const runPromise = runClaude({
+            token: 'token',
+            encryption: { type: 'legacy', secret: new Uint8Array(32) },
+        } as any, {
+            startingMode: 'local',
+            shouldStartDaemon: false,
+        });
+
+        let assertionError: unknown;
+        try {
+            await vi.waitFor(() => {
+                expect(mockLoop).toHaveBeenCalled();
+                expect(onUserMessage).toBeDefined();
+            });
+
+            await onUserMessage!({
+                role: 'user',
+                content: { type: 'text', text: '/skills ' },
+                meta: { sentFrom: 'web' },
+            });
+
+            const queue = mockLoop.mock.calls[0][0].messageQueue;
+            expect(mockDiscoverClaudeSkills).toHaveBeenCalledWith(process.cwd());
+            expect(queue.size()).toBe(0);
+            expect(sessionClient.sendClaudeSessionMessage).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'assistant',
+                message: expect.objectContaining({
+                    content: [expect.objectContaining({
+                        text: expect.stringContaining('- /agent-browser'),
+                    })],
+                }),
+            }));
+            expect(sessionClient.sendClaudeSessionMessage).toHaveBeenCalledWith(expect.objectContaining({
+                message: expect.objectContaining({
+                    content: [expect.objectContaining({
+                        text: expect.stringContaining('- /sessions'),
+                    })],
+                }),
+            }));
+        } catch (error) {
+            assertionError = error;
+        }
+
+        loopDeferred.resolve(0);
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+            throw new Error('process.exit');
+        }) as never);
+        await expect(runPromise).rejects.toThrow('process.exit');
+        exitSpy.mockRestore();
+
+        if (assertionError) {
+            throw assertionError;
+        }
+    });
+
+    it('does not log raw attachment details while preparing Claude batches', async () => {
+        const sessionClient = {
+            sessionId: 'happy-session-1',
+            suppressNextArchiveSignal: vi.fn(),
+            skipExistingMessages: vi.fn(),
+            updateMetadata: vi.fn(),
+            sendClaudeSessionMessage: vi.fn(),
+            onUserMessage: vi.fn(),
+            onFileEvent: vi.fn(),
+            on: vi.fn(),
+            trackAttachmentDownload: vi.fn(),
+            drainAttachmentsForUserMessage: vi.fn(async () => []),
+            downloadAndDecryptAttachment: vi.fn(async () => {
+                throw new Error('secret /Users/devdvlive/cache/raw-image.png ref-sensitive');
+            }),
+            getMetadata: vi.fn(() => ({})),
+            sendSessionEvent: vi.fn(),
+            updateAgentState: vi.fn(),
+            rpcHandlerManager: {
+                registerHandler: vi.fn(),
+            },
+            sendSessionDeath: vi.fn(),
+            flush: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+        };
+        const api = {
+            getOrCreateMachine: vi.fn(async () => ({})),
+            getOrCreateSession: vi.fn(async () => ({
+                id: 'happy-session-1',
+                seq: 0,
+                metadata: {},
+                metadataVersion: 0,
+                agentState: {},
+                agentStateVersion: 0,
+                encryptionKey: new Uint8Array(32),
+                encryptionVariant: 'legacy' as const,
+            })),
+            sessionSyncClient: vi.fn(() => sessionClient),
+            deactivateSession: vi.fn(async () => {}),
+        };
+        mockApiClientCreate.mockResolvedValue(api);
+
+        const loopDeferred = createDeferred<number>();
+        mockLoop.mockReturnValue(loopDeferred.promise);
+
+        const runPromise = runClaude({
+            token: 'token',
+            encryption: { type: 'legacy', secret: new Uint8Array(32) },
+        } as any, {
+            startingMode: 'remote',
+            shouldStartDaemon: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(sessionClient.onFileEvent).toHaveBeenCalledWith(expect.any(Function));
+        });
+
+        const onFileEvent = sessionClient.onFileEvent.mock.calls[0][0];
+        onFileEvent({
+            role: 'session',
+            content: {
+                type: 'session',
+                data: {
+                    id: 'file-event-1',
+                    time: 1,
+                    role: 'user',
+                    ev: {
+                        t: 'file',
+                        ref: 'ref-sensitive',
+                        name: 'raw-image.png',
+                        size: 987654321,
+                        mimeType: 'image/png',
+                    },
+                },
+            },
+        });
+
+        const trackedPromise = sessionClient.trackAttachmentDownload.mock.calls[0][0];
+        await trackedPromise;
+
+        const debugOutput = mockLoggerDebug.mock.calls
+            .flat()
+            .map((value) => typeof value === 'string' ? value : JSON.stringify(value))
+            .join('\n');
+        expect(debugOutput).toContain('[loop] Failed to download attachment');
+        expect(debugOutput).not.toContain('raw-image.png');
+        expect(debugOutput).not.toContain('ref-sensitive');
+        expect(debugOutput).not.toContain('987654321');
+        expect(debugOutput).not.toContain('/Users/devdvlive/cache');
+
+        loopDeferred.resolve(0);
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+            throw new Error('process.exit');
+        }) as never);
+        await expect(runPromise).rejects.toThrow('process.exit');
+        exitSpy.mockRestore();
+    });
+
+    it('waits for the active session cleanup before exiting from kill-session cleanup', async () => {
+        const sessionClient = {
+            sessionId: 'happy-session-1',
+            suppressNextArchiveSignal: vi.fn(),
+            skipExistingMessages: vi.fn(),
+            updateMetadata: vi.fn(),
+            sendClaudeSessionMessage: vi.fn(),
+            onUserMessage: vi.fn(),
+            onFileEvent: vi.fn(),
+            on: vi.fn(),
+            trackAttachmentDownload: vi.fn(),
+            drainAttachmentsForUserMessage: vi.fn(async () => []),
+            downloadAndDecryptAttachment: vi.fn(),
+            getMetadata: vi.fn(() => ({})),
+            sendSessionEvent: vi.fn(),
+            updateAgentState: vi.fn(),
+            rpcHandlerManager: {
+                registerHandler: vi.fn(),
+            },
+            sendSessionDeath: vi.fn(),
+            flush: vi.fn(async () => { }),
+            close: vi.fn(async () => { }),
+        };
+        const api = {
+            getOrCreateMachine: vi.fn(async () => ({})),
+            getOrCreateSession: vi.fn(async () => ({
+                id: 'happy-session-1',
+                seq: 0,
+                metadata: {},
+                metadataVersion: 0,
+                agentState: {},
+                agentStateVersion: 0,
+                encryptionKey: new Uint8Array(32),
+                encryptionVariant: 'legacy' as const,
+            })),
+            sessionSyncClient: vi.fn(() => sessionClient),
+            deactivateSession: vi.fn(async () => { }),
+        };
+        mockApiClientCreate.mockResolvedValue(api);
+
+        const loopDeferred = createDeferred<number>();
+        const cleanupDeferred = createDeferred<void>();
+        const activeSession = {
+            cleanup: vi.fn(() => cleanupDeferred.promise),
+        };
+        mockLoop.mockImplementation(async (opts: any) => {
+            opts.onSessionReady(activeSession);
+            return loopDeferred.promise;
+        });
+
+        const runPromise = runClaude({
+            token: 'token',
+            encryption: { type: 'legacy', secret: new Uint8Array(32) },
+        } as any, {
+            startingMode: 'remote',
+            shouldStartDaemon: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(mockRegisterKillSessionHandler).toHaveBeenCalled();
+        });
+
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+            throw new Error('process.exit');
+        }) as never);
+        const cleanupPromise = mockRegisterKillSessionHandler.mock.calls[0][1]();
+
+        await vi.waitFor(() => {
+            expect(activeSession.cleanup).toHaveBeenCalledOnce();
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(exitSpy).not.toHaveBeenCalled();
+        expect(api.deactivateSession).not.toHaveBeenCalled();
+        expect(sessionClient.sendSessionDeath).not.toHaveBeenCalled();
+
+        cleanupDeferred.resolve();
+        await expect(cleanupPromise).rejects.toThrow('process.exit');
+        expect(exitSpy).toHaveBeenCalledWith(0);
+
+        loopDeferred.resolve(0);
         await expect(runPromise).rejects.toThrow('process.exit');
         exitSpy.mockRestore();
     });

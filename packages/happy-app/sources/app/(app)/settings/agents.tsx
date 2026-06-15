@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
+import { Modal } from '@/modal';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
@@ -21,6 +22,7 @@ import {
     type AgentDefaultField,
     type AgentKey,
 } from '@/sync/agentDefaults';
+import { isValidTmuxSessionName } from '@/sync/spawnEnvironment';
 import { t } from '@/text';
 
 type ExpandedField = {
@@ -51,6 +53,7 @@ function optionName(options: ModeOption[], key: string | null | undefined): stri
 export default function AgentDefaultsSettingsScreen() {
     const { theme } = useUnistyles();
     const [agentDefaultOverrides, setAgentDefaultOverrides] = useSettingMutable('agentDefaultOverrides');
+    const [claudeTmuxSessionName, setClaudeTmuxSessionName] = useSettingMutable('claudeTmuxSessionName');
     const [expanded, setExpanded] = React.useState<ExpandedField>(null);
 
     const updateOverride = React.useCallback((
@@ -60,6 +63,31 @@ export default function AgentDefaultsSettingsScreen() {
     ) => {
         setAgentDefaultOverrides(setAgentDefaultOverride(agentDefaultOverrides, agent, field, value));
     }, [agentDefaultOverrides, setAgentDefaultOverrides]);
+
+    const editClaudeTmuxSessionName = React.useCallback(async () => {
+        const value = await Modal.prompt(
+            'Claude tmux session',
+            'Use tmux for Claude interactive terminals by naming a tmux session.',
+            {
+                defaultValue: claudeTmuxSessionName ?? '',
+                placeholder: 'happy-dev',
+            },
+        );
+        if (value === null) {
+            return;
+        }
+
+        const trimmed = value.trim();
+        if (trimmed.length > 0 && !isValidTmuxSessionName(trimmed)) {
+            Modal.alert(
+                'Invalid tmux session',
+                'Use only letters, numbers, dots, hyphens, and underscores.',
+            );
+            return;
+        }
+
+        setClaudeTmuxSessionName(trimmed.length > 0 ? trimmed : null);
+    }, [claudeTmuxSessionName, setClaudeTmuxSessionName]);
 
     const renderOption = (
         agent: AgentKey,
@@ -171,6 +199,14 @@ export default function AgentDefaultsSettingsScreen() {
 
                 return (
                     <ItemGroup key={agent} title={agentLabels[agent]}>
+                        {agent === 'claude' && (
+                            <Item
+                                title="tmux session"
+                                detail={claudeTmuxSessionName ?? 'PTY'}
+                                icon={<Ionicons name="terminal-outline" size={29} color="#5856D6" />}
+                                onPress={editClaudeTmuxSessionName}
+                            />
+                        )}
                         {fields.map((field) => renderField(agent, field))}
                     </ItemGroup>
                 );

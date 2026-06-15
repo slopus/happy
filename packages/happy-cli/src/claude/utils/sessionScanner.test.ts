@@ -214,10 +214,12 @@ describe('sessionScanner', () => {
     // (e.g. a remote launch) but its .jsonl is never written. The scanner
     // must give up on it instead of spinning forever, and must still process
     // a real session that arrives afterwards.
+    const missingSessions: string[] = []
     scanner = await createSessionScanner({
       sessionId: null,
       workingDirectory: testDir,
       onMessage: (msg) => collectedMessages.push(msg),
+      onTranscriptMissing: (sessionId) => missingSessions.push(sessionId),
       missingFileTimeoutMs: 100,
     })
 
@@ -229,6 +231,7 @@ describe('sessionScanner', () => {
     await new Promise((r) => setTimeout(r, 2500))
 
     expect(collectedMessages).toHaveLength(0)
+    expect(missingSessions).toEqual([phantomId])
 
     // A real session arriving after the phantom was dropped must still work.
     const fixture = await readFile(join(__dirname, '__fixtures__', '0-say-lol-session.jsonl'), 'utf-8')
@@ -242,5 +245,113 @@ describe('sessionScanner', () => {
 
     expect(collectedMessages).toHaveLength(1)
     expect(collectedMessages[0].type).toBe('user')
+  })
+
+  it('keeps a missing current session retryable when configured', async () => {
+    const missingSessions: string[] = []
+    const sessionId = 'fd4aa0c2-1111-4cd3-a066-80c6d87c3456'
+    scanner = await createSessionScanner({
+      sessionId,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      onTranscriptMissing: (missingSessionId) => missingSessions.push(missingSessionId),
+      missingFileTimeoutMs: 100,
+      keepMissingCurrentSession: true,
+    })
+
+    await new Promise((r) => setTimeout(r, 2500))
+
+    expect(collectedMessages).toHaveLength(0)
+    expect(missingSessions).toEqual([sessionId])
+
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+    await writeFile(sessionFile, JSON.stringify({
+      type: 'assistant',
+      uuid: 'assistant-late-transcript',
+      message: {
+        role: 'assistant',
+        model: 'claude-opus',
+        content: [{ type: 'text', text: 'late transcript appeared' }],
+      },
+    }) + '\n')
+
+    await scanner.flush()
+
+    expect(collectedMessages).toHaveLength(1)
+    expect(collectedMessages[0]).toMatchObject({
+      type: 'assistant',
+      uuid: 'assistant-late-transcript',
+    })
+  })
+
+  it('processes synthetic Claude API error assistant messages', async () => {
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+    })
+
+    const sessionId = 'fd4aa0c2-2222-4cd3-a066-80c6d87c3456'
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+    await writeFile(sessionFile, JSON.stringify({
+      type: 'assistant',
+      uuid: 'assistant-api-error',
+      error: 'authentication_failed',
+      isApiErrorMessage: true,
+      apiErrorStatus: 403,
+      message: {
+        role: 'assistant',
+        type: 'message',
+        model: '<synthetic>',
+        content: [{ type: 'text', text: 'Please run /login · API Error: 403 Request not allowed' }],
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          service_tier: null,
+        },
+      },
+    }) + '\n')
+
+    scanner.onNewSession(sessionId)
+    await scanner.flush()
+
+    expect(collectedMessages).toHaveLength(1)
+    expect(collectedMessages[0]).toMatchObject({
+      type: 'assistant',
+      uuid: 'assistant-api-error',
+      isApiErrorMessage: true,
+      apiErrorStatus: 403,
+    })
+  })
+
+  it('flushes pending scanner work on demand', async () => {
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+    })
+
+    const sessionId = '93a9705e-bc6a-406d-8dce-8acc014dedbd'
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+    await writeFile(sessionFile, JSON.stringify({
+      type: 'assistant',
+      uuid: 'assistant-flush-1',
+      message: {
+        role: 'assistant',
+        model: 'claude-opus',
+        content: [{ type: 'text', text: 'ready' }],
+      },
+    }) + '\n')
+
+    scanner.onNewSession(sessionId)
+    await scanner.flush()
+
+    expect(collectedMessages).toHaveLength(1)
+    expect(collectedMessages[0]).toMatchObject({
+      type: 'assistant',
+      uuid: 'assistant-flush-1',
+    })
   })
 })

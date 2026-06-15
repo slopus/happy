@@ -4,6 +4,7 @@
  * When a `/foo` command runs, the SDK injects synthetic user messages whose
  * content is XML-like tags such as:
  *   <local-command-caveat>...</local-command-caveat>
+ *   <local-command-stdout>...</local-command-stdout>
  *   <command-message>foo</command-message><command-name>/foo</command-name>
  *   <command-message>foo</command-message><command-name>/foo</command-name><command-args>the args</command-args>
  *
@@ -24,15 +25,26 @@ export type LocalCommandMessage =
     | { kind: 'text'; text: string };
 
 const CAVEAT_RE = /^\s*<local-command-caveat>[\s\S]*?<\/local-command-caveat>\s*$/;
+const LOCAL_COMMAND_STDOUT_RE = /^\s*<local-command-stdout>([\s\S]*?)<\/local-command-stdout>\s*$/;
 const COMMAND_NAME_RE = /<command-name>\s*\/?([^<]+?)\s*<\/command-name>/;
 const COMMAND_ARGS_RE = /<command-args>\s*([\s\S]*?)\s*<\/command-args>/;
 const COMMAND_MESSAGE_RE = /<command-message>[\s\S]*?<\/command-message>/g;
 const COMMAND_NAME_TAG_RE = /<command-name>[\s\S]*?<\/command-name>/g;
 const COMMAND_ARGS_TAG_RE = /<command-args>[\s\S]*?<\/command-args>/g;
+const ANSI_ESCAPE_RE = /\u001b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
 
 export function parseLocalCommandMessage(text: string): LocalCommandMessage {
     if (CAVEAT_RE.test(text)) {
         return { kind: 'caveat' };
+    }
+
+    const stdoutMatch = text.match(LOCAL_COMMAND_STDOUT_RE);
+    if (stdoutMatch) {
+        const stdout = stdoutMatch[1].replace(ANSI_ESCAPE_RE, '').trim();
+        if (stdout.length === 0 || stdout.startsWith('Compacted ')) {
+            return { kind: 'caveat' };
+        }
+        return { kind: 'text', text: stdout };
     }
 
     const nameMatch = text.match(COMMAND_NAME_RE);

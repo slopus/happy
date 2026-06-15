@@ -5,7 +5,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
-import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
+import { useSessions, useAllMachines, useMachine, useSetting } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import { machineStopDaemon, machineUpdateMetadata, machineDelete } from '@/sync/ops';
@@ -17,6 +17,7 @@ import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { machineSpawnNewSession } from '@/sync/ops';
+import { getClaudeTmuxSpawnEnvironment } from '@/sync/spawnEnvironment';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
 
@@ -68,6 +69,7 @@ export default function MachineDetailScreen() {
     const router = useRouter();
     const sessions = useSessions();
     const machine = useMachine(machineId!);
+    const claudeTmuxSessionName = useSetting('claudeTmuxSessionName');
     const navigateToSession = useNavigateToSession();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isStoppingDaemon, setIsStoppingDaemon] = useState(false);
@@ -242,7 +244,11 @@ export default function MachineDetailScreen() {
             const result = await machineSpawnNewSession({
                 machineId: machineId!,
                 directory: absolutePath,
-                approvedNewDirectoryCreation
+                approvedNewDirectoryCreation,
+                environmentVariables: getClaudeTmuxSpawnEnvironment({
+                    agent: undefined,
+                    claudeTmuxSessionName,
+                }),
             });
             switch (result.type) {
                 case 'success':

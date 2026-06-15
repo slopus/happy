@@ -46,6 +46,61 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(result.envelopes[2].ev).toEqual({ t: 'text', text: 'internal', thinking: true });
     });
 
+    it('closes the turn when Claude assistant message has stop_reason end_turn', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-final',
+            message: {
+                role: 'assistant',
+                stop_reason: 'end_turn',
+                content: [
+                    { type: 'text', text: 'done' },
+                ],
+            },
+            timestamp: '2025-01-01T00:00:01.000Z',
+        } as any, { currentTurnId: null });
+
+        expect(result.currentTurnId).toBeNull();
+        expect(result.envelopes.map((envelope) => envelope.ev)).toEqual([
+            { t: 'turn-start' },
+            { t: 'text', text: 'done' },
+            { t: 'turn-end', status: 'completed' },
+        ]);
+    });
+
+    it('keeps the turn open for thinking-only assistant end_turn chunks', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-thinking-only',
+            message: {
+                role: 'assistant',
+                stop_reason: 'end_turn',
+                content: [
+                    { type: 'thinking', thinking: '' },
+                ],
+            },
+        } as any, { currentTurnId: null });
+
+        expect(result.currentTurnId).not.toBeNull();
+        expect(result.envelopes.map((envelope) => envelope.ev)).toEqual([
+            { t: 'turn-start' },
+            { t: 'text', text: '', thinking: true },
+        ]);
+    });
+
+    it('closes the turn when Claude emits a turn_duration system message', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'system',
+            subtype: 'turn_duration',
+            uuid: 'system-turn-duration',
+        } as any, { currentTurnId: 'turn-active' });
+
+        expect(result.currentTurnId).toBeNull();
+        expect(result.envelopes.map((envelope) => envelope.ev)).toEqual([
+            { t: 'turn-end', status: 'completed' },
+        ]);
+    });
+
     it('maps tool use and tool result blocks to tool-call lifecycle', () => {
         const started = mapClaudeLogMessageToSessionEnvelopes({
             type: 'assistant',

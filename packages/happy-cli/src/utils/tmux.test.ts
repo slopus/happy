@@ -5,16 +5,34 @@
  * They do NOT require tmux to be installed on the system.
  * All tests mock environment variables and test string parsing only.
  */
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const childProcessMock = vi.hoisted(() => ({
+    spawn: vi.fn(),
+}));
+
+vi.mock('child_process', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('child_process')>();
+    return {
+        ...actual,
+        spawn: childProcessMock.spawn,
+    };
+});
+
 import {
     parseTmuxSessionIdentifier,
     formatTmuxSessionIdentifier,
     validateTmuxSessionIdentifier,
     buildTmuxSessionIdentifier,
+    isTmuxAvailable,
     TmuxSessionIdentifierError,
     TmuxUtilities,
     type TmuxSessionIdentifier,
 } from './tmux';
+
+beforeEach(() => {
+    childProcessMock.spawn.mockReset();
+});
 
 describe('parseTmuxSessionIdentifier', () => {
     it('should parse session-only identifier', () => {
@@ -454,3 +472,241 @@ describe('Round-trip consistency', () => {
         expect(parsed).toEqual(params);
     });
 });
+
+describe('TmuxUtilities terminal helpers', () => {
+    it('runs tmux subprocesses with the configured client environment', async () => {
+        const clientEnv = {
+            HOME: '/Users/devdvlive',
+            PATH: '/opt/bin:/usr/bin',
+        };
+        const utils = new (TmuxUtilities as any)('happy', clientEnv);
+        const child = createMockChildProcess();
+        childProcessMock.spawn.mockReturnValue(child);
+
+        await (utils as any).runCommand(['tmux', 'list-sessions']);
+
+        expect(childProcessMock.spawn).toHaveBeenCalledWith(
+            'tmux',
+            ['list-sessions'],
+            expect.objectContaining({
+                env: clientEnv,
+            }),
+        );
+    });
+
+    it('checks tmux availability with the provided client environment', async () => {
+        const clientEnv = {
+            HOME: '/Users/devdvlive',
+            PATH: '/opt/bin:/usr/bin',
+        };
+        const child = createMockChildProcess();
+        childProcessMock.spawn.mockReturnValue(child);
+
+        await isTmuxAvailable(clientEnv);
+
+        expect(childProcessMock.spawn).toHaveBeenCalledWith(
+            'tmux',
+            ['list-sessions'],
+            expect.objectContaining({
+                env: clientEnv,
+            }),
+        );
+    });
+
+    it('returns stable tmux ids when spawning a new window', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockImplementation(async (cmd) => {
+            const tmuxCommand = cmd as string[];
+            if (tmuxCommand.includes('new-window')) {
+                return {
+                    returncode: 0,
+                    stdout: '123\t@42\t%7\n',
+                    stderr: '',
+                    command: tmuxCommand,
+                };
+            }
+
+            return {
+                returncode: 0,
+                stdout: '',
+                stderr: '',
+                command: tmuxCommand,
+            };
+        });
+
+        const result = await utils.spawnInTmux(['claude'], {
+            cwd: '/tmp/project',
+            sessionName: 'happy',
+            windowName: 'happy-claude-test',
+        });
+        const calls = executeCommand.mock.calls.map(([cmd]) => cmd as string[]);
+        const newWindowCall = calls.find((cmd) => cmd.includes('new-window'));
+
+        expect(result).toEqual({
+            success: true,
+            sessionId: 'happy:happy-claude-test',
+            pid: 123,
+            windowId: '@42',
+            paneId: '%7',
+        });
+        expect(newWindowCall).toContain('-P');
+        expect(newWindowCall).toContain('-F');
+        expect(newWindowCall).toContain('#{pane_pid}\t#{window_id}\t#{pane_id}');
+
+        const printIndex = newWindowCall!.indexOf('-P');
+        const formatIndex = newWindowCall!.indexOf('-F');
+        const targetIndex = newWindowCall!.indexOf('-t');
+        const commandIndex = newWindowCall!.indexOf('claude');
+        expect(printIndex).toBeLessThan(commandIndex);
+        expect(formatIndex).toBeLessThan(commandIndex);
+        expect(targetIndex).toBeGreaterThan(-1);
+        expect(targetIndex).toBeLessThan(commandIndex);
+        expect(newWindowCall![targetIndex + 1]).toBe('happy:');
+    });
+
+    it('pastes text through a tmux buffer instead of send-keys', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
+            returncode: 0,
+            stdout: '',
+            stderr: '',
+            command: [],
+        });
+
+        const text = 'first line\nsecond line';
+        const result = await utils.pasteText(text, 'session', 'window', '2');
+        const calls = executeCommand.mock.calls.map(([cmd]) => cmd as string[]);
+        const bufferName = calls[0][3];
+
+        expect(result).toBe(true);
+        expect(bufferName).toMatch(/^happy-paste-/);
+        expect(calls).toEqual([
+            ['tmux', 'set-buffer', '-b', bufferName, text],
+            ['tmux', 'paste-buffer', '-b', bufferName, '-t', 'session:window.2'],
+            ['tmux', 'delete-buffer', '-b', bufferName],
+        ]);
+        expect(calls.flat()).not.toContain('send-keys');
+    });
+
+    it('uses raw pane ids directly for pane operations', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
+            returncode: 0,
+            stdout: '',
+            stderr: '',
+            command: [],
+        });
+
+        const result = await utils.pasteText('hello', undefined, undefined, '%7');
+        const calls = executeCommand.mock.calls.map(([cmd]) => cmd as string[]);
+        const bufferName = calls[0][3];
+
+        expect(result).toBe(true);
+        expect(calls).toEqual([
+            ['tmux', 'set-buffer', '-b', bufferName, 'hello'],
+            ['tmux', 'paste-buffer', '-b', bufferName, '-t', '%7'],
+            ['tmux', 'delete-buffer', '-b', bufferName],
+        ]);
+    });
+
+    it('targets resize-pane with the requested dimensions', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
+            returncode: 0,
+            stdout: '',
+            stderr: '',
+            command: [],
+        });
+
+        const result = await utils.resizePane(120, 40, 'session', 'window', '2');
+
+        expect(result).toBe(true);
+        expect(executeCommand).toHaveBeenCalledWith([
+            'tmux',
+            'resize-pane',
+            '-x',
+            '120',
+            '-y',
+            '40',
+            '-t',
+            'session:window.2',
+        ]);
+    });
+
+    it('checks pane liveness with display-message against the requested target', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
+            returncode: 0,
+            stdout: '%1\n',
+            stderr: '',
+            command: [],
+        });
+
+        const result = await utils.isPaneAlive('session', 'window', '2');
+
+        expect(result).toBe(true);
+        expect(executeCommand).toHaveBeenCalledWith([
+            'tmux',
+            'display-message',
+            '-t',
+            'session:window.2',
+            '-p',
+            '#{pane_id}',
+        ]);
+    });
+
+    it('targets a full session:window identifier when killing a window', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
+            returncode: 0,
+            stdout: '',
+            stderr: '',
+            command: [],
+        });
+
+        const result = await utils.killWindow('happy:claude');
+
+        expect(result).toBe(true);
+        expect(executeCommand).toHaveBeenCalledWith([
+            'tmux',
+            'kill-window',
+            '-t',
+            'happy:claude',
+        ]);
+    });
+
+    it('uses raw window ids directly when killing a window', async () => {
+        const utils = new TmuxUtilities('happy');
+        const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockResolvedValue({
+            returncode: 0,
+            stdout: '',
+            stderr: '',
+            command: [],
+        });
+
+        const result = await utils.killWindow('@42');
+
+        expect(result).toBe(true);
+        expect(executeCommand).toHaveBeenCalledWith([
+            'tmux',
+            'kill-window',
+            '-t',
+            '@42',
+        ]);
+    });
+});
+
+function createMockChildProcess() {
+    const child = {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, handler: (code?: number) => void) => {
+            if (event === 'close') {
+                queueMicrotask(() => handler(0));
+            }
+            return child;
+        }),
+    };
+
+    return child;
+}

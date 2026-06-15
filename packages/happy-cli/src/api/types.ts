@@ -301,6 +301,16 @@ export type Metadata = {
   },
   machineId?: string,
   claudeSessionId?: string, // Claude Code session ID
+  claudeRuntime?: {
+    kind: 'interactive' | 'sdk' | string
+    state?: 'starting' | 'interactive' | 'degraded' | 'unsupported' | 'failed' | string
+    backend?: 'tmux' | 'pty' | string
+    capabilities?: string[]
+    claudeSessionId?: string
+    terminalId?: string
+    message?: string
+    updatedAt?: number
+  },
   codexThreadId?: string, // Codex app-server thread ID
   tools?: string[],
   slashCommands?: string[],

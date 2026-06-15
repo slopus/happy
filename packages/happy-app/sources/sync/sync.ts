@@ -52,10 +52,19 @@ import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
+import {
+    logAttachmentUploadFailure,
+    logMissingAttachmentBlobKey,
+} from './attachmentUploadLogging';
 import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import {
+    getAttachmentSupportForSession,
+    getUnsupportedAttachmentTextKey,
+    shouldSendTextAfterDroppingAttachments,
+} from './attachmentSupport';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -505,14 +514,18 @@ class Sync {
 
         const blobKey = this.encryption.getSessionBlobKey(sessionId);
         if (!blobKey) {
-            console.error(`[attachments] No blob key for session ${sessionId}`);
+            logMissingAttachmentBlobKey({
+                attachmentCount: attachments.length,
+                sessionId,
+            });
             return { uploaded: [], failed: attachments.length };
         }
 
         const uploaded: UploadedAttachment[] = [];
         let failed = 0;
 
-        for (const attachment of attachments) {
+        for (const [attachmentIndex, attachment] of attachments.entries()) {
+            let uploadRef: string | undefined;
             try {
                 const bytes = await readFileBytes(attachment.uri);
                 const encrypted = encryptBlob(bytes, blobKey);
@@ -523,12 +536,12 @@ class Sync {
                     attachment.name,
                     encrypted.length,
                 );
+                uploadRef = upload.ref;
 
                 await uploadEncryptedBlob(upload, encrypted, this.credentials);
-                const { ref } = upload;
 
                 uploaded.push({
-                    ref,
+                    ref: uploadRef,
                     name: attachment.name,
                     size: attachment.size,
                     width: attachment.width,
@@ -536,7 +549,13 @@ class Sync {
                     thumbhash: attachment.thumbhash,
                 });
             } catch (err) {
-                console.error(`[attachments] Failed to upload ${attachment.name}:`, err);
+                logAttachmentUploadFailure({
+                    attachmentIndex,
+                    attachment,
+                    error: err,
+                    sessionId,
+                    uploadRef,
+                });
                 failed++;
                 // Skip this attachment; do not abort the whole message send.
             }
@@ -573,20 +592,23 @@ class Sync {
         const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
         const { displayText, source = 'chat', attachments } = options ?? {};
 
-        // Image attachments are wired into the Claude pipeline only; Codex /
-        // Gemini / OpenClaw runners read message.content.text and ignore
-        // file events, so dropping attachments silently would leave the user
-        // wondering why the image was skipped. Warn and send text only.
-        const flavor = session.metadata?.flavor;
-        const supportsAttachments = !flavor || flavor === 'claude';
+        // Image attachments are wired into the Claude SDK pipeline only. For
+        // interactive Claude remote, block the whole input so the app cannot
+        // bypass CLI-side attachment validation by stripping files first.
+        // Other unsupported agents keep the previous "send text only" path.
+        const { supportsAttachments } = getAttachmentSupportForSession(session);
         const effectiveAttachments = supportsAttachments ? attachments : undefined;
 
         if (attachments && attachments.length > 0 && !supportsAttachments) {
             Modal.alert(
                 t('imageUpload.notSupportedTitle'),
-                t('imageUpload.notSupportedMessage'),
+                t(getUnsupportedAttachmentTextKey(session, text)),
                 [{ text: t('common.ok'), style: 'cancel' }],
             );
+        }
+
+        if (attachments && attachments.length > 0 && !supportsAttachments && !shouldSendTextAfterDroppingAttachments(session, text)) {
+            return;
         }
 
         // Upload attachments and queue file events before the text message.

@@ -32,6 +32,7 @@ import { getProjectPath } from './utils/path';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RawJSONLinesSchema, type RawJSONLines } from './types';
+import { discoverClaudeSkills } from './utils/claudeSkills';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -86,7 +87,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const initialPermissionMode = applySandboxPermissionPolicy(
         resolveInitialClaudePermissionMode(options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE, options.claudeArgs),
         sandboxEnabled,
-    );
+    ) ?? DEFAULT_CLAUDE_PERMISSION_MODE;
     const dangerouslySkipPermissions =
         initialPermissionMode === 'bypassPermissions' ||
         initialPermissionMode === 'yolo' ||
@@ -281,69 +282,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
     }
 
-    // Ring buffer of user prompts that just arrived from the app via the
-    // legacy `sentFrom: 'web'` channel. The remote-mode session scanner
-    // (started below) walks the on-disk Claude JSONL looking for prompts
-    // that landed in the file but never reached the server — i.e. the
-    // ones the user typed in a `claude --resume <id>` terminal sitting
-    // alongside this Happy session. App-sent prompts also land in the
-    // JSONL once the SDK writes them, so we'd double-forward them
-    // without this dedupe. Match by content within a short time window;
-    // entries older than 5 minutes roll off so unrelated future prompts
-    // with identical text still get through from the terminal side.
-    const recentAppPromptsMaxAgeMs = 5 * 60 * 1000;
-    const recentAppPrompts: Array<{ text: string; addedAt: number }> = [];
-    const recordAppPrompt = (text: string) => {
-        const now = Date.now();
-        recentAppPrompts.push({ text, addedAt: now });
-        const cutoff = now - recentAppPromptsMaxAgeMs;
-        while (recentAppPrompts.length > 0 && recentAppPrompts[0].addedAt < cutoff) {
-            recentAppPrompts.shift();
-        }
-    };
-    const consumeAppPrompt = (text: string): boolean => {
-        const cutoff = Date.now() - recentAppPromptsMaxAgeMs;
-        for (let i = 0; i < recentAppPrompts.length; i++) {
-            const entry = recentAppPrompts[i];
-            if (entry.addedAt < cutoff) continue;
-            if (entry.text === text) {
-                recentAppPrompts.splice(i, 1);
-                return true;
-            }
-        }
-        return false;
-    };
-
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
-
-    // Remote-mode session scanner: catches user-typed prompts that
-    // appeared in the Claude JSONL while we weren't looking — typically
-    // because the user opened `claude --resume <id>` in a terminal next
-    // to the running Happy session. SDK-emitted assistant + tool_result
-    // user messages keep flowing through the existing sdkToLogConverter
-    // pipeline; the scanner here only forwards things that pipeline
-    // can't see.
-    const initialScannerSessionId = forkClaudeSessionId
-        ?? (metadata.claudeSessionId ?? null);
-    const remoteScanner = await createSessionScanner({
-        sessionId: initialScannerSessionId,
-        workingDirectory,
-        onMessage: (raw) => {
-            if (currentRunMode !== 'remote') return;
-            // Only user-typed prompts. SDK pipeline owns assistant and
-            // tool_result-bearing user messages.
-            if (raw.type !== 'user') return;
-            if ((raw as any).isSidechain) return;
-            const content = (raw as any).message?.content;
-            if (typeof content !== 'string') return;
-            // Drop empty / whitespace-only lines.
-            if (content.trim().length === 0) return;
-            // App-sent prompts will show up here because the SDK
-            // writes them to the JSONL — dedupe by content.
-            if (consumeAppPrompt(content)) return;
-            session.sendClaudeSessionMessage(raw);
-        },
-    });
 
     // Start Happy MCP server
     const happyServer = await startHappyServer(session);
@@ -358,28 +297,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         onSessionHook: (sessionId, data) => {
             logger.debug(`[START] Session hook received: ${sessionId}`, data);
 
-            // Tell the remote scanner about this sessionId so it knows
-            // which JSONL to watch (and so it can fire onNewSession for
-            // claude --resume hand-offs that mint a fresh session id).
-            //
-            // In remote mode every user prompt arrives via the SDK or the
-            // app channel — both of which already deliver their messages
-            // to the server before they hit disk. Anything the scanner
-            // finds in the JSONL at the moment it learns the session id
-            // is therefore already on the server; treating it as fresh
-            // (the previous behavior) replayed the whole history back to
-            // the chat on reconnect. The scanner's real job is forwarding
-            // *future* JSONL writes from a parallel `claude --resume`
-            // terminal, which the file watcher will pick up.
-            remoteScanner.onNewSession(sessionId, { treatExistingAsProcessed: true });
-
             // Update session ID in the Session instance
             if (currentSession) {
                 const previousSessionId = currentSession.sessionId;
                 if (previousSessionId !== sessionId) {
                     logger.debug(`[START] Claude session ID changed: ${previousSessionId} -> ${sessionId}`);
-                    currentSession.onSessionFound(sessionId);
                 }
+                currentSession.onSessionFound(sessionId);
             }
         }
     });
@@ -422,6 +346,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
     let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
+    const initialEnhancedMode: EnhancedMode = {
+        permissionMode: initialPermissionMode,
+        model: options.model ?? DEFAULT_CLAUDE_MODEL,
+        effort: DEFAULT_CLAUDE_EFFORT,
+    };
 
     const resetCurrentModeDefaults = () => {
         currentPermissionMode = initialPermissionMode;
@@ -447,18 +376,18 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // bucket bound to the next message — no shared push-array between batches.
     session.onFileEvent((fileEvent) => {
         const ev = fileEvent.content.data.ev;
-        logger.debug(`[loop] File event received: ${ev.name} (${ev.size} bytes, ref: ${ev.ref})`);
+        logger.debug('[loop] File attachment event received');
         const downloadPromise = (async (): Promise<{ data: Uint8Array; mimeType: string; name: string } | null> => {
             try {
                 const decrypted = await session.downloadAndDecryptAttachment(ev.ref);
                 if (!decrypted) {
-                    logger.debug(`[loop] Failed to decrypt attachment: ${ev.name}`);
+                    logger.debug('[loop] Failed to decrypt attachment');
                     return null;
                 }
-                logger.debug(`[loop] Attachment decrypted: ${ev.name} (${decrypted.length} bytes)`);
+                logger.debug('[loop] Attachment decrypted');
                 return { data: decrypted, mimeType: ev.mimeType ?? 'image/jpeg', name: ev.name };
-            } catch (error) {
-                logger.debug(`[loop] Failed to download attachment: ${ev.name}`, { error });
+            } catch {
+                logger.debug('[loop] Failed to download attachment');
                 return null;
             }
         })();
@@ -466,13 +395,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     });
 
     session.onUserMessage(async (message) => {
-
-        // Stamp the prompt so the remote-mode JSONL scanner can dedupe
-        // it later — the SDK is about to write this same text to disk
-        // with a real Claude uuid, and we don't want to re-forward it.
-        if (message?.content?.text) {
-            recordAppPrompt(message.content.text);
-        }
 
         // Claim every file attachment that arrived strictly before this text.
         // New file events from this point on belong to the next user message.
@@ -620,29 +542,57 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             return;
         }
 
-        if (specialCommand.type === 'mcp' || specialCommand.type === 'skills') {
-            // In local mode, let Claude Code handle these commands natively
-            if (currentRunMode === 'local') {
-                logger.debug(`[start] /${specialCommand.type} in local mode — passing through to Claude Code`);
+        if (specialCommand.type === 'skills') {
+            logger.debug('[start] Detected /skills command, generating Happy-visible response');
+            const metadata = session.getMetadata();
+            const metadataSkills = metadata?.skills ?? metadata?.slashCommands;
+            const skills = metadataSkills && metadataSkills.length > 0
+                ? metadataSkills
+                : await discoverClaudeSkills(workingDirectory);
+            if ((!metadataSkills || metadataSkills.length === 0) && skills.length > 0) {
+                session.updateMetadata((currentMetadata) => ({
+                    ...currentMetadata,
+                    skills,
+                }));
+            }
+            const responseText = skills.length > 0
+                ? '**Available Skills**\n\n' + skills.map(s => `- /${s}`).join('\n')
+                : 'No skills available. Session may still be initializing — try again after sending a message.';
+
+            session.sendClaudeSessionMessage({
+                type: 'assistant',
+                uuid: randomUUID(),
+                parentUuid: null,
+                isSidechain: false,
+                sessionId: session.sessionId || 'unknown',
+                timestamp: new Date().toISOString(),
+                message: {
+                    role: 'assistant',
+                    model: 'system',
+                    content: [{ type: 'text', text: responseText }],
+                },
+            } as any);
+            return;
+        }
+
+        if (specialCommand.type === 'mcp') {
+            const metadata = session.getMetadata();
+            const runtimeKind = metadata?.claudeRuntime?.kind;
+
+            // In local mode, and in interactive remote mode, let Claude Code
+            // handle these commands natively. The metadata-backed response is
+            // only for the SDK remote runtime.
+            if (currentRunMode === 'local' || runtimeKind === 'interactive') {
+                logger.debug(`[start] /${specialCommand.type} in ${currentRunMode} mode (${runtimeKind ?? 'unknown'} runtime) — passing through to Claude Code`);
             } else {
                 logger.debug(`[start] Detected /${specialCommand.type} command in remote mode`);
-                const metadata = session.getMetadata();
                 let responseText: string;
 
-                if (specialCommand.type === 'mcp') {
-                    const servers = metadata?.mcpServers;
-                    if (servers && servers.length > 0) {
-                        responseText = '**MCP Servers**\n\n' + servers.map(s => `- **${s.name}** — ${s.status}`).join('\n');
-                    } else {
-                        responseText = 'No MCP servers configured. Session may still be initializing — try again after sending a message.';
-                    }
+                const servers = metadata?.mcpServers;
+                if (servers && servers.length > 0) {
+                    responseText = '**MCP Servers**\n\n' + servers.map(s => `- **${s.name}** — ${s.status}`).join('\n');
                 } else {
-                    const skills = metadata?.skills ?? metadata?.slashCommands;
-                    if (skills && skills.length > 0) {
-                        responseText = '**Available Skills**\n\n' + skills.map(s => `- /${s}`).join('\n');
-                    } else {
-                        responseText = 'No skills available. Session may still be initializing — try again after sending a message.';
-                    }
+                    responseText = 'No MCP servers configured. Session may still be initializing — try again after sending a message.';
                 }
 
                 session.sendClaudeSessionMessage({
@@ -714,7 +664,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 }
 
                 // Cleanup session resources (intervals, callbacks)
-                currentSession?.cleanup();
+                await currentSession?.cleanup();
 
                 // Send session death message
                 session.sendSessionDeath();
@@ -742,9 +692,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Stop Hook server and cleanup settings file
             hookServer.stop();
             cleanupHookSettingsFile(hookSettingsPath);
-
-            // Stop the remote JSONL scanner (file watchers + intervals).
-            await remoteScanner.cleanup();
 
             logger.debug('[START] Cleanup complete, exiting');
             process.exit(0);
@@ -784,6 +731,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         permissionMode: initialPermissionMode,
         startingMode: options.startingMode,
         messageQueue,
+        initialMode: initialEnhancedMode,
         api,
         allowedTools: happyServer.toolNames.map(toolName => `mcp__happy__${toolName}`),
         onModeChange: (newMode) => {
@@ -815,7 +763,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Cleanup session resources (intervals, callbacks) - prevents memory leak
     // Note: currentSession is set by onSessionReady callback during loop()
-    (currentSession as Session | null)?.cleanup();
+    await (currentSession as Session | null)?.cleanup();
 
     // Send session death message
     session.sendSessionDeath();

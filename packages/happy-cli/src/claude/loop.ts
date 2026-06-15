@@ -2,8 +2,8 @@ import { ApiSessionClient } from "@/api/apiSession"
 import { MessageQueue2 } from "@/utils/MessageQueue2"
 import { logger } from "@/ui/logger"
 import { Session } from "./session"
-import { claudeLocalLauncher, LauncherResult } from "./claudeLocalLauncher"
-import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
+import { claudeLocalLauncher } from "./claudeLocalLauncher"
+import { claudeInteractiveRemoteLauncher } from "./claudeInteractiveRemoteLauncher"
 import { ApiClient } from "@/lib"
 import type { JsRuntime } from "./runClaude"
 import type { SandboxConfig } from "@/persistence"
@@ -39,6 +39,7 @@ interface LoopOptions {
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
     messageQueue: MessageQueue2<EnhancedMode>
+    initialMode: EnhancedMode
     allowedTools?: string[]
     sandboxConfig?: SandboxConfig
     onSessionReady?: (session: Session) => void
@@ -58,6 +59,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
         client: opts.session,
         path: opts.path,
         sessionId: null,
+        initialMode: opts.initialMode,
         claudeEnvVars: opts.claudeEnvVars,
         claudeArgs: opts.claudeArgs,
         mcpServers: opts.mcpServers,
@@ -94,18 +96,8 @@ export async function loop(opts: LoopOptions): Promise<number> {
             }
 
             case 'remote': {
-                const reason = await claudeRemoteLauncher(session);
-                switch (reason) {
-                    case 'exit':
-                        return 0;
-                    case 'switch':
-                        mode = 'local';
-                        opts.onModeChange?.(mode);
-                        break;
-                    default:
-                        const _: never = reason satisfies never;
-                }
-                break;
+                const result = await claudeInteractiveRemoteLauncher(session);
+                return result.code;
             }
 
             default: {

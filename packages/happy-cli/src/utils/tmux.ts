@@ -70,7 +70,7 @@ export type TmuxWindowOperation =
     | 'pipe-pane' | 'pipe'
     // Buffer operations
     | 'list-buffers' | 'lb' | 'save-buffer' | 'sb'
-    | 'delete-buffer' | 'db'
+    | 'paste-buffer' | 'pb' | 'delete-buffer' | 'db'
     // Advanced operations
     | 'resize-pane' | 'resize' | 'rp'
     | 'swap-pane' | 'swap'
@@ -88,6 +88,15 @@ export interface TmuxCommandResult {
     stdout: string;
     stderr: string;
     command: string[];
+}
+
+export interface TmuxSpawnResult {
+    success: boolean;
+    sessionId?: string;
+    pid?: number;
+    windowId?: string;
+    paneId?: string;
+    error?: string;
 }
 
 export interface TmuxSessionInfo {
@@ -321,6 +330,8 @@ const WIN_OPS: Record<TmuxWindowOperation, string> = {
     'lb': 'list-buffers',
     'save-buffer': 'save-buffer',
     'sb': 'save-buffer',
+    'paste-buffer': 'paste-buffer',
+    'pb': 'paste-buffer',
     'delete-buffer': 'delete-buffer',
     'db': 'delete-buffer',
 
@@ -343,8 +354,44 @@ const COMMANDS_SUPPORTING_TARGET = new Set([
     'send-keys', 'capture-pane', 'new-window', 'kill-window',
     'select-window', 'split-window', 'select-pane', 'kill-pane',
     'select-layout', 'display-message', 'attach-session', 'detach-client',
-    'new-session', 'kill-session', 'list-windows', 'list-panes'
+    'new-session', 'kill-session', 'list-windows', 'list-panes',
+    'paste-buffer', 'resize-pane'
 ]);
+
+function isRawTmuxPaneId(value: string | undefined): value is string {
+    return typeof value === 'string' && /^%\d+$/.test(value);
+}
+
+function isRawTmuxWindowId(value: string | undefined): value is string {
+    return typeof value === 'string' && /^@\d+$/.test(value);
+}
+
+function buildTmuxTarget(session: string, window?: string, pane?: string): string {
+    if (isRawTmuxPaneId(pane)) {
+        return pane;
+    }
+
+    if (isRawTmuxPaneId(session) || isRawTmuxWindowId(session)) {
+        return session;
+    }
+
+    if (!pane && isRawTmuxWindowId(window)) {
+        return window;
+    }
+
+    let target: string = session;
+    if (window) target += `:${window}`;
+    if (pane) target += `.${pane}`;
+    return target;
+}
+
+function buildTmuxNewWindowTarget(session: string, window?: string, pane?: string): string {
+    if (window || pane || isRawTmuxPaneId(session) || isRawTmuxWindowId(session)) {
+        return buildTmuxTarget(session, window, pane);
+    }
+
+    return `${session}:`;
+}
 
 // Control sequences that must be separate arguments with proper typing
 const CONTROL_SEQUENCES: Set<TmuxControlSequence> = new Set([
@@ -360,7 +407,7 @@ export class TmuxUtilities {
     private controlState: TmuxControlState = TmuxControlState.NORMAL;
     public readonly sessionName: string;
 
-    constructor(sessionName?: string) {
+    constructor(sessionName?: string, private readonly clientEnv?: Record<string, string>) {
         this.sessionName = sessionName || TmuxUtilities.DEFAULT_SESSION_NAME;
     }
 
@@ -434,12 +481,27 @@ export class TmuxUtilities {
             const fullCmd = [...baseCmd, cmd[0]];
 
             // Add target specification immediately after send-keys
-            let target = targetSession;
-            if (window) target += `:${window}`;
-            if (pane) target += `.${pane}`;
-            fullCmd.push('-t', target);
+            fullCmd.push('-t', buildTmuxTarget(targetSession, window, pane));
 
             // Add keys and control sequences
+            fullCmd.push(...cmd.slice(1));
+
+            return this.executeCommand(fullCmd);
+        } else if (cmd.length > 0 && cmd[0] === 'display-message') {
+            const fullCmd = [...baseCmd, cmd[0]];
+
+            // display-message accepts a positional message/format argument;
+            // -t must be before it or tmux treats the later -t as an extra arg.
+            fullCmd.push('-t', buildTmuxTarget(targetSession, window, pane));
+            fullCmd.push(...cmd.slice(1));
+
+            return this.executeCommand(fullCmd);
+        } else if (cmd.length > 0 && cmd[0] === 'new-window') {
+            const fullCmd = [...baseCmd, cmd[0]];
+
+            // new-window accepts a positional shell-command; -t must be before it
+            // or tmux passes the trailing target tokens to the spawned command.
+            fullCmd.push('-t', buildTmuxNewWindowTarget(targetSession, window, pane));
             fullCmd.push(...cmd.slice(1));
 
             return this.executeCommand(fullCmd);
@@ -449,10 +511,7 @@ export class TmuxUtilities {
 
             // Add target specification for commands that support it
             if (cmd.length > 0 && COMMANDS_SUPPORTING_TARGET.has(cmd[0])) {
-                let target = targetSession;
-                if (window) target += `:${window}`;
-                if (pane) target += `.${pane}`;
-                fullCmd.push('-t', target);
+                fullCmd.push('-t', buildTmuxTarget(targetSession, window, pane));
             }
 
             return this.executeCommand(fullCmd);
@@ -487,6 +546,7 @@ export class TmuxUtilities {
                 timeout: 5000,
                 shell: false,
                 windowsHide: true,
+                ...(this.clientEnv ? { env: this.clientEnv } : {}),
                 ...options
             });
 
@@ -613,6 +673,33 @@ export class TmuxUtilities {
     }
 
     /**
+     * Capture full visible pane text.
+     */
+    async capturePaneText(
+        session?: string,
+        window?: string,
+        pane?: string
+    ): Promise<string> {
+        const result = await this.executeTmuxCommand(['capture-pane', '-p'], session, window, pane);
+        if (result && result.returncode === 0) {
+            return result.stdout || '';
+        }
+        return '';
+    }
+
+    /**
+     * Check whether a tmux target still resolves to a live pane/window.
+     */
+    async isPaneAlive(
+        session?: string,
+        window?: string,
+        pane?: string
+    ): Promise<boolean> {
+        const result = await this.executeTmuxCommand(['display-message', '-p', '#{pane_id}'], session, window, pane);
+        return result !== null && result.returncode === 0;
+    }
+
+    /**
      * Check if user is actively typing
      */
     async isUserTyping(
@@ -659,6 +746,59 @@ export class TmuxUtilities {
             const result = await this.executeTmuxCommand(['send-keys', keys], session, window, pane);
             return result !== null && result.returncode === 0;
         }
+    }
+
+    /**
+     * Paste arbitrary text via a tmux buffer so multiline payloads are not sent as raw key events.
+     */
+    async pasteText(
+        text: string,
+        session?: string,
+        window?: string,
+        pane?: string
+    ): Promise<boolean> {
+        const bufferName = `happy-paste-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const setResult = await this.executeTmuxCommand(['set-buffer', '-b', bufferName, text]);
+        if (!setResult || setResult.returncode !== 0) {
+            return false;
+        }
+
+        let pasteSucceeded = false;
+        try {
+            const pasteResult = await this.executeTmuxCommand(['paste-buffer', '-b', bufferName], session, window, pane);
+            pasteSucceeded = pasteResult !== null && pasteResult.returncode === 0;
+        } finally {
+            const deleteResult = await this.executeTmuxCommand(['delete-buffer', '-b', bufferName]);
+            if (!deleteResult || deleteResult.returncode !== 0) {
+                return false;
+            }
+        }
+
+        return pasteSucceeded;
+    }
+
+    /**
+     * Resize a tmux pane to the requested dimensions.
+     */
+    async resizePane(
+        cols: number,
+        rows: number,
+        session?: string,
+        window?: string,
+        pane?: string
+    ): Promise<boolean> {
+        if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) {
+            logger.debug('[TMUX] Invalid pane dimensions provided to resizePane');
+            return false;
+        }
+
+        const result = await this.executeTmuxCommand(
+            ['resize-pane', '-x', String(cols), '-y', String(rows)],
+            session,
+            window,
+            pane
+        );
+        return result !== null && result.returncode === 0;
     }
 
     /**
@@ -746,7 +886,7 @@ export class TmuxUtilities {
         args: string[],
         options: TmuxSpawnOptions = {},
         env?: Record<string, string>
-    ): Promise<{ success: boolean; sessionId?: string; pid?: number; error?: string }> {
+    ): Promise<TmuxSpawnResult> {
         try {
             // Check if tmux is available
             const tmuxCheck = await this.executeTmuxCommand(['list-sessions']);
@@ -825,12 +965,13 @@ export class TmuxUtilities {
                 logger.debug(`[TMUX] Setting ${Object.keys(env).length} environment variables in tmux window`);
             }
 
+            // Print stable pane/window identifiers immediately. These flags must
+            // come before the shell command; tmux treats following args as command text.
+            createWindowArgs.push('-P');
+            createWindowArgs.push('-F', '#{pane_pid}\t#{window_id}\t#{pane_id}');
+
             // Add the command to run in the window (runs immediately when window is created)
             createWindowArgs.push(fullCommand);
-
-            // Add -P flag to print the pane PID immediately
-            createWindowArgs.push('-P');
-            createWindowArgs.push('-F', '#{pane_pid}');
 
             // Create window with command and get PID immediately
             const createResult = await this.executeTmuxCommand(createWindowArgs, sessionName);
@@ -839,11 +980,14 @@ export class TmuxUtilities {
                 throw new Error(`Failed to create tmux window: ${createResult?.stderr}`);
             }
 
-            // Extract the PID from the output
-            const panePid = parseInt(createResult.stdout.trim());
+            // Extract the PID and stable tmux identifiers from the output.
+            const [panePidText, windowIdText, paneIdText] = createResult.stdout.trim().split('\t');
+            const panePid = parseInt(panePidText ?? '', 10);
             if (isNaN(panePid)) {
                 throw new Error(`Failed to extract PID from tmux output: ${createResult.stdout}`);
             }
+            const windowId = windowIdText?.trim() || undefined;
+            const paneId = paneIdText?.trim() || undefined;
 
             logger.debug(`[TMUX] Spawned command in tmux session ${sessionName}, window ${windowName}, PID ${panePid}`);
 
@@ -856,7 +1000,9 @@ export class TmuxUtilities {
             return {
                 success: true,
                 sessionId: formatTmuxSessionIdentifier(sessionIdentifier),
-                pid: panePid
+                pid: panePid,
+                windowId,
+                paneId
             };
         } catch (error) {
             logger.debug('[TMUX] Failed to spawn in tmux:', error);
@@ -890,13 +1036,18 @@ export class TmuxUtilities {
      */
     async killWindow(sessionIdentifier: string): Promise<boolean> {
         try {
+            if (isRawTmuxWindowId(sessionIdentifier)) {
+                const result = await this.executeTmuxCommand(['kill-window'], sessionIdentifier);
+                return result !== null && result.returncode === 0;
+            }
+
             const parsed = parseTmuxSessionIdentifier(sessionIdentifier);
             if (!parsed.window) {
                 throw new TmuxSessionIdentifierError(`Window identifier required: ${sessionIdentifier}`);
             }
 
-            const result = await this.executeWinOp('kill-window', [parsed.window], parsed.session);
-            return result;
+            const result = await this.executeTmuxCommand(['kill-window'], parsed.session, parsed.window);
+            return result !== null && result.returncode === 0;
         } catch (error) {
             if (error instanceof TmuxSessionIdentifierError) {
                 logger.debug(`[TMUX] Invalid window identifier: ${error.message}`);
@@ -943,9 +1094,9 @@ export function getTmuxUtilities(sessionName?: string): TmuxUtilities {
     return _tmuxUtils;
 }
 
-export async function isTmuxAvailable(): Promise<boolean> {
+export async function isTmuxAvailable(clientEnv?: Record<string, string>): Promise<boolean> {
     try {
-        const utils = new TmuxUtilities();
+        const utils = new TmuxUtilities(undefined, clientEnv);
         const result = await utils.executeTmuxCommand(['list-sessions']);
         return result !== null;
     } catch {

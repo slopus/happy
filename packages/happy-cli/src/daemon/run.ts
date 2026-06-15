@@ -22,6 +22,7 @@ import { startDaemonControlServer } from './controlServer';
 import { statSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
+import { sanitizeTmuxClientEnvironment } from '@/claude/interactive/terminalEnvironment';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { detectCLIAvailability } from '@/utils/detectCLI';
@@ -32,6 +33,40 @@ import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
     return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
+type DaemonAgent = 'claude' | 'codex' | 'gemini' | 'openclaw';
+
+export function normalizeDaemonAgent(agent: SpawnSessionOptions['agent'] | undefined): DaemonAgent | null {
+  if (agent === undefined || agent === 'claude') {
+    return 'claude';
+  }
+  if (agent === 'codex' || agent === 'gemini' || agent === 'openclaw') {
+    return agent;
+  }
+  return null;
+}
+
+export function shouldSpawnHappyControllerInTmux(input: {
+  agent: DaemonAgent;
+  tmuxAvailable: boolean;
+  tmuxSessionName: string | undefined;
+}): boolean {
+  if (input.agent === 'claude') {
+    return false;
+  }
+  return input.tmuxAvailable && input.tmuxSessionName !== undefined;
+}
+
+export function shouldProbeHappyControllerTmuxAvailability(input: {
+  agent: DaemonAgent;
+  tmuxSessionName: string | undefined;
+}): boolean {
+  return input.agent !== 'claude' && input.tmuxSessionName !== undefined;
+}
+
+export function getHappyControllerTmuxAvailabilityProbeEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  return sanitizeTmuxClientEnvironment(env);
 }
 
 // Prepare initial metadata
@@ -375,21 +410,30 @@ export async function startDaemon(): Promise<void> {
           };
         }
 
-        // Check if tmux is available and should be used
-        const tmuxAvailable = await isTmuxAvailable();
-        let useTmux = tmuxAvailable;
+        const agent = normalizeDaemonAgent(options.agent);
+        if (!agent) {
+          return {
+            type: 'error',
+            errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
+          };
+        }
 
-        // Get tmux session name from environment variables (now set by profile system)
-        // Empty string means "use current/most recent session" (tmux default behavior)
-        let tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
+        // Get tmux session name from environment variables (now set by profile system).
+        // Claude keeps the Happy controller outside tmux; the managed Claude
+        // terminal transport uses tmux only when TMUX_SESSION_NAME is non-empty.
+        const tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
+        const shouldProbeTmuxAvailability = shouldProbeHappyControllerTmuxAvailability({ agent, tmuxSessionName });
+        const tmuxAvailable = shouldProbeTmuxAvailability
+          ? await isTmuxAvailable(getHappyControllerTmuxAvailabilityProbeEnv({ ...process.env, ...extraEnv }))
+          : false;
+        let useTmux = shouldSpawnHappyControllerInTmux({ agent, tmuxAvailable, tmuxSessionName });
 
-        // If tmux is not available or session name is explicitly undefined, fall back to regular spawning
-        // Note: Empty string is valid (means use current/most recent tmux session)
-        if (!tmuxAvailable || tmuxSessionName === undefined) {
-          useTmux = false;
-          if (tmuxSessionName !== undefined) {
-            logger.debug(`[DAEMON RUN] tmux session name specified but tmux not available, falling back to regular spawning`);
-          }
+        // Claude keeps the Happy controller as a regular process; its launcher owns tmux/PTY.
+        if (shouldProbeTmuxAvailability && !tmuxAvailable) {
+          logger.debug(`[DAEMON RUN] tmux session name specified but tmux not available, falling back to regular spawning`);
+        }
+        if (agent === 'claude' && tmuxSessionName !== undefined) {
+          logger.debug(`[DAEMON RUN] Claude interactive remote keeps Happy controller outside tmux; tmux is reserved for the managed Claude terminal`);
         }
 
         if (useTmux && tmuxSessionName !== undefined) {
@@ -401,8 +445,6 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : 'claude'));
           const resumeId = agent === 'claude'
             ? options.resumeClaudeSessionId
             : (agent === 'codex' ? options.resumeCodexThreadId : undefined);
@@ -492,27 +534,7 @@ export async function startDaemon(): Promise<void> {
           logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
           // Construct arguments for the CLI - support claude, codex, and gemini
-          let agentCommand: string;
-          switch (options.agent) {
-            case 'claude':
-            case undefined:
-              agentCommand = 'claude';
-              break;
-            case 'codex':
-              agentCommand = 'codex';
-              break;
-            case 'gemini':
-              agentCommand = 'gemini';
-              break;
-            case 'openclaw':
-              agentCommand = 'openclaw';
-              break;
-            default:
-              return {
-                type: 'error',
-                errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
-              };
-          }
+          const agentCommand = agent;
           const args = [
             agentCommand,
             '--happy-starting-mode', 'remote',

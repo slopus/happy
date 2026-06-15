@@ -1,0 +1,61 @@
+type AttachmentSupportSession = {
+    metadata?: {
+        flavor?: string | null;
+        claudeRuntime?: {
+            kind?: string;
+            state?: string;
+            backend?: string;
+            capabilities?: string[];
+            claudeSessionId?: string;
+            terminalId?: string;
+            message?: string;
+            updatedAt?: number;
+        };
+    } | null;
+};
+
+export type AttachmentUnsupportedTextKey =
+    | 'imageUpload.notSupportedMessage'
+    | 'imageUpload.notSupportedAttachmentOnlyMessage'
+    | 'imageUpload.interactiveClaudeNotSupportedMessage';
+
+export function getAttachmentSupportForSession(session: AttachmentSupportSession): {
+    supportsAttachments: boolean;
+    unsupportedTextKey: AttachmentUnsupportedTextKey;
+} {
+    const flavor = session.metadata?.flavor;
+    const isInteractiveClaudeRemote = flavor === 'claude'
+        && session.metadata?.claudeRuntime?.kind === 'interactive';
+
+    return {
+        supportsAttachments: (!flavor || flavor === 'claude') && !isInteractiveClaudeRemote,
+        unsupportedTextKey: isInteractiveClaudeRemote
+            ? 'imageUpload.interactiveClaudeNotSupportedMessage'
+            : 'imageUpload.notSupportedMessage',
+    };
+}
+
+export function shouldSendTextAfterDroppingAttachments(
+    session: AttachmentSupportSession,
+    text: string,
+): boolean {
+    const support = getAttachmentSupportForSession(session);
+    if (support.unsupportedTextKey === 'imageUpload.interactiveClaudeNotSupportedMessage') {
+        return false;
+    }
+    return text.trim().length > 0;
+}
+
+export function getUnsupportedAttachmentTextKey(
+    session: AttachmentSupportSession,
+    text: string,
+): AttachmentUnsupportedTextKey {
+    const support = getAttachmentSupportForSession(session);
+    if (shouldSendTextAfterDroppingAttachments(session, text)) {
+        return support.unsupportedTextKey;
+    }
+    if (support.unsupportedTextKey === 'imageUpload.interactiveClaudeNotSupportedMessage') {
+        return support.unsupportedTextKey;
+    }
+    return 'imageUpload.notSupportedAttachmentOnlyMessage';
+}

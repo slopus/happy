@@ -21,12 +21,19 @@ export async function createSessionScanner(opts: {
     sessionId: string | null,
     workingDirectory: string
     onMessage: (message: RawJSONLines) => void
+    onTranscriptMissing?: (sessionId: string) => void
     /**
      * How long a session transcript may stay absent before its watcher gives
      * up and the session is dropped. Defaults to the startFileWatcher default
      * (60s). Exposed mainly so tests can exercise the drop path quickly.
      */
     missingFileTimeoutMs?: number
+    /**
+     * Interactive terminal sessions can emit SessionStart before Claude writes
+     * the transcript file. Keep the current session retryable so a late JSONL
+     * file is still picked up by periodic flushes.
+     */
+    keepMissingCurrentSession?: boolean
 }) {
 
     // Resolve project directory
@@ -126,8 +133,13 @@ export async function createSessionScanner(opts: {
                             logger.debug(`[SESSION_SCANNER] Session ${p} transcript never appeared — dropping it`);
                             watchers.get(p)?.();
                             watchers.delete(p);
+                            if (opts.keepMissingCurrentSession && p === currentSessionId) {
+                                opts.onTranscriptMissing?.(p);
+                                return;
+                            }
                             deadSessions.add(p);
                             pendingSessions.delete(p);
+                            opts.onTranscriptMissing?.(p);
                         },
                     },
                 ));
@@ -141,6 +153,9 @@ export async function createSessionScanner(opts: {
 
     // Public interface
     return {
+        flush: async () => {
+            await sync.invalidateAndAwait();
+        },
         cleanup: async () => {
             clearInterval(intervalId);
             for (let w of watchers.values()) {

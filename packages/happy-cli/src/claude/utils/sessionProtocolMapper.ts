@@ -420,6 +420,23 @@ function toToolArgs(input: unknown): Record<string, unknown> {
     return { input };
 }
 
+function shouldCloseAssistantTurn(message: RawJSONLines, blocks: Array<{ type?: unknown }>): boolean {
+    if (message.type !== 'assistant' || message.isSidechain || message.message?.stop_reason !== 'end_turn') {
+        return false;
+    }
+
+    if (blocks.length === 0) {
+        return true;
+    }
+
+    return blocks.some((block) => block.type !== 'thinking');
+}
+
+function isTurnDurationSystemMessage(message: RawJSONLines): boolean {
+    const raw = message as { subtype?: unknown };
+    return message.type === 'system' && raw.subtype === 'turn_duration';
+}
+
 export function closeClaudeTurnWithStatus(
     state: ClaudeSessionProtocolState,
     status: SessionTurnEndStatus,
@@ -467,6 +484,10 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     }
 
     if (message.type === 'system') {
+        if (isTurnDurationSystemMessage(message)) {
+            closeTurn(state, 'completed', envelopes);
+        }
+
         return {
             currentTurnId: state.currentTurnId,
             envelopes,
@@ -537,6 +558,10 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                     envelopes.push(...replay.envelopes);
                 }
             }
+        }
+
+        if (shouldCloseAssistantTurn(message, blocks)) {
+            closeTurn(state, 'completed', envelopes);
         }
 
         return {
