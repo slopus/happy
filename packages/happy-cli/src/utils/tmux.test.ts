@@ -5,7 +5,20 @@
  * They do NOT require tmux to be installed on the system.
  * All tests mock environment variables and test string parsing only.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const childProcessMock = vi.hoisted(() => ({
+    spawn: vi.fn(),
+}));
+
+vi.mock('child_process', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('child_process')>();
+    return {
+        ...actual,
+        spawn: childProcessMock.spawn,
+    };
+});
+
 import {
     parseTmuxSessionIdentifier,
     formatTmuxSessionIdentifier,
@@ -15,6 +28,10 @@ import {
     TmuxUtilities,
     type TmuxSessionIdentifier,
 } from './tmux';
+
+beforeEach(() => {
+    childProcessMock.spawn.mockReset();
+});
 
 describe('parseTmuxSessionIdentifier', () => {
     it('should parse session-only identifier', () => {
@@ -456,6 +473,26 @@ describe('Round-trip consistency', () => {
 });
 
 describe('TmuxUtilities terminal helpers', () => {
+    it('runs tmux subprocesses with the configured client environment', async () => {
+        const clientEnv = {
+            HOME: '/Users/devdvlive',
+            PATH: '/opt/bin:/usr/bin',
+        };
+        const utils = new (TmuxUtilities as any)('happy', clientEnv);
+        const child = createMockChildProcess();
+        childProcessMock.spawn.mockReturnValue(child);
+
+        await (utils as any).runCommand(['tmux', 'list-sessions']);
+
+        expect(childProcessMock.spawn).toHaveBeenCalledWith(
+            'tmux',
+            ['list-sessions'],
+            expect.objectContaining({
+                env: clientEnv,
+            }),
+        );
+    });
+
     it('returns stable tmux ids when spawning a new window', async () => {
         const utils = new TmuxUtilities('happy');
         const executeCommand = vi.spyOn(utils as any, 'executeCommand').mockImplementation(async (cmd) => {
@@ -638,3 +675,18 @@ describe('TmuxUtilities terminal helpers', () => {
         ]);
     });
 });
+
+function createMockChildProcess() {
+    const child = {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, handler: (code?: number) => void) => {
+            if (event === 'close') {
+                queueMicrotask(() => handler(0));
+            }
+            return child;
+        }),
+    };
+
+    return child;
+}

@@ -8,7 +8,7 @@ import {
 
 export async function createTerminalTransport(env: NodeJS.ProcessEnv = process.env): Promise<TerminalTransport | null> {
     const tmuxSessionName = typeof env.TMUX_SESSION_NAME === 'string' && env.TMUX_SESSION_NAME.trim().length > 0
-        ? env.TMUX_SESSION_NAME
+        ? env.TMUX_SESSION_NAME.trim()
         : null;
     const backend = chooseTerminalBackend({
         tmuxConfigured: tmuxSessionName !== null,

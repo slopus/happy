@@ -407,7 +407,7 @@ export class TmuxUtilities {
     private controlState: TmuxControlState = TmuxControlState.NORMAL;
     public readonly sessionName: string;
 
-    constructor(sessionName?: string) {
+    constructor(sessionName?: string, private readonly clientEnv?: Record<string, string>) {
         this.sessionName = sessionName || TmuxUtilities.DEFAULT_SESSION_NAME;
     }
 
@@ -546,6 +546,7 @@ export class TmuxUtilities {
                 timeout: 5000,
                 shell: false,
                 windowsHide: true,
+                ...(this.clientEnv ? { env: this.clientEnv } : {}),
                 ...options
             });
 

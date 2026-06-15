@@ -4,6 +4,7 @@ import type {
     TerminalSpawnOptions,
     TerminalTransport,
 } from './terminalTransport';
+import { sanitizeTerminalEnvironment } from './terminalEnvironment';
 
 type PtyProcess = import('node-pty').IPty;
 type PtyDisposable = { dispose(): void };
@@ -26,14 +27,15 @@ export class PtyTerminalTransport implements TerminalTransport {
         }
 
         const nodePty = await import('node-pty');
-        const command = options.shell ? (process.env.SHELL || '/bin/sh') : options.command;
+        const env = sanitizeTerminalEnvironment(options.env);
+        const command = options.shell ? (env.SHELL || '/bin/sh') : options.command;
         const args = options.shell ? ['-lc', options.command] : options.args;
         const ptyProcess = nodePty.spawn(command, args, {
             name: 'xterm-256color',
             cols: 120,
             rows: 30,
             cwd: options.cwd,
-            env: buildPtyEnv(options.env),
+            env,
         });
 
         this.ptyProcess = ptyProcess;
@@ -130,18 +132,4 @@ function normalizeExitSignal(signal: number | string | null | undefined): string
         return null;
     }
     return String(signal);
-}
-
-function buildPtyEnv(env: Record<string, string>): Record<string, string> {
-    const merged: Record<string, string> = {};
-
-    for (const [key, value] of Object.entries(process.env)) {
-        if (value !== undefined) {
-            merged[key] = value;
-        }
-    }
-
-    Object.assign(merged, env);
-
-    return merged;
 }

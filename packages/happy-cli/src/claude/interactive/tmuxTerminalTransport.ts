@@ -1,6 +1,5 @@
 import {
     formatTmuxSessionIdentifier,
-    getTmuxUtilities,
     parseTmuxSessionIdentifier,
     TmuxUtilities,
 } from '@/utils/tmux';
@@ -11,6 +10,10 @@ import type {
     TerminalSpawnOptions,
     TerminalTransport,
 } from './terminalTransport';
+import {
+    sanitizeTerminalEnvironment,
+    sanitizeTmuxClientEnvironment,
+} from './terminalEnvironment';
 
 type TmuxPaneTarget = {
     session?: string;
@@ -37,7 +40,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
 
     constructor(
         private readonly sessionName: string = TmuxUtilities.DEFAULT_SESSION_NAME,
-        tmux: TmuxUtilities = getTmuxUtilities(sessionName),
+        tmux: TmuxUtilities = new TmuxUtilities(sessionName, sanitizeTmuxClientEnvironment(process.env)),
     ) {
         this.tmux = tmux;
     }
@@ -47,15 +50,16 @@ export class TmuxTerminalTransport implements TerminalTransport {
         this.exited = false;
         this.lastCaptureText = null;
         this.cleanupTarget = null;
+        const env = sanitizeTerminalEnvironment(options.env);
 
         const result = await this.tmux.spawnInTmux(
-            buildTmuxCommand(options),
+            buildHermeticTmuxCommand(options, env),
             {
                 cwd: options.cwd,
                 sessionName: this.sessionName,
                 windowName: options.windowName,
             },
-            filterTmuxEnvironment(options.env),
+            env,
         );
 
         if (!result.success || !result.sessionId) {
@@ -101,6 +105,7 @@ export class TmuxTerminalTransport implements TerminalTransport {
         const child = spawn('tmux', ['attach-session', '-t', attachTarget], {
             stdio: 'inherit',
             shell: false,
+            env: sanitizeTmuxClientEnvironment(process.env),
         });
         this.attachProcess = child;
 
@@ -282,6 +287,7 @@ function runTmuxClientCommand(args: string[]): Promise<void> {
         const child = spawn('tmux', args, {
             stdio: 'ignore',
             shell: false,
+            env: sanitizeTmuxClientEnvironment(process.env),
         });
         let stderr = '';
 
@@ -324,67 +330,18 @@ function waitForExit(child: ChildProcess): Promise<void> {
     });
 }
 
-const TMUX_ENV_EXACT_ALLOWLIST = new Set([
-    'ALL_PROXY',
-    'API_TIMEOUT_MS',
-    'COLORTERM',
-    'HAPPY_CLAUDE_PATH',
-    'HOME',
-    'HTTP_PROXY',
-    'HTTPS_PROXY',
-    'LANG',
-    'LOGNAME',
-    'NO_PROXY',
-    'NODE_EXTRA_CA_CERTS',
-    'PATH',
-    'SHELL',
-    'SSH_AUTH_SOCK',
-    'SSL_CERT_DIR',
-    'SSL_CERT_FILE',
-    'TERM',
-    'TMPDIR',
-    'USER',
-    'all_proxy',
-    'http_proxy',
-    'https_proxy',
-    'no_proxy',
-]);
-
-const TMUX_ENV_PREFIX_ALLOWLIST = [
-    'ANTHROPIC_',
-    'CLAUDE_',
-    'LC_',
-    'MCP_',
-] as const;
-
-function filterTmuxEnvironment(env: Record<string, string>): Record<string, string> {
-    const filtered: Record<string, string> = {};
-
-    for (const [key, value] of Object.entries(env)) {
-        if (isAllowedTmuxEnvironmentKey(key)) {
-            filtered[key] = value;
-        }
-    }
-
-    return filtered;
-}
-
-function isAllowedTmuxEnvironmentKey(key: string): boolean {
-    if (TMUX_ENV_EXACT_ALLOWLIST.has(key)) {
-        return true;
-    }
-
-    return TMUX_ENV_PREFIX_ALLOWLIST.some((prefix) => key.startsWith(prefix));
-}
-
-function buildTmuxCommand(options: TerminalSpawnOptions): string[] {
-    if (options.shell) {
-        return [options.command];
-    }
+function buildHermeticTmuxCommand(options: TerminalSpawnOptions, env: Record<string, string>): string[] {
+    const command = options.shell
+        ? [env.SHELL || '/bin/sh', '-lc', options.command]
+        : [options.command, ...(options.args ?? [])];
 
     return [
-        quoteShellArg(options.command),
-        ...(options.args ?? []).map(quoteShellArg),
+        'env',
+        '-i',
+        ...Object.entries(env)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([key, value]) => quoteShellArg(`${key}=${value}`)),
+        ...command.map(quoteShellArg),
     ];
 }
 

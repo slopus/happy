@@ -138,7 +138,7 @@ describe('TmuxTerminalTransport', () => {
         expect(result).toEqual({ pid: 456, terminalId: 'happy:claude' });
         expect(transport.terminalId).toBe('happy:claude');
         expect(tmux.spawnInTmux).toHaveBeenCalledWith(
-            ['claude'],
+            ['env', '-i', 'CLAUDE_CONFIG_DIR=/tmp/claude', 'claude'],
             {
                 cwd: '/tmp',
                 sessionName: 'happy-test',
@@ -151,7 +151,7 @@ describe('TmuxTerminalTransport', () => {
         await transport.dispose();
     });
 
-    it('passes only Claude runtime env through tmux filtering', async () => {
+    it('runs the tmux pane command with only Claude runtime env', async () => {
         const tmux = {
             spawnInTmux: vi.fn(async () => ({ success: true, sessionId: 'happy:claude', pid: 457 })),
             isPaneAlive: vi.fn(async () => true),
@@ -204,8 +204,26 @@ describe('TmuxTerminalTransport', () => {
             },
         });
 
+        const [command] = tmux.spawnInTmux.mock.calls[0] as unknown as [string[], unknown, unknown];
+        expect(command.slice(0, 2)).toEqual(['env', '-i']);
+        expect(command).toContain('ALL_PROXY=socks://proxy.example');
+        expect(command).toContain('ANTHROPIC_API_KEY=anthropic-key');
+        expect(command).toContain('CLAUDE_CODE_OAUTH_TOKEN=oauth-token');
+        expect(command).toContain('CLAUDE_CONFIG_DIR=/tmp/claude');
+        expect(command).toContain('HAPPY_CLAUDE_PATH=/opt/claude/bin/claude');
+        expect(command).toContain('PATH=/opt/bin:/usr/bin');
+        expect(command).toContain('claude');
+        expect(command.join(' ')).not.toContain('AUTHORIZATION=');
+        expect(command.join(' ')).not.toContain('COOKIE=');
+        expect(command.join(' ')).not.toContain('CUSTOM_KEY=');
+        expect(command.join(' ')).not.toContain('CUSTOM_SECRET=');
+        expect(command.join(' ')).not.toContain('GITHUB_TOKEN=');
+        expect(command.join(' ')).not.toContain('HAPPY_FORKED_FROM_SESSION_ID=');
+        expect(command.join(' ')).not.toContain('HAPPY_RECONNECT_ENCRYPTION_KEY=');
+        expect(command.join(' ')).not.toContain('HAPPY_SERVER_URL=');
+        expect(command.join(' ')).not.toContain('PASSWORD=');
         expect(tmux.spawnInTmux).toHaveBeenCalledWith(
-            ['claude'],
+            command,
             expect.objectContaining({
                 cwd: '/tmp',
                 sessionName: 'happy-test',
@@ -324,6 +342,46 @@ describe('PtyTerminalTransport', () => {
         transport.dispose();
     });
 
+    it('spawns with sanitized Claude runtime env only', async () => {
+        const ptyProcess = createMockPtyProcess({ pid: 791 });
+        nodePtyMock.spawn.mockReturnValue(ptyProcess);
+        const transport = new PtyTerminalTransport();
+
+        await withProcessEnv({
+            AUTHORIZATION: 'Bearer host-secret',
+            HAPPY_RECONNECT_ENCRYPTION_KEY: 'host-reconnect-key',
+            HAPPY_SERVER_URL: 'https://host-happy.example',
+        }, async () => {
+            await transport.spawn({
+                ...requiredSpawnOptions,
+                env: {
+                    ANTHROPIC_API_KEY: 'anthropic-key',
+                    AUTHORIZATION: 'Bearer option-secret',
+                    CLAUDE_CONFIG_DIR: '/tmp/claude',
+                    CUSTOM_KEY: 'custom-key',
+                    HAPPY_FORKED_FROM_SESSION_ID: 'fork-session',
+                    HAPPY_RECONNECT_ENCRYPTION_KEY: 'option-reconnect-key',
+                    HAPPY_SERVER_URL: 'https://option-happy.example',
+                    HOME: '/Users/devdvlive',
+                    MCP_CONNECTION_NONBLOCKING: '1',
+                    PATH: '/opt/bin:/usr/bin',
+                    TERM: 'xterm-256color',
+                },
+            });
+        });
+
+        const ptyOptions = nodePtyMock.spawn.mock.calls[0][2];
+        expect(ptyOptions.env).toEqual({
+            ANTHROPIC_API_KEY: 'anthropic-key',
+            CLAUDE_CONFIG_DIR: '/tmp/claude',
+            HOME: '/Users/devdvlive',
+            MCP_CONNECTION_NONBLOCKING: '1',
+            PATH: '/opt/bin:/usr/bin',
+            TERM: 'xterm-256color',
+        });
+        transport.dispose();
+    });
+
     it('emits terminal exits using code and signal fields', async () => {
         const ptyProcess = createMockPtyProcess({ pid: 790 });
         nodePtyMock.spawn.mockReturnValue(ptyProcess);
@@ -355,4 +413,24 @@ function createMockPtyProcess({ pid }: { pid: number }) {
             exitHandler?.(event);
         },
     };
+}
+
+async function withProcessEnv(env: Record<string, string>, fn: () => Promise<void>): Promise<void> {
+    const previous = new Map<string, string | undefined>();
+    for (const [key, value] of Object.entries(env)) {
+        previous.set(key, process.env[key]);
+        process.env[key] = value;
+    }
+
+    try {
+        await fn();
+    } finally {
+        for (const [key, value] of previous) {
+            if (value === undefined) {
+                delete process.env[key];
+            } else {
+                process.env[key] = value;
+            }
+        }
+    }
 }

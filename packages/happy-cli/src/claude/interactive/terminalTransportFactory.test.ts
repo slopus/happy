@@ -24,6 +24,13 @@ describe('createTerminalTransport', () => {
         expect(transport?.backend).toBe('tmux');
     });
 
+    it('trims TMUX_SESSION_NAME before creating tmux transport', async () => {
+        const transport = await createTerminalTransport({ TMUX_SESSION_NAME: ' happy ' });
+
+        expect(transport?.backend).toBe('tmux');
+        expect((transport as any).sessionName).toBe('happy');
+    });
+
     it('uses pty when TMUX_SESSION_NAME is absent even if tmux is available', async () => {
         const transport = await createTerminalTransport({});
 
