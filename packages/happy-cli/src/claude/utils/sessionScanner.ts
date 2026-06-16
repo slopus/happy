@@ -27,10 +27,25 @@ export async function createSessionScanner(opts: {
      * (60s). Exposed mainly so tests can exercise the drop path quickly.
      */
     missingFileTimeoutMs?: number
+    /**
+     * Called when a newly-seen transcript record reports a working directory
+     * different from the last one — e.g. Claude entered a worktree via the
+     * EnterWorktree tool, which fires NO hook. The transcript stays in this
+     * project dir (only each record's `cwd` flips), so this is the only place
+     * the cwd change is observable. Lets the caller follow it (e.g. update
+     * session metadata.path so the app + resume track the worktree).
+     */
+    onCwdChange?: (newCwd: string) => void
 }) {
 
     // Resolve project directory
     const projectDir = getProjectPath(opts.workingDirectory);
+
+    // Track the cwd reported by transcript records so we can fire onCwdChange
+    // when Claude switches working directory mid-session (EnterWorktree). Seeded
+    // with the launch cwd so the first real switch (and not the initial state)
+    // triggers the callback.
+    let lastCwd = opts.workingDirectory;
 
     // Finished, pending finishing and current session
     let finishedSessions = new Set<string>();
@@ -91,6 +106,15 @@ export async function createSessionScanner(opts: {
                     continue;
                 }
                 processedMessageKeys.add(key);
+                // EnterWorktree (and any mid-session cd) changes the cwd recorded
+                // on each transcript record but fires no hook. Detect it here so
+                // the caller can follow (e.g. update metadata.path).
+                const recordCwd = (file as { cwd?: unknown }).cwd;
+                if (typeof recordCwd === 'string' && recordCwd.length > 0 && recordCwd !== lastCwd) {
+                    lastCwd = recordCwd;
+                    logger.debug(`[SESSION_SCANNER] cwd changed via transcript record: ${recordCwd}`);
+                    opts.onCwdChange?.(recordCwd);
+                }
                 logger.debug(`[SESSION_SCANNER] Sending new message: type=${file.type}, uuid=${file.type === 'summary' ? file.leafUuid : file.uuid}`);
                 opts.onMessage(file);
                 sent++;

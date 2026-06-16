@@ -170,7 +170,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 const scanner = await createSessionScanner({
                     sessionId: null,
                     workingDirectory,
-                    onMessage: (msg) => session.sendClaudeSessionMessage(msg)
+                    onMessage: (msg) => session.sendClaudeSessionMessage(msg),
+                    // Follow mid-session cwd changes (EnterWorktree fires no hook) so
+                    // the app's dir/diff/file views and --resume track the worktree.
+                    onCwdChange: (cwd) => session.updateMetadata((m) => ({ ...m, path: cwd })),
                 });
                 if (offlineSessionId) scanner.onNewSession(offlineSessionId);
                 return { session, scanner };
@@ -343,6 +346,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             if (consumeAppPrompt(content)) return;
             session.sendClaudeSessionMessage(raw);
         },
+        // Follow mid-session cwd changes (EnterWorktree fires no hook) so the
+        // app's dir/diff/file views and --resume track the worktree.
+        onCwdChange: (cwd) => session.updateMetadata((m) => ({ ...m, path: cwd })),
     });
 
     // Start Happy MCP server
