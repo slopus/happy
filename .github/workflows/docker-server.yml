@@ -9,7 +9,7 @@ on:
         paths:
             - 'packages/happy-server/**'
             - 'packages/happy-wire/**'
-            - 'Dockerfile.server'
+            - 'Dockerfile'
             - 'package.json'
             - 'pnpm-lock.yaml'
             - 'pnpm-workspace.yaml'
@@ -56,7 +56,7 @@ jobs:
               uses: docker/build-push-action@v6
               with:
                   context: .
-                  file: Dockerfile.server
+                  file: Dockerfile
                   push: true
                   tags: ${{ steps.meta.outputs.tags }}
                   labels: ${{ steps.meta.outputs.labels }}
