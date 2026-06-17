@@ -3,7 +3,9 @@ import { groupMessagesForDisplay, groupToolCallsForDisplay } from './useGroupedM
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
 
 vi.mock('@/components/tools/knownTools', () => ({
-    knownTools: {},
+    knownTools: {
+        Skill: { hidden: true },
+    },
 }));
 
 vi.mock('@/text', () => ({
@@ -34,6 +36,17 @@ function toolMessage(id: string, createdAt: number, options: { pendingPermission
                 : {}),
         },
         children: [],
+    };
+}
+
+function namedToolMessage(id: string, name: string, createdAt: number): ToolCallMessage {
+    const message = toolMessage(id, createdAt);
+    return {
+        ...message,
+        tool: {
+            ...message.tool,
+            name,
+        },
     };
 }
 
@@ -259,6 +272,30 @@ describe('useGroupedMessages', () => {
 
         expect(items.map((item) => item.type)).toEqual(['message', 'message']);
         expect(items[0]).toMatchObject({ type: 'message', id: 'tool-only' });
+    });
+
+    it('hides Claude Skill tool calls from the display list', () => {
+        const messages: Message[] = [
+            {
+                kind: 'agent-text',
+                id: 'agent-final',
+                localId: null,
+                createdAt: 3,
+                text: 'done',
+            },
+            namedToolMessage('skill-tool', 'Skill', 2),
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: 'run skill',
+            },
+        ];
+
+        const items = groupMessagesForDisplay(messages, true);
+
+        expect(items.map((item) => item.id)).toEqual(['agent-final', 'user']);
     });
 
     it('can collapse single standalone tool calls for nested work details', () => {

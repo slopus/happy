@@ -33,17 +33,31 @@ const COMMAND_MESSAGE_RE = /<command-message>[\s\S]*?<\/command-message>/g;
 const COMMAND_NAME_TAG_RE = /<command-name>[\s\S]*?<\/command-name>/g;
 const COMMAND_ARGS_TAG_RE = /<command-args>[\s\S]*?<\/command-args>/g;
 const RAW_SLASH_COMMAND_RE = /^\s*\/([a-zA-Z][\w:-]*)(?:\s+([\s\S]*?))?\s*$/;
+const RAW_SLASH_COMMAND_TOKEN_RE = /(^|\s)\/([a-zA-Z][\w:-]*)(?=$|\s)/;
 const GOAL_STDOUT_RE = /^Goal set:\s*([\s\S]*?)\s*$/i;
 
 function rawSlashCommand(text: string): { commandName: string; args?: string } | undefined {
     const match = text.match(RAW_SLASH_COMMAND_RE);
-    if (!match) {
+    if (match) {
+        const commandName = match[1].trim();
+        const args = match[2]?.trim();
+        return {
+            commandName,
+            args: args && args.length > 0 ? args : undefined,
+        };
+    }
+
+    const tokenMatch = text.match(RAW_SLASH_COMMAND_TOKEN_RE);
+    if (!tokenMatch || tokenMatch.index === undefined) {
         return undefined;
     }
-    const commandName = match[1].trim();
-    const args = match[2]?.trim();
+    const commandStart = tokenMatch.index + tokenMatch[1].length;
+    const commandEnd = commandStart + tokenMatch[2].length + 1;
+    const before = text.slice(0, commandStart).trim();
+    const after = text.slice(commandEnd).trim();
+    const args = [before, after].filter(Boolean).join(' ');
     return {
-        commandName,
+        commandName: tokenMatch[2].trim(),
         args: args && args.length > 0 ? args : undefined,
     };
 }
