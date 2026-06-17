@@ -55,11 +55,13 @@ function areToolsUnpacked(toolsDir) {
     const isWin = os.platform() === 'win32';
     const difftBinary = isWin ? 'difft.exe' : 'difft';
     const rgBinary = isWin ? 'rg.exe' : 'rg';
+    const codexPtyBinary = isWin ? "codex-pty.exe" : "codex-pty";
     
     const expectedFiles = [
         path.join(unpackedPath, difftBinary),
         path.join(unpackedPath, rgBinary),
-        path.join(unpackedPath, 'ripgrep.node')
+        path.join(unpackedPath, "ripgrep.node"),
+        path.join(unpackedPath, codexPtyBinary)
     ];
     
     return expectedFiles.every(file => fs.existsSync(file));
@@ -138,7 +140,14 @@ async function unpackTools() {
             throw new Error(`Archive not found: ${ripgrepArchive}`);
         }
         await unpackArchive(ripgrepArchive, unpackedPath);
+        // Unpack codex-pty
+        const codexPtyArchive = path.join(archivesDir, `codex-pty-${platformDir}.tar.gz`);
+        if (!fs.existsSync(codexPtyArchive)) {
+            throw new Error(`Archive not found: ${codexPtyArchive}`);
+        }
+        await unpackArchive(codexPtyArchive, unpackedPath);
         
+
         console.log(`Tools unpacked successfully to ${unpackedPath}`);
         return { success: true, alreadyUnpacked: false };
         

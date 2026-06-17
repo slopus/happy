@@ -415,14 +415,14 @@ describe('runAcp', () => {
     const lines = consoleLines();
     expect(lines).toEqual(expect.arrayContaining([
       'Outgoing slash commands from gemini (2):',
-      '  /init - create/update AGENTS.md',
-      '  /review - review uncommitted changes',
+      '/init - create/update AGENTS.md',
+      '/review - review uncommitted changes',
       'Outgoing modes from gemini (2), current=build:',
-      '  mode=build name=build - Executes tools',
-      '  mode=plan name=plan - Disallows edit tools',
+      'mode=build name=build - Executes tools',
+      'mode=plan name=plan - Disallows edit tools',
       'Outgoing models from gemini (2), current=gemini-2.5-pro:',
-      '  model=gemini-2.5-pro name=Gemini 2.5 Pro',
-      '  model=gemini-2.5-flash name=Gemini 2.5 Flash',
+      'model=gemini-2.5-pro name=Gemini 2.5 Pro',
+      'model=gemini-2.5-flash name=Gemini 2.5 Flash',
     ]));
   });
 
