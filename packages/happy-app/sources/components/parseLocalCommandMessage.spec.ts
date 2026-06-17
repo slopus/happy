@@ -28,6 +28,32 @@ describe('parseLocalCommandMessage', () => {
         });
     });
 
+    it('collapses a /goal wrapper to a goal display', () => {
+        const text =
+            '<command-message>goal</command-message>' +
+            '<command-name>/goal</command-name>' +
+            '<command-args>проанализируй проект</command-args>';
+        expect(parseLocalCommandMessage(text)).toEqual({
+            kind: 'goal-run',
+            goal: 'проанализируй проект',
+        });
+    });
+
+    it('collapses a raw /goal command to a goal display', () => {
+        expect(parseLocalCommandMessage('  /goal проанализируй проект  ')).toEqual({
+            kind: 'goal-run',
+            goal: 'проанализируй проект',
+        });
+    });
+
+    it('hides Claude local-command stdout for a successful /goal command', () => {
+        const text = '<local-command-stdout>Goal set: проанализируй проект</local-command-stdout>';
+        expect(parseLocalCommandMessage(text)).toEqual({
+            kind: 'goal-confirmation',
+            goal: 'проанализируй проект',
+        });
+    });
+
     it('trims surrounding whitespace inside command-args', () => {
         const text =
             '<command-message>x</command-message><command-name>/x</command-name>' +
@@ -68,6 +94,10 @@ describe('isUserSlashCommandEcho', () => {
 
     it('detects a command-with-args echo with a localId', () => {
         expect(isUserSlashCommandEcho('/superpowers:brainstorming make me rich', true)).toBe(true);
+    });
+
+    it('detects a /goal echo with a localId', () => {
+        expect(isUserSlashCommandEcho('/goal проанализируй проект', true)).toBe(true);
     });
 
     it('ignores echoes without a localId (SDK-originated, not user-sent)', () => {

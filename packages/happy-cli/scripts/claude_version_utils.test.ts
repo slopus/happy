@@ -9,7 +9,8 @@ import {
   findHomebrewCliPath,
   findNativeInstallerCliPath,
   getVersion,
-  compareVersions
+  compareVersions,
+  shouldWarnAboutGoalHookJsonValidationRisk,
 } from '../scripts/claude_version_utils.cjs';
 
 describe('Claude Version Utils - Cross-Platform Detection', () => {
@@ -230,6 +231,41 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
       expect(() => compareVersions('', '2.0.0')).not.toThrow();
       expect(() => compareVersions('invalid', '2.0.0')).not.toThrow();
       expect(() => compareVersions('2.0.0', '')).not.toThrow();
+    });
+  });
+
+  describe('getVersion', () => {
+    it('falls back to --version for native binaries without adjacent package.json', () => {
+      const testCliPath = `/tmp/test-claude-version-${process.pid}-${Date.now()}`;
+      fs.writeFileSync(testCliPath, '#!/bin/sh\necho "2.1.177 (Claude Code)"\n');
+      fs.chmodSync(testCliPath, 0o755);
+
+      try {
+        expect(getVersion(testCliPath)).toBe('2.1.177');
+      } finally {
+        fs.unlinkSync(testCliPath);
+      }
+    });
+  });
+
+  describe('/goal hook JSON validation warning', () => {
+    it('warns for third-party Anthropic-compatible backends on affected Claude Code versions', () => {
+      expect(shouldWarnAboutGoalHookJsonValidationRisk('2.1.177', {
+        ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic',
+      })).toBe(true);
+    });
+
+    it('does not warn without ANTHROPIC_BASE_URL or on the fixed version floor', () => {
+      expect(shouldWarnAboutGoalHookJsonValidationRisk('2.1.177', {})).toBe(false);
+      expect(shouldWarnAboutGoalHookJsonValidationRisk('2.1.179', {
+        ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic',
+      })).toBe(false);
+    });
+
+    it('does not warn for the default Anthropic API host', () => {
+      expect(shouldWarnAboutGoalHookJsonValidationRisk('2.1.177', {
+        ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
+      })).toBe(false);
     });
   });
 

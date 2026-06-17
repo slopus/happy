@@ -841,6 +841,7 @@ export const ru: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `Переключено в режим ${mode}`,
         unknownEvent: 'Неизвестное событие',
         usageLimitUntil: ({ time }: { time: string }) => `Лимит использования достигнут до ${time}`,
+        sentAsGoal: 'Отправлено в качестве цели',
         unknownTime: 'неизвестное время',
     },
 
