@@ -43,6 +43,7 @@ import {
     hashCodexEnhancedMode,
     type CodexEnhancedMode,
 } from './codexPrompt';
+import { discoverCodexSkillCommands } from './codexSkills';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -139,6 +140,12 @@ export async function runCodex(opts: {
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
     });
+
+    const skillCommands = await discoverCodexSkillCommands();
+    if (skillCommands.length > 0) {
+        metadata.skills = skillCommands;
+        metadata.slashCommands = Array.from(new Set([...(metadata.slashCommands ?? []), ...skillCommands]));
+    }
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
     const reconnectSessionId = process.env.HAPPY_RECONNECT_SESSION_ID;
