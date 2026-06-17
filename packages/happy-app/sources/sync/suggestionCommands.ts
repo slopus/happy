@@ -55,6 +55,7 @@ export const IGNORED_COMMANDS = [
 const DEFAULT_COMMANDS: CommandItem[] = [
     { command: 'compact', description: 'Compact the conversation history' },
     { command: 'clear', description: 'Clear the conversation' },
+    { command: 'goal', description: 'Set a session goal' },
     { command: 'mcp', description: 'Show connected MCP servers' },
     { command: 'skills', description: 'Show available skills' },
 ];
@@ -63,6 +64,7 @@ const DEFAULT_COMMANDS: CommandItem[] = [
 const COMMAND_DESCRIPTIONS: Record<string, string> = {
     // Default commands
     compact: 'Compact the conversation history',
+    goal: 'Set a session goal',
     
     // Common tool commands
     help: 'Show available commands',
