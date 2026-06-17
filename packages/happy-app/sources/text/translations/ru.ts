@@ -890,6 +890,7 @@ export const ru: TranslationStructure = {
         codeCopied: 'Код скопирован',
         copyFailed: 'Ошибка копирования',
         mermaidRenderFailed: 'Не удалось отобразить диаграмму mermaid',
+        mermaidCopied: 'Исходный код Mermaid скопирован',
     },
 
     artifacts: {
