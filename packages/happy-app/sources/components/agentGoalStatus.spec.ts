@@ -187,4 +187,12 @@ describe('resolveVisibleAgentGoalStatus', () => {
 
         expect(visible).toBeNull();
     });
+
+    it('does not invent visible goal state without agentGoalStatus', () => {
+        const visible = resolveVisibleAgentGoalStatus(sessionWith({
+            agentState: {},
+        }));
+
+        expect(visible).toBeNull();
+    });
 });

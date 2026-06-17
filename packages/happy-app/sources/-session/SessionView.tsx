@@ -1,5 +1,7 @@
 import { AgentContentView } from '@/components/AgentContentView';
+import { AgentGoalBar } from '@/components/AgentGoalBar';
 import { AgentInput } from '@/components/AgentInput';
+import { resolveVisibleAgentGoalStatus } from '@/components/agentGoalStatus';
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import {
@@ -564,6 +566,14 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         };
     }, [sessionUsage, session.latestUsage]);
 
+    const visibleAgentGoal = React.useMemo(() => (
+        resolveVisibleAgentGoalStatus(session)
+    ), [
+        session.agentState?.agentGoalStatus,
+        session.presence,
+        session.metadata?.claudeSessionId,
+        session.metadata?.codexThreadId,
+    ]);
 
     // Handle microphone button press - memoized to prevent button flashing
     const handleMicrophonePress = React.useCallback(async () => {
@@ -710,6 +720,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const input = (
         <>
             {inactiveHint}
+            {visibleAgentGoal && (
+                <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+                    <AgentGoalBar goal={visibleAgentGoal} />
+                </CenteredInputWidth>
+            )}
             {composer}
         </>
     );
