@@ -1,5 +1,5 @@
 import { AgentContentView } from '@/components/AgentContentView';
-import { AgentGoalBar } from '@/components/AgentGoalBar';
+import { AgentGoalBar, type AgentGoalAction } from '@/components/AgentGoalBar';
 import { AgentInput } from '@/components/AgentInput';
 import { resolveVisibleAgentGoalStatus } from '@/components/agentGoalStatus';
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
@@ -23,7 +23,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort } from '@/sync/ops';
+import { sessionAbort, sessionGoalAction } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
@@ -574,6 +574,21 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         session.metadata?.claudeSessionId,
         session.metadata?.codexThreadId,
     ]);
+    const [goalActionInFlight, setGoalActionInFlight] = React.useState<AgentGoalAction | null>(null);
+    const handleGoalAction = React.useCallback(async (action: AgentGoalAction) => {
+        if (action !== 'clear') {
+            return;
+        }
+
+        setGoalActionInFlight(action);
+        try {
+            await sessionGoalAction(sessionId, action);
+        } catch (error) {
+            console.error('Failed to perform goal action', error);
+        } finally {
+            setGoalActionInFlight(null);
+        }
+    }, [sessionId]);
 
     // Handle microphone button press - memoized to prevent button flashing
     const handleMicrophonePress = React.useCallback(async () => {
@@ -722,7 +737,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             {inactiveHint}
             {visibleAgentGoal && (
                 <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
-                    <AgentGoalBar goal={visibleAgentGoal} />
+                    <AgentGoalBar
+                        goal={visibleAgentGoal}
+                        onAction={handleGoalAction}
+                        inFlightAction={goalActionInFlight}
+                    />
                 </CenteredInputWidth>
             )}
             {composer}

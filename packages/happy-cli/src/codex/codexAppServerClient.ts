@@ -31,6 +31,10 @@ import type {
     RollbackConversationResponse,
     InjectItemsParams,
     InjectItemsResponse,
+    ThreadGoalSetParams,
+    ThreadGoalSetResponse,
+    ThreadGoalClearParams,
+    ThreadGoalClearResponse,
     Thread,
     InterruptConversationParams,
     ReviewDecision,
@@ -72,18 +76,45 @@ export type ApprovalHandler = (params: {
 /**
  * Check that `codex app-server` is available.
  */
-function isAppServerAvailable(): boolean {
+function parseCodexCliVersion(version: string): { major: number; minor: number; patch: number } | null {
+    const match = version.match(/codex-cli\s+(\d+)\.(\d+)\.(\d+)/);
+    if (!match) return null;
+    const major = Number(match[1]);
+    const minor = Number(match[2]);
+    const patch = Number(match[3]);
+    if (!Number.isFinite(major) || !Number.isFinite(minor) || !Number.isFinite(patch)) {
+        return null;
+    }
+    return { major, minor, patch };
+}
+
+function readCodexCliVersion(): { major: number; minor: number; patch: number } | null {
     try {
         const version = execSync('codex --version', { encoding: 'utf8', windowsHide: true }).trim();
-        const match = version.match(/codex-cli\s+(\d+\.\d+\.\d+)/);
-        if (!match) return false;
-        const [, ver] = match;
-        const [major, minor] = ver.split('.').map(Number);
-        // app-server available in recent versions
-        return major > 0 || minor >= 100;
+        return parseCodexCliVersion(version);
     } catch {
+        return null;
+    }
+}
+
+function isAppServerAvailable(): boolean {
+    const version = readCodexCliVersion();
+    if (!version) {
         return false;
     }
+    const { major, minor } = version;
+    // app-server available in recent versions
+    return major > 0 || minor >= 100;
+}
+
+function isGoalActionsAvailable(): boolean {
+    const version = readCodexCliVersion();
+    if (!version) {
+        return false;
+    }
+    const { major, minor } = version;
+    // thread/goal/set and thread/goal/clear are present in Codex 0.140+.
+    return major > 0 || minor >= 140;
 }
 
 function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | undefined {
@@ -214,6 +245,10 @@ export class CodexAppServerClient {
         return this._turnId;
     }
 
+    supportsGoalActions(): boolean {
+        return isGoalActionsAvailable();
+    }
+
     setEventHandler(handler: (msg: EventMsg) => void): void {
         this.eventHandler = handler;
     }
@@ -234,6 +269,8 @@ export class CodexAppServerClient {
 
     private shouldHandleRawNotification(method: string): boolean {
         const isRawNotification = method === 'thread/started'
+            || method === 'thread/goal/updated'
+            || method === 'thread/goal/cleared'
             || method === 'turn/started'
             || method === 'turn/completed'
             || method === 'thread/status/changed'
@@ -324,6 +361,29 @@ export class CodexAppServerClient {
             if (statusType === 'idle' && this.pendingTurnCompletion) {
                 this.emitRawTurnCompletion(this._turnId, 'completed', null, method);
             }
+            return true;
+        }
+
+        if (method === 'thread/goal/updated') {
+            const threadId = typeof params?.threadId === 'string'
+                ? params.threadId
+                : (typeof params?.goal?.threadId === 'string' ? params.goal.threadId : undefined);
+            const turnId = typeof params?.turnId === 'string' ? params.turnId : null;
+            this.eventHandler?.({
+                type: 'thread_goal_updated',
+                ...(threadId ? { thread_id: threadId, threadId } : {}),
+                ...(turnId ? { turn_id: turnId, turnId } : {}),
+                goal: params?.goal,
+            });
+            return true;
+        }
+
+        if (method === 'thread/goal/cleared') {
+            const threadId = typeof params?.threadId === 'string' ? params.threadId : undefined;
+            this.eventHandler?.({
+                type: 'thread_goal_cleared',
+                ...(threadId ? { thread_id: threadId, threadId } : {}),
+            });
             return true;
         }
 
@@ -766,6 +826,30 @@ export class CodexAppServerClient {
             items: opts.items,
         };
         return await this.request('thread/inject_items', params) as InjectItemsResponse;
+    }
+
+    async setGoal(opts: {
+        threadId: string;
+        objective: string;
+        status?: ThreadGoalSetParams['status'];
+        tokenBudget?: number | null;
+    }): Promise<ThreadGoalSetResponse> {
+        const params: ThreadGoalSetParams = {
+            threadId: opts.threadId,
+            objective: opts.objective,
+            ...(opts.status !== undefined ? { status: opts.status } : {}),
+            ...(opts.tokenBudget !== undefined ? { tokenBudget: opts.tokenBudget } : {}),
+        };
+        return await this.request('thread/goal/set', params) as ThreadGoalSetResponse;
+    }
+
+    async clearGoal(opts: {
+        threadId: string;
+    }): Promise<ThreadGoalClearResponse> {
+        const params: ThreadGoalClearParams = {
+            threadId: opts.threadId,
+        };
+        return await this.request('thread/goal/clear', params) as ThreadGoalClearResponse;
     }
 
     async reconnectAndResumeThread(): Promise<boolean> {
