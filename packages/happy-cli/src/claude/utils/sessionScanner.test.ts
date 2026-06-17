@@ -243,4 +243,40 @@ describe('sessionScanner', () => {
     expect(collectedMessages).toHaveLength(1)
     expect(collectedMessages[0].type).toBe('user')
   })
+
+  it('follows cwd only into/out of a worktree, not a transient subdir cd', async () => {
+    // onCwdChange must not fire on EVERY transcript-record cwd change: a record's
+    // cwd is the persistent Bash-shell dir, so a plain `cd packages/x && pnpm t`
+    // would otherwise yank the app's dir/diff/--resume into that subdir. Only a
+    // real relocation — a worktree root, or a return to the launch dir — fires.
+    const cwdChanges: string[] = []
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      onCwdChange: (cwd) => cwdChanges.push(cwd),
+    })
+
+    // Clone a real user record, overriding cwd + uuid so each line is distinct.
+    const fixture = await readFile(join(__dirname, '__fixtures__', '0-say-lol-session.jsonl'), 'utf-8')
+    const baseRecord = JSON.parse(fixture.split('\n').filter((l) => l.trim())[0])
+    const rec = (cwd: string, i: number) =>
+      JSON.stringify({ ...baseRecord, uuid: `cwd-test-${i}`, cwd }) + '\n'
+
+    const worktree = join(testDir, '.dev/worktree/feature-x')
+    const sessionId = 'c0ffee00-0000-4000-8000-000000000000'
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+    await writeFile(
+      sessionFile,
+      rec(join(testDir, 'packages/happy-cli'), 1) + // transient cd -> ignored
+      rec(worktree, 2) +                            // EnterWorktree -> fire
+      rec(join(worktree, 'packages/app'), 3) +      // cd inside worktree -> ignored
+      rec(testDir, 4),                              // back to launch (exit) -> fire
+    )
+
+    scanner.onNewSession(sessionId)
+    await new Promise((r) => setTimeout(r, 200))
+
+    expect(cwdChanges).toEqual([worktree, testDir])
+  })
 })

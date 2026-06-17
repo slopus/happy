@@ -28,12 +28,19 @@ export async function createSessionScanner(opts: {
      */
     missingFileTimeoutMs?: number
     /**
-     * Called when a newly-seen transcript record reports a working directory
-     * different from the last one — e.g. Claude entered a worktree via the
-     * EnterWorktree tool, which fires NO hook. The transcript stays in this
-     * project dir (only each record's `cwd` flips), so this is the only place
-     * the cwd change is observable. Lets the caller follow it (e.g. update
-     * session metadata.path so the app + resume track the worktree).
+     * Called when a newly-seen transcript record indicates the session has been
+     * RELOCATED into (or back out of) a git worktree — e.g. Claude entered a
+     * worktree via the EnterWorktree tool, which fires NO hook. The transcript
+     * stays in this project dir (only each record's `cwd` flips), so the record
+     * cwd is the only observable signal.
+     *
+     * IMPORTANT: a record's `cwd` is the persistent Bash-shell working directory
+     * at write time, so it flips on EVERY `cd subdir && cmd` (typecheck/build/git
+     * in a package) — not just on a real relocation. We therefore only fire for
+     * cwds that look like a worktree root (`.../worktree[s]/<name>`) or the launch
+     * dir (worktree exited); transient subdir `cd`s are ignored. Without this gate
+     * the app's dir/diff/file views and `--resume` would chase the last `cd`'d
+     * subdir around. Lets the caller follow it (e.g. update session metadata.path).
      */
     onCwdChange?: (newCwd: string) => void
 }) {
@@ -107,12 +114,20 @@ export async function createSessionScanner(opts: {
                 }
                 processedMessageKeys.add(key);
                 // EnterWorktree (and any mid-session cd) changes the cwd recorded
-                // on each transcript record but fires no hook. Detect it here so
-                // the caller can follow (e.g. update metadata.path).
+                // on each transcript record but fires no hook. Only follow it when
+                // it looks like a real session relocation — a worktree root, or a
+                // return to the launch dir (worktree exited) — NOT the transient
+                // `cd packages/x && pnpm t` that every build/typecheck does, which
+                // would otherwise yank the app's dir/diff/--resume into a subdir.
                 const recordCwd = (file as { cwd?: unknown }).cwd;
-                if (typeof recordCwd === 'string' && recordCwd.length > 0 && recordCwd !== lastCwd) {
+                if (
+                    typeof recordCwd === 'string' &&
+                    recordCwd.length > 0 &&
+                    recordCwd !== lastCwd &&
+                    (recordCwd === opts.workingDirectory || isWorktreeRoot(recordCwd))
+                ) {
                     lastCwd = recordCwd;
-                    logger.debug(`[SESSION_SCANNER] cwd changed via transcript record: ${recordCwd}`);
+                    logger.debug(`[SESSION_SCANNER] session relocated via transcript record: ${recordCwd}`);
                     opts.onCwdChange?.(recordCwd);
                 }
                 logger.debug(`[SESSION_SCANNER] Sending new message: type=${file.type}, uuid=${file.type === 'summary' ? file.leafUuid : file.uuid}`);
@@ -222,6 +237,16 @@ export type SessionScanner = ReturnType<typeof createSessionScanner>;
 //
 // Helpers
 //
+
+/**
+ * Whether a path is a git-worktree ROOT the EnterWorktree tool relocates into,
+ * by convention `<repo>/.dev/worktree/<name>` or `<repo>/.claude/worktrees/<name>`.
+ * Matches only the worktree root (not a deeper subdir inside it), so a `cd` into
+ * a package under the worktree doesn't keep yanking the session path around.
+ */
+function isWorktreeRoot(cwd: string): boolean {
+    return /\/worktrees?\/[^/]+$/.test(cwd);
+}
 
 function messageKey(message: RawJSONLines): string {
     if (message.type === 'user') {
