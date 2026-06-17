@@ -412,6 +412,13 @@ export const zhHans: TranslationStructure = {
             scanQrCode: '扫描二维码',
             openCamera: '打开相机',
         },
+        agentGoalBar: {
+            currentGoal: '当前目标',
+            accessibilityLabel: ({ goal }: { goal: string }) => `当前目标：${goal}`,
+            clearGoal: '清除目标',
+            stopGoal: '停止目标',
+            editGoal: '编辑目标',
+        },
     },
 
     agentInput: {
