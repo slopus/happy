@@ -147,6 +147,15 @@ function UserTextBlock(props: {
   if (parsed.kind === 'command-run') {
     return (
       <View style={styles.userMessageContainer}>
+        {parsed.args ? (
+          <Pressable
+            onLongPress={canFork ? handleLongPress : undefined}
+            delayLongPress={400}
+            style={[styles.userMessageBubble, styles.commandMessageBubble]}
+          >
+            <MarkdownView markdown={parsed.args} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+          </Pressable>
+        ) : null}
         <View style={styles.commandChip}>
           <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
         </View>
@@ -281,6 +290,9 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: '100%',
   },
   goalMessageBubble: {
+    marginBottom: 6,
+  },
+  commandMessageBubble: {
     marginBottom: 6,
   },
   goalSentRow: {

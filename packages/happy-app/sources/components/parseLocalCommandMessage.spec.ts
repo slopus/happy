@@ -46,6 +46,14 @@ describe('parseLocalCommandMessage', () => {
         });
     });
 
+    it('collapses a raw skill slash command to a command display with args', () => {
+        expect(parseLocalCommandMessage('  /superpowers:brainstorming привет давай спланируем что-нибудь  ')).toEqual({
+            kind: 'command-run',
+            commandName: 'superpowers:brainstorming',
+            args: 'привет давай спланируем что-нибудь',
+        });
+    });
+
     it('hides Claude local-command stdout for a successful /goal command', () => {
         const text = '<local-command-stdout>Goal set: проанализируй проект</local-command-stdout>';
         expect(parseLocalCommandMessage(text)).toEqual({

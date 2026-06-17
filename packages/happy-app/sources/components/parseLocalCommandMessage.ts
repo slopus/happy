@@ -32,13 +32,20 @@ const COMMAND_ARGS_RE = /<command-args>\s*([\s\S]*?)\s*<\/command-args>/;
 const COMMAND_MESSAGE_RE = /<command-message>[\s\S]*?<\/command-message>/g;
 const COMMAND_NAME_TAG_RE = /<command-name>[\s\S]*?<\/command-name>/g;
 const COMMAND_ARGS_TAG_RE = /<command-args>[\s\S]*?<\/command-args>/g;
-const GOAL_COMMAND_RE = /^\s*\/goal(?:\s+([\s\S]*?))?\s*$/i;
+const RAW_SLASH_COMMAND_RE = /^\s*\/([a-zA-Z][\w:-]*)(?:\s+([\s\S]*?))?\s*$/;
 const GOAL_STDOUT_RE = /^Goal set:\s*([\s\S]*?)\s*$/i;
 
-function goalFromSlashCommand(text: string): string | undefined {
-    const match = text.match(GOAL_COMMAND_RE);
-    const goal = match?.[1]?.trim();
-    return goal && goal.length > 0 ? goal : undefined;
+function rawSlashCommand(text: string): { commandName: string; args?: string } | undefined {
+    const match = text.match(RAW_SLASH_COMMAND_RE);
+    if (!match) {
+        return undefined;
+    }
+    const commandName = match[1].trim();
+    const args = match[2]?.trim();
+    return {
+        commandName,
+        args: args && args.length > 0 ? args : undefined,
+    };
 }
 
 function goalFromStdout(text: string): string | undefined {
@@ -62,9 +69,16 @@ export function parseLocalCommandMessage(text: string): LocalCommandMessage {
         return { kind: 'text', text: stdout };
     }
 
-    const rawGoal = goalFromSlashCommand(text);
-    if (rawGoal) {
-        return { kind: 'goal-run', goal: rawGoal };
+    const rawCommand = rawSlashCommand(text);
+    if (rawCommand) {
+        if (rawCommand.commandName.toLowerCase() === 'goal' && rawCommand.args) {
+            return { kind: 'goal-run', goal: rawCommand.args };
+        }
+        return {
+            kind: 'command-run',
+            commandName: rawCommand.commandName,
+            args: rawCommand.args,
+        };
     }
 
     const nameMatch = text.match(COMMAND_NAME_RE);
@@ -102,12 +116,6 @@ export function parseLocalCommandMessage(text: string): LocalCommandMessage {
     return { kind: 'text', text };
 }
 
-// A pure slash-command invocation: starts with `/`, a command token
-// (letters, digits, `:`, `-`, `_`), optionally followed by whitespace +
-// args. Deliberately strict so paths like `/etc/hosts` or a lone `/`
-// do NOT match.
-const SLASH_COMMAND_RE = /^\/[a-zA-Z][\w:-]*(?:\s[\s\S]*)?$/;
-
 /**
  * True when this user-text message is the user's OWN echoed slash-command
  * input (e.g. `/superpowers:brainstorming do the thing`) that the Claude
@@ -127,11 +135,11 @@ export function isUserSlashCommandEcho(text: string, hasLocalId: boolean): boole
         return false;
     }
     const trimmed = text.trim();
-    if (!SLASH_COMMAND_RE.test(trimmed)) {
+    if (!rawSlashCommand(trimmed)) {
         return false;
     }
     // Guard: a real wrapper message also contains <command-name>; never
     // treat that as a raw echo.
     const parsed = parseLocalCommandMessage(trimmed);
-    return parsed.kind === 'text' || parsed.kind === 'goal-run';
+    return parsed.kind === 'command-run' || parsed.kind === 'goal-run';
 }
