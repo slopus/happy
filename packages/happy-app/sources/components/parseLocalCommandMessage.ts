@@ -26,7 +26,12 @@ export type LocalCommandMessage =
 const CAVEAT_RE = /^\s*<local-command-caveat>[\s\S]*?<\/local-command-caveat>\s*$/;
 const COMMAND_NAME_RE = /<command-name>\s*\/?([^<]+?)\s*<\/command-name>/;
 const COMMAND_ARGS_RE = /<command-args>\s*([\s\S]*?)\s*<\/command-args>/;
-const COMMAND_MESSAGE_RE = /<command-message>[\s\S]*?<\/command-message>/g;
+// Greedy on purpose: skill bodies often contain literal `<command-message>`
+// examples in their markdown, producing nested closing tags inside the SDK
+// wrapper. A lazy match stops at the inner closer and leaves the outer tail
+// behind, which then falls through to `kind: 'text'` and renders the whole
+// skill body as plain text in the chat.
+const COMMAND_MESSAGE_RE = /<command-message>[\s\S]*<\/command-message>/g;
 const COMMAND_NAME_TAG_RE = /<command-name>[\s\S]*?<\/command-name>/g;
 const COMMAND_ARGS_TAG_RE = /<command-args>[\s\S]*?<\/command-args>/g;
 
@@ -35,17 +40,21 @@ export function parseLocalCommandMessage(text: string): LocalCommandMessage {
         return { kind: 'caveat' };
     }
 
-    const nameMatch = text.match(COMMAND_NAME_RE);
+    // Strip <command-message> blocks first so any nested <command-name> /
+    // <command-args> examples in a skill body don't get picked up by the
+    // extractors below — only the outer wrapper's tags should be visible.
+    const withoutMessageBlocks = text.replace(COMMAND_MESSAGE_RE, '');
+
+    const nameMatch = withoutMessageBlocks.match(COMMAND_NAME_RE);
     if (nameMatch) {
-        const argsMatch = text.match(COMMAND_ARGS_RE);
+        const argsMatch = withoutMessageBlocks.match(COMMAND_ARGS_RE);
         const args = argsMatch?.[1].trim();
 
         // If the message is just the command wrappers (after stripping all of
         // them only whitespace remains), collapse to a chip. The args, if any,
         // are surfaced separately so the renderer can show them as the user's
         // actual prompt rather than as raw XML.
-        const stripped = text
-            .replace(COMMAND_MESSAGE_RE, '')
+        const stripped = withoutMessageBlocks
             .replace(COMMAND_NAME_TAG_RE, '')
             .replace(COMMAND_ARGS_TAG_RE, '')
             .trim();
