@@ -59,6 +59,26 @@ describe('parseLocalCommandMessage', () => {
         const text = 'just a normal message';
         expect(parseLocalCommandMessage(text)).toEqual({ kind: 'text', text });
     });
+
+    it('collapses a command whose skill body contains nested command-message examples', () => {
+        // Reproduces #1340: a /go skill whose markdown body references other
+        // commands ends up with nested <command-message>/<command-name> tags
+        // inside the outer SDK wrapper. The old lazy regex stopped at the
+        // inner closer and rendered the whole skill body as plain text.
+        const text =
+            '<command-message>\n' +
+            'You are the /go skill. Available examples:\n' +
+            '<command-message>compact</command-message><command-name>/compact</command-name>\n' +
+            'more skill body content here\n' +
+            '</command-message>' +
+            '<command-name>/go</command-name>' +
+            '<command-args>deploy</command-args>';
+        expect(parseLocalCommandMessage(text)).toEqual({
+            kind: 'command-run',
+            commandName: 'go',
+            args: 'deploy',
+        });
+    });
 });
 
 describe('isUserSlashCommandEcho', () => {
