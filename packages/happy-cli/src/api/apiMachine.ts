@@ -42,6 +42,7 @@ import {
     ForkTruncateUuidNotFoundError,
     ForkSourceMissingError,
 } from '@/claude/utils/claudeSessionFork';
+import { readClaudeCodeUsage } from '@/claudeCodeUsage/readUsage';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -353,6 +354,15 @@ export class ApiMachineClient {
             }, 100);
 
             return { message: 'Daemon stop request acknowledged, starting shutdown sequence...' };
+        });
+
+        // Read the daemon-uid's Claude Code rate-window quota. Returns a
+        // structured ClaudeCodeUsage envelope; failures (missing CLI, not
+        // logged in, /usage parse drift) are encoded in the response rather
+        // than thrown so the web-ui can render per-machine rows without
+        // toast bombing. See specs/20260618-machine-cli-usage-quota/.
+        this.rpcHandlerManager.registerHandler('claude-code-usage:read', async () => {
+            return readClaudeCodeUsage();
         });
 
         // Register port allocation handler — sticky per (user, project)
