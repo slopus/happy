@@ -201,7 +201,15 @@ export function rewriteHtml(html: string, prefix: string): string {
     // studio 가 iframe 의 contentDocument 에 inject 못 하므로 happy-server
     // 가 응답 HTML 에 미리 박아준다. enabled=false 로 시작 — 사용자가
     // 토글하기 전까진 완전 무영향.
-    const headInjection = baseHref + buildInterceptorScript(prefix) + buildInspectorBridgeScript();
+    // Capture bridge (사용자 결정 2026-06-18) — 'aplus-capture-request'
+    // postMessage 수신 시 html2canvas (CDN dynamic load) 로 viewport 캡쳐 후
+    // JPEG blob 응답. SPA 의 client state (모달/토글) 까지 잡힘. listener 만
+    // 등록 — 요청 없을 땐 완전 무영향.
+    const headInjection =
+        baseHref +
+        buildInterceptorScript(prefix) +
+        buildInspectorBridgeScript() +
+        buildCaptureBridgeScript();
     if (out.includes('<head>')) {
         out = out.replace('<head>', `<head>${headInjection}`);
     } else if (out.includes('<html>')) {
@@ -470,6 +478,79 @@ function buildInspectorBridgeScript(): string {
         `});` +
         `document.addEventListener('mousemove',onMove,true);` +
         `document.addEventListener('click',onClick,true);` +
+        `})()</script>`
+    );
+}
+
+/**
+ * Capture bridge — studio (parent) 가 보낸 'aplus-capture-request' postMessage
+ * 를 받아 현재 viewport 를 html2canvas (CDN dynamic load) 로 캡쳐 후 JPEG blob
+ * 을 'aplus-capture-response' 로 응답한다. 사용자 결정 2026-06-18.
+ *
+ * 서버 puppeteer 가 URL 만 보는 한계 (SPA 의 modal/toggle/useState 미캡쳐) 를
+ * 우회 — iframe 안에서 직접 DOM 캡쳐.
+ *
+ * postMessage 프로토콜 (studio web-ui 의 captureBridgeScript.ts 와 동일):
+ *  - inbound : 'aplus-capture-request' { requestId, opts?: { quality } }
+ *  - outbound: 'aplus-capture-response' { requestId, ok: true, blob } |
+ *              'aplus-capture-response' { requestId, ok: false, error }
+ *
+ * 본문은 studio 측 src/lib/captureBridgeScript.ts 의 CAPTURE_BRIDGE_SCRIPT 와
+ * 동기화 유지 필요 — drift 시 두 측 모두 일관 갱신.
+ */
+function buildCaptureBridgeScript(): string {
+    return (
+        `<script>(function(){` +
+        `var __captureBusy=false;var __h2cPromise=null;` +
+        `function loadH2C(){` +
+        `if(__h2cPromise)return __h2cPromise;` +
+        `__h2cPromise=new Promise(function(resolve,reject){` +
+        `if(window.html2canvas){resolve(window.html2canvas);return;}` +
+        `var s=document.createElement('script');` +
+        `s.src='https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';` +
+        `s.onload=function(){` +
+        `if(window.html2canvas)resolve(window.html2canvas);` +
+        `else reject(new Error('html2canvas not defined after load'));` +
+        `};` +
+        `s.onerror=function(){reject(new Error('html2canvas CDN load failed'));};` +
+        `document.head.appendChild(s);` +
+        `});` +
+        `return __h2cPromise;` +
+        `}` +
+        `function respond(requestId,payload){` +
+        `try{` +
+        `window.parent.postMessage(Object.assign({type:'aplus-capture-response',requestId:requestId},payload),'*');` +
+        `}catch(e){}` +
+        `}` +
+        `function doCapture(requestId,opts){` +
+        `if(__captureBusy){respond(requestId,{ok:false,error:'capture in progress'});return;}` +
+        `__captureBusy=true;` +
+        `loadH2C().then(function(h2c){` +
+        `var x=window.scrollX||0;var y=window.scrollY||0;` +
+        `var w=window.innerWidth;var h=window.innerHeight;` +
+        `return h2c(document.documentElement,{` +
+        `useCORS:true,backgroundColor:null,scale:1,` +
+        `x:x,y:y,width:w,height:h,` +
+        `windowWidth:document.documentElement.clientWidth,` +
+        `windowHeight:document.documentElement.clientHeight` +
+        `});` +
+        `}).then(function(canvas){` +
+        `var quality=(opts&&typeof opts.quality==='number')?opts.quality:0.85;` +
+        `canvas.toBlob(function(blob){` +
+        `if(!blob)respond(requestId,{ok:false,error:'toBlob returned null'});` +
+        `else respond(requestId,{ok:true,blob:blob});` +
+        `__captureBusy=false;` +
+        `},'image/jpeg',quality);` +
+        `}).catch(function(err){` +
+        `respond(requestId,{ok:false,error:(err&&err.message)||String(err)});` +
+        `__captureBusy=false;` +
+        `});` +
+        `}` +
+        `window.addEventListener('message',function(ev){` +
+        `var d=ev.data;` +
+        `if(!d||d.type!=='aplus-capture-request'||typeof d.requestId!=='string')return;` +
+        `doCapture(d.requestId,d.opts||{});` +
+        `});` +
         `})()</script>`
     );
 }
