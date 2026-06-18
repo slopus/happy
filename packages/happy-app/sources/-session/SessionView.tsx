@@ -52,7 +52,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
 import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 
-export const SessionView = React.memo((props: { id: string }) => {
+export const SessionView = React.memo((props: { id: string; autoVoice?: boolean }) => {
     const sessionId = props.id;
     const router = useRouter();
     const session = useSession(sessionId);
@@ -255,7 +255,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
                 ) : (
-                    <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
+                    <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} autoVoice={props.autoVoice} />
                 )}
             </View>
         </>
@@ -407,7 +407,7 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
     );
 });
 
-function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session }) {
+function SessionViewLoaded({ sessionId, session, autoVoice }: { sessionId: string, session: Session, autoVoice?: boolean }) {
     const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
@@ -613,6 +613,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         onMicPress: handleMicrophonePress,
         isMicActive: realtimeStatus === 'connected' || realtimeStatus === 'connecting'
     }), [handleMicrophonePress, realtimeStatus]);
+
+    // Auto-start a realtime voice session when the route is opened with `?autoVoice=1`.
+    // Fires once per mount, only when the realtime layer is idle, so a deep-link
+    // (e.g. from a Siri Shortcut or other automation) can land directly in voice
+    // mode without an additional user tap.
+    const autoVoiceFiredRef = React.useRef(false);
+    React.useEffect(() => {
+        if (!autoVoice) return;
+        if (autoVoiceFiredRef.current) return;
+        if (realtimeStatus !== 'disconnected') return;
+        autoVoiceFiredRef.current = true;
+        handleMicrophonePress();
+    }, [autoVoice, realtimeStatus, handleMicrophonePress]);
 
     // Trigger session visibility and initialize git status sync
     React.useLayoutEffect(() => {
