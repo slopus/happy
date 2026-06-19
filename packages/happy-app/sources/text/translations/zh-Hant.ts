@@ -220,6 +220,14 @@ export const zhHant: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
         imageUploadSubtitle: '將圖片附加到訊息中讓 Claude 分析',
+        bashMode: 'Bash 命令模式',
+        bashModeSubtitle: '以 ! 開頭的訊息會作為 shell 命令執行',
+    },
+
+    bashMode: {
+        noOutput: '無輸出',
+        exitCode: ({ code }: { code: number }) => `結束，退出碼為 ${code}`,
+        failed: ({ error }: { error: string }) => `無法執行命令：${error}`,
     },
 
     errors: {

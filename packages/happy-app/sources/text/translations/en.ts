@@ -234,6 +234,15 @@ export const en: TranslationStructure = {
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
         imageUploadSubtitle: 'Attach images to messages for Claude to analyze',
+        bashMode: 'Bash Command Mode',
+        bashModeSubtitle: 'Start a message with ! to run it as a shell command',
+    },
+
+    bashMode: {
+        // !-prefix bash command mode in the chat input
+        noOutput: 'no output',
+        exitCode: ({ code }: { code: number }) => `exited with code ${code}`,
+        failed: ({ error }: { error: string }) => `Could not run command: ${error}`,
     },
 
     errors: {
