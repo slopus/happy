@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mapCodexGoalEventToAgentGoalStatus, parseCodexGoalCommand } from './codexGoalStatus';
+import {
+    codexGoalActionCapabilities,
+    mapCodexGoalEventToAgentGoalStatus,
+    parseCodexGoalActionParams,
+    parseCodexGoalCommand,
+} from './codexGoalStatus';
 
 describe('mapCodexGoalEventToAgentGoalStatus', () => {
     it('maps an active Codex goal update into agent goal status', () => {
@@ -53,6 +58,14 @@ describe('mapCodexGoalEventToAgentGoalStatus', () => {
             status: 'active',
             capabilities: { clear: true },
         });
+    });
+
+    it('exposes editable Codex goals when runtime goal actions are supported', () => {
+        expect(codexGoalActionCapabilities(true)).toEqual({
+            clear: true,
+            edit: true,
+        });
+        expect(codexGoalActionCapabilities(false)).toBeUndefined();
     });
 
     it('keeps paused and limited Codex goal states visible as current goals', () => {
@@ -173,5 +186,23 @@ describe('parseCodexGoalCommand', () => {
     it('ignores empty goal commands and ordinary text', () => {
         expect(parseCodexGoalCommand('/goal')).toBeNull();
         expect(parseCodexGoalCommand('please /goal finish the release')).toBeNull();
+    });
+});
+
+describe('parseCodexGoalActionParams', () => {
+    it('parses clear and edit RPC params into Codex goal commands', () => {
+        expect(parseCodexGoalActionParams({ action: 'clear' })).toEqual({
+            type: 'clear',
+        });
+        expect(parseCodexGoalActionParams({ action: 'edit', objective: '  revised goal  ' })).toEqual({
+            type: 'set',
+            objective: 'revised goal',
+        });
+    });
+
+    it('rejects unsupported or empty goal action params', () => {
+        expect(parseCodexGoalActionParams({ action: 'stop' })).toBeNull();
+        expect(parseCodexGoalActionParams({ action: 'edit', objective: '   ' })).toBeNull();
+        expect(parseCodexGoalActionParams({ action: 'edit' })).toBeNull();
     });
 });

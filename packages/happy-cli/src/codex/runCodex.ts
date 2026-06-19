@@ -45,7 +45,9 @@ import {
 } from './codexPrompt';
 import { discoverCodexSkillCommands } from './codexSkills';
 import {
+    codexGoalActionCapabilities,
     mapCodexGoalEventToAgentGoalStatus,
+    parseCodexGoalActionParams,
     parseCodexGoalCommand,
     type CodexGoalCommand,
 } from './codexGoalStatus';
@@ -562,10 +564,11 @@ export async function runCodex(opts: {
         }
     });
     const updateCodexGoalState = (message: Record<string, unknown>) => {
+        const capabilities = codexGoalActionCapabilities(client.supportsGoalActions());
         const goalStatus = mapCodexGoalEventToAgentGoalStatus(
             message,
             client.threadId,
-            client.supportsGoalActions() ? { capabilities: { clear: true } } : undefined,
+            capabilities ? { capabilities } : undefined,
         );
         if (!goalStatus) {
             return;
@@ -608,8 +611,9 @@ export async function runCodex(opts: {
             return false;
         }
     };
-    session.rpcHandlerManager.registerHandler('goal-action', async (params: { action?: unknown }) => {
-        if (params.action !== 'clear') {
+    session.rpcHandlerManager.registerHandler('goal-action', async (params: Record<string, unknown>) => {
+        const command = parseCodexGoalActionParams(params);
+        if (!command) {
             throw new Error('Unsupported Codex goal action');
         }
 
@@ -618,7 +622,7 @@ export async function runCodex(opts: {
             throw new Error('No active Codex thread');
         }
 
-        const handled = await handleCodexGoalCommand({ type: 'clear' }, threadId);
+        const handled = await handleCodexGoalCommand(command, threadId);
         if (!handled) {
             throw new Error('Codex goal actions are not supported by this runtime');
         }

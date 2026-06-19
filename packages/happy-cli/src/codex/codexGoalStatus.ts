@@ -37,6 +37,10 @@ function goalRecord(value: unknown): (ThreadGoal & Record<string, unknown>) | nu
         : null;
 }
 
+export function codexGoalActionCapabilities(supported: boolean): AgentGoalCapabilities | undefined {
+    return supported ? { clear: true, edit: true } : undefined;
+}
+
 function eventThreadId(message: CodexGoalEvent): string | null {
     const goal = goalRecord(message.goal);
     return nonEmptyString(message.threadId)
@@ -133,4 +137,17 @@ export function parseCodexGoalCommand(text: string): CodexGoalCommand | null {
     }
 
     return { type: 'set', objective };
+}
+
+export function parseCodexGoalActionParams(params: Record<string, unknown>): CodexGoalCommand | null {
+    if (params.action === 'clear') {
+        return { type: 'clear' };
+    }
+
+    if (params.action === 'edit') {
+        const objective = nonEmptyString(params.objective);
+        return objective ? { type: 'set', objective } : null;
+    }
+
+    return null;
 }
