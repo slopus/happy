@@ -528,7 +528,7 @@ export async function runAcp(opts: {
   let sawModes = false;
   let sawModels = false;
 
-  const happyServer = await startHappyServer(session);
+  const happyServer = await startHappyServer(session, { api });
   const mcpServers = {
     happy: {
       command: join(projectPath(), 'bin', 'happy-mcp.mjs'),
