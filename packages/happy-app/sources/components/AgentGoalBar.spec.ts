@@ -133,6 +133,20 @@ describe('AgentGoalBar', () => {
         expect(onAction).toHaveBeenNthCalledWith(2, 'edit');
     });
 
+    it('renders only the actions explicitly reported by the agent', async () => {
+        const element = await renderGoalBar({
+            goal: {
+                ...goal,
+                capabilities: { edit: true },
+            },
+            onAction: vi.fn(),
+        });
+
+        expect(findAllByLabel(element, 'Edit goal')).toHaveLength(1);
+        expect(findAllByLabel(element, 'Clear goal')).toHaveLength(0);
+        expect(findAllByLabel(element, 'Stop goal')).toHaveLength(0);
+    });
+
     it('disables the in-flight action button', async () => {
         const onAction = vi.fn();
         const element = await renderGoalBar({
