@@ -240,6 +240,12 @@ export const ja: TranslationStructure = {
         groupToolCallsSubtitle: '連続するツール呼び出しを1つのコンテナにまとめる',
     },
 
+    bashMode: {
+        noOutput: '出力なし',
+        exitCode: ({ code }: { code: number }) => `コード ${code} で終了しました`,
+        failed: ({ error }: { error: string }) => `コマンドを実行できませんでした: ${error}`,
+    },
+
     errors: {
         networkError: 'ネットワークエラーが発生しました',
         serverError: 'サーバーエラーが発生しました',

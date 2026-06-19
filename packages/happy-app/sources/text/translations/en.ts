@@ -253,6 +253,13 @@ export const en: TranslationStructure = {
         groupToolCallsSubtitle: 'Collapse consecutive tool calls into one container',
     },
 
+    bashMode: {
+        // !-prefix bash command mode in the chat input
+        noOutput: 'no output',
+        exitCode: ({ code }: { code: number }) => `exited with code ${code}`,
+        failed: ({ error }: { error: string }) => `Could not run command: ${error}`,
+    },
+
     errors: {
         networkError: 'Network error occurred',
         serverError: 'Server error occurred',
