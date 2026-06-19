@@ -150,6 +150,42 @@ export class MessageQueue2<T> {
     }
 
     /**
+     * Push a message that must be processed alone without discarding
+     * already-queued user prompts.
+     */
+    pushIsolated(message: string, mode: T, attachments?: PendingAttachment[]): void {
+        if (this.closed) {
+            throw new Error('Cannot push to closed queue');
+        }
+
+        const modeHash = this.modeHasher(mode);
+        logger.debug(`[MessageQueue2] pushIsolated() called with mode hash: ${modeHash}`);
+
+        this.queue.push({
+            message,
+            mode,
+            modeHash,
+            isolate: true,
+            attachments,
+        });
+
+        // Trigger message handler if set
+        if (this.onMessageHandler) {
+            this.onMessageHandler(message, mode);
+        }
+
+        // Notify waiter if any
+        if (this.waiter) {
+            logger.debug(`[MessageQueue2] Notifying waiter for isolated message`);
+            const waiter = this.waiter;
+            this.waiter = null;
+            waiter(true);
+        }
+
+        logger.debug(`[MessageQueue2] pushIsolated() completed. Queue size: ${this.queue.length}`);
+    }
+
+    /**
      * Push a message to the beginning of the queue with a mode.
      */
     unshift(message: string, mode: T): void {
