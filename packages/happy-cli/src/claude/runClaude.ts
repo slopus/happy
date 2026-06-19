@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
-import { AgentState, Metadata } from '@/api/types';
+import { AgentGoalStatus, AgentState, Metadata } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
@@ -24,6 +24,12 @@ import { resolve } from 'node:path';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
+import {
+    CLAUDE_GOAL_ACTION_CONFIRMATIONS,
+    claudeGoalActionCapabilities,
+    mapClaudeGoalStatusEventToAgentGoalStatus,
+    type ClaudeGoalStatusTranscriptEvent,
+} from '@/claude/claudeGoalStatus';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
@@ -167,10 +173,42 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 const resp = await api.getOrCreateSession({ tag: randomUUID(), metadata, state });
                 if (!resp) throw new Error('Server unavailable');
                 const session = api.sessionSyncClient(resp);
+                let latestClaudeGoalStatus: AgentGoalStatus | null = null;
+                const observedClaudeGoalRevisions = new Set<string>();
+                const goalCommandSupported = () => {
+                    const slashCommands = session.getMetadata()?.slashCommands ?? [];
+                    return slashCommands.includes('goal') || slashCommands.includes('/goal');
+                };
+                const currentClaudeSessionId = () => session.getMetadata()?.claudeSessionId ?? null;
+                const updateClaudeGoalState = (event: ClaudeGoalStatusTranscriptEvent) => {
+                    if (observedClaudeGoalRevisions.has(event.sourceRevision)) {
+                        return;
+                    }
+                    const capabilities = claudeGoalActionCapabilities({
+                        goalCommandSupported: goalCommandSupported(),
+                        observedGoalStatus: true,
+                        confirmedActions: CLAUDE_GOAL_ACTION_CONFIRMATIONS,
+                    });
+                    const goalStatus = mapClaudeGoalStatusEventToAgentGoalStatus(
+                        event,
+                        currentClaudeSessionId(),
+                        capabilities ? { capabilities } : undefined,
+                    );
+                    if (!goalStatus) {
+                        return;
+                    }
+                    observedClaudeGoalRevisions.add(event.sourceRevision);
+                    latestClaudeGoalStatus = goalStatus;
+                    session.updateAgentState((current) => ({
+                        ...current,
+                        agentGoalStatus: latestClaudeGoalStatus ?? goalStatus,
+                    }));
+                };
                 const scanner = await createSessionScanner({
                     sessionId: null,
                     workingDirectory,
-                    onMessage: (msg) => session.sendClaudeSessionMessage(msg)
+                    onMessage: (msg) => session.sendClaudeSessionMessage(msg),
+                    onTranscriptEvent: updateClaudeGoalState,
                 });
                 if (offlineSessionId) scanner.onNewSession(offlineSessionId);
                 return { session, scanner };
@@ -315,6 +353,37 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     };
 
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
+    let latestClaudeGoalStatus: AgentGoalStatus | null = null;
+    const observedClaudeGoalRevisions = new Set<string>();
+    const goalCommandSupported = () => {
+        const slashCommands = session.getMetadata()?.slashCommands ?? [];
+        return slashCommands.includes('goal') || slashCommands.includes('/goal');
+    };
+    const currentClaudeSessionId = () => session.getMetadata()?.claudeSessionId ?? null;
+    const updateClaudeGoalState = (event: ClaudeGoalStatusTranscriptEvent) => {
+        if (observedClaudeGoalRevisions.has(event.sourceRevision)) {
+            return;
+        }
+        const capabilities = claudeGoalActionCapabilities({
+            goalCommandSupported: goalCommandSupported(),
+            observedGoalStatus: true,
+            confirmedActions: CLAUDE_GOAL_ACTION_CONFIRMATIONS,
+        });
+        const goalStatus = mapClaudeGoalStatusEventToAgentGoalStatus(
+            event,
+            currentClaudeSessionId(),
+            capabilities ? { capabilities } : undefined,
+        );
+        if (!goalStatus) {
+            return;
+        }
+        observedClaudeGoalRevisions.add(event.sourceRevision);
+        latestClaudeGoalStatus = goalStatus;
+        session.updateAgentState((current) => ({
+            ...current,
+            agentGoalStatus: latestClaudeGoalStatus ?? goalStatus,
+        }));
+    };
 
     // Remote-mode session scanner: catches user-typed prompts that
     // appeared in the Claude JSONL while we weren't looking — typically
@@ -343,6 +412,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             if (consumeAppPrompt(content)) return;
             session.sendClaudeSessionMessage(raw);
         },
+        onTranscriptEvent: updateClaudeGoalState,
     });
 
     // Start Happy MCP server

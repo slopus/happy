@@ -252,4 +252,144 @@ describe('runClaude remote JSONL scanner', () => {
         await expect(runPromise).rejects.toThrow('process.exit');
         exitSpy.mockRestore();
     });
+
+    it('observes goal_status side-channel events as agent goal state', async () => {
+        const sentMessages: unknown[] = [];
+        let metadata = {
+            claudeSessionId: 'claude-session-1',
+            slashCommands: ['goal'],
+        };
+        const sessionClient = {
+            sessionId: 'happy-session-1',
+            suppressNextArchiveSignal: vi.fn(),
+            skipExistingMessages: vi.fn(),
+            updateMetadata: vi.fn((updater: (current: typeof metadata) => typeof metadata) => {
+                metadata = updater(metadata);
+            }),
+            sendClaudeSessionMessage: vi.fn((message: unknown) => {
+                sentMessages.push(message);
+            }),
+            onUserMessage: vi.fn(),
+            onFileEvent: vi.fn(),
+            on: vi.fn(),
+            trackAttachmentDownload: vi.fn(),
+            drainAttachmentsForUserMessage: vi.fn(async () => []),
+            downloadAndDecryptAttachment: vi.fn(),
+            getMetadata: vi.fn(() => metadata),
+            sendSessionEvent: vi.fn(),
+            updateAgentState: vi.fn(),
+            rpcHandlerManager: {
+                registerHandler: vi.fn(),
+            },
+            sendSessionDeath: vi.fn(),
+            flush: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+        };
+        const api = {
+            getOrCreateMachine: vi.fn(async () => ({})),
+            getOrCreateSession: vi.fn(async () => ({
+                id: 'happy-session-1',
+                seq: 0,
+                metadata: {},
+                metadataVersion: 0,
+                agentState: {},
+                agentStateVersion: 0,
+                encryptionKey: new Uint8Array(32),
+                encryptionVariant: 'legacy' as const,
+            })),
+            sessionSyncClient: vi.fn(() => sessionClient),
+            deactivateSession: vi.fn(async () => {}),
+        };
+        mockApiClientCreate.mockResolvedValue(api);
+
+        const loopDeferred = createDeferred<number>();
+        mockLoop.mockReturnValue(loopDeferred.promise);
+
+        const runPromise = runClaude({
+            token: 'token',
+            encryption: { type: 'legacy', secret: new Uint8Array(32) },
+        } as any, {
+            startingMode: 'remote',
+            shouldStartDaemon: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(mockLoop).toHaveBeenCalled();
+            expect(mockCreateSessionScanner).toHaveBeenCalled();
+        });
+
+        const scannerOptions = mockCreateSessionScanner.mock.calls[0][0];
+        expect(scannerOptions.onTranscriptEvent).toEqual(expect.any(Function));
+
+        scannerOptions.onMessage({
+            type: 'attachment',
+            uuid: 'goal-event-as-message',
+            sessionId: 'claude-session-1',
+            timestamp: new Date().toISOString(),
+            attachment: {
+                type: 'goal_status',
+                met: false,
+                condition: 'Ship goal observation',
+            },
+        });
+        expect(sentMessages).toHaveLength(0);
+
+        scannerOptions.onTranscriptEvent({
+            type: 'goal_status',
+            uuid: 'goal-event-ignored',
+            sourceSessionId: 'other-claude-session',
+            sourceRevision: 'rev-ignored',
+            timestamp: new Date().toISOString(),
+            attachment: {
+                type: 'goal_status',
+                met: false,
+                condition: 'Wrong session goal',
+            },
+        });
+        expect(sessionClient.updateAgentState).toHaveBeenCalledTimes(1);
+
+        const userMessageHandler = sessionClient.onUserMessage.mock.calls[0][0];
+        await userMessageHandler({
+            content: { text: '/goal Ship goal observation' },
+            meta: {},
+        });
+        expect(sessionClient.updateAgentState).toHaveBeenCalledTimes(1);
+
+        scannerOptions.onTranscriptEvent({
+            type: 'goal_status',
+            uuid: 'goal-event-1',
+            sourceSessionId: 'claude-session-1',
+            sourceRevision: 'rev-1',
+            timestamp: new Date().toISOString(),
+            attachment: {
+                type: 'goal_status',
+                met: false,
+                condition: 'Ship goal observation',
+            },
+        });
+
+        expect(sessionClient.updateAgentState).toHaveBeenCalledTimes(2);
+        const goalUpdater = sessionClient.updateAgentState.mock.calls[1][0];
+        const nextState = goalUpdater({ controlledByUser: false });
+        expect(nextState).toMatchObject({
+            controlledByUser: false,
+            agentGoalStatus: {
+                source: 'claude',
+                status: 'active',
+                sourceSessionId: 'claude-session-1',
+                sourceRevision: 'rev-1',
+                text: 'Ship goal observation',
+                capabilities: { clear: true, edit: true },
+            },
+        });
+
+        expect(sentMessages).toHaveLength(0);
+
+        loopDeferred.resolve(0);
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+            throw new Error('process.exit');
+        }) as never);
+        await expect(runPromise).rejects.toThrow('process.exit');
+        exitSpy.mockRestore();
+    });
 });
