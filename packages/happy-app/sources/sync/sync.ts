@@ -91,6 +91,24 @@ type SendMessageOptions = {
     attachments?: AttachmentPreview[];
 };
 
+/**
+ * Format a `!`-bash command result as chat markdown: stdout+stderr inside a
+ * fenced code block, with a trailing note for a non-zero exit code.
+ */
+function formatBashResult(result: { success: boolean; stdout: string; stderr: string; exitCode: number; error?: string }): string {
+    const stripTrailing = (s: string | undefined) => (s ?? '').replace(/\s+$/, '');
+    const out = stripTrailing(result.stdout);
+    const err = stripTrailing(result.stderr);
+    const body = [out, err].filter(Boolean).join('\n');
+    const footer = result.exitCode && result.exitCode !== 0
+        ? `\n\n\`${t('bashMode.exitCode', { code: result.exitCode })}\``
+        : '';
+    if (!body) {
+        return `_${t('bashMode.noOutput')}_${footer}`;
+    }
+    return '```sh\n' + body + '\n```' + footer;
+}
+
 class Sync {
     private static readonly BACKGROUND_SEND_TIMEOUT_MS = 30_000;
     encryption!: Encryption;
@@ -710,6 +728,55 @@ class Sync {
 
         this.getSendSync(sessionId).invalidate();
         this.maybeStartBackgroundSendWatchdog();
+    }
+
+    /**
+     * Run a one-off shell command for a session — the `!`-prefix bash mode.
+     *
+     * The command runs on the session's own daemon process via the
+     * session-scoped `bash` RPC, so it executes in (and is sandboxed to) the
+     * session's working directory — the same handler that powers directory
+     * autocomplete. Nothing reaches the agent or the server: both the echoed
+     * command and its output are injected as local-only messages (no
+     * `pendingOutbox` push), so they render in the chat but never sync.
+     */
+    async runBashCommand(sessionId: string, command: string) {
+        const session = storage.getState().sessions[sessionId];
+        const cwd = session?.metadata?.path;
+
+        // Echo the command as a local user message so the chat shows what ran.
+        const echoId = randomUUID();
+        this.enqueueMessages(sessionId, [{
+            id: echoId,
+            localId: echoId,
+            createdAt: Date.now(),
+            role: 'user',
+            isSidechain: false,
+            content: { type: 'text', text: `!${command}` },
+        }]);
+
+        let outputText: string;
+        try {
+            const result = await apiSocket.sessionRPC<
+                { success: boolean; stdout: string; stderr: string; exitCode: number; error?: string },
+                { command: string; cwd?: string }
+            >(sessionId, 'bash', { command, cwd });
+            outputText = formatBashResult(result);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            outputText = t('bashMode.failed', { error: message });
+        }
+
+        // Inject the output as a local agent message (markdown code block).
+        const outputId = randomUUID();
+        this.enqueueMessages(sessionId, [{
+            id: outputId,
+            localId: null,
+            createdAt: Date.now(),
+            role: 'agent',
+            isSidechain: false,
+            content: [{ type: 'text', text: outputText, uuid: outputId, parentUUID: null }],
+        }]);
     }
 
     /** Server sent us settings — merge any pending local changes on top, then apply as one update. */

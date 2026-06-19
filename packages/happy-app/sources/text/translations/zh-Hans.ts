@@ -221,6 +221,14 @@ export const zhHans: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
         imageUploadSubtitle: '将图片附加到消息中让 Claude 分析',
+        bashMode: 'Bash 命令模式',
+        bashModeSubtitle: '以 ! 开头的消息将作为 Shell 命令运行',
+    },
+
+    bashMode: {
+        noOutput: '无输出',
+        exitCode: ({ code }: { code: number }) => `已退出，退出码 ${code}`,
+        failed: ({ error }: { error: string }) => `无法运行命令：${error}`,
     },
 
     errors: {

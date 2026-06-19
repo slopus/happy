@@ -237,6 +237,14 @@ export const pl: TranslationStructure = {
         analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
         imageUpload: 'Przesyłanie obrazów',
         imageUploadSubtitle: 'Dołącz obrazy do wiadomości, aby Claude mógł je przeanalizować',
+        bashMode: 'Tryb poleceń Bash',
+        bashModeSubtitle: 'Rozpocznij wiadomość od !, aby uruchomić ją jako polecenie powłoki',
+    },
+
+    bashMode: {
+        noOutput: 'brak danych wyjściowych',
+        exitCode: ({ code }: { code: number }) => `zakończono z kodem ${code}`,
+        failed: ({ error }: { error: string }) => `Nie można uruchomić polecenia: ${error}`,
     },
 
     errors: {

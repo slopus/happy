@@ -18,6 +18,7 @@ export default function FeaturesSettingsScreen() {
     const [fileDiffsSidebar, setFileDiffsSidebar] = useSettingMutable('fileDiffsSidebar');
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [expImageUpload, setExpImageUpload] = useSettingMutable('expImageUpload');
+    const [expBashMode, setExpBashMode] = useSettingMutable('expBashMode');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -101,6 +102,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={expResumeSession}
                             onValueChange={setExpResumeSession}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.bashMode')}
+                    subtitle={t('settingsFeatures.bashModeSubtitle')}
+                    icon={<Ionicons name="terminal-outline" size={29} color="#32D74B" />}
+                    rightElement={
+                        <Switch
+                            value={expBashMode}
+                            onValueChange={setExpBashMode}
                         />
                     }
                     showChevron={false}
