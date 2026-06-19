@@ -140,6 +140,28 @@ async function main() {
     }
   );
 
+  server.registerTool(
+    'archive_self',
+    {
+      description: 'Archive the CURRENT session and exit — the self-archive that archive_session refuses (a live session\'s keepalive would otherwise immediately re-activate it). Stamps this session archived, stops its keepalive, and gracefully terminates the agent process so the archive sticks (same path as the app\'s "Archive" button). The session stays resumable. Call this only when the agent has finished its work and should retire itself; it ends the session, so emit any final message before calling.',
+      title: 'Archive Current Session',
+      inputSchema: {},
+    },
+    async (args) => {
+      try {
+        const client = await ensureHttpClient();
+        return await client.callTool({ name: 'archive_self', arguments: args }) as any;
+      } catch (error) {
+        return {
+          content: [
+            { type: 'text', text: `Failed to self-archive: ${error instanceof Error ? error.message : String(error)}` },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
   // Start STDIO transport
   const stdio = new StdioServerTransport();
   await server.connect(stdio);

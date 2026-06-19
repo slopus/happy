@@ -1,8 +1,8 @@
 /**
  * Happy MCP server
  * Provides Happy CLI specific tools: chat title management plus session control
- * (open a new session, archive a session) so a running agent can do
- * programmatically what the mobile/web client UI does.
+ * (open a new session, archive another session, self-archive) so a running
+ * agent can do programmatically what the mobile/web client UI does.
  *
  * Uses stateless StreamableHTTP: each request gets a fresh McpServer + transport.
  * This is required by MCP SDK >=1.27 which rejects reuse of an already-connected transport.
@@ -26,9 +26,24 @@ function toolResult(text: string, isError = false): ToolResult {
     return { content: [{ type: 'text', text }], isError };
 }
 
+/**
+ * Delay before archive_self's deferred archive+exit fires, so the tool's
+ * response reaches the MCP client before the process terminates.
+ */
+const SELF_ARCHIVE_EXIT_DELAY_MS = 250;
+
 export interface HappyServerDeps {
     /** Account-scoped API client, used by archive_session to mark a session inactive on the server. */
     api?: ApiClient;
+    /**
+     * Archive THIS session and gracefully terminate the process. Wired by each
+     * runner to its kill-session handler — the same path the app's "Archive"
+     * button uses: stamps lifecycleState='archived', stops the keepalive, then
+     * exits, so the archive sticks past the keepalive (which would otherwise
+     * re-activate a still-live session). Absent → archive_self reports it's
+     * unavailable.
+     */
+    archiveAndExit?: () => void | Promise<void>;
 }
 
 function createMcpServer(client: ApiSessionClient, deps: HappyServerDeps): McpServer {
@@ -120,6 +135,22 @@ function createMcpServer(client: ApiSessionClient, deps: HappyServerDeps): McpSe
         }
     });
 
+    mcp.registerTool('archive_self', {
+        description: 'Archive the CURRENT session and exit — the self-archive that archive_session refuses (a live session\'s keepalive would otherwise immediately re-activate it). Stamps this session archived, stops its keepalive, and gracefully terminates the agent process so the archive sticks (same path as the app\'s "Archive" button). The session stays resumable. Call this only when the agent has finished its work and should retire itself; it ends the session, so emit any final message before calling.',
+        title: 'Archive Current Session',
+        inputSchema: {},
+    }, async () => {
+        if (!deps.archiveAndExit) {
+            return toolResult('Self-archive is not available in this session.', true);
+        }
+        // Defer so this tool's response reaches the client before the process
+        // exits. The wired handler stops the keepalive before archiving, so the
+        // archive sticks (no keepalive re-activation race).
+        const archiveAndExit = deps.archiveAndExit;
+        setTimeout(() => { void archiveAndExit(); }, SELF_ARCHIVE_EXIT_DELAY_MS);
+        return toolResult('Archiving this session and exiting now. It stays resumable.');
+    });
+
     return mcp;
 }
 
@@ -158,7 +189,7 @@ export async function startHappyServer(client: ApiSessionClient, deps: HappyServ
 
     return {
         url: baseUrl.toString(),
-        toolNames: ['change_title', 'open_session', 'archive_session'],
+        toolNames: ['change_title', 'open_session', 'archive_session', 'archive_self'],
         stop: () => {
             logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);
             server.close();

@@ -346,7 +346,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     });
 
     // Start Happy MCP server
-    const happyServer = await startHappyServer(session, { api });
+    // Wired below (after `cleanup` is defined) so the archive_self MCP tool can
+    // trigger the same graceful archive+exit as the app's Archive button.
+    let requestSelfArchive: (() => void) | undefined;
+    const happyServer = await startHappyServer(session, { api, archiveAndExit: () => requestSelfArchive?.() });
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
 
     // Variable to track current session instance (updated via onSessionReady callback)
@@ -776,6 +779,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // want the metadata stamped — it's the user explicitly choosing to
     // retire the session, not just disconnecting.
     registerKillSessionHandler(session.rpcHandlerManager, () => cleanup({ archive: true }));
+
+    // archive_self MCP tool → same graceful archive+exit as the kill RPC above.
+    requestSelfArchive = () => { void cleanup({ archive: true }); };
 
     // Create claude loop
     const exitCode = await loop({
