@@ -53,6 +53,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
 import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { performAgentGoalAction } from './agentGoalActionHandler';
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -576,34 +577,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     ]);
     const [goalActionInFlight, setGoalActionInFlight] = React.useState<AgentGoalAction | null>(null);
     const handleGoalAction = React.useCallback(async (action: AgentGoalAction) => {
-        if (action === 'stop') {
-            return;
-        }
-
-        let objective: string | undefined;
-        if (action === 'edit') {
-            const currentGoal = visibleAgentGoal?.text ?? '';
-            const nextGoal = await Modal.prompt(t('components.agentGoalBar.editGoal'), undefined, {
+        await performAgentGoalAction({
+            action,
+            currentGoalText: visibleAgentGoal?.text ?? '',
+            promptEditGoal: (currentGoalText) => Modal.prompt(t('components.agentGoalBar.editGoal'), undefined, {
                 placeholder: t('components.agentGoalBar.currentGoal'),
-                defaultValue: currentGoal,
+                defaultValue: currentGoalText,
                 cancelText: t('common.cancel'),
                 confirmText: t('common.save'),
-            });
-            const trimmedGoal = nextGoal?.trim();
-            if (!trimmedGoal || trimmedGoal === currentGoal.trim()) {
-                return;
-            }
-            objective = trimmedGoal;
-        }
-
-        setGoalActionInFlight(action);
-        try {
-            await sessionGoalAction(sessionId, action, objective);
-        } catch (error) {
-            console.error('Failed to perform goal action', error);
-        } finally {
-            setGoalActionInFlight(null);
-        }
+            }),
+            dispatchGoalAction: (nextAction, objective) => sessionGoalAction(sessionId, nextAction, objective),
+            setInFlight: setGoalActionInFlight,
+            onError: (error) => console.error('Failed to perform goal action', error),
+        });
     }, [sessionId, visibleAgentGoal?.text]);
 
     // Handle microphone button press - memoized to prevent button flashing
