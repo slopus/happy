@@ -639,7 +639,8 @@ describe('runClaude remote JSONL scanner', () => {
             .mockImplementationOnce(() => {
                 throw pushError;
             })
-            .mockImplementation((message: string, mode: any, attachments?: any) => {
+            .mockImplementation((...args: unknown[]) => {
+                const [message, mode, attachments] = args as [string, any, any];
                 originalPushIsolated(message, mode, attachments);
             });
         const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
