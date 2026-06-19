@@ -70,6 +70,32 @@ function resolveClaudeEntrypoint(pkgDir) {
     return null;
 }
 
+function isPlainTextWithoutShebang(filePath) {
+    try {
+        const fd = fs.openSync(filePath, 'r');
+        try {
+            const buffer = Buffer.alloc(128);
+            const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
+            if (bytesRead >= 2 && buffer[0] === 0x23 && buffer[1] === 0x21) {
+                return false;
+            }
+            for (let i = 0; i < bytesRead; i++) {
+                const byte = buffer[i];
+                const isPrintableAscii = byte >= 0x20 && byte <= 0x7e;
+                const isCommonWhitespace = byte === 0x09 || byte === 0x0a || byte === 0x0d;
+                if (!isPrintableAscii && !isCommonWhitespace) {
+                    return false;
+                }
+            }
+            return bytesRead > 0;
+        } finally {
+            fs.closeSync(fd);
+        }
+    } catch (e) {
+        return false;
+    }
+}
+
 /**
  * Find path to npm globally installed Claude Code CLI
  * @returns {string|null} Path to cli.js or native binary, or null if not found
@@ -114,6 +140,9 @@ function findClaudeInPath() {
             // These cannot be spawned directly by Node.js. When we find such a shim,
             // resolve to the actual cli.js in the adjacent node_modules directory.
             const isExecutable = resolvedPath.endsWith('.js') || resolvedPath.endsWith('.cjs') || resolvedPath.endsWith('.exe');
+            if (process.platform !== 'win32' && resolvedPath.endsWith('.exe') && isPlainTextWithoutShebang(resolvedPath)) {
+                return null;
+            }
             if (!isExecutable) {
                 const shimDir = path.dirname(claudePath);
                 const pkgDir = path.join(shimDir, 'node_modules', '@anthropic-ai', 'claude-code');
