@@ -33,13 +33,13 @@ describe('startHappyServer MCP tools', () => {
         return c;
     }
 
-    it('registers change_title, open_session, archive_session', async () => {
+    it('registers change_title, open_session, archive_session, archive_self', async () => {
         server = await startHappyServer(fakeSession([]));
-        expect(server.toolNames).toEqual(['change_title', 'open_session', 'archive_session']);
+        expect(server.toolNames).toEqual(['change_title', 'open_session', 'archive_session', 'archive_self']);
 
         client = await connect(server.url);
         const { tools } = await client.listTools();
-        expect(tools.map(t => t.name).sort()).toEqual(['archive_session', 'change_title', 'open_session']);
+        expect(tools.map(t => t.name).sort()).toEqual(['archive_self', 'archive_session', 'change_title', 'open_session']);
     });
 
     it('change_title still works after the refactor', async () => {
@@ -60,5 +60,30 @@ describe('startHappyServer MCP tools', () => {
         const res = await client.callTool({ name: 'archive_session', arguments: { sessionId: 'self-session' } });
         expect(res.isError).toBe(true);
         expect(JSON.stringify(res.content)).toContain('Cannot archive the current session');
+    });
+
+    it('archive_self reports unavailable when no archiveAndExit is wired', async () => {
+        server = await startHappyServer(fakeSession([]));
+        client = await connect(server.url);
+
+        const res = await client.callTool({ name: 'archive_self', arguments: {} });
+        expect(res.isError).toBe(true);
+        expect(JSON.stringify(res.content)).toContain('not available');
+    });
+
+    it('archive_self responds first, then triggers the wired archive+exit', async () => {
+        let archived = false;
+        server = await startHappyServer(fakeSession([]), { archiveAndExit: () => { archived = true; } });
+        client = await connect(server.url);
+
+        const res = await client.callTool({ name: 'archive_self', arguments: {} });
+        // Responds with success BEFORE the deferred archive+exit fires, so the
+        // client gets the goodbye before the process would terminate.
+        expect(res.isError).toBeFalsy();
+        expect(JSON.stringify(res.content)).toContain('Archiving this session');
+        expect(archived).toBe(false);
+
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        expect(archived).toBe(true);
     });
 });
