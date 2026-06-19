@@ -100,6 +100,15 @@ function createDeferred<T>() {
     return { promise, resolve, reject };
 }
 
+async function expectPromptRejectsFast(promise: Promise<unknown>, pattern: RegExp) {
+    await expect(Promise.race([
+        promise,
+        new Promise((_resolve, reject) => {
+            setTimeout(() => reject(new Error('goal action did not reject')), 10);
+        }),
+    ])).rejects.toThrow(pattern);
+}
+
 async function startRemoteRunClaudeHarness(opts: {
     metadata?: Record<string, unknown>;
     updateAgentState?: ReturnType<typeof vi.fn>;
@@ -173,6 +182,8 @@ async function startRemoteRunClaudeHarness(opts: {
     if (!scannerOptions || !loopOptions) {
         throw new Error('runClaude harness did not start');
     }
+    const runtimeSession = { thinking: false, cleanup: vi.fn() };
+    loopOptions.onSessionReady(runtimeSession);
     const goalActionHandler = registerHandler.mock.calls.find(([method]) => method === 'goal-action')?.[1];
 
     const finish = async () => {
@@ -190,6 +201,7 @@ async function startRemoteRunClaudeHarness(opts: {
         goalActionHandler,
         loopOptions,
         registerHandler,
+        runtimeSession,
         scannerOptions,
         sessionClient,
         updateAgentState,
@@ -780,6 +792,46 @@ describe('runClaude remote JSONL scanner', () => {
         expect(harness.loopOptions.messageQueue.queue).toEqual([
             expect.objectContaining({ message: 'already queued' }),
         ]);
+        await harness.finish();
+    });
+
+    it('rejects Claude goal-action while local mode owns the transcript', async () => {
+        const harness = await startRemoteRunClaudeHarness();
+        await vi.waitFor(() => {
+            expect(harness.registerHandler).toHaveBeenCalledWith('goal-action', expect.any(Function));
+        });
+        const handler = harness.goalActionHandler;
+        if (!handler) throw new Error('goal-action handler not registered');
+
+        emitClaudeGoalStatus(harness.scannerOptions, {
+            uuid: 'goal-att-active-local-mode',
+            met: false,
+            condition: 'local mode goal',
+        });
+        harness.loopOptions.onModeChange('local');
+
+        await expectPromptRejectsFast(handler({ action: 'clear' }), /not ready|remote/i);
+        expect(harness.loopOptions.messageQueue.queue).toEqual([]);
+        await harness.finish();
+    });
+
+    it('rejects Claude goal-action while Claude is still thinking', async () => {
+        const harness = await startRemoteRunClaudeHarness();
+        await vi.waitFor(() => {
+            expect(harness.registerHandler).toHaveBeenCalledWith('goal-action', expect.any(Function));
+        });
+        const handler = harness.goalActionHandler;
+        if (!handler) throw new Error('goal-action handler not registered');
+
+        emitClaudeGoalStatus(harness.scannerOptions, {
+            uuid: 'goal-att-active-thinking',
+            met: false,
+            condition: 'thinking goal',
+        });
+        harness.runtimeSession.thinking = true;
+
+        await expectPromptRejectsFast(handler({ action: 'clear' }), /not ready|thinking/i);
+        expect(harness.loopOptions.messageQueue.queue).toEqual([]);
         await harness.finish();
     });
 });

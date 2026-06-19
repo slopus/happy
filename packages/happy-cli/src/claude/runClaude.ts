@@ -570,6 +570,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         if (command.type === 'set' && !capabilities.edit) {
             throw new Error('Claude edit goal action is not supported');
         }
+        if (currentRunMode !== 'remote') {
+            throw new Error('Claude goal action is not ready: remote mode is not active');
+        }
+        if (!currentSession || currentSession.thinking) {
+            throw new Error('Claude goal action is not ready while Claude is thinking');
+        }
         if (messageQueue.size() > 0) {
             throw new Error('Claude message queue is busy');
         }
