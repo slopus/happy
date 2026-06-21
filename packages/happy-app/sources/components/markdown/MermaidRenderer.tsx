@@ -1,9 +1,12 @@
 import * as React from 'react';
-import { View, Platform, Text } from 'react-native';
+import { View, Platform, Text, Pressable } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { Modal } from '@/modal';
+import { MermaidViewer } from './MermaidViewer';
 
 // Tall diagrams scroll inside a capped container instead of taking over the chat
 const MAX_DIAGRAM_HEIGHT = 600;
@@ -17,6 +20,21 @@ const webStyle = (backgroundColor: string): any => ({
     overflow: 'auto',
 });
 
+// Tap target to open the diagram in the fullscreen zoomable viewer.
+function ExpandButton({ onPress }: { onPress: () => void }) {
+    return (
+        <Pressable
+            onPress={onPress}
+            hitSlop={8}
+            style={style.expandBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Expand diagram"
+        >
+            <Ionicons name="expand" size={16} color="#fff" />
+        </Pressable>
+    );
+}
+
 // Mermaid render component that works on all platforms
 export const MermaidRenderer = React.memo((props: {
     content: string;
@@ -29,6 +47,10 @@ export const MermaidRenderer = React.memo((props: {
         const { width } = event.nativeEvent.layout;
         setDimensions(prev => ({ ...prev, width }));
     }, []);
+
+    const openViewer = React.useCallback(() => {
+        Modal.show({ component: MermaidViewer, props: { content: props.content } } as any);
+    }, [props.content]);
 
     // Web platform uses direct SVG rendering for better performance and native DOM integration
     if (Platform.OS === 'web') {
@@ -103,6 +125,7 @@ export const MermaidRenderer = React.memo((props: {
                     style={webStyle(theme.colors.surfaceHighest)}
                     dangerouslySetInnerHTML={{ __html: svgContent }}
                 />
+                <ExpandButton onPress={openViewer} />
             </View>
         );
     }
@@ -200,6 +223,7 @@ export const MermaidRenderer = React.memo((props: {
                     }}
                 />
             </View>
+            <ExpandButton onPress={openViewer} />
         </View>
     );
 });
@@ -208,6 +232,17 @@ const style = StyleSheet.create((theme) => ({
     container: {
         marginVertical: 8,
         width: '100%',
+    },
+    expandBtn: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.45)',
     },
     innerContainer: {
         width: '100%',
