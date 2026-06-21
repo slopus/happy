@@ -343,6 +343,7 @@ export const zhHant: TranslationStructure = {
         happySessionIdCopied: 'Happy 工作階段 ID 已複製到剪貼簿',
         failedToCopySessionId: '複製 Happy 工作階段 ID 失敗',
         happySessionId: 'Happy 工作階段 ID',
+        copySessionId: '複製工作階段 ID',
         claudeCodeSessionId: 'Claude Code 工作階段 ID',
         claudeCodeSessionIdCopied: 'Claude Code 工作階段 ID 已複製到剪貼簿',
         codexThreadId: 'Codex 執行緒 ID',

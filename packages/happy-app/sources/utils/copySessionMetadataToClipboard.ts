@@ -20,6 +20,17 @@ export async function copySessionMetadataToClipboard(session: Session): Promise<
     }
 }
 
+export async function copySessionIdToClipboard(session: Session): Promise<boolean> {
+    try {
+        await Clipboard.setStringAsync(session.id);
+        Modal.alert(t('common.success'), t('sessionInfo.happySessionIdCopied'));
+        return true;
+    } catch {
+        Modal.alert(t('common.error'), t('sessionInfo.failedToCopySessionId'));
+        return false;
+    }
+}
+
 export async function copySessionMetadataAndLogsToClipboard(session: Session): Promise<boolean> {
     if (!session.metadata) {
         Modal.alert(t('common.error'), t('sessionInfo.failedToCopyMetadata'));
