@@ -12,6 +12,7 @@ import { useAllMachines, useSessionGitStatus } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { ForkLineageConnector, forkIndentPadding } from './ForkLineageConnector';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
@@ -299,11 +300,13 @@ export const CompactSessionRow = React.memo(({ session, selected, showBorder }: 
             style={[
                 styles.sessionRow,
                 showBorder && styles.sessionRowWithBorder,
-                selected && styles.sessionRowSelected
+                selected && styles.sessionRowSelected,
+                { paddingLeft: forkIndentPadding(session.forkDepth, 16) },
             ]}
             onPress={handlePress}
             {...menuProps}
         >
+            <ForkLineageConnector forkDepth={session.forkDepth} rowHeight={56} basePadding={16} />
             <View style={styles.sessionContent}>
                 <View style={styles.sessionTitleRow}>
                     {renderLeadingIndicator()}

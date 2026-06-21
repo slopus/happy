@@ -1,4 +1,5 @@
 import type { SessionListViewItem, SessionRowData } from '@/sync/storage';
+import { orderSessionRowsByForkLineage } from '@/utils/forkLineage';
 
 export interface SessionDisplayMachine {
     id: string;
@@ -70,6 +71,8 @@ export function buildActiveSessionDisplayGroups(
     byMachine.forEach((machineGroup) => {
         machineGroup.projects.forEach((projectGroup) => {
             projectGroup.sessions.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+            // Nest forked children under their parent within this project group.
+            projectGroup.sessions = orderSessionRowsByForkLineage(projectGroup.sessions);
         });
     });
 

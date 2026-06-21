@@ -19,6 +19,7 @@ import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
+import { orderSessionRowsByForkLineage } from '@/utils/forkLineage';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
@@ -111,6 +112,12 @@ export interface SessionRowData {
     // Names the git worktree this session runs in; null in the primary tree.
     workspaceId: string | null;
     workspaceName: string | null;
+    // Fork lineage: the Happy session this one was forked from (null if not a
+    // fork), and its nesting depth within the current list section (0 = root /
+    // not nested). forkDepth is stamped by orderSessionRowsByForkLineage during
+    // list assembly so the renderer can indent forked children under their parent.
+    parentSessionId: string | null;
+    forkDepth: number;
 }
 
 function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): SessionRowData {
@@ -157,7 +164,14 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         projectName: session.metadata?.project?.name ?? null,
         workspaceId: session.metadata?.workspace?.id ?? null,
         workspaceName: session.metadata?.workspace?.name ?? null,
+        parentSessionId: session.metadata?.parentSessionId ?? null,
+        forkDepth: 0,
     };
+}
+
+/** Build display rows for a section's sessions and nest forks within it. */
+function buildOrderedSessionRows(sessions: Session[], unreadSessionIds?: Set<string>): SessionRowData[] {
+    return orderSessionRowsByForkLineage(sessions.map(s => buildSessionRowData(s, unreadSessionIds)));
 }
 
 
@@ -359,8 +373,8 @@ function buildSessionListViewData(
                 }
 
                 listData.push({ type: 'header', title: headerTitle });
-                currentDateGroup.forEach(sess => {
-                    listData.push({ type: 'session', session: buildSessionRowData(sess, unreadSessionIds) });
+                buildOrderedSessionRows(currentDateGroup, unreadSessionIds).forEach(row => {
+                    listData.push({ type: 'session', session: row });
                 });
             }
 
@@ -389,8 +403,8 @@ function buildSessionListViewData(
         }
 
         listData.push({ type: 'header', title: headerTitle });
-        currentDateGroup.forEach(sess => {
-            listData.push({ type: 'session', session: buildSessionRowData(sess, unreadSessionIds) });
+        buildOrderedSessionRows(currentDateGroup, unreadSessionIds).forEach(row => {
+            listData.push({ type: 'session', session: row });
         });
     }
 
