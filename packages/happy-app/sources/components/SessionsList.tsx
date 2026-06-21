@@ -223,13 +223,6 @@ export function SessionsList() {
         }
     }, [data && data.length > 0]);
 
-    // Early return if no data yet
-    if (!data) {
-        return (
-            <View style={styles.container} />
-        );
-    }
-
     const keyExtractor = React.useCallback((item: SessionListViewItem, index: number) => {
         switch (item.type) {
             case 'header': return `header-${item.title}-${index}`;
@@ -283,9 +276,12 @@ export function SessionsList() {
                 );
 
             case 'session':
-                // Determine card styling based on position within date group
-                const prevItem = index > 0 ? data[index - 1] : null;
-                const nextItem = index < data.length - 1 ? data[index + 1] : null;
+                // Determine card styling based on position within date group.
+                // `data` is only non-null when FlatList renders (guarded below),
+                // but it's typed nullable here since renderItem is now defined
+                // above the early return — guard the lookups accordingly.
+                const prevItem = data && index > 0 ? data[index - 1] : null;
+                const nextItem = data && index < data.length - 1 ? data[index + 1] : null;
 
                 const isFirst = prevItem?.type === 'header';
                 const isLast = nextItem?.type === 'header' || nextItem == null || nextItem?.type === 'active-sessions';
@@ -315,6 +311,17 @@ export function SessionsList() {
     }, []);
 
     // Footer removed - all sessions now shown inline
+
+    // Early return if no data yet — placed AFTER all hooks so the hook order is
+    // identical on every render (Rules of Hooks). Returning before the
+    // useCallback hooks above would change the hook count when `data` flips from
+    // null to a populated array on a mounted instance ("Rendered more hooks than
+    // during the previous render").
+    if (!data) {
+        return (
+            <View style={styles.container} />
+        );
+    }
 
     return (
         <View style={styles.container}>
