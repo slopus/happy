@@ -219,7 +219,7 @@ export const zhHant: TranslationStructure = {
         analyticsDisabled: '所有追蹤和遙測已停用',
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
-        imageUploadSubtitle: '將圖片附加到訊息中讓 Claude 分析',
+        imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
     },
 
     errors: {
@@ -980,7 +980,7 @@ export const zhHant: TranslationStructure = {
             ? '一張圖片上傳失敗，未傳送。'
             : `${count} 張圖片上傳失敗，未傳送。`,
         notSupportedTitle: '不支援圖片',
-        notSupportedMessage: '此代理不支援圖片附件。僅傳送了文字。',
+        notSupportedMessage: '此代理不支援圖片附件。圖片未傳送。',
     },
 
     feed: {

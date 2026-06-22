@@ -2,7 +2,7 @@ import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
 import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSchema, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
-import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt } from './encryption';
+import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt, encryptBlob } from './encryption';
 import { backoff, delay } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
@@ -13,7 +13,7 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
 import { shouldReconnect } from '@/utils/lidState';
-import { type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
+import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
     closeClaudeTurnWithStatus,
     mapClaudeLogMessageToSessionEnvelopes,
@@ -72,6 +72,118 @@ type V3PostSessionMessagesResponse = {
         updatedAt: number;
     }>;
 };
+
+type AttachmentUploadResult = {
+    ref: string;
+    uploadUrl: string;
+    method?: 'PUT' | 'POST';
+    formFields?: Record<string, string>;
+};
+
+export type LocalImageAttachment = {
+    data: Uint8Array;
+    mimeType: string;
+    name: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+function extensionForImageMime(mimeType: string): string {
+    switch (mimeType.toLowerCase()) {
+        case 'image/jpeg':
+        case 'image/jpg':
+            return 'jpg';
+        case 'image/gif':
+            return 'gif';
+        case 'image/webp':
+            return 'webp';
+        case 'image/png':
+        default:
+            return 'png';
+    }
+}
+
+function extractLocalTranscriptImageAttachments(body: RawJSONLines): LocalImageAttachment[] {
+    if (body.type !== 'user' || body.isMeta || body.isSidechain) {
+        return [];
+    }
+
+    const content = (body as { message?: { content?: unknown } }).message?.content;
+    if (!Array.isArray(content)) {
+        return [];
+    }
+
+    // Tool results are user-role messages from Claude's protocol, but they
+    // represent agent tool lifecycle, not human multimodal input.
+    if (content.some((block) => isRecord(block) && block.type === 'tool_result')) {
+        return [];
+    }
+
+    const attachments: LocalImageAttachment[] = [];
+    for (const block of content) {
+        if (!isRecord(block) || block.type !== 'image') {
+            continue;
+        }
+        const source = block.source;
+        if (!isRecord(source) || source.type !== 'base64' || typeof source.data !== 'string') {
+            continue;
+        }
+
+        const data = decodeBase64(source.data);
+        if (data.length === 0) {
+            continue;
+        }
+
+        const mimeType = typeof source.media_type === 'string' && source.media_type.startsWith('image/')
+            ? source.media_type
+            : 'image/png';
+        const index = attachments.length + 1;
+        attachments.push({
+            data,
+            mimeType,
+            name: `claude-image-${index}.${extensionForImageMime(mimeType)}`,
+        });
+    }
+
+    return attachments;
+}
+
+function escapeMultipartValue(value: string): string {
+    return value.replaceAll('\r', '').replaceAll('\n', '').replaceAll('"', '%22');
+}
+
+function buildMultipartUploadBody(
+    fields: Record<string, string> | undefined,
+    data: Uint8Array,
+): { body: Buffer; boundary: string } {
+    const boundary = `----happy-cli-${randomUUID()}`;
+    const chunks: Buffer[] = [];
+
+    for (const [key, value] of Object.entries(fields ?? {})) {
+        chunks.push(Buffer.from(
+            `--${boundary}\r\n`
+            + `Content-Disposition: form-data; name="${escapeMultipartValue(key)}"\r\n\r\n`
+            + `${value}\r\n`,
+            'utf8',
+        ));
+    }
+
+    chunks.push(Buffer.from(
+        `--${boundary}\r\n`
+        + 'Content-Disposition: form-data; name="file"; filename="blob"\r\n'
+        + 'Content-Type: application/octet-stream\r\n\r\n',
+        'utf8',
+    ));
+    chunks.push(Buffer.from(data));
+    chunks.push(Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8'));
+
+    return {
+        body: Buffer.concat(chunks),
+        boundary,
+    };
+}
 
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string;
@@ -209,7 +321,14 @@ export class ApiSessionClient extends EventEmitter {
                         return;
                     }
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
-                    logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
+                    logger.debug('[SOCKET] [UPDATE] Decrypted message', {
+                        role: typeof (body as { role?: unknown })?.role === 'string'
+                            ? (body as { role: string }).role
+                            : 'unknown',
+                        contentType: typeof (body as { content?: { type?: unknown } })?.content?.type === 'string'
+                            ? (body as { content: { type: string } }).content.type
+                            : 'unknown',
+                    });
                     this.routeIncomingMessage(body);
                     this.lastSeq = messageSeq;
                 } else if (data.body.t === 'update-session') {
@@ -281,6 +400,77 @@ export class ApiSessionClient extends EventEmitter {
             this.blobKey = await deriveKey(this.encryptionKey, 'Happy Blobs', path);
         }
         return this.blobKey;
+    }
+
+    private async requestAttachmentUpload(filename: string, size: number): Promise<AttachmentUploadResult> {
+        const response = await axios.post<AttachmentUploadResult>(
+            `${configuration.serverUrl}/v1/sessions/${encodeURIComponent(this.sessionId)}/attachments/request-upload`,
+            { filename, size },
+            {
+                headers: this.authHeaders(),
+                timeout: 30000,
+            },
+        );
+
+        const upload = response.data;
+        if (
+            !upload
+            || typeof upload.ref !== 'string'
+            || typeof upload.uploadUrl !== 'string'
+            || (upload.method !== undefined && upload.method !== 'PUT' && upload.method !== 'POST')
+        ) {
+            throw new Error('request-upload returned an invalid response');
+        }
+
+        return {
+            ...upload,
+            method: upload.method ?? 'PUT',
+        };
+    }
+
+    private async uploadEncryptedAttachmentBlob(upload: AttachmentUploadResult, encrypted: Uint8Array): Promise<void> {
+        if (upload.method === 'POST') {
+            const { body, boundary } = buildMultipartUploadBody(upload.formFields, encrypted);
+            await axios.post(upload.uploadUrl, body, {
+                headers: {
+                    'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                },
+                timeout: 60000,
+                maxBodyLength: 10 * 1024 * 1024,
+            });
+            return;
+        }
+
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/octet-stream',
+        };
+        if (upload.uploadUrl.startsWith(configuration.serverUrl)) {
+            headers.Authorization = `Bearer ${this.token}`;
+        }
+
+        await axios.put(upload.uploadUrl, Buffer.from(encrypted), {
+            headers,
+            timeout: 60000,
+            maxBodyLength: 10 * 1024 * 1024,
+        });
+    }
+
+    async uploadLocalImageAttachmentEnvelope(
+        attachment: LocalImageAttachment,
+        opts: Pick<CreateEnvelopeOptions, 'id' | 'time' | 'claudeUuid' | 'codexItemId'> = {},
+    ): Promise<SessionEnvelope> {
+        const blobKey = await this.getBlobKey();
+        const encrypted = encryptBlob(attachment.data, blobKey);
+        const upload = await this.requestAttachmentUpload(attachment.name, encrypted.length);
+        await this.uploadEncryptedAttachmentBlob(upload, encrypted);
+
+        return createEnvelope('user', {
+            t: 'file',
+            ref: upload.ref,
+            name: attachment.name,
+            size: attachment.data.length,
+            mimeType: attachment.mimeType,
+        }, opts);
     }
 
     /**
@@ -376,7 +566,11 @@ export class ApiSessionClient extends EventEmitter {
         // Check for file events (image attachments from app)
         const fileResult = FileEventMessageSchema.safeParse(message);
         if (fileResult.success) {
-            logger.debug(`[API] Received file event: ${fileResult.data.content.data.ev.name} (ref: ${fileResult.data.content.data.ev.ref})`);
+            const ev = fileResult.data.content.data.ev;
+            logger.debug('[API] Received file event', {
+                size: ev.size,
+                hasMimeType: Boolean(ev.mimeType),
+            });
             if (this.pendingFileEventCallback) {
                 this.pendingFileEventCallback(fileResult.data);
             } else {
@@ -493,16 +687,13 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    /**
-     * Send message to session
-     * @param body - Message body (can be MessageContent or raw content for agent messages)
-     */
-    sendClaudeSessionMessage(body: RawJSONLines) {
-        const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
-        this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-        for (const envelope of mapped.envelopes) {
-            this.sendSessionProtocolMessage(envelope);
+    private enqueueSessionProtocolEnvelopes(envelopes: SessionEnvelope[], invalidate: boolean = true) {
+        for (let i = 0; i < envelopes.length; i += 1) {
+            this.enqueueSessionProtocolEnvelope(envelopes[i], invalidate && i === envelopes.length - 1);
         }
+    }
+
+    private applyClaudeSessionMessageSideEffects(body: RawJSONLines) {
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
             try {
@@ -524,12 +715,57 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    /**
+     * Send message to session
+     * @param body - Message body (can be MessageContent or raw content for agent messages)
+     */
+    sendClaudeSessionMessage(body: RawJSONLines) {
+        const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
+        this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
+        this.enqueueSessionProtocolEnvelopes(mapped.envelopes);
+        this.applyClaudeSessionMessageSideEffects(body);
+    }
+
+    async sendClaudeSessionMessageFromLocalTranscript(body: RawJSONLines): Promise<void> {
+        const attachments = extractLocalTranscriptImageAttachments(body);
+        if (attachments.length === 0) {
+            this.sendClaudeSessionMessage(body);
+            return;
+        }
+
+        const closeMapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, 'completed');
+        this.claudeSessionProtocolState.currentTurnId = closeMapped.currentTurnId;
+        this.enqueueSessionProtocolEnvelopes(closeMapped.envelopes, false);
+
+        const claudeUuid = typeof (body as { uuid?: unknown }).uuid === 'string'
+            ? (body as { uuid: string }).uuid
+            : undefined;
+        for (const attachment of attachments) {
+            try {
+                const envelope = await this.uploadLocalImageAttachmentEnvelope(attachment, { claudeUuid });
+                this.enqueueSessionProtocolEnvelope(envelope, false);
+            } catch (error) {
+                logger.debug('[API] Failed to upload local Claude transcript image attachment', {
+                    sessionId: this.sessionId,
+                    name: attachment.name,
+                    error,
+                });
+            }
+        }
+
+        const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
+        this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
+        this.enqueueSessionProtocolEnvelopes(mapped.envelopes, mapped.envelopes.length > 0);
+        if (mapped.envelopes.length === 0) {
+            this.sendSync.invalidate();
+        }
+        this.applyClaudeSessionMessageSideEffects(body);
+    }
+
     closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed') {
         const mapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, status);
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-        for (const envelope of mapped.envelopes) {
-            this.sendSessionProtocolMessage(envelope);
-        }
+        this.enqueueSessionProtocolEnvelopes(mapped.envelopes);
     }
 
     sendCodexMessage(body: any) {

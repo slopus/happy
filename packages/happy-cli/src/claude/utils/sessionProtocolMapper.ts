@@ -582,6 +582,23 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             };
         }
 
+        const hasToolResult = blocks.some((block) => {
+            return block?.type === 'tool_result';
+        });
+        if (!message.isSidechain && !hasToolResult) {
+            closeTurn(state, 'completed', envelopes);
+            for (const block of blocks) {
+                if (block.type === 'text' && typeof block.text === 'string' && block.text.trim().length > 0) {
+                    envelopes.push(createEnvelope('user', { t: 'text', text: block.text }, { claudeUuid }));
+                }
+            }
+
+            return {
+                currentTurnId: state.currentTurnId,
+                envelopes,
+            };
+        }
+
         const turnId = ensureTurn(state, envelopes);
         if (message.isSidechain) {
             maybeEmitSubagentStart(state, turnId, subagent, envelopes);
