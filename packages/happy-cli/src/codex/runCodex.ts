@@ -47,6 +47,13 @@ import {
     type CodexEnhancedMode,
 } from './codexPrompt';
 import { discoverCodexSkillCommands } from './codexSkills';
+import {
+    codexGoalActionCapabilities,
+    mapCodexGoalEventToAgentGoalStatus,
+    parseCodexGoalActionParams,
+    parseCodexGoalCommand,
+    type CodexGoalCommand,
+} from './codexGoalStatus';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -576,6 +583,72 @@ export async function runCodex(opts: {
             session.sendSessionProtocolMessage(envelope);
         }
     });
+    const updateCodexGoalState = (message: Record<string, unknown>) => {
+        const capabilities = codexGoalActionCapabilities(client.supportsGoalActions());
+        const goalStatus = mapCodexGoalEventToAgentGoalStatus(
+            message,
+            client.threadId,
+            capabilities ? { capabilities } : undefined,
+        );
+        if (!goalStatus) {
+            return;
+        }
+        session.updateAgentState((currentState) => ({
+            ...currentState,
+            agentGoalStatus: goalStatus,
+        }));
+    };
+    const handleCodexGoalCommand = async (
+        command: CodexGoalCommand,
+        threadId: string,
+    ): Promise<boolean> => {
+        try {
+            if (command.type === 'clear') {
+                const result = await client.clearGoal({ threadId });
+                if (result.cleared !== false) {
+                    updateCodexGoalState({
+                        type: 'thread_goal_cleared',
+                        threadId,
+                    });
+                }
+                messageBuffer.addMessage('Goal cleared', 'status');
+                return true;
+            }
+
+            const result = await client.setGoal({
+                threadId,
+                objective: command.objective,
+            });
+            updateCodexGoalState({
+                type: 'thread_goal_updated',
+                threadId,
+                goal: result.goal,
+            });
+            messageBuffer.addMessage('Goal updated', 'status');
+            return true;
+        } catch (error) {
+            logger.debug('[Codex] Goal command API failed; falling back to normal turn:', error);
+            return false;
+        }
+    };
+    session.rpcHandlerManager.registerHandler('goal-action', async (params: Record<string, unknown>) => {
+        const command = parseCodexGoalActionParams(params);
+        if (!command) {
+            throw new Error('Unsupported Codex goal action');
+        }
+
+        const threadId = client.threadId;
+        if (!threadId) {
+            throw new Error('No active Codex thread');
+        }
+
+        const handled = await handleCodexGoalCommand(command, threadId);
+        if (!handled) {
+            throw new Error('Codex goal actions are not supported by this runtime');
+        }
+
+        return { ok: true };
+    });
 
     // Approval handler: routes server → client approval requests to our permission handler
     client.setApprovalHandler(async (params) => {
@@ -687,6 +760,9 @@ export async function runCodex(opts: {
             if ((msg as any).unified_diff) {
                 diffProcessor.processDiff((msg as any).unified_diff);
             }
+        }
+        if (msg.type === 'thread_goal_updated' || msg.type === 'thread_goal_cleared') {
+            updateCodexGoalState(msg);
         }
 
         // Convert events into the unified session-protocol envelope stream.
@@ -839,7 +915,8 @@ export async function runCodex(opts: {
                 );
 
                 // Start thread on first turn (thread persists across mode changes)
-                if (!client.hasActiveThread()) {
+                let activeThreadId = client.threadId;
+                if (!client.hasActiveThread() || !activeThreadId) {
                     const startedThread = await client.startThread({
                         model: message.mode.model,
                         cwd: process.cwd(),
@@ -847,10 +924,16 @@ export async function runCodex(opts: {
                         sandbox: executionPolicy.sandbox,
                         mcpServers,
                     });
+                    activeThreadId = startedThread.threadId;
                     session.updateMetadata((currentMetadata) => ({
                         ...currentMetadata,
                         codexThreadId: startedThread.threadId,
                     }));
+                }
+
+                const goalCommand = parseCodexGoalCommand(message.message);
+                if (goalCommand && await handleCodexGoalCommand(goalCommand, activeThreadId)) {
+                    continue;
                 }
 
                 const includeAppendSystemPrompt = Boolean(

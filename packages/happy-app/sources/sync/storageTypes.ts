@@ -64,6 +64,52 @@ export const MetadataSchema = z.object({
 
 export type Metadata = z.infer<typeof MetadataSchema>;
 
+export const AgentGoalSourceSchema = z.enum(['claude', 'codex']);
+
+export const AgentGoalProgressStepSchema = z.object({
+    text: z.string().trim().min(1),
+    status: z.enum(['pending', 'in_progress', 'completed']),
+}).strict();
+
+export const AgentGoalProgressSchema = z.object({
+    currentStep: z.number().int().positive().optional(),
+    totalSteps: z.number().int().positive().optional(),
+    steps: z.array(AgentGoalProgressStepSchema).optional(),
+}).strict();
+
+export const AgentGoalCapabilitiesSchema = z.object({
+    clear: z.boolean().optional(),
+    stop: z.boolean().optional(),
+    edit: z.boolean().optional(),
+}).strict();
+
+const AgentGoalStatusBaseSchema = z.object({
+    source: AgentGoalSourceSchema,
+    observedAt: z.number().int().nonnegative(),
+    sourceSessionId: z.string().trim().min(1).optional(),
+    sourceRevision: z.union([z.string().trim().min(1), z.number()]).optional(),
+});
+
+export const AgentGoalStatusSchema = z.discriminatedUnion('status', [
+    AgentGoalStatusBaseSchema.extend({
+        status: z.literal('unavailable'),
+        reason: z.enum(['unsupported', 'not_loaded', 'stale', 'malformed', 'error', 'unknown']).optional(),
+    }).strict(),
+    AgentGoalStatusBaseSchema.extend({
+        status: z.literal('inactive'),
+        reason: z.enum(['none', 'cleared', 'completed', 'unknown']).optional(),
+    }).strict(),
+    AgentGoalStatusBaseSchema.extend({
+        status: z.literal('active'),
+        sourceSessionId: z.string().trim().min(1),
+        text: z.string().trim().min(1),
+        capabilities: AgentGoalCapabilitiesSchema.optional(),
+        progress: AgentGoalProgressSchema.optional(),
+    }).strict(),
+]);
+
+export type AgentGoalStatus = z.infer<typeof AgentGoalStatusSchema>;
+
 export const AgentStateSchema = z.object({
     controlledByUser: z.boolean().nullish(),
     requests: z.record(z.string(), z.object({
@@ -81,7 +127,8 @@ export const AgentStateSchema = z.object({
         mode: z.string().nullish(),
         allowedTools: z.array(z.string()).nullish(),
         decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).nullish()
-    })).nullish()
+    })).nullish(),
+    agentGoalStatus: AgentGoalStatusSchema.optional(),
 });
 
 export type AgentState = z.infer<typeof AgentStateSchema>;

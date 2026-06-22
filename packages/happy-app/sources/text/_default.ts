@@ -425,6 +425,13 @@ export const en = {
             scanQrCode: 'Scan the QR code',
             openCamera: 'Open Camera',
         },
+        agentGoalBar: {
+            currentGoal: 'Current goal',
+            accessibilityLabel: ({ goal }: { goal: string }) => `Current goal: ${goal}`,
+            clearGoal: 'Clear goal',
+            stopGoal: 'Stop goal',
+            editGoal: 'Edit goal',
+        },
     },
 
     agentInput: {

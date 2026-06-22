@@ -1,5 +1,7 @@
 import { AgentContentView } from '@/components/AgentContentView';
+import { AgentGoalBar, type AgentGoalAction } from '@/components/AgentGoalBar';
 import { AgentInput } from '@/components/AgentInput';
+import { resolveVisibleAgentGoalStatus } from '@/components/agentGoalStatus';
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import {
@@ -21,7 +23,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort } from '@/sync/ops';
+import { sessionAbort, sessionGoalAction } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
@@ -51,6 +53,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
 import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { performAgentGoalAction } from './agentGoalActionHandler';
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -564,6 +567,30 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         };
     }, [sessionUsage, session.latestUsage]);
 
+    const visibleAgentGoal = React.useMemo(() => (
+        resolveVisibleAgentGoalStatus(session)
+    ), [
+        session.agentState?.agentGoalStatus,
+        session.presence,
+        session.metadata?.claudeSessionId,
+        session.metadata?.codexThreadId,
+    ]);
+    const [goalActionInFlight, setGoalActionInFlight] = React.useState<AgentGoalAction | null>(null);
+    const handleGoalAction = React.useCallback(async (action: AgentGoalAction) => {
+        await performAgentGoalAction({
+            action,
+            currentGoalText: visibleAgentGoal?.text ?? '',
+            promptEditGoal: (currentGoalText) => Modal.prompt(t('components.agentGoalBar.editGoal'), undefined, {
+                placeholder: t('components.agentGoalBar.currentGoal'),
+                defaultValue: currentGoalText,
+                cancelText: t('common.cancel'),
+                confirmText: t('common.save'),
+            }),
+            dispatchGoalAction: (nextAction, objective) => sessionGoalAction(sessionId, nextAction, objective),
+            setInFlight: setGoalActionInFlight,
+            onError: (error) => console.error('Failed to perform goal action', error),
+        });
+    }, [sessionId, visibleAgentGoal?.text]);
 
     // Handle microphone button press - memoized to prevent button flashing
     const handleMicrophonePress = React.useCallback(async () => {
@@ -710,6 +737,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const input = (
         <>
             {inactiveHint}
+            {visibleAgentGoal && (
+                <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+                    <AgentGoalBar
+                        goal={visibleAgentGoal}
+                        onAction={handleGoalAction}
+                        inFlightAction={goalActionInFlight}
+                    />
+                </CenteredInputWidth>
+            )}
             {composer}
         </>
     );

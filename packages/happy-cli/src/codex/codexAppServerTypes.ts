@@ -90,6 +90,48 @@ export type Thread = {
     [key: string]: unknown;
 };
 
+export type ThreadGoalStatus = "active" | "paused" | "blocked" | "usageLimited" | "budgetLimited" | "complete";
+
+export type ThreadGoal = {
+    threadId: ThreadId;
+    objective: string;
+    status: ThreadGoalStatus;
+    tokenBudget: number | null;
+    tokensUsed: number;
+    timeUsedSeconds: number;
+    createdAt: number;
+    updatedAt: number;
+};
+
+export type ThreadGoalUpdatedNotification = {
+    threadId: ThreadId;
+    turnId: string | null;
+    goal: ThreadGoal;
+};
+
+export type ThreadGoalClearedNotification = {
+    threadId: ThreadId;
+};
+
+export type ThreadGoalSetParams = {
+    threadId: ThreadId;
+    objective?: string | null;
+    status?: ThreadGoalStatus | null;
+    tokenBudget?: number | null;
+};
+
+export type ThreadGoalSetResponse = {
+    goal: ThreadGoal;
+};
+
+export type ThreadGoalClearParams = {
+    threadId: ThreadId;
+};
+
+export type ThreadGoalClearResponse = {
+    cleared: boolean;
+};
+
 export type ForkConversationParams = {
     threadId: ThreadId;
     model?: string | null;

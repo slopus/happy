@@ -368,6 +368,13 @@ export const ru: TranslationStructure = {
             scanQrCode: 'Отсканируйте QR-код',
             openCamera: 'Открыть камеру',
         },
+        agentGoalBar: {
+            currentGoal: 'Текущая цель',
+            accessibilityLabel: ({ goal }: { goal: string }) => `Текущая цель: ${goal}`,
+            clearGoal: 'Очистить цель',
+            stopGoal: 'Остановить цель',
+            editGoal: 'Изменить цель',
+        },
     },
 
     profile: {

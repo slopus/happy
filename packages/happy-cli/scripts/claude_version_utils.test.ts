@@ -248,6 +248,36 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
     });
   });
 
+  describe('findClaudeInPath', () => {
+    it('ignores broken npm native placeholder shims on non-Windows platforms', () => {
+      if (process.platform === 'win32') {
+        return;
+      }
+
+      const root = `/tmp/test-claude-placeholder-${process.pid}-${Date.now()}`;
+      const binDir = `${root}/bin`;
+      const pkgBinDir = `${root}/node_modules/@anthropic-ai/claude-code/bin`;
+      const originalPath = process.env.PATH;
+
+      fs.mkdirSync(binDir, { recursive: true });
+      fs.mkdirSync(pkgBinDir, { recursive: true });
+      fs.writeFileSync(
+        `${pkgBinDir}/claude.exe`,
+        'echo "Error: claude native binary not installed." >&2\nexit 1\n',
+      );
+      fs.chmodSync(`${pkgBinDir}/claude.exe`, 0o755);
+      fs.symlinkSync(`${pkgBinDir}/claude.exe`, `${binDir}/claude`);
+
+      try {
+        process.env.PATH = `${binDir}:${originalPath ?? ''}`;
+        expect(findClaudeInPath()).toBeNull();
+      } finally {
+        process.env.PATH = originalPath;
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('/goal hook JSON validation warning', () => {
     it('warns for third-party Anthropic-compatible backends on affected Claude Code versions', () => {
       expect(shouldWarnAboutGoalHookJsonValidationRisk('2.1.177', {

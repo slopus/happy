@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
-import { AgentState, Metadata } from '@/api/types';
+import { AgentGoalStatus, AgentState, Metadata } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
@@ -24,6 +24,13 @@ import { resolve } from 'node:path';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
+import {
+    CLAUDE_GOAL_ACTION_CONFIRMATIONS,
+    claudeGoalActionCapabilities,
+    mapClaudeGoalStatusEventToAgentGoalStatus,
+    parseClaudeGoalActionParams,
+    type ClaudeGoalStatusTranscriptEvent,
+} from '@/claude/claudeGoalStatus';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
@@ -52,6 +59,13 @@ export interface StartOptions {
 const DEFAULT_CLAUDE_PERMISSION_MODE: PermissionMode = 'yolo';
 const DEFAULT_CLAUDE_MODEL = 'opus';
 const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' = 'medium';
+type ClaudeGoalCommand = NonNullable<ReturnType<typeof parseClaudeGoalActionParams>>;
+type PendingClaudeGoalAction = {
+    command: ClaudeGoalCommand;
+    resolve: (value: { ok: true }) => void;
+    reject: (error: Error) => void;
+    timeout: ReturnType<typeof setTimeout>;
+};
 
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
     logger.debug(`[CLAUDE] ===== CLAUDE MODE STARTING =====`);
@@ -167,12 +181,44 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 const resp = await api.getOrCreateSession({ tag: randomUUID(), metadata, state });
                 if (!resp) throw new Error('Server unavailable');
                 const session = api.sessionSyncClient(resp);
+                let latestClaudeGoalStatus: AgentGoalStatus | null = null;
+                const observedClaudeGoalRevisions = new Set<string>();
+                const goalCommandSupported = () => {
+                    const slashCommands = session.getMetadata()?.slashCommands ?? [];
+                    return slashCommands.includes('goal') || slashCommands.includes('/goal');
+                };
+                const currentClaudeSessionId = () => session.getMetadata()?.claudeSessionId ?? null;
+                const updateClaudeGoalState = (event: ClaudeGoalStatusTranscriptEvent) => {
+                    if (observedClaudeGoalRevisions.has(event.sourceRevision)) {
+                        return;
+                    }
+                    const capabilities = claudeGoalActionCapabilities({
+                        goalCommandSupported: goalCommandSupported(),
+                        observedGoalStatus: true,
+                        confirmedActions: CLAUDE_GOAL_ACTION_CONFIRMATIONS,
+                    });
+                    const goalStatus = mapClaudeGoalStatusEventToAgentGoalStatus(
+                        event,
+                        currentClaudeSessionId(),
+                        capabilities ? { capabilities } : undefined,
+                    );
+                    if (!goalStatus) {
+                        return;
+                    }
+                    observedClaudeGoalRevisions.add(event.sourceRevision);
+                    latestClaudeGoalStatus = goalStatus;
+                    session.updateAgentState((current) => ({
+                        ...current,
+                        agentGoalStatus: latestClaudeGoalStatus ?? goalStatus,
+                    }));
+                };
                 const scanner = await createSessionScanner({
                     sessionId: null,
                     workingDirectory,
                     onMessage: (msg) => {
                         void session.sendClaudeSessionMessageFromLocalTranscript(msg);
-                    }
+                    },
+                    onTranscriptEvent: updateClaudeGoalState,
                 });
                 if (offlineSessionId) scanner.onNewSession(offlineSessionId);
                 return { session, scanner };
@@ -317,6 +363,62 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     };
 
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
+    let latestClaudeGoalStatus: AgentGoalStatus | null = null;
+    const observedClaudeGoalRevisions = new Set<string>();
+    let pendingClaudeGoalAction: PendingClaudeGoalAction | null = null;
+    const goalCommandSupported = () => {
+        const slashCommands = session.getMetadata()?.slashCommands ?? [];
+        return slashCommands.includes('goal') || slashCommands.includes('/goal');
+    };
+    const currentClaudeSessionId = () => session.getMetadata()?.claudeSessionId ?? null;
+    const settlePendingClaudeGoalAction = (goalStatus: AgentGoalStatus) => {
+        if (!pendingClaudeGoalAction) {
+            return;
+        }
+
+        const pending = pendingClaudeGoalAction;
+        if (pending.command.type === 'clear' && goalStatus.status === 'inactive') {
+            clearTimeout(pending.timeout);
+            pendingClaudeGoalAction = null;
+            pending.resolve({ ok: true });
+            return;
+        }
+
+        if (
+            pending.command.type === 'set'
+            && goalStatus.status === 'active'
+            && goalStatus.text.trim() === pending.command.objective.trim()
+        ) {
+            clearTimeout(pending.timeout);
+            pendingClaudeGoalAction = null;
+            pending.resolve({ ok: true });
+        }
+    };
+    const updateClaudeGoalState = (event: ClaudeGoalStatusTranscriptEvent) => {
+        if (observedClaudeGoalRevisions.has(event.sourceRevision)) {
+            return;
+        }
+        const capabilities = claudeGoalActionCapabilities({
+            goalCommandSupported: goalCommandSupported(),
+            observedGoalStatus: true,
+            confirmedActions: CLAUDE_GOAL_ACTION_CONFIRMATIONS,
+        });
+        const goalStatus = mapClaudeGoalStatusEventToAgentGoalStatus(
+            event,
+            currentClaudeSessionId(),
+            capabilities ? { capabilities } : undefined,
+        );
+        if (!goalStatus) {
+            return;
+        }
+        observedClaudeGoalRevisions.add(event.sourceRevision);
+        latestClaudeGoalStatus = goalStatus;
+        settlePendingClaudeGoalAction(goalStatus);
+        session.updateAgentState((current) => ({
+            ...current,
+            agentGoalStatus: latestClaudeGoalStatus ?? goalStatus,
+        }));
+    };
 
     // Remote-mode session scanner: catches user-typed prompts that
     // appeared in the Claude JSONL while we weren't looking — typically
@@ -345,6 +447,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             if (consumeAppPrompt(content)) return;
             session.sendClaudeSessionMessage(raw);
         },
+        onTranscriptEvent: updateClaudeGoalState,
     });
 
     // Start Happy MCP server
@@ -436,6 +539,70 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         currentEffort = DEFAULT_CLAUDE_EFFORT;
         logger.debug('[loop] Reset current mode defaults after abort');
     };
+    const currentEnhancedMode = (): EnhancedMode => ({
+        permissionMode: currentPermissionMode || 'default',
+        model: currentModel,
+        fallbackModel: currentFallbackModel,
+        customSystemPrompt: currentCustomSystemPrompt,
+        appendSystemPrompt: currentAppendSystemPrompt,
+        allowedTools: currentAllowedTools,
+        disallowedTools: currentDisallowedTools,
+        effort: currentEffort,
+    });
+
+    session.rpcHandlerManager.registerHandler('goal-action', async (params: unknown) => {
+        const actionParams = params && typeof params === 'object' && !Array.isArray(params)
+            ? params as Record<string, unknown>
+            : null;
+        const command = actionParams ? parseClaudeGoalActionParams(actionParams) : null;
+        if (!command) {
+            throw new Error('Unsupported Claude goal action');
+        }
+        if (pendingClaudeGoalAction) {
+            throw new Error('Claude goal action already in progress');
+        }
+        if (!latestClaudeGoalStatus || latestClaudeGoalStatus.status !== 'active') {
+            throw new Error('No active Claude goal');
+        }
+
+        const capabilities = latestClaudeGoalStatus.capabilities ?? {};
+        if (command.type === 'clear' && !capabilities.clear) {
+            throw new Error('Claude clear goal action is not supported');
+        }
+        if (command.type === 'set' && !capabilities.edit) {
+            throw new Error('Claude edit goal action is not supported');
+        }
+        if (currentRunMode !== 'remote') {
+            throw new Error('Claude goal action is not ready: remote mode is not active');
+        }
+        if (!currentSession || currentSession.thinking) {
+            throw new Error('Claude goal action is not ready while Claude is thinking');
+        }
+        if (messageQueue.size() > 0) {
+            throw new Error('Claude message queue is busy');
+        }
+
+        const slashCommand = command.type === 'clear'
+            ? '/goal clear'
+            : `/goal ${command.objective}`;
+        const mode = currentEnhancedMode();
+
+        return await new Promise<{ ok: true }>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                pendingClaudeGoalAction = null;
+                reject(new Error('Timed out waiting for Claude goal confirmation'));
+            }, 30000);
+
+            pendingClaudeGoalAction = { command, resolve, reject, timeout };
+            try {
+                messageQueue.pushIsolated(slashCommand, mode);
+            } catch (error) {
+                clearTimeout(timeout);
+                pendingClaudeGoalAction = null;
+                reject(error instanceof Error ? error : new Error(String(error)));
+            }
+        });
+    });
 
     // Exit when session is archived from web/mobile
     session.on('archived', () => {
@@ -590,34 +757,14 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
         if (specialCommand.type === 'compact') {
             logger.debug('[start] Detected /compact command');
-            const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode || 'default',
-                model: messageModel,
-                fallbackModel: messageFallbackModel,
-                customSystemPrompt: messageCustomSystemPrompt,
-                appendSystemPrompt: messageAppendSystemPrompt,
-                allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools,
-                effort: messageEffort,
-            };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, currentEnhancedMode(), attachmentsForThisMessage);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
 
         if (specialCommand.type === 'clear') {
             logger.debug('[start] Detected /clear command');
-            const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode || 'default',
-                model: messageModel,
-                fallbackModel: messageFallbackModel,
-                customSystemPrompt: messageCustomSystemPrompt,
-                appendSystemPrompt: messageAppendSystemPrompt,
-                allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools,
-                effort: messageEffort,
-            };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, currentEnhancedMode(), attachmentsForThisMessage);
             logger.debugLargeJson('[start] /clear command pushed to queue:', message);
             return;
         }
@@ -665,17 +812,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
 
         // Push with resolved permission mode, model, system prompts, and tools
-        const enhancedMode: EnhancedMode = {
-            permissionMode: messagePermissionMode || 'default',
-            model: messageModel,
-            fallbackModel: messageFallbackModel,
-            customSystemPrompt: messageCustomSystemPrompt,
-            appendSystemPrompt: messageAppendSystemPrompt,
-            allowedTools: messageAllowedTools,
-            disallowedTools: messageDisallowedTools,
-            effort: messageEffort,
-        };
-        messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage);
+        messageQueue.push(message.content.text, currentEnhancedMode(), attachmentsForThisMessage);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 

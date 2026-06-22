@@ -411,6 +411,13 @@ export const ca: TranslationStructure = {
             scanQrCode: 'Escaneja el codi QR',
             openCamera: 'Obre la càmera',
         },
+        agentGoalBar: {
+            currentGoal: 'Objectiu actual',
+            accessibilityLabel: ({ goal }: { goal: string }) => `Objectiu actual: ${goal}`,
+            clearGoal: 'Esborra objectiu',
+            stopGoal: 'Atura objectiu',
+            editGoal: 'Edita objectiu',
+        },
     },
 
     agentInput: {
