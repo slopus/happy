@@ -22,7 +22,6 @@ import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
-import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { t } from '@/text';
 import { SessionShortcutHintBadge } from './ShortcutHints';
 import { ProviderIcon } from './ProviderIcon';
@@ -649,11 +648,20 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         });
     }, []);
 
-    const showActionAlert = useSessionActionAlert(session.id);
+    // Native long-press opens the cross-platform actions sheet (SessionActionsPopover),
+    // NOT Modal.alert → RN Alert.alert: Android caps Alert at 3 buttons, which silently
+    // drops most quick-actions (e.g. "Copy session ID"). The popover renders all items.
+    const handleLongPress = React.useCallback((event: any) => {
+        setActionsAnchor({
+            type: 'point',
+            x: event?.nativeEvent?.pageX ?? 0,
+            y: event?.nativeEvent?.pageY ?? 0,
+        });
+    }, []);
     const menuProps = Platform.OS === 'web' ? {
         onContextMenu: handleContextMenu,
     } as any : {
-        onLongPress: showActionAlert,
+        onLongPress: handleLongPress,
     };
 
     return (
@@ -732,14 +740,13 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 </View>
             </View>
         </Pressable>
-        {Platform.OS === 'web' && (
-            <SessionActionsPopover
-                anchor={actionsAnchor}
-                onClose={() => setActionsAnchor(null)}
-                sessionId={session.id}
-                visible={!!actionsAnchor}
-            />
-        )}
+        {/* Mounted on all platforms: web opens it via onContextMenu, native via onLongPress. */}
+        <SessionActionsPopover
+            anchor={actionsAnchor}
+            onClose={() => setActionsAnchor(null)}
+            sessionId={session.id}
+            visible={!!actionsAnchor}
+        />
         </View>
     );
 });

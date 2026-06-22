@@ -10,7 +10,6 @@ import { StatusDot } from './StatusDot';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { SessionShortcutHintBadge } from './ShortcutHints';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { sessionKill } from '@/sync/ops';
@@ -131,11 +130,17 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
         });
     }, []);
 
-    const showActionAlert = useSessionActionAlert(session.id);
+    const handleLongPress = React.useCallback((event: any) => {
+        setActionsAnchor({
+            type: 'point',
+            x: event?.nativeEvent?.pageX ?? 0,
+            y: event?.nativeEvent?.pageY ?? 0,
+        });
+    }, []);
     const menuProps = Platform.OS === 'web' ? {
         onContextMenu: handleContextMenu,
     } as any : {
-        onLongPress: showActionAlert,
+        onLongPress: handleLongPress,
     };
 
     const content = (
@@ -266,14 +271,23 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
     );
 
     return (
-        <Swipeable
-            ref={swipeableRef}
-            renderRightActions={renderRightActions}
-            overshootRight={false}
-            enabled={!archiving}
-        >
-            {content}
-        </Swipeable>
+        <>
+            <Swipeable
+                ref={swipeableRef}
+                renderRightActions={renderRightActions}
+                overshootRight={false}
+                enabled={!archiving}
+            >
+                {content}
+            </Swipeable>
+            {/* Native long-press opens this sheet; the swipe branch is the native default. */}
+            <SessionActionsPopover
+                anchor={actionsAnchor}
+                onClose={() => setActionsAnchor(null)}
+                sessionId={session.id}
+                visible={!!actionsAnchor}
+            />
+        </>
     );
 });
 
