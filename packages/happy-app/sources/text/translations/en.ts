@@ -233,7 +233,7 @@ export const en: TranslationStructure = {
         analyticsDisabled: 'All tracking and telemetry disabled',
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
-        imageUploadSubtitle: 'Attach images to messages for Claude to analyze',
+        imageUploadSubtitle: 'Attach images to messages for supported agents to analyze',
     },
 
     errors: {
@@ -1003,7 +1003,7 @@ export const en: TranslationStructure = {
             ? 'One image could not be uploaded and was not sent.'
             : `${count} images could not be uploaded and were not sent.`,
         notSupportedTitle: 'Images Not Supported',
-        notSupportedMessage: 'This agent does not support image attachments. Only the text was sent.',
+        notSupportedMessage: 'This agent does not support image attachments. Images were not sent.',
     },
 
     feed: {

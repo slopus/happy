@@ -215,7 +215,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 const scanner = await createSessionScanner({
                     sessionId: null,
                     workingDirectory,
-                    onMessage: (msg) => session.sendClaudeSessionMessage(msg),
+                    onMessage: (msg) => {
+                        void session.sendClaudeSessionMessageFromLocalTranscript(msg);
+                    },
                     onTranscriptEvent: updateClaudeGoalState,
                 });
                 if (offlineSessionId) scanner.onNewSession(offlineSessionId);
@@ -313,7 +315,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 try { parsed = JSON.parse(line); } catch { continue; }
                 const result = RawJSONLinesSchema.safeParse(parsed);
                 if (!result.success) continue;
-                session.sendClaudeSessionMessage(result.data as RawJSONLines);
+                await session.sendClaudeSessionMessageFromLocalTranscript(result.data as RawJSONLines);
                 backfilled += 1;
             }
             logger.debug(`[FORK BACKFILL] Replayed ${backfilled} historical messages from ${jsonlPath}`);

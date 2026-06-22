@@ -219,7 +219,7 @@ export const es: TranslationStructure = {
         analyticsDisabled: 'Todo el seguimiento y telemetría desactivados',
         analyticsEnabled: 'Analítica anónima de uso activa',
         imageUpload: 'Subida de imágenes',
-        imageUploadSubtitle: 'Adjunta imágenes a los mensajes para que Claude las analice',
+        imageUploadSubtitle: 'Adjunta imágenes a los mensajes para que los agentes compatibles las analicen',
     },
 
     errors: {
@@ -989,7 +989,7 @@ export const es: TranslationStructure = {
             ? 'No se pudo subir una imagen y no se envió.'
             : `No se pudieron subir ${count} imágenes y no se enviaron.`,
         notSupportedTitle: 'Imágenes no compatibles',
-        notSupportedMessage: 'Este agente no admite imágenes adjuntas. Solo se envió el texto.',
+        notSupportedMessage: 'Este agente no admite archivos adjuntos de imagen. Las imágenes no se enviaron.',
     },
 
     feed: {

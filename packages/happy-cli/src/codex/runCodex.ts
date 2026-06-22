@@ -13,7 +13,7 @@ import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
-import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { MessageQueue2, type PendingAttachment } from '@/utils/MessageQueue2';
 import { projectPath } from '@/projectPath';
 import { join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
@@ -23,7 +23,7 @@ import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
-import type { Session as ApiSession } from '@/api/types';
+import type { Session as ApiSession, UserMessage } from '@/api/types';
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -33,11 +33,14 @@ import { resolveCodexExecutionPolicy } from './executionPolicy';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
-    mapCodexThreadToSessionEnvelopes,
 } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
+import { downloadCodexFileEventAttachment } from './utils/attachmentEvents';
+import { prepareCodexImageInputItems } from './utils/imageInput';
+import { createSerialAsyncHandler } from './utils/serialAsyncHandler';
+import { buildCodexThreadBackfillEnvelopes } from './utils/threadImageBackfill';
 import {
     buildCodexTurnPrompt,
     hashCodexEnhancedMode,
@@ -237,6 +240,15 @@ export async function runCodex(opts: {
 
     const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
 
+    session.onFileEvent((fileEvent) => {
+        const ev = fileEvent.content.data.ev;
+        logger.debug('[Codex] File event received', {
+            size: ev.size,
+            hasMimeType: Boolean(ev.mimeType),
+        });
+        session.trackAttachmentDownload(downloadCodexFileEventAttachment(session, fileEvent));
+    });
+
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
@@ -272,7 +284,9 @@ export async function runCodex(opts: {
         'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
     ];
 
-    session.onUserMessage((message) => {
+    const handleUserMessage = createSerialAsyncHandler<UserMessage>(async (message) => {
+        const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
+
         // Resolve permission mode (validate against Codex-native modes)
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
@@ -338,11 +352,17 @@ export async function runCodex(opts: {
             text: message.content.text,
             mode: enhancedMode,
             queue: messageQueue,
+            attachments: attachmentsForThisMessage,
         });
         if (enqueueResult === 'clear') {
             logger.debug('[Codex] /clear command pushed to isolated queue');
         }
+    }, (error) => {
+        logger.warn('[Codex] Failed to handle user message', {
+            errorName: error instanceof Error ? error.name : typeof error,
+        });
     });
+    session.onUserMessage(handleUserMessage);
     let thinking = false;
     let currentTurnId: string | null = null;
     let codexStartedSubagents = new Set<string>();
@@ -805,7 +825,12 @@ export async function runCodex(opts: {
                     threadId: forkCodexThreadId,
                     includeTurns: true,
                 });
-                const envelopes = mapCodexThreadToSessionEnvelopes(thread);
+                const envelopes = await buildCodexThreadBackfillEnvelopes({
+                    thread,
+                    uploadLocalImage: (attachment, imageOpts) => (
+                        session.uploadLocalImageAttachmentEnvelope(attachment, imageOpts)
+                    ),
+                });
                 for (const envelope of envelopes) {
                     session.sendSessionProtocolMessage(envelope);
                 }
@@ -819,11 +844,11 @@ export async function runCodex(opts: {
             }
         }
 
-        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
+        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = null;
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
-            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = pending;
+            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = pending;
             pending = null;
             if (!message) {
                 // Capture the current signal to distinguish idle-abort from queue close
@@ -876,7 +901,9 @@ export async function runCodex(opts: {
             }
 
             // Display user messages in the UI
-            messageBuffer.addMessage(message.message, 'user');
+            if (message.message.trim().length > 0) {
+                messageBuffer.addMessage(message.message, 'user');
+            }
 
             try {
                 // Map permission mode to approval policy and sandbox.
@@ -912,6 +939,23 @@ export async function runCodex(opts: {
                 const includeAppendSystemPrompt = Boolean(
                     message.mode.appendSystemPrompt && !appendSystemPromptInjected,
                 );
+                const imageInputs = await prepareCodexImageInputItems(message.attachments, {
+                    sessionId: session.sessionId,
+                });
+                if ((message.attachments?.length ?? 0) > 0) {
+                    logger.debug('[Codex] Prepared image inputs for turn', {
+                        inputCount: imageInputs.inputItems.length,
+                        skippedCount: imageInputs.skipped,
+                    });
+                }
+                const hasUserText = message.message.trim().length > 0;
+                if ((message.attachments?.length ?? 0) > 0 && imageInputs.inputItems.length === 0 && !hasUserText) {
+                    session.sendSessionEvent({
+                        type: 'message',
+                        message: 'No supported images were available to send to Codex.',
+                    });
+                    continue;
+                }
                 const turnPrompt = buildCodexTurnPrompt({
                     message: message.message,
                     mode: message.mode,
@@ -924,6 +968,7 @@ export async function runCodex(opts: {
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,
                     effort: message.mode.effort,
+                    extraInputItems: imageInputs.inputItems,
                 });
                 first = false;
                 if (includeAppendSystemPrompt) {

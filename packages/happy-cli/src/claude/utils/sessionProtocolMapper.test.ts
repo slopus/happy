@@ -25,6 +25,35 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(result.envelopes[0].ev).toEqual({ t: 'text', text: 'hello from user' });
     });
 
+    it('maps non-tool user array text to user text without opening an agent turn', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user',
+            uuid: 'u-array-1',
+            isSidechain: false,
+            message: {
+                role: 'user',
+                content: [
+                    { type: 'text', text: 'look at this image' },
+                    {
+                        type: 'image',
+                        source: {
+                            type: 'base64',
+                            media_type: 'image/png',
+                            data: 'iVBORw0KGgo=',
+                        },
+                    },
+                ],
+            },
+            timestamp: '2025-01-01T00:00:00.000Z',
+        } as any, { currentTurnId: null });
+
+        expect(result.currentTurnId).toBeNull();
+        expect(result.envelopes).toHaveLength(1);
+        expect(result.envelopes[0].role).toBe('user');
+        expect(result.envelopes[0].turn).toBeUndefined();
+        expect(result.envelopes[0].ev).toEqual({ t: 'text', text: 'look at this image' });
+    });
+
     it('starts a turn and maps assistant text blocks', () => {
         const result = mapClaudeLogMessageToSessionEnvelopes({
             type: 'assistant',

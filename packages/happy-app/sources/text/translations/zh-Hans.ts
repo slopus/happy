@@ -220,7 +220,7 @@ export const zhHans: TranslationStructure = {
         analyticsDisabled: '所有跟踪和遥测已禁用',
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
-        imageUploadSubtitle: '将图片附加到消息中让 Claude 分析',
+        imageUploadSubtitle: '将图片附加到消息中，以便受支持的代理进行分析',
     },
 
     errors: {
@@ -989,7 +989,7 @@ export const zhHans: TranslationStructure = {
             ? '一张图片上传失败，未发送。'
             : `${count} 张图片上传失败，未发送。`,
         notSupportedTitle: '不支持图片',
-        notSupportedMessage: '该代理不支持图片附件。仅发送了文本。',
+        notSupportedMessage: '此代理不支持图片附件。图片未发送。',
     },
 
     feed: {

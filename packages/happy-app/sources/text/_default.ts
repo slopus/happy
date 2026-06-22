@@ -217,7 +217,7 @@ export const en = {
         analyticsDisabled: 'All tracking and telemetry disabled',
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
-        imageUploadSubtitle: 'Attach images to messages for Claude to analyze',
+        imageUploadSubtitle: 'Attach images to messages for supported agents to analyze',
     },
 
     imageUpload: {
@@ -232,7 +232,7 @@ export const en = {
             ? 'One image could not be uploaded and was not sent.'
             : `${count} images could not be uploaded and were not sent.`,
         notSupportedTitle: 'Images Not Supported',
-        notSupportedMessage: 'This agent does not support image attachments. Only the text was sent.',
+        notSupportedMessage: 'This agent does not support image attachments. Images were not sent.',
     },
 
     errors: {
