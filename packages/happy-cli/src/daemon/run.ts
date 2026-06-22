@@ -727,6 +727,25 @@ export async function startDaemon(): Promise<void> {
       return sessionIdToFinishedSession.get(happySessionId);
     };
 
+    const preserveSessionForResume = (session: TrackedSession, reason: string): boolean => {
+      if (!session.happySessionId || !session.encryption) return false;
+
+      sessionIdToFinishedSession.set(session.happySessionId, session);
+      if (session.happySessionMetadataFromLocalWebhook) {
+        persistSession(session.happySessionId, {
+          encryptionKey: encodeBase64(session.encryption.encryptionKey),
+          encryptionVariant: session.encryption.encryptionVariant,
+          seq: session.encryption.seq,
+          metadataVersion: session.encryption.metadataVersion,
+          agentStateVersion: session.encryption.agentStateVersion,
+          metadata: session.happySessionMetadataFromLocalWebhook,
+          savedAt: Date.now(),
+        });
+      }
+      logger.debug(`[DAEMON RUN] Preserved session ${session.happySessionId} for resume (${reason})`);
+      return true;
+    };
+
     const fetchServerSessionMetadata = async (sessionId: string, encryptionKey: Uint8Array, encryptionVariant: 'legacy' | 'dataKey'): Promise<Metadata | null> => {
       try {
         const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
@@ -817,6 +836,8 @@ export async function startDaemon(): Promise<void> {
         if (session.happySessionId === sessionId ||
           (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
 
+          preserveSessionForResume(session, 'stop-session');
+
           if (session.startedBy === 'daemon' && session.childProcess) {
             try {
               session.childProcess.kill('SIGTERM');
@@ -848,10 +869,7 @@ export async function startDaemon(): Promise<void> {
     // Handle child process exit — preserve session data for resume
     const onChildExited = (pid: number) => {
       const tracked = pidToTrackedSession.get(pid);
-      if (tracked?.happySessionId && tracked.encryption) {
-        sessionIdToFinishedSession.set(tracked.happySessionId, tracked);
-        logger.debug(`[DAEMON RUN] Process PID ${pid} exited, preserved session ${tracked.happySessionId} for resume`);
-      } else {
+      if (!tracked || !preserveSessionForResume(tracked, `process-exit:${pid}`)) {
         logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
       }
       pidToTrackedSession.delete(pid);
