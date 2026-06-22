@@ -919,6 +919,15 @@ export const knownTools = {
         }
     },
     // Internal Claude Code tool for loading deferred tools - no user-visible output
+    'Skill': {
+        icon: ICON_TASK,
+        hidden: true,
+        minimal: true,
+        input: z.object({
+            skill: z.string().optional().describe('The skill to load')
+        }).partial().passthrough(),
+        result: z.object({}).partial().passthrough()
+    },
     'ToolSearch': {
         icon: ICON_SEARCH,
         hidden: true,

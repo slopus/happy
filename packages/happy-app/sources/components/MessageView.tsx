@@ -1,6 +1,7 @@
 import * as React from "react";
 import { View, Text, Pressable, Platform } from "react-native";
 import { StyleSheet } from 'react-native-unistyles';
+import { Ionicons } from '@expo/vector-icons';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
@@ -123,9 +124,38 @@ function UserTextBlock(props: {
   if (parsed.kind === 'caveat') {
     return null;
   }
+  if (parsed.kind === 'goal-confirmation') {
+    return null;
+  }
+  if (parsed.kind === 'goal-run') {
+    return (
+      <View style={styles.userMessageContainer}>
+        <Pressable
+          onLongPress={canFork ? handleLongPress : undefined}
+          delayLongPress={400}
+          style={[styles.userMessageBubble, styles.goalMessageBubble]}
+        >
+          <MarkdownView markdown={parsed.goal} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+        </Pressable>
+        <View style={styles.goalSentRow}>
+          <Ionicons name="locate-outline" size={16} color={styles.goalSentText.color} />
+          <Text style={styles.goalSentText}>{t('message.sentAsGoal')}</Text>
+        </View>
+      </View>
+    );
+  }
   if (parsed.kind === 'command-run') {
     return (
       <View style={styles.userMessageContainer}>
+        {parsed.args ? (
+          <Pressable
+            onLongPress={canFork ? handleLongPress : undefined}
+            delayLongPress={400}
+            style={[styles.userMessageBubble, styles.commandMessageBubble]}
+          >
+            <MarkdownView markdown={parsed.args} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+          </Pressable>
+        ) : null}
         <View style={styles.commandChip}>
           <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
         </View>
@@ -258,6 +288,24 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 12,
     marginBottom: 12,
     maxWidth: '100%',
+  },
+  goalMessageBubble: {
+    marginBottom: 6,
+  },
+  commandMessageBubble: {
+    marginBottom: 6,
+  },
+  goalSentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+    maxWidth: '100%',
+    opacity: 0.72,
+  },
+  goalSentText: {
+    color: theme.colors.agentEventText,
+    fontSize: 14,
   },
   commandChip: {
     backgroundColor: theme.colors.userMessageBackground,

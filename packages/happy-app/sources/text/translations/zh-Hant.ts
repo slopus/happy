@@ -837,6 +837,7 @@ export const zhHant: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `已切換到 ${mode} 模式`,
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
+        sentAsGoal: 'Sent as goal',
         unknownTime: '未知時間',
     },
 
