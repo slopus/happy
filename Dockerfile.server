@@ -33,7 +33,7 @@ COPY packages/happy-wire ./packages/happy-wire
 COPY packages/happy-server ./packages/happy-server
 
 RUN pnpm --filter @slopus/happy-wire build
-RUN pnpm --filter happy-server-self-host build:runtime
+# Server runs from TypeScript via tsx; no runtime bundle required for Coolify.
 
 # Stage 3: runtime
 FROM node:20 AS runner
