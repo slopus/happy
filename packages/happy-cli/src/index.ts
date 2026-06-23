@@ -330,8 +330,11 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     
     // Handle gemini command (ACP-based agent)
     try {
+      // The standalone gemini CLI is EOL; agy (Antigravity CLI) is its successor.
+      console.warn(chalk.yellow('⚠ The gemini backend is deprecated and may be removed in a future release. Use `happy agy` (Antigravity CLI) instead.'));
+
       const { runGemini } = await import('@/gemini/runGemini');
-      
+
       // Parse startedBy argument
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
@@ -708,7 +711,7 @@ ${chalk.bold('Usage:')}
   happy auth              Manage authentication
   happy resume            Resume a previous Happy session by Happy session ID
   happy codex             Start Codex mode
-  happy gemini            Start Gemini mode (ACP)
+  happy gemini            Start Gemini mode (ACP) [deprecated — use agy]
   happy agy               Start agy (Antigravity CLI) mode
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
