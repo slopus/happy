@@ -1,7 +1,9 @@
 import * as React from 'react';
-import { Session } from '@/sync/storageTypes';
+import type { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
+import { hasPendingPermissionRequests } from './permissionRequests';
+export { getPendingPermissionRequestIds, hasPendingPermissionRequests } from './permissionRequests';
 
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 type MaybeSession = Session | null | undefined;
@@ -22,7 +24,7 @@ export interface SessionStatus {
  */
 export function useSessionStatus(session: MaybeSession): SessionStatus {
     const isOnline = session?.presence === "online";
-    const hasPermissions = (session?.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
+    const hasPermissions = hasPendingPermissionRequests(session?.agentState);
     const isThinking = session?.thinking === true;
     const activeAt = session?.activeAt ?? Date.now();
 

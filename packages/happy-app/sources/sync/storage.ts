@@ -16,7 +16,7 @@ import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
-import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
+import { getSessionName, getSessionSubtitle, getSessionAvatarId, hasPendingPermissionRequests, type SessionState } from '@/utils/sessionUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
@@ -108,7 +108,7 @@ export interface SessionRowData {
 
 function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): SessionRowData {
     const isOnline = session.presence === "online";
-    const hasPermissions = !!(session.agentState?.requests && Object.keys(session.agentState.requests).length > 0);
+    const hasPermissions = hasPendingPermissionRequests(session.agentState);
 
     let state: SessionState;
     if (!isOnline) {
@@ -610,6 +610,9 @@ export const storage = create<StorageState>()((set, get) => {
 
                         // Find NEW permission requests only
                         for (const [requestId, request] of Object.entries(newRequests)) {
+                            if (newSession.agentState?.completedRequests?.[requestId]) {
+                                continue;
+                            }
                             if (!oldRequests[requestId]) {
                                 // This is a NEW permission request
                                 const toolName = request.tool;
@@ -662,12 +665,12 @@ export const storage = create<StorageState>()((set, get) => {
                 const oldSession = state.sessions[session.id];
                 if (!oldSession) return;
                 const wasActive = oldSession.thinking === true
-                    || (oldSession.agentState?.requests && Object.keys(oldSession.agentState.requests).length > 0);
+                    || hasPendingPermissionRequests(oldSession.agentState);
                 const newSession = mergedSessions[session.id];
                 if (!newSession || !wasActive) return;
                 const isNowIdle = newSession.thinking !== true
                     && newSession.presence === 'online'
-                    && (!newSession.agentState?.requests || Object.keys(newSession.agentState.requests).length === 0);
+                    && !hasPendingPermissionRequests(newSession.agentState);
                 if (isNowIdle && state.currentViewingSessionId !== session.id) {
                     if (!unreadSessionIds.has(session.id)) {
                         unreadSessionIds = new Set(unreadSessionIds);

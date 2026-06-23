@@ -76,9 +76,12 @@ const QuestionOutline = React.memo((props: {
     onJump: (rowIndex: number) => void;
 }) => {
     const [visibleCount, setVisibleCount] = React.useState(OUTLINE_PAGE_SIZE);
+    const listRef = React.useRef<HTMLDivElement | null>(null);
+    const shouldScrollToBottomRef = React.useRef(false);
 
     React.useEffect(() => {
         setVisibleCount(OUTLINE_PAGE_SIZE);
+        shouldScrollToBottomRef.current = true;
     }, [props.sessionId]);
 
     React.useEffect(() => {
@@ -88,6 +91,14 @@ const QuestionOutline = React.memo((props: {
     if (props.items.length === 0) return null;
     const visibleItems = props.items.slice(-visibleCount);
     const hasMore = visibleCount < props.items.length;
+
+    React.useLayoutEffect(() => {
+        if (!props.visible || !shouldScrollToBottomRef.current) return;
+        const node = listRef.current;
+        if (!node) return;
+        node.scrollTop = node.scrollHeight;
+        shouldScrollToBottomRef.current = false;
+    }, [props.visible, props.sessionId, visibleItems.length]);
 
     if (!props.visible) {
         return (
@@ -119,7 +130,7 @@ const QuestionOutline = React.memo((props: {
                     ‹
                 </button>
             </div>
-            <div style={outlineListStyle}>
+            <div ref={listRef} style={outlineListStyle}>
                 {hasMore && (
                     <button
                         type="button"

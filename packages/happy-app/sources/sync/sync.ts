@@ -50,6 +50,7 @@ import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { getPendingPermissionRequestIds } from '@/utils/permissionRequests';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -2115,11 +2116,14 @@ class Sync {
                     gitStatusSync.invalidate(updateData.body.id);
 
                     // Check for new permission requests and notify voice assistant
-                    if (agentState?.requests && Object.keys(agentState.requests).length > 0) {
-                        const requestIds = Object.keys(agentState.requests);
-                        const firstRequest = agentState.requests[requestIds[0]];
-                        const toolName = firstRequest?.tool;
-                        voiceHooks.onPermissionRequested(updateData.body.id, requestIds[0], toolName, firstRequest?.arguments);
+                    const pendingRequestIds = getPendingPermissionRequestIds(agentState);
+                    if (pendingRequestIds.length > 0) {
+                        const firstRequestId = pendingRequestIds[0];
+                        if (firstRequestId) {
+                            const firstRequest = agentState?.requests?.[firstRequestId];
+                            const toolName = firstRequest?.tool ?? '';
+                            voiceHooks.onPermissionRequested(updateData.body.id, firstRequestId, toolName, firstRequest?.arguments);
+                        }
                     }
 
                     // Re-fetch messages when control returns to mobile (local -> remote mode switch)

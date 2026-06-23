@@ -8,7 +8,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession, useIsDataReady } from '@/sync/storage';
-import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand, getPendingPermissionRequestIds } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionArchive, sessionKill, sessionDelete } from '@/sync/ops';
@@ -129,6 +129,7 @@ function SessionInfoContent({ session }: { session: Session }) {
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
+    const pendingPermissionRequestIds = getPendingPermissionRequestIds(session.agentState);
     const {
         canShowResume,
         canFork,
@@ -503,10 +504,10 @@ function SessionInfoContent({ session }: { session: Session }) {
                             icon={<Ionicons name="person-outline" size={29} color="#FF9500" />}
                             showChevron={false}
                         />
-                        {session.agentState.requests && Object.keys(session.agentState.requests).length > 0 && (
+                        {pendingPermissionRequestIds.length > 0 && (
                             <Item
                                 title={t('sessionInfo.pendingRequests')}
-                                detail={Object.keys(session.agentState.requests).length.toString()}
+                                detail={pendingPermissionRequestIds.length.toString()}
                                 icon={<Ionicons name="hourglass-outline" size={29} color="#FF9500" />}
                                 showChevron={false}
                             />
