@@ -119,6 +119,7 @@ import { parseMessageAsEvent } from "./messageToEvent";
 
 type ReducerMessage = {
     id: string;
+    localId?: string | null;
     realID: string | null;
     createdAt: number;
     role: 'user' | 'agent';
@@ -660,6 +661,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             let mid = allocateId();
             state.messages.set(mid, {
                 id: mid,
+                localId: msg.localId,
                 realID: msg.id,
                 role: 'user',
                 createdAt: msg.createdAt,
@@ -1164,7 +1166,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
     if (reducerMsg.role === 'user' && reducerMsg.text !== null) {
         return {
             id: reducerMsg.id,
-            localId: null,
+            localId: reducerMsg.localId ?? null,
             createdAt: reducerMsg.createdAt,
             kind: 'user-text',
             text: reducerMsg.text,

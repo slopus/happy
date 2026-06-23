@@ -13,7 +13,7 @@ import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
-import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { MessageQueue2, type PendingAttachment } from '@/utils/MessageQueue2';
 import { projectPath } from '@/projectPath';
 import { join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
@@ -23,7 +23,7 @@ import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
-import type { Session as ApiSession } from '@/api/types';
+import type { Session as ApiSession, UserMessage } from '@/api/types';
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -33,16 +33,27 @@ import { resolveCodexExecutionPolicy } from './executionPolicy';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
-    mapCodexThreadToSessionEnvelopes,
 } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
+import { downloadCodexFileEventAttachment } from './utils/attachmentEvents';
+import { prepareCodexImageInputItems } from './utils/imageInput';
+import { createSerialAsyncHandler } from './utils/serialAsyncHandler';
+import { buildCodexThreadBackfillEnvelopes } from './utils/threadImageBackfill';
 import {
     buildCodexTurnPrompt,
     hashCodexEnhancedMode,
     type CodexEnhancedMode,
 } from './codexPrompt';
+import { discoverCodexSkillCommands } from './codexSkills';
+import {
+    codexGoalActionCapabilities,
+    mapCodexGoalEventToAgentGoalStatus,
+    parseCodexGoalActionParams,
+    parseCodexGoalCommand,
+    type CodexGoalCommand,
+} from './codexGoalStatus';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -140,6 +151,12 @@ export async function runCodex(opts: {
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
     });
 
+    const skillCommands = await discoverCodexSkillCommands();
+    if (skillCommands.length > 0) {
+        metadata.skills = skillCommands;
+        metadata.slashCommands = Array.from(new Set([...(metadata.slashCommands ?? []), ...skillCommands]));
+    }
+
     // Check for session reconnection env vars (set by daemon for resume-in-place)
     const reconnectSessionId = process.env.HAPPY_RECONNECT_SESSION_ID;
     const reconnectKeyBase64 = process.env.HAPPY_RECONNECT_ENCRYPTION_KEY;
@@ -223,6 +240,15 @@ export async function runCodex(opts: {
 
     const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
 
+    session.onFileEvent((fileEvent) => {
+        const ev = fileEvent.content.data.ev;
+        logger.debug('[Codex] File event received', {
+            size: ev.size,
+            hasMimeType: Boolean(ev.mimeType),
+        });
+        session.trackAttachmentDownload(downloadCodexFileEventAttachment(session, fileEvent));
+    });
+
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
@@ -258,7 +284,9 @@ export async function runCodex(opts: {
         'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
     ];
 
-    session.onUserMessage((message) => {
+    const handleUserMessage = createSerialAsyncHandler<UserMessage>(async (message) => {
+        const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
+
         // Resolve permission mode (validate against Codex-native modes)
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
@@ -324,11 +352,17 @@ export async function runCodex(opts: {
             text: message.content.text,
             mode: enhancedMode,
             queue: messageQueue,
+            attachments: attachmentsForThisMessage,
         });
         if (enqueueResult === 'clear') {
             logger.debug('[Codex] /clear command pushed to isolated queue');
         }
+    }, (error) => {
+        logger.warn('[Codex] Failed to handle user message', {
+            errorName: error instanceof Error ? error.name : typeof error,
+        });
     });
+    session.onUserMessage(handleUserMessage);
     let thinking = false;
     let currentTurnId: string | null = null;
     let codexStartedSubagents = new Set<string>();
@@ -549,6 +583,72 @@ export async function runCodex(opts: {
             session.sendSessionProtocolMessage(envelope);
         }
     });
+    const updateCodexGoalState = (message: Record<string, unknown>) => {
+        const capabilities = codexGoalActionCapabilities(client.supportsGoalActions());
+        const goalStatus = mapCodexGoalEventToAgentGoalStatus(
+            message,
+            client.threadId,
+            capabilities ? { capabilities } : undefined,
+        );
+        if (!goalStatus) {
+            return;
+        }
+        session.updateAgentState((currentState) => ({
+            ...currentState,
+            agentGoalStatus: goalStatus,
+        }));
+    };
+    const handleCodexGoalCommand = async (
+        command: CodexGoalCommand,
+        threadId: string,
+    ): Promise<boolean> => {
+        try {
+            if (command.type === 'clear') {
+                const result = await client.clearGoal({ threadId });
+                if (result.cleared !== false) {
+                    updateCodexGoalState({
+                        type: 'thread_goal_cleared',
+                        threadId,
+                    });
+                }
+                messageBuffer.addMessage('Goal cleared', 'status');
+                return true;
+            }
+
+            const result = await client.setGoal({
+                threadId,
+                objective: command.objective,
+            });
+            updateCodexGoalState({
+                type: 'thread_goal_updated',
+                threadId,
+                goal: result.goal,
+            });
+            messageBuffer.addMessage('Goal updated', 'status');
+            return true;
+        } catch (error) {
+            logger.debug('[Codex] Goal command API failed; falling back to normal turn:', error);
+            return false;
+        }
+    };
+    session.rpcHandlerManager.registerHandler('goal-action', async (params: Record<string, unknown>) => {
+        const command = parseCodexGoalActionParams(params);
+        if (!command) {
+            throw new Error('Unsupported Codex goal action');
+        }
+
+        const threadId = client.threadId;
+        if (!threadId) {
+            throw new Error('No active Codex thread');
+        }
+
+        const handled = await handleCodexGoalCommand(command, threadId);
+        if (!handled) {
+            throw new Error('Codex goal actions are not supported by this runtime');
+        }
+
+        return { ok: true };
+    });
 
     // Approval handler: routes server → client approval requests to our permission handler
     client.setApprovalHandler(async (params) => {
@@ -661,6 +761,9 @@ export async function runCodex(opts: {
                 diffProcessor.processDiff((msg as any).unified_diff);
             }
         }
+        if (msg.type === 'thread_goal_updated' || msg.type === 'thread_goal_cleared') {
+            updateCodexGoalState(msg);
+        }
 
         // Convert events into the unified session-protocol envelope stream.
         // Reasoning deltas are handled by ReasoningProcessor to avoid duplicate text output.
@@ -722,7 +825,12 @@ export async function runCodex(opts: {
                     threadId: forkCodexThreadId,
                     includeTurns: true,
                 });
-                const envelopes = mapCodexThreadToSessionEnvelopes(thread);
+                const envelopes = await buildCodexThreadBackfillEnvelopes({
+                    thread,
+                    uploadLocalImage: (attachment, imageOpts) => (
+                        session.uploadLocalImageAttachmentEnvelope(attachment, imageOpts)
+                    ),
+                });
                 for (const envelope of envelopes) {
                     session.sendSessionProtocolMessage(envelope);
                 }
@@ -736,11 +844,11 @@ export async function runCodex(opts: {
             }
         }
 
-        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
+        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = null;
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
-            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = pending;
+            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = pending;
             pending = null;
             if (!message) {
                 // Capture the current signal to distinguish idle-abort from queue close
@@ -793,7 +901,9 @@ export async function runCodex(opts: {
             }
 
             // Display user messages in the UI
-            messageBuffer.addMessage(message.message, 'user');
+            if (message.message.trim().length > 0) {
+                messageBuffer.addMessage(message.message, 'user');
+            }
 
             try {
                 // Map permission mode to approval policy and sandbox.
@@ -805,7 +915,8 @@ export async function runCodex(opts: {
                 );
 
                 // Start thread on first turn (thread persists across mode changes)
-                if (!client.hasActiveThread()) {
+                let activeThreadId = client.threadId;
+                if (!client.hasActiveThread() || !activeThreadId) {
                     const startedThread = await client.startThread({
                         model: message.mode.model,
                         cwd: process.cwd(),
@@ -813,15 +924,38 @@ export async function runCodex(opts: {
                         sandbox: executionPolicy.sandbox,
                         mcpServers,
                     });
+                    activeThreadId = startedThread.threadId;
                     session.updateMetadata((currentMetadata) => ({
                         ...currentMetadata,
                         codexThreadId: startedThread.threadId,
                     }));
                 }
 
+                const goalCommand = parseCodexGoalCommand(message.message);
+                if (goalCommand && await handleCodexGoalCommand(goalCommand, activeThreadId)) {
+                    continue;
+                }
+
                 const includeAppendSystemPrompt = Boolean(
                     message.mode.appendSystemPrompt && !appendSystemPromptInjected,
                 );
+                const imageInputs = await prepareCodexImageInputItems(message.attachments, {
+                    sessionId: session.sessionId,
+                });
+                if ((message.attachments?.length ?? 0) > 0) {
+                    logger.debug('[Codex] Prepared image inputs for turn', {
+                        inputCount: imageInputs.inputItems.length,
+                        skippedCount: imageInputs.skipped,
+                    });
+                }
+                const hasUserText = message.message.trim().length > 0;
+                if ((message.attachments?.length ?? 0) > 0 && imageInputs.inputItems.length === 0 && !hasUserText) {
+                    session.sendSessionEvent({
+                        type: 'message',
+                        message: 'No supported images were available to send to Codex.',
+                    });
+                    continue;
+                }
                 const turnPrompt = buildCodexTurnPrompt({
                     message: message.message,
                     mode: message.mode,
@@ -834,6 +968,7 @@ export async function runCodex(opts: {
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,
                     effort: message.mode.effort,
+                    extraInputItems: imageInputs.inputItems,
                 });
                 first = false;
                 if (includeAppendSystemPrompt) {

@@ -12,7 +12,7 @@
  * 4. PATH fallback: bun, pnpm, or any other package manager
  */
 
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -70,6 +70,32 @@ function resolveClaudeEntrypoint(pkgDir) {
     return null;
 }
 
+function isPlainTextWithoutShebang(filePath) {
+    try {
+        const fd = fs.openSync(filePath, 'r');
+        try {
+            const buffer = Buffer.alloc(128);
+            const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
+            if (bytesRead >= 2 && buffer[0] === 0x23 && buffer[1] === 0x21) {
+                return false;
+            }
+            for (let i = 0; i < bytesRead; i++) {
+                const byte = buffer[i];
+                const isPrintableAscii = byte >= 0x20 && byte <= 0x7e;
+                const isCommonWhitespace = byte === 0x09 || byte === 0x0a || byte === 0x0d;
+                if (!isPrintableAscii && !isCommonWhitespace) {
+                    return false;
+                }
+            }
+            return bytesRead > 0;
+        } finally {
+            fs.closeSync(fd);
+        }
+    } catch (e) {
+        return false;
+    }
+}
+
 /**
  * Find path to npm globally installed Claude Code CLI
  * @returns {string|null} Path to cli.js or native binary, or null if not found
@@ -114,6 +140,9 @@ function findClaudeInPath() {
             // These cannot be spawned directly by Node.js. When we find such a shim,
             // resolve to the actual cli.js in the adjacent node_modules directory.
             const isExecutable = resolvedPath.endsWith('.js') || resolvedPath.endsWith('.cjs') || resolvedPath.endsWith('.exe');
+            if (process.platform !== 'win32' && resolvedPath.endsWith('.exe') && isPlainTextWithoutShebang(resolvedPath)) {
+                return null;
+            }
             if (!isExecutable) {
                 const shimDir = path.dirname(claudePath);
                 const pkgDir = path.join(shimDir, 'node_modules', '@anthropic-ai', 'claude-code');
@@ -475,6 +504,20 @@ function getVersion(cliPath) {
             return pkg.version;
         }
     } catch (e) {}
+
+    try {
+        const isJsFile = cliPath.endsWith('.js') || cliPath.endsWith('.cjs');
+        const command = isJsFile ? process.execPath : cliPath;
+        const args = isJsFile ? [cliPath, '--version'] : ['--version'];
+        const output = execFileSync(command, args, {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+            timeout: 3000,
+        });
+        const match = output.match(/(\d+\.\d+\.\d+)/);
+        return match?.[1] ?? null;
+    } catch (e) {}
+
     return null;
 }
 
@@ -493,6 +536,33 @@ function compareVersions(a, b) {
         if (partsA[i] < partsB[i]) return -1;
     }
     return 0;
+}
+
+const GOAL_HOOK_JSON_VALIDATION_FIXED_VERSION = '2.1.179';
+
+function isThirdPartyAnthropicBaseUrl(value) {
+    if (!value || typeof value !== 'string' || value.trim() === '') return false;
+    try {
+        const hostname = new URL(value).hostname.toLowerCase();
+        return hostname !== 'api.anthropic.com' && !hostname.endsWith('.anthropic.com');
+    } catch (e) {
+        // A malformed non-empty override is still not the default Anthropic API.
+        return true;
+    }
+}
+
+function shouldWarnAboutGoalHookJsonValidationRisk(version, env = process.env) {
+    if (!version) return false;
+    if (!isThirdPartyAnthropicBaseUrl(env.ANTHROPIC_BASE_URL)) return false;
+    return compareVersions(version, GOAL_HOOK_JSON_VALIDATION_FIXED_VERSION) < 0;
+}
+
+function formatGoalHookJsonValidationWarning(version) {
+    return [
+        `\x1b[33mWarning:\x1b[0m Claude Code v${version} may hit /goal Stop hook JSON validation failures`,
+        `with ANTHROPIC_BASE_URL backends. Upgrade Claude Code to ${GOAL_HOOK_JSON_VALIDATION_FIXED_VERSION}+`,
+        'or use Happy remote mode with the bundled Claude Code runtime.'
+    ].join(' ');
 }
 
 /**
@@ -520,6 +590,9 @@ function getClaudeCliPath() {
     const version = getVersion(result.path);
     const versionStr = version ? ` v${version}` : '';
     console.error(`\x1b[90mUsing Claude Code${versionStr} from ${result.source}\x1b[0m`);
+    if (shouldWarnAboutGoalHookJsonValidationRisk(version)) {
+        console.error(formatGoalHookJsonValidationWarning(version));
+    }
 
     return result.path;
 }
@@ -616,7 +689,9 @@ module.exports = {
     findNativeInstallerCliPath,
     getVersion,
     compareVersions,
+    shouldWarnAboutGoalHookJsonValidationRisk,
+    formatGoalHookJsonValidationWarning,
+    GOAL_HOOK_JSON_VALIDATION_FIXED_VERSION,
     getClaudeCliPath,
     runClaudeCli
 };
-

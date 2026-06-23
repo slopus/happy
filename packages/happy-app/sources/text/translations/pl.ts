@@ -236,7 +236,7 @@ export const pl: TranslationStructure = {
         analyticsDisabled: 'Wszystkie śledzenie i telemetria wyłączone',
         analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
         imageUpload: 'Przesyłanie obrazów',
-        imageUploadSubtitle: 'Dołącz obrazy do wiadomości, aby Claude mógł je przeanalizować',
+        imageUploadSubtitle: 'Dołączaj obrazy do wiadomości, aby obsługiwani agenci mogli je analizować',
     },
 
     errors: {
@@ -426,6 +426,13 @@ export const pl: TranslationStructure = {
             runIt: 'Uruchom je',
             scanQrCode: 'Zeskanuj kod QR',
             openCamera: 'Otwórz kamerę',
+        },
+        agentGoalBar: {
+            currentGoal: 'Bieżący cel',
+            accessibilityLabel: ({ goal }: { goal: string }) => `Bieżący cel: ${goal}`,
+            clearGoal: 'Wyczyść cel',
+            stopGoal: 'Zatrzymaj cel',
+            editGoal: 'Edytuj cel',
         },
     },
 
@@ -853,6 +860,7 @@ export const pl: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `Przełączono na tryb ${mode}`,
         unknownEvent: 'Nieznane zdarzenie',
         usageLimitUntil: ({ time }: { time: string }) => `Osiągnięto limit użycia do ${time}`,
+        sentAsGoal: 'Sent as goal',
         unknownTime: 'nieznany czas',
     },
 
@@ -1010,7 +1018,7 @@ export const pl: TranslationStructure = {
             ? 'Nie udało się przesłać jednego zdjęcia i nie zostało wysłane.'
             : `Nie udało się przesłać ${count} zdjęć i nie zostały wysłane.`,
         notSupportedTitle: 'Obrazy nieobsługiwane',
-        notSupportedMessage: 'Ten agent nie obsługuje załączników obrazów. Wysłano tylko tekst.',
+        notSupportedMessage: 'Ten agent nie obsługuje załączników obrazów. Obrazy nie zostały wysłane.',
     },
 
     feed: {

@@ -25,6 +25,11 @@ interface SessionModeChangeRequest {
     to: 'remote' | 'local';
 }
 
+interface SessionGoalActionRequest {
+    action: 'clear' | 'stop' | 'edit';
+    objective?: string;
+}
+
 // Bash operation types
 interface SessionBashRequest {
     command: string;
@@ -584,6 +589,20 @@ export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): 
         request,
     );
     return response;
+}
+
+/**
+ * Request an agent-owned goal action.
+ */
+export async function sessionGoalAction(
+    sessionId: string,
+    action: SessionGoalActionRequest['action'],
+    objective?: string,
+): Promise<void> {
+    await apiSocket.sessionRPC(sessionId, 'goal-action', {
+        action,
+        ...(objective !== undefined ? { objective } : {}),
+    } satisfies SessionGoalActionRequest);
 }
 
 /**

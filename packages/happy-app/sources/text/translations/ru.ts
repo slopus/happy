@@ -205,7 +205,7 @@ export const ru: TranslationStructure = {
         analyticsDisabled: 'Вся аналитика и телеметрия отключены',
         analyticsEnabled: 'Анонимная аналитика использования активна',
         imageUpload: 'Загрузка изображений',
-        imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа Claude',
+        imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа поддерживаемыми агентами',
     },
 
     errors: {
@@ -367,6 +367,13 @@ export const ru: TranslationStructure = {
             runIt: 'Запустите его',
             scanQrCode: 'Отсканируйте QR-код',
             openCamera: 'Открыть камеру',
+        },
+        agentGoalBar: {
+            currentGoal: 'Текущая цель',
+            accessibilityLabel: ({ goal }: { goal: string }) => `Текущая цель: ${goal}`,
+            clearGoal: 'Очистить цель',
+            stopGoal: 'Остановить цель',
+            editGoal: 'Изменить цель',
         },
     },
 
@@ -841,6 +848,7 @@ export const ru: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `Переключено в режим ${mode}`,
         unknownEvent: 'Неизвестное событие',
         usageLimitUntil: ({ time }: { time: string }) => `Лимит использования достигнут до ${time}`,
+        sentAsGoal: 'Отправлено в качестве цели',
         unknownTime: 'неизвестное время',
     },
 
@@ -1009,7 +1017,7 @@ export const ru: TranslationStructure = {
             ? 'Одно изображение не удалось загрузить — оно не было отправлено.'
             : `${count} изображений не удалось загрузить — они не были отправлены.`,
         notSupportedTitle: 'Изображения не поддерживаются',
-        notSupportedMessage: 'Этот агент не поддерживает изображения. Отправлен только текст.',
+        notSupportedMessage: 'Этот агент не поддерживает вложения изображений. Изображения не были отправлены.',
     },
 
     feed: {

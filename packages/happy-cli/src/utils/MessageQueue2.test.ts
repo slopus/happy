@@ -392,6 +392,64 @@ describe('MessageQueue2', () => {
         expect(batch2?.mode.type).toBe('A');
     });
 
+    it('pushIsolated does not clear pending messages and prevents batching', async () => {
+        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+
+        queue.push('first prompt', { type: 'A' });
+        queue.pushIsolated('isolated command', { type: 'A' });
+        queue.push('next prompt', { type: 'A' });
+
+        expect(await queue.waitForMessagesAndGetAsString()).toMatchObject({
+            message: 'first prompt',
+            isolate: false,
+        });
+
+        expect(await queue.waitForMessagesAndGetAsString()).toMatchObject({
+            message: 'isolated command',
+            isolate: true,
+        });
+
+        expect(await queue.waitForMessagesAndGetAsString()).toMatchObject({
+            message: 'next prompt',
+            isolate: false,
+        });
+    });
+
+    it('pushIsolated notifies waiters', async () => {
+        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+        const pending = queue.waitForMessagesAndGetAsString();
+
+        queue.pushIsolated('/goal clear', { type: 'A' });
+
+        await expect(pending).resolves.toMatchObject({
+            message: '/goal clear',
+            isolate: true,
+        });
+    });
+
+    it('pushIsolated keeps attachments with the isolated message', async () => {
+        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+        const attachments = [
+            {
+                data: new Uint8Array([1, 2, 3]),
+                mimeType: 'image/png',
+                name: 'screenshot.png',
+            },
+        ];
+
+        queue.push('first prompt', { type: 'A' });
+        queue.pushIsolated('isolated command', { type: 'A' }, attachments);
+        queue.push('next prompt', { type: 'A' });
+
+        await queue.waitForMessagesAndGetAsString();
+
+        expect(await queue.waitForMessagesAndGetAsString()).toMatchObject({
+            message: 'isolated command',
+            isolate: true,
+            attachments,
+        });
+    });
+
     it('should stop batching when hitting isolated message', async () => {
         const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
         

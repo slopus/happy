@@ -8,6 +8,8 @@ export type LauncherResult = { type: 'switch' } | { type: 'exit', code: number }
 
 export async function claudeLocalLauncher(session: Session): Promise<LauncherResult> {
 
+    let scannerMessageChain = Promise.resolve();
+
     // Create scanner
     const scanner = await createSessionScanner({
         sessionId: session.sessionId,
@@ -15,7 +17,13 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
         onMessage: (message) => { 
             // Block SDK summary messages - we generate our own
             if (message.type !== 'summary') {
-                session.client.sendClaudeSessionMessage(message)
+                scannerMessageChain = scannerMessageChain.then(async () => {
+                    try {
+                        await session.client.sendClaudeSessionMessageFromLocalTranscript(message);
+                    } catch (error) {
+                        logger.debug('[local]: failed to send Claude transcript message', error);
+                    }
+                });
             }
         }
     });
@@ -167,6 +175,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
         // Cleanup
         await scanner.cleanup();
+        await scannerMessageChain;
     }
 
     // Return

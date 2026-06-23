@@ -50,6 +50,7 @@ describe('reducer', () => {
             expect(result.messages[0].kind).toBe('user-text');
             if (result.messages[0].kind === 'user-text') {
                 expect(result.messages[0].text).toBe('Hello');
+                expect(result.messages[0].localId).toBe('local123');
             }
             expect(state.localIds.has('local123')).toBe(true);
         });

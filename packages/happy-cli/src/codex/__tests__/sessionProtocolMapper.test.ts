@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createId, isCuid } from '@paralleldrive/cuid2';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
@@ -239,5 +239,38 @@ describe('mapCodexThreadToSessionEnvelopes', () => {
             turn: 'turn-1',
             ev: { t: 'tool-call-end', call: 'cmd-1' },
         });
+    });
+
+    it('uses one fallback timestamp pair for historical tool items without provider timestamps', () => {
+        const dateSpy = vi
+            .spyOn(Date, 'now')
+            .mockReturnValueOnce(10_000)
+            .mockReturnValueOnce(20_000);
+
+        try {
+            const envelopes = mapCodexThreadToSessionEnvelopes({
+                turns: [{
+                    id: 'turn-without-times',
+                    items: [
+                        {
+                            id: 'cmd-1',
+                            type: 'commandExecution',
+                            command: 'pnpm test',
+                            aggregatedOutput: 'ok',
+                        },
+                    ],
+                }],
+            });
+
+            expect(envelopes.map((envelope) => envelope.time)).toEqual([
+                10_000,
+                10_000,
+                10_000,
+                20_000,
+                20_000,
+            ]);
+        } finally {
+            dateSpy.mockRestore();
+        }
     });
 });

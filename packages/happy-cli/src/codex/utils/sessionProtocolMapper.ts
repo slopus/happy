@@ -138,14 +138,14 @@ function commandToTitle(command: string | null): string {
     return `Run \`${short}\``;
 }
 
-function turnTimestampMs(turn: ThreadTurn): number {
+export function turnTimestampMs(turn: ThreadTurn): number {
     const seconds = turn.startedAt ?? turn.completedAt;
     return typeof seconds === 'number' && Number.isFinite(seconds)
         ? seconds * 1000
         : Date.now();
 }
 
-function completedTimestampMs(turn: ThreadTurn): number {
+export function completedTimestampMs(turn: ThreadTurn): number {
     const seconds = turn.completedAt ?? turn.startedAt;
     return typeof seconds === 'number' && Number.isFinite(seconds)
         ? seconds * 1000
@@ -180,7 +180,7 @@ function reasoningText(item: ThreadItem): string | null {
     return text.length > 0 ? text : null;
 }
 
-function turnStatus(turn: ThreadTurn): TurnEndStatus {
+export function turnStatus(turn: ThreadTurn): TurnEndStatus {
     const status = typeof turn.status === 'string' ? turn.status : null;
     if (status === 'failed') {
         return 'failed';
@@ -199,8 +199,12 @@ function emitHistoricalToolCall(
     title: string,
     args: Record<string, unknown>,
     output: string | null,
+    timestamps?: {
+        startedAt: number;
+        completedAt: number;
+    },
 ): void {
-    const time = turnTimestampMs(turn);
+    const time = timestamps?.startedAt ?? turnTimestampMs(turn);
     const opts = { turn: turn.id, time, codexItemId: item.id } satisfies CreateEnvelopeOptions;
     envelopes.push(createEnvelope('agent', {
         t: 'tool-call-start',
@@ -231,8 +235,108 @@ function emitHistoricalToolCall(
     }, {
         ...opts,
         id: `${item.id}:end`,
-        time: completedTimestampMs(turn),
+        time: timestamps?.completedAt ?? completedTimestampMs(turn),
     }));
+}
+
+export function mapCodexThreadItemToSessionEnvelopes(
+    turn: ThreadTurn,
+    item: ThreadItem,
+    timestamps?: {
+        startedAt: number;
+        completedAt: number;
+    },
+): SessionEnvelope[] {
+    const startedAt = timestamps?.startedAt ?? turnTimestampMs(turn);
+    const completedAt = timestamps?.completedAt ?? completedTimestampMs(turn);
+
+    switch (item.type) {
+        case 'userMessage': {
+            const text = textFromInputItems(item.content);
+            return text
+                ? [createEnvelope('user', { t: 'text', text }, {
+                    id: item.id,
+                    time: startedAt,
+                    codexItemId: item.id,
+                })]
+                : [];
+        }
+        case 'agentMessage': {
+            const text = typeof item.text === 'string' ? item.text.trim() : '';
+            return text.length > 0
+                ? [createEnvelope('agent', { t: 'text', text }, {
+                    id: item.id,
+                    turn: turn.id,
+                    time: completedAt,
+                    codexItemId: item.id,
+                })]
+                : [];
+        }
+        case 'reasoning': {
+            const text = reasoningText(item);
+            return text
+                ? [createEnvelope('agent', { t: 'text', text, thinking: true }, {
+                    id: item.id,
+                    turn: turn.id,
+                    time: startedAt,
+                    codexItemId: item.id,
+                })]
+                : [];
+        }
+        case 'commandExecution': {
+            const envelopes: SessionEnvelope[] = [];
+            const command = typeof item.command === 'string' ? item.command : '';
+            emitHistoricalToolCall(
+                envelopes,
+                turn,
+                item,
+                'CodexBash',
+                commandToTitle(command),
+                { command, cwd: item.cwd },
+                typeof item.aggregatedOutput === 'string' ? item.aggregatedOutput : null,
+                { startedAt, completedAt },
+            );
+            return envelopes;
+        }
+        case 'fileChange': {
+            const envelopes: SessionEnvelope[] = [];
+            emitHistoricalToolCall(
+                envelopes,
+                turn,
+                item,
+                'CodexPatch',
+                'Apply patch',
+                { changes: item.changes, status: item.status },
+                null,
+                { startedAt, completedAt },
+            );
+            return envelopes;
+        }
+        case 'mcpToolCall': {
+            const envelopes: SessionEnvelope[] = [];
+            const title = `${item.server}.${item.tool}`;
+            const output = item.error !== undefined && item.error !== null
+                ? String(item.error)
+                : (item.result !== undefined && item.result !== null ? String(item.result) : null);
+            emitHistoricalToolCall(
+                envelopes,
+                turn,
+                item,
+                'McpTool',
+                title,
+                {
+                    server: item.server,
+                    tool: item.tool,
+                    arguments: item.arguments,
+                },
+                output,
+                { startedAt, completedAt },
+            );
+            return envelopes;
+        }
+        default:
+            return [];
+    }
 }
 
 export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>): SessionEnvelope[] {
@@ -247,90 +351,9 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
             time: startedAt,
         }));
 
+        const timestamps = { startedAt, completedAt };
         for (const item of turn.items ?? []) {
-            switch (item.type) {
-                case 'userMessage': {
-                    const text = textFromInputItems(item.content);
-                    if (text) {
-                        envelopes.push(createEnvelope('user', { t: 'text', text }, {
-                            id: item.id,
-                            time: startedAt,
-                            codexItemId: item.id,
-                        }));
-                    }
-                    break;
-                }
-                case 'agentMessage': {
-                    const text = typeof item.text === 'string' ? item.text.trim() : '';
-                    if (text.length > 0) {
-                        envelopes.push(createEnvelope('agent', { t: 'text', text }, {
-                            id: item.id,
-                            turn: turn.id,
-                            time: completedAt,
-                            codexItemId: item.id,
-                        }));
-                    }
-                    break;
-                }
-                case 'reasoning': {
-                    const text = reasoningText(item);
-                    if (text) {
-                        envelopes.push(createEnvelope('agent', { t: 'text', text, thinking: true }, {
-                            id: item.id,
-                            turn: turn.id,
-                            time: startedAt,
-                            codexItemId: item.id,
-                        }));
-                    }
-                    break;
-                }
-                case 'commandExecution': {
-                    const command = typeof item.command === 'string' ? item.command : '';
-                    emitHistoricalToolCall(
-                        envelopes,
-                        turn,
-                        item,
-                        'CodexBash',
-                        commandToTitle(command),
-                        { command, cwd: item.cwd },
-                        typeof item.aggregatedOutput === 'string' ? item.aggregatedOutput : null,
-                    );
-                    break;
-                }
-                case 'fileChange': {
-                    const title = 'Apply patch';
-                    emitHistoricalToolCall(
-                        envelopes,
-                        turn,
-                        item,
-                        'CodexPatch',
-                        title,
-                        { changes: item.changes, status: item.status },
-                        null,
-                    );
-                    break;
-                }
-                case 'mcpToolCall': {
-                    const title = `${item.server}.${item.tool}`;
-                    const output = item.error !== undefined && item.error !== null
-                        ? String(item.error)
-                        : (item.result !== undefined && item.result !== null ? String(item.result) : null);
-                    emitHistoricalToolCall(
-                        envelopes,
-                        turn,
-                        item,
-                        'McpTool',
-                        title,
-                        {
-                            server: item.server,
-                            tool: item.tool,
-                            arguments: item.arguments,
-                        },
-                        output,
-                    );
-                    break;
-                }
-            }
+            envelopes.push(...mapCodexThreadItemToSessionEnvelopes(turn, item, timestamps));
         }
 
         envelopes.push(createEnvelope('agent', { t: 'turn-end', status: turnStatus(turn) }, {
