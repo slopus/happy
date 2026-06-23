@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveSessionRecordByPrefix } from './resolveHappySession';
+import { missingAgentCredentialMessage, resolveSessionRecordByPrefix } from './resolveHappySession';
+
+describe('missingAgentCredentialMessage', () => {
+    it('distinguishes the Happy Agent credential from normal CLI auth', () => {
+        const message = missingAgentCredentialMessage('/home/me/.happy/agent.key');
+
+        expect(message).toContain('/home/me/.happy/agent.key');
+        expect(message).toContain('normal `happy auth login` only creates `access.key`');
+        expect(message).toContain('happy-agent auth login');
+    });
+});
 
 describe('resolveSessionRecordByPrefix', () => {
     const sessions = [

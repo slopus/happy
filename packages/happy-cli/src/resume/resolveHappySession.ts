@@ -77,13 +77,19 @@ function decryptBoxBundle(bundle: Uint8Array, recipientSecretKey: Uint8Array): U
     return decrypted ? new Uint8Array(decrypted) : null;
 }
 
+export function missingAgentCredentialMessage(credentialPath: string): string {
+    return [
+        `Cannot resume historical Happy sessions without ${credentialPath}.`,
+        'This is the Happy Agent credential file; normal `happy auth login` only creates `access.key`.',
+        'Restore the original `agent.key`, or authenticate the Happy Agent CLI with `happy-agent auth login` in this environment.',
+    ].join(' ');
+}
+
 function readAgentCredentials() {
     const credentialPath = getLocalHappyAgentCredentialPath();
     const credentials = readLocalHappyAgentCredentials();
     if (!credentials) {
-        throw new Error(
-            `Cannot resume historical Happy sessions without ${credentialPath}. Run \`happy-agent auth login\` in this environment first.`,
-        );
+        throw new Error(missingAgentCredentialMessage(credentialPath));
     }
     return credentials;
 }
