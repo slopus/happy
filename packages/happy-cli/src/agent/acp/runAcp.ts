@@ -528,7 +528,10 @@ export async function runAcp(opts: {
   let sawModes = false;
   let sawModels = false;
 
-  const happyServer = await startHappyServer(session);
+  // Wired below (after the kill handler) so the archive_self MCP tool can
+  // trigger the same graceful archive+exit as the app's Archive button.
+  let requestSelfArchive: (() => void) | undefined;
+  const happyServer = await startHappyServer(session, { api, archiveAndExit: () => requestSelfArchive?.() });
   const mcpServers = {
     happy: {
       command: join(projectPath(), 'bin', 'happy-mcp.mjs'),
@@ -871,12 +874,15 @@ export async function runAcp(opts: {
   }
 
   session.rpcHandlerManager.registerHandler('abort', handleAbort);
-  registerKillSessionHandler(session.rpcHandlerManager, async () => {
+  const handleKillSession = async () => {
     shouldExit = true;
     messageQueue.close();
     clearPendingTurn(new Error('Session terminated'));
     await handleAbort();
-  });
+  };
+  registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
+  // archive_self MCP tool → same graceful archive+exit as the kill RPC.
+  requestSelfArchive = () => { void handleKillSession(); };
 
   try {
     const started = await backend.startSession();

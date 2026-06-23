@@ -1,9 +1,9 @@
 /**
  * Happy MCP STDIO Bridge
  *
- * Minimal STDIO MCP server exposing a single tool `change_title`.
- * On invocation it forwards the tool call to an existing Happy HTTP MCP server
- * using the StreamableHTTPClientTransport.
+ * STDIO MCP server exposing the Happy tools (change_title, open_session,
+ * archive_session). On invocation it forwards each tool call to an existing
+ * Happy HTTP MCP server using the StreamableHTTPClientTransport.
  *
  * Configure the target HTTP MCP URL via env var `HAPPY_HTTP_MCP_URL` or
  * via CLI flag `--url <http://127.0.0.1:PORT>`.
@@ -63,7 +63,9 @@ async function main() {
     version: '1.0.0',
   });
 
-  // Register the single tool and forward to HTTP MCP
+  // Register tools that mirror the HTTP MCP server
+  // (claude/utils/startHappyServer.ts is the source of truth for descriptions +
+  // schemas) and forward each call to it. Keep in sync when tools are added there.
   server.registerTool(
     'change_title',
     {
@@ -76,13 +78,83 @@ async function main() {
     async (args) => {
       try {
         const client = await ensureHttpClient();
-        const response = await client.callTool({ name: 'change_title', arguments: args });
-        // Pass-through response from HTTP server
-        return response as any;
+        return await client.callTool({ name: 'change_title', arguments: args }) as any;
       } catch (error) {
         return {
           content: [
             { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.registerTool(
+    'open_session',
+    {
+      description: 'Open a new Happy session (a separate agent process) on this machine — the programmatic equivalent of the client UI\'s "new session". Optionally create an isolated git worktree first and open the session inside it. Returns the new session id.',
+      title: 'Open Happy Session',
+      inputSchema: {
+        directory: z.string().optional().describe("Absolute path to open the session in. Defaults to the current session's working directory."),
+        agent: z.enum(['claude', 'codex', 'gemini', 'openclaw']).optional().describe('Which agent to launch (default: claude).'),
+        worktree: z.boolean().optional().describe('If true, create a new git worktree under <directory>/.dev/worktree/<name> and open the session there. <directory> must be inside a git repo.'),
+      },
+    },
+    async (args) => {
+      try {
+        const client = await ensureHttpClient();
+        return await client.callTool({ name: 'open_session', arguments: args }) as any;
+      } catch (error) {
+        return {
+          content: [
+            { type: 'text', text: `Failed to open session: ${error instanceof Error ? error.message : String(error)}` },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.registerTool(
+    'archive_session',
+    {
+      description: 'Archive a Happy session by id — the programmatic equivalent of the client UI\'s "Archive". Stops the live process via the local daemon and marks the session inactive on the server. The session stays resumable. Cannot archive the current session from within itself.',
+      title: 'Archive Happy Session',
+      inputSchema: {
+        sessionId: z.string().describe('The Happy session id to archive.'),
+      },
+    },
+    async (args) => {
+      try {
+        const client = await ensureHttpClient();
+        return await client.callTool({ name: 'archive_session', arguments: args }) as any;
+      } catch (error) {
+        return {
+          content: [
+            { type: 'text', text: `Failed to archive session: ${error instanceof Error ? error.message : String(error)}` },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.registerTool(
+    'archive_self',
+    {
+      description: 'Archive the CURRENT session and exit — the self-archive that archive_session refuses (a live session\'s keepalive would otherwise immediately re-activate it). Stamps this session archived, stops its keepalive, and gracefully terminates the agent process so the archive sticks (same path as the app\'s "Archive" button). The session stays resumable. Call this only when the agent has finished its work and should retire itself; it ends the session, so emit any final message before calling.',
+      title: 'Archive Current Session',
+      inputSchema: {},
+    },
+    async (args) => {
+      try {
+        const client = await ensureHttpClient();
+        return await client.callTool({ name: 'archive_self', arguments: args }) as any;
+      } catch (error) {
+        return {
+          content: [
+            { type: 'text', text: `Failed to self-archive: ${error instanceof Error ? error.message : String(error)}` },
           ],
           isError: true,
         };
