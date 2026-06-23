@@ -1007,13 +1007,37 @@ export class AcpBackend implements AgentBackend {
       return;
     }
 
+    // ACP spec: `UsageUpdate { size: number, used: number, cost?: { amount, currency } }`.
+    // Forwarded as an `event` AgentMessage; downstream socket/UI forwarding is a follow-up.
+    if (updateType === 'usage_update') {
+      const usage = update as { size?: unknown; used?: unknown; cost?: unknown };
+      if (typeof usage.size === 'number' && typeof usage.used === 'number') {
+        const payload: { size: number; used: number; cost?: unknown } = {
+          size: usage.size,
+          used: usage.used,
+        };
+        if (
+          Object.prototype.hasOwnProperty.call(usage, 'cost') &&
+          (usage.cost === null || typeof usage.cost === 'object')
+        ) {
+          payload.cost = usage.cost;
+        }
+        this.emit({
+          type: 'event',
+          name: 'usage_update',
+          payload,
+        });
+      }
+      return;
+    }
+
     // Handle legacy and auxiliary update types
     handleLegacyMessageChunk(update as SessionUpdate, ctx);
     handlePlanUpdate(update as SessionUpdate, ctx);
     handleThinkingUpdate(update as SessionUpdate, ctx);
 
-    // Log unhandled session update types for debugging
-    // Cast to string to avoid TypeScript errors (SDK types don't include all Gemini-specific update types)
+    // Log unhandled session update types so missing routes surface to maintainers.
+    // Cast to string because SDK types don't include all Gemini-specific update types.
     const handledTypes = [
       'agent_message_chunk',
       'tool_call_update',
@@ -1023,13 +1047,15 @@ export class AcpBackend implements AgentBackend {
       'config_option_update',
       'config_options_update',
       'current_mode_update',
+      'usage_update',
+      'session_info_update',
     ];
     if (updateType &&
         !handledTypes.includes(updateType) &&
         !update.messageChunk &&
         !update.plan &&
         !update.thinking) {
-      logger.debug(`[AcpBackend] Unhandled session update type: ${updateType}`, JSON.stringify(update, null, 2));
+      logger.warn(`[AcpBackend] Unhandled session update type: ${updateType}`, JSON.stringify(update, null, 2));
     }
   }
 
