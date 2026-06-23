@@ -428,7 +428,8 @@ export const ja: TranslationStructure = {
             acceptEdits: '編集を許可',
             plan: 'プランモード',
             dontAsk: '確認しない',
-            bypassPermissions: 'Yoloモード',
+            auto: '自動',
+            bypassPermissions: '危険なスキップ',
             badgeAcceptAllEdits: 'すべての編集を許可',
             badgeBypassAllPermissions: 'すべての権限をバイパス',
             badgePlanMode: 'プランモード',
@@ -981,6 +982,8 @@ export const ja: TranslationStructure = {
     imageUpload: {
         permissionTitle: 'フォトライブラリへのアクセス',
         permissionMessage: 'メッセージに画像を添付するには、フォトライブラリへのアクセスを許可してください。',
+        cameraPermissionTitle: 'カメラへのアクセス',
+        cameraPermissionMessage: 'メッセージに添付する写真を撮るには、カメラへのアクセスを許可してください。',
         limitTitle: '画像の上限に達しました',
         limitMessage: ({ max }: { max: number }) => `1メッセージに添付できる画像は最大${max}枚です。`,
         fileTooLargeTitle: 'ファイルが大きすぎます',
@@ -991,6 +994,13 @@ export const ja: TranslationStructure = {
             : `${count}枚の画像をアップロードできず、送信されませんでした。`,
         notSupportedTitle: '画像はサポートされていません',
         notSupportedMessage: 'このエージェントは画像の添付に対応していません。画像は送信されませんでした。',
+        addTitle: '添付ファイルを追加',
+        optionLibrary: 'フォトライブラリ',
+        optionCamera: '写真を撮る',
+        optionFiles: 'ファイルを選択',
+        optionPaste: 'クリップボードから貼り付け',
+        pasteFailedTitle: '貼り付けに失敗しました',
+        pasteFailedMessage: 'クリップボードから画像を読み取れませんでした。',
     },
 
     feed: {

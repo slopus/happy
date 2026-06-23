@@ -428,7 +428,8 @@ export const zhHans: TranslationStructure = {
             acceptEdits: '接受编辑',
             plan: '计划模式',
             dontAsk: '不再询问',
-            bypassPermissions: 'Yolo 模式',
+            auto: '自动',
+            bypassPermissions: '危险跳过',
             badgeAcceptAllEdits: '接受所有编辑',
             badgeBypassAllPermissions: '绕过所有权限',
             badgePlanMode: '计划模式',
@@ -980,6 +981,8 @@ export const zhHans: TranslationStructure = {
     imageUpload: {
         permissionTitle: '访问照片库',
         permissionMessage: '允许访问您的照片库以在消息中附加图片。',
+        cameraPermissionTitle: '相机权限',
+        cameraPermissionMessage: '允许访问相机以拍摄照片并附加到消息中。',
         limitTitle: '已达到图片限制',
         limitMessage: ({ max }: { max: number }) => `每条消息最多可附加 ${max} 张图片。`,
         fileTooLargeTitle: '文件过大',
@@ -990,6 +993,13 @@ export const zhHans: TranslationStructure = {
             : `${count} 张图片上传失败，未发送。`,
         notSupportedTitle: '不支持图片',
         notSupportedMessage: '此代理不支持图片附件。图片未发送。',
+        addTitle: '添加附件',
+        optionLibrary: '照片图库',
+        optionCamera: '拍照',
+        optionFiles: '选择文件',
+        optionPaste: '从剪贴板粘贴',
+        pasteFailedTitle: '粘贴失败',
+        pasteFailedMessage: '无法从剪贴板读取图片。',
     },
 
     feed: {

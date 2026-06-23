@@ -496,7 +496,26 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     // Image attachment state (expImageUpload feature flag)
     const expImageUpload = useSetting('expImageUpload');
-    const { selectedImages, pickImages, removeImage, clearImages, addImages } = useImagePicker();
+    const { selectedImages, pickImages, takePhoto, pickFiles, pasteImage, removeImage, clearImages, addImages } = useImagePicker();
+    const handlePickAttachment = React.useCallback(async () => {
+        if (Platform.OS === 'web') {
+            pickImages();
+            return;
+        }
+        // Only surface the paste row when the clipboard actually holds an image.
+        // hasImageAsync is silent (no iOS paste banner); the banner only fires
+        // later if the user taps Paste, which calls getImageAsync.
+        const hasClipboardImage = await Clipboard.hasImageAsync().catch(() => false);
+        Modal.alert(t('imageUpload.addTitle'), undefined, [
+            { text: t('imageUpload.optionLibrary'), onPress: () => { pickImages(); } },
+            { text: t('imageUpload.optionCamera'), onPress: () => { takePhoto(); } },
+            { text: t('imageUpload.optionFiles'), onPress: () => { pickFiles(); } },
+            ...(hasClipboardImage
+                ? [{ text: t('imageUpload.optionPaste'), onPress: () => { pasteImage(); } }]
+                : []),
+            { text: t('common.cancel'), style: 'cancel' as const },
+        ]);
+    }, [pickImages, takePhoto, pickFiles, pasteImage]);
 
     // ChatComposer owns the message state + useDraft subscription. We only
     // hold an imperative handle so handleSend can read the live text and
@@ -721,7 +740,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments && !isTablet ? handleFileViewerPress : undefined}
             selectedImages={expImageUpload ? selectedImages : undefined}
-            onPickImages={expImageUpload ? pickImages : undefined}
+            onPickImages={expImageUpload ? handlePickAttachment : undefined}
             onRemoveImage={expImageUpload ? removeImage : undefined}
             onAddImages={expImageUpload ? addImages : undefined}
             autocompletePrefixes={AGENT_INPUT_AUTOCOMPLETE_PREFIXES}

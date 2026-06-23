@@ -427,7 +427,8 @@ export const ca: TranslationStructure = {
             acceptEdits: 'Accepta edicions',
             plan: 'Mode de planificació',
             dontAsk: 'No preguntis',
-            bypassPermissions: 'Mode Yolo',
+            auto: 'automàtic',
+            bypassPermissions: 'ometre perillosament',
             badgeAcceptAllEdits: 'Accepta totes les edicions',
             badgeBypassAllPermissions: 'Omet tots els permisos',
             badgePlanMode: 'Mode de planificació',
@@ -979,6 +980,8 @@ export const ca: TranslationStructure = {
     imageUpload: {
         permissionTitle: 'Accés a la biblioteca de fotos',
         permissionMessage: "Permet l'accés a la teva biblioteca de fotos per adjuntar imatges als missatges.",
+        cameraPermissionTitle: 'Accés a la càmera',
+        cameraPermissionMessage: "Permet l'accés a la càmera per fer fotos i adjuntar-les als missatges.",
         limitTitle: "Límit d'imatges assolit",
         limitMessage: ({ max }: { max: number }) => `Pots adjuntar fins a ${max} imatges per missatge.`,
         fileTooLargeTitle: 'Fitxer massa gran',
@@ -989,6 +992,13 @@ export const ca: TranslationStructure = {
             : `No s'han pogut pujar ${count} imatges i no s'han enviat.`,
         notSupportedTitle: 'Imatges no compatibles',
         notSupportedMessage: 'Aquest agent no admet fitxers adjunts d\'imatge. Les imatges no s\'han enviat.',
+        addTitle: 'Afegeix un fitxer adjunt',
+        optionLibrary: 'Fototeca',
+        optionCamera: 'Fes una foto',
+        optionFiles: 'Tria un fitxer',
+        optionPaste: 'Enganxa des del porta-retalls',
+        pasteFailedTitle: 'Ha fallat enganxar',
+        pasteFailedMessage: 'No s\'ha pogut llegir cap imatge del porta-retalls.',
     },
 
     feed: {

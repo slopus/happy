@@ -427,7 +427,8 @@ export const es: TranslationStructure = {
             acceptEdits: 'Aceptar ediciones',
             plan: 'Modo de planificación',
             dontAsk: 'No preguntar',
-            bypassPermissions: 'Modo Yolo',
+            auto: 'automático',
+            bypassPermissions: 'omitir peligrosamente',
             badgeAcceptAllEdits: 'Aceptar todas las ediciones',
             badgeBypassAllPermissions: 'Omitir todos los permisos',
             badgePlanMode: 'Modo de planificación',
@@ -980,6 +981,8 @@ export const es: TranslationStructure = {
     imageUpload: {
         permissionTitle: 'Acceso a la biblioteca de fotos',
         permissionMessage: 'Permite el acceso a tu biblioteca de fotos para adjuntar imágenes a los mensajes.',
+        cameraPermissionTitle: 'Acceso a la cámara',
+        cameraPermissionMessage: 'Permite el acceso a la cámara para tomar fotos y adjuntarlas a los mensajes.',
         limitTitle: 'Límite de imágenes alcanzado',
         limitMessage: ({ max }: { max: number }) => `Puedes adjuntar hasta ${max} imágenes por mensaje.`,
         fileTooLargeTitle: 'Archivo demasiado grande',
@@ -990,6 +993,13 @@ export const es: TranslationStructure = {
             : `No se pudieron subir ${count} imágenes y no se enviaron.`,
         notSupportedTitle: 'Imágenes no compatibles',
         notSupportedMessage: 'Este agente no admite archivos adjuntos de imagen. Las imágenes no se enviaron.',
+        addTitle: 'Añadir adjunto',
+        optionLibrary: 'Fototeca',
+        optionCamera: 'Tomar foto',
+        optionFiles: 'Elegir archivo',
+        optionPaste: 'Pegar desde el portapapeles',
+        pasteFailedTitle: 'Error al pegar',
+        pasteFailedMessage: 'No se pudo leer una imagen del portapapeles.',
     },
 
     feed: {
