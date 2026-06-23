@@ -194,6 +194,20 @@ class Sync {
                 this.friendsSync.invalidate();
                 this.friendRequestsSync.invalidate();
                 this.feedSync.invalidate();
+
+                // Refresh the open chat's message log on resume. While the app is
+                // backgrounded the data socket is suspended/dropped, so any messages
+                // the agent produced while away arrive with no live `update` to apply
+                // them. The invalidations above only refresh the session LIST, not the
+                // viewing session's messages — without this the visible chat stays
+                // stale until the user leaves and re-enters it (it only re-fetches on a
+                // fresh SessionView mount). getMessagesSync does a bounded forward sync;
+                // if the socket hasn't reconnected yet, InvalidateSync's backoff retries
+                // until it has.
+                const resumeViewingSessionId = storage.getState().currentViewingSessionId;
+                if (resumeViewingSessionId) {
+                    this.onSessionVisible(resumeViewingSessionId);
+                }
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
                 this.maybeStartBackgroundSendWatchdog();
@@ -2121,9 +2135,20 @@ class Sync {
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
             this.feedSync.invalidate();
-            // Messages are fetched lazily per-session via onSessionVisible (called by SessionView
-            // when realtimeStatus changes). Session metadata + agentState (including permission
-            // requests) are already refreshed by sessionsSync.invalidate() above.
+            // Refresh the open chat's message log. The socket dropped (foreground
+            // network blip, server restart, or returning from background), so any
+            // messages produced during the gap were missed — there was no live
+            // `update` to apply them, and `connect` fired with recovered=false so
+            // socket.io did not replay them. sessionsSync above only refreshes the
+            // session list/metadata, not the viewing session's messages. (This used
+            // to rely on SessionView calling onSessionVisible "when realtimeStatus
+            // changes", but realtimeStatus tracks the voice session, not this data
+            // socket — see useSocketStatus vs useRealtimeStatus — so that trigger
+            // never fired on reconnect.)
+            const reconnectViewingSessionId = storage.getState().currentViewingSessionId;
+            if (reconnectViewingSessionId) {
+                this.onSessionVisible(reconnectViewingSessionId);
+            }
             for (const sync of this.sendSync.values()) {
                 sync.invalidate();
             }
