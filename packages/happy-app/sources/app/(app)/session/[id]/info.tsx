@@ -442,6 +442,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 if (flavor === 'claude') return 'Claude';
                                 if (flavor === 'gpt' || flavor === 'openai') return 'Codex';
                                 if (flavor === 'gemini') return 'Gemini';
+                                if (flavor === 'hermes') return 'Hermes';
                                 if (flavor === 'openclaw') return 'OpenClaw';
                                 return flavor;
                             })()}

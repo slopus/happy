@@ -75,7 +75,7 @@ interface AgentInputProps {
     };
     alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
-    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw';
+    agentType?: 'claude' | 'codex' | 'gemini' | 'hermes' | 'openclaw';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
@@ -558,10 +558,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         && !props.isSendDisabled
         && (isSendBlocked ? (hasText || hasImages) : (hasText || hasImages || !!props.onMicPress));
 
-    // Check if this is a Codex, Gemini, or OpenClaw session
+    // Check if this is a Codex, Gemini, Hermes, or OpenClaw session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
     const isCodex = props.metadata?.flavor === 'codex' || props.agentType === 'codex';
     const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
+    const isHermes = props.metadata?.flavor === 'hermes' || props.agentType === 'hermes';
     const isOpenClaw = props.metadata?.flavor === 'openclaw' || props.agentType === 'openclaw';
     const displayPermissionMode = React.useMemo(() => (
         props.permissionMode ? hackMode(props.permissionMode) : null
