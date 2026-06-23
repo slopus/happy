@@ -443,7 +443,8 @@ export const pl: TranslationStructure = {
             acceptEdits: 'Akceptuj edycje',
             plan: 'Tryb planowania',
             dontAsk: 'Nie pytaj',
-            bypassPermissions: 'Tryb YOLO',
+            auto: 'automatyczny',
+            bypassPermissions: 'pomiń niebezpiecznie',
             badgeAcceptAllEdits: 'Akceptuj wszystkie edycje',
             badgeBypassAllPermissions: 'Omiń wszystkie uprawnienia',
             badgePlanMode: 'Tryb planowania',
@@ -1009,6 +1010,8 @@ export const pl: TranslationStructure = {
     imageUpload: {
         permissionTitle: 'Dostęp do biblioteki zdjęć',
         permissionMessage: 'Zezwól na dostęp do biblioteki zdjęć, aby załączać obrazy do wiadomości.',
+        cameraPermissionTitle: 'Dostęp do aparatu',
+        cameraPermissionMessage: 'Zezwól na dostęp do aparatu, aby robić zdjęcia i dołączać je do wiadomości.',
         limitTitle: 'Osiągnięto limit obrazów',
         limitMessage: ({ max }: { max: number }) => `Możesz dołączyć maksymalnie ${max} obrazów na wiadomość.`,
         fileTooLargeTitle: 'Plik zbyt duży',
@@ -1019,6 +1022,13 @@ export const pl: TranslationStructure = {
             : `Nie udało się przesłać ${count} zdjęć i nie zostały wysłane.`,
         notSupportedTitle: 'Obrazy nieobsługiwane',
         notSupportedMessage: 'Ten agent nie obsługuje załączników obrazów. Obrazy nie zostały wysłane.',
+        addTitle: 'Dodaj załącznik',
+        optionLibrary: 'Biblioteka zdjęć',
+        optionCamera: 'Zrób zdjęcie',
+        optionFiles: 'Wybierz plik',
+        optionPaste: 'Wklej ze schowka',
+        pasteFailedTitle: 'Wklejanie nie powiodło się',
+        pasteFailedMessage: 'Nie udało się odczytać obrazu ze schowka.',
     },
 
     feed: {

@@ -16,7 +16,8 @@ import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
-import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import type { MessageParam } from '@anthropic-ai/sdk/resources';
+import { attachmentsToContentBlocks } from '@/claude/utils/attachmentContentBlocks';
 
 interface PermissionsField {
     date: number;
@@ -346,31 +347,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             // to wait out here — just consume what travelled with the batch.
                             const attachments = msg.attachments ?? [];
                             if (attachments.length > 0) {
-                                const contentBlocks: ContentBlockParam[] = [];
-                                for (const att of attachments) {
-                                    // Detect media type from the decrypted bytes' magic header
-                                    // rather than trusting the wire-supplied mimeType. iOS image
-                                    // pickers happily report things like "image/heic" or no
-                                    // mimeType at all, which the Anthropic API rejects with a
-                                    // strict enum validation error. If the bytes look like one
-                                    // of the four formats Claude accepts, send that label —
-                                    // otherwise skip the attachment with a debug log.
-                                    const detected = detectClaudeImageMime(att.data);
-                                    if (!detected) {
-                                        logger.debug(`[remote] Skipping unsupported attachment (no magic-byte match): ${att.name}, claimed mimeType=${att.mimeType}`);
-                                        continue;
-                                    }
-                                    contentBlocks.push({
-                                        type: 'image' as const,
-                                        source: {
-                                            type: 'base64' as const,
-                                            media_type: detected,
-                                            data: Buffer.from(att.data).toString('base64'),
-                                        },
-                                    });
-                                }
-                                contentBlocks.push({ type: 'text' as const, text: msg.message });
-                                logger.debug(`[remote] Combined ${contentBlocks.length - 1} image(s) with text message`);
+                                const contentBlocks = attachmentsToContentBlocks(attachments, msg.message);
+                                logger.debug(`[remote] Combined ${contentBlocks.length - 1} attachment block(s) with text message`);
                                 return {
                                     message: contentBlocks,
                                     mode: msg.mode,
@@ -518,31 +496,3 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     return exitReason || 'exit';
 }
 
-/**
- * Detect the image media type Claude accepts from the decrypted blob's
- * magic-byte header. The wire-supplied mimeType is unreliable (iOS picker
- * reports things like "image/heic" or no value at all), and the Anthropic
- * API enforces a strict enum on `image.source.base64.media_type`. Returning
- * null when the bytes don't match a supported format causes the caller to
- * drop the attachment instead of shipping an invalid request that the API
- * rejects with HTTP 400.
- */
-function detectClaudeImageMime(bytes: Uint8Array): 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | null {
-    if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
-        return 'image/png';
-    }
-    if (bytes.length >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
-        return 'image/jpeg';
-    }
-    if (bytes.length >= 4 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
-        return 'image/gif';
-    }
-    if (
-        bytes.length >= 12 &&
-        bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
-        bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
-    ) {
-        return 'image/webp';
-    }
-    return null;
-}

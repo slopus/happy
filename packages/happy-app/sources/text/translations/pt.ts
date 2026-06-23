@@ -426,7 +426,8 @@ export const pt: TranslationStructure = {
             acceptEdits: 'Aceitar edições',
             plan: 'Modo de planejamento',
             dontAsk: 'Não perguntar',
-            bypassPermissions: 'Modo Yolo',
+            auto: 'automático',
+            bypassPermissions: 'ignorar perigosamente',
             badgeAcceptAllEdits: 'Aceitar todas as edições',
             badgeBypassAllPermissions: 'Ignorar todas as permissões',
             badgePlanMode: 'Modo de planejamento',
@@ -978,6 +979,8 @@ export const pt: TranslationStructure = {
     imageUpload: {
         permissionTitle: 'Acesso à biblioteca de fotos',
         permissionMessage: 'Permita o acesso à sua biblioteca de fotos para anexar imagens às mensagens.',
+        cameraPermissionTitle: 'Acesso à câmera',
+        cameraPermissionMessage: 'Permita o acesso à câmera para tirar fotos e anexá-las às mensagens.',
         limitTitle: 'Limite de imagens atingido',
         limitMessage: ({ max }: { max: number }) => `Você pode anexar até ${max} imagens por mensagem.`,
         fileTooLargeTitle: 'Arquivo muito grande',
@@ -988,6 +991,13 @@ export const pt: TranslationStructure = {
             : `Não foi possível enviar ${count} imagens e não foram enviadas.`,
         notSupportedTitle: 'Imagens não suportadas',
         notSupportedMessage: 'Este agente não suporta anexos de imagem. As imagens não foram enviadas.',
+        addTitle: 'Adicionar anexo',
+        optionLibrary: 'Biblioteca de fotos',
+        optionCamera: 'Tirar foto',
+        optionFiles: 'Escolher arquivo',
+        optionPaste: 'Colar da área de transferência',
+        pasteFailedTitle: 'Falha ao colar',
+        pasteFailedMessage: 'Não foi possível ler uma imagem da área de transferência.',
     },
 
     feed: {

@@ -427,7 +427,8 @@ export const zhHant: TranslationStructure = {
             acceptEdits: '接受編輯',
             plan: '計畫模式',
             dontAsk: '不再詢問',
-            bypassPermissions: 'Yolo 模式',
+            auto: '自動',
+            bypassPermissions: '危險跳過',
             badgeAcceptAllEdits: '接受所有編輯',
             badgeBypassAllPermissions: '繞過所有權限',
             badgePlanMode: '計畫模式',
@@ -979,6 +980,8 @@ export const zhHant: TranslationStructure = {
     imageUpload: {
         permissionTitle: '存取照片圖庫',
         permissionMessage: '允許存取您的照片圖庫以在訊息中附加圖片。',
+        cameraPermissionTitle: '相機權限',
+        cameraPermissionMessage: '允許存取相機以拍攝照片並附加到訊息中。',
         limitTitle: '已達到圖片限制',
         limitMessage: ({ max }: { max: number }) => `每則訊息最多可附加 ${max} 張圖片。`,
         fileTooLargeTitle: '檔案太大',
@@ -989,6 +992,13 @@ export const zhHant: TranslationStructure = {
             : `${count} 張圖片上傳失敗，未傳送。`,
         notSupportedTitle: '不支援圖片',
         notSupportedMessage: '此代理不支援圖片附件。圖片未傳送。',
+        addTitle: '新增附件',
+        optionLibrary: '照片圖庫',
+        optionCamera: '拍照',
+        optionFiles: '選擇檔案',
+        optionPaste: '從剪貼簿貼上',
+        pasteFailedTitle: '貼上失敗',
+        pasteFailedMessage: '無法從剪貼簿讀取圖片。',
     },
 
     feed: {

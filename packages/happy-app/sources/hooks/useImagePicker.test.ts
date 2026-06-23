@@ -34,6 +34,26 @@ vi.mock('@/utils/thumbhash', () => ({
     generateThumbhash: mocks.generateThumbhash,
 }));
 
+// Picker hook also imports these for takePhoto/pickFiles/pasteImage. Mock them
+// so the module graph does not load expo-modules-core (references __DEV__) at import.
+vi.mock('expo-document-picker', () => ({
+    getDocumentAsync: vi.fn(),
+}));
+
+vi.mock('expo-clipboard', () => ({
+    getImageAsync: vi.fn(),
+}));
+
+vi.mock('expo-file-system/legacy', () => ({
+    writeAsStringAsync: vi.fn(),
+    cacheDirectory: 'file:///cache/',
+    EncodingType: { Base64: 'base64' },
+}));
+
+vi.mock('expo-crypto', () => ({
+    randomUUID: () => 'test-uuid',
+}));
+
 import { normalizePickedAssetForUpload } from './useImagePicker';
 
 describe('normalizePickedAssetForUpload', () => {

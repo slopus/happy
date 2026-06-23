@@ -223,6 +223,8 @@ export const en = {
     imageUpload: {
         permissionTitle: 'Photo Library Access',
         permissionMessage: 'Allow access to your photo library to attach images to messages.',
+        cameraPermissionTitle: 'Camera Access',
+        cameraPermissionMessage: 'Allow camera access to take photos to attach to messages.',
         limitTitle: 'Image Limit Reached',
         limitMessage: ({ max }: { max: number }) => `You can attach up to ${max} images per message.`,
         fileTooLargeTitle: 'File Too Large',
@@ -233,6 +235,13 @@ export const en = {
             : `${count} images could not be uploaded and were not sent.`,
         notSupportedTitle: 'Images Not Supported',
         notSupportedMessage: 'This agent does not support image attachments. Images were not sent.',
+        addTitle: 'Add Attachment',
+        optionLibrary: 'Photo Library',
+        optionCamera: 'Take Photo',
+        optionFiles: 'Choose File',
+        optionPaste: 'Paste from Clipboard',
+        pasteFailedTitle: 'Paste Failed',
+        pasteFailedMessage: 'Could not read an image from the clipboard.',
     },
 
     errors: {
@@ -441,7 +450,8 @@ export const en = {
             acceptEdits: 'accept edits',
             plan: 'plan',
             dontAsk: "don't ask",
-            bypassPermissions: 'yolo',
+            auto: 'auto',
+            bypassPermissions: 'dangerously skip',
             badgeAcceptAllEdits: 'accept all edits',
             badgeBypassAllPermissions: 'yolo',
             badgePlanMode: 'plan mode',
