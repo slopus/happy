@@ -42,6 +42,49 @@ describe('session protocol schemas', () => {
     }
   });
 
+  it('accepts usage events with and without optional fields', () => {
+    const full = sessionEventSchema.safeParse({
+      t: 'usage',
+      input_tokens: 1000,
+      output_tokens: 200,
+      cache_creation_input_tokens: 300,
+      cache_read_input_tokens: 400,
+    });
+    expect(full.success).toBe(true);
+
+    const minimal = sessionEventSchema.safeParse({
+      t: 'usage',
+      input_tokens: 1000,
+      output_tokens: 200,
+    });
+    expect(minimal.success).toBe(true);
+  });
+
+  it('round-trips a usage envelope through createEnvelope', () => {
+    const envelope = createEnvelope('agent', {
+      t: 'usage',
+      input_tokens: 5000,
+      output_tokens: 100,
+      cache_creation_input_tokens: 1000,
+      cache_read_input_tokens: 2000,
+    }, { turn: 'turn-9' });
+
+    const parsed = sessionEnvelopeSchema.safeParse(envelope);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.ev).toEqual({
+      t: 'usage',
+      input_tokens: 5000,
+      output_tokens: 100,
+      cache_creation_input_tokens: 1000,
+      cache_read_input_tokens: 2000,
+    });
+  });
+
+  it('rejects usage events missing required token counts', () => {
+    expect(sessionEventSchema.safeParse({ t: 'usage', input_tokens: 10 }).success).toBe(false);
+    expect(sessionEventSchema.safeParse({ t: 'usage', output_tokens: 10 }).success).toBe(false);
+  });
+
   it('rejects malformed events', () => {
     expect(sessionEventSchema.safeParse({ t: 'tool-call-start', call: '1' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'file', ref: 'x', name: 'x' }).success).toBe(false);

@@ -1742,6 +1742,39 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             });
         });
 
+        it('normalizes usage events into a content-less agent message carrying usage', () => {
+            const usage = normalizeRawMessage('db-usage-1', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-usage-1',
+                        time: 1,
+                        role: 'agent',
+                        turn: 'turn-usage-1',
+                        ev: {
+                            t: 'usage',
+                            input_tokens: 1000,
+                            output_tokens: 50,
+                            cache_creation_input_tokens: 2000,
+                            cache_read_input_tokens: 3000
+                        }
+                    }
+                }
+            });
+
+            expect(usage).toMatchObject({
+                id: 'env-usage-1',
+                role: 'agent',
+                content: [],
+                usage: {
+                    input_tokens: 1000,
+                    cache_creation_input_tokens: 2000,
+                    cache_read_input_tokens: 3000
+                }
+            });
+        });
+
         it('normalizes file events with required size and optional image metadata', () => {
             const fileOnly = normalizeRawMessage('db-file-1', null, 1, {
                 ...base,

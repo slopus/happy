@@ -697,6 +697,19 @@ export class ApiSessionClient extends EventEmitter {
             } catch (error) {
                 logger.debug('[SOCKET] Failed to send usage data:', error);
             }
+
+            // Also relay usage through the session protocol so the app can render
+            // context-window size. sendUsageData above only reports to the server
+            // for billing and never reaches the app.
+            const usage = body.message.usage;
+            const usageEnvelope = createEnvelope('agent', {
+                t: 'usage',
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+                cache_creation_input_tokens: usage.cache_creation_input_tokens,
+                cache_read_input_tokens: usage.cache_read_input_tokens,
+            }, { turn: this.claudeSessionProtocolState.currentTurnId ?? undefined });
+            this.sendSessionProtocolMessage(usageEnvelope);
         }
 
         // Update metadata with summary if this is a summary message
