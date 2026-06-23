@@ -707,9 +707,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [onChangeTextProp]);
 
     const handleInputStateChange = React.useCallback((newState: TextInputState) => {
-        React.startTransition(() => {
-            setInputState(newState);
-        });
+        // Autocomplete (slash / @ suggestions) is derived from inputState, so it
+        // must update urgently. Deferring it via startTransition lets a busy main
+        // thread (chat list render + WS sync + message decrypt) starve the commit,
+        // so the suggestion dropdown silently never appears under real load.
+        // Typing stays smooth regardless: the textarea is uncontrolled (keystrokes
+        // paint via the DOM, not this state) and the heavy sibling rows (status /
+        // context chips) are memoized away from this re-render.
+        setInputState(newState);
     }, []);
 
     // Use the tracked selection from inputState
