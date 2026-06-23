@@ -28,6 +28,7 @@ import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
+import { adoptSessionFromImportJournal } from '@/import/daemonAdopt';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -641,6 +642,8 @@ export async function startDaemon(): Promise<void> {
       return sessionIdToFinishedSession.get(happySessionId);
     };
 
+    // adoptSessionFromImportJournal is imported from '@/import/daemonAdopt'
+
     const fetchServerSessionMetadata = async (sessionId: string, encryptionKey: Uint8Array, encryptionVariant: 'legacy' | 'dataKey'): Promise<Metadata | null> => {
       try {
         const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
@@ -660,9 +663,18 @@ export async function startDaemon(): Promise<void> {
 
     const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
       try {
-        const tracked = findTrackedSessionById(happySessionId);
+        let tracked = findTrackedSessionById(happySessionId);
         if (!tracked) {
-          return { type: 'error', errorMessage: `Session ${happySessionId} is not tracked by this daemon. It may have been started before the daemon or on another machine.` };
+          // Fallback: this session wasn't started by THIS daemon, but it might
+          // be in the import journal (created by `happy import` for a
+          // pre-existing local Claude session). Adopt it.
+          const adopted = await adoptSessionFromImportJournal(happySessionId);
+          if (adopted) {
+            tracked = adopted;
+          }
+        }
+        if (!tracked) {
+          return { type: 'error', errorMessage: `Session ${happySessionId} is not tracked by this daemon and was not found in the import journal. It may have been started before the daemon or on another machine — try \`happy import\` to register it locally first.` };
         }
         if (!tracked.happySessionMetadataFromLocalWebhook) {
           return { type: 'error', errorMessage: `Session ${happySessionId} has no metadata. Cannot resume.` };
