@@ -48,6 +48,14 @@ export interface AgyBackendOptions {
   resolveConversationId?: (cwd: string) => string | null;
 }
 
+/** Parse an agy duration string ("10m", "30s", "1h") to milliseconds; defaults to 10m. */
+function parsePrintTimeoutMs(value: string): number {
+  const m = /^(\d+)\s*(s|m|h)$/.exec(value.trim());
+  if (!m) return 10 * 60_000;
+  const n = Number(m[1]);
+  return m[2] === 'h' ? n * 3_600_000 : m[2] === 'm' ? n * 60_000 : n * 1_000;
+}
+
 export class AgyBackend implements AgentBackend {
   private readonly handlers = new Set<AgentMessageHandler>();
   private readonly cwd: string;
@@ -112,6 +120,19 @@ export class AgyBackend implements AgentBackend {
       });
       this.child = child;
 
+      // Node can fire both 'error' and 'close' on spawn failure; act on the first only.
+      let settled = false;
+      const watchdog = setTimeout(() => {
+        this.log(`agy turn exceeded ${this.printTimeout}; killing process`);
+        child.kill('SIGKILL');
+      }, parsePrintTimeoutMs(this.printTimeout) + 30_000);
+      const cleanup = () => {
+        clearTimeout(watchdog);
+        if (this.child === child) {
+          this.child = null;
+        }
+      };
+
       child.stdout?.setEncoding('utf8');
       child.stdout?.on('data', (chunk: string) => {
         if (chunk) {
@@ -128,13 +149,17 @@ export class AgyBackend implements AgentBackend {
       });
 
       child.on('error', (err: Error) => {
-        this.child = null;
+        if (settled) return;
+        settled = true;
+        cleanup();
         this.emit({ type: 'status', status: 'error', detail: err.message });
         reject(err);
       });
 
       child.on('close', (code: number | null) => {
-        this.child = null;
+        if (settled) return;
+        settled = true;
+        cleanup();
         // Capture the conversation id agy recorded for this cwd so the next turn resumes it.
         const cid = this.resolveConversationId(this.cwd);
         if (cid) {

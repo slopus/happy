@@ -17,7 +17,7 @@ function makeFakeChild() {
   };
   child.stdout = stdout;
   child.stderr = stderr;
-  child.kill = () => true;
+  child.kill = vi.fn(() => true);
   return { child, stdout, stderr };
 }
 
@@ -118,5 +118,50 @@ describe('AgyBackend', () => {
     const idx = spawnCalls[1].indexOf('--conversation');
     expect(idx).toBeGreaterThanOrEqual(0);
     expect(spawnCalls[1][idx + 1]).toBe('cid-xyz');
+  });
+
+  it('emits only one error when error is followed by close (no double-emit)', async () => {
+    const { child } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => null,
+    });
+    const messages: AgentMessage[] = [];
+    backend.onMessage((m) => messages.push(m));
+
+    await backend.startSession();
+    const turn = backend.sendPrompt('/work', 'hi');
+
+    // Node fires both 'error' and 'close' on spawn failure.
+    child.emit('error', new Error('spawn ENOENT'));
+    child.emit('close', null);
+
+    await expect(turn).rejects.toThrow(/ENOENT/);
+    expect(messages.filter((m) => m.type === 'status' && m.status === 'error')).toHaveLength(1);
+  });
+
+  it('cancel() kills the running child', async () => {
+    const { child } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => null,
+    });
+
+    await backend.startSession();
+    const turn = backend.sendPrompt('/work', 'hi');
+    await backend.cancel();
+    expect(child.kill).toHaveBeenCalled();
+
+    // The kill surfaces as a non-zero close, which rejects the turn.
+    child.emit('close', null);
+    await expect(turn).rejects.toThrow();
   });
 });
