@@ -73,6 +73,15 @@ type V3PostSessionMessagesResponse = {
     }>;
 };
 
+function isHappyAttachmentUrl(url: string): boolean {
+    try {
+        const target = new URL(url);
+        return /^\/v1\/sessions\/[^/]+\/attachments\/[^/]+$/.test(target.pathname);
+    } catch {
+        return false;
+    }
+}
+
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string;
     readonly sessionId: string;
@@ -304,9 +313,8 @@ export class ApiSessionClient extends EventEmitter {
             throw new Error('request-download returned no downloadUrl');
         }
 
-        const isServerUrl = downloadUrl.startsWith(configuration.serverUrl);
         const headers: Record<string, string> = {};
-        if (isServerUrl) {
+        if (isHappyAttachmentUrl(downloadUrl)) {
             headers['Authorization'] = `Bearer ${this.token}`;
         }
         const response = await axios.get(downloadUrl, {
