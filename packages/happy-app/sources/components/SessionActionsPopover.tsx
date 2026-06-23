@@ -116,7 +116,7 @@ export function SessionActionsPopover({
     const safeArea = useSafeAreaInsets();
     const { height: windowHeight, width: windowWidth } = useWindowDimensions();
     const session = useSession(sessionId);
-    const { actionItems: actions } = useSessionQuickActions(session!, {
+    const { actionItems: actions } = useSessionQuickActions(session, {
         onAfterArchive,
         onAfterDelete,
     });

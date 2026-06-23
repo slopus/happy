@@ -262,7 +262,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
 
     // Sidebar variant
     if (variant === 'sidebar') {
-        // Loading state
         if (sessionListViewData === null) {
             return (
                 <View style={styles.sidebarContentContainer}>
@@ -273,7 +272,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
             );
         }
 
-        // Empty state
         if (sessionListViewData.length === 0) {
             return (
                 <View style={styles.sidebarContentContainer}>
@@ -284,7 +282,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
             );
         }
 
-        // Sessions list
         return (
             <View style={styles.sidebarContentContainer}>
                 <SessionsList />

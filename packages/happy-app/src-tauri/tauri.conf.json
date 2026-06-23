@@ -42,7 +42,7 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "signingIdentity": "Developer ID Application: Bulka, LLC (466DQWDR8C)",
+      "signingIdentity": "-",
       "hardenedRuntime": true,
       "entitlements": "entitlements.plist",
       "minimumSystemVersion": "10.15"

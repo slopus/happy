@@ -38,7 +38,16 @@ type ResumeAvailability = {
     message: string;
 };
 
-function getResumeAvailability(session: Session, machine: Machine | null | undefined, isConnected: boolean): ResumeAvailability {
+function getResumeAvailability(session: Session | null | undefined, machine: Machine | null | undefined, isConnected: boolean): ResumeAvailability {
+    if (!session) {
+        return {
+            canResume: false,
+            canShowResume: false,
+            subtitle: '',
+            message: '',
+        };
+    }
+
     if (isConnected) {
         return {
             canResume: false,
@@ -98,7 +107,7 @@ function getResumeAvailability(session: Session, machine: Machine | null | undef
 }
 
 export function useSessionQuickActions(
-    session: Session,
+    session: Session | null | undefined,
     options: UseSessionQuickActionsOptions = {},
 ) {
     const {
@@ -108,7 +117,8 @@ export function useSessionQuickActions(
     const router = useRouter();
     const navigateToSession = useNavigateToSession();
     const sessionStatus = useSessionStatus(session);
-    const machineId = session.metadata?.machineId ?? '';
+    const sessionId = session?.id ?? '';
+    const machineId = session?.metadata?.machineId ?? '';
     const machine = useMachine(machineId);
     const devModeEnabled = useLocalSetting('devModeEnabled');
     const expResumeSession = useSetting('expResumeSession');
@@ -122,10 +132,11 @@ export function useSessionQuickActions(
     // way; copyFile is atomic). The user-facing toggle is the same
     // expResumeSession experiment so all three flows (resume / fork /
     // duplicate) ride a single switch on settings/features.
-    const claudeFlavor = !session.metadata?.flavor || session.metadata.flavor === 'claude';
-    const claudeSessionId = session.metadata?.claudeSessionId;
+    const claudeFlavor = !session?.metadata?.flavor || session.metadata?.flavor === 'claude';
+    const claudeSessionId = session?.metadata?.claudeSessionId;
     const canFork = Boolean(
-        expResumeSession
+        session
+        && expResumeSession
         && claudeFlavor
         && claudeSessionId
         && machineId
@@ -134,10 +145,12 @@ export function useSessionQuickActions(
     );
 
     const openDetails = React.useCallback(() => {
-        router.push(`/session/${session.id}/info`);
-    }, [router, session.id]);
+        if (!sessionId) return;
+        router.push(`/session/${sessionId}/info`);
+    }, [router, sessionId]);
 
     const copySessionMetadata = React.useCallback(() => {
+        if (!session) return;
         void (async () => {
             const copied = await copySessionMetadataToClipboard(session);
             if (copied) {
@@ -147,6 +160,7 @@ export function useSessionQuickActions(
     }, [onAfterCopySessionMetadata, session]);
 
     const copySessionMetadataAndLogs = React.useCallback(() => {
+        if (!session) return;
         void (async () => {
             const copied = await copySessionMetadataAndLogsToClipboard(session);
             if (copied) {
@@ -156,6 +170,10 @@ export function useSessionQuickActions(
     }, [onAfterCopySessionMetadata, session]);
 
     const [resumingSession, performResume] = useHappyAction(async () => {
+        if (!session) {
+            throw new HappyError(t('errors.sessionDeleted'), false);
+        }
+
         if (!resumeAvailability.canResume) {
             throw new HappyError(resumeAvailability.message, false);
         }
@@ -196,6 +214,10 @@ export function useSessionQuickActions(
     });
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
+        if (!session) {
+            throw new HappyError(t('errors.sessionDeleted'), false);
+        }
+
         await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
 
         // Try to kill the CLI process; if it's already dead, force-archive via server
@@ -218,6 +240,10 @@ export function useSessionQuickActions(
     // and spawns a fresh Happy session on the same machine. Works for
     // both active and inactive sessions; the source row stays untouched.
     const [forking, performFork] = useHappyAction(async () => {
+        if (!session) {
+            throw new HappyError(t('errors.sessionDeleted'), false);
+        }
+
         if (!canFork) {
             throw new HappyError(t('session.forkErrorMissingMetadata'), false);
         }
@@ -238,12 +264,12 @@ export function useSessionQuickActions(
     }, [performFork]);
 
     const openDuplicateSheet = React.useCallback(() => {
-        if (!canFork) return;
+        if (!canFork || !sessionId) return;
         Modal.show({
             component: DuplicateSheet,
-            props: { sessionId: session.id },
+            props: { sessionId },
         } as any);
-    }, [canFork, session.id]);
+    }, [canFork, sessionId]);
 
     const canCopySessionMetadata = __DEV__ || devModeEnabled;
 
@@ -266,7 +292,9 @@ export function useSessionQuickActions(
             items.push({ id: 'copy-metadata-and-logs', icon: 'document-text-outline', label: t('sessionInfo.copyMetadata') + ' & Client Logs', onPress: copySessionMetadataAndLogs });
         }
 
-        items.push({ id: 'archive', icon: 'archive-outline', label: 'Archive', onPress: archiveSession, destructive: true });
+        if (session) {
+            items.push({ id: 'archive', icon: 'archive-outline', label: 'Archive', onPress: archiveSession, destructive: true });
+        }
 
         return items;
     }, [
@@ -280,6 +308,7 @@ export function useSessionQuickActions(
         openDuplicateSheet,
         resumeAvailability.canShowResume,
         resumeSession,
+        session,
     ]);
 
     const showActionAlert = React.useCallback(() => {
@@ -297,7 +326,7 @@ export function useSessionQuickActions(
         showActionAlert,
         archiveSession,
         archivingSession,
-        canArchive: true,
+        canArchive: !!session,
         canCopySessionMetadata,
         canResume: resumeAvailability.canResume,
         canShowResume: resumeAvailability.canShowResume,
@@ -320,6 +349,6 @@ export function useSessionQuickActions(
  */
 export function useSessionActionAlert(sessionId: string) {
     const session = useSession(sessionId);
-    const { showActionAlert } = useSessionQuickActions(session!, {});
+    const { showActionAlert } = useSessionQuickActions(session, {});
     return session ? showActionAlert : undefined;
 }

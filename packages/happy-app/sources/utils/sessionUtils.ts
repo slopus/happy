@@ -4,6 +4,7 @@ import { t } from '@/text';
 import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
 
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
+type MaybeSession = Session | null | undefined;
 
 export interface SessionStatus {
     state: SessionState;
@@ -19,19 +20,21 @@ export interface SessionStatus {
  * Get the current state of a session based on presence and thinking status.
  * Uses centralized session state from storage.ts
  */
-export function useSessionStatus(session: Session): SessionStatus {
-    const isOnline = session.presence === "online";
-    const hasPermissions = (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
+export function useSessionStatus(session: MaybeSession): SessionStatus {
+    const isOnline = session?.presence === "online";
+    const hasPermissions = (session?.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
+    const isThinking = session?.thinking === true;
+    const activeAt = session?.activeAt ?? Date.now();
 
     const vibingMessage = React.useMemo(() => {
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
-    }, [isOnline, hasPermissions, session.thinking]);
+    }, [isOnline, hasPermissions, isThinking]);
 
     if (!isOnline) {
         return {
             state: 'disconnected',
             isConnected: false,
-            statusText: t('status.lastSeen', { time: formatLastSeen(session.activeAt, false) }),
+            statusText: t('status.lastSeen', { time: formatLastSeen(activeAt, false) }),
             shouldShowStatus: true,
             statusColor: '#999',
             statusDotColor: '#999'
@@ -51,7 +54,7 @@ export function useSessionStatus(session: Session): SessionStatus {
         };
     }
 
-    if (session.thinking === true) {
+    if (isThinking) {
         return {
             state: 'thinking',
             isConnected: true,
@@ -77,8 +80,8 @@ export function useSessionStatus(session: Session): SessionStatus {
  * Extracts a display name from a session's metadata path.
  * Returns the last segment of the path, or 'unknown' if no path is available.
  */
-export function getSessionName(session: Session): string {
-    if (session.metadata?.summary) {
+export function getSessionName(session: MaybeSession): string {
+    if (session?.metadata?.summary) {
         return session.metadata.summary.text;
     }
     return t('session.newChat');
@@ -88,25 +91,25 @@ export function getSessionName(session: Session): string {
  * Generates a deterministic avatar ID from machine ID and path.
  * This ensures the same machine + path combination always gets the same avatar.
  */
-export function getSessionAvatarId(session: Session): string {
-    if (session.metadata?.machineId && session.metadata?.path) {
+export function getSessionAvatarId(session: MaybeSession): string {
+    if (session?.metadata?.machineId && session.metadata?.path) {
         // Combine machine ID and path for a unique, deterministic avatar
         return `${session.metadata.machineId}:${session.metadata.path}`;
     }
     // Fallback to session ID if metadata is missing
-    return session.id;
+    return session?.id ?? 'unknown';
 }
 
 /**
  * Returns the CLI command to resume a disconnected session, or null if not resumable.
  * Uses flavor-specific commands which work without happy-agent auth.
  */
-export function getResumeCommand(session: Session): string | null {
-    return buildResumeCommand(session.metadata ?? {});
+export function getResumeCommand(session: MaybeSession): string | null {
+    return buildResumeCommand(session?.metadata ?? {});
 }
 
-export function getResumeCommandBlock(session: Session): ResumeCommandBlock | null {
-    return buildResumeCommandBlock(session.metadata ?? {});
+export function getResumeCommandBlock(session: MaybeSession): ResumeCommandBlock | null {
+    return buildResumeCommandBlock(session?.metadata ?? {});
 }
 
 /**
@@ -141,8 +144,8 @@ export function formatPathRelativeToHome(path: string, homeDir?: string): string
 /**
  * Returns the session path for the subtitle.
  */
-export function getSessionSubtitle(session: Session): string {
-    if (session.metadata) {
+export function getSessionSubtitle(session: MaybeSession): string {
+    if (session?.metadata) {
         return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
     }
     return t('status.unknown');
@@ -152,16 +155,16 @@ export function getSessionSubtitle(session: Session): string {
  * Checks if a session is currently online based on the active flag.
  * A session is considered online if the active flag is true.
  */
-export function isSessionOnline(session: Session): boolean {
-    return session.active;
+export function isSessionOnline(session: MaybeSession): boolean {
+    return session?.active === true;
 }
 
 /**
  * Checks if a session should be shown in the active sessions group.
  * Uses the active flag directly.
  */
-export function isSessionActive(session: Session): boolean {
-    return session.active;
+export function isSessionActive(session: MaybeSession): boolean {
+    return session?.active === true;
 }
 
 /**

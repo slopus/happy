@@ -32,6 +32,7 @@ const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isP
 interface ActiveSessionsGroupProps {
     sessions: SessionRowData[];
     selectedSessionId?: string;
+    selectedGroupId?: string;
 }
 
 /**
@@ -163,7 +164,7 @@ const MachineSeparator = React.memo(({ machineName, machineId }: { machineName: 
     );
 });
 
-export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
+export function ActiveSessionsGroupCompact({ sessions, selectedSessionId, selectedGroupId }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
     const machines = useAllMachines();
 
@@ -255,7 +256,9 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                                             <CompactSessionRow
                                                 key={session.id}
                                                 session={session}
-                                                selected={selectedSessionId === session.id}
+                                                selected={session.isGroup
+                                                    ? selectedGroupId === session.groupId
+                                                    : selectedSessionId === session.id}
                                                 showBorder={index < projectGroup.sessions.length - 1}
                                             />
                                         ))}
@@ -275,13 +278,17 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const baseStatus = STATUS_CONFIG[session.state];
+    const isGroupSession = session.isGroup || !!session.groupId;
+    const groupColor = session.isGroup ? '#0EA5E9' : session.agentRole === 'reviewer' ? '#6366F1' : '#10B981';
+    const groupRoleLabel = session.isGroup ? 'Group' : session.agentRole === 'reviewer' ? 'Reviewer' : 'Executor';
     // Override to solid blue when session has unread results
     const status = session.hasUnread
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
     const navigateToSession = useNavigateToSession();
+    const router = useRouter();
     const swipeableRef = React.useRef<Swipeable | null>(null);
-    const swipeEnabled = Platform.OS !== 'web';
+    const swipeEnabled = Platform.OS !== 'web' && !session.isGroup;
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
@@ -297,8 +304,12 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     }, [performArchive]);
 
     const handlePress = React.useCallback(() => {
+        if (session.isGroup && session.groupId) {
+            router.push(`/group/${encodeURIComponent(session.groupId)}`);
+            return;
+        }
         navigateToSession(session.id);
-    }, [navigateToSession, session.id]);
+    }, [navigateToSession, router, session.groupId, session.id, session.isGroup]);
 
     const handleContextMenu = React.useCallback((event: any) => {
         event.preventDefault?.();
@@ -311,7 +322,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     }, []);
 
     const showActionAlert = useSessionActionAlert(session.id);
-    const menuProps = Platform.OS === 'web' ? {
+    const menuProps = session.isGroup ? {} : Platform.OS === 'web' ? {
         onContextMenu: handleContextMenu,
     } as any : {
         onLongPress: showActionAlert,
@@ -366,6 +377,14 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     >
                         {session.name}
                     </Text>
+                    {isGroupSession && (
+                        <View style={[styles.groupInlineBadge, { backgroundColor: groupColor }]}>
+                            <Ionicons name="people" size={10} color="#FFFFFF" />
+                            <Text style={styles.groupInlineBadgeText} numberOfLines={1}>
+                                {groupRoleLabel}
+                            </Text>
+                        </View>
+                    )}
                 </View>
             </View>
         </Pressable>
@@ -375,12 +394,14 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         return (
             <>
                 {itemContent}
-                <SessionActionsPopover
-                    anchor={actionsAnchor}
-                    onClose={() => setActionsAnchor(null)}
-                    sessionId={session.id}
-                    visible={!!actionsAnchor}
-                />
+                {!session.isGroup && (
+                    <SessionActionsPopover
+                        anchor={actionsAnchor}
+                        onClose={() => setActionsAnchor(null)}
+                        sessionId={session.id}
+                        visible={!!actionsAnchor}
+                    />
+                )}
             </>
         );
     }
@@ -549,6 +570,21 @@ const stylesheet = StyleSheet.create((theme) => ({
         width: 16,
         height: 16,
         marginRight: 8,
+    },
+    groupInlineBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        maxWidth: 88,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 6,
+        marginLeft: 8,
+    },
+    groupInlineBadgeText: {
+        fontSize: 10,
+        color: '#FFFFFF',
+        ...Typography.default('semiBold'),
     },
     swipeAction: {
         width: 112,

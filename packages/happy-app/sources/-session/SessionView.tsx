@@ -420,7 +420,7 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
     );
 });
 
-function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session }) {
+function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session | null | undefined }) {
     const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
@@ -432,20 +432,21 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
     const zenMode = useLocalSetting('zenMode');
     const sessionInputHorizontalPadding = Platform.OS === 'web' || isRunningOnMac() || isTablet ? 12 : 8;
+    const sessionMetadata = session?.metadata ?? null;
 
     // Check if CLI version is outdated and not already acknowledged
-    const cliVersion = session.metadata?.version;
-    const machineId = session.metadata?.machineId;
+    const cliVersion = sessionMetadata?.version;
+    const machineId = sessionMetadata?.machineId;
     const isCliOutdated = cliVersion && !isVersionSupported(cliVersion, MINIMUM_CLI_VERSION);
     const isAcknowledged = machineId && acknowledgedCliVersions[machineId] === cliVersion;
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
-    const flavor = session.metadata?.flavor;
+    const flavor = sessionMetadata?.flavor;
     const availableModels = React.useMemo(() => (
-        getAvailableModels(flavor, session.metadata, t)
-    ), [flavor, session.metadata]);
+        getAvailableModels(flavor, sessionMetadata, t)
+    ), [flavor, sessionMetadata]);
     const availableModes = React.useMemo(() => (
-        getAvailablePermissionModes(flavor, session.metadata, t)
-    ), [flavor, session.metadata]);
+        getAvailablePermissionModes(flavor, sessionMetadata, t)
+    ), [flavor, sessionMetadata]);
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const effectiveAgentDefaults = React.useMemo(() => (
         resolveAgentDefaultConfig(agentDefaultOverrides, flavor)
@@ -453,19 +454,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     const permissionMode = React.useMemo<PermissionMode | null>(() => (
         resolveCurrentOption(availableModes, [
-            session.permissionMode,
+            session?.permissionMode,
             effectiveAgentDefaults.permissionMode,
-            session.metadata?.currentOperatingModeCode,
+            sessionMetadata?.currentOperatingModeCode,
         ])
-    ), [availableModes, session.permissionMode, effectiveAgentDefaults.permissionMode, session.metadata?.currentOperatingModeCode]);
+    ), [availableModes, session?.permissionMode, effectiveAgentDefaults.permissionMode, sessionMetadata?.currentOperatingModeCode]);
 
     const modelMode = React.useMemo<ModelMode | null>(() => (
         resolveCurrentOption(availableModels, [
-            session.modelMode,
+            session?.modelMode,
             effectiveAgentDefaults.modelMode,
-            session.metadata?.currentModelCode,
+            sessionMetadata?.currentModelCode,
         ])
-    ), [availableModels, session.modelMode, effectiveAgentDefaults.modelMode, session.metadata?.currentModelCode]);
+    ), [availableModels, session?.modelMode, effectiveAgentDefaults.modelMode, sessionMetadata?.currentModelCode]);
 
     // Effort level state
     const modelKey = modelMode?.key ?? 'default';
@@ -474,10 +475,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     ), [flavor, modelKey]);
     const effortLevel = React.useMemo<EffortLevel | null>(() => (
         resolveCurrentOption(availableEffortLevels, [
-            session.effortLevel,
+            session?.effortLevel,
             effectiveAgentDefaults.effortLevel,
         ])
-    ), [availableEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel]);
+    ), [availableEffortLevels, session?.effortLevel, effectiveAgentDefaults.effortLevel]);
 
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
@@ -566,7 +567,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }), [sessionStatus.statusText, sessionStatus.statusColor, sessionStatus.statusDotColor, sessionStatus.isPulsing]);
 
     const usageData = React.useMemo(() => {
-        const source = sessionUsage ?? session.latestUsage;
+        const source = sessionUsage ?? session?.latestUsage;
         if (!source) return undefined;
         return {
             inputTokens: source.inputTokens,
@@ -575,7 +576,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             cacheRead: source.cacheRead,
             contextSize: source.contextSize,
         };
-    }, [sessionUsage, session.latestUsage]);
+    }, [sessionUsage, session?.latestUsage]);
 
 
     // Handle microphone button press - memoized to prevent button flashing
@@ -651,7 +652,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     let content = (
         <>
             <Deferred>
-                {messages.length > 0 && (
+                {session && messages.length > 0 && (
                     <ChatList session={session} />
                 )}
             </Deferred>
@@ -659,7 +660,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     );
     const placeholder = messages.length === 0 ? (
         <>
-            {isLoaded ? (
+            {!session ? (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <Ionicons name="trash-outline" size={48} color={theme.colors.textSecondary} />
+                    <Text style={{ color: theme.colors.text, fontSize: 20, marginTop: 16, fontWeight: '600' }}>{t('errors.sessionDeleted')}</Text>
+                    <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
+                </View>
+            ) : isLoaded ? (
                 <EmptyMessages session={session} />
             ) : (
                 <ActivityIndicator size="small" color={theme.colors.textSecondary} />
@@ -667,7 +674,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </>
     ) : null;
 
-    const composer = (
+    const composer = session ? (
         <ChatComposer
             composerHandleRef={composerHandleRef}
             placeholder={t('session.inputPlaceholder')}
@@ -681,7 +688,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             effortLevel={effortLevel}
             availableEffortLevels={availableEffortLevels}
             onEffortLevelChange={updateEffortLevel}
-            metadata={session.metadata}
+            metadata={sessionMetadata}
             connectionStatus={connectionStatus}
             blockSend={false}
             onSend={handleSend}
@@ -700,7 +707,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             alwaysShowContextSize={alwaysShowContextSize}
             zenMode={zenMode}
         />
-    );
+    ) : null;
 
     // Disconnected sessions get the full Resume affordance regardless of
     // whether they were explicitly archived or just lost their CLI (e.g.

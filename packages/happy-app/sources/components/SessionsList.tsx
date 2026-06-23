@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Pressable, FlatList, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
-import { usePathname } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { SessionListViewItem, SessionRowData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
@@ -171,6 +171,33 @@ const stylesheet = StyleSheet.create((theme) => ({
     draftIconOverlay: {
         color: theme.colors.textSecondary,
     },
+    groupAvatarBadge: {
+        position: 'absolute',
+        top: -3,
+        right: -3,
+        width: 19,
+        height: 19,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: theme.colors.surface,
+    },
+    groupBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        maxWidth: 92,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 6,
+        marginLeft: 8,
+    },
+    groupBadgeText: {
+        fontSize: 10,
+        color: '#FFFFFF',
+        ...Typography.default('semiBold'),
+    },
     artifactsSection: {
         paddingHorizontal: 16,
         paddingBottom: 12,
@@ -214,6 +241,11 @@ export function SessionsList() {
         if (!isTablet) return undefined;
         if (!pathname.startsWith('/session/')) return undefined;
         return pathname.split('/')[2];
+    }, [isTablet, pathname]);
+    const selectedGroupId = React.useMemo<string | undefined>(() => {
+        if (!isTablet) return undefined;
+        if (!pathname.startsWith('/group/')) return undefined;
+        return decodeURIComponent(pathname.split('/')[2] ?? '');
     }, [isTablet, pathname]);
 
     // Request review
@@ -267,6 +299,7 @@ export function SessionsList() {
                     <ActiveSessionsGroupCompact
                         sessions={item.sessions}
                         selectedSessionId={selectedSessionId}
+                        selectedGroupId={selectedGroupId}
                     />
                 );
 
@@ -290,7 +323,9 @@ export function SessionsList() {
                 const isFirst = prevItem?.type === 'header';
                 const isLast = nextItem?.type === 'header' || nextItem == null || nextItem?.type === 'active-sessions';
                 const isSingle = isFirst && isLast;
-                const selected = item.session.id === selectedSessionId;
+                const selected = item.session.isGroup
+                    ? item.session.groupId === selectedGroupId
+                    : item.session.id === selectedSessionId;
 
                 return (
                     <SessionItem
@@ -302,7 +337,7 @@ export function SessionsList() {
                     />
                 );
         }
-    }, [selectedSessionId, data, toggleArchived]);
+    }, [selectedSessionId, selectedGroupId, data, toggleArchived]);
 
 
     // Remove this section as we'll use FlatList for all items now
@@ -351,8 +386,12 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
 }) => {
     const styles = stylesheet;
     const navigateToSession = useNavigateToSession();
+    const router = useRouter();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const baseStatus = STATUS_CONFIG[session.state];
+    const isGroupSession = session.isGroup || !!session.groupId;
+    const groupColor = session.isGroup ? '#0EA5E9' : session.agentRole === 'reviewer' ? '#6366F1' : '#10B981';
+    const groupRoleLabel = session.isGroup ? 'Group' : session.agentRole === 'reviewer' ? 'Reviewer' : 'Executor';
     // Override to solid blue when session has unread results
     const status = session.hasUnread
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
@@ -373,8 +412,12 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     : t('status.online');
 
     const handlePress = React.useCallback(() => {
+        if (session.isGroup && session.groupId) {
+            router.push(`/group/${encodeURIComponent(session.groupId)}`);
+            return;
+        }
         navigateToSession(session.id);
-    }, [navigateToSession, session.id]);
+    }, [navigateToSession, router, session.groupId, session.id, session.isGroup]);
 
     const handleContextMenu = React.useCallback((event: any) => {
         event.preventDefault?.();
@@ -387,7 +430,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     }, []);
 
     const showActionAlert = useSessionActionAlert(session.id);
-    const menuProps = Platform.OS === 'web' ? {
+    const menuProps = session.isGroup ? {} : Platform.OS === 'web' ? {
         onContextMenu: handleContextMenu,
     } as any : {
         onLongPress: showActionAlert,
@@ -413,6 +456,11 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         >
             <View style={styles.avatarContainer}>
                 <Avatar id={session.avatarId} size={48} monochrome={!status.isConnected} flavor={session.flavor} />
+                {isGroupSession && (
+                    <View style={[styles.groupAvatarBadge, { backgroundColor: groupColor }]}>
+                        <Ionicons name="people" size={11} color="#FFFFFF" />
+                    </View>
+                )}
                 {session.hasDraft && (
                     <View style={styles.draftIconContainer}>
                         <Ionicons
@@ -431,6 +479,14 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     ]} numberOfLines={1}>
                         {session.name}
                     </Text>
+                    {isGroupSession && (
+                        <View style={[styles.groupBadge, { backgroundColor: groupColor }]}>
+                            <Ionicons name="people" size={10} color="#FFFFFF" />
+                            <Text style={styles.groupBadgeText} numberOfLines={1}>
+                                {groupRoleLabel}
+                            </Text>
+                        </View>
+                    )}
                 </View>
 
                 {session.path ? (
@@ -458,7 +514,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 </View>
             </View>
         </Pressable>
-        {Platform.OS === 'web' && (
+        {Platform.OS === 'web' && !session.isGroup && (
             <SessionActionsPopover
                 anchor={actionsAnchor}
                 onClose={() => setActionsAnchor(null)}

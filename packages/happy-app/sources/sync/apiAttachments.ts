@@ -39,6 +39,16 @@ function rewriteLoopbackHost(url: string): string {
     }
 }
 
+function isSameServerUrl(url: string): boolean {
+    try {
+        const target = new URL(url);
+        const server = new URL(getServerUrl());
+        return target.origin === server.origin;
+    } catch {
+        return false;
+    }
+}
+
 export type RequestUploadResult = {
     ref: string;
     uploadUrl: string;
@@ -127,8 +137,7 @@ export async function uploadEncryptedBlob(
     }
 
     // PUT (local-storage mode): direct upload to our server.
-    const serverUrl = getServerUrl();
-    const isServerUrl = upload.uploadUrl.startsWith(serverUrl);
+    const isServerUrl = isSameServerUrl(upload.uploadUrl);
     const headers: Record<string, string> = {
         'Content-Type': 'application/octet-stream',
     };

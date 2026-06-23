@@ -118,7 +118,7 @@ const ChatListInternal = React.memo((props: {
     // and a machine that's online. Active OR inactive — fork works either
     // way (the on-disk JSONL exists in both cases).
     const session = useSession(props.sessionId);
-    const { canFork } = useSessionQuickActions(session!, {});
+    const { canFork } = useSessionQuickActions(session, {});
 
     const handleForkFromMessage = useCallback((_messageId: string, claudeUuid: string) => {
         Modal.show({

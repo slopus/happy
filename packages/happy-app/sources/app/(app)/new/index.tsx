@@ -29,6 +29,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Constants from 'expo-constants';
+import { randomUUID } from 'expo-crypto';
 import { useHeaderHeight } from '@/utils/responsive';
 import { t } from '@/text';
 import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage';
@@ -45,6 +46,8 @@ import { useShallow } from 'zustand/react/shallow';
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { Modal } from '@/modal';
 import type { Machine, Session } from '@/sync/storageTypes';
+import { useAuth } from '@/auth/AuthContext';
+import { kvSet } from '@/sync/apiKv';
 import {
     getHardcodedPermissionModes,
     getHardcodedModelModes,
@@ -66,6 +69,8 @@ const agentIcons = {
 };
 
 type AgentKey = NewSessionAgentType;
+type NewSessionMode = 'single' | 'group';
+
 const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'claude', label: 'claude code' },
     { key: 'codex', label: 'codex' },
@@ -502,6 +507,7 @@ function NewSessionScreen() {
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
     const router = useRouter();
+    const auth = useAuth();
     const navigateToSession = useNavigateToSession();
 
     // Real data sources
@@ -556,6 +562,7 @@ function NewSessionScreen() {
     const [effortIndex, setEffortIndex] = React.useState(0);
     const [isSpawning, setIsSpawning] = React.useState(false);
     const [activePicker, setActivePicker] = React.useState<PickerType | null>(null);
+    const [sessionMode, setSessionMode] = React.useState<NewSessionMode>('single');
 
     // Config collapse — auto-collapses when typing, expands when empty
     const [isConfigExpanded, setIsConfigExpanded] = React.useState(true);
@@ -785,6 +792,10 @@ function NewSessionScreen() {
         setSelectedAgent(next);
     }, [availableAgents, selectedAgent, setSelectedAgent]);
 
+    const toggleSessionMode = React.useCallback(() => {
+        setSessionMode(mode => mode === 'single' ? 'group' : 'single');
+    }, []);
+
     const isOffline = selectedMachine ? !isMachineOnline(selectedMachine) : false;
     const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS[0];
     const currentPermission = permissionModes[permissionIndex] ?? permissionModes[0];
@@ -801,7 +812,6 @@ function NewSessionScreen() {
         : worktreeKey === '__new__'
             ? 'new worktree'
             : worktreeItems.find(wt => wt.key === worktreeKey)?.label || worktreeKey;
-
     // Flash label for collapsed icon taps — shows label briefly above the icon
     const flashOpacity = React.useRef(new Animated.Value(0)).current;
     const [flashText, setFlashText] = React.useState('');
@@ -871,6 +881,98 @@ function NewSessionScreen() {
                 spawnDirectory = worktreeKey;
             }
 
+            if (sessionMode === 'group') {
+                if (!auth.credentials) {
+                    Modal.alert(t('common.error'), 'Missing credentials');
+                    return;
+                }
+
+                const availability = selectedMachine.metadata?.cliAvailability;
+                if (availability && (!availability.codex || !availability.claude)) {
+                    Modal.alert(t('common.error'), 'Group mode requires both Codex and Claude on this machine.');
+                    return;
+                }
+
+                const draftState = useNewSessionDraft.getState();
+                const trimmedPrompt = draftState.input.trim();
+                const groupName = createGroupName(trimmedPrompt, spawnDirectory);
+                const groupId = `${slugifyGroupName(groupName)}-${randomUUID().slice(0, 8)}`;
+                const now = Date.now();
+
+                const executor = await machineSpawnNewSession({
+                    machineId: selectedMachineId,
+                    directory: spawnDirectory,
+                    approvedNewDirectoryCreation,
+                    agent: 'codex',
+                    environmentVariables: {
+                        HAPPY_GROUP_ID: groupId,
+                        HAPPY_GROUP_NAME: groupName,
+                        HAPPY_GROUP_AGENT_ROLE: 'executor',
+                        HAPPY_GROUP_SESSION_TAG: `group:${groupId}:executor`,
+                    },
+                });
+
+                if (executor.type === 'requestToApproveDirectoryCreation') {
+                    const approved = await Modal.confirm(
+                        'Create Directory?',
+                        `The directory '${executor.directory}' does not exist. Would you like to create it?`,
+                        { cancelText: t('common.cancel'), confirmText: t('common.create') },
+                    );
+                    if (approved) {
+                        await handleSend(true);
+                    }
+                    return;
+                }
+                if (executor.type === 'error') {
+                    Modal.alert(t('common.error'), executor.errorMessage);
+                    return;
+                }
+
+                const reviewer = await machineSpawnNewSession({
+                    machineId: selectedMachineId,
+                    directory: spawnDirectory,
+                    approvedNewDirectoryCreation: true,
+                    agent: 'claude',
+                    environmentVariables: {
+                        HAPPY_GROUP_ID: groupId,
+                        HAPPY_GROUP_NAME: groupName,
+                        HAPPY_GROUP_AGENT_ROLE: 'reviewer',
+                        HAPPY_GROUP_SESSION_TAG: `group:${groupId}:reviewer`,
+                    },
+                });
+
+                if (reviewer.type === 'error') {
+                    Modal.alert(t('common.error'), reviewer.errorMessage);
+                    return;
+                }
+                if (reviewer.type === 'requestToApproveDirectoryCreation') {
+                    Modal.alert(t('common.error'), `Directory approval required for '${reviewer.directory}'`);
+                    return;
+                }
+
+                await kvSet(auth.credentials, `group:${groupId}`, JSON.stringify({
+                    id: groupId,
+                    name: groupName,
+                    cwd: spawnDirectory,
+                    createdAt: now,
+                    sessions: [
+                        { sessionId: executor.sessionId, role: 'executor', agent: 'codex' },
+                        { sessionId: reviewer.sessionId, role: 'reviewer', agent: 'claude' },
+                    ],
+                }));
+
+                await sync.refreshSessions();
+                draftState.setInput('');
+
+                if (trimmedPrompt) {
+                    await sync.sendMessage(executor.sessionId, trimmedPrompt, { source: 'new_session' });
+                }
+
+                router.back();
+                router.push(`/group/${encodeURIComponent(groupId)}`);
+                return;
+            }
+
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
                 directory: spawnDirectory,
@@ -936,7 +1038,7 @@ function NewSessionScreen() {
         } finally {
             setIsSpawning(false);
         }
-    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession, currentPermission.key, currentModelKey, currentEffort?.key, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.effortLevel, worktreeKey]);
+    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, sessionMode, auth.credentials, router, navigateToSession, currentPermission.key, currentModelKey, currentEffort?.key, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.effortLevel, worktreeKey]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
 
@@ -1022,7 +1124,23 @@ function NewSessionScreen() {
                                         </Text>
                                     </Pressable>
 
+                                    {/* Session mode row */}
+                                    <Pressable
+                                        style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
+                                        onPress={toggleSessionMode}
+                                    >
+                                        <Ionicons
+                                            name={sessionMode === 'group' ? 'people-outline' : 'terminal-outline'}
+                                            size={15}
+                                            color={theme.colors.textSecondary}
+                                        />
+                                        <Text style={styles.configLabel} numberOfLines={1}>
+                                            {sessionMode === 'group' ? 'group · codex + claude' : 'single'}
+                                        </Text>
+                                    </Pressable>
+
                                     {/* Agent + model + effort row */}
+                                    {sessionMode === 'single' && (
                                     <View style={styles.configRow}>
                                         <Pressable
                                             onPress={cycleAgent}
@@ -1060,9 +1178,10 @@ function NewSessionScreen() {
                                             </>
                                         )}
                                     </View>
+                                    )}
 
                                     {/* Permission row */}
-                                    {showPermission && (
+                                    {sessionMode === 'single' && showPermission && (
                                         <Pressable
                                             style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
                                             onPress={cyclePermission}
@@ -1128,20 +1247,38 @@ function NewSessionScreen() {
                                     </Pressable>
 
                                     {/* Agent */}
+                                    {sessionMode === 'single' && (
+                                        <Pressable
+                                            onPress={() => {
+                                                cycleAgent();
+                                                showFlash(availableAgents[(availableAgents.findIndex(a => a.key === selectedAgent) + 1) % availableAgents.length].label);
+                                            }}
+                                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                            style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                                        >
+                                            <RNImage
+                                                source={agentIcons[agent.key]}
+                                                style={[styles.collapsedAgentIcon, { tintColor: theme.colors.textSecondary }]}
+                                                resizeMode="contain"
+                                            />
+                                        </Pressable>
+                                    )}
+
+                                    {/* Mode */}
                                     <Pressable
-                                        onPress={() => { cycleAgent(); showFlash(availableAgents[(availableAgents.findIndex(a => a.key === selectedAgent) + 1) % availableAgents.length].label); }}
+                                        onPress={() => { toggleSessionMode(); showFlash(sessionMode === 'group' ? 'single' : 'group'); }}
                                         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                                         style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
                                     >
-                                        <RNImage
-                                            source={agentIcons[agent.key]}
-                                            style={[styles.collapsedAgentIcon, { tintColor: theme.colors.textSecondary }]}
-                                            resizeMode="contain"
+                                        <Ionicons
+                                            name={sessionMode === 'group' ? 'people-outline' : 'terminal-outline'}
+                                            size={14}
+                                            color={theme.colors.textSecondary}
                                         />
                                     </Pressable>
 
                                     {/* Permission */}
-                                    {showPermission && (
+                                    {sessionMode === 'single' && showPermission && (
                                         <Pressable
                                             onPress={() => { cyclePermission(); showFlash(permissionModes[(permissionIndex + 1) % permissionModes.length]?.name ?? 'default'); }}
                                             hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
@@ -1299,6 +1436,24 @@ const WORKTREE_FIXED_ITEMS: PickerItem[] = [
     { key: '__none__', label: 'no worktree' },
     { key: '__new__', label: 'new worktree' },
 ];
+
+function createGroupName(prompt: string, directory: string): string {
+    const trimmed = prompt.replace(/\s+/g, ' ').trim();
+    if (trimmed) {
+        return trimmed.slice(0, 36);
+    }
+    const folder = directory.split(/[/\\]/).filter(Boolean).pop();
+    return folder ? `${folder} group` : 'new group';
+}
+
+function slugifyGroupName(value: string): string {
+    return value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        || 'group';
+}
 
 const styles = StyleSheet.create((theme) => ({
     container: {

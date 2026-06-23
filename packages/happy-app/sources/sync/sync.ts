@@ -493,17 +493,18 @@ class Sync {
     private async uploadAttachmentsForSession(
         sessionId: string,
         attachments: AttachmentPreview[],
-    ): Promise<{ uploaded: UploadedAttachment[]; failed: number }> {
-        if (!this.credentials) return { uploaded: [], failed: attachments.length };
+    ): Promise<{ uploaded: UploadedAttachment[]; failed: number; errors: string[] }> {
+        if (!this.credentials) return { uploaded: [], failed: attachments.length, errors: ['Missing credentials'] };
 
         const blobKey = this.encryption.getSessionBlobKey(sessionId);
         if (!blobKey) {
             console.error(`[attachments] No blob key for session ${sessionId}`);
-            return { uploaded: [], failed: attachments.length };
+            return { uploaded: [], failed: attachments.length, errors: [`No blob key for session ${sessionId}`] };
         }
 
         const uploaded: UploadedAttachment[] = [];
         let failed = 0;
+        const errors: string[] = [];
 
         for (const attachment of attachments) {
             try {
@@ -531,11 +532,13 @@ class Sync {
             } catch (err) {
                 console.error(`[attachments] Failed to upload ${attachment.name}:`, err);
                 failed++;
+                const message = err instanceof Error ? err.message : String(err);
+                errors.push(`${attachment.name}: ${message}`);
                 // Skip this attachment; do not abort the whole message send.
             }
         }
 
-        return { uploaded, failed };
+        return { uploaded, failed, errors };
     }
 
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
@@ -584,12 +587,13 @@ class Sync {
 
         // Upload attachments and queue file events before the text message.
         if (effectiveAttachments && effectiveAttachments.length > 0) {
-            const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, effectiveAttachments);
+            const { uploaded, failed, errors } = await this.uploadAttachmentsForSession(sessionId, effectiveAttachments);
 
             if (failed > 0) {
+                const details = errors.length > 0 ? `\n\n${errors.slice(0, 2).join('\n')}` : '';
                 Modal.alert(
                     t('imageUpload.uploadFailedTitle'),
-                    t('imageUpload.uploadFailedMessage', { count: failed }),
+                    `${t('imageUpload.uploadFailedMessage', { count: failed })}${details}`,
                     [{ text: t('common.ok'), style: 'cancel' }],
                 );
             }
