@@ -228,6 +228,7 @@ export class CodexAppServerClient {
     private notificationProtocol: 'unknown' | 'legacy' | 'raw' = 'unknown';
     private completedTurnIds = new Set<string>();
     private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
+    private rawSubagentActivityItemIds = new Set<string>();
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
@@ -463,6 +464,64 @@ export class CodexAppServerClient {
                 }
                 return true;
             }
+        }
+
+        if (item.type === 'collabAgentToolCall') {
+            const callId = typeof item.id === 'string' ? item.id : '';
+            const payload = {
+                call_id: callId,
+                callId,
+                tool: item.tool,
+                status: item.status,
+                sender_thread_id: item.senderThreadId,
+                senderThreadId: item.senderThreadId,
+                receiver_thread_ids: item.receiverThreadIds,
+                receiverThreadIds: item.receiverThreadIds,
+                prompt: item.prompt,
+                model: item.model,
+                reasoning_effort: item.reasoningEffort,
+                reasoningEffort: item.reasoningEffort,
+                agents_states: item.agentsStates,
+                agentsStates: item.agentsStates,
+            };
+
+            if (method === 'item/started') {
+                this.eventHandler?.({
+                    type: 'collab_agent_begin',
+                    ...payload,
+                });
+                return true;
+            }
+
+            if (method === 'item/completed') {
+                this.eventHandler?.({
+                    type: 'collab_agent_end',
+                    ...payload,
+                });
+                return true;
+            }
+        }
+
+        if (item.type === 'subAgentActivity') {
+            if (method === 'item/started' || method === 'item/completed') {
+                const itemId = typeof item.id === 'string' ? item.id : '';
+                if (itemId && this.rawSubagentActivityItemIds.has(itemId)) {
+                    return true;
+                }
+                if (itemId) {
+                    this.rawSubagentActivityItemIds.add(itemId);
+                }
+                this.eventHandler?.({
+                    type: 'subagent_activity',
+                    item_id: item.id,
+                    kind: item.kind,
+                    agent_thread_id: item.agentThreadId,
+                    agentThreadId: item.agentThreadId,
+                    agent_path: item.agentPath,
+                    agentPath: item.agentPath,
+                });
+            }
+            return true;
         }
 
         if (method === 'item/completed' && item.type === 'agentMessage') {
@@ -712,6 +771,7 @@ export class CodexAppServerClient {
         const result = await this.request('thread/start', params) as NewConversationResponse;
         this._threadId = result.thread.id;
         this._turnId = null;
+        this.rawSubagentActivityItemIds.clear();
         this.rememberThreadDefaults(opts);
         logger.debug('[CodexAppServer] Thread started:', this._threadId);
         return { threadId: result.thread.id, model: result.model };
@@ -747,6 +807,7 @@ export class CodexAppServerClient {
         const result = await this.request('thread/resume', params) as ResumeConversationResponse;
         this._threadId = result.thread.id;
         this._turnId = null;
+        this.rawSubagentActivityItemIds.clear();
         this.rememberThreadDefaults({
             model: opts?.model ?? defaults.model,
             cwd: opts?.cwd ?? defaults.cwd,
@@ -942,10 +1003,13 @@ export class CodexAppServerClient {
             return { hadActiveTurn: false, aborted: false, forcedRestart: false, resumedThread: false };
         }
 
-        // Best-effort interrupt request first.
-        await this.interruptTurn();
-
         const gracePeriodMs = opts?.gracePeriodMs ?? CodexAppServerClient.ABORT_GRACE_MS;
+        // Best-effort interrupt request first, but do not block the fallback on
+        // the interrupt RPC itself. Codex can stop emitting responses while a
+        // tool/subagent/MCP call is wedged, and in that case the restart fallback
+        // is the mechanism that actually makes Stop Execution reliable.
+        void this.interruptTurn({ timeoutMs: Math.max(1, gracePeriodMs) });
+
         const settled = await this.waitForTurnCompletion(gracePeriodMs);
         if (settled) {
             return { hadActiveTurn: true, aborted: true, forcedRestart: false, resumedThread: false };
@@ -1088,7 +1152,7 @@ export class CodexAppServerClient {
         return { aborted };
     }
 
-    async interruptTurn(): Promise<void> {
+    async interruptTurn(opts?: { timeoutMs?: number }): Promise<void> {
         if (!this._threadId) return;
         if (!this._turnId) {
             logger.debug('[CodexAppServer] interruptTurn: no active turnId, skipping');
@@ -1100,7 +1164,7 @@ export class CodexAppServerClient {
         };
         const doInterrupt = async () => {
             try {
-                await this.request('turn/interrupt', params);
+                await this.request('turn/interrupt', params, opts?.timeoutMs);
             } catch (err) {
                 // Ignore if no turn is active
                 logger.debug('[CodexAppServer] interruptTurn error (may be expected):', err);
@@ -1128,6 +1192,7 @@ export class CodexAppServerClient {
         this.threadDefaults = null;
         this.completedTurnIds.clear();
         this.rawFileChangesByItemId.clear();
+        this.rawSubagentActivityItemIds.clear();
     }
 
     // ─── JSON-RPC transport ─────────────────────────────────────

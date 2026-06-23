@@ -67,6 +67,302 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         expect(subagent).not.toBe('parent-call-1');
     });
 
+    it('maps Codex collab-agent calls to a session subagent without leaking provider ids', () => {
+        const collab = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'collab_agent_begin',
+                call_id: 'collab-1',
+                tool: 'spawnAgent',
+                status: 'inProgress',
+                sender_thread_id: 'parent-thread',
+                receiver_thread_ids: ['provider-child-thread'],
+                prompt: 'Inspect auth flow',
+                model: 'gpt-test',
+            },
+            { currentTurnId: 'turn-1' }
+        );
+
+        expect(collab.envelopes).toHaveLength(2);
+        const toolCall = collab.envelopes[0];
+        expect(toolCall.ev.t).toBe('tool-call-start');
+        if (toolCall.ev.t === 'tool-call-start') {
+            expect(toolCall.ev.name).toBe('CodexSubagent');
+            expect(toolCall.ev.args.sessionSubagent).toEqual(expect.any(String));
+            expect(isCuid(String(toolCall.ev.args.sessionSubagent))).toBe(true);
+            expect(toolCall.ev.args.sessionSubagent).not.toBe('provider-child-thread');
+            expect(toolCall.ev.args).not.toHaveProperty('senderThreadId');
+            expect(toolCall.ev.args).not.toHaveProperty('receiverThreadIds');
+            expect(toolCall.ev.args.sessionSubagents).toEqual([toolCall.ev.args.sessionSubagent]);
+            expect(toolCall.ev.args.agentStates).toEqual([]);
+        }
+
+        const sessionSubagent = collab.envelopes[1].subagent;
+        expect(sessionSubagent).toBeDefined();
+        expect(isCuid(sessionSubagent!)).toBe(true);
+        expect(sessionSubagent).toBe(
+            toolCall.ev.t === 'tool-call-start' ? toolCall.ev.args.sessionSubagent : undefined
+        );
+        expect(collab.envelopes[1].ev).toEqual({ t: 'start', title: 'Inspect auth flow' });
+
+        const child = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'agent_message',
+                message: 'found auth handler',
+                agent_thread_id: 'provider-child-thread',
+            },
+            {
+                currentTurnId: 'turn-1',
+                startedSubagents: collab.startedSubagents,
+                activeSubagents: collab.activeSubagents,
+                providerSubagentToSessionSubagent: collab.providerSubagentToSessionSubagent,
+                subagentTitles: collab.subagentTitles,
+            }
+        );
+
+        expect(child.envelopes).toHaveLength(1);
+        expect(child.envelopes[0].subagent).toBe(sessionSubagent);
+        expect(child.envelopes[0].ev).toEqual({ t: 'text', text: 'found auth handler' });
+    });
+
+    it('keeps Codex provider subagent mapping stable across turns', () => {
+        const state = { currentTurnId: null };
+
+        const firstTurn = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_started' }, state);
+        Object.assign(state, {
+            currentTurnId: firstTurn.currentTurnId,
+            startedSubagents: firstTurn.startedSubagents,
+            activeSubagents: firstTurn.activeSubagents,
+            providerSubagentToSessionSubagent: firstTurn.providerSubagentToSessionSubagent,
+            subagentTitles: firstTurn.subagentTitles,
+            collabReceiverThreadIdsByCall: firstTurn.collabReceiverThreadIdsByCall,
+            collabToolByCall: firstTurn.collabToolByCall,
+        });
+
+        const firstChild = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'agent_message',
+            message: 'first child output',
+            agent_thread_id: 'provider-child-thread',
+        }, state);
+        const firstSubagent = firstChild.envelopes.at(-1)?.subagent;
+        expect(firstSubagent).toBeDefined();
+        expect(isCuid(firstSubagent!)).toBe(true);
+
+        const firstEnd = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_complete' }, {
+            ...state,
+            startedSubagents: firstChild.startedSubagents,
+            activeSubagents: firstChild.activeSubagents,
+            providerSubagentToSessionSubagent: firstChild.providerSubagentToSessionSubagent,
+            subagentTitles: firstChild.subagentTitles,
+            collabReceiverThreadIdsByCall: firstChild.collabReceiverThreadIdsByCall,
+            collabToolByCall: firstChild.collabToolByCall,
+        });
+        const secondTurn = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_started' }, {
+            currentTurnId: firstEnd.currentTurnId,
+            startedSubagents: firstEnd.startedSubagents,
+            activeSubagents: firstEnd.activeSubagents,
+            providerSubagentToSessionSubagent: firstEnd.providerSubagentToSessionSubagent,
+            subagentTitles: firstEnd.subagentTitles,
+            collabReceiverThreadIdsByCall: firstEnd.collabReceiverThreadIdsByCall,
+            collabToolByCall: firstEnd.collabToolByCall,
+        });
+        const secondChild = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'agent_message',
+            message: 'second child output',
+            agent_thread_id: 'provider-child-thread',
+        }, {
+            currentTurnId: secondTurn.currentTurnId,
+            startedSubagents: secondTurn.startedSubagents,
+            activeSubagents: secondTurn.activeSubagents,
+            providerSubagentToSessionSubagent: secondTurn.providerSubagentToSessionSubagent,
+            subagentTitles: secondTurn.subagentTitles,
+            collabReceiverThreadIdsByCall: secondTurn.collabReceiverThreadIdsByCall,
+            collabToolByCall: secondTurn.collabToolByCall,
+        });
+
+        expect(secondChild.envelopes.at(-1)?.subagent).toBe(firstSubagent);
+    });
+
+    it('uses remembered receiver threads when collab-agent end payload is sparse', () => {
+        const spawn = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'collab_agent_begin',
+                call_id: 'spawn-1',
+                tool: 'spawnAgent',
+                status: 'inProgress',
+                receiver_thread_ids: ['provider-child-thread'],
+                prompt: 'Inspect auth flow',
+            },
+            { currentTurnId: 'turn-1' }
+        );
+        const sessionSubagent = spawn.envelopes.find((envelope) => envelope.ev.t === 'start')?.subagent;
+        expect(sessionSubagent).toBeDefined();
+
+        const closeBegin = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'collab_agent_begin',
+                call_id: 'close-1',
+                tool: 'closeAgent',
+                status: 'inProgress',
+                receiver_thread_ids: ['provider-child-thread'],
+            },
+            {
+                currentTurnId: 'turn-1',
+                startedSubagents: spawn.startedSubagents,
+                activeSubagents: spawn.activeSubagents,
+                providerSubagentToSessionSubagent: spawn.providerSubagentToSessionSubagent,
+                subagentTitles: spawn.subagentTitles,
+                collabReceiverThreadIdsByCall: spawn.collabReceiverThreadIdsByCall,
+                collabToolByCall: spawn.collabToolByCall,
+            }
+        );
+
+        const closeEnd = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'collab_agent_end',
+                call_id: 'close-1',
+                status: 'completed',
+            },
+            {
+                currentTurnId: 'turn-1',
+                startedSubagents: closeBegin.startedSubagents,
+                activeSubagents: closeBegin.activeSubagents,
+                providerSubagentToSessionSubagent: closeBegin.providerSubagentToSessionSubagent,
+                subagentTitles: closeBegin.subagentTitles,
+                collabReceiverThreadIdsByCall: closeBegin.collabReceiverThreadIdsByCall,
+                collabToolByCall: closeBegin.collabToolByCall,
+            }
+        );
+
+        expect(closeEnd.envelopes).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                subagent: sessionSubagent,
+                ev: { t: 'stop' },
+            }),
+        ]));
+    });
+
+    it('maps subagent-scoped Codex reasoning into the matching sidechain', () => {
+        const started = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'subagent_activity',
+                kind: 'started',
+                agent_thread_id: 'provider-child-thread',
+                agent_path: 'Auth explorer',
+            },
+            { currentTurnId: 'turn-1' }
+        );
+        const sessionSubagent = started.envelopes.find((envelope) => envelope.ev.t === 'start')?.subagent;
+
+        const reasoning = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'agent_reasoning',
+                text: 'checking auth flow',
+                agent_thread_id: 'provider-child-thread',
+            },
+            {
+                currentTurnId: 'turn-1',
+                startedSubagents: started.startedSubagents,
+                activeSubagents: started.activeSubagents,
+                providerSubagentToSessionSubagent: started.providerSubagentToSessionSubagent,
+                subagentTitles: started.subagentTitles,
+                collabReceiverThreadIdsByCall: started.collabReceiverThreadIdsByCall,
+                collabToolByCall: started.collabToolByCall,
+            }
+        );
+
+        expect(reasoning.envelopes).toHaveLength(1);
+        expect(reasoning.envelopes[0]).toMatchObject({
+            subagent: sessionSubagent,
+            ev: { t: 'text', text: 'checking auth flow', thinking: true },
+        });
+    });
+
+    it('emits sanitized visible status messages from collab-agent states', () => {
+        const started = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'collab_agent_begin',
+                call_id: 'collab-1',
+                tool: 'spawnAgent',
+                status: 'inProgress',
+                receiver_thread_ids: ['provider-child-thread'],
+                prompt: 'Inspect auth flow',
+            },
+            { currentTurnId: 'turn-1' }
+        );
+        const sessionSubagent = started.envelopes.find((envelope) => envelope.ev.t === 'start')?.subagent;
+
+        const ended = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'collab_agent_end',
+                call_id: 'collab-1',
+                tool: 'spawnAgent',
+                status: 'completed',
+                agents_states: {
+                    'provider-child-thread': { status: 'completed', message: 'found auth handler' },
+                },
+            },
+            {
+                currentTurnId: 'turn-1',
+                startedSubagents: started.startedSubagents,
+                activeSubagents: started.activeSubagents,
+                providerSubagentToSessionSubagent: started.providerSubagentToSessionSubagent,
+                subagentTitles: started.subagentTitles,
+                collabReceiverThreadIdsByCall: started.collabReceiverThreadIdsByCall,
+                collabToolByCall: started.collabToolByCall,
+            }
+        );
+
+        const service = ended.envelopes.find((envelope) => envelope.ev.t === 'service');
+        expect(service).toMatchObject({
+            subagent: sessionSubagent,
+            ev: { t: 'service', text: 'Codex subagent completed: found auth handler' },
+        });
+    });
+
+    it('maps Codex subagent activity markers to lifecycle envelopes', () => {
+        const started = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'subagent_activity',
+                kind: 'started',
+                agent_thread_id: 'provider-child-thread',
+                agent_path: 'Auth explorer',
+            },
+            { currentTurnId: 'turn-1' }
+        );
+
+        expect(started.envelopes).toHaveLength(2);
+        expect(started.envelopes[0].ev).toEqual({ t: 'start', title: 'Auth explorer' });
+        expect(started.envelopes[0].subagent).toBeDefined();
+        expect(isCuid(started.envelopes[0].subagent!)).toBe(true);
+        expect(started.envelopes[1]).toMatchObject({
+            subagent: started.envelopes[0].subagent,
+            ev: { t: 'service', text: 'Codex subagent started: Auth explorer' },
+        });
+
+        const interrupted = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'subagent_activity',
+                kind: 'interrupted',
+                agent_thread_id: 'provider-child-thread',
+            },
+            {
+                currentTurnId: 'turn-1',
+                startedSubagents: started.startedSubagents,
+                activeSubagents: started.activeSubagents,
+                providerSubagentToSessionSubagent: started.providerSubagentToSessionSubagent,
+                subagentTitles: started.subagentTitles,
+            }
+        );
+
+        expect(interrupted.envelopes).toHaveLength(2);
+        expect(interrupted.envelopes[0]).toMatchObject({
+            subagent: started.envelopes[0].subagent,
+            ev: { t: 'service', text: 'Codex subagent interrupted' },
+        });
+        expect(interrupted.envelopes[1].ev).toEqual({ t: 'stop' });
+        expect(interrupted.envelopes[1].subagent).toBe(started.envelopes[0].subagent);
+    });
+
     it('emits stop for active subagents before turn-end', () => {
         const subagent = createId();
         const activeSubagents = new Set<string>([subagent]);
@@ -239,6 +535,121 @@ describe('mapCodexThreadToSessionEnvelopes', () => {
             turn: 'turn-1',
             ev: { t: 'tool-call-end', call: 'cmd-1' },
         });
+    });
+
+    it('backfills Codex collab-agent items with session subagent linkage', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-1',
+                startedAt: 100,
+                completedAt: 101,
+                status: 'completed',
+                items: [
+                    {
+                        id: 'collab-1',
+                        type: 'collabAgentToolCall',
+                        tool: 'spawnAgent',
+                        status: 'completed',
+                        senderThreadId: 'parent-thread',
+                        receiverThreadIds: ['provider-child-thread'],
+                        prompt: 'Inspect auth flow',
+                        model: 'gpt-test',
+                        reasoningEffort: null,
+                        agentsStates: {},
+                    },
+                    {
+                        id: 'activity-1',
+                        type: 'subAgentActivity',
+                        kind: 'interacted',
+                        agentThreadId: 'provider-child-thread',
+                        agentPath: 'Auth explorer',
+                    },
+                ],
+            }],
+        });
+
+        const toolCall = envelopes.find((envelope) => envelope.ev.t === 'tool-call-start');
+        expect(toolCall).toBeDefined();
+        if (toolCall?.ev.t === 'tool-call-start') {
+            expect(toolCall.ev.name).toBe('CodexSubagent');
+            expect(isCuid(String(toolCall.ev.args.sessionSubagent))).toBe(true);
+            expect(toolCall.ev.args.sessionSubagent).not.toBe('provider-child-thread');
+        }
+
+        const starts = envelopes.filter((envelope) => envelope.ev.t === 'start');
+        expect(starts).toHaveLength(1);
+        expect(starts[0].subagent).toBe(
+            toolCall?.ev.t === 'tool-call-start' ? toolCall.ev.args.sessionSubagent : undefined
+        );
+        expect(envelopes.some((envelope) => {
+            return envelope.ev.t === 'stop' && envelope.subagent === starts[0].subagent;
+        })).toBe(true);
+    });
+
+    it('does not close in-progress historical collab-agent items or active turns', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-active',
+                startedAt: 100,
+                status: 'inProgress',
+                items: [
+                    {
+                        id: 'collab-active',
+                        type: 'collabAgentToolCall',
+                        tool: 'spawnAgent',
+                        status: 'inProgress',
+                        receiverThreadIds: ['provider-child-thread'],
+                        prompt: 'Inspect auth flow',
+                    },
+                ],
+            }],
+        });
+
+        expect(envelopes.map((envelope) => envelope.ev.t)).toEqual([
+            'turn-start',
+            'tool-call-start',
+            'start',
+        ]);
+    });
+
+    it('uses stable session subagent ids across historical replay turns', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [
+                {
+                    id: 'turn-1',
+                    startedAt: 100,
+                    completedAt: 101,
+                    status: 'completed',
+                    items: [{
+                        id: 'collab-1',
+                        type: 'collabAgentToolCall',
+                        tool: 'spawnAgent',
+                        status: 'completed',
+                        receiverThreadIds: ['provider-child-thread'],
+                        prompt: 'Inspect auth flow',
+                    }],
+                },
+                {
+                    id: 'turn-2',
+                    startedAt: 102,
+                    completedAt: 103,
+                    status: 'completed',
+                    items: [{
+                        id: 'activity-2',
+                        type: 'subAgentActivity',
+                        kind: 'interacted',
+                        agentThreadId: 'provider-child-thread',
+                    }],
+                },
+            ],
+        });
+
+        const subagents = envelopes
+            .filter((envelope) => envelope.ev.t === 'start')
+            .map((envelope) => envelope.subagent);
+        expect(subagents).toHaveLength(2);
+        expect(subagents[1]).toBe(subagents[0]);
+        expect(isCuid(subagents[0]!)).toBe(true);
     });
 
     it('uses one fallback timestamp pair for historical tool items without provider timestamps', () => {

@@ -3043,6 +3043,56 @@ describe('reducer', () => {
                 }
             }
         });
+
+        it('nests CodexSubagent sidechains via sessionSubagent', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                {
+                    id: 'codex-subagent-parent-msg',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'collab-parent',
+                        name: 'CodexSubagent',
+                        input: {
+                            tool: 'spawnAgent',
+                            prompt: 'Inspect auth flow',
+                            sessionSubagent: 'session-subagent-codex-1',
+                        },
+                        description: 'Inspect auth flow',
+                        uuid: 'codex-parent-uuid',
+                        parentUUID: null
+                    }]
+                },
+                {
+                    id: 'codex-subagent-child',
+                    localId: null,
+                    createdAt: 1100,
+                    role: 'agent',
+                    isSidechain: true,
+                    content: [{
+                        type: 'text',
+                        text: 'found auth handler',
+                        uuid: 'codex-child-uuid',
+                        parentUUID: 'session-subagent-codex-1'
+                    }]
+                }
+            ]);
+
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].kind).toBe('tool-call');
+            if (result.messages[0].kind === 'tool-call') {
+                expect(result.messages[0].tool.name).toBe('CodexSubagent');
+                expect(result.messages[0].children).toHaveLength(1);
+                expect(result.messages[0].children[0]).toMatchObject({
+                    kind: 'agent-text',
+                    text: 'found auth handler',
+                });
+            }
+        });
     });
 
     describe('TodoWrite latestTodos handling', () => {

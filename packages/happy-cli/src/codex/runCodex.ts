@@ -70,6 +70,16 @@ function describeCodexFailure(msg: any): string | null {
     return 'Unknown error';
 }
 
+function hasCodexSubagentReference(message: Record<string, unknown>): boolean {
+    for (const key of ['subagent', 'parent_call_id', 'parentCallId', 'agent_thread_id', 'agentThreadId']) {
+        const value = message[key];
+        if (typeof value === 'string' && value.length > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 const DEFAULT_CODEX_MODEL = 'gpt-5.5';
 const DEFAULT_CODEX_EFFORT: ReasoningEffort = 'medium';
 const DEFAULT_CODEX_PERMISSION_MODE: PermissionMode = 'yolo';
@@ -368,6 +378,9 @@ export async function runCodex(opts: {
     let codexStartedSubagents = new Set<string>();
     let codexActiveSubagents = new Set<string>();
     let codexProviderSubagentToSessionSubagent = new Map<string, string>();
+    let codexSubagentTitles = new Map<string, string>();
+    let codexCollabReceiverThreadIdsByCall = new Map<string, string[]>();
+    let codexCollabToolByCall = new Map<string, string>();
     session.keepAlive(thinking, 'remote');
     // Periodic keep-alive; store handle so we can clear on exit
     const keepAliveInterval = setInterval(() => {
@@ -676,13 +689,14 @@ export async function runCodex(opts: {
     // Event handler: same EventMsg types as the legacy MCP server — no changes needed
     client.setEventHandler((msg) => {
         logger.debug(`[Codex] Event: ${JSON.stringify(msg)}`);
+        const isSubagentScopedEvent = hasCodexSubagentReference(msg as Record<string, unknown>);
 
         // Add messages to the ink UI buffer based on message type
         if (msg.type === 'agent_message') {
             messageBuffer.addMessage((msg as any).message, 'assistant');
         } else if (msg.type === 'agent_reasoning_delta') {
             // Skip reasoning deltas in the UI to reduce noise
-        } else if (msg.type === 'agent_reasoning') {
+        } else if (msg.type === 'agent_reasoning' && !isSubagentScopedEvent) {
             messageBuffer.addMessage(`[Thinking] ${(msg as any).text.substring(0, 100)}...`, 'system');
         } else if (msg.type === 'exec_command_begin') {
             messageBuffer.addMessage(`Executing: ${(msg as any).command}`, 'tool');
@@ -731,13 +745,13 @@ export async function runCodex(opts: {
             // Reset diff processor on task end or abort
             diffProcessor.reset();
         }
-        if (msg.type === 'agent_reasoning_section_break') {
+        if (msg.type === 'agent_reasoning_section_break' && !isSubagentScopedEvent) {
             reasoningProcessor.handleSectionBreak();
         }
-        if (msg.type === 'agent_reasoning_delta') {
+        if (msg.type === 'agent_reasoning_delta' && !isSubagentScopedEvent) {
             reasoningProcessor.processDelta((msg as any).delta);
         }
-        if (msg.type === 'agent_reasoning') {
+        if (msg.type === 'agent_reasoning' && !isSubagentScopedEvent) {
             reasoningProcessor.complete((msg as any).text);
         }
         if (msg.type === 'patch_apply_begin') {
@@ -767,17 +781,26 @@ export async function runCodex(opts: {
 
         // Convert events into the unified session-protocol envelope stream.
         // Reasoning deltas are handled by ReasoningProcessor to avoid duplicate text output.
-        if (msg.type !== 'agent_reasoning_delta' && msg.type !== 'agent_reasoning' && msg.type !== 'agent_reasoning_section_break' && msg.type !== 'turn_diff') {
+        const isReasoningEvent = msg.type === 'agent_reasoning_delta'
+            || msg.type === 'agent_reasoning'
+            || msg.type === 'agent_reasoning_section_break';
+        if (msg.type !== 'turn_diff' && (!isReasoningEvent || isSubagentScopedEvent)) {
             const mapped = mapCodexMcpMessageToSessionEnvelopes(msg, {
                 currentTurnId,
                 startedSubagents: codexStartedSubagents,
                 activeSubagents: codexActiveSubagents,
                 providerSubagentToSessionSubagent: codexProviderSubagentToSessionSubagent,
+                subagentTitles: codexSubagentTitles,
+                collabReceiverThreadIdsByCall: codexCollabReceiverThreadIdsByCall,
+                collabToolByCall: codexCollabToolByCall,
             });
             currentTurnId = mapped.currentTurnId;
             codexStartedSubagents = mapped.startedSubagents;
             codexActiveSubagents = mapped.activeSubagents;
             codexProviderSubagentToSessionSubagent = mapped.providerSubagentToSessionSubagent;
+            codexSubagentTitles = mapped.subagentTitles;
+            codexCollabReceiverThreadIdsByCall = mapped.collabReceiverThreadIdsByCall;
+            codexCollabToolByCall = mapped.collabToolByCall;
             for (const envelope of mapped.envelopes) {
                 session.sendSessionProtocolMessage(envelope);
             }
@@ -878,6 +901,9 @@ export async function runCodex(opts: {
                 codexStartedSubagents = new Set<string>();
                 codexActiveSubagents = new Set<string>();
                 codexProviderSubagentToSessionSubagent = new Map<string, string>();
+                codexSubagentTitles = new Map<string, string>();
+                codexCollabReceiverThreadIdsByCall = new Map<string, string[]>();
+                codexCollabToolByCall = new Map<string, string>();
                 permissionHandler.reset();
                 reasoningProcessor.abort();
                 diffProcessor.reset();
