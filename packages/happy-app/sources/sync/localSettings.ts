@@ -16,6 +16,7 @@ export const LocalSettingsSchema = z.object({
     verboseLogging: z.boolean().describe('Log all network requests and responses'),
     zenMode: z.boolean().describe('Hide all sidebars and non-essential UI for focused work'),
     chatOutlineVisible: z.boolean().describe('Show the chat question outline sidebar'),
+    chatSidePanelMode: z.enum(['outline', 'documents']).describe('Selected chat side panel mode'),
     // CLI version acknowledgments - keyed by machineId
     acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
 });
@@ -44,6 +45,7 @@ export const localSettingsDefaults: LocalSettings = {
     verboseLogging: false,
     zenMode: false,
     chatOutlineVisible: true,
+    chatSidePanelMode: 'outline',
     acknowledgedCliVersions: {},
 };
 Object.freeze(localSettingsDefaults);

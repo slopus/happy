@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
@@ -25,6 +25,7 @@ const EVENT_STYLE: Record<SessionEventToast['kind'], {
 };
 
 const EMPTY_MESSAGES: Message[] = [];
+const ACTIVE_ROUTE_TOAST_TTL_MS = 3_000;
 
 export function SessionEventToastHost() {
     const toasts = useSessionEventToasts();
@@ -45,19 +46,24 @@ export function SessionEventToastHost() {
 
 function SessionEventToastItem({ toast }: { toast: SessionEventToast }) {
     const router = useRouter();
+    const pathname = usePathname();
     const styles = stylesheet;
     const eventStyle = EVENT_STYLE[toast.kind];
     const session = storage((state) => state.sessions[toast.sessionId] ?? null);
     const messages = storage((state) => state.sessionMessages[toast.sessionId]?.messages ?? EMPTY_MESSAGES);
     const copy = getToastCopy(toast, session, messages);
+    const isActiveRoute = isToastTargetRouteActive(pathname, toast, session);
 
     React.useEffect(() => {
+        const durationMs = isActiveRoute
+            ? ACTIVE_ROUTE_TOAST_TTL_MS
+            : Math.max(1000, toast.expiresAt - Date.now());
         const timeout = setTimeout(
             () => dismissSessionEventToast(toast.id),
-            Math.max(1000, toast.expiresAt - Date.now()),
+            durationMs,
         );
         return () => clearTimeout(timeout);
-    }, [toast.expiresAt, toast.id]);
+    }, [isActiveRoute, toast.expiresAt, toast.id]);
 
     const handlePress = React.useCallback(() => {
         dismissSessionEventToast(toast.id);
@@ -118,6 +124,32 @@ function getToastCopy(toast: SessionEventToast, session: Session | null, message
         title: sessionTitle,
         body,
     };
+}
+
+function isToastTargetRouteActive(pathname: string, toast: SessionEventToast, session: Session | null): boolean {
+    const [section, id] = splitRoute(pathname);
+    if (section === 'session' && id === toast.sessionId) {
+        return true;
+    }
+
+    const groupId = session?.metadata?.groupId;
+    return !!groupId && section === 'group' && id === groupId;
+}
+
+function splitRoute(pathname: string): [string | null, string | null] {
+    const [section, id] = pathname.split('/').filter(Boolean);
+    return [safeDecodeURIComponent(section), safeDecodeURIComponent(id)];
+}
+
+function safeDecodeURIComponent(value: string | undefined): string | null {
+    if (!value) {
+        return null;
+    }
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return value;
+    }
 }
 
 function getSessionTitle(session: Session | null): string {

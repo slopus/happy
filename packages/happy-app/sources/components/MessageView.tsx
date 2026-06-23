@@ -1,6 +1,8 @@
 import * as React from "react";
 import { View, Text, Pressable, Platform } from "react-native";
 import { StyleSheet } from 'react-native-unistyles';
+import * as Clipboard from 'expo-clipboard';
+import { Ionicons } from '@expo/vector-icons';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
@@ -89,6 +91,9 @@ function UserTextBlock(props: {
   sessionId: string;
   onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
 }) {
+  const [isHovered, setIsHovered] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+  const copiedResetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
@@ -100,6 +105,22 @@ function UserTextBlock(props: {
       props.onForkFromUserMessage(props.message.id, claudeUuid);
     }
   }, [claudeUuid, props.message.id, props.onForkFromUserMessage]);
+  const handleCopy = React.useCallback(async () => {
+    await Clipboard.setStringAsync(props.message.displayText || props.message.text);
+    setCopied(true);
+    if (copiedResetTimerRef.current) {
+      clearTimeout(copiedResetTimerRef.current);
+    }
+    copiedResetTimerRef.current = setTimeout(() => setCopied(false), 1200);
+  }, [props.message.displayText, props.message.text]);
+
+  React.useEffect(() => {
+    return () => {
+      if (copiedResetTimerRef.current) {
+        clearTimeout(copiedResetTimerRef.current);
+      }
+    };
+  }, []);
 
   // Claude Agent SDK emits synthetic user messages wrapped in tags like
   // <local-command-caveat>…</local-command-caveat> and
@@ -132,8 +153,16 @@ function UserTextBlock(props: {
     );
   }
 
+  const showActions = Platform.OS !== 'web' || isHovered;
+
   return (
-    <View style={styles.userMessageContainer}>
+    <View
+      style={styles.userMessageContainer}
+      // @ts-ignore - Web only events
+      onMouseEnter={() => setIsHovered(true)}
+      // @ts-ignore - Web only events
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <Pressable
         onLongPress={canFork ? handleLongPress : undefined}
         delayLongPress={400}
@@ -141,6 +170,52 @@ function UserTextBlock(props: {
       >
         <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
       </Pressable>
+      <View
+        style={[styles.userMessageActions, showActions && styles.userMessageActionsVisible]}
+        pointerEvents={showActions ? 'auto' : 'none'}
+      >
+        <MessageActionButton
+          icon={copied ? 'checkmark' : 'copy-outline'}
+          label={copied ? t('common.copied') : t('common.copy')}
+          active={copied}
+          onPress={handleCopy}
+        />
+      </View>
+    </View>
+  );
+}
+
+function MessageActionButton(props: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  active?: boolean;
+  onPress: () => void;
+}) {
+  const [isHovered, setIsHovered] = React.useState(false);
+  const tooltipWidth = Math.min(Math.max(props.label.length * 14 + 18, 48), 160);
+
+  return (
+    <View
+      style={styles.messageActionWrapper}
+      // @ts-ignore - Web only events
+      onMouseEnter={() => setIsHovered(true)}
+      // @ts-ignore - Web only events
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <Pressable
+        onPress={props.onPress}
+        accessibilityRole="button"
+        accessibilityLabel={props.label}
+        style={[styles.messageActionButton, props.active && styles.messageActionButtonActive]}
+        {...(Platform.OS === 'web' ? ({ title: props.label } as any) : {})}
+      >
+        <Ionicons name={props.icon} size={15} color={props.active ? '#30D158' : '#8E8E93'} />
+      </Pressable>
+      {isHovered && (
+        <View style={[styles.messageActionTooltip, { width: tooltipWidth }]}>
+          <Text style={styles.messageActionTooltipText}>{props.label}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -255,8 +330,61 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-    marginBottom: 12,
+    marginBottom: 4,
     maxWidth: '100%',
+  },
+  userMessageActions: {
+    minHeight: 24,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 4,
+    opacity: 0,
+  },
+  userMessageActionsVisible: {
+    opacity: 1,
+  },
+  messageActionWrapper: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageActionButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.divider,
+    cursor: 'pointer',
+  },
+  messageActionButtonActive: {
+    borderColor: '#30D158',
+  },
+  messageActionTooltip: {
+    position: 'absolute',
+    bottom: 30,
+    maxWidth: 160,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: theme.colors.surfaceHighest,
+    borderWidth: 1,
+    borderColor: theme.colors.divider,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    zIndex: 10,
+  },
+  messageActionTooltipText: {
+    color: theme.colors.text,
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
   },
   commandChip: {
     backgroundColor: theme.colors.userMessageBackground,

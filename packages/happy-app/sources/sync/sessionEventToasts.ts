@@ -39,7 +39,7 @@ export function pushSessionEventToast(event: ApiEphemeralSessionEventUpdate) {
 
     snapshot = [
         toast,
-        ...snapshot.filter((item) => item.id !== id),
+        ...snapshot.filter((item) => item.sessionId !== event.sessionId),
     ].slice(0, MAX_VISIBLE_TOASTS);
     emitChange();
 }

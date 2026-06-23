@@ -11,6 +11,7 @@ const REGISTERED_PUSH_TOKEN_KEY = 'registered-push-token-v1';
 const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
 const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-count';
 const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
+const SESSION_DOCUMENT_INDEX_KEY = 'session-document-index-v1';
 
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw';
 export type NewSessionSessionType = 'simple' | 'worktree';
@@ -242,6 +243,59 @@ export function loadSessionEffortLevels(): Record<string, string> {
 
 export function saveSessionEffortLevels(levels: Record<string, string>) {
     mmkv.set('session-effort-levels', JSON.stringify(levels));
+}
+
+export type PersistedSessionDocumentItem = {
+    path: string;
+    name: string;
+    ext: string | null;
+    type: string;
+    status: string;
+    source: string;
+    messageId?: string;
+    updatedAt: number;
+};
+
+export function loadSessionDocumentIndex(sessionId: string): PersistedSessionDocumentItem[] {
+    const raw = mmkv.getString(SESSION_DOCUMENT_INDEX_KEY);
+    if (!raw) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        const items = parsed?.[sessionId];
+        return Array.isArray(items) ? items.filter(isPersistedSessionDocumentItem) : [];
+    } catch (e) {
+        console.error('Failed to parse session document index', e);
+        return [];
+    }
+}
+
+export function saveSessionDocumentIndex(sessionId: string, items: PersistedSessionDocumentItem[]) {
+    let all: Record<string, PersistedSessionDocumentItem[]> = {};
+    const raw = mmkv.getString(SESSION_DOCUMENT_INDEX_KEY);
+    if (raw) {
+        try {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                all = parsed;
+            }
+        } catch (e) {
+            console.error('Failed to parse session document index for save', e);
+        }
+    }
+    all[sessionId] = items;
+    mmkv.set(SESSION_DOCUMENT_INDEX_KEY, JSON.stringify(all));
+}
+
+function isPersistedSessionDocumentItem(value: unknown): value is PersistedSessionDocumentItem {
+    if (!value || typeof value !== 'object') return false;
+    const item = value as Partial<PersistedSessionDocumentItem>;
+    return typeof item.path === 'string'
+        && typeof item.name === 'string'
+        && (typeof item.ext === 'string' || item.ext === null)
+        && typeof item.type === 'string'
+        && typeof item.status === 'string'
+        && typeof item.source === 'string'
+        && typeof item.updatedAt === 'number';
 }
 
 export function loadProfile(): Profile {

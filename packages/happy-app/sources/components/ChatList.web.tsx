@@ -2,11 +2,12 @@ import * as React from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
-import { useLocalSettingMutable, useSession, useSessionMessages, useSetting } from '@/sync/storage';
+import { useLocalSettingMutable, useSession, useSessionGitStatusFiles, useSessionMessages, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
@@ -17,10 +18,24 @@ import type { Message } from '@/sync/typesMessage';
 import { DisplayItem, useGroupedMessages } from '@/hooks/useGroupedMessages';
 import { Modal } from '@/modal';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
+import {
+    useSessionDocumentIndex,
+    type SessionDocumentItem,
+    type SessionDocumentType,
+} from '@/utils/sessionDocuments';
 
 const SCROLL_THRESHOLD = 300;
 const LOAD_OLDER_THRESHOLD = 600;
 const OUTLINE_PAGE_SIZE = 20;
+const DOCUMENT_FILTERS: Array<{ key: 'all' | SessionDocumentType; label: string }> = [
+    { key: 'all', label: '全部' },
+    { key: 'markdown', label: 'Markdown' },
+    { key: 'code', label: '代码' },
+    { key: 'image', label: '图片' },
+    { key: 'data', label: '数据' },
+    { key: 'document', label: '文档' },
+    { key: 'other', label: '其他' },
+];
 
 type TopSpacerRow = { type: 'top-spacer'; id: string };
 type FooterRow = { type: 'footer'; id: string };
@@ -31,6 +46,7 @@ type OutlineItem = {
     rowIndex: number;
     title: string;
 };
+type SidePanelMode = 'outline' | 'documents';
 
 export const ChatList = React.memo((props: { session: Session }) => {
     const { messages, hasMoreOlder, isLoadingOlder } = useSessionMessages(props.session.id);
@@ -71,8 +87,6 @@ const Footer = React.memo((props: { sessionId: string }) => {
 const QuestionOutline = React.memo((props: {
     items: OutlineItem[];
     sessionId: string;
-    visible: boolean;
-    onToggleVisible: () => void;
     onJump: (rowIndex: number) => void;
 }) => {
     const [visibleCount, setVisibleCount] = React.useState(OUTLINE_PAGE_SIZE);
@@ -88,26 +102,135 @@ const QuestionOutline = React.memo((props: {
         setVisibleCount((count) => Math.min(Math.max(count, OUTLINE_PAGE_SIZE), Math.max(props.items.length, OUTLINE_PAGE_SIZE)));
     }, [props.items.length]);
 
-    if (props.items.length === 0) return null;
+    if (props.items.length === 0) {
+        return <div style={panelEmptyStyle}>本次会话还没有问题大纲</div>;
+    }
     const visibleItems = props.items.slice(-visibleCount);
     const hasMore = visibleCount < props.items.length;
 
     React.useLayoutEffect(() => {
-        if (!props.visible || !shouldScrollToBottomRef.current) return;
+        if (!shouldScrollToBottomRef.current) return;
         const node = listRef.current;
         if (!node) return;
         node.scrollTop = node.scrollHeight;
         shouldScrollToBottomRef.current = false;
-    }, [props.visible, props.sessionId, visibleItems.length]);
+    }, [props.sessionId, visibleItems.length]);
 
-    if (!props.visible) {
-        return (
-            <aside style={outlineCollapsedContainerStyle}>
+    return (
+        <div ref={listRef} style={panelListStyle}>
+            {hasMore && (
                 <button
                     type="button"
-                    title="打开大纲"
-                    aria-label="打开大纲"
-                    style={outlineToggleButtonStyle}
+                    style={outlineMoreButtonStyle}
+                    onClick={() => setVisibleCount((count) => count + OUTLINE_PAGE_SIZE)}
+                >
+                    查看更多
+                </button>
+            )}
+            {visibleItems.map((item) => (
+                <button
+                    key={item.id}
+                    type="button"
+                    title={item.title}
+                    style={outlineItemStyle}
+                    onClick={() => props.onJump(item.rowIndex)}
+                >
+                    <span aria-hidden="true" style={outlineDotStyle} />
+                    <span style={outlineTitleStyle}>{item.title}</span>
+                </button>
+            ))}
+        </div>
+    );
+});
+
+const SessionDocumentsPanel = React.memo((props: {
+    documents: SessionDocumentItem[];
+    onOpenFile: (path: string) => void;
+}) => {
+    const [query, setQuery] = React.useState('');
+    const [filter, setFilter] = React.useState<'all' | SessionDocumentType>('all');
+
+    const filteredDocuments = React.useMemo(() => {
+        const normalizedQuery = query.trim().toLowerCase();
+        return props.documents.filter((item) => {
+            if (filter !== 'all' && item.type !== filter) return false;
+            if (!normalizedQuery) return true;
+            return item.path.toLowerCase().includes(normalizedQuery)
+                || item.name.toLowerCase().includes(normalizedQuery)
+                || (item.ext ?? '').toLowerCase().includes(normalizedQuery);
+        });
+    }, [filter, props.documents, query]);
+
+    return (
+        <div style={documentsPanelStyle}>
+            <input
+                value={query}
+                placeholder="搜索文件"
+                style={documentsSearchStyle}
+                onChange={(event) => setQuery(event.currentTarget.value)}
+            />
+            <div style={documentsFilterRowStyle}>
+                {DOCUMENT_FILTERS.map((item) => (
+                    <button
+                        key={item.key}
+                        type="button"
+                        style={{
+                            ...documentsFilterButtonStyle,
+                            ...(filter === item.key ? documentsFilterButtonActiveStyle : null),
+                        }}
+                        onClick={() => setFilter(item.key)}
+                    >
+                        {item.label}
+                    </button>
+                ))}
+            </div>
+            <div style={panelListStyle}>
+                {filteredDocuments.length === 0 ? (
+                    <div style={panelEmptyStyle}>
+                        {props.documents.length === 0 ? '本次会话还没有产出文件' : '没有匹配的文件'}
+                    </div>
+                ) : filteredDocuments.map((item) => (
+                    <button
+                        key={item.path}
+                        type="button"
+                        title={item.path}
+                        style={documentItemStyle}
+                        onClick={() => props.onOpenFile(item.path)}
+                    >
+                        <span style={documentIconStyle}>
+                            <Octicons name={getDocumentIcon(item)} size={14} color="rgba(128, 128, 128, 0.9)" />
+                        </span>
+                        <span style={documentMainStyle}>
+                            <span style={documentNameStyle}>{item.name}</span>
+                            <span style={documentPathStyle}>{item.path}</span>
+                        </span>
+                        <span style={documentStatusStyle}>{getDocumentStatusLabel(item.status)}</span>
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+});
+
+const SessionSidePanel = React.memo((props: {
+    mode: SidePanelMode;
+    visible: boolean;
+    outlineItems: OutlineItem[];
+    documents: SessionDocumentItem[];
+    sessionId: string;
+    onModeChange: (mode: SidePanelMode) => void;
+    onToggleVisible: () => void;
+    onJumpToOutline: (rowIndex: number) => void;
+    onOpenDocument: (path: string) => void;
+}) => {
+    if (!props.visible) {
+        return (
+            <aside style={sidePanelCollapsedContainerStyle}>
+                <button
+                    type="button"
+                    title="打开侧边栏"
+                    aria-label="打开侧边栏"
+                    style={sidePanelToggleButtonStyle}
                     onClick={props.onToggleVisible}
                 >
                     ›
@@ -117,42 +240,56 @@ const QuestionOutline = React.memo((props: {
     }
 
     return (
-        <aside style={outlineContainerStyle}>
-            <div style={outlineHeaderStyle}>
-                <span>大纲</span>
+        <aside style={sidePanelContainerStyle}>
+            <div style={sidePanelHeaderStyle}>
+                <div style={sidePanelTabsStyle}>
+                    <button
+                        type="button"
+                        title="大纲"
+                        aria-label="大纲"
+                        style={{
+                            ...sidePanelTabButtonStyle,
+                            ...(props.mode === 'outline' ? sidePanelTabButtonActiveStyle : null),
+                        }}
+                        onClick={() => props.onModeChange('outline')}
+                    >
+                        <Octicons name="list-unordered" size={14} />
+                    </button>
+                    <button
+                        type="button"
+                        title="文档"
+                        aria-label="文档"
+                        style={{
+                            ...sidePanelTabButtonStyle,
+                            ...(props.mode === 'documents' ? sidePanelTabButtonActiveStyle : null),
+                        }}
+                        onClick={() => props.onModeChange('documents')}
+                    >
+                        <Octicons name="file-directory" size={14} />
+                    </button>
+                </div>
                 <button
                     type="button"
-                    title="隐藏大纲"
-                    aria-label="隐藏大纲"
-                    style={outlineToggleButtonStyle}
+                    title="隐藏侧边栏"
+                    aria-label="隐藏侧边栏"
+                    style={sidePanelToggleButtonStyle}
                     onClick={props.onToggleVisible}
                 >
                     ‹
                 </button>
             </div>
-            <div ref={listRef} style={outlineListStyle}>
-                {hasMore && (
-                    <button
-                        type="button"
-                        style={outlineMoreButtonStyle}
-                        onClick={() => setVisibleCount((count) => count + OUTLINE_PAGE_SIZE)}
-                    >
-                        查看更多
-                    </button>
-                )}
-                {visibleItems.map((item) => (
-                    <button
-                        key={item.id}
-                        type="button"
-                        title={item.title}
-                        style={outlineItemStyle}
-                        onClick={() => props.onJump(item.rowIndex)}
-                    >
-                        <span aria-hidden="true" style={outlineDotStyle} />
-                        <span style={outlineTitleStyle}>{item.title}</span>
-                    </button>
-                ))}
-            </div>
+            {props.mode === 'outline' ? (
+                <QuestionOutline
+                    items={props.outlineItems}
+                    sessionId={props.sessionId}
+                    onJump={props.onJumpToOutline}
+                />
+            ) : (
+                <SessionDocumentsPanel
+                    documents={props.documents}
+                    onOpenFile={props.onOpenDocument}
+                />
+            )}
         </aside>
     );
 });
@@ -165,12 +302,16 @@ const ChatListInternal = React.memo((props: {
     isLoadingOlder: boolean;
 }) => {
     const { theme } = useUnistyles();
+    const router = useRouter();
     const scrollRef = React.useRef<HTMLDivElement | null>(null);
     const [showScrollButton, setShowScrollButton] = React.useState(false);
     const showScrollButtonRef = React.useRef(false);
     const isAtBottomRef = React.useRef(true);
     const loadingOlderRef = React.useRef(false);
-    const [outlineVisible, setOutlineVisible] = useLocalSettingMutable('chatOutlineVisible');
+    const [sidePanelVisible, setSidePanelVisible] = useLocalSettingMutable('chatOutlineVisible');
+    const [sidePanelMode, setSidePanelMode] = useLocalSettingMutable('chatSidePanelMode');
+    const gitStatusFiles = useSessionGitStatusFiles(props.sessionId);
+    const sessionDocuments = useSessionDocumentIndex(props.sessionId, props.messages, props.metadata, gitStatusFiles);
 
     const groupToolCalls = useSetting('groupToolCalls');
     const displayItems = useGroupedMessages(props.messages, groupToolCalls);
@@ -312,6 +453,10 @@ const ChatListInternal = React.memo((props: {
         setShowScrollButton(true);
     }, []);
 
+    const handleOpenDocument = useCallback((path: string) => {
+        router.push(`/session/${props.sessionId}/file?path=${btoa(path)}`);
+    }, [props.sessionId, router]);
+
     const scheduleScrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
@@ -428,12 +573,16 @@ const ChatListInternal = React.memo((props: {
                         })}
                     </div>
                 </div>
-                <QuestionOutline
-                    items={outlineItems}
+                <SessionSidePanel
+                    mode={sidePanelMode}
+                    visible={sidePanelVisible}
+                    outlineItems={outlineItems}
+                    documents={sessionDocuments}
                     sessionId={props.sessionId}
-                    visible={outlineVisible}
-                    onToggleVisible={() => setOutlineVisible(!outlineVisible)}
-                    onJump={scrollToRow}
+                    onModeChange={setSidePanelMode}
+                    onToggleVisible={() => setSidePanelVisible(!sidePanelVisible)}
+                    onJumpToOutline={scrollToRow}
+                    onOpenDocument={handleOpenDocument}
                 />
             </div>
             {showScrollButton && (
@@ -460,6 +609,26 @@ function formatOutlineTitle(text: string) {
         .slice(0, 120);
 }
 
+function getDocumentIcon(item: SessionDocumentItem): React.ComponentProps<typeof Octicons>['name'] {
+    if (item.status === 'deleted') return 'trash';
+    if (item.type === 'image') return 'image';
+    if (item.type === 'markdown' || item.type === 'document') return 'file';
+    if (item.type === 'data') return 'database';
+    if (item.type === 'code') return 'code-square';
+    return 'file';
+}
+
+function getDocumentStatusLabel(status: SessionDocumentItem['status']) {
+    switch (status) {
+        case 'created':
+            return '新增';
+        case 'deleted':
+            return '删除';
+        default:
+            return '修改';
+    }
+}
+
 const chatShellStyle: React.CSSProperties = {
     height: '100%',
     display: 'flex',
@@ -477,7 +646,7 @@ const scrollContainerStyle: React.CSSProperties = {
     WebkitOverflowScrolling: 'touch',
 };
 
-const outlineContainerStyle: React.CSSProperties = {
+const sidePanelContainerStyle: React.CSSProperties = {
     width: 248,
     minWidth: 248,
     height: '100%',
@@ -489,7 +658,7 @@ const outlineContainerStyle: React.CSSProperties = {
     overflow: 'hidden',
 };
 
-const outlineCollapsedContainerStyle: React.CSSProperties = {
+const sidePanelCollapsedContainerStyle: React.CSSProperties = {
     width: 42,
     minWidth: 42,
     height: '100%',
@@ -501,18 +670,45 @@ const outlineCollapsedContainerStyle: React.CSSProperties = {
     boxSizing: 'border-box',
 };
 
-const outlineHeaderStyle: React.CSSProperties = {
+const sidePanelHeaderStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    padding: '0 4px 8px 8px',
+    padding: '0 4px 10px 4px',
     fontSize: 12,
     fontWeight: 600,
     color: 'rgba(128, 128, 128, 0.9)',
 };
 
-const outlineToggleButtonStyle: React.CSSProperties = {
+const sidePanelTabsStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: 2,
+    borderRadius: 8,
+    background: 'rgba(128, 128, 128, 0.08)',
+};
+
+const sidePanelTabButtonStyle: React.CSSProperties = {
+    width: 28,
+    height: 26,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: 0,
+    borderRadius: 6,
+    background: 'transparent',
+    color: 'rgba(128, 128, 128, 0.85)',
+    cursor: 'pointer',
+};
+
+const sidePanelTabButtonActiveStyle: React.CSSProperties = {
+    background: 'rgba(128, 128, 128, 0.18)',
+    color: 'inherit',
+};
+
+const sidePanelToggleButtonStyle: React.CSSProperties = {
     width: 26,
     height: 26,
     display: 'inline-flex',
@@ -528,7 +724,7 @@ const outlineToggleButtonStyle: React.CSSProperties = {
     fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif',
 };
 
-const outlineListStyle: React.CSSProperties = {
+const panelListStyle: React.CSSProperties = {
     flex: 1,
     minHeight: 0,
     overflowY: 'auto',
@@ -581,6 +777,118 @@ const outlineMoreButtonStyle: React.CSSProperties = {
     textAlign: 'center',
     fontSize: 12,
     lineHeight: '16px',
+};
+
+const documentsPanelStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: 0,
+    flex: 1,
+    gap: 8,
+};
+
+const documentsSearchStyle: React.CSSProperties = {
+    width: '100%',
+    boxSizing: 'border-box',
+    border: '1px solid rgba(128, 128, 128, 0.22)',
+    borderRadius: 8,
+    background: 'rgba(128, 128, 128, 0.08)',
+    color: 'inherit',
+    padding: '7px 9px',
+    fontSize: 12,
+    lineHeight: '16px',
+    outline: 'none',
+};
+
+const documentsFilterRowStyle: React.CSSProperties = {
+    display: 'flex',
+    gap: 6,
+    overflowX: 'auto',
+    paddingBottom: 2,
+};
+
+const documentsFilterButtonStyle: React.CSSProperties = {
+    flex: '0 0 auto',
+    border: 0,
+    borderRadius: 999,
+    background: 'transparent',
+    color: 'rgba(128, 128, 128, 0.9)',
+    padding: '5px 8px',
+    cursor: 'pointer',
+    fontSize: 11,
+    lineHeight: '14px',
+    whiteSpace: 'nowrap',
+};
+
+const documentsFilterButtonActiveStyle: React.CSSProperties = {
+    background: 'rgba(128, 128, 128, 0.18)',
+    color: 'inherit',
+};
+
+const documentItemStyle: React.CSSProperties = {
+    width: '100%',
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+    border: 0,
+    borderRadius: 8,
+    background: 'transparent',
+    padding: '8px',
+    color: 'inherit',
+    cursor: 'pointer',
+    textAlign: 'left',
+    font: 'inherit',
+};
+
+const documentIconStyle: React.CSSProperties = {
+    width: 20,
+    height: 20,
+    minWidth: 20,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+};
+
+const documentMainStyle: React.CSSProperties = {
+    minWidth: 0,
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+};
+
+const documentNameStyle: React.CSSProperties = {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    lineHeight: '16px',
+};
+
+const documentPathStyle: React.CSSProperties = {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'rgba(128, 128, 128, 0.82)',
+    fontSize: 11,
+    lineHeight: '15px',
+};
+
+const documentStatusStyle: React.CSSProperties = {
+    flex: '0 0 auto',
+    color: 'rgba(128, 128, 128, 0.82)',
+    fontSize: 11,
+    lineHeight: '15px',
+};
+
+const panelEmptyStyle: React.CSSProperties = {
+    color: 'rgba(128, 128, 128, 0.82)',
+    fontSize: 12,
+    lineHeight: '18px',
+    padding: '16px 8px',
+    textAlign: 'center',
 };
 
 const styles = StyleSheet.create((theme) => ({
