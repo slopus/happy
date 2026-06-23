@@ -341,6 +341,7 @@ export const it: TranslationStructure = {
         happySessionIdCopied: 'ID sessione Happy copiato negli appunti',
         failedToCopySessionId: 'Impossibile copiare l\'ID sessione Happy',
         happySessionId: 'ID sessione Happy',
+        copySessionId: 'Copia ID sessione',
         claudeCodeSessionId: 'ID sessione Claude Code',
         claudeCodeSessionIdCopied: 'ID sessione Claude Code copiato negli appunti',
         codexThreadId: 'ID thread Codex',

@@ -344,6 +344,7 @@ export const zhHans: TranslationStructure = {
         happySessionIdCopied: 'Happy 会话 ID 已复制到剪贴板',
         failedToCopySessionId: '复制 Happy 会话 ID 失败',
         happySessionId: 'Happy 会话 ID',
+        copySessionId: '复制会话 ID',
         claudeCodeSessionId: 'Claude Code 会话 ID',
         claudeCodeSessionIdCopied: 'Claude Code 会话 ID 已复制到剪贴板',
         codexThreadId: 'Codex 线程 ID',
