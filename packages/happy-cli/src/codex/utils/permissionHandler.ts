@@ -8,6 +8,7 @@
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import type { AgentState } from "@/api/types";
+import { HAPPY_CHANGE_TITLE_TOOL_NAME } from '@/agent/constants/happyChangeTitleTool';
 import {
     BasePermissionHandler,
     PermissionResult,
@@ -26,7 +27,7 @@ export class CodexPermissionHandler extends BasePermissionHandler {
     // and the MCP-qualified form for defense in depth.
     private static readonly ALWAYS_AUTO_APPROVE_NAMES: ReadonlySet<string> = new Set([
         'change_title',
-        'mcp__happy__change_title',
+        HAPPY_CHANGE_TITLE_TOOL_NAME,
     ]);
 
     // Tool-call IDs that should auto-approve when they exactly match one of
