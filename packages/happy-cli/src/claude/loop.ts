@@ -101,6 +101,10 @@ export async function loop(opts: LoopOptions): Promise<number> {
                     case 'switch':
                         mode = 'local';
                         opts.onModeChange?.(mode);
+                        // Reset terminal state left behind by the remote client (phone/web).
+                        // Without this, cursor position, raw-mode flags and window-size residue
+                        // from the remote session corrupt the local Claude Code TUI on re-entry.
+                        process.stdout.write('\x1bc');
                         break;
                     default:
                         const _: never = reason satisfies never;
