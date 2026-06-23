@@ -13,6 +13,7 @@ import { Metadata } from '@/sync/storageTypes';
 import { useRouter } from 'expo-router';
 import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
+import { encodeFilePath } from '@/utils/pathUtils';
 import { formatMCPTitle } from './views/MCPToolView';
 import { t } from '@/text';
 import { getTerminalToolCommand, shouldRenderToolCardHeader } from '@/utils/toolDisplay';
@@ -41,7 +42,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         if (onPress) {
             onPress();
         } else if (sessionId && filePath) {
-            router.push(`/session/${sessionId}/file?path=${btoa(filePath)}`);
+            router.push(`/session/${sessionId}/file?path=${encodeFilePath(filePath)}`);
         } else if (sessionId && messageId) {
             router.push(`/session/${sessionId}/message/${messageId}`);
         }

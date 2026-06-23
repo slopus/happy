@@ -1,6 +1,41 @@
 import { Metadata } from '@/sync/storageTypes';
 
 /**
+ * Encode a file path to a URL-safe string that handles Unicode (CJK, etc.).
+ *
+ * The previous implementation used btoa() which only supports Latin-1 characters.
+ * Chinese/Japanese/Korean characters have code points above U+00FF, causing btoa()
+ * to either throw or silently corrupt the path.
+ *
+ * This function uses TextEncoder → Uint8Array → base64 to safely encode any
+ * Unicode path string. Decoded with `decodeFilePath()`.
+ */
+export function encodeFilePath(path: string): string {
+    const bytes = new TextEncoder().encode(path);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+}
+
+/**
+ * Decode a file path that was encoded with `encodeFilePath()`.
+ *
+ * Handles full Unicode including CJK characters by decoding base64 → bytes
+ * → TextDecoder (UTF-8), instead of the previous atob() which only produces
+ * Latin-1 strings.
+ */
+export function decodeFilePath(encoded: string): string {
+    const binary = atob(encoded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder().decode(bytes);
+}
+
+/**
  * Resolves a path relative to the root path from metadata.
  * ALL paths are treated as relative to the metadata root, regardless of their format.
  * If metadata is not provided, returns the original path.
