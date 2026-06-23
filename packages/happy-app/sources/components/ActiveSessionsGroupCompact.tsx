@@ -98,7 +98,7 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRo
         >
             {/* Avatar — vertically centered */}
             <View style={styles.sectionHeaderAvatar}>
-                <Avatar id={session.avatarId} size={24} flavor={null} />
+                <Avatar id={session.avatarId} size={24} flavor={session.flavor} />
             </View>
 
             {/* Path + branch */}

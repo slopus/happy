@@ -190,6 +190,8 @@ export const ca: TranslationStructure = {
         },
         showFlavorIcons: "Mostrar icones de proveïdors d'IA",
         showFlavorIconsDescription: "Mostrar icones del proveïdor d'IA als avatars de sessió",
+        replaceAvatarWithFlavorIcon: 'Replace Avatar with Model Icon',
+        replaceAvatarWithFlavorIconDescription: 'Show AI provider icon instead of session avatar',
     },
 
     settingsFeatures: {
