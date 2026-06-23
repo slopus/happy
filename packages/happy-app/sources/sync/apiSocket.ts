@@ -149,7 +149,7 @@ class ApiSocket {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
         
-        const result = await this.socket!.emitWithAck('rpc-call', {
+        const result = await this.socket!.emitWithAck('rpc-request', {
             method: `${sessionId}:${method}`,
             params: await sessionEncryption.encryptRaw(params)
         });
@@ -169,7 +169,7 @@ class ApiSocket {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const result = await this.socket!.emitWithAck('rpc-call', {
+        const result = await this.socket!.emitWithAck('rpc-request', {
             method: `${machineId}:${method}`,
             params: await machineEncryption.encryptRaw(params)
         });
