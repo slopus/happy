@@ -11,7 +11,12 @@ export const MessageMetaSchema = z.object({
     allowedTools: z.array(z.string()).nullable().optional(), // Allowed tools for this message (null = reset)
     disallowedTools: z.array(z.string()).nullable().optional(), // Disallowed tools for this message (null = reset)
     effort: z.string().nullable().optional(), // Reasoning / thinking effort for this message (null = reset)
-    displayText: z.string().optional() // Optional text to display in UI instead of actual message text
+    displayText: z.string().optional(), // Optional text to display in UI instead of actual message text
+    provider: z.object({
+        baseUrl: z.string(),
+        apiKey: z.string(),
+        modelName: z.string(),
+    }).optional(), // Custom provider config for this message (base URL, API key, model name)
 });
 
 export type MessageMeta = z.infer<typeof MessageMetaSchema>;

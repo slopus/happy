@@ -8,6 +8,17 @@ import { AgentDefaultOverridesSchema } from './agentDefaults';
 // Current schema version for backward compatibility
 export const SUPPORTED_SCHEMA_VERSION = 2;
 
+// Custom model provider item stored in settings
+export const CustomModelProviderSchema = z.object({
+    id: z.string().describe('Unique identifier for this provider config'),
+    name: z.string().describe('Human-readable name (shown in model dropdown)'),
+    baseUrl: z.string().describe('Base URL for the API (e.g., https://api.example.com)'),
+    apiKey: z.string().describe('API key for authentication'),
+    modelName: z.string().describe('Model name to pass to the provider'),
+    agentFlavor: z.enum(['claude', 'codex']).default('claude').describe('Which agent flavor this provider is for'),
+});
+export type CustomModelProvider = z.infer<typeof CustomModelProviderSchema>;
+
 export const SettingsSchema = z.object({
     // Schema version for compatibility detection
     schemaVersion: z.number().default(SUPPORTED_SCHEMA_VERSION).describe('Settings schema version for compatibility checks'),
@@ -60,6 +71,9 @@ export const SettingsSchema = z.object({
             openclaw: z.boolean().optional(),
         }).default({}),
     }).default({ perMachine: {}, global: {} }).describe('Tracks which CLI installation warnings user has dismissed (per-machine or globally)'),
+
+    // Custom model providers
+    customModelProviders: z.array(CustomModelProviderSchema).default([]).describe('User-configured custom model providers for different agents'),
 });
 
 //
@@ -114,6 +128,7 @@ export const settingsDefaults: Settings = {
     lastUsedModelMode: null,
     agentDefaultOverrides: {},
     dismissedCLIWarnings: { perMachine: {}, global: {} },
+    customModelProviders: [],
 };
 Object.freeze(settingsDefaults);
 

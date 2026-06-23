@@ -1,6 +1,7 @@
 import type { Metadata } from '@/sync/storageTypes';
 import { hackModes } from '@/sync/modeHacks';
 import { getCodeAgentDefaults } from '@/sync/agentDefaults';
+import type { CustomModelProvider } from '@/sync/settings';
 
 export type ModeOption = {
     key: string;
@@ -152,6 +153,24 @@ export function getAvailableModels(
         return metadataModels;
     }
     return getHardcodedModelModes(flavor, translate);
+}
+
+/**
+ * Build ModeOption entries for custom model providers from settings.
+ * Only providers matching the given agent flavor are returned.
+ */
+export function getCustomProviderModelModes(
+    flavor: AgentFlavor,
+    customModelProviders: CustomModelProvider[] | undefined,
+): ModelMode[] {
+    if (!customModelProviders || customModelProviders.length === 0) return [];
+    return customModelProviders
+        .filter((p) => p.agentFlavor === flavor)
+        .map((p) => ({
+            key: `custom:${p.id}`,
+            name: p.name,
+            description: p.modelName,
+        }));
 }
 
 export function getAvailablePermissionModes(

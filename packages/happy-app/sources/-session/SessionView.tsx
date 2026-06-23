@@ -6,6 +6,7 @@ import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import {
     getAvailableModels,
+    getCustomProviderModelModes,
     getAvailablePermissionModes,
     getEffortLevelsForModel,
     resolveCurrentOption,
@@ -430,9 +431,18 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const isAcknowledged = machineId && acknowledgedCliVersions[machineId] === cliVersion;
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
     const flavor = session.metadata?.flavor;
-    const availableModels = React.useMemo(() => (
-        getAvailableModels(flavor, session.metadata, t)
-    ), [flavor, session.metadata]);
+    const customModelProviders = useSetting('customModelProviders');
+    const availableModels = React.useMemo(() => {
+        const base = getAvailableModels(flavor, session.metadata, t);
+        const customProviders = getCustomProviderModelModes(flavor, customModelProviders);
+        if (customProviders.length === 0) return base;
+        // Insert custom providers after "default" (if present) or at the end
+        const defaultIdx = base.findIndex((m) => m.key === 'default');
+        if (defaultIdx >= 0) {
+            return [...base.slice(0, defaultIdx + 1), ...customProviders, ...base.slice(defaultIdx + 1)];
+        }
+        return [...base, ...customProviders];
+    }, [flavor, session.metadata, customModelProviders]);
     const availableModes = React.useMemo(() => (
         getAvailablePermissionModes(flavor, session.metadata, t)
     ), [flavor, session.metadata]);
