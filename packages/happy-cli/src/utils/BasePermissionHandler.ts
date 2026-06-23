@@ -10,6 +10,7 @@
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { AgentState } from "@/api/types";
+import type { PushNotificationClient } from "@/api/pushNotifications";
 
 /**
  * Permission response from the mobile app.
@@ -46,6 +47,7 @@ export interface PermissionResult {
 export abstract class BasePermissionHandler {
     protected pendingRequests = new Map<string, PendingRequest>();
     protected session: ApiSessionClient;
+    private pushClient?: PushNotificationClient;
     private isResetting = false;
 
     /**
@@ -53,8 +55,9 @@ export abstract class BasePermissionHandler {
      */
     protected abstract getLogPrefix(): string;
 
-    constructor(session: ApiSessionClient) {
+    constructor(session: ApiSessionClient, pushClient?: PushNotificationClient) {
         this.session = session;
+        this.pushClient = pushClient;
         this.setupRpcHandler();
     }
 
@@ -135,6 +138,20 @@ export abstract class BasePermissionHandler {
                 }
             }
         }));
+        try {
+            this.pushClient?.sendSessionNotification({
+                kind: 'permission',
+                metadata: this.session.getMetadata(),
+                data: {
+                    sessionId: this.session.sessionId,
+                    requestId: toolCallId,
+                    tool: toolName,
+                    type: 'permission_request',
+                }
+            });
+        } catch (error) {
+            logger.debug(`${this.getLogPrefix()} Failed to send permission push`, error);
+        }
     }
 
     /**

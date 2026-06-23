@@ -7,6 +7,7 @@
 
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
+import type { PushNotificationClient } from "@/api/pushNotifications";
 import type { AgentState } from "@/api/types";
 import {
     BasePermissionHandler,
@@ -37,8 +38,8 @@ export class CodexPermissionHandler extends BasePermissionHandler {
         'change_title',
     ];
 
-    constructor(session: ApiSessionClient) {
-        super(session);
+    constructor(session: ApiSessionClient, pushClient?: PushNotificationClient) {
+        super(session, pushClient);
     }
 
     protected getLogPrefix(): string {
