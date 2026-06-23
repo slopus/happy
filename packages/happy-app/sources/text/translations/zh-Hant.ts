@@ -369,6 +369,7 @@ export const zhHant: TranslationStructure = {
         resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
+        resumeSessionUnknownError: '恢復 Session 時發生未知錯誤，請重試。',
         killSessionSubtitle: '立即終止工作階段',
         archiveSessionSubtitle: '封存此工作階段並停止它',
         metadata: '中繼資料',
