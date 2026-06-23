@@ -11,6 +11,9 @@ import {
 import type { SessionEventToast } from '@/sync/sessionEventToasts';
 import { storage } from '@/sync/storage';
 import { navigateToSession } from '@/hooks/useNavigateToSession';
+import { getSessionName } from '@/utils/sessionUtils';
+import type { Session } from '@/sync/storageTypes';
+import type { Message } from '@/sync/typesMessage';
 
 const EVENT_STYLE: Record<SessionEventToast['kind'], {
     icon: keyof typeof Ionicons.glyphMap;
@@ -20,6 +23,8 @@ const EVENT_STYLE: Record<SessionEventToast['kind'], {
     question: { icon: 'help-circle-outline', color: '#0EA5E9' },
     done: { icon: 'checkmark-circle-outline', color: '#34C759' },
 };
+
+const EMPTY_MESSAGES: Message[] = [];
 
 export function SessionEventToastHost() {
     const toasts = useSessionEventToasts();
@@ -42,6 +47,9 @@ function SessionEventToastItem({ toast }: { toast: SessionEventToast }) {
     const router = useRouter();
     const styles = stylesheet;
     const eventStyle = EVENT_STYLE[toast.kind];
+    const session = storage((state) => state.sessions[toast.sessionId] ?? null);
+    const messages = storage((state) => state.sessionMessages[toast.sessionId]?.messages ?? EMPTY_MESSAGES);
+    const copy = getToastCopy(toast, session, messages);
 
     React.useEffect(() => {
         const timeout = setTimeout(
@@ -81,9 +89,9 @@ function SessionEventToastItem({ toast }: { toast: SessionEventToast }) {
                 <Ionicons name={eventStyle.icon} size={18} color={eventStyle.color} />
             </View>
             <View style={styles.textWrap}>
-                <Text numberOfLines={1} style={styles.title}>{toast.title}</Text>
-                {!!toast.body && (
-                    <Text numberOfLines={2} style={styles.body}>{toast.body}</Text>
+                <Text numberOfLines={1} style={styles.title}>{copy.title}</Text>
+                {!!copy.body && (
+                    <Text numberOfLines={2} style={styles.body}>{copy.body}</Text>
                 )}
             </View>
             <Pressable onPress={handleDismiss} hitSlop={8} style={styles.closeButton}>
@@ -91,6 +99,75 @@ function SessionEventToastItem({ toast }: { toast: SessionEventToast }) {
             </Pressable>
         </Pressable>
     );
+}
+
+function getToastCopy(toast: SessionEventToast, session: Session | null, messages: Message[]): { title: string; body: string | null } {
+    if (toast.kind !== 'done') {
+        return {
+            title: compactText(toast.title) || getSessionTitle(session),
+            body: compactText(toast.body) || null,
+        };
+    }
+
+    const sessionTitle = getSessionTitle(session);
+    const body = getMeaningfulToastText(toast.body)
+        || getMeaningfulToastText(toast.title)
+        || getLatestAgentReplyPreview(messages);
+
+    return {
+        title: sessionTitle,
+        body,
+    };
+}
+
+function getSessionTitle(session: Session | null): string {
+    return getSessionName(session);
+}
+
+function getLatestAgentReplyPreview(messages: Message[]): string | null {
+    const latestReply = [...messages]
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .find((message) => message.kind === 'agent-text' && !message.isThinking && compactText(message.text));
+
+    if (latestReply?.kind !== 'agent-text') {
+        return null;
+    }
+
+    return truncateText(compactText(latestReply.text), 180);
+}
+
+function getMeaningfulToastText(text: string | null | undefined): string | null {
+    const compact = compactText(text);
+    if (!compact || isGenericCompletionText(compact)) {
+        return null;
+    }
+    return truncateText(compact, 180);
+}
+
+function compactText(text: string | null | undefined): string {
+    return (text ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function truncateText(text: string, maxLength: number): string {
+    if (text.length <= maxLength) {
+        return text;
+    }
+    return `${text.slice(0, maxLength - 1)}…`;
+}
+
+function isGenericCompletionText(text: string): boolean {
+    const normalized = text.toLowerCase().replace(/[.!。！\s]/g, '');
+    return [
+        'ready',
+        'itsready',
+        "it'sready",
+        'done',
+        'completed',
+        'complete',
+        'finished',
+        '已完成',
+        '完成',
+    ].includes(normalized);
 }
 
 const stylesheet = StyleSheet.create((theme) => ({

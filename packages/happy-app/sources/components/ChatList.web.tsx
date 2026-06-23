@@ -6,7 +6,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
-import { useSession, useSessionMessages, useSetting } from '@/sync/storage';
+import { useLocalSettingMutable, useSession, useSessionMessages, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
@@ -20,11 +20,17 @@ import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 
 const SCROLL_THRESHOLD = 300;
 const LOAD_OLDER_THRESHOLD = 600;
+const OUTLINE_PAGE_SIZE = 20;
 
 type TopSpacerRow = { type: 'top-spacer'; id: string };
 type FooterRow = { type: 'footer'; id: string };
 type ItemRow = { type: 'item'; id: string; item: DisplayItem };
 type VirtualRow = TopSpacerRow | ItemRow | FooterRow;
+type OutlineItem = {
+    id: string;
+    rowIndex: number;
+    title: string;
+};
 
 export const ChatList = React.memo((props: { session: Session }) => {
     const { messages, hasMoreOlder, isLoadingOlder } = useSessionMessages(props.session.id);
@@ -62,6 +68,84 @@ const Footer = React.memo((props: { sessionId: string }) => {
     );
 });
 
+const QuestionOutline = React.memo((props: {
+    items: OutlineItem[];
+    sessionId: string;
+    visible: boolean;
+    onToggleVisible: () => void;
+    onJump: (rowIndex: number) => void;
+}) => {
+    const [visibleCount, setVisibleCount] = React.useState(OUTLINE_PAGE_SIZE);
+
+    React.useEffect(() => {
+        setVisibleCount(OUTLINE_PAGE_SIZE);
+    }, [props.sessionId]);
+
+    React.useEffect(() => {
+        setVisibleCount((count) => Math.min(Math.max(count, OUTLINE_PAGE_SIZE), Math.max(props.items.length, OUTLINE_PAGE_SIZE)));
+    }, [props.items.length]);
+
+    if (props.items.length === 0) return null;
+    const visibleItems = props.items.slice(-visibleCount);
+    const hasMore = visibleCount < props.items.length;
+
+    if (!props.visible) {
+        return (
+            <aside style={outlineCollapsedContainerStyle}>
+                <button
+                    type="button"
+                    title="打开大纲"
+                    aria-label="打开大纲"
+                    style={outlineToggleButtonStyle}
+                    onClick={props.onToggleVisible}
+                >
+                    ›
+                </button>
+            </aside>
+        );
+    }
+
+    return (
+        <aside style={outlineContainerStyle}>
+            <div style={outlineHeaderStyle}>
+                <span>大纲</span>
+                <button
+                    type="button"
+                    title="隐藏大纲"
+                    aria-label="隐藏大纲"
+                    style={outlineToggleButtonStyle}
+                    onClick={props.onToggleVisible}
+                >
+                    ‹
+                </button>
+            </div>
+            <div style={outlineListStyle}>
+                {hasMore && (
+                    <button
+                        type="button"
+                        style={outlineMoreButtonStyle}
+                        onClick={() => setVisibleCount((count) => count + OUTLINE_PAGE_SIZE)}
+                    >
+                        查看更多
+                    </button>
+                )}
+                {visibleItems.map((item) => (
+                    <button
+                        key={item.id}
+                        type="button"
+                        title={item.title}
+                        style={outlineItemStyle}
+                        onClick={() => props.onJump(item.rowIndex)}
+                    >
+                        <span aria-hidden="true" style={outlineDotStyle} />
+                        <span style={outlineTitleStyle}>{item.title}</span>
+                    </button>
+                ))}
+            </div>
+        </aside>
+    );
+});
+
 const ChatListInternal = React.memo((props: {
     metadata: Metadata | null;
     sessionId: string;
@@ -75,6 +159,7 @@ const ChatListInternal = React.memo((props: {
     const showScrollButtonRef = React.useRef(false);
     const isAtBottomRef = React.useRef(true);
     const loadingOlderRef = React.useRef(false);
+    const [outlineVisible, setOutlineVisible] = useLocalSettingMutable('chatOutlineVisible');
 
     const groupToolCalls = useSetting('groupToolCalls');
     const displayItems = useGroupedMessages(props.messages, groupToolCalls);
@@ -115,6 +200,17 @@ const ChatListInternal = React.memo((props: {
             { type: 'footer', id: '__footer' },
         ];
     }, [displayItems]);
+
+    const outlineItems = React.useMemo<OutlineItem[]>(() => {
+        return rows.flatMap((row, index) => {
+            if (row.type !== 'item' || row.item.type !== 'message' || row.item.message.kind !== 'user-text') {
+                return [];
+            }
+            const title = formatOutlineTitle(row.item.message.displayText ?? row.item.message.text);
+            if (!title) return [];
+            return [{ id: row.item.message.id, rowIndex: index, title }];
+        });
+    }, [rows]);
 
     const estimateSize = React.useCallback((index: number) => {
         const row = rows[index];
@@ -198,6 +294,13 @@ const ChatListInternal = React.memo((props: {
         setShowScrollButton(false);
     }, []);
 
+    const scrollToRow = useCallback((rowIndex: number) => {
+        virtualizerRef.current.scrollToIndex(rowIndex, { align: 'start', behavior: 'smooth' });
+        isAtBottomRef.current = false;
+        showScrollButtonRef.current = true;
+        setShowScrollButton(true);
+    }, []);
+
     const scheduleScrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
@@ -272,46 +375,55 @@ const ChatListInternal = React.memo((props: {
 
     return (
         <View style={styles.container}>
-            <div
-                ref={scrollRef}
-                onScroll={handleScroll}
-                style={scrollContainerStyle}
-            >
+            <div style={chatShellStyle}>
                 <div
-                    style={{
-                        height: virtualizer.getTotalSize(),
-                        width: '100%',
-                        position: 'relative',
-                    }}
+                    ref={scrollRef}
+                    onScroll={handleScroll}
+                    style={scrollContainerStyle}
                 >
-                    {virtualizer.getVirtualItems().map((virtualRow) => {
-                        const row = rows[virtualRow.index];
-                        if (!row) return null;
+                    <div
+                        style={{
+                            height: virtualizer.getTotalSize(),
+                            width: '100%',
+                            position: 'relative',
+                        }}
+                    >
+                        {virtualizer.getVirtualItems().map((virtualRow) => {
+                            const row = rows[virtualRow.index];
+                            if (!row) return null;
 
-                        return (
-                            <div
-                                key={virtualRow.key}
-                                data-index={virtualRow.index}
-                                ref={virtualizer.measureElement}
-                                style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    transform: `translateY(${virtualRow.start}px)`,
-                                }}
-                            >
-                                {row.type === 'top-spacer' ? (
-                                    <TopSpacer isLoadingOlder={props.isLoadingOlder} />
-                                ) : row.type === 'footer' ? (
-                                    <Footer sessionId={props.sessionId} />
-                                ) : (
-                                    renderDisplayItem(row.item)
-                                )}
-                            </div>
-                        );
-                    })}
+                            return (
+                                <div
+                                    key={virtualRow.key}
+                                    data-index={virtualRow.index}
+                                    ref={virtualizer.measureElement}
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        transform: `translateY(${virtualRow.start}px)`,
+                                    }}
+                                >
+                                    {row.type === 'top-spacer' ? (
+                                        <TopSpacer isLoadingOlder={props.isLoadingOlder} />
+                                    ) : row.type === 'footer' ? (
+                                        <Footer sessionId={props.sessionId} />
+                                    ) : (
+                                        renderDisplayItem(row.item)
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
+                <QuestionOutline
+                    items={outlineItems}
+                    sessionId={props.sessionId}
+                    visible={outlineVisible}
+                    onToggleVisible={() => setOutlineVisible(!outlineVisible)}
+                    onJump={scrollToRow}
+                />
             </div>
             {showScrollButton && (
                 <View style={styles.scrollButtonContainer}>
@@ -330,12 +442,134 @@ const ChatListInternal = React.memo((props: {
     );
 });
 
+function formatOutlineTitle(text: string) {
+    return text
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 120);
+}
+
+const chatShellStyle: React.CSSProperties = {
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'row',
+    minWidth: 0,
+};
+
 const scrollContainerStyle: React.CSSProperties = {
     height: '100%',
+    flex: 1,
+    minWidth: 0,
     overflowY: 'auto',
     overflowX: 'hidden',
     position: 'relative',
     WebkitOverflowScrolling: 'touch',
+};
+
+const outlineContainerStyle: React.CSSProperties = {
+    width: 248,
+    minWidth: 248,
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    borderLeft: '1px solid rgba(128, 128, 128, 0.18)',
+    padding: '72px 10px 16px',
+    boxSizing: 'border-box',
+    overflow: 'hidden',
+};
+
+const outlineCollapsedContainerStyle: React.CSSProperties = {
+    width: 42,
+    minWidth: 42,
+    height: '100%',
+    display: 'flex',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    borderLeft: '1px solid rgba(128, 128, 128, 0.18)',
+    paddingTop: 72,
+    boxSizing: 'border-box',
+};
+
+const outlineHeaderStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    padding: '0 4px 8px 8px',
+    fontSize: 12,
+    fontWeight: 600,
+    color: 'rgba(128, 128, 128, 0.9)',
+};
+
+const outlineToggleButtonStyle: React.CSSProperties = {
+    width: 26,
+    height: 26,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: 0,
+    borderRadius: 6,
+    background: 'transparent',
+    color: 'rgba(128, 128, 128, 0.9)',
+    cursor: 'pointer',
+    fontSize: 20,
+    lineHeight: '20px',
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif',
+};
+
+const outlineListStyle: React.CSSProperties = {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
+    paddingRight: 2,
+};
+
+const outlineItemStyle: React.CSSProperties = {
+    width: '100%',
+    display: 'flex',
+    gap: 8,
+    alignItems: 'flex-start',
+    border: 0,
+    borderRadius: 6,
+    background: 'transparent',
+    padding: '7px 8px',
+    color: 'inherit',
+    cursor: 'pointer',
+    textAlign: 'left',
+    font: 'inherit',
+};
+
+const outlineDotStyle: React.CSSProperties = {
+    width: 6,
+    height: 6,
+    minWidth: 6,
+    marginTop: 6,
+    borderRadius: '50%',
+    background: 'rgba(128, 128, 128, 0.55)',
+};
+
+const outlineTitleStyle: React.CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+    fontSize: 12,
+    lineHeight: '18px',
+};
+
+const outlineMoreButtonStyle: React.CSSProperties = {
+    width: '100%',
+    border: 0,
+    borderRadius: 6,
+    background: 'transparent',
+    padding: '8px',
+    color: 'rgba(128, 128, 128, 0.9)',
+    cursor: 'pointer',
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: '16px',
 };
 
 const styles = StyleSheet.create((theme) => ({

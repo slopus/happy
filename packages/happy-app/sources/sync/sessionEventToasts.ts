@@ -1,7 +1,7 @@
 import * as React from 'react';
 import type { ApiEphemeralSessionEventUpdate } from './apiTypes';
 
-const TOAST_TTL_MS = 9000;
+const TOAST_TTL_MS = 60_000;
 const MAX_VISIBLE_TOASTS = 3;
 
 export type SessionEventToast = ApiEphemeralSessionEventUpdate & {
