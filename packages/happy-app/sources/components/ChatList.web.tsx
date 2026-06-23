@@ -141,6 +141,10 @@ const ChatListInternal = React.memo((props: {
         measureElement: (element) => element.getBoundingClientRect().height,
     });
     const totalSize = virtualizer.getTotalSize();
+    const virtualizerRef = React.useRef(virtualizer);
+    const rowsLengthRef = React.useRef(rows.length);
+    virtualizerRef.current = virtualizer;
+    rowsLengthRef.current = rows.length;
 
     React.useLayoutEffect(() => {
         virtualizer.measure();
@@ -187,12 +191,12 @@ const ChatListInternal = React.memo((props: {
     const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
         const node = scrollRef.current;
         if (!node) return;
-        virtualizer.scrollToIndex(Math.max(rows.length - 1, 0), { align: 'end', behavior });
+        virtualizerRef.current.scrollToIndex(Math.max(rowsLengthRef.current - 1, 0), { align: 'end', behavior });
         node.scrollTo({ top: node.scrollHeight, behavior });
         isAtBottomRef.current = true;
         showScrollButtonRef.current = false;
         setShowScrollButton(false);
-    }, [rows.length, virtualizer]);
+    }, []);
 
     const scheduleScrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
         requestAnimationFrame(() => {
