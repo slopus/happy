@@ -170,11 +170,31 @@ export const MermaidRenderer = React.memo((props: {
                     style={{ flex: 1 }}
                     scrollEnabled={false}
                     onMessage={(event) => {
-                        const data = JSON.parse(event.nativeEvent.data);
-                        if (data.type === 'dimensions') {
+                        // WebView's `onMessage` fires for ANY `window.ReactNativeWebView.postMessage`
+                        // call inside the embedded HTML — including future
+                        // diagnostic / console / error messages that may not
+                        // be JSON, or a malformed mermaid render that posts
+                        // a non-JSON payload before the dimensions one.
+                        // An uncaught `JSON.parse` here used to bubble up as
+                        // a synchronous throw on the RN bridge and crash the
+                        // surrounding chat view; guard it and validate the
+                        // payload shape before reading `.height`.
+                        let data: unknown;
+                        try {
+                            data = JSON.parse(event.nativeEvent.data);
+                        } catch {
+                            return;
+                        }
+                        if (
+                            data !== null &&
+                            typeof data === 'object' &&
+                            (data as { type?: unknown }).type === 'dimensions' &&
+                            typeof (data as { height?: unknown }).height === 'number'
+                        ) {
+                            const newHeight = (data as { height: number }).height;
                             setDimensions(prev => ({
                                 ...prev,
-                                height: Math.max(prev.height, data.height)
+                                height: Math.max(prev.height, newHeight)
                             }));
                         }
                     }}
