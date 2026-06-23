@@ -228,7 +228,7 @@ export class CodexAppServerClient {
     private notificationProtocol: 'unknown' | 'legacy' | 'raw' = 'unknown';
     private completedTurnIds = new Set<string>();
     private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
-    private rawSubagentActivityItemIds = new Set<string>();
+    private rawSubagentActivitySignaturesByItemId = new Map<string, Set<string>>();
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
@@ -505,11 +505,21 @@ export class CodexAppServerClient {
         if (item.type === 'subAgentActivity') {
             if (method === 'item/started' || method === 'item/completed') {
                 const itemId = typeof item.id === 'string' ? item.id : '';
-                if (itemId && this.rawSubagentActivityItemIds.has(itemId)) {
+                const signature = [
+                    String(item.kind ?? ''),
+                    String(item.agentThreadId ?? ''),
+                    String(item.agentPath ?? ''),
+                ].join('\0');
+                const seenSignatures = itemId
+                    ? this.rawSubagentActivitySignaturesByItemId.get(itemId)
+                    : undefined;
+                if (seenSignatures?.has(signature)) {
                     return true;
                 }
                 if (itemId) {
-                    this.rawSubagentActivityItemIds.add(itemId);
+                    const signatures = seenSignatures ?? new Set<string>();
+                    signatures.add(signature);
+                    this.rawSubagentActivitySignaturesByItemId.set(itemId, signatures);
                 }
                 this.eventHandler?.({
                     type: 'subagent_activity',
@@ -771,7 +781,7 @@ export class CodexAppServerClient {
         const result = await this.request('thread/start', params) as NewConversationResponse;
         this._threadId = result.thread.id;
         this._turnId = null;
-        this.rawSubagentActivityItemIds.clear();
+        this.rawSubagentActivitySignaturesByItemId.clear();
         this.rememberThreadDefaults(opts);
         logger.debug('[CodexAppServer] Thread started:', this._threadId);
         return { threadId: result.thread.id, model: result.model };
@@ -807,7 +817,7 @@ export class CodexAppServerClient {
         const result = await this.request('thread/resume', params) as ResumeConversationResponse;
         this._threadId = result.thread.id;
         this._turnId = null;
-        this.rawSubagentActivityItemIds.clear();
+        this.rawSubagentActivitySignaturesByItemId.clear();
         this.rememberThreadDefaults({
             model: opts?.model ?? defaults.model,
             cwd: opts?.cwd ?? defaults.cwd,
@@ -1192,7 +1202,7 @@ export class CodexAppServerClient {
         this.threadDefaults = null;
         this.completedTurnIds.clear();
         this.rawFileChangesByItemId.clear();
-        this.rawSubagentActivityItemIds.clear();
+        this.rawSubagentActivitySignaturesByItemId.clear();
     }
 
     // ─── JSON-RPC transport ─────────────────────────────────────

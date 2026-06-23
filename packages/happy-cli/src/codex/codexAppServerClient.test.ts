@@ -877,7 +877,7 @@ describe('CodexAppServerClient sandbox integration', () => {
                                 turnId: 'turn-raw-1',
                                 item: {
                                     type: 'subAgentActivity',
-                                    id: 'activity-2',
+                                    id: 'activity-1',
                                     kind: 'interrupted',
                                     agentThreadId: 'thread-child-1',
                                     agentPath: 'Auth explorer',
@@ -1043,7 +1043,7 @@ describe('CodexAppServerClient sandbox integration', () => {
             }),
             expect.objectContaining({
                 type: 'subagent_activity',
-                item_id: 'activity-2',
+                item_id: 'activity-1',
                 kind: 'interrupted',
                 agentThreadId: 'thread-child-1',
                 agentPath: 'Auth explorer',

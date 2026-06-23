@@ -612,6 +612,54 @@ describe('mapCodexThreadToSessionEnvelopes', () => {
         ]);
     });
 
+    it('backfills subagent-scoped historical reasoning and agent messages into sidechains', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-1',
+                startedAt: 100,
+                completedAt: 101,
+                status: 'completed',
+                items: [
+                    {
+                        id: 'activity-1',
+                        type: 'subAgentActivity',
+                        kind: 'started',
+                        agentThreadId: 'provider-child-thread',
+                        agentPath: 'Auth explorer',
+                    },
+                    {
+                        id: 'reasoning-1',
+                        type: 'reasoning',
+                        summary: ['checking auth flow'],
+                        agentThreadId: 'provider-child-thread',
+                    } as any,
+                    {
+                        id: 'agent-1',
+                        type: 'agentMessage',
+                        text: 'found auth handler',
+                        agentThreadId: 'provider-child-thread',
+                    } as any,
+                ],
+            }],
+        });
+
+        const start = envelopes.find((envelope) => envelope.ev.t === 'start');
+        expect(start?.subagent).toBeDefined();
+        expect(isCuid(start!.subagent!)).toBe(true);
+
+        const reasoning = envelopes.find((envelope) => envelope.codexItemId === 'reasoning-1');
+        expect(reasoning).toMatchObject({
+            subagent: start?.subagent,
+            ev: { t: 'text', text: 'checking auth flow', thinking: true },
+        });
+
+        const text = envelopes.find((envelope) => envelope.codexItemId === 'agent-1');
+        expect(text).toMatchObject({
+            subagent: start?.subagent,
+            ev: { t: 'text', text: 'found auth handler' },
+        });
+    });
+
     it('uses stable session subagent ids across historical replay turns', () => {
         const envelopes = mapCodexThreadToSessionEnvelopes({
             turns: [

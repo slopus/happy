@@ -560,25 +560,41 @@ export function mapCodexThreadItemToSessionEnvelopes(
         }
         case 'agentMessage': {
             const text = typeof item.text === 'string' ? item.text.trim() : '';
-            return text.length > 0
-                ? [createEnvelope('agent', { t: 'text', text }, {
-                    id: item.id,
-                    turn: turn.id,
-                    time: completedAt,
-                    codexItemId: item.id,
-                })]
-                : [];
+            if (text.length === 0) {
+                return [];
+            }
+
+            const subagent = resolveSessionSubagent(item as Record<string, unknown>, providerSubagentToSessionSubagent);
+            const opts = {
+                id: item.id,
+                turn: turn.id,
+                time: completedAt,
+                codexItemId: item.id,
+                ...(subagent ? { subagent } : {}),
+            } satisfies CreateEnvelopeOptions;
+            const envelopes: SessionEnvelope[] = [];
+            maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, subagentTitles, envelopes);
+            envelopes.push(createEnvelope('agent', { t: 'text', text }, opts));
+            return envelopes;
         }
         case 'reasoning': {
             const text = reasoningText(item);
-            return text
-                ? [createEnvelope('agent', { t: 'text', text, thinking: true }, {
-                    id: item.id,
-                    turn: turn.id,
-                    time: startedAt,
-                    codexItemId: item.id,
-                })]
-                : [];
+            if (!text) {
+                return [];
+            }
+
+            const subagent = resolveSessionSubagent(item as Record<string, unknown>, providerSubagentToSessionSubagent);
+            const opts = {
+                id: item.id,
+                turn: turn.id,
+                time: startedAt,
+                codexItemId: item.id,
+                ...(subagent ? { subagent } : {}),
+            } satisfies CreateEnvelopeOptions;
+            const envelopes: SessionEnvelope[] = [];
+            maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, subagentTitles, envelopes);
+            envelopes.push(createEnvelope('agent', { t: 'text', text, thinking: true }, opts));
+            return envelopes;
         }
         case 'commandExecution': {
             const envelopes: SessionEnvelope[] = [];
