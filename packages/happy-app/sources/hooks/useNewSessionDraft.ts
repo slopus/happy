@@ -18,8 +18,8 @@ interface NewSessionDraftState {
     selectedMachineId: string | null;
     selectedPath: string | null;
     agentType: NewSessionAgentType;
-    permissionMode: PermissionModeKey;
-    modelMode: string;
+    permissionMode: PermissionModeKey | null;
+    modelMode: string | null;
     sessionType: NewSessionSessionType;
     worktreeKey: string | null;
 
@@ -54,8 +54,8 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     selectedMachineId: initial?.selectedMachineId ?? null,
     selectedPath: initial?.selectedPath ?? null,
     agentType: initial?.agentType ?? 'claude',
-    permissionMode: initial?.permissionMode ?? 'default',
-    modelMode: initial?.modelMode ?? 'default',
+    permissionMode: initial?.permissionMode ?? null,
+    modelMode: initial?.modelMode ?? null,
     sessionType: initial?.sessionType ?? 'simple',
     worktreeKey: initial?.worktreeKey ?? null,
 

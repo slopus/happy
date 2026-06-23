@@ -178,6 +178,26 @@ export function findOptionByKey<T extends ModeOption>(options: T[], key: string 
     return options.find((option) => option.key === key) ?? null;
 }
 
+// Pick which mode index to pre-select in the new-session screen. Prefers the
+// user's saved draft pick (if that key is still available for the current
+// agent), then the agent default, then index 0. `draftKey` is null/undefined
+// when the user has never explicitly picked — only then does the agent default
+// apply, so an explicit "default" pick is distinct from "unset".
+export function resolveModeIndex(
+    modes: ModeOption[],
+    draftKey: string | null | undefined,
+    fallbackKey: string | null | undefined,
+): number {
+    if (draftKey) {
+        const draftIdx = modes.findIndex((m) => m.key === draftKey);
+        if (draftIdx >= 0) {
+            return draftIdx;
+        }
+    }
+    const fallbackIdx = modes.findIndex((m) => m.key === fallbackKey);
+    return fallbackIdx >= 0 ? fallbackIdx : 0;
+}
+
 export function resolveCurrentOption<T extends ModeOption>(
     options: T[],
     preferredKeys: Array<string | null | undefined>,
