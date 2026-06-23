@@ -8,9 +8,28 @@ import { t } from '@/text';
 interface CommandSuggestionProps {
     command: string;
     description?: string;
+    source?: 'agent' | 'skill' | 'happy';
+    sourceLabel?: string;
 }
 
-export const CommandSuggestion = React.memo(({ command, description }: CommandSuggestionProps) => {
+function getSourceLabel(source: CommandSuggestionProps['source'], sourceLabel?: string): string | null {
+    if (sourceLabel) {
+        return sourceLabel;
+    }
+    switch (source) {
+        case 'agent':
+            return 'Agent';
+        case 'skill':
+            return 'Skill';
+        case 'happy':
+            return 'Happy';
+        default:
+            return null;
+    }
+}
+
+export const CommandSuggestion = React.memo(({ command, description, source, sourceLabel }: CommandSuggestionProps) => {
+    const label = getSourceLabel(source, sourceLabel);
     return (
         <View style={styles.suggestionContainer}>
             <Text 
@@ -24,6 +43,11 @@ export const CommandSuggestion = React.memo(({ command, description }: CommandSu
                     numberOfLines={1}
                 >
                     {description}
+                </Text>
+            )}
+            {label && (
+                <Text style={styles.sourceText}>
+                    {label}
                 </Text>
             )}
         </View>
@@ -78,6 +102,12 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
         color: theme.colors.textSecondary,
         ...Typography.default(),
+    },
+    sourceText: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        marginLeft: 8,
+        ...Typography.default('semiBold'),
     },
     iconContainer: {
         width: 32,

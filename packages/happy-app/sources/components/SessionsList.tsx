@@ -21,6 +21,7 @@ import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPop
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
+import { AgentProviderBadge } from './AgentProviderBadge';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -187,8 +188,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 3,
-        maxWidth: 92,
-        paddingHorizontal: 6,
+        paddingHorizontal: 5,
         paddingVertical: 2,
         borderRadius: 6,
         marginLeft: 8,
@@ -196,6 +196,22 @@ const stylesheet = StyleSheet.create((theme) => ({
     groupBadgeText: {
         fontSize: 10,
         color: '#FFFFFF',
+        ...Typography.default('semiBold'),
+    },
+    providerBadgeSlot: {
+        marginLeft: 8,
+    },
+    statePill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 6,
+        marginLeft: 8,
+    },
+    statePillText: {
+        fontSize: 10,
         ...Typography.default('semiBold'),
     },
     artifactsSection: {
@@ -392,6 +408,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const isGroupSession = session.isGroup || !!session.groupId;
     const groupColor = session.isGroup ? '#0EA5E9' : session.agentRole === 'reviewer' ? '#6366F1' : '#10B981';
     const groupRoleLabel = session.isGroup ? 'Group' : session.agentRole === 'reviewer' ? 'Reviewer' : 'Executor';
+    const [isGroupBadgeHovered, setIsGroupBadgeHovered] = React.useState(false);
     // Override to solid blue when session has unread results
     const status = session.hasUnread
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
@@ -480,13 +497,24 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                         {session.name}
                     </Text>
                     {isGroupSession && (
-                        <View style={[styles.groupBadge, { backgroundColor: groupColor }]}>
+                        <View
+                            style={[styles.groupBadge, { backgroundColor: groupColor }]}
+                            // @ts-ignore - Web only events
+                            onMouseEnter={() => setIsGroupBadgeHovered(true)}
+                            // @ts-ignore - Web only events
+                            onMouseLeave={() => setIsGroupBadgeHovered(false)}
+                        >
                             <Ionicons name="people" size={10} color="#FFFFFF" />
-                            <Text style={styles.groupBadgeText} numberOfLines={1}>
-                                {groupRoleLabel}
-                            </Text>
+                            {isGroupBadgeHovered && (
+                                <Text style={styles.groupBadgeText} numberOfLines={1}>
+                                    {groupRoleLabel}
+                                </Text>
+                            )}
                         </View>
                     )}
+                    <View style={styles.providerBadgeSlot}>
+                        <AgentProviderBadge providers={session.providerTypes} size={14} />
+                    </View>
                 </View>
 
                 {session.path ? (
@@ -511,6 +539,18 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     ]}>
                         {statusText}
                     </Text>
+                    {(session.totalTodosCount > 0 || session.hasDraft) && (
+                        <View style={[styles.statePill, { backgroundColor: status.dotColor + '18' }]}>
+                            {session.hasDraft && (
+                                <Ionicons name="create-outline" size={10} color={status.color} />
+                            )}
+                            <Text style={[styles.statePillText, { color: status.color }]} numberOfLines={1}>
+                                {session.totalTodosCount > 0
+                                    ? `${session.completedTodosCount}/${session.totalTodosCount}`
+                                    : 'draft'}
+                            </Text>
+                        </View>
+                    )}
                 </View>
             </View>
         </Pressable>

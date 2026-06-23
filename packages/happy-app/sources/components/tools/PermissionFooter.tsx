@@ -5,6 +5,7 @@ import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
+import { Modal } from '@/modal';
 
 interface PermissionFooterProps {
     permission: {
@@ -28,8 +29,13 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const [loadingBypass, setLoadingBypass] = useState(false);
     const [loadingForSession, setLoadingForSession] = useState(false);
     
-    // Check if this is a Codex session - check both metadata.flavor and tool name prefix
-    const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
+    // Check both old flavor metadata and newer group metadata.
+    const isCodex = metadata?.agentType === 'codex' || metadata?.flavor === 'codex' || toolName.startsWith('Codex');
+
+    const showPermissionError = (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error || 'Unknown error');
+        Modal.alert(t('common.error'), message, [{ text: t('common.ok'), style: 'cancel' }]);
+    };
 
     const handleApprove = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
@@ -39,6 +45,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             await sessionAllow(sessionId, permission.id);
         } catch (error) {
             console.error('Failed to approve permission:', error);
+            showPermissionError(error);
         } finally {
             setLoadingButton(null);
         }
@@ -54,6 +61,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             storage.getState().updateSessionPermissionMode(sessionId, 'acceptEdits');
         } catch (error) {
             console.error('Failed to approve all edits:', error);
+            showPermissionError(error);
         } finally {
             setLoadingAllEdits(false);
         }
@@ -68,6 +76,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             storage.getState().updateSessionPermissionMode(sessionId, 'bypassPermissions');
         } catch (error) {
             console.error('Failed to bypass permissions:', error);
+            showPermissionError(error);
         } finally {
             setLoadingBypass(false);
         }
@@ -88,6 +97,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             await sessionAllow(sessionId, permission.id, undefined, [toolIdentifier]);
         } catch (error) {
             console.error('Failed to approve for session:', error);
+            showPermissionError(error);
         } finally {
             setLoadingForSession(false);
         }
@@ -101,6 +111,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             await sessionDeny(sessionId, permission.id);
         } catch (error) {
             console.error('Failed to deny permission:', error);
+            showPermissionError(error);
         } finally {
             setLoadingButton(null);
         }
@@ -115,6 +126,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             await sessionAllow(sessionId, permission.id, undefined, undefined, 'approved');
         } catch (error) {
             console.error('Failed to approve permission:', error);
+            showPermissionError(error);
         } finally {
             setLoadingButton(null);
         }
@@ -128,6 +140,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             await sessionAllow(sessionId, permission.id, undefined, undefined, 'approved_for_session');
         } catch (error) {
             console.error('Failed to approve for session:', error);
+            showPermissionError(error);
         } finally {
             setLoadingForSession(false);
         }
@@ -141,6 +154,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             await sessionDeny(sessionId, permission.id, undefined, undefined, 'abort');
         } catch (error) {
             console.error('Failed to abort permission:', error);
+            showPermissionError(error);
         } finally {
             setLoadingButton(null);
         }

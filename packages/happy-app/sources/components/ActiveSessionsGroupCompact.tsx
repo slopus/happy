@@ -21,6 +21,7 @@ import { sessionKill } from '@/sync/ops';
 import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
+import { AgentProviderBadge } from './AgentProviderBadge';
 
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
     disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
@@ -281,6 +282,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const isGroupSession = session.isGroup || !!session.groupId;
     const groupColor = session.isGroup ? '#0EA5E9' : session.agentRole === 'reviewer' ? '#6366F1' : '#10B981';
     const groupRoleLabel = session.isGroup ? 'Group' : session.agentRole === 'reviewer' ? 'Reviewer' : 'Executor';
+    const [isGroupBadgeHovered, setIsGroupBadgeHovered] = React.useState(false);
     // Override to solid blue when session has unread results
     const status = session.hasUnread
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
@@ -327,6 +329,16 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     } as any : {
         onLongPress: showActionAlert,
     };
+
+    const statusLabel = session.hasUnread
+        ? t('status.unread')
+        : session.state === 'thinking'
+            ? 'working'
+            : session.state === 'permission_required'
+                ? t('status.permissionRequired')
+                : session.state === 'waiting'
+                    ? t('status.online')
+                    : t('status.lastSeen', { time: formatLastSeen(session.activeAt ?? Date.now(), false) });
 
     const renderLeadingIndicator = () => {
         let indicator: React.ReactNode = null;
@@ -377,13 +389,37 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     >
                         {session.name}
                     </Text>
+                    <View style={styles.providerBadgeSlot}>
+                        <AgentProviderBadge providers={session.providerTypes} size={13} />
+                    </View>
                     {isGroupSession && (
-                        <View style={[styles.groupInlineBadge, { backgroundColor: groupColor }]}>
+                        <View
+                            style={[styles.groupInlineBadge, { backgroundColor: groupColor }]}
+                            // @ts-ignore - Web only events
+                            onMouseEnter={() => setIsGroupBadgeHovered(true)}
+                            // @ts-ignore - Web only events
+                            onMouseLeave={() => setIsGroupBadgeHovered(false)}
+                        >
                             <Ionicons name="people" size={10} color="#FFFFFF" />
-                            <Text style={styles.groupInlineBadgeText} numberOfLines={1}>
-                                {groupRoleLabel}
-                            </Text>
+                            {isGroupBadgeHovered && (
+                                <Text style={styles.groupInlineBadgeText} numberOfLines={1}>
+                                    {groupRoleLabel}
+                                </Text>
+                            )}
                         </View>
+                    )}
+                </View>
+                <View style={styles.sessionMetaRow}>
+                    <Text style={[styles.statusLabel, { color: status.color }]} numberOfLines={1}>
+                        {statusLabel}
+                    </Text>
+                    {session.totalTodosCount > 0 && (
+                        <Text style={styles.todoLabel} numberOfLines={1}>
+                            {session.completedTodosCount}/{session.totalTodosCount}
+                        </Text>
+                    )}
+                    {session.hasDraft && (
+                        <Ionicons name="create-outline" size={11} color={theme.colors.textSecondary} />
                     )}
                 </View>
             </View>
@@ -532,7 +568,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     // Session row styles
     sessionRow: {
-        height: 56,
+        height: 64,
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
@@ -571,12 +607,31 @@ const stylesheet = StyleSheet.create((theme) => ({
         height: 16,
         marginRight: 8,
     },
+    providerBadgeSlot: {
+        marginLeft: 8,
+    },
+    sessionMetaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginLeft: 24,
+        marginTop: 3,
+        minHeight: 14,
+    },
+    statusLabel: {
+        fontSize: 11,
+        ...Typography.default('semiBold'),
+    },
+    todoLabel: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
+    },
     groupInlineBadge: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 3,
-        maxWidth: 88,
-        paddingHorizontal: 6,
+        paddingHorizontal: 5,
         paddingVertical: 2,
         borderRadius: 6,
         marginLeft: 8,

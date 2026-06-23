@@ -17,11 +17,13 @@ export async function getCommandSuggestions(sessionId: string, query: string): P
 
         // Convert CommandItem to suggestion format
         return commands.map((cmd: CommandItem) => ({
-            key: `cmd-${cmd.command}`,
+            key: `cmd-${cmd.source}-${cmd.command}`,
             text: `/${cmd.command}`,
             component: () => React.createElement(CommandSuggestion, {
                 command: cmd.command,
-                description: cmd.description
+                description: cmd.description,
+                source: cmd.source,
+                sourceLabel: cmd.sourceLabel
             })
         }));
     } catch (error) {

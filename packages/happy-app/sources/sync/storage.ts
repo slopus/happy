@@ -98,6 +98,7 @@ export interface SessionRowData {
     groupName: string | null;
     agentRole: 'executor' | 'reviewer' | null;
     agentType: 'claude' | 'codex' | null;
+    providerTypes: string[];
     completedTodosCount: number;
     totalTodosCount: number;
     hasUnread: boolean;
@@ -137,6 +138,7 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         groupName: session.metadata?.groupName ?? null,
         agentRole: session.metadata?.agentRole ?? null,
         agentType: session.metadata?.agentType ?? null,
+        providerTypes: [session.metadata?.agentType ?? session.metadata?.flavor ?? 'claude'],
         completedTodosCount: session.todos?.filter(todo => todo.status === 'completed').length ?? 0,
         totalTodosCount: session.todos?.length ?? 0,
         hasUnread: unreadSessionIds?.has(session.id) ?? false,
@@ -181,6 +183,9 @@ function buildGroupRowData(groupId: string, groupSessions: Session[], unreadSess
         groupName,
         agentRole: null,
         agentType: null,
+        providerTypes: rows
+            .flatMap(row => row.providerTypes)
+            .filter((provider, index, providers) => providers.indexOf(provider) === index),
         completedTodosCount: rows.reduce((sum, row) => sum + row.completedTodosCount, 0),
         totalTodosCount: rows.reduce((sum, row) => sum + row.totalTodosCount, 0),
         hasUnread: rows.some(row => row.hasUnread),
