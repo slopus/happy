@@ -75,6 +75,16 @@ RUN echo 'server { \
         try_files $uri =404; \
     } \
     \
+    location = / { \
+        if ($http_accept ~* "text/plain") { \
+            add_header Content-Type text/plain; \
+            return 200 "Welcome to Happy Server!"; \
+        } \
+        root   /usr/share/nginx/html; \
+        index  index.html index.htm; \
+        try_files /index.html =404; \
+    } \
+    \
     location / { \
         root   /usr/share/nginx/html; \
         index  index.html index.htm; \
