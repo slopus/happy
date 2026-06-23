@@ -142,6 +142,25 @@ export const MermaidRenderer = React.memo((props: {
                 (async function() {
                     const content = ${mermaidContent};
                     const container = document.getElementById('mermaid-container');
+
+                    // Report the rendered diagram's full height to React Native so the WebView
+                    // container can grow to fit it; without this postMessage, onMessage never
+                    // fires and the height stays clipped at its initial fixed value.
+                    let lastReportedHeight = 0;
+                    const reportHeight = () => {
+                        if (!window.ReactNativeWebView) {
+                            return;
+                        }
+                        const height = document.body.scrollHeight;
+                        if (height === lastReportedHeight) {
+                            return;
+                        }
+                        lastReportedHeight = height;
+                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                            type: 'dimensions',
+                            height: height
+                        }));
+                    };
                     
                     try {
                         mermaid.initialize({
@@ -155,6 +174,13 @@ export const MermaidRenderer = React.memo((props: {
                         container.innerHTML = '<div class="error">Diagram error: ' + 
                             (error.message || String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;') + 
                             '</div>';
+                    }
+
+                    // Measure after layout settles, then re-measure on width changes
+                    // (rotation / re-layout) so the height tracks the diagram's real size.
+                    requestAnimationFrame(reportHeight);
+                    if (window.ResizeObserver) {
+                        new ResizeObserver(reportHeight).observe(document.body);
                     }
                 })();
             </script>
@@ -170,12 +196,16 @@ export const MermaidRenderer = React.memo((props: {
                     style={{ flex: 1 }}
                     scrollEnabled={false}
                     onMessage={(event) => {
-                        const data = JSON.parse(event.nativeEvent.data);
-                        if (data.type === 'dimensions') {
-                            setDimensions(prev => ({
-                                ...prev,
-                                height: Math.max(prev.height, data.height)
-                            }));
+                        try {
+                            const data = JSON.parse(event.nativeEvent.data);
+                            if (data.type === 'dimensions' && typeof data.height === 'number' && data.height > 0) {
+                                setDimensions(prev => ({
+                                    ...prev,
+                                    height: data.height
+                                }));
+                            }
+                        } catch {
+                            // Ignore malformed messages from the WebView
                         }
                     }}
                 />
