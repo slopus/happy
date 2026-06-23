@@ -391,6 +391,24 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         sdkToLogConverter.updateSessionId(sessionId);
                         session.onSessionFound(sessionId);
                     },
+                    onModelsFound: (sdkModels) => {
+                        // The primary model list comes from the gateway HTTP
+                        // call in runClaude.ts.  SDK models are a fallback
+                        // enrichment — useful when ANTHROPIC_BASE_URL is not
+                        // set (original Claude Code) and only hardcoded
+                        // aliases are available.
+                        session.client.updateMetadata((currentMetadata) => {
+                            const existing = currentMetadata.models ?? [];
+                            const existingCodes = new Set(existing.map((m) => m.code));
+                            const merged = [...existing];
+                            for (const sdk of sdkModels) {
+                                if (!existingCodes.has(sdk.code)) {
+                                    merged.push(sdk);
+                                }
+                            }
+                            return { ...currentMetadata, models: merged };
+                        });
+                    },
                     onSDKMetadata: (metadata) => {
                         logger.debug('[remote] SDK metadata received, updating session:', metadata);
                         session.client.updateMetadata((currentMetadata) => ({

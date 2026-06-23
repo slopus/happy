@@ -22,6 +22,7 @@ import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
+import { fetchAvailableModels, getHardcodedModels } from './fetchAvailableModels';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import {
@@ -122,6 +123,21 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
     const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
 
+    // Apply Claude env vars early so fetchAvailableModels can reach the
+    // gateway API (needs ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN).
+    if (options.claudeEnvVars) {
+        Object.entries(options.claudeEnvVars).forEach(([key, value]) => {
+            process.env[key] = value;
+        });
+    }
+
+    // Fetch available models from the gateway so the app can display
+    // the full model list — including provider models, 1M-context
+    // variants, and all discoverable models (same source as /model).
+    const availableModels =
+      (await fetchAvailableModels()) ?? getHardcodedModels();
+    const currentModelCode = options.model ?? DEFAULT_CLAUDE_MODEL;
+
     let metadata: Metadata = {
         path: workingDirectory,
         host: os.hostname(),
@@ -141,6 +157,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         flavor: 'claude',
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
+        models: availableModels,
+        currentModelCode,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
     };
@@ -675,6 +693,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         if (message.meta?.hasOwnProperty('model')) {
             messageModel = message.meta.model || undefined; // null becomes undefined
             currentModel = messageModel;
+            session.updateMetadata((meta) => ({ ...meta, currentModelCode: messageModel ?? undefined }));
             logger.debug(`[loop] Model updated from user message: ${messageModel || 'reset to default'}`);
         } else {
             logger.debug(`[loop] User message received with no model override, using current: ${currentModel || 'default'}`);

@@ -42,7 +42,9 @@ export async function claudeRemote(opts: {
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
     onSessionReset?: () => void,
-    onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[] }) => void
+    onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[] }) => void,
+    /** Called with available models from the SDK right after the query starts */
+    onModelsFound?: (models: Array<{ code: string; value: string; description: string | null }>) => void
 }) {
 
     // Check if session is valid
@@ -165,6 +167,22 @@ export async function claudeRemote(opts: {
         prompt: messages,
         options: sdkOptions,
     });
+
+    // Fetch available models from the SDK.  The SDK returns its native
+    // model list (~5 Claude models).  The full gateway model list is
+    // fetched separately via HTTP in runClaude.ts; this callback adds
+    // any SDK models not already in that list.
+    if (opts.onModelsFound) {
+        response.supportedModels().then((models) => {
+            opts.onModelsFound!(models.map((m) => ({
+                code: m.value,
+                value: m.displayName,
+                description: m.description ?? null,
+            })));
+        }).catch((err) => {
+            logger.debug('[claudeRemote] supportedModels() failed:', err);
+        });
+    }
 
     // Expose query control methods to permission handler
     if (opts.onQueryReady) {
