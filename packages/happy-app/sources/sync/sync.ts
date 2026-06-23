@@ -45,6 +45,7 @@ import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
+import { pushSessionEventToast } from './sessionEventToasts';
 import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
 import { Modal } from '@/modal';
@@ -2462,6 +2463,7 @@ class Sync {
         // unread counter on these only, ignore the noisy per-message stream.
         if (updateData.type === 'session-event') {
             notifyUnreadMessage();
+            pushSessionEventToast(updateData);
         }
 
         // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity

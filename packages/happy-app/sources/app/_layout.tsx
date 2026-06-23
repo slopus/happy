@@ -22,6 +22,7 @@ import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
+import { SessionEventToastHost } from '@/components/SessionEventToastHost';
 // import * as SystemUI from 'expo-system-ui';
 import { initConsoleLogging, setConsoleOutputEnabled } from '@/utils/consoleLogging';
 import { useLocalSetting } from '@/sync/storage';
@@ -396,6 +397,7 @@ export default function RootLayout() {
                                         <HorizontalSafeAreaWrapper>
                                             <SidebarNavigator />
                                         </HorizontalSafeAreaWrapper>
+                                        <SessionEventToastHost />
                                     </RealtimeProvider>
                                 </CommandPaletteProvider>
                             </ModalProvider>

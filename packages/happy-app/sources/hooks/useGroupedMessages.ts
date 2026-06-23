@@ -20,6 +20,14 @@ export type ToolGroupItem = {
 
 export type DisplayItem = TextItem | ToolGroupItem;
 
+type GroupedMessagesCache = {
+    enabled: boolean;
+    messages: Message[];
+    displayItems: DisplayItem[];
+};
+
+type MessageDisplayRole = 'standalone' | 'groupable' | 'invisible';
+
 /**
  * Groups consecutive non-text messages (tool calls, thinking, events) into
  * collapsible ToolGroupItems. Text messages pass through as TextItems.
@@ -34,49 +42,239 @@ export type DisplayItem = TextItem | ToolGroupItem;
  * returns null for hidden tools/thinking) on its own.
  */
 export function useGroupedMessages(messages: Message[], enabled: boolean = true): DisplayItem[] {
+    const cacheRef = React.useRef<GroupedMessagesCache | null>(null);
+
     return React.useMemo(() => {
-        if (!enabled) {
-            return messages.map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
-        }
+        const cached = cacheRef.current;
+        const displayItems = tryIncrementalGroupedMessages(cached, messages, enabled)
+            ?? groupMessages(messages, enabled);
 
-        const result: DisplayItem[] = [];
-        let buffer: Message[] = [];
-
-        const flushBuffer = () => {
-            if (buffer.length === 0) return;
-
-            let hasRunning = false;
-            for (const msg of buffer) {
-                if (msg.kind === 'tool-call' && msg.tool.state === 'running') {
-                    hasRunning = true;
-                    break;
-                }
-            }
-
-            result.push({
-                type: 'tool-group',
-                id: `group-${buffer[buffer.length - 1].id}`,
-                messages: buffer,
-                hasRunning,
-            });
-            buffer = [];
-        };
-
-        for (const msg of messages) {
-            if (isStandaloneMessage(msg) || isUserAttachment(msg)) {
-                flushBuffer();
-                result.push({ type: 'message', id: msg.id, message: msg });
-            } else if (isInvisibleMessage(msg)) {
-                // Skip messages that render as null (hidden tools, thinking, empty text)
-                continue;
-            } else {
-                buffer.push(msg);
-            }
-        }
-
-        flushBuffer();
-        return result;
+        cacheRef.current = { enabled, messages, displayItems };
+        return displayItems;
     }, [messages, enabled]);
+}
+
+export function groupMessages(messages: Message[], enabled: boolean = true): DisplayItem[] {
+    if (!enabled) {
+        return messages.map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
+    }
+
+    const result: DisplayItem[] = [];
+    let buffer: Message[] = [];
+
+    const flushBuffer = () => {
+        if (buffer.length === 0) return;
+        result.push(createToolGroupItem(buffer));
+        buffer = [];
+    };
+
+    for (const msg of messages) {
+        const role = getMessageDisplayRole(msg);
+        if (role === 'standalone') {
+            flushBuffer();
+            result.push({ type: 'message', id: msg.id, message: msg });
+        } else if (role === 'invisible') {
+            // Skip messages that render as null (hidden tools, thinking, empty text)
+            continue;
+        } else {
+            buffer.push(msg);
+        }
+    }
+
+    flushBuffer();
+    return result;
+}
+
+function tryIncrementalGroupedMessages(
+    cached: GroupedMessagesCache | null,
+    messages: Message[],
+    enabled: boolean,
+): DisplayItem[] | null {
+    if (!cached || cached.enabled !== enabled) {
+        return null;
+    }
+    if (cached.messages === messages) {
+        return cached.displayItems;
+    }
+    if (!enabled) {
+        return tryIncrementalUngroupedMessages(cached, messages);
+    }
+
+    const latestUpdate = tryUpdateNewestMessage(cached, messages);
+    if (latestUpdate) {
+        return latestUpdate;
+    }
+
+    return tryPrependNewestMessages(cached, messages);
+}
+
+function tryIncrementalUngroupedMessages(
+    cached: GroupedMessagesCache,
+    messages: Message[],
+): DisplayItem[] | null {
+    const previousMessages = cached.messages;
+    if (messages.length === previousMessages.length && messages.length > 0) {
+        if (messages[0]?.id === previousMessages[0]?.id && (messages.length === 1 || messages[1] === previousMessages[1])) {
+            const first = { type: 'message', id: messages[0].id, message: messages[0] } as TextItem;
+            return [first, ...cached.displayItems.slice(1)];
+        }
+    }
+
+    const prependedCount = getPrependedCount(previousMessages, messages);
+    if (prependedCount > 0) {
+        const added = messages
+            .slice(0, prependedCount)
+            .map((message) => ({ type: 'message', id: message.id, message }) as TextItem);
+        return [...added, ...cached.displayItems];
+    }
+
+    return null;
+}
+
+function tryUpdateNewestMessage(
+    cached: GroupedMessagesCache,
+    messages: Message[],
+): DisplayItem[] | null {
+    const previousMessages = cached.messages;
+    if (messages.length !== previousMessages.length || messages.length === 0) {
+        return null;
+    }
+    if (messages[0]?.id !== previousMessages[0]?.id) {
+        return null;
+    }
+    if (messages.length > 1 && messages[1] !== previousMessages[1]) {
+        return null;
+    }
+
+    const previousMessage = previousMessages[0];
+    const nextMessage = messages[0];
+    if (!previousMessage || !nextMessage) {
+        return cached.displayItems;
+    }
+
+    const previousRole = getMessageDisplayRole(previousMessage);
+    const nextRole = getMessageDisplayRole(nextMessage);
+    if (previousRole !== nextRole) {
+        return null;
+    }
+
+    if (nextRole === 'invisible') {
+        return cached.displayItems;
+    }
+
+    const [firstItem, ...rest] = cached.displayItems;
+    if (!firstItem) {
+        return null;
+    }
+
+    if (nextRole === 'standalone') {
+        if (firstItem.type !== 'message' || firstItem.message.id !== nextMessage.id) {
+            return null;
+        }
+        return [{ ...firstItem, message: nextMessage }, ...rest];
+    }
+
+    if (firstItem.type !== 'tool-group') {
+        return null;
+    }
+    const messageIndex = firstItem.messages.findIndex((message) => message.id === nextMessage.id);
+    if (messageIndex < 0) {
+        return null;
+    }
+
+    const nextGroupMessages = firstItem.messages.slice();
+    nextGroupMessages[messageIndex] = nextMessage;
+    return [
+        createToolGroupItem(nextGroupMessages),
+        ...rest,
+    ];
+}
+
+function tryPrependNewestMessages(
+    cached: GroupedMessagesCache,
+    messages: Message[],
+): DisplayItem[] | null {
+    const previousMessages = cached.messages;
+    const prependedCount = getPrependedCount(previousMessages, messages);
+    if (prependedCount <= 0) {
+        return null;
+    }
+
+    const addedItems = groupMessages(messages.slice(0, prependedCount), true);
+    if (addedItems.length === 0) {
+        return cached.displayItems;
+    }
+
+    return mergeDisplayItemBoundary(addedItems, cached.displayItems);
+}
+
+function getPrependedCount(previousMessages: Message[], messages: Message[]): number {
+    if (previousMessages.length === 0 || messages.length <= previousMessages.length) {
+        return 0;
+    }
+
+    // Realtime batches are small. If we cannot find the old newest message
+    // quickly, this is likely a pagination/reload shape and should use the
+    // safer full regroup path.
+    const maxProbe = Math.min(messages.length - previousMessages.length, 50);
+    for (let count = 1; count <= maxProbe; count++) {
+        if (messages[count] === previousMessages[0]) {
+            return count;
+        }
+    }
+    return 0;
+}
+
+function mergeDisplayItemBoundary(newerItems: DisplayItem[], olderItems: DisplayItem[]): DisplayItem[] {
+    if (newerItems.length === 0) {
+        return olderItems;
+    }
+    if (olderItems.length === 0) {
+        return newerItems;
+    }
+
+    const lastNewer = newerItems[newerItems.length - 1];
+    const firstOlder = olderItems[0];
+    if (lastNewer?.type !== 'tool-group' || firstOlder?.type !== 'tool-group') {
+        return [...newerItems, ...olderItems];
+    }
+
+    const mergedGroup = createToolGroupItem([
+        ...lastNewer.messages,
+        ...firstOlder.messages,
+    ]);
+    return [
+        ...newerItems.slice(0, -1),
+        mergedGroup,
+        ...olderItems.slice(1),
+    ];
+}
+
+function createToolGroupItem(messages: Message[]): ToolGroupItem {
+    let hasRunning = false;
+    for (const msg of messages) {
+        if (msg.kind === 'tool-call' && msg.tool.state === 'running') {
+            hasRunning = true;
+            break;
+        }
+    }
+
+    return {
+        type: 'tool-group',
+        id: `group-${messages[messages.length - 1].id}`,
+        messages,
+        hasRunning,
+    };
+}
+
+function getMessageDisplayRole(msg: Message): MessageDisplayRole {
+    if (isStandaloneMessage(msg) || isUserAttachment(msg)) {
+        return 'standalone';
+    }
+    if (isInvisibleMessage(msg)) {
+        return 'invisible';
+    }
+    return 'groupable';
 }
 
 /** Returns true for messages that should NOT be grouped (displayed standalone) */

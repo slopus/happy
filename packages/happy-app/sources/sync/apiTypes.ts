@@ -207,6 +207,7 @@ export const ApiEphemeralUpdateSchema = z.union([
 ]);
 
 export type ApiEphemeralActivityUpdate = z.infer<typeof ApiEphemeralActivityUpdateSchema>;
+export type ApiEphemeralSessionEventUpdate = z.infer<typeof ApiEphemeralSessionEventUpdateSchema>;
 export type ApiEphemeralUpdate = z.infer<typeof ApiEphemeralUpdateSchema>;
 
 // Machine metadata updates use Partial<MachineMetadata> from storageTypes
