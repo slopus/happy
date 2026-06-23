@@ -1,12 +1,13 @@
 import * as React from 'react';
-import { View, TextInput, Platform } from 'react-native';
+import { View, TextInput, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useSettingMutable } from '@/sync/storage';
-import type { CustomModelProvider } from '@/sync/settings';
+import { useAuth } from '@/auth/AuthContext';
+import { loadCustomProviders, saveCustomProvider, deleteCustomProvider, type CustomModelProvider } from '@/sync/apiProviders';
 import { t } from '@/text';
 import { Modal } from '@/modal';
 import { StyleSheet } from 'react-native-unistyles';
@@ -102,6 +103,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         color: theme.colors.textSecondary,
         textAlign: 'center',
         lineHeight: 22,
+    },
+    loadingContainer: {
+        padding: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 }));
 
@@ -204,9 +210,42 @@ function FormFields({
 
 export default React.memo(function CustomModelsSettingsScreen() {
     const { theme } = useUnistyles();
+    const auth = useAuth();
     const [providers, setProviders] = useSettingMutable('customModelProviders');
     const [editingId, setEditingId] = React.useState<string | null>(null);
     const [editForm, setEditForm] = React.useState<Partial<CustomModelProvider> | null>(null);
+    const [isLoading, setIsLoading] = React.useState(true);
+    const [isSaving, setIsSaving] = React.useState(false);
+
+    // Load providers from server on mount
+    React.useEffect(() => {
+        if (!auth.credentials) {
+            setIsLoading(false);
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            try {
+                const serverProviders = await loadCustomProviders(auth.credentials!);
+                if (!cancelled) {
+                    // Merge: server values win, but preserve any unsaved local additions
+                    const merged = [...serverProviders];
+                    for (const local of providers) {
+                        if (!merged.find(p => p.id === local.id)) {
+                            merged.push(local);
+                        }
+                    }
+                    setProviders(merged);
+                }
+            } catch (e) {
+                console.warn('[Models] Failed to load providers from server:', e);
+                // Fall through — local cache is fine
+            } finally {
+                if (!cancelled) setIsLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [auth.credentials]);
 
     const handleAdd = () => {
         const newId = generateId();
@@ -226,15 +265,26 @@ export default React.memo(function CustomModelsSettingsScreen() {
         setEditForm({ ...provider });
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
+        // Remove from local cache immediately
         setProviders(providers.filter(p => p.id !== id));
         if (editingId === id) {
             setEditingId(null);
             setEditForm(null);
         }
+
+        // Sync to server
+        if (auth.credentials) {
+            try {
+                await deleteCustomProvider(auth.credentials, id);
+            } catch (e) {
+                console.warn('[Models] Failed to delete provider on server:', e);
+                Modal.alert('Sync Error', 'Provider removed locally but failed to sync to server.');
+            }
+        }
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!editForm || !editForm.name || !editForm.baseUrl || !editForm.apiKey || !editForm.modelName) {
             Modal.alert('Missing Fields', 'Please fill in all fields before saving.');
             return;
@@ -249,6 +299,7 @@ export default React.memo(function CustomModelsSettingsScreen() {
             agentFlavor: editForm.agentFlavor || 'claude',
         };
 
+        // Update local cache immediately
         const existingIndex = providers.findIndex(p => p.id === cleaned.id);
         if (existingIndex >= 0) {
             const updated = [...providers];
@@ -259,6 +310,19 @@ export default React.memo(function CustomModelsSettingsScreen() {
         }
         setEditingId(null);
         setEditForm(null);
+
+        // Sync to server
+        if (auth.credentials) {
+            setIsSaving(true);
+            try {
+                await saveCustomProvider(auth.credentials, cleaned);
+            } catch (e) {
+                console.warn('[Models] Failed to save provider to server:', e);
+                Modal.alert('Sync Error', 'Provider saved locally but failed to sync to server.');
+            } finally {
+                setIsSaving(false);
+            }
+        }
     };
 
     const handleCancel = () => {
@@ -268,19 +332,35 @@ export default React.memo(function CustomModelsSettingsScreen() {
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
+            {/* Loading State */}
+            {isLoading && (
+                <ItemGroup>
+                    <View style={stylesheet.loadingContainer}>
+                        <ActivityIndicator size="small" color={theme.colors.header.tint} />
+                        <View style={{ height: 8 }} />
+                        <Item
+                            title="Loading providers..."
+                            showChevron={false}
+                        />
+                    </View>
+                </ItemGroup>
+            )}
+
             {/* Header */}
-            <ItemGroup>
-                <Item
-                    title="Add Custom Provider"
-                    subtitle="Connect to a custom API endpoint"
-                    icon={<Ionicons name="add-circle-outline" size={29} color="#34C759" />}
-                    onPress={handleAdd}
-                    showChevron={false}
-                />
-            </ItemGroup>
+            {!isLoading && (
+                <ItemGroup>
+                    <Item
+                        title="Add Custom Provider"
+                        subtitle="Connect to a custom API endpoint"
+                        icon={<Ionicons name="add-circle-outline" size={29} color="#34C759" />}
+                        onPress={handleAdd}
+                        showChevron={false}
+                    />
+                </ItemGroup>
+            )}
 
             {/* Empty State */}
-            {providers.length === 0 && !editingId && (
+            {!isLoading && providers.length === 0 && !editingId && (
                 <ItemGroup>
                     <View style={stylesheet.emptyState}>
                         <Ionicons name="cloud-offline-outline" size={48} color={theme.colors.textSecondary + '60'} />
@@ -290,6 +370,16 @@ export default React.memo(function CustomModelsSettingsScreen() {
                             subtitle="Add a provider to use your own API endpoint with any agent flavor."
                             showChevron={false}
                         />
+                    </View>
+                </ItemGroup>
+            )}
+
+            {/* Saving Indicator */}
+            {isSaving && (
+                <ItemGroup>
+                    <View style={stylesheet.loadingContainer}>
+                        <ActivityIndicator size="small" color={theme.colors.header.tint} />
+                        <Item title="Syncing to server..." showChevron={false} />
                     </View>
                 </ItemGroup>
             )}
@@ -348,11 +438,11 @@ export default React.memo(function CustomModelsSettingsScreen() {
 
             {/* Info Footer */}
             <ItemGroup
-                footer="Custom providers let you route agent requests through your own API. The base URL, API key, and model name are sent through Happy Server to the CLI and are never stored on the server."
+                footer="Custom providers let you route agent requests through your own API. The base URL, API key, and model name are synced to your account and available on all your devices."
             >
                 <Item
                     title="How it works"
-                    subtitle="For Claude Code: ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY are set. For Codex: OPENAI_BASE_URL and OPENAI_API_KEY are set. The model name is passed as the model parameter."
+                    subtitle="Providers are stored on the server and shared across all your devices. For Claude Code: ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY are set. For Codex: OPENAI_BASE_URL and OPENAI_API_KEY are set. The model name is passed as the model parameter."
                     showChevron={false}
                 />
             </ItemGroup>
