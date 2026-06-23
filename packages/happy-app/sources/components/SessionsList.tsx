@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
+import { ForkLineageConnector, forkIndentPadding } from './ForkLineageConnector';
 import { StyleSheet } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
 import { requestReview } from '@/utils/requestReview';
@@ -406,11 +407,13 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 selected && styles.sessionItemSelected,
                 isSingle ? styles.sessionItemSingle :
                     isFirst ? styles.sessionItemFirst :
-                        isLast ? styles.sessionItemLast : {}
+                        isLast ? styles.sessionItemLast : {},
+                { paddingLeft: forkIndentPadding(session.forkDepth, 16) },
             ]}
             onPress={handlePress}
             {...menuProps}
         >
+            <ForkLineageConnector forkDepth={session.forkDepth} rowHeight={88} basePadding={16} />
             <View style={styles.avatarContainer}>
                 <Avatar id={session.avatarId} size={48} monochrome={!status.isConnected} flavor={session.flavor} />
                 {session.hasDraft && (
