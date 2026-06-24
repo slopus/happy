@@ -275,9 +275,8 @@ const styles = StyleSheet.create((theme) => ({
     overflow: 'hidden',
   },
   userMessageContainer: {
-    maxWidth: '100%',
-    flexDirection: 'column',
-    alignItems: 'flex-end',
+    width: '100%',
+    flexDirection: 'row',
     justifyContent: 'flex-end',
     paddingHorizontal: 16,
   },
@@ -287,7 +286,14 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: 4,
     borderRadius: 12,
     marginBottom: 12,
-    maxWidth: '100%',
+    // Right-aligned bubble sized to content but capped. Laid out as a row item
+    // (justifyContent: 'flex-end' on the container) so Yoga sizes it from the
+    // content's max-content width clamped to maxWidth — NOT the cross-axis
+    // content-fit of `alignItems: 'flex-end'`, which on native collapses to the
+    // min-content width (1 glyph for space-less CJK text), producing a tall
+    // 1-char-wide column on iOS/Android. flexShrink lets it yield to the cap.
+    maxWidth: '85%',
+    flexShrink: 1,
   },
   goalMessageBubble: {
     marginBottom: 6,
