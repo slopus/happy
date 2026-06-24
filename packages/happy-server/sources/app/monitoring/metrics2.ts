@@ -1,4 +1,5 @@
 import { register, Counter, Gauge, Histogram } from 'prom-client';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { db } from '@/storage/db';
 import { forever } from '@/utils/forever';
 import { delay } from '@/utils/delay';
@@ -39,6 +40,20 @@ export function getMetricsLabelsFromRequest(request: { headers: Record<string, s
 }
 
 // Application metrics
+const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+eventLoopDelay.enable();
+
+export const eventLoopLagSecondsGauge = new Gauge({
+    name: 'event_loop_lag_seconds',
+    help: 'Event loop delay p99 in seconds since the previous metrics scrape',
+    registers: [register],
+    collect() {
+        const p99Nanoseconds = eventLoopDelay.percentile(99);
+        this.set(Number.isFinite(p99Nanoseconds) ? p99Nanoseconds / 1e9 : 0);
+        eventLoopDelay.reset();
+    }
+});
+
 export const websocketConnectionsGauge = new Gauge({
     name: 'websocket_connections_total',
     help: 'Number of active WebSocket connections',

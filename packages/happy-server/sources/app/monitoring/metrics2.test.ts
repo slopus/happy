@@ -16,7 +16,7 @@ vi.mock("@/storage/db", () => ({
     db: dbMock
 }));
 
-import { updateDatabaseMetrics } from "./metrics2";
+import { register, updateDatabaseMetrics } from "./metrics2";
 
 describe("updateDatabaseMetrics", () => {
     beforeEach(() => {
@@ -39,5 +39,13 @@ describe("updateDatabaseMetrics", () => {
 
         const queriedTables = dbMock.$queryRaw.mock.calls.map((call) => call[1]);
         expect(queriedTables).toEqual(['"Account"', '"Session"', '"SessionMessage"', '"Machine"']);
+    });
+});
+
+describe("event loop lag metric", () => {
+    it("is registered for prometheus scraping", async () => {
+        const metrics = await register.metrics();
+
+        expect(metrics).toContain("event_loop_lag_seconds");
     });
 });
