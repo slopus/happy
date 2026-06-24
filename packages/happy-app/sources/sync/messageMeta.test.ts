@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveMessageModeMeta } from './messageMeta';
 
 describe('resolveMessageModeMeta', () => {
-    it('omits agent mode metadata when nothing was explicitly overridden', () => {
+    it('sends effective code defaults when nothing was explicitly overridden', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: null,
             modelMode: null,
@@ -10,7 +10,11 @@ describe('resolveMessageModeMeta', () => {
             metadata: { flavor: 'codex' },
         } as any);
 
-        expect(meta).toEqual({});
+        expect(meta).toEqual({
+            permissionMode: 'yolo',
+            model: 'gpt-5.5',
+            effort: 'medium',
+        });
     });
 
     it('sends explicit per-session overrides', () => {
@@ -74,7 +78,7 @@ describe('resolveMessageModeMeta', () => {
         });
     });
 
-    it('treats an explicit default model as a reset override', () => {
+    it('treats an explicit default model as a reset override while still sending other effective defaults', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: null,
             modelMode: 'default',
@@ -82,6 +86,10 @@ describe('resolveMessageModeMeta', () => {
             metadata: { flavor: 'claude' },
         } as any);
 
-        expect(meta).toEqual({ model: null });
+        expect(meta).toEqual({
+            permissionMode: 'bypassPermissions',
+            model: null,
+            effort: 'medium',
+        });
     });
 });

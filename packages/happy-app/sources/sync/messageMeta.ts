@@ -1,6 +1,6 @@
 import type { Session } from './storageTypes';
 import type { Settings, CustomModelProvider } from './settings';
-import { getAgentDefaultOverride } from './agentDefaults';
+import { resolveAgentDefaultConfig } from './agentDefaults';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 
 export type MessageModeMeta = {
@@ -29,16 +29,21 @@ export function resolveMessageModeMeta(
     session: Pick<Session, 'permissionMode' | 'modelMode' | 'metadata' | 'effortLevel'>,
     settings?: Pick<Settings, 'agentDefaultOverrides' | 'customModelProviders'>,
 ): MessageModeMeta {
-    const agentOverrides = getAgentDefaultOverride(settings?.agentDefaultOverrides, session.metadata?.flavor);
+    const agentDefaults = resolveAgentDefaultConfig(settings?.agentDefaultOverrides, session.metadata?.flavor);
     const meta: MessageModeMeta = {};
 
-    if (session.permissionMode !== null && session.permissionMode !== undefined) {
-        meta.permissionMode = session.permissionMode;
-    } else if (agentOverrides.permissionMode !== undefined) {
-        meta.permissionMode = agentOverrides.permissionMode;
+    // Session fields are per-session overrides. When null, use the effective
+    // agent default (code default + settings-level override). The composer UI
+    // displays that same effective default, so outbound metadata must include it
+    // on the very first message too — otherwise a freshly-created "yolo" session
+    // looks like yolo but starts Claude/Codex in default permission mode until
+    // the user toggles settings and sends another turn. Delightful lie, terrible UX.
+    const permissionMode = session.permissionMode ?? agentDefaults.permissionMode;
+    if (permissionMode !== undefined) {
+        meta.permissionMode = permissionMode;
     }
 
-    const modelMode = session.modelMode ?? agentOverrides.modelMode;
+    const modelMode = session.modelMode ?? agentDefaults.modelMode;
     if (modelMode !== undefined) {
         meta.model = modelMode === 'default' ? null : modelMode;
 
@@ -56,7 +61,7 @@ export function resolveMessageModeMeta(
         }
     }
 
-    const effort = session.effortLevel ?? agentOverrides.effortLevel;
+    const effort = session.effortLevel ?? agentDefaults.effortLevel;
     if (effort !== undefined) {
         meta.effort = effort;
     }
