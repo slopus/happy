@@ -63,6 +63,10 @@ type LegacyPatchChanges = Record<string, Record<string, unknown>>;
 export type ApprovalHandler = (params: {
     type: 'exec' | 'patch' | 'mcp';
     callId: string;
+    itemId?: string | null;
+    threadId?: string | null;
+    turnId?: string | null;
+    approvalId?: string | null;
     command?: string[];
     cwd?: string;
     fileChanges?: Record<string, unknown>;
@@ -72,6 +76,23 @@ export type ApprovalHandler = (params: {
     serverName?: string;
     message?: string;
 }) => Promise<ReviewDecision>;
+
+function stringOrNull(value: unknown): string | null {
+    return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function formatScopedApprovalRequestId(
+    threadId: string | null,
+    itemId: string,
+    approvalId?: string | null,
+): string {
+    const scopedItemId = threadId ? `${threadId}:${itemId}` : itemId;
+    return approvalId ? `${scopedItemId}:${approvalId}` : scopedItemId;
+}
+
+function formatScopedItemKey(threadId: string | null, itemId: string): string {
+    return threadId ? `${threadId}:${itemId}` : itemId;
+}
 
 /**
  * Check that `codex app-server` is available.
@@ -435,10 +456,12 @@ export class CodexAppServerClient {
 
         if (item.type === 'fileChange') {
             const callId = typeof item.id === 'string' ? item.id : '';
+            const threadId = stringOrNull(params?.threadId);
+            const itemKey = callId ? formatScopedItemKey(threadId, callId) : '';
             const changes = normalizeRawFileChangeList(item.changes);
 
             if (callId && changes) {
-                this.rawFileChangesByItemId.set(callId, changes);
+                this.rawFileChangesByItemId.set(itemKey, changes);
             }
 
             if (method === 'item/started') {
@@ -460,7 +483,7 @@ export class CodexAppServerClient {
                 });
 
                 if (callId && (item.status === 'completed' || item.status === 'failed' || item.status === 'declined')) {
-                    this.rawFileChangesByItemId.delete(callId);
+                    this.rawFileChangesByItemId.delete(itemKey);
                 }
                 return true;
             }
@@ -505,21 +528,23 @@ export class CodexAppServerClient {
         if (item.type === 'subAgentActivity') {
             if (method === 'item/started' || method === 'item/completed') {
                 const itemId = typeof item.id === 'string' ? item.id : '';
+                const threadId = stringOrNull(params?.threadId);
+                const itemKey = itemId ? formatScopedItemKey(threadId, itemId) : '';
                 const signature = [
                     String(item.kind ?? ''),
                     String(item.agentThreadId ?? ''),
                     String(item.agentPath ?? ''),
                 ].join('\0');
-                const seenSignatures = itemId
-                    ? this.rawSubagentActivitySignaturesByItemId.get(itemId)
+                const seenSignatures = itemKey
+                    ? this.rawSubagentActivitySignaturesByItemId.get(itemKey)
                     : undefined;
                 if (seenSignatures?.has(signature)) {
                     return true;
                 }
-                if (itemId) {
+                if (itemKey) {
                     const signatures = seenSignatures ?? new Set<string>();
                     signatures.add(signature);
-                    this.rawSubagentActivitySignaturesByItemId.set(itemId, signatures);
+                    this.rawSubagentActivitySignaturesByItemId.set(itemKey, signatures);
                 }
                 this.eventHandler?.({
                     type: 'subagent_activity',
@@ -1379,13 +1404,21 @@ export class CodexAppServerClient {
 
     private async handleServerRequest(id: number, method: string, params: any): Promise<void> {
         if (method === 'mcpServer/elicitation/request') {
-            const toolName = this.parseToolNameFromElicitationMessage(params?.message) ?? params?.serverName ?? 'McpTool';
+            const threadId = stringOrNull(params?.threadId) ?? this._threadId;
+            const turnId = stringOrNull(params?.turnId);
+            const serverName = stringOrNull(params?.serverName) ?? 'mcp';
+            const toolName = this.parseToolNameFromElicitationMessage(params?.message) ?? serverName;
+            const itemId = `${serverName}:${id}`;
             const decision = await this.handleApproval({
                 type: 'mcp',
-                callId: `${params?.serverName ?? 'mcp'}:${id}`,
+                callId: formatScopedApprovalRequestId(threadId, itemId),
+                itemId,
+                threadId,
+                turnId,
+                approvalId: String(id),
                 toolName,
                 input: params?._meta?.tool_params ?? {},
-                serverName: params?.serverName,
+                serverName,
                 message: params?.message,
             });
             this.respond(id, this.mapDecisionToMcpElicitationResponse(decision, params));
@@ -1395,11 +1428,20 @@ export class CodexAppServerClient {
         // Command execution approval
         if (method === 'item/commandExecution/requestApproval' || method === 'execCommandApproval') {
             const legacy = method === 'execCommandApproval';
-            const callId = params.itemId ?? params.callId ?? String(id);
+            const threadId = stringOrNull(params?.threadId) ?? stringOrNull(params?.conversationId) ?? this._threadId;
+            const turnId = stringOrNull(params?.turnId);
+            const itemId = stringOrNull(params?.itemId) ?? stringOrNull(params?.callId) ?? String(id);
+            const approvalId = stringOrNull(params?.approvalId);
             const decision = await this.handleApproval({
                 type: 'exec',
-                callId,
-                command: params.command != null ? [params.command] : [],
+                callId: formatScopedApprovalRequestId(threadId, itemId, approvalId),
+                itemId,
+                threadId,
+                turnId,
+                approvalId,
+                command: Array.isArray(params.command)
+                    ? params.command
+                    : params.command != null ? [params.command] : [],
                 cwd: params.cwd,
                 reason: params.reason,
             });
@@ -1410,12 +1452,18 @@ export class CodexAppServerClient {
         // File change / patch approval
         if (method === 'item/fileChange/requestApproval' || method === 'applyPatchApproval') {
             const legacy = method === 'applyPatchApproval';
-            const callId = params.itemId ?? params.callId ?? String(id);
+            const threadId = stringOrNull(params?.threadId) ?? stringOrNull(params?.conversationId) ?? this._threadId;
+            const turnId = stringOrNull(params?.turnId);
+            const itemId = stringOrNull(params?.itemId) ?? stringOrNull(params?.callId) ?? String(id);
+            const itemKey = formatScopedItemKey(threadId, itemId);
             const decision = await this.handleApproval({
                 type: 'patch',
-                callId,
-                fileChanges: params.fileChanges ?? (typeof callId === 'string'
-                    ? this.rawFileChangesByItemId.get(callId)
+                callId: formatScopedApprovalRequestId(threadId, itemId),
+                itemId,
+                threadId,
+                turnId,
+                fileChanges: params.fileChanges ?? (typeof itemId === 'string'
+                    ? this.rawFileChangesByItemId.get(itemKey) ?? this.rawFileChangesByItemId.get(itemId)
                     : undefined),
                 reason: params.reason,
             });

@@ -6,12 +6,12 @@
  */
 
 import { logger } from "@/lib";
-import { PermissionResult } from "../sdk/types";
+import type { CanCallToolOptions, PermissionResult } from "../sdk/types";
 import { Session } from "../session";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
 
-interface PermissionResponse {
+export interface PermissionResponse {
     id: string;
     approved: boolean;
     reason?: string;
@@ -28,6 +28,9 @@ interface PendingRequest {
     toolName: string;
     input: unknown;
 }
+
+type PermissionResponseForLookup = Pick<PermissionResponse, 'approved' | 'mode' | 'reason'>;
+export type PermissionResponseLookup = Pick<ReadonlyMap<string, PermissionResponseForLookup>, 'get' | 'has'>;
 
 export class PermissionHandler {
     private responses = new Map<string, PermissionResponse>();
@@ -129,8 +132,8 @@ export class PermissionHandler {
      * Creates the canCallTool callback for the SDK.
      * Uses toolUseID from official SDK callback options directly.
      */
-    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; toolUseID: string }): Promise<PermissionResult> => {
-        const toolCallId = options.toolUseID;
+    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: CanCallToolOptions): Promise<PermissionResult> => {
+        const toolCallId = this.getPermissionRequestId(options);
 
         // AskUserQuestion requires user interaction — never auto-approve, even in bypassPermissions mode.
         // This mirrors Claude SDK's internal requiresUserInteraction() check.
@@ -188,6 +191,10 @@ export class PermissionHandler {
         //
 
         return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
+    }
+
+    private getPermissionRequestId(options: CanCallToolOptions): string {
+        return options.agentID ? `${options.agentID}:${options.toolUseID}` : options.toolUseID;
     }
 
     /**
@@ -291,7 +298,7 @@ export class PermissionHandler {
      */
     isAborted(toolCallId: string): boolean {
         // If tool not approved, it's aborted
-        if (this.responses.get(toolCallId)?.approved === false) {
+        if (this.getResponseForToolUseId(toolCallId)?.approved === false) {
             return true;
         }
 
@@ -390,5 +397,32 @@ export class PermissionHandler {
      */
     getResponses(): Map<string, PermissionResponse> {
         return this.responses;
+    }
+
+    getResponseForToolUseId(toolCallId: string): PermissionResponse | undefined {
+        const exact = this.responses.get(toolCallId);
+        if (exact) {
+            return exact;
+        }
+
+        let match: PermissionResponse | undefined;
+        const suffix = `:${toolCallId}`;
+        for (const [id, response] of this.responses.entries()) {
+            if (!id.endsWith(suffix)) {
+                continue;
+            }
+            if (match) {
+                return undefined;
+            }
+            match = response;
+        }
+        return match;
+    }
+
+    getResponseLookup(): PermissionResponseLookup {
+        return {
+            get: (toolCallId: string) => this.getResponseForToolUseId(toolCallId),
+            has: (toolCallId: string) => this.getResponseForToolUseId(toolCallId) !== undefined,
+        };
     }
 }

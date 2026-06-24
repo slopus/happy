@@ -1432,7 +1432,10 @@ describe('CodexAppServerClient sandbox integration', () => {
 
         expect(approvals[0]).toEqual(expect.objectContaining({
             type: 'patch',
-            callId: 'patch-approval-1',
+            callId: 'thread-raw-4:patch-approval-1',
+            itemId: 'patch-approval-1',
+            threadId: 'thread-raw-4',
+            turnId: 'turn-raw-4',
             fileChanges: {
                 'README.md': {
                     diff: '@@ -1 +1 @@',
@@ -1441,6 +1444,151 @@ describe('CodexAppServerClient sandbox integration', () => {
             },
             reason: null,
         }));
+
+        await client.disconnect();
+    });
+
+    it('scopes v2 approval IDs and raw file-change metadata by thread', async () => {
+        const approvals: Array<Record<string, unknown>> = [];
+        const proc = createMockProcess({
+            pid: 3008,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-a', path: '/tmp/thread-a' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'workspaceWrite', writableRoots: [], networkAccess: true, excludeTmpdirEnvVar: false, excludeSlashTmp: false },
+                                reasoningEffort: null,
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-a',
+                                turnId: 'turn-a',
+                                item: {
+                                    type: 'fileChange',
+                                    id: 'patch-shared',
+                                    status: 'inProgress',
+                                    changes: [{
+                                        path: 'A.md',
+                                        kind: { type: 'update', move_path: null },
+                                        diff: '@@ A @@',
+                                    }],
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-b',
+                                turnId: 'turn-b',
+                                item: {
+                                    type: 'fileChange',
+                                    id: 'patch-shared',
+                                    status: 'inProgress',
+                                    changes: [{
+                                        path: 'B.md',
+                                        kind: { type: 'update', move_path: null },
+                                        diff: '@@ B @@',
+                                    }],
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            id: 101,
+                            method: 'item/fileChange/requestApproval',
+                            params: {
+                                threadId: 'thread-a',
+                                turnId: 'turn-a',
+                                itemId: 'patch-shared',
+                                reason: null,
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            id: 102,
+                            method: 'item/fileChange/requestApproval',
+                            params: {
+                                threadId: 'thread-b',
+                                turnId: 'turn-b',
+                                itemId: 'patch-shared',
+                                reason: null,
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            id: 103,
+                            method: 'item/commandExecution/requestApproval',
+                            params: {
+                                threadId: 'thread-a',
+                                turnId: 'turn-a',
+                                itemId: 'cmd-shared',
+                                approvalId: 'approval-a',
+                                command: 'npm test',
+                                cwd: '/tmp/project',
+                                reason: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setApprovalHandler(async (params) => {
+            approvals.push(params as Record<string, unknown>);
+            return 'approved';
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        });
+
+        await waitFor(() => approvals.length === 3);
+
+        expect(approvals).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'patch',
+                callId: 'thread-a:patch-shared',
+                itemId: 'patch-shared',
+                threadId: 'thread-a',
+                turnId: 'turn-a',
+                fileChanges: {
+                    'A.md': expect.objectContaining({ diff: '@@ A @@' }),
+                },
+            }),
+            expect.objectContaining({
+                type: 'patch',
+                callId: 'thread-b:patch-shared',
+                itemId: 'patch-shared',
+                threadId: 'thread-b',
+                turnId: 'turn-b',
+                fileChanges: {
+                    'B.md': expect.objectContaining({ diff: '@@ B @@' }),
+                },
+            }),
+            expect.objectContaining({
+                type: 'exec',
+                callId: 'thread-a:cmd-shared:approval-a',
+                itemId: 'cmd-shared',
+                threadId: 'thread-a',
+                turnId: 'turn-a',
+                approvalId: 'approval-a',
+                command: ['npm test'],
+            }),
+        ]));
 
         await client.disconnect();
     });
@@ -1595,7 +1743,11 @@ describe('CodexAppServerClient sandbox integration', () => {
 
         expect(approvals[0]).toEqual(expect.objectContaining({
             type: 'mcp',
-            callId: 'happy:77',
+            callId: 'thread-raw-7:happy:77',
+            itemId: 'happy:77',
+            threadId: 'thread-raw-7',
+            turnId: 'turn-raw-7',
+            approvalId: '77',
             toolName: 'change_title',
             input: { title: 'Casual Greeting' },
             serverName: 'happy',
