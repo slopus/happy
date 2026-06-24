@@ -11,7 +11,7 @@ import {
     type LocalHappyAgentCredentials,
 } from './localHappyAgentAuth';
 
-const ResumableMetadataSchema = z.object({
+export const ResumableMetadataSchema = z.object({
     path: z.string().min(1),
     flavor: z.string().optional(),
     claudeSessionId: z.string().optional(),
@@ -33,6 +33,14 @@ type RecordEncryption = {
     key: Uint8Array;
     variant: 'legacy' | 'dataKey';
 };
+
+export function parseResumableMetadata(sessionId: string, metadata: unknown): Metadata {
+    try {
+        return ResumableMetadataSchema.parse(metadata) as Metadata;
+    } catch {
+        throw new Error(`Happy session ${sessionId} is missing resumable metadata.`);
+    }
+}
 
 export type ResumableHappySession = {
     id: string;
@@ -82,7 +90,7 @@ function readAgentCredentials() {
     const credentials = readLocalHappyAgentCredentials();
     if (!credentials) {
         throw new Error(
-            `Cannot resume historical Happy sessions without ${credentialPath}. Run \`happy-agent auth login\` in this environment first.`,
+            `Cannot resume historical Happy sessions through legacy account credentials because ${credentialPath} is missing.`,
         );
     }
     return credentials;
@@ -118,11 +126,7 @@ function decryptSessionMetadata(session: RawSession, credentials: LocalHappyAgen
         throw new Error(`Failed to decrypt metadata for Happy session ${session.id}`);
     }
 
-    try {
-        return ResumableMetadataSchema.parse(metadata) as Metadata;
-    } catch {
-        throw new Error(`Happy session ${session.id} is missing resumable metadata.`);
-    }
+    return parseResumableMetadata(session.id, metadata);
 }
 
 async function fetchSessions(credentials: LocalHappyAgentCredentials): Promise<RawSession[]> {
@@ -137,7 +141,7 @@ async function fetchSessions(credentials: LocalHappyAgentCredentials): Promise<R
     } catch (error) {
         if (error instanceof AxiosError) {
             if (error.response?.status === 401) {
-                throw new Error('Happy session lookup authentication expired. Run `happy-agent auth login` in this environment.');
+                throw new Error('Happy session lookup authentication expired for legacy account credentials.');
             }
             throw new Error(`Failed to load Happy sessions: ${error.message}`);
         }
