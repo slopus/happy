@@ -21,6 +21,7 @@ import { sessionKill } from '@/sync/ops';
 import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
+import { getLeadingSessionIndicatorKind } from './activeSessionIndicator';
 
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
     disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
@@ -319,10 +320,17 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
 
     const renderLeadingIndicator = () => {
         let indicator: React.ReactNode = null;
+        const indicatorKind = getLeadingSessionIndicatorKind(session);
 
-        if (session.hasUnread) {
-            indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
-        } else if (session.state === 'waiting' && session.hasDraft) {
+        if (indicatorKind === 'unread_notification') {
+            indicator = (
+                <Ionicons
+                    name="notifications"
+                    size={16}
+                    color={status.dotColor}
+                />
+            );
+        } else if (indicatorKind === 'draft') {
             indicator = (
                 <Ionicons
                     name="create-outline"
@@ -330,9 +338,9 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     color={theme.colors.textSecondary}
                 />
             );
-        } else if (session.state === 'permission_required' || session.state === 'thinking') {
+        } else if (indicatorKind === 'activity_dot') {
             indicator = <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />;
-        } else if (session.state === 'waiting') {
+        } else if (indicatorKind === 'idle_dot') {
             indicator = <StatusDot color={theme.colors.textSecondary} isPulsing={false} />;
         }
 
