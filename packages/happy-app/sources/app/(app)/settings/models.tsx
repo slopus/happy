@@ -31,7 +31,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     textInput: {
         fontSize: 16,
         color: theme.colors.text,
-        backgroundColor: theme.colors.surfaceSecondary,
+        backgroundColor: theme.colors.surfacePressed,
         borderRadius: 8,
         paddingHorizontal: 12,
         paddingVertical: Platform.select({ ios: 10, default: 12 }),
@@ -82,7 +82,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         backgroundColor: theme.colors.header.tint,
     },
     cancelButton: {
-        backgroundColor: theme.colors.surfaceSecondary,
+        backgroundColor: theme.colors.surfacePressed,
     },
     saveButtonText: {
         color: '#FFFFFF',
