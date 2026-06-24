@@ -19,6 +19,7 @@ import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
+import { summarizeActiveWork } from '@/hooks/useGroupedMessages';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
@@ -564,6 +565,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         dotColor: sessionStatus.statusDotColor,
         isPulsing: sessionStatus.isPulsing,
     }), [sessionStatus.statusText, sessionStatus.statusColor, sessionStatus.statusDotColor, sessionStatus.isPulsing]);
+    const activeWorkSummary = React.useMemo(() => summarizeActiveWork(messages), [messages]);
 
     const usageData = React.useMemo(() => {
         const source = sessionUsage ?? session.latestUsage;
@@ -707,6 +709,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onEffortLevelChange={updateEffortLevel}
             metadata={session.metadata}
             connectionStatus={connectionStatus}
+            activeWorkLabel={activeWorkSummary.label}
             blockSend={false}
             onSend={handleSend}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}

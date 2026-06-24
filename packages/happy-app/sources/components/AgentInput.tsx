@@ -64,6 +64,7 @@ interface AgentInputProps {
             gemini?: boolean | null;
         };
     };
+    activeWorkLabel?: string | null;
     autocompletePrefixes: string[];
     autocompleteSuggestions: (query: string) => Promise<{ key: string, text: string, component: React.ElementType }[]>;
     usageData?: {
@@ -322,6 +323,7 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
 
 type StatusRowProps = {
     connectionStatus?: AgentInputProps['connectionStatus'];
+    activeWorkLabel?: string | null;
     contextWarning: { text: string; color: string } | null;
     displayPermissionMode: ReturnType<typeof hackMode> | null;
     permissionModeKey: string;
@@ -336,7 +338,7 @@ const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRow
         && p.permissionModeKey !== 'default'
         && !p.zenMode
         && !!p.permissionLabel;
-    if (!p.connectionStatus && !p.contextWarning && !showPermissionBadge) {
+    if (!p.connectionStatus && !p.activeWorkLabel && !p.contextWarning && !showPermissionBadge) {
         return null;
     }
     return (
@@ -420,6 +422,22 @@ const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRow
                             </>
                         )}
                     </>
+                )}
+                {p.activeWorkLabel && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <StatusDot
+                            color={theme.colors.warning}
+                            isPulsing={true}
+                            size={6}
+                        />
+                        <Text style={{
+                            fontSize: 11,
+                            color: theme.colors.warning,
+                            ...Typography.default()
+                        }}>
+                            {p.activeWorkLabel}
+                        </Text>
+                    </View>
                 )}
                 {p.contextWarning && (
                     <Text style={{
@@ -1178,6 +1196,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                 <AgentInputStatusRow
                     connectionStatus={props.connectionStatus}
+                    activeWorkLabel={props.activeWorkLabel}
                     contextWarning={contextWarning}
                     displayPermissionMode={displayPermissionMode}
                     permissionModeKey={permissionModeKey}

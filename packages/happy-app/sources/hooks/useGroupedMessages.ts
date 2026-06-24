@@ -31,6 +31,16 @@ export type AgentWorkGroupItem = {
 export type ToolDisplayItem = TextItem | ToolGroupItem;
 export type DisplayItem = TextItem | ToolGroupItem | AgentWorkGroupItem;
 
+export type ActiveWorkSummary = {
+    spawnedAgents: number;
+    backgroundProcesses: number;
+    total: number;
+    label: string | null;
+};
+
+const SPAWNED_AGENT_TOOLS = new Set(['Task', 'Agent']);
+const BACKGROUND_PROCESS_TOOLS = new Set(['Bash', 'BashOutput', 'KillBash', 'CodexBash', 'GeminiBash', 'shell', 'execute']);
+
 /**
  * The messages array is newest-first for the inverted FlatList.
  *
@@ -188,6 +198,54 @@ export function groupToolCallsForDisplay(
     }
 
     return result;
+}
+
+export function summarizeActiveWork(messages: Message[]): ActiveWorkSummary {
+    let spawnedAgents = 0;
+    let backgroundProcesses = 0;
+    const visited = new Set<string>();
+
+    const visit = (message: Message) => {
+        if (visited.has(message.id)) return;
+        visited.add(message.id);
+
+        if (message.kind !== 'tool-call') return;
+
+        if (message.tool.state === 'running') {
+            if (SPAWNED_AGENT_TOOLS.has(message.tool.name)) {
+                spawnedAgents += 1;
+            } else if (BACKGROUND_PROCESS_TOOLS.has(message.tool.name)) {
+                backgroundProcesses += 1;
+            }
+        }
+
+        for (const child of message.children) {
+            visit(child);
+        }
+    };
+
+    for (const message of messages) {
+        visit(message);
+    }
+
+    const total = spawnedAgents + backgroundProcesses;
+    return {
+        spawnedAgents,
+        backgroundProcesses,
+        total,
+        label: total > 0 ? formatActiveWorkLabel(spawnedAgents, backgroundProcesses) : null,
+    };
+}
+
+function formatActiveWorkLabel(spawnedAgents: number, backgroundProcesses: number): string {
+    const parts: string[] = [];
+    if (spawnedAgents > 0) {
+        parts.push(spawnedAgents === 1 ? '1 agent' : `${spawnedAgents} agents`);
+    }
+    if (backgroundProcesses > 0) {
+        parts.push(backgroundProcesses === 1 ? '1 command' : `${backgroundProcesses} commands`);
+    }
+    return `${parts.join(', ')} running`;
 }
 
 function getTurnAssignments(messages: Message[]): number[] {

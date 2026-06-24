@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { groupMessagesForDisplay, groupToolCallsForDisplay } from './useGroupedMessages';
+import { groupMessagesForDisplay, groupToolCallsForDisplay, summarizeActiveWork } from './useGroupedMessages';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
 
 vi.mock('@/components/tools/knownTools', () => ({
@@ -12,7 +12,7 @@ vi.mock('@/text', () => ({
     t: (key: string, params?: { count?: number }) => `${key}:${params?.count ?? ''}`,
 }));
 
-function toolMessage(id: string, createdAt: number, options: { pendingPermission?: boolean } = {}): ToolCallMessage {
+function toolMessage(id: string, createdAt: number, options: { pendingPermission?: boolean; running?: boolean } = {}): ToolCallMessage {
     return {
         kind: 'tool-call',
         id,
@@ -20,11 +20,11 @@ function toolMessage(id: string, createdAt: number, options: { pendingPermission
         createdAt,
         tool: {
             name: 'CodexBash',
-            state: 'completed',
+            state: options.running ? 'running' : 'completed',
             input: { command: id },
             createdAt,
             startedAt: createdAt,
-            completedAt: createdAt + 1,
+            completedAt: options.running ? null : createdAt + 1,
             description: id,
             ...(options.pendingPermission
                 ? {
@@ -322,5 +322,39 @@ describe('useGroupedMessages', () => {
             throw new Error('Expected a tool group');
         }
         expect(items[0].messages.map((message) => message.id)).toEqual(['tool-only']);
+    });
+
+    it('summarizes active spawned agents and background commands', () => {
+        const task = namedToolMessage('task-running', 'Task', 4);
+        task.tool.state = 'running';
+        task.tool.completedAt = null;
+
+        const command = toolMessage('bash-running', 3, { running: true });
+        const completedTask = namedToolMessage('task-complete', 'Task', 2);
+        const read = namedToolMessage('read-running', 'Read', 1);
+        read.tool.state = 'running';
+        read.tool.completedAt = null;
+
+        expect(summarizeActiveWork([task, command, completedTask, read])).toEqual({
+            spawnedAgents: 1,
+            backgroundProcesses: 1,
+            total: 2,
+            label: '1 agent, 1 command running',
+        });
+    });
+
+    it('summarizes active work nested under spawned agents without double-counting messages', () => {
+        const childCommand = toolMessage('child-command', 2, { running: true });
+        const task = namedToolMessage('task-running', 'Task', 3);
+        task.tool.state = 'running';
+        task.tool.completedAt = null;
+        task.children = [childCommand];
+
+        expect(summarizeActiveWork([task, childCommand])).toEqual({
+            spawnedAgents: 1,
+            backgroundProcesses: 1,
+            total: 2,
+            label: '1 agent, 1 command running',
+        });
     });
 });
