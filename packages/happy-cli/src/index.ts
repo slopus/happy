@@ -330,8 +330,11 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     
     // Handle gemini command (ACP-based agent)
     try {
+      // The standalone gemini CLI is EOL; agy (Antigravity CLI) is its successor.
+      console.warn(chalk.yellow('⚠ The gemini backend is deprecated and may be removed in a future release. Use `happy agy` (Antigravity CLI) instead.'));
+
       const { runGemini } = await import('@/gemini/runGemini');
-      
+
       // Parse startedBy argument
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
@@ -430,6 +433,36 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         gatewayUrl,
         gatewayToken,
         gatewayPassword,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'agy') {
+    try {
+      const { runAgy } = await import('@/agy/runAgy');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let verbose = false;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--verbose') {
+          verbose = true;
+        }
+      }
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning()
+
+      await runAgy({
+        credentials,
+        startedBy,
+        verbose,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
@@ -678,7 +711,8 @@ ${chalk.bold('Usage:')}
   happy auth              Manage authentication
   happy resume            Resume a previous Happy session by Happy session ID
   happy codex             Start Codex mode
-  happy gemini            Start Gemini mode (ACP)
+  happy gemini            Start Gemini mode (ACP) [deprecated — use agy]
+  happy agy               Start agy (Antigravity CLI) mode
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing

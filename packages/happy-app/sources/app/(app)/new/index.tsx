@@ -66,6 +66,7 @@ const agentIcons = {
     codex: require('@/assets/images/icon-gpt.png'),
     openclaw: require('@/assets/images/icon-openclaw.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
+    agy: require('@/assets/images/icon-agy.png'),
 };
 
 type AgentKey = NewSessionAgentType;
@@ -73,7 +74,8 @@ const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'claude', label: 'claude code' },
     { key: 'codex', label: 'codex' },
     { key: 'openclaw', label: 'openclaw' },
-    { key: 'gemini', label: 'gemini' },
+    { key: 'gemini', label: 'gemini (deprecated)' },
+    { key: 'agy', label: 'agy' },
 ];
 
 type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean };
