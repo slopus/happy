@@ -19,6 +19,8 @@ import { projectPath } from '@/projectPath';
 import { join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { fetchAplusMcpServers } from '@/aplus/fetchAplusMcpServers';
+import { bridgeAplusMcpServers, mergeMcpServers } from '@/aplus/mergeAplusMcpServers';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
@@ -664,12 +666,16 @@ export async function runCodex(opts: {
     // codex would otherwise fail to start the MCP server, the change_title tool would
     // not be visible to the model, and the model would improvise with shell echoes.
     const bridgeEntrypoint = join(projectPath(), 'bin', 'happy-mcp.mjs');
-    const mcpServers = {
+    const aplusMcpServers = bridgeAplusMcpServers(
+        await fetchAplusMcpServers(opts.credentials.token, machineId),
+        { bridgeCommand: bridgeEntrypoint, nodeExecPath: process.execPath },
+    );
+    const mcpServers = mergeMcpServers({
         happy: {
             command: process.execPath,
             args: ['--no-warnings', '--no-deprecation', bridgeEntrypoint, '--url', happyServer.url]
         }
-    } as const;
+    }, aplusMcpServers);
     let first = true;
 
     try {

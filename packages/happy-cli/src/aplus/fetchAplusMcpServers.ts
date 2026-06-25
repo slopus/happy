@@ -2,7 +2,7 @@
  * Aplus auto-mcp-config fetcher — specs/20260525-company-mcp-server P6(b).
  *
  * 부트 시 web-ui (`/api/me/mcp-config`) 에 happyToken 으로 GET → 응답의
- * `mcpServers` 를 그대로 runClaude 의 mcpServers 에 머지한다.
+ * `mcpServers` 를 그대로 각 agent runner 의 mcpServers 에 머지한다.
  *
  * 동작 정책:
  *  - `HAPPY_APLUS_MCP_CONFIG_URL` 가 설정돼 있을 때만 시도 — 미설정이면 no-op.
