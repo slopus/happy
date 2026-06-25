@@ -1,21 +1,21 @@
 /**
  * Happy MCP STDIO Bridge
  *
- * Minimal STDIO MCP server exposing a single tool `change_title`.
- * On invocation it forwards the tool call to an existing Happy HTTP MCP server
- * using the StreamableHTTPClientTransport.
+ * Minimal STDIO-to-HTTP MCP bridge. It forwards tools/list and tools/call to
+ * an existing HTTP MCP server using StreamableHTTPClientTransport.
  *
  * Configure the target HTTP MCP URL via env var `HAPPY_HTTP_MCP_URL` or
- * via CLI flag `--url <http://127.0.0.1:PORT>`.
+ * via CLI flag `--url <http://127.0.0.1:PORT>`. Additional request headers
+ * can be supplied as JSON through `HAPPY_HTTP_MCP_HEADERS`.
  *
  * Note: This process must not print to stdout as it would break MCP STDIO.
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { z } from 'zod';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
 function parseArgs(argv: string[]): { url: string | null } {
   let url: string | null = null;
@@ -33,6 +33,9 @@ async function main() {
   // Resolve target HTTP MCP URL
   const { url: urlFromArgs } = parseArgs(process.argv.slice(2));
   const baseUrl = urlFromArgs || process.env.HAPPY_HTTP_MCP_URL || '';
+  const requestHeaders = process.env.HAPPY_HTTP_MCP_HEADERS
+    ? JSON.parse(process.env.HAPPY_HTTP_MCP_HEADERS) as Record<string, string>
+    : undefined;
 
   if (!baseUrl) {
     // Write to stderr; never stdout.
@@ -51,75 +54,28 @@ async function main() {
       { capabilities: {} }
     );
 
-    const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
+    const transport = new StreamableHTTPClientTransport(new URL(baseUrl), {
+      requestInit: requestHeaders ? { headers: requestHeaders } : undefined,
+    });
     await client.connect(transport);
     httpClient = client;
     return client;
   }
 
-  // Create STDIO MCP server
-  const server = new McpServer({
-    name: 'Happy MCP Bridge',
-    version: '1.0.0',
+  const server = new Server(
+    { name: 'Happy MCP Bridge', version: '1.0.0' },
+    { capabilities: { tools: {} } }
+  );
+
+  server.setRequestHandler(ListToolsRequestSchema, async (request) => {
+    const client = await ensureHttpClient();
+    return await client.listTools(request.params) as any;
   });
 
-  // Register the tools and forward each to the in-process HTTP MCP.
-  server.registerTool(
-    'change_title',
-    {
-      description: 'Change the title of the current chat session',
-      title: 'Change Chat Title',
-      inputSchema: {
-        title: z.string().describe('The new title for the chat session'),
-      },
-    },
-    async (args) => {
-      try {
-        const client = await ensureHttpClient();
-        const response = await client.callTool({ name: 'change_title', arguments: args });
-        // Pass-through response from HTTP server
-        return response as any;
-      } catch (error) {
-        return {
-          content: [
-            { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // chat-tool-output-streaming Phase 3 — bash_stream forwards through to
-  // the in-process HTTP server where the actual subprocess runs and where
-  // AcpSessionManager.emitProgress publishes line-by-line tool-call-progress
-  // envelopes back to happy-server. Stays a thin proxy here.
-  server.registerTool(
-    'bash_stream',
-    {
-      description:
-        'Run a shell command via `bash -c` and stream stdout/stderr live to the chat UI. Use this for long-running batch commands so the user sees output as it happens. For short read-only commands or anything with heredocs/multiline scripts, prefer the built-in Bash tool.',
-      title: 'Bash (streamed)',
-      inputSchema: {
-        command: z.string().describe('Shell command to execute via `bash -c`'),
-        cwd: z.string().optional().describe('Working directory (defaults to the daemon cwd)'),
-      },
-    },
-    async (args) => {
-      try {
-        const client = await ensureHttpClient();
-        const response = await client.callTool({ name: 'bash_stream', arguments: args });
-        return response as any;
-      } catch (error) {
-        return {
-          content: [
-            { type: 'text', text: `bash_stream bridge error: ${error instanceof Error ? error.message : String(error)}` },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const client = await ensureHttpClient();
+    return await client.callTool(request.params) as any;
+  });
 
   // Start STDIO transport
   const stdio = new StdioServerTransport();
@@ -134,4 +90,3 @@ main().catch((err) => {
     process.exit(1);
   }
 });
-

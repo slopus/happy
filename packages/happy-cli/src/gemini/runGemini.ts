@@ -23,6 +23,8 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { fetchAplusMcpServers } from '@/aplus/fetchAplusMcpServers';
+import { bridgeAplusMcpServers, mergeMcpServers } from '@/aplus/mergeAplusMcpServers';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { encodeBase64 } from '@/api/encryption';
@@ -504,12 +506,16 @@ export async function runGemini(opts: {
 
   const happyServer = await startHappyServer(session);
   const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
-  const mcpServers = {
+  const aplusMcpServers = bridgeAplusMcpServers(
+    await fetchAplusMcpServers(opts.credentials.token, machineId),
+    { bridgeCommand },
+  );
+  const mcpServers = mergeMcpServers({
     happy: {
       command: bridgeCommand,
       args: ['--url', happyServer.url]
     }
-  };
+  }, aplusMcpServers);
 
   // Create permission handler for tool approval (variable declared earlier for onSessionSwap)
   permissionHandler = new GeminiPermissionHandler(session);

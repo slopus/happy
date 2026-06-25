@@ -18,6 +18,8 @@ import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { encodeBase64 } from '@/api/encryption';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { fetchAplusMcpServers } from '@/aplus/fetchAplusMcpServers';
+import { bridgeAplusMcpServers, mergeMcpServers } from '@/aplus/mergeAplusMcpServers';
 import { projectPath } from '@/projectPath';
 import { BasePermissionHandler, type PermissionResult } from '@/utils/BasePermissionHandler';
 import { connectionState } from '@/utils/serverConnectionErrors';
@@ -534,12 +536,17 @@ export async function runAcp(opts: {
   // tool-call-start). No per-runner wiring needed; the registry is the
   // single source of truth across runClaude/runAcp/runCodex/runGemini.
   const happyServer = await startHappyServer(session);
-  const mcpServers = {
+  const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
+  const aplusMcpServers = bridgeAplusMcpServers(
+    await fetchAplusMcpServers(opts.credentials.token, settings.machineId),
+    { bridgeCommand },
+  );
+  const mcpServers = mergeMcpServers({
     happy: {
-      command: join(projectPath(), 'bin', 'happy-mcp.mjs'),
+      command: bridgeCommand,
       args: ['--url', happyServer.url],
     },
-  };
+  }, aplusMcpServers);
 
   const backend = new AcpBackend({
     agentName: opts.agentName,

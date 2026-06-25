@@ -29,6 +29,7 @@ import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from
 import { applyAxOrchestration } from '@/orchestrator/prompts/integrate';
 import { registerAxRpcHandlers } from '@/orchestrator/registerAxRpcHandlers';
 import { fetchAplusMcpServers } from '@/aplus/fetchAplusMcpServers';
+import { mergeAplusMcpServers } from '@/aplus/mergeAplusMcpServers';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { getProjectPath } from './utils/path';
@@ -821,13 +822,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             currentSession = sessionInstance;
         },
         onAbort: resetCurrentModeDefaults,
-        mcpServers: {
+        mcpServers: mergeAplusMcpServers({
             'happy': {
                 type: 'http' as const,
                 url: happyServer.url,
             },
-            ...aplusMcpServers,
-        },
+        }, aplusMcpServers),
         session,
         claudeEnvVars: options.claudeEnvVars,
         claudeArgs: options.claudeArgs,
