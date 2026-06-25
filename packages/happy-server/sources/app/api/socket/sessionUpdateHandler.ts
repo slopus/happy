@@ -279,7 +279,13 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             });
 
             // Emit session activity update
-            const sessionActivity = buildSessionActivityEphemeral(sid, false, t, false);
+            const sessionActivity = buildSessionActivityEphemeral(
+                sid,
+                false,
+                t,
+                false,
+                'session-socket-disconnected',
+            );
             eventRouter.emitEphemeral({
                 userId,
                 payload: sessionActivity,

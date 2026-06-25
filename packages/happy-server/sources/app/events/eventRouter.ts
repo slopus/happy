@@ -169,6 +169,7 @@ export type EphemeralEvent = {
     active: boolean;
     activeAt: number;
     thinking?: boolean;
+    reason?: 'session-socket-disconnected';
 } | {
     type: 'machine-activity';
     id: string;
@@ -518,14 +519,24 @@ export function buildDeleteMachineUpdate(machineId: string, updateSeq: number, u
     };
 }
 
-export function buildSessionActivityEphemeral(sessionId: string, active: boolean, activeAt: number, thinking?: boolean): EphemeralPayload {
-    return {
+export function buildSessionActivityEphemeral(
+    sessionId: string,
+    active: boolean,
+    activeAt: number,
+    thinking?: boolean,
+    reason?: 'session-socket-disconnected',
+): EphemeralPayload {
+    const payload: EphemeralPayload = {
         type: 'activity',
         id: sessionId,
         active,
         activeAt,
         thinking: thinking || false
     };
+    if (reason) {
+        payload.reason = reason;
+    }
+    return payload;
 }
 
 export function buildMachineActivityEphemeral(machineId: string, active: boolean, activeAt: number): EphemeralPayload {
