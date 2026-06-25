@@ -24,7 +24,7 @@ import type {
   SessionId,
   StartSessionResult,
 } from '@/agent/core/AgentBackend';
-import { AGY_BIN, AGY_PRINT_TIMEOUT } from './constants';
+import { resolveAgyBin, AGY_PRINT_TIMEOUT } from './constants';
 import { buildAgyArgs } from './cliArgs';
 import { readAgyConversationId } from './conversationStore';
 
@@ -109,7 +109,7 @@ export class AgyBackend implements AgentBackend {
     this.emit({ type: 'status', status: 'running' });
 
     await new Promise<void>((resolve, reject) => {
-      const child = this.spawnFn(AGY_BIN, args, {
+      const child = this.spawnFn(resolveAgyBin(), args, {
         cwd: this.cwd,
         env: process.env,
         windowsHide: true,
@@ -152,7 +152,10 @@ export class AgyBackend implements AgentBackend {
         if (settled) return;
         settled = true;
         cleanup();
-        this.emit({ type: 'status', status: 'error', detail: err.message });
+        const detail = (err as NodeJS.ErrnoException).code === 'ENOENT'
+          ? `agy executable not found. Install the Antigravity CLI, or set HAPPY_AGY_PATH to its absolute path (tried 'agy' on PATH and ~/.local/bin/agy).`
+          : err.message;
+        this.emit({ type: 'status', status: 'error', detail });
         reject(err);
       });
 

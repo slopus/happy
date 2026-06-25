@@ -9,9 +9,49 @@
 
 import os from 'node:os';
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 
-/** Name of the agy binary on PATH. */
+/** Default command name for the agy binary (looked up on PATH). */
 export const AGY_BIN = 'agy';
+
+/**
+ * Resolve the agy executable to a spawnable command.
+ *
+ * agy installs to `~/.local/bin`, which is frequently absent from a daemon's
+ * PATH (launchd, or `happy daemon start` from a non-login shell), so spawning
+ * the bare name fails with ENOENT even though agy is installed. Resolution order:
+ *   1. `HAPPY_AGY_PATH` env override — an explicit absolute path to the binary.
+ *   2. `agy` already resolvable on PATH (then spawn the bare name).
+ *   3. `~/.local/bin/agy` — the Antigravity CLI installer's default location.
+ *
+ * Falls back to the bare command name when nothing matches, so the caller still
+ * spawns and surfaces a clear ENOENT instead of silently doing nothing.
+ */
+export function resolveAgyBin(): string {
+  const override = process.env.HAPPY_AGY_PATH;
+  if (override && existsSync(override)) {
+    return override;
+  }
+
+  // Already on PATH? Then the bare name is enough (and respects PATH ordering).
+  try {
+    const probe = process.platform === 'win32'
+      ? `where ${AGY_BIN}`
+      : `command -v ${AGY_BIN}`;
+    execSync(probe, { stdio: 'ignore' });
+    return AGY_BIN;
+  } catch {
+    // not on PATH — fall through to the known install location
+  }
+
+  const localBin = join(os.homedir(), '.local', 'bin', AGY_BIN);
+  if (existsSync(localBin)) {
+    return localBin;
+  }
+
+  return AGY_BIN;
+}
 
 /**
  * Model display names accepted by `agy --model`, as printed by `agy models`.
