@@ -18,6 +18,7 @@ export default function FeaturesSettingsScreen() {
     const [fileDiffsSidebar, setFileDiffsSidebar] = useSettingMutable('fileDiffsSidebar');
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [expImageUpload, setExpImageUpload] = useSettingMutable('expImageUpload');
+    const [sortSessionsByActivity, setSortSessionsByActivity] = useSettingMutable('sortSessionsByActivity');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -46,6 +47,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={groupToolCalls}
                             onValueChange={setGroupToolCalls}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title="Sort by Recent Activity"
+                    subtitle="Order the session list by last activity instead of creation date"
+                    icon={<Ionicons name="swap-vertical-outline" size={29} color="#FF9500" />}
+                    rightElement={
+                        <Switch
+                            value={sortSessionsByActivity}
+                            onValueChange={setSortSessionsByActivity}
                         />
                     }
                     showChevron={false}
