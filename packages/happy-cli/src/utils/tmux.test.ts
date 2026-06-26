@@ -420,6 +420,45 @@ describe('TmuxUtilities.detectTmuxEnvironment', () => {
     });
 });
 
+describe('TmuxUtilities.spawnInTmux', () => {
+    it('passes empty environment variables to tmux without quoted empty strings', async () => {
+        const utils = new TmuxUtilities('happy');
+        const commands: string[][] = [];
+
+        (utils as any).ensureSessionExists = async () => undefined;
+        (utils as any).executeTmuxCommand = async (args: string[]) => {
+            commands.push(args);
+            if (args[0] === 'list-sessions' && args[1] === '-F') {
+                return { returncode: 0, stdout: 'happy\n', stderr: '', command: args };
+            }
+            if (args[0] === 'new-window') {
+                return { returncode: 0, stdout: '12345\n', stderr: '', command: args };
+            }
+            return { returncode: 0, stdout: '', stderr: '', command: args };
+        };
+
+        const result = await utils.spawnInTmux(
+            ['node', 'dist/index.mjs'],
+            { windowName: 'happy-test', cwd: '/tmp/project' },
+            {
+                HAPPY_RECONNECT_SESSION_ID: '',
+                PATH: '/usr/bin',
+            },
+        );
+
+        expect(result).toEqual({
+            success: true,
+            sessionId: 'happy:happy-test',
+            pid: 12345,
+        });
+
+        const newWindowArgs = commands.find((args) => args[0] === 'new-window');
+        expect(newWindowArgs).toContain('HAPPY_RECONNECT_SESSION_ID=');
+        expect(newWindowArgs).not.toContain('HAPPY_RECONNECT_SESSION_ID=""');
+        expect(newWindowArgs).toContain('PATH="/usr/bin"');
+    });
+});
+
 describe('Round-trip consistency', () => {
     it('should parse and format consistently for session-only', () => {
         const original = 'my-session';

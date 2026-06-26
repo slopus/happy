@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 
 import type { Metadata } from '@/api/types';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
+import { createHappyChildEnv } from '@/utils/happyReconnectEnv';
 
 import { resolveHappySession, type ResumableHappySession } from './resolveHappySession';
 
@@ -105,7 +106,7 @@ function spawnResumeChild(launch: ResumeLaunch): Promise<number | null> {
     return new Promise((resolve, reject) => {
         const child = spawnHappyCLI(launch.args, {
             cwd: launch.cwd,
-            env: process.env,
+            env: createHappyChildEnv(),
             stdio: 'inherit',
         });
 

@@ -1,6 +1,7 @@
 import { logger } from '@/ui/logger'
 import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningCurrentlyInstalledHappyVersion } from './controlClient'
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI'
+import { createHappyChildEnv } from '@/utils/happyReconnectEnv'
 
 const DAEMON_READY_TIMEOUT_MS = 5000
 const DAEMON_READY_POLL_INTERVAL_MS = 100
@@ -17,7 +18,7 @@ export async function ensureDaemonRunning(): Promise<void> {
   const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
     detached: true,
     stdio: 'ignore',
-    env: process.env,
+    env: createHappyChildEnv(),
   })
   daemonProcess.unref()
 
