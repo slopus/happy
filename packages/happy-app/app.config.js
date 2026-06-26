@@ -134,6 +134,23 @@ export default {
         plugins: [
             require("./plugins/withEinkCompatibility.js"),
             [
+                // Mirror iOS NSAllowsLocalNetworking + NSAllowsArbitraryLoads
+                // (see ios.infoPlist.NSAppTransportSecurity above): in dev/preview,
+                // allow http:// fetches to LAN / mesh addresses (e.g. a self-hosted
+                // Happy Server at http://192.168.x.y or http://100.64.x.y) without
+                // forcing TLS. Production keeps Android's default cleartext block.
+                // Without this, Android 9+ throws CleartextNotPermittedException at
+                // the OkHttp layer before any request leaves the device, so the
+                // server never sees the connection — the iOS path was carefully
+                // configured for self-host, the Android equivalent was missing.
+                "expo-build-properties",
+                {
+                    android: {
+                        usesCleartextTraffic: variant !== "production"
+                    }
+                }
+            ],
+            [
                 "expo-router",
                 {
                     root: "./sources/app"

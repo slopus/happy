@@ -101,6 +101,7 @@
     "expo": "~55.0.8",
     "expo-application": "~55.0.0",
     "expo-asset": "~55.0.0",
+    "expo-build-properties": "~55.0.0",
     "expo-audio": "~55.0.0",
     "expo-battery": "~55.0.0",
     "expo-blur": "~55.0.0",
