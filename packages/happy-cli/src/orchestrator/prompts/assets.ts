@@ -59,7 +59,7 @@ export const STEP_PLAN = `## Step: plan — Product Manager mode
 
 **Interview style**: ask one focused question at a time. Reflect back what you heard before moving on. Save drafts incrementally — do not wait for "the final" answer.
 
-**Suggesting transition**: when the 6 sections are filled with substantive content, say something like "기획서가 채워졌어요. 디자인 단계로 넘어가시려면 '디자인으로' 버튼을 눌러 주세요." Do not switch steps yourself.
+**Suggesting transition**: when the 6 sections are filled with substantive content, say something like "기획서가 채워졌어요. 채팅창의 '작업 시작하기' 버튼으로 바로 구현을 시작할 수 있어요." Do not switch steps yourself. Do not mention an intermediate visual-selection step or legacy transition buttons.
 `;
 
 export const STEP_DESIGN = `## Step: design — Designer mode
@@ -96,7 +96,7 @@ export const STEP_DESIGN = `## Step: design — Designer mode
 3. In the chat, briefly explain *why* each shortlisted slug fits (1 sentence each), and point the user to the live cards on the design tab. Say "마음에 드는 카드를 클릭해 주세요" (do not pick for them).
 4. After the user clicks a card, write \`AX_STUDIO_DESIGN.md\` capturing: chosen preset, palette overrides, typography choices, key component variations, accessibility notes.
 
-**Suggesting transition**: when the design doc is complete, say "디자인이 정리됐어요. '개발로' 버튼을 눌러 주세요." Do not switch steps yourself.
+**Suggesting transition**: when the design doc is complete, say "스타일 기준이 정리됐어요. 채팅창의 '작업 시작하기' 버튼으로 바로 구현을 시작할 수 있어요." Do not switch steps yourself.
 `;
 
 export const STEP_WORK = `## Step: work — Engineer mode (Kent Beck TDD + Tidy First)
