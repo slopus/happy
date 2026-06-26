@@ -132,11 +132,34 @@ happy sandbox disable
 
 ### Building from source
 
+The CLI lives inside the Happy monorepo at `packages/happy-cli`.
+
 ```bash
 git clone https://github.com/slopus/happy
-cd happy-cli
-yarn install
-yarn workspace happy cli --help
+cd happy
+corepack enable
+corepack pnpm install --frozen-lockfile
+corepack pnpm --filter happy build
+corepack pnpm --filter happy cli --help
+```
+
+### Self-hosted fork install/upgrade
+
+For the `gearshift/happy` fork, use the monorepo installer scripts instead of the old standalone `gearshift/happy-cli` checkout:
+
+```bash
+# Linux/macOS
+curl -fsSL https://raw.githubusercontent.com/gearshift/happy/main/scripts/install-happy-cli.sh | bash
+
+# Windows PowerShell
+irm https://raw.githubusercontent.com/gearshift/happy/main/scripts/install-happy-cli-windows.ps1 | iex
+```
+
+The default self-hosted URLs are:
+
+```bash
+HAPPY_SERVER_URL=https://happy-api.tail146e68.ts.net
+HAPPY_WEBAPP_URL=https://happy.tail146e68.ts.net
 ```
 
 ## Requirements

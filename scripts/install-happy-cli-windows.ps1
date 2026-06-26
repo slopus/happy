@@ -1,147 +1,263 @@
-# Happy CLI Install Script for Windows (PowerShell)
-# Run this in PowerShell as Administrator
-# Or install per-user without admin (npm link won't work, use full path instead)
+<#
+.SYNOPSIS
+  Install/upgrade the Happy CLI from the gearshift/happy monorepo on Windows.
 
+.DESCRIPTION
+  Clones or updates gearshift/happy, installs monorepo dependencies with
+  Corepack/pnpm, builds packages/happy-cli, writes user-local happy/happy-mcp
+  command shims, and persists self-hosted Happy URLs for the current user.
+
+.PARAMETER RepoUrl
+  Git repository URL. Defaults to https://github.com/gearshift/happy.git
+
+.PARAMETER InstallDir
+  Monorepo checkout directory. Defaults to %USERPROFILE%\happy
+
+.PARAMETER Ref
+  Branch/tag/ref to install. Defaults to main.
+
+.PARAMETER ServerUrl
+  Happy API server URL. Defaults to Jon's self-hosted API hostname.
+
+.PARAMETER WebappUrl
+  Happy web app URL. Defaults to Jon's self-hosted web hostname.
+
+.PARAMETER BinDir
+  Directory for user-local command shims. Defaults to %LOCALAPPDATA%\Programs\happy-cli\bin
+
+.PARAMETER InstallMode
+  'User' creates user-local command shims. 'NpmLink' runs npm link in packages/happy-cli.
+#>
+
+[CmdletBinding()]
 param(
-    [switch]$UserInstall  # Skip admin steps, install for current user only
+    [string]$RepoUrl = $(if ($env:HAPPY_REPO_URL) { $env:HAPPY_REPO_URL } else { "https://github.com/gearshift/happy.git" }),
+    [string]$InstallDir = $(if ($env:HAPPY_REPO_DIR) { $env:HAPPY_REPO_DIR } else { Join-Path $env:USERPROFILE "happy" }),
+    [string]$Ref = $(if ($env:HAPPY_REF) { $env:HAPPY_REF } else { "main" }),
+    [string]$ServerUrl = $(if ($env:HAPPY_SERVER_URL) { $env:HAPPY_SERVER_URL } else { "https://happy-api.tail146e68.ts.net" }),
+    [string]$WebappUrl = $(if ($env:HAPPY_WEBAPP_URL) { $env:HAPPY_WEBAPP_URL } else { "https://happy.tail146e68.ts.net" }),
+    [string]$BinDir = $(if ($env:HAPPY_CLI_BIN_DIR) { $env:HAPPY_CLI_BIN_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\happy-cli\bin" }),
+    [ValidateSet("User", "NpmLink")]
+    [string]$InstallMode = $(if ($env:HAPPY_CLI_INSTALL_MODE) { $env:HAPPY_CLI_INSTALL_MODE } else { "User" })
 )
 
 $ErrorActionPreference = "Stop"
-$HAPPY_SERVER = "https://happy.tail146e68.ts.net"
-$REPO_URL = "https://github.com/gearshift/happy-cli.git"
-$INSTALL_DIR = "$env:USERPROFILE\happy-cli"
+$CliDir = Join-Path $InstallDir "packages\happy-cli"
 
-Write-Host "=== Happy CLI Installer (Self-hosted)" -ForegroundColor Cyan
-Write-Host "Server: $HAPPY_SERVER" -ForegroundColor Cyan
-Write-Host ""
-
-# 1. Check prerequisites
-Write-Host "[1/5] Checking prerequisites..." -ForegroundColor Yellow
-
-# Check Node.js
-try {
-    $nodeVer = node --version
-    Write-Host "  ✓ Node.js $nodeVer" -ForegroundColor Green
-} catch {
-    Write-Host "  ✗ Node.js not found!" -ForegroundColor Red
-    Write-Host "  Download from: https://nodejs.org (v18 or later)" -ForegroundColor Yellow
-    exit 1
+function Write-Step {
+    param([string]$Message)
+    Write-Host ""
+    Write-Host "==> $Message" -ForegroundColor Cyan
 }
 
-# Check npm
-try {
-    $npmVer = npm --version
-    Write-Host "  ✓ npm $npmVer" -ForegroundColor Green
-} catch {
-    Write-Host "  ✗ npm not found!" -ForegroundColor Red
-    exit 1
-}
-
-# Check git
-try {
-    $gitVer = git --version
-    Write-Host "  ✓ $gitVer" -ForegroundColor Green
-} catch {
-    Write-Host "  ✗ Git not found!" -ForegroundColor Red
-    Write-Host "  Download from: https://git-scm.com/downloads/win" -ForegroundColor Yellow
-    exit 1
-}
-
-Write-Host ""
-
-# 2. Clone repo
-Write-Host "[2/5] Cloning happy-cli..." -ForegroundColor Yellow
-if (Test-Path $INSTALL_DIR) {
-    Write-Host "  Directory exists. Pulling latest..."
-    Set-Location $INSTALL_DIR
-    git pull
-} else {
-    git clone $REPO_URL $INSTALL_DIR
-    Set-Location $INSTALL_DIR
-}
-Write-Host "  ✓ Repo cloned to $INSTALL_DIR" -ForegroundColor Green
-Write-Host ""
-
-# 3. Install dependencies
-Write-Host "[3/5] Installing dependencies..." -ForegroundColor Yellow
-npm install
-Write-Host "  ✓ Dependencies installed" -ForegroundColor Green
-Write-Host ""
-
-# 4. Build
-Write-Host "[4/5] Building..." -ForegroundColor Yellow
-npm run build
-Write-Host "  ✓ Build complete" -ForegroundColor Green
-Write-Host ""
-
-# 5. Install globally
-Write-Host "[5/5] Installing..." -ForegroundColor Yellow
-
-if ($UserInstall) {
-    # Per-user install — add to PATH manually
-    $npmPrefix = npm config get prefix
-    $targetDir = "$npmPrefix\node_modules\happy-coder"
-    if (-not (Test-Path $targetDir)) {
-        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+function Assert-Command {
+    param([string]$Name)
+    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+        throw "Missing required command: $Name"
     }
-    Copy-Item -Recurse -Force .\* $targetDir
-    # Link the bin scripts
-    $binFiles = @("happy", "happy-mcp")
-    foreach ($bin in $binFiles) {
-        $binPath = "$npmPrefix\$bin"
-        if (-not (Test-Path $binPath)) {
-            New-Item -ItemType SymbolicLink -Path $binPath -Target "$targetDir\bin\$bin.mjs" -Force | Out-Null
+}
+
+function Assert-NodeVersion {
+    Assert-Command node
+    $major = [int](& node -p "Number(process.versions.node.split('.')[0])")
+    if ($major -lt 20) {
+        $version = & node --version
+        throw "Node.js 20+ is required; found $version"
+    }
+}
+
+function Remove-UntrackedFile {
+    param(
+        [string]$RelativePath,
+        [string]$Description
+    )
+
+    $path = Join-Path $InstallDir $RelativePath
+    if (-not (Test-Path $path)) {
+        return
+    }
+
+    $trackedPath = & git -C $InstallDir ls-files -- $RelativePath
+    if ($trackedPath) {
+        return
+    }
+
+    Write-Step "Removing untracked $Description at $path"
+    Remove-Item -Force $path
+}
+
+function Remove-GeneratedFiles {
+    Remove-UntrackedFile -RelativePath "package-lock.json" -Description "npm lockfile"
+    Remove-UntrackedFile -RelativePath "yarn.lock" -Description "Yarn lockfile"
+    Remove-UntrackedFile -RelativePath "packages\happy-cli\package-lock.json" -Description "CLI npm lockfile"
+    Remove-UntrackedFile -RelativePath "packages\happy-cli\yarn.lock" -Description "CLI Yarn lockfile"
+    Remove-UntrackedFile -RelativePath "upgrade-happy-cli.ps1" -Description "downloaded legacy upgrade script"
+    Remove-UntrackedFile -RelativePath "install-happy-cli.ps1" -Description "downloaded installer script"
+}
+
+function Assert-HappyMonorepoOrigin {
+    $origin = & git -C $InstallDir remote get-url origin 2>$null
+    if (-not (
+        $origin -like "*github.com/gearshift/happy.git" -or
+        $origin -like "*github.com:gearshift/happy.git" -or
+        $origin -like "*github.com/slopus/happy.git" -or
+        $origin -like "*github.com:slopus/happy.git"
+    )) {
+        throw "$InstallDir is a git checkout, but its origin is '$origin' instead of the Happy monorepo. Use HAPPY_REPO_DIR=%USERPROFILE%\happy-monorepo or move the old checkout out of the way."
+    }
+}
+
+function Update-Repo {
+    if (Test-Path (Join-Path $InstallDir ".git")) {
+        Write-Step "Updating existing happy monorepo checkout at $InstallDir"
+        Assert-HappyMonorepoOrigin
+        Remove-GeneratedFiles
+        $dirty = & git -C $InstallDir status --porcelain
+        if ($dirty) {
+            throw "$InstallDir has uncommitted changes:`n$dirty`nCommit/stash them or set HAPPY_REPO_DIR to a clean checkout."
         }
+        & git -C $InstallDir fetch origin $Ref
+        & git -C $InstallDir checkout $Ref
+        & git -C $InstallDir pull --ff-only origin $Ref
     }
-    # Add npm prefix to PATH if not already there
-    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($userPath -notlike "*$npmPrefix*") {
-        [Environment]::SetEnvironmentVariable("Path", "$userPath;$npmPrefix", "User")
-        $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+    elseif (Test-Path $InstallDir) {
+        throw "$InstallDir exists but is not a git checkout"
     }
-    Write-Host "  ✓ Installed for current user" -ForegroundColor Green
-} else {
-    # System-wide install (Admin)
-    npm link
-    Write-Host "  ✓ Installed globally (Admin)" -ForegroundColor Green
+    else {
+        Write-Step "Cloning $RepoUrl into $InstallDir"
+        & git clone --branch $Ref $RepoUrl $InstallDir
+    }
+
+    if (-not (Test-Path $CliDir)) {
+        throw "Expected CLI package at $CliDir, but it was not found"
+    }
 }
 
-Write-Host ""
-
-# 6. Set environment variables
-Write-Host "Setting HAPPY_SERVER_URL and HAPPY_WEBAPP_URL..." -ForegroundColor Yellow
-
-[Environment]::SetEnvironmentVariable("HAPPY_SERVER_URL", $HAPPY_SERVER, "User")
-[Environment]::SetEnvironmentVariable("HAPPY_WEBAPP_URL", $HAPPY_SERVER, "User")
-
-# Also set for current session
-$env:HAPPY_SERVER_URL = $HAPPY_SERVER
-$env:HAPPY_WEBAPP_URL = $HAPPY_SERVER
-
-Write-Host "  ✓ Environment variables set (persistent)" -ForegroundColor Green
-Write-Host ""
-
-# 7. Verify
-Write-Host "Verifying installation..." -ForegroundColor Yellow
-try {
-    $ver = happy --version 2>$null
-    Write-Host "  ✓ happy $ver" -ForegroundColor Green
-} catch {
-    Write-Host "  ! 'happy' not found in PATH yet." -ForegroundColor Yellow
-    Write-Host "    You may need to restart your terminal or run:" -ForegroundColor Yellow
-    Write-Host "    refreshenv" -ForegroundColor White
+function Build-Cli {
+    Write-Step "Installing monorepo dependencies and building Happy CLI"
+    Push-Location $InstallDir
+    try {
+        & corepack enable
+        & corepack pnpm install --frozen-lockfile
+        & corepack pnpm --filter happy build
+    }
+    finally {
+        Pop-Location
+    }
 }
 
-Write-Host ""
-Write-Host "=== Installation Complete ===" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "Next steps:" -ForegroundColor White
-Write-Host "  1. Close and reopen your terminal (or run: refreshenv)" -ForegroundColor White
-Write-Host "  2. Authenticate: happy auth" -ForegroundColor White
-Write-Host "  3. Start a session: happy" -ForegroundColor White
-Write-Host ""
-Write-Host "Your phone's Happy app must also be configured:" -ForegroundColor Yellow
-Write-Host "  Settings → Server → $HAPPY_SERVER" -ForegroundColor White
-Write-Host ""
-Write-Host "To update later:" -ForegroundColor Yellow
-Write-Host "  cd $INSTALL_DIR && git pull && npm install && npm run build && npm link" -ForegroundColor White
+function Add-UserPathEntry {
+    param([string]$PathEntry)
+
+    $currentUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $entries = @()
+    if ($currentUserPath) {
+        $entries = $currentUserPath -split ";" | Where-Object { $_ }
+    }
+
+    $alreadyPresent = $entries | Where-Object { $_.TrimEnd("\") -ieq $PathEntry.TrimEnd("\") }
+    if (-not $alreadyPresent) {
+        $newPath = if ($currentUserPath) { "$currentUserPath;$PathEntry" } else { $PathEntry }
+        [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+        $env:Path = "$env:Path;$PathEntry"
+        Write-Host "Added $PathEntry to the current user's PATH. Open a new terminal if this one does not pick it up."
+    }
+}
+
+function Write-CmdShim {
+    param(
+        [string]$Name,
+        [string]$Target
+    )
+
+    $cmdPath = Join-Path $BinDir "$Name.cmd"
+    $ps1Path = Join-Path $BinDir "$Name.ps1"
+
+    $cmdContent = @"
+@echo off
+set "HAPPY_SERVER_URL=$ServerUrl"
+set "HAPPY_WEBAPP_URL=$WebappUrl"
+node "$Target" %*
+"@
+    Set-Content -Path $cmdPath -Value $cmdContent -Encoding ASCII
+
+    $escapedTarget = $Target.Replace("'", "''")
+    $ps1Content = @"
+`$env:HAPPY_SERVER_URL = '$ServerUrl'
+`$env:HAPPY_WEBAPP_URL = '$WebappUrl'
+& node '$escapedTarget' @args
+exit `$LASTEXITCODE
+"@
+    Set-Content -Path $ps1Path -Value $ps1Content -Encoding UTF8
+}
+
+function Install-UserShims {
+    Write-Step "Installing user-local command shims in $BinDir"
+    New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+
+    Write-CmdShim -Name "happy" -Target (Join-Path $CliDir "bin\happy.mjs")
+
+    $mcpTarget = Join-Path $CliDir "bin\happy-mcp.mjs"
+    if (Test-Path $mcpTarget) {
+        Write-CmdShim -Name "happy-mcp" -Target $mcpTarget
+    }
+
+    [Environment]::SetEnvironmentVariable("HAPPY_SERVER_URL", $ServerUrl, "User")
+    [Environment]::SetEnvironmentVariable("HAPPY_WEBAPP_URL", $WebappUrl, "User")
+    $env:HAPPY_SERVER_URL = $ServerUrl
+    $env:HAPPY_WEBAPP_URL = $WebappUrl
+    Add-UserPathEntry -PathEntry $BinDir
+}
+
+function Install-NpmLink {
+    Write-Step "Linking CLI package with npm link"
+    Push-Location $CliDir
+    try {
+        & npm link
+    }
+    finally {
+        Pop-Location
+    }
+
+    [Environment]::SetEnvironmentVariable("HAPPY_SERVER_URL", $ServerUrl, "User")
+    [Environment]::SetEnvironmentVariable("HAPPY_WEBAPP_URL", $WebappUrl, "User")
+    $env:HAPPY_SERVER_URL = $ServerUrl
+    $env:HAPPY_WEBAPP_URL = $WebappUrl
+}
+
+function Main {
+    Assert-Command git
+    Assert-Command corepack
+    Assert-Command npm
+    Assert-NodeVersion
+
+    Update-Repo
+    Build-Cli
+
+    switch ($InstallMode) {
+        "User" { Install-UserShims }
+        "NpmLink" { Install-NpmLink }
+    }
+
+    Write-Step "Verifying installed CLI"
+    try {
+        & happy --version
+    }
+    catch {
+        Write-Warning "Could not run 'happy --version' in this shell. Open a new terminal and try again."
+    }
+
+    Write-Host ""
+    Write-Host "Done." -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Happy monorepo checkout: $InstallDir"
+    Write-Host "Happy CLI package: $CliDir"
+    Write-Host "Command: happy"
+    Write-Host "Server URL: $ServerUrl"
+    Write-Host "Web app URL: $WebappUrl"
+    Write-Host ""
+    Write-Host "If this is the first install on this host, run:"
+    Write-Host "  happy auth"
+}
+
+Main
