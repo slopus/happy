@@ -39,7 +39,8 @@
         "overrides": {
             "whatwg-url": "14.2.0",
             "parse-path": "7.0.3",
-            "@types/parse-path": "7.0.3"
+            "@types/parse-path": "7.0.3",
+            "cli-cursor@4>restore-cursor": "^5.1.0"
         },
         "onlyBuiltDependencies": [
             "@more-tech/react-native-libsodium",
