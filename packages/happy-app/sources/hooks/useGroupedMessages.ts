@@ -75,6 +75,7 @@ export function groupMessagesForDisplay(
     const visibleForToolGrouping = (msg: Message, index: number): boolean => {
         if (hiddenWorkIndexes.has(index)) return false;
         if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
+        if (isUserSelectionMessage(msg)) return false;
         return msg.kind === 'tool-call';
     };
 
@@ -145,6 +146,7 @@ export function groupToolCallsForDisplay(
     const toolRuns = collectToolRuns(messages, (msg) => {
         if (msg.kind !== 'tool-call') return false;
         if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
+        if (isUserSelectionMessage(msg)) return false;
         return true;
     });
 
@@ -275,28 +277,53 @@ function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseC
         const finalTextIndex = visibleAgentIndexes.find((index) => messages[index].kind === 'agent-text');
         if (finalTextIndex === undefined) continue;
 
-        const hiddenIndexes = visibleAgentIndexes.filter((index) => index > finalTextIndex);
-        if (hiddenIndexes.length === 0) continue;
+        // Every agent message older than the turn's final text is foldable —
+        // EXCEPT user-selection elements (an <options> block, an AskUserQuestion
+        // card), which must stay visible and tappable. A selection element that
+        // sits *between* tool calls splits the fold into separate runs so the
+        // card renders in its true chronological place instead of being pushed
+        // to one side of a single merged group. Walk newest-first; each maximal
+        // run of foldable messages becomes its own work group.
+        const candidates = visibleAgentIndexes.filter((index) => index > finalTextIndex);
 
-        const oldestIdx = Math.max(...hiddenIndexes);
-        const hiddenMessages = hiddenIndexes.map((index) => messages[index]);
-        const startedAt = Math.min(...hiddenMessages.map((msg) => msg.createdAt));
-        const completedAt = messages[finalTextIndex].createdAt;
-        const hasRunning = hiddenMessages.some((msg) => msg.kind === 'tool-call' && msg.tool.state === 'running');
+        let run: number[] = [];
+        // The newest run completes at the final text; each older run completes at
+        // the selection card that split it off (drives the "Worked for…" label).
+        let boundaryCreatedAt = messages[finalTextIndex].createdAt;
 
-        groups.push({
-            hiddenIndexes,
-            oldestIdx,
-            item: {
-                type: 'agent-work-group',
-                id: `work-${messages[oldestIdx].id}`,
-                messages: hiddenMessages,
-                hasRunning,
-                hasPendingPermission: hasPendingPermission(hiddenMessages),
-                startedAt,
-                completedAt,
-            },
-        });
+        const flushRun = () => {
+            if (run.length === 0) return;
+            const runIndexes = run;
+            run = [];
+            const oldestIdx = Math.max(...runIndexes);
+            const runMessages = runIndexes.map((index) => messages[index]);
+            const startedAt = Math.min(...runMessages.map((msg) => msg.createdAt));
+            const hasRunning = runMessages.some((msg) => msg.kind === 'tool-call' && msg.tool.state === 'running');
+
+            groups.push({
+                hiddenIndexes: runIndexes,
+                oldestIdx,
+                item: {
+                    type: 'agent-work-group',
+                    id: `work-${messages[oldestIdx].id}`,
+                    messages: runMessages,
+                    hasRunning,
+                    hasPendingPermission: hasPendingPermission(runMessages),
+                    startedAt,
+                    completedAt: boundaryCreatedAt,
+                },
+            });
+        };
+
+        for (const index of candidates) {
+            if (isUserSelectionMessage(messages[index])) {
+                flushRun();
+                boundaryCreatedAt = messages[index].createdAt;
+                continue;
+            }
+            run.push(index);
+        }
+        flushRun();
     }
 
     return groups;
@@ -320,6 +347,29 @@ function isInvisibleMessage(msg: Message): boolean {
 /** User-sent file/image attachments should never be collapsed into a group */
 function isUserAttachment(msg: Message): boolean {
     return msg.kind === 'tool-call' && msg.tool.name === 'file';
+}
+
+// Matches a line that begins (after any leading same-line whitespace) with the
+// <options> tag — mirroring the per-line `line.trim().startsWith('<options>')`
+// trigger parseMarkdownBlock uses to render the interactive options block, so
+// inline mentions of "<options>" in prose don't match. `[^\S\n]` is "whitespace
+// except newline", matching trim()'s reach (spaces, tabs, \r, \f, \v, NBSP).
+const OPTIONS_BLOCK_RE = /(?:^|\n)[^\S\n]*<options>/i;
+
+/**
+ * Messages that present a user choice — the markdown <options> block (carried in
+ * an agent-text message) or the AskUserQuestion tool card. These are interactive
+ * and must never be folded into a collapsed work/tool group, or the user can't
+ * see or tap the choice.
+ */
+function isUserSelectionMessage(msg: Message): boolean {
+    if (msg.kind === 'agent-text') {
+        return OPTIONS_BLOCK_RE.test(msg.text);
+    }
+    if (msg.kind === 'tool-call') {
+        return msg.tool.name === 'AskUserQuestion';
+    }
+    return false;
 }
 
 function hasPendingPermission(messages: Message[]): boolean {
