@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Happy — Backed by YOU</title>
+<style>
+  :root {
+    --bg: #07080a;
+    --bg-soft: #0c0e12;
+    --panel: #101318;
+    --border: #1b1f27;
+    --text: #e7e9ee;
+    --muted: #8b909c;
+    --faint: #565b66;
+    --accent: #c9b8ff;
+    --accent-soft: #7c6bb0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+
+  /* ambient greptile-style glow */
+  body::before {
+    content: "";
+    position: fixed;
+    top: -30%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1100px;
+    height: 1100px;
+    background: radial-gradient(circle, rgba(124,107,176,0.18) 0%, rgba(124,107,176,0.04) 35%, transparent 65%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .grid-bg {
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 40%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 40%, transparent 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* NAV */
+  nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 0;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 17px;
+    letter-spacing: -0.01em;
+  }
+  .brand .dot {
+    width: 26px; height: 26px;
+    border-radius: 7px;
+    background: linear-gradient(140deg, #b7a4ff, #6f5cc0);
+    display: grid; place-items: center;
+    font-size: 15px;
+  }
+  .nav-links { display: flex; gap: 28px; align-items: center; }
+  .nav-links a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 14px;
+    transition: color .15s;
+  }
+  .nav-links a:hover { color: var(--text); }
+  .nav-cta {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    padding: 8px 16px;
+    border-radius: 8px;
+    color: var(--text) !important;
+    font-weight: 500;
+  }
+
+  /* HERO */
+  header {
+    text-align: center;
+    padding: 80px 0 40px;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    color: var(--muted);
+    font-size: 12.5px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    margin-bottom: 30px;
+  }
+  .pill .live {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #6fe0a8; box-shadow: 0 0 10px #6fe0a8;
+  }
+  h1 {
+    font-size: clamp(40px, 7vw, 76px);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    font-weight: 680;
+    margin-bottom: 22px;
+  }
+  h1 .grad {
+    background: linear-gradient(120deg, #fff 20%, #b7a4ff 60%, #6f5cc0 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: clamp(16px, 2.3vw, 20px);
+    max-width: 600px;
+    margin: 0 auto 36px;
+    letter-spacing: -0.01em;
+  }
+  .actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 540;
+    padding: 12px 22px;
+    border-radius: 10px;
+    transition: transform .12s, background .15s, border-color .15s;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary {
+    background: linear-gradient(140deg, #c9b8ff, #8a76d4);
+    color: #14101f;
+  }
+  .btn-ghost {
+    border: 1px solid var(--border);
+    color: var(--text);
+    background: rgba(255,255,255,0.015);
+  }
+  .btn-ghost:hover { border-color: var(--accent-soft); }
+
+  .terminal {
+    margin: 56px auto 0;
+    max-width: 560px;
+    text-align: left;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px -30px rgba(0,0,0,0.8);
+  }
+  .terminal .bar {
+    display: flex; gap: 7px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .terminal .bar span { width: 11px; height: 11px; border-radius: 50%; background: #2a2e36; }
+  .terminal pre {
+    padding: 18px 20px;
+    font-family: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--muted);
+    overflow-x: auto;
+  }
+  .terminal .c { color: var(--accent); }
+  .terminal .g { color: #6fe0a8; }
+  .terminal .w { color: var(--text); }
+
+  /* BACKED BY YOU SECTION */
+  .backed {
+    padding: 120px 0 90px;
+    text-align: center;
+  }
+  .backed .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-bottom: 18px;
+  }
+  .backed h2 {
+    font-size: clamp(34px, 5.5vw, 58px);
+    font-weight: 680;
+    letter-spacing: -0.035em;
+    margin-bottom: 14px;
+  }
+  .backed h2 .you {
+    position: relative;
+    background: linear-gradient(120deg, #c9b8ff, #6f5cc0);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .backed .note {
+    color: var(--muted);
+    max-width: 560px;
+    margin: 0 auto 14px;
+    font-size: 16px;
+  }
+  .backed .joke {
+    color: var(--faint);
+    font-size: 13.5px;
+    font-style: italic;
+    max-width: 540px;
+    margin: 0 auto 56px;
+  }
+  .backed .joke s { color: #4a4e57; }
+
+  .logo-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--panel);
+  }
+  .logo-cell {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 38px 24px;
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    transition: background .2s;
+  }
+  .logo-cell:hover { background: rgba(201,184,255,0.04); }
+  .logo-cell:nth-child(3n) { border-right: none; }
+  .logo-cell .logo {
+    font-size: 22px;
+    font-weight: 640;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .logo-cell .logo .mark { font-size: 20px; opacity: .9; }
+  .logo-cell .role {
+    font-size: 12px;
+    color: var(--faint);
+    letter-spacing: 0.04em;
+  }
+  .logo-cell.featured { background: rgba(124,107,176,0.08); }
+  .logo-cell.featured .logo {
+    background: linear-gradient(120deg, #fff, #b7a4ff);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .badge-row {
+    margin-top: 64px;
+    display: flex;
+    justify-content: center;
+  }
+  .yc-badge {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 14px;
+    background: var(--bg-soft);
+  }
+  .yc-badge .label {
+    padding: 11px 16px;
+    color: var(--muted);
+  }
+  .yc-badge .you-mark {
+    padding: 11px 16px;
+    background: linear-gradient(140deg, #c9b8ff, #7c6bb0);
+    color: #14101f;
+    font-weight: 700;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .yc-badge .you-mark .sq {
+    width: 18px; height: 18px; border-radius: 4px;
+    background: #14101f; color: #c9b8ff;
+    display: grid; place-items: center; font-size: 11px; font-weight: 800;
+  }
+
+  /* MISSION */
+  .mission {
+    padding: 30px 0 110px;
+  }
+  .mission-card {
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 48px 44px;
+    background:
+      radial-gradient(120% 140% at 100% 0%, rgba(124,107,176,0.10), transparent 50%),
+      var(--bg-soft);
+  }
+  .mission-card .eyebrow {
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 18px;
+  }
+  .mission-card h3 {
+    font-size: clamp(24px, 3.4vw, 34px);
+    letter-spacing: -0.025em;
+    font-weight: 640;
+    margin-bottom: 18px;
+    max-width: 720px;
+  }
+  .mission-card p {
+    color: var(--muted);
+    font-size: 16px;
+    max-width: 720px;
+  }
+  .features {
+    margin-top: 40px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+  }
+  .feat {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px;
+    background: rgba(255,255,255,0.012);
+  }
+  .feat .ic { font-size: 20px; margin-bottom: 12px; display: block; }
+  .feat h4 { font-size: 15.5px; font-weight: 600; margin-bottom: 6px; letter-spacing: -0.01em; }
+  .feat p { font-size: 13.5px; color: var(--muted); }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 40px 0 60px;
+    text-align: center;
+    color: var(--faint);
+    font-size: 13px;
+  }
+  footer .links { display: flex; gap: 22px; justify-content: center; margin-bottom: 16px; }
+  footer .links a { color: var(--muted); text-decoration: none; }
+  footer .links a:hover { color: var(--text); }
+
+  @media (max-width: 720px) {
+    .logo-grid { grid-template-columns: repeat(2, 1fr); }
+    .logo-cell:nth-child(3n) { border-right: 1px solid var(--border); }
+    .logo-cell:nth-child(2n) { border-right: none; }
+    .features { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
+    .mission-card { padding: 32px 22px; }
+  }
+</style>
+</head>
+<body>
+  <div class="grid-bg"></div>
+
+  <div class="wrap">
+    <nav>
+      <div class="brand"><span class="dot">😊</span> Happy</div>
+      <div class="nav-links">
+        <a href="#">Product</a>
+        <a href="#">Docs</a>
+        <a href="#backed">Backers</a>
+        <a href="#" class="nav-cta">Get the app</a>
+      </div>
+    </nav>
+
+    <header>
+      <div class="pill"><span class="live"></span> End-to-end encrypted · open source</div>
+      <h1>Your coding agent,<br><span class="grad">in your pocket.</span></h1>
+      <p class="sub">Mobile &amp; web client for Claude Code and Codex. Check on your AI, take over from your phone, never leave the build behind.</p>
+      <div class="actions">
+        <a href="#" class="btn btn-primary">Download for iOS &amp; Android</a>
+        <a href="#" class="btn btn-ghost">Read the docs →</a>
+      </div>
+
+      <div class="terminal">
+        <div class="bar"><span></span><span></span><span></span></div>
+        <pre><span class="muted"># instead of claude, just run:</span>
+<span class="c">$</span> <span class="w">npm install -g happy</span>
+<span class="c">$</span> <span class="w">happy claude</span>
+<span class="g">✓</span> session linked — now controllable from your phone 📱</pre>
+      </div>
+    </header>
+  </div>
+
+  <div class="wrap">
+    <section class="backed" id="backed">
+      <div class="eyebrow">Trusted by serious institutional capital</div>
+      <h2>Backed by <span class="you">YOU</span></h2>
+      <p class="note">We didn't get into Y Combinator. We got something better — paying customers and people who actually star the repo.</p>
+      <p class="joke">Other startups proudly display <s>Sequoia</s> · <s>a16z</s> · <s>Y Combinator</s>. We display you. Term sheet: a GitHub star and your honest feedback. Valuation: priceless. Board seat: the issues tab.</p>
+
+      <div class="logo-grid">
+        <div class="logo-cell featured">
+          <div class="logo"><span class="mark">👤</span> You</div>
+          <div class="role">Lead investor · Series Vibes</div>
+        </div>
+        <div class="logo-cell">
+          <div class="logo"><span class="mark">⭐</span> You, again</div>
+          <div class="role">Strategic angel</div>
+        </div>
+        <div class="logo-cell">
+          <div class="logo"><span class="mark">🛏️</span> Hacker House</div>
+          <div class="role">Pre-seed (the couch)</div>
+        </div>
+        <div class="logo-cell">
+          <div class="logo"><span class="mark">☕</span> That one cafe</div>
+          <div class="role">Infrastructure partner</div>
+        </div>
+        <div class="logo-cell">
+          <div class="logo"><span class="mark">🐙</span> ★ Stargazers</div>
+          <div class="role">Growth round</div>
+        </div>
+        <div class="logo-cell">
+          <div class="logo"><span class="mark">🫵</span> Yes, You</div>
+          <div class="role">Reading this right now</div>
+        </div>
+      </div>
+
+      <div class="badge-row">
+        <div class="yc-badge">
+          <span class="label">Backed by</span>
+          <span class="you-mark"><span class="sq">U</span> YOU</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section class="mission">
+      <div class="mission-card">
+        <div class="eyebrow">Our mission</div>
+        <h3>The best tools come from scratching your own itch — then sharing it with everyone.</h3>
+        <p>We're engineers scattered across Bay Area coffee shops and hacker houses, constantly checking how our AI coding agents are doing on our pet projects during lunch breaks. Happy was born from the frustration of not being able to peek at our agents building our side hustles while away from the keyboard. No VCs required — just an itch worth scratching.</p>
+
+        <div class="features">
+          <div class="feat">
+            <span class="ic">📱</span>
+            <h4>Mobile access</h4>
+            <p>See what your AI is building while you're away from the desk.</p>
+          </div>
+          <div class="feat">
+            <span class="ic">🔔</span>
+            <h4>Push notifications</h4>
+            <p>Get pinged when Claude Code or Codex needs permission or hits an error.</p>
+          </div>
+          <div class="feat">
+            <span class="ic">⚡</span>
+            <h4>Switch instantly</h4>
+            <p>Take control from phone or desktop with a single keypress.</p>
+          </div>
+          <div class="feat">
+            <span class="ic">🔐</span>
+            <h4>End-to-end encrypted</h4>
+            <p>Your code never leaves your devices unencrypted. No telemetry, no tracking.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <div class="links">
+        <a href="#">iOS</a>
+        <a href="#">Android</a>
+        <a href="#">Web App</a>
+        <a href="#">GitHub</a>
+        <a href="#">Discord</a>
+      </div>
+      <div>Happy · Open source · MIT License · Backed by YOU since day one 🫵</div>
+    </div>
+  </footer>
+</body>
+</html>
