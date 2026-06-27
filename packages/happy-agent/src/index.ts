@@ -376,8 +376,9 @@ program
     .argument('<message>', 'Message text')
     .option('--yolo', 'Send with permissionMode=yolo')
     .option('--wait', 'Wait for agent to become idle')
+    .option('--wait-timeout-seconds <n>', 'Timeout for --wait in seconds (default: 300)', (v: string) => parseInt(v, 10))
     .option('--json', 'Output as JSON')
-    .action(async (sessionId: string, message: string, opts: { yolo?: boolean; wait?: boolean; json?: boolean }) => {
+    .action(async (sessionId: string, message: string, opts: { yolo?: boolean; wait?: boolean; waitTimeoutSeconds?: number; json?: boolean }) => {
         const config = loadConfig();
         const creds = requireCredentials(config);
         const session = await resolveSession(config, creds, sessionId);
@@ -386,7 +387,8 @@ program
         const client = createClient(session, creds, config);
         try {
             await client.waitForConnect();
-            const completion = opts.wait ? client.waitForTurnCompletion() : null;
+            const waitTimeoutMs = opts.waitTimeoutSeconds !== undefined ? opts.waitTimeoutSeconds * 1000 : undefined;
+            const completion = opts.wait ? client.waitForTurnCompletion(waitTimeoutMs) : null;
             client.sendMessage(message, permissionMode ? { permissionMode } : undefined);
 
             if (completion) {
