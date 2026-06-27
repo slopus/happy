@@ -464,7 +464,13 @@ export async function startDaemon(): Promise<void> {
               // Set timeout for webhook (same as regular flow)
               const timeout = setTimeout(() => {
                 pidToAwaiter.delete(tmuxResult.pid!);
-                logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${tmuxResult.pid} (tmux)`);
+                logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${tmuxResult.pid} (tmux), killing child`);
+                // Kill the child process to prevent zombie sessions that register after timeout
+                try {
+                  process.kill(tmuxResult.pid!, 'SIGTERM');
+                } catch (e) {
+                  logger.debug(`[DAEMON RUN] Failed to kill timed-out tmux child PID ${tmuxResult.pid}:`, e);
+                }
                 resolve({
                   type: 'error',
                   errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`
@@ -616,7 +622,13 @@ export async function startDaemon(): Promise<void> {
       return new Promise((resolve) => {
         const timeout = setTimeout(() => {
           pidToAwaiter.delete(happyProcess.pid!);
-          logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
+          logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}, killing child`);
+          // Kill the child process to prevent zombie sessions that register after timeout
+          try {
+            happyProcess.kill('SIGTERM');
+          } catch (e) {
+            logger.debug(`[DAEMON RUN] Failed to kill timed-out child PID ${happyProcess.pid}:`, e);
+          }
           resolve({
             type: 'error',
             errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
