@@ -326,6 +326,40 @@ export type Metadata = {
   forkedFromMessageId?: string
 };
 
+export type AgentGoalStatus = {
+  source: 'claude' | 'codex',
+  observedAt: number,
+  sourceSessionId?: string,
+  sourceRevision?: string | number,
+} & (
+  | {
+      status: 'unavailable',
+      reason?: 'unsupported' | 'not_loaded' | 'stale' | 'malformed' | 'error' | 'unknown',
+    }
+  | {
+      status: 'inactive',
+      reason?: 'none' | 'cleared' | 'completed' | 'unknown',
+    }
+  | {
+      status: 'active',
+      sourceSessionId: string,
+      text: string,
+      capabilities?: {
+        clear?: boolean,
+        stop?: boolean,
+        edit?: boolean,
+      },
+      progress?: {
+        currentStep?: number,
+        totalSteps?: number,
+        steps?: Array<{
+          text: string,
+          status: 'pending' | 'in_progress' | 'completed',
+        }>,
+      },
+    }
+);
+
 export type AgentState = {
   controlledByUser?: boolean | null | undefined
   requests?: {
@@ -348,4 +382,5 @@ export type AgentState = {
       allowTools?: string[]
     }
   }
+  agentGoalStatus?: AgentGoalStatus
 }

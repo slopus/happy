@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createSessionScanner } from './sessionScanner'
 import { RawJSONLines } from '../types'
+import type { ClaudeGoalStatusTranscriptEvent } from '../claudeGoalStatus'
 import { mkdir, writeFile, appendFile, rm, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -11,6 +12,7 @@ describe('sessionScanner', () => {
   let testDir: string
   let projectDir: string
   let collectedMessages: RawJSONLines[]
+  let collectedTranscriptEvents: ClaudeGoalStatusTranscriptEvent[]
   let scanner: Awaited<ReturnType<typeof createSessionScanner>> | null = null
   
   beforeEach(async () => {
@@ -22,6 +24,7 @@ describe('sessionScanner', () => {
     await mkdir(projectDir, { recursive: true })
 
     collectedMessages = []
+    collectedTranscriptEvents = []
   })
   
   afterEach(async () => {
@@ -145,6 +148,113 @@ describe('sessionScanner', () => {
       expect(content).toContain('readme.md')
     }
   })
+
+  it('emits goal status attachments through transcript events only', async () => {
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      onTranscriptEvent: (event) => collectedTranscriptEvents.push(event),
+    })
+
+    const goalStatus = await readFile(join(__dirname, '..', '__fixtures__', 'goal-status', 'active.jsonl'), 'utf-8')
+    const sessionId = 'ff668493-8325-49cc-976f-689b779b85a2'
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+
+    await writeFile(sessionFile, goalStatus)
+    scanner.onNewSession(sessionId)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    expect(collectedMessages).toHaveLength(0)
+    expect(collectedTranscriptEvents).toHaveLength(1)
+    expect(collectedTranscriptEvents[0]).toMatchObject({
+      type: 'goal_status',
+      uuid: '001008f1-0438-414a-86c0-eef745e1227f',
+      sourceSessionId: sessionId,
+      attachment: {
+        type: 'goal_status',
+        met: false,
+        condition: 'keep this goal active until I explicitly clear it',
+      },
+    })
+  })
+
+  it('does not re-emit duplicate goal status transcript events', async () => {
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      onTranscriptEvent: (event) => collectedTranscriptEvents.push(event),
+    })
+
+    const goalStatus = await readFile(join(__dirname, '..', '__fixtures__', 'goal-status', 'active.jsonl'), 'utf-8')
+    const sessionId = 'ff668493-8325-49cc-976f-689b779b85a2'
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+
+    await writeFile(sessionFile, goalStatus)
+    scanner.onNewSession(sessionId)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await appendFile(sessionFile, goalStatus)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    expect(collectedMessages).toHaveLength(0)
+    expect(collectedTranscriptEvents).toHaveLength(1)
+  })
+
+  it('pre-marks existing goal status events from the initial session id', async () => {
+    const activeGoalStatus = await readFile(join(__dirname, '..', '__fixtures__', 'goal-status', 'active.jsonl'), 'utf-8')
+    const editedGoalStatus = await readFile(join(__dirname, '..', '__fixtures__', 'goal-status', 'edit-active.jsonl'), 'utf-8')
+    const sessionId = 'ff668493-8325-49cc-976f-689b779b85a2'
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+
+    await writeFile(sessionFile, activeGoalStatus)
+
+    scanner = await createSessionScanner({
+      sessionId,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      onTranscriptEvent: (event) => collectedTranscriptEvents.push(event),
+    })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    expect(collectedMessages).toHaveLength(0)
+    expect(collectedTranscriptEvents).toHaveLength(0)
+
+    await appendFile(sessionFile, editedGoalStatus)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    expect(collectedMessages).toHaveLength(0)
+    expect(collectedTranscriptEvents).toHaveLength(1)
+    expect(collectedTranscriptEvents[0]).toMatchObject({
+      uuid: 'acde1bd2-f79f-43fb-8dd1-e2c8e2a0b294',
+      sourceSessionId: sessionId,
+      attachment: {
+        type: 'goal_status',
+        met: false,
+        condition: 'replace this goal with edited fixture objective',
+      },
+    })
+  })
+
+  it('pre-marks existing goal status events when new session treats existing entries as processed', async () => {
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      onTranscriptEvent: (event) => collectedTranscriptEvents.push(event),
+    })
+
+    const goalStatus = await readFile(join(__dirname, '..', '__fixtures__', 'goal-status', 'active.jsonl'), 'utf-8')
+    const sessionId = 'ff668493-8325-49cc-976f-689b779b85a2'
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+
+    await writeFile(sessionFile, goalStatus)
+    scanner.onNewSession(sessionId, { treatExistingAsProcessed: true })
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    expect(collectedMessages).toHaveLength(0)
+    expect(collectedTranscriptEvents).toHaveLength(0)
+  })
   
   it('should not process duplicate assistant messages with same message ID', async () => {
     // Currently broken unclear if we need this or not post migrating to sdk & removeing deduplication
@@ -207,5 +317,40 @@ describe('sessionScanner', () => {
     //   expect((lastAssistantMsg.message.content as any)[0].text).toBe('kekr')
     //   expect(lastAssistantMsg.message.id).toBe('msg_01KWeuP88pkzRtXmggJRnQmV')
     // }
+  })
+
+  it('drops a phantom session whose transcript never appears and keeps serving real ones', async () => {
+    // Reproduces the "dead Happy instance" bug: a session id is announced
+    // (e.g. a remote launch) but its .jsonl is never written. The scanner
+    // must give up on it instead of spinning forever, and must still process
+    // a real session that arrives afterwards.
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      missingFileTimeoutMs: 100,
+    })
+
+    // Phantom: announced but no file on disk, ever.
+    const phantomId = 'fd4aa0c2-000a-4cd3-a066-80c6d87c3456'
+    scanner.onNewSession(phantomId)
+
+    // Long enough for the first ~1s backoff + give-up to fire.
+    await new Promise((r) => setTimeout(r, 2500))
+
+    expect(collectedMessages).toHaveLength(0)
+
+    // A real session arriving after the phantom was dropped must still work.
+    const fixture = await readFile(join(__dirname, '__fixtures__', '0-say-lol-session.jsonl'), 'utf-8')
+    const lines = fixture.split('\n').filter((l) => l.trim())
+    const realId = '93a9705e-bc6a-406d-8dce-8acc014dedbd'
+    const realFile = join(projectDir, `${realId}.jsonl`)
+
+    await writeFile(realFile, lines[0] + '\n')
+    scanner.onNewSession(realId)
+    await new Promise((r) => setTimeout(r, 200))
+
+    expect(collectedMessages).toHaveLength(1)
+    expect(collectedMessages[0].type).toBe('user')
   })
 })

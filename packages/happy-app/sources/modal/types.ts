@@ -57,6 +57,7 @@ export interface ModalContextValue {
     showModal: (config: Omit<ModalConfig, 'id'>) => string;
     hideModal: (id: string) => void;
     hideAllModals: () => void;
+    dismissTopModal: () => boolean;
 }
 
 export interface IModal {

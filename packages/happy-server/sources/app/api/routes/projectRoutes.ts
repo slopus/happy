@@ -10,7 +10,7 @@ import { ProjectError } from "@/app/project/types";
 
 const ProjectConfigSchema = z.object({
     workspaceDir: z.string().optional(),
-    environmentVariables: z.record(z.string()).optional(),
+    environmentVariables: z.record(z.string(), z.string()).optional(),
     sandboxConfig: z.object({
         enabled: z.boolean(),
         sessionIsolation: z.string(),

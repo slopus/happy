@@ -11,6 +11,7 @@
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { Platform } from 'react-native';
 import { Modal } from '@/modal';
 import { generateThumbhash } from '@/utils/thumbhash';
@@ -19,6 +20,7 @@ import type { AttachmentPreview } from '@/sync/attachmentTypes';
 
 export const MAX_IMAGES_PER_MESSAGE = 20;
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const IOS_ATTACHMENT_JPEG_QUALITY = 0.92;
 
 export type { AttachmentPreview };
 
@@ -29,6 +31,45 @@ type UseImagePickerResult = {
     clearImages: () => void;
     addImages: (images: AttachmentPreview[]) => void;
 };
+
+function withJpegExtension(fileName: string | null | undefined): string {
+    const fallback = `image_${Date.now()}.jpg`;
+    const name = fileName?.trim() || fallback;
+    const extensionIndex = name.lastIndexOf('.');
+    const stem = extensionIndex > 0 ? name.slice(0, extensionIndex) : name;
+    return `${stem}.jpg`;
+}
+
+export async function normalizePickedAssetForUpload(asset: ImagePicker.ImagePickerAsset): Promise<{
+    uri: string;
+    width: number;
+    height: number;
+    mimeType: string;
+    name: string;
+}> {
+    if (Platform.OS !== 'ios') {
+        return {
+            uri: asset.uri,
+            width: asset.width,
+            height: asset.height,
+            mimeType: asset.mimeType ?? 'image/jpeg',
+            name: asset.fileName ?? `image_${Date.now()}.jpg`,
+        };
+    }
+
+    const converted = await manipulateAsync(asset.uri, [], {
+        compress: IOS_ATTACHMENT_JPEG_QUALITY,
+        format: SaveFormat.JPEG,
+    });
+
+    return {
+        uri: converted.uri,
+        width: converted.width || asset.width,
+        height: converted.height || asset.height,
+        mimeType: 'image/jpeg',
+        name: withJpegExtension(asset.fileName),
+    };
+}
 
 export function useImagePicker(): UseImagePickerResult {
     const [selectedImages, setSelectedImages] = useState<AttachmentPreview[]>([]);
@@ -71,7 +112,7 @@ export function useImagePicker(): UseImagePickerResult {
             mediaTypes: ['images'], // expo-image-picker ~55: MediaTypeOptions deprecated
             allowsMultipleSelection: true,
             selectionLimit: remaining,
-            quality: 1, // no recompression — preserve original for Claude
+            quality: 1, // request full-resolution source; iOS upload is normalized below
             exif: false,
         });
 
@@ -93,19 +134,21 @@ export function useImagePicker(): UseImagePickerResult {
                 continue;
             }
 
+            const normalized = await normalizePickedAssetForUpload(asset);
+
             // Skip thumbhash if dimensions are unavailable (prevents divide-by-zero).
-            const thumbhash = (asset.width > 0 && asset.height > 0)
-                ? await generateThumbhash(asset.uri, asset.width, asset.height)
+            const thumbhash = (normalized.width > 0 && normalized.height > 0)
+                ? await generateThumbhash(normalized.uri, normalized.width, normalized.height)
                 : undefined;
 
             previews.push({
                 id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
-                uri: asset.uri,
-                width: asset.width,
-                height: asset.height,
-                mimeType: asset.mimeType ?? 'image/jpeg',
+                uri: normalized.uri,
+                width: normalized.width,
+                height: normalized.height,
+                mimeType: normalized.mimeType,
                 size,
-                name: asset.fileName ?? `image_${Date.now()}.jpg`,
+                name: normalized.name,
                 thumbhash,
             });
         }

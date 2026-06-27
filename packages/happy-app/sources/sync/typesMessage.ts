@@ -36,6 +36,11 @@ export type UserTextMessage = {
      * older messages and non-Claude agents may not have one.
      */
     claudeUuid?: string;
+    /**
+     * Codex app-server item id corresponding to this user message. Used as
+     * the rewind point when duplicating/forking Codex threads.
+     */
+    codexItemId?: string;
 }
 
 export type ModeSwitchMessage = {

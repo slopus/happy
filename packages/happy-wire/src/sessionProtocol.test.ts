@@ -141,6 +141,7 @@ describe('createEnvelope', () => {
         time: 12345,
         turn: 'turn-1',
         subagent,
+        codexItemId: 'item-1',
       }
     );
 
@@ -150,6 +151,7 @@ describe('createEnvelope', () => {
       role: 'agent',
       turn: 'turn-1',
       subagent,
+      codexItemId: 'item-1',
       ev: { t: 'tool-call-end', call: 'call-1' },
     });
   });

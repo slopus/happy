@@ -43,6 +43,12 @@ import {
     ForkSourceMissingError,
 } from '@/claude/utils/claudeSessionFork';
 import { readClaudeCodeUsage } from '@/claudeCodeUsage/readUsage';
+import { CodexAppServerClient } from '@/codex/codexAppServerClient';
+import {
+    CodexForkRewindPointNotFoundError,
+    forkCodexThread,
+    listCodexRewindPoints,
+} from '@/codex/codexThreadFork';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -136,6 +142,23 @@ type MachineRpcHandlers = {
     portRegistry: PortRegistry;
 }
 
+function requireNonEmptyString(value: unknown, name: string): string {
+    if (typeof value !== 'string' || value.length === 0) {
+        throw new Error(`${name} is required`);
+    }
+    return value;
+}
+
+async function withCodexAppServerClient<T>(handler: (client: CodexAppServerClient) => Promise<T>): Promise<T> {
+    const client = new CodexAppServerClient();
+    await client.connect();
+    try {
+        return await handler(client);
+    } finally {
+        await client.disconnect();
+    }
+}
+
 export class ApiMachineClient {
     private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
     private keepAliveInterval: NodeJS.Timeout | null = null;
@@ -206,6 +229,7 @@ export class ApiMachineClient {
                 happyToken,
                 happySecret,
                 resumeClaudeSessionId,
+                resumeCodexThreadId,
                 parentSessionId,
                 forkedFromMessageId,
             } = params || {};
@@ -226,6 +250,7 @@ export class ApiMachineClient {
                 happyToken,
                 happySecret,
                 resumeClaudeSessionId,
+                resumeCodexThreadId,
                 parentSessionId,
                 forkedFromMessageId,
             });
@@ -337,6 +362,53 @@ export class ApiMachineClient {
                 if (error instanceof ForkTruncateUuidNotFoundError) {
                     throw new Error(
                         'The chosen rewind point is no longer present in the source session — try forking without truncation',
+                    );
+                }
+                throw error;
+            }
+        });
+
+        this.rpcHandlerManager.registerHandler('codex-fork-thread', async (params: any) => {
+            const directory = requireNonEmptyString(params?.directory, 'directory');
+            const codexThreadId = requireNonEmptyString(params?.codexThreadId, 'codexThreadId');
+
+            const result = await withCodexAppServerClient((client) => forkCodexThread(client, {
+                threadId: codexThreadId,
+                cwd: directory,
+            }));
+            return result;
+        });
+
+        this.rpcHandlerManager.registerHandler('codex-list-rewind-points', async (params: any) => {
+            const codexThreadId = requireNonEmptyString(params?.codexThreadId, 'codexThreadId');
+
+            return withCodexAppServerClient(async (client) => {
+                const { thread } = await client.readThread({
+                    threadId: codexThreadId,
+                    includeTurns: true,
+                });
+                return {
+                    type: 'success',
+                    points: listCodexRewindPoints(thread),
+                };
+            });
+        });
+
+        this.rpcHandlerManager.registerHandler('codex-duplicate-thread', async (params: any) => {
+            const directory = requireNonEmptyString(params?.directory, 'directory');
+            const codexThreadId = requireNonEmptyString(params?.codexThreadId, 'codexThreadId');
+            const cutAfterItemId = requireNonEmptyString(params?.cutAfterItemId, 'cutAfterItemId');
+
+            try {
+                return await withCodexAppServerClient((client) => forkCodexThread(client, {
+                    threadId: codexThreadId,
+                    cwd: directory,
+                    cutAfterItemId,
+                }));
+            } catch (error) {
+                if (error instanceof CodexForkRewindPointNotFoundError) {
+                    throw new Error(
+                        'The chosen rewind point is no longer present in the source Codex thread — try forking without truncation',
                     );
                 }
                 throw error;

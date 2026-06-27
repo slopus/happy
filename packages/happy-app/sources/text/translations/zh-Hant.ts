@@ -219,7 +219,7 @@ export const zhHant: TranslationStructure = {
         analyticsDisabled: '所有追蹤和遙測已停用',
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
-        imageUploadSubtitle: '將圖片附加到訊息中讓 Claude 分析',
+        imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
     },
 
     errors: {
@@ -411,6 +411,13 @@ export const zhHant: TranslationStructure = {
             scanQrCode: '掃描 QR Code',
             openCamera: '開啟相機',
         },
+        agentGoalBar: {
+            currentGoal: '目前目標',
+            accessibilityLabel: ({ goal }: { goal: string }) => `目前目標：${goal}`,
+            clearGoal: '清除目標',
+            stopGoal: '停止目標',
+            editGoal: '編輯目標',
+        },
     },
 
     agentInput: {
@@ -502,6 +509,7 @@ export const zhHant: TranslationStructure = {
     },
 
     toolGroup: {
+        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => `編輯了 ${count} 個檔案`,
         readFiles: ({ count }: { count: number }) => `讀取了 ${count} 個檔案`,
         ranCommands: ({ count }: { count: number }) => `執行了 ${count} 個指令`,
@@ -509,6 +517,7 @@ export const zhHant: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => `取得了 ${count} 個 URL`,
         ranTasks: ({ count }: { count: number }) => `執行了 ${count} 個任務`,
         usedTools: ({ count }: { count: number }) => `使用了 ${count} 個工具`,
+        workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 
     tools: {
@@ -835,6 +844,7 @@ export const zhHant: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `已切換到 ${mode} 模式`,
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
+        sentAsGoal: 'Sent as goal',
         unknownTime: '未知時間',
     },
 
@@ -978,7 +988,7 @@ export const zhHant: TranslationStructure = {
             ? '一張圖片上傳失敗，未傳送。'
             : `${count} 張圖片上傳失敗，未傳送。`,
         notSupportedTitle: '不支援圖片',
-        notSupportedMessage: '此代理不支援圖片附件。僅傳送了文字。',
+        notSupportedMessage: '此代理不支援圖片附件。圖片未傳送。',
     },
 
     feed: {

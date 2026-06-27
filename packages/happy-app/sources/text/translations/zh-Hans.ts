@@ -220,7 +220,7 @@ export const zhHans: TranslationStructure = {
         analyticsDisabled: '所有跟踪和遥测已禁用',
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
-        imageUploadSubtitle: '将图片附加到消息中让 Claude 分析',
+        imageUploadSubtitle: '将图片附加到消息中，以便受支持的代理进行分析',
     },
 
     errors: {
@@ -412,6 +412,13 @@ export const zhHans: TranslationStructure = {
             scanQrCode: '扫描二维码',
             openCamera: '打开相机',
         },
+        agentGoalBar: {
+            currentGoal: '当前目标',
+            accessibilityLabel: ({ goal }: { goal: string }) => `当前目标：${goal}`,
+            clearGoal: '清除目标',
+            stopGoal: '停止目标',
+            editGoal: '编辑目标',
+        },
     },
 
     agentInput: {
@@ -503,6 +510,7 @@ export const zhHans: TranslationStructure = {
     },
 
     toolGroup: {
+        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => `编辑了 ${count} 个文件`,
         readFiles: ({ count }: { count: number }) => `读取了 ${count} 个文件`,
         ranCommands: ({ count }: { count: number }) => `执行了 ${count} 个命令`,
@@ -510,6 +518,7 @@ export const zhHans: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => `获取了 ${count} 个 URL`,
         ranTasks: ({ count }: { count: number }) => `执行了 ${count} 个任务`,
         usedTools: ({ count }: { count: number }) => `使用了 ${count} 个工具`,
+        workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 
     tools: {
@@ -836,6 +845,7 @@ export const zhHans: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `已切换到 ${mode} 模式`,
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
+        sentAsGoal: 'Sent as goal',
         unknownTime: '未知时间',
     },
 
@@ -979,7 +989,7 @@ export const zhHans: TranslationStructure = {
             ? '一张图片上传失败，未发送。'
             : `${count} 张图片上传失败，未发送。`,
         notSupportedTitle: '不支持图片',
-        notSupportedMessage: '该代理不支持图片附件。仅发送了文本。',
+        notSupportedMessage: '此代理不支持图片附件。图片未发送。',
     },
 
     feed: {

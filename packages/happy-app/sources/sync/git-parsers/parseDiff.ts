@@ -4,6 +4,7 @@
  */
 
 import { LineParser } from './LineParser';
+import { decodeGitPath } from './gitPath';
 
 export interface DiffFileStat {
     file: string;
@@ -57,7 +58,7 @@ export function parseNumStat(numStatOutput: string): DiffSummary {
             const changes = insertions + deletions;
 
             const fileStat: DiffFileStat = {
-                file,
+                file: decodeGitPath(file),
                 changes,
                 insertions,
                 deletions,
@@ -119,7 +120,7 @@ function parseFileStatLine(line: string): DiffFileStat | null {
     const parts = line.split('|');
     if (parts.length !== 2) return null;
 
-    const file = parts[0].trim();
+    const file = decodeGitPath(parts[0].trim());
     const statsPart = parts[1].trim();
     
     // Extract numbers and +/- indicators

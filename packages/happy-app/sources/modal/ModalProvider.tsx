@@ -45,6 +45,24 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         setState({ modals: [] });
     }, []);
 
+    const dismissModal = useCallback((modal: ModalConfig) => {
+        if (modal.type === 'confirm') {
+            Modal.resolveConfirm(modal.id, false);
+        } else if (modal.type === 'prompt') {
+            Modal.resolvePrompt(modal.id, null);
+        }
+        hideModal(modal.id);
+    }, [hideModal]);
+
+    const dismissTopModal = useCallback(() => {
+        const currentModal = state.modals[state.modals.length - 1];
+        if (!currentModal) {
+            return false;
+        }
+        dismissModal(currentModal);
+        return true;
+    }, [dismissModal, state.modals]);
+
     // Initialize ModalManager with functions
     useEffect(() => {
         Modal.setFunctions(showModal, hideModal, hideAllModals);
@@ -54,7 +72,8 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         state,
         showModal,
         hideModal,
-        hideAllModals
+        hideAllModals,
+        dismissTopModal
     };
 
     const currentModal = state.modals[state.modals.length - 1];

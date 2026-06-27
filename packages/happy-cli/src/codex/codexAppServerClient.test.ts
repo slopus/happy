@@ -128,6 +128,16 @@ describe('CodexAppServerClient sandbox integration', () => {
         process.env.RUST_LOG = originalRustLog;
     });
 
+    it('reports goal action support for Codex versions with goal action requests', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+
+        mockExecSync.mockReturnValue('codex-cli 0.140.0');
+        expect(new CodexAppServerClient().supportsGoalActions()).toBe(true);
+
+        mockExecSync.mockReturnValue('codex-cli 0.130.0');
+        expect(new CodexAppServerClient().supportsGoalActions()).toBe(false);
+    });
+
     it('wraps transport when sandbox is enabled', async () => {
         // Dynamic import to ensure mocks are applied
         const { CodexAppServerClient } = await import('./codexAppServerClient');
@@ -367,6 +377,324 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('forks, reads, and rolls back Codex threads through app-server RPC', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 2501,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+
+                if (msg.method === 'thread/fork' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: {
+                                    id: 'thread-forked',
+                                    path: '/tmp/thread-forked',
+                                    forkedFromId: 'thread-source',
+                                    turns: [],
+                                },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'workspaceWrite' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'thread/read' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: {
+                                    id: 'thread-forked',
+                                    turns: [
+                                        { id: 'turn-1', items: [{ type: 'userMessage', id: 'user-1', content: [{ type: 'text', text: 'hello' }] }] },
+                                    ],
+                                },
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'thread/rollback' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: {
+                                    id: 'thread-forked',
+                                    turns: [
+                                        { id: 'turn-1', items: [{ type: 'userMessage', id: 'user-1', content: [{ type: 'text', text: 'hello' }] }] },
+                                    ],
+                                },
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'thread/inject_items' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {},
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        const forked = await client.forkThread({
+            threadId: 'thread-source',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        });
+        const read = await client.readThread({ threadId: forked.threadId, includeTurns: true });
+        const rolledBack = await client.rollbackThread({ threadId: forked.threadId, numTurns: 2 });
+        const injected = await client.injectItems({
+            threadId: forked.threadId,
+            items: [{
+                type: 'message',
+                role: 'user',
+                content: [{ type: 'input_text', text: 'hello' }],
+            }],
+        });
+
+        expect(forked.threadId).toBe('thread-forked');
+        expect(read.thread.turns).toHaveLength(1);
+        expect(rolledBack.thread.turns).toHaveLength(1);
+        expect(injected).toEqual({});
+        expect(requests.find((msg) => msg.method === 'thread/fork')?.params).toEqual(expect.objectContaining({
+            threadId: 'thread-source',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        }));
+        expect(requests.find((msg) => msg.method === 'thread/read')?.params).toEqual({
+            threadId: 'thread-forked',
+            includeTurns: true,
+        });
+        expect(requests.find((msg) => msg.method === 'thread/rollback')?.params).toEqual({
+            threadId: 'thread-forked',
+            numTurns: 2,
+        });
+        expect(requests.find((msg) => msg.method === 'thread/inject_items')?.params).toEqual({
+            threadId: 'thread-forked',
+            items: [{
+                type: 'message',
+                role: 'user',
+                content: [{ type: 'input_text', text: 'hello' }],
+            }],
+        });
+
+        await client.disconnect();
+    });
+
+    it('clears active thread state so the next prompt starts a fresh thread', async () => {
+        const requests: MockRpcMessage[] = [];
+        let nextThreadNumber = 1;
+        const proc = createMockProcess({
+            pid: 2601,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    const threadId = `thread-${nextThreadNumber++}`;
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: threadId, path: `/tmp/${threadId}` },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'readOnly' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'read-only',
+        });
+
+        expect(client.threadId).toBe('thread-1');
+        expect(client.hasActiveThread()).toBe(true);
+
+        client.clearThreadState();
+
+        expect(client.threadId).toBeNull();
+        expect(client.turnId).toBeNull();
+        expect(client.hasActiveThread()).toBe(false);
+
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'read-only',
+        });
+
+        expect(client.threadId).toBe('thread-2');
+        expect(requests.filter((msg) => msg.method === 'thread/start')).toHaveLength(2);
+
+        await client.disconnect();
+    });
+
+    it('sends extra localImage input items and omits empty text for image-only turns', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 2801,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-images', path: '/tmp/thread-images' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-images', items: [], status: 'completed', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-images',
+                                turn: { id: 'turn-images', items: [], status: 'completed', error: null },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+        await client.sendTurnAndWait('', {
+            extraInputItems: [{ type: 'localImage', path: '/tmp/happy-image.png' }],
+        });
+
+        expect(requests.find((msg) => msg.method === 'turn/start')?.params).toMatchObject({
+            threadId: 'thread-images',
+            input: [{ type: 'localImage', path: '/tmp/happy-image.png' }],
+        });
+
+        await client.disconnect();
+    });
+
+    it('keeps text-only turn input unchanged when no extra input items are supplied', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 2802,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-text', path: '/tmp/thread-text' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-text', items: [], status: 'completed', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-text',
+                                turn: { id: 'turn-text', items: [], status: 'completed', error: null },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+        await client.sendTurnAndWait('hello');
+
+        expect(requests.find((msg) => msg.method === 'turn/start')?.params).toMatchObject({
+            threadId: 'thread-text',
+            input: [{ type: 'text', text: 'hello' }],
+        });
+
+        await client.disconnect();
+    });
+
     it('maps raw item notifications into legacy events and deduplicates turn completion', async () => {
         const requests: MockRpcMessage[] = [];
         const proc = createMockProcess({
@@ -500,6 +828,169 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('maps raw goal notifications into legacy goal events', async () => {
+        const proc = createMockProcess({
+            pid: 3002,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-goal-1', path: '/tmp/thread-goal-1' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'thread/goal/updated',
+                            params: {
+                                threadId: 'thread-goal-1',
+                                turnId: 'turn-goal-1',
+                                goal: {
+                                    threadId: 'thread-goal-1',
+                                    objective: 'finish the task',
+                                    status: 'active',
+                                    tokenBudget: null,
+                                    tokensUsed: 11,
+                                    timeUsedSeconds: 3,
+                                    createdAt: 1781680000,
+                                    updatedAt: 1781680003,
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'thread/goal/cleared',
+                            params: { threadId: 'thread-goal-1' },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await waitFor(() => events.some((event) => event.type === 'thread_goal_cleared'));
+
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'thread_goal_updated',
+                thread_id: 'thread-goal-1',
+                threadId: 'thread-goal-1',
+                turn_id: 'turn-goal-1',
+                turnId: 'turn-goal-1',
+                goal: expect.objectContaining({
+                    threadId: 'thread-goal-1',
+                    objective: 'finish the task',
+                    status: 'active',
+                }),
+            }),
+            expect.objectContaining({
+                type: 'thread_goal_cleared',
+                thread_id: 'thread-goal-1',
+                threadId: 'thread-goal-1',
+            }),
+        ]));
+
+        await client.disconnect();
+    });
+
+    it('sends goal set and clear requests through app-server', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3004,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+
+                if (msg.method === 'thread/goal/set' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                goal: {
+                                    threadId: 'thread-goal-1',
+                                    objective: msg.params?.objective,
+                                    status: 'active',
+                                    tokenBudget: null,
+                                    tokensUsed: 0,
+                                    timeUsedSeconds: 0,
+                                    createdAt: 1781680000,
+                                    updatedAt: 1781680001,
+                                },
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'thread/goal/clear' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: { cleared: true },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await expect(client.setGoal({
+            threadId: 'thread-goal-1',
+            objective: 'finish the task',
+        })).resolves.toMatchObject({
+            goal: {
+                threadId: 'thread-goal-1',
+                objective: 'finish the task',
+                status: 'active',
+            },
+        });
+        await expect(client.clearGoal({
+            threadId: 'thread-goal-1',
+        })).resolves.toEqual({ cleared: true });
+
+        expect(requests).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                method: 'thread/goal/set',
+                params: {
+                    threadId: 'thread-goal-1',
+                    objective: 'finish the task',
+                },
+            }),
+            expect.objectContaining({
+                method: 'thread/goal/clear',
+                params: {
+                    threadId: 'thread-goal-1',
+                },
+            }),
+        ]));
+
+        await client.disconnect();
+    });
+
     it('maps raw file change items into legacy patch events', async () => {
         const proc = createMockProcess({
             pid: 3003,
@@ -549,6 +1040,10 @@ describe('CodexAppServerClient sandbox integration', () => {
                                         path: 'README.md',
                                         kind: { type: 'update', move_path: null },
                                         diff: '@@ -1 +1 @@',
+                                    }, {
+                                        path: 'MONETIZATION.md',
+                                        type: 'add',
+                                        content: '# Monetization\n\nPaid plans.\n',
                                     }],
                                 },
                             },
@@ -566,6 +1061,10 @@ describe('CodexAppServerClient sandbox integration', () => {
                                         path: 'README.md',
                                         kind: { type: 'update', move_path: null },
                                         diff: '@@ -1 +1 @@',
+                                    }, {
+                                        path: 'MONETIZATION.md',
+                                        type: 'add',
+                                        content: '# Monetization\n\nPaid plans.\n',
                                     }],
                                 },
                             },
@@ -615,6 +1114,10 @@ describe('CodexAppServerClient sandbox integration', () => {
                     'README.md': {
                         diff: '@@ -1 +1 @@',
                         kind: { type: 'update', move_path: null },
+                    },
+                    'MONETIZATION.md': {
+                        kind: { type: 'add', move_path: null },
+                        add: { content: '# Monetization\n\nPaid plans.\n' },
                     },
                 },
             }),
