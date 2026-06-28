@@ -21,7 +21,7 @@ import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useSetting } from '@/sync/storage';
+import { useSetting, useSessionGitStatus } from '@/sync/storage';
 import { hackMode, hackModes } from '@/sync/modeHacks';
 import { Theme } from '@/theme';
 import { t } from '@/text';
@@ -323,6 +323,8 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
 type StatusRowProps = {
     connectionStatus?: AgentInputProps['connectionStatus'];
     contextWarning: { text: string; color: string } | null;
+    modelName?: string | null;
+    effortName?: string | null;
     displayPermissionMode: ReturnType<typeof hackMode> | null;
     permissionModeKey: string;
     isSandboxedYoloMode: boolean;
@@ -330,13 +332,61 @@ type StatusRowProps = {
     zenMode?: boolean;
 };
 
+type RepoRowProps = {
+    sessionId?: string;
+    workingPath?: string | null;
+};
+
+// Persistent worktree + branch line. Mounted just below the status row so the
+// agent's current working directory (basename — the worktree dir after an
+// EnterWorktree relocation) and git branch are always visible, gear-independent.
+// Both are agent-agnostic (git scan + session metadata), so Claude/Codex/Gemini
+// sessions all populate it.
+const AgentInputRepoRow = React.memo(function AgentInputRepoRow(p: RepoRowProps) {
+    const { theme } = useUnistyles();
+    const gitStatus = useSessionGitStatus(p.sessionId || '');
+    const branch = gitStatus?.branch ?? null;
+    const segments = p.workingPath ? p.workingPath.split(/[/\\]/).filter(Boolean) : [];
+    const worktree = segments.length > 0 ? segments[segments.length - 1] : null;
+    if (!worktree && !branch) {
+        return null;
+    }
+    return (
+        <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingBottom: 4,
+            gap: 6,
+            minHeight: 20,
+        }}>
+            {worktree && (
+                <>
+                    <Ionicons name="folder-outline" size={11} color={theme.colors.textSecondary} />
+                    <Text numberOfLines={1} style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                        {worktree}
+                    </Text>
+                </>
+            )}
+            {branch && (
+                <>
+                    <Octicons name="git-branch" size={11} color={theme.colors.textSecondary} style={{ marginLeft: worktree ? 4 : 0 }} />
+                    <Text numberOfLines={1} style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                        {branch}
+                    </Text>
+                </>
+            )}
+        </View>
+    );
+});
+
 const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRowProps) {
     const { theme } = useUnistyles();
     const showPermissionBadge = !!p.displayPermissionMode
         && p.permissionModeKey !== 'default'
         && !p.zenMode
         && !!p.permissionLabel;
-    if (!p.connectionStatus && !p.contextWarning && !showPermissionBadge) {
+    if (!p.connectionStatus && !p.contextWarning && !showPermissionBadge && !p.modelName && !p.effortName) {
         return null;
     }
     return (
@@ -421,14 +471,32 @@ const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRow
                         )}
                     </>
                 )}
+                {p.modelName && (
+                    <Text style={{
+                        fontSize: 11,
+                        color: theme.colors.textSecondary,
+                        ...Typography.default()
+                    }}>
+                        {p.connectionStatus ? '• ' : ''}{p.modelName}
+                    </Text>
+                )}
+                {p.effortName && (
+                    <Text style={{
+                        fontSize: 11,
+                        color: theme.colors.textSecondary,
+                        ...Typography.default()
+                    }}>
+                        {(p.connectionStatus || p.modelName) ? '• ' : ''}{p.effortName}
+                    </Text>
+                )}
                 {p.contextWarning && (
                     <Text style={{
                         fontSize: 11,
                         color: p.contextWarning.color,
-                        marginLeft: p.connectionStatus ? 8 : 0,
+                        marginLeft: (p.connectionStatus || p.modelName || p.effortName) ? 8 : 0,
                         ...Typography.default()
                     }}>
-                        {p.connectionStatus ? '• ' : ''}{p.contextWarning.text}
+                        {(p.connectionStatus || p.modelName || p.effortName) ? '• ' : ''}{p.contextWarning.text}
                     </Text>
                 )}
             </View>
@@ -1179,11 +1247,18 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 <AgentInputStatusRow
                     connectionStatus={props.connectionStatus}
                     contextWarning={contextWarning}
+                    modelName={props.modelMode?.name}
+                    effortName={props.effortLevel?.name}
                     displayPermissionMode={displayPermissionMode}
                     permissionModeKey={permissionModeKey}
                     isSandboxedYoloMode={isSandboxedYoloMode}
                     permissionLabel={displayPermissionMode ? withSandboxSuffix(displayPermissionMode.name, permissionModeKey) : null}
                     zenMode={props.zenMode}
+                />
+
+                <AgentInputRepoRow
+                    sessionId={props.sessionId}
+                    workingPath={props.metadata?.path}
                 />
 
                 <AgentInputContextChips
