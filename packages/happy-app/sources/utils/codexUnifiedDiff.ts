@@ -4,6 +4,28 @@ export type ParsedUnifiedDiff = {
     fileName?: string;
 };
 
+export type UnifiedDiffFileKind = 'add' | 'delete' | 'update' | string | null | undefined;
+
+export function materializeUnifiedDiffPatch(
+    unifiedDiff: string,
+    fileName: string,
+    kind: UnifiedDiffFileKind = 'update',
+): string {
+    if (
+        unifiedDiff.includes('\n--- ') ||
+        unifiedDiff.startsWith('--- ') ||
+        unifiedDiff.includes('\n+++ ') ||
+        unifiedDiff.startsWith('+++ ') ||
+        unifiedDiff.startsWith('diff --git ')
+    ) {
+        return unifiedDiff;
+    }
+
+    const oldPath = kind === 'add' ? '/dev/null' : `a/${fileName}`;
+    const newPath = kind === 'delete' ? '/dev/null' : `b/${fileName}`;
+    return `--- ${oldPath}\n+++ ${newPath}\n${unifiedDiff}`;
+}
+
 /**
  * Parse a unified diff or diff hunk fragment into old/new file contents.
  */

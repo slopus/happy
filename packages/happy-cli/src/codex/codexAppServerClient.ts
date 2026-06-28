@@ -23,6 +23,19 @@ import type {
     NewConversationResponse,
     ResumeConversationParams,
     ResumeConversationResponse,
+    ForkConversationParams,
+    ForkConversationResponse,
+    ReadConversationParams,
+    ReadConversationResponse,
+    RollbackConversationParams,
+    RollbackConversationResponse,
+    InjectItemsParams,
+    InjectItemsResponse,
+    ThreadGoalSetParams,
+    ThreadGoalSetResponse,
+    ThreadGoalClearParams,
+    ThreadGoalClearResponse,
+    Thread,
     InterruptConversationParams,
     ReviewDecision,
     EventMsg,
@@ -63,18 +76,45 @@ export type ApprovalHandler = (params: {
 /**
  * Check that `codex app-server` is available.
  */
-function isAppServerAvailable(): boolean {
+function parseCodexCliVersion(version: string): { major: number; minor: number; patch: number } | null {
+    const match = version.match(/codex-cli\s+(\d+)\.(\d+)\.(\d+)/);
+    if (!match) return null;
+    const major = Number(match[1]);
+    const minor = Number(match[2]);
+    const patch = Number(match[3]);
+    if (!Number.isFinite(major) || !Number.isFinite(minor) || !Number.isFinite(patch)) {
+        return null;
+    }
+    return { major, minor, patch };
+}
+
+function readCodexCliVersion(): { major: number; minor: number; patch: number } | null {
     try {
         const version = execSync('codex --version', { encoding: 'utf8', windowsHide: true }).trim();
-        const match = version.match(/codex-cli\s+(\d+\.\d+\.\d+)/);
-        if (!match) return false;
-        const [, ver] = match;
-        const [major, minor] = ver.split('.').map(Number);
-        // app-server available in recent versions
-        return major > 0 || minor >= 100;
+        return parseCodexCliVersion(version);
     } catch {
+        return null;
+    }
+}
+
+function isAppServerAvailable(): boolean {
+    const version = readCodexCliVersion();
+    if (!version) {
         return false;
     }
+    const { major, minor } = version;
+    // app-server available in recent versions
+    return major > 0 || minor >= 100;
+}
+
+function isGoalActionsAvailable(): boolean {
+    const version = readCodexCliVersion();
+    if (!version) {
+        return false;
+    }
+    const { major, minor } = version;
+    // thread/goal/set and thread/goal/clear are present in Codex 0.140+.
+    return major > 0 || minor >= 140;
 }
 
 function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | undefined {
@@ -94,11 +134,57 @@ function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | unde
         }
 
         const entry: Record<string, unknown> = {};
-        if (typeof change.diff === 'string') {
-            entry.diff = change.diff;
+        const changeRecord = change as Record<string, unknown>;
+        const kind = changeRecord.kind && typeof changeRecord.kind === 'object' && !Array.isArray(changeRecord.kind)
+            ? changeRecord.kind as Record<string, unknown>
+            : null;
+        const type = typeof changeRecord.type === 'string'
+            ? changeRecord.type
+            : (typeof kind?.type === 'string' ? kind.type : null);
+        const movePath = changeRecord.move_path ?? kind?.move_path ?? null;
+
+        if (kind) {
+            entry.kind = kind;
+        } else if (type) {
+            entry.kind = { type, move_path: movePath };
         }
-        if (change.kind && typeof change.kind === 'object' && !Array.isArray(change.kind)) {
-            entry.kind = change.kind;
+
+        const diff = typeof changeRecord.diff === 'string'
+            ? changeRecord.diff
+            : (typeof changeRecord.unified_diff === 'string' ? changeRecord.unified_diff : null);
+        if (diff !== null) {
+            entry.diff = diff;
+        }
+
+        if (changeRecord.add && typeof changeRecord.add === 'object' && !Array.isArray(changeRecord.add)) {
+            entry.add = changeRecord.add;
+        }
+        if (changeRecord.modify && typeof changeRecord.modify === 'object' && !Array.isArray(changeRecord.modify)) {
+            entry.modify = changeRecord.modify;
+        }
+        if (changeRecord.delete && typeof changeRecord.delete === 'object' && !Array.isArray(changeRecord.delete)) {
+            entry.delete = changeRecord.delete;
+        }
+
+        const content = typeof changeRecord.content === 'string' ? changeRecord.content : null;
+        if (type === 'add' && content !== null) {
+            entry.add = { content };
+        }
+        if (type === 'delete' && content !== null) {
+            entry.delete = { content };
+        }
+
+        const oldContent = typeof changeRecord.oldContent === 'string'
+            ? changeRecord.oldContent
+            : (typeof changeRecord.old_content === 'string' ? changeRecord.old_content : null);
+        const newContent = typeof changeRecord.newContent === 'string'
+            ? changeRecord.newContent
+            : (typeof changeRecord.new_content === 'string' ? changeRecord.new_content : null);
+        if ((oldContent !== null || newContent !== null) && type !== 'add' && type !== 'delete') {
+            entry.modify = {
+                old_content: oldContent ?? '',
+                new_content: newContent ?? '',
+            };
         }
 
         normalized[path] = entry;
@@ -159,6 +245,10 @@ export class CodexAppServerClient {
         return this._turnId;
     }
 
+    supportsGoalActions(): boolean {
+        return isGoalActionsAvailable();
+    }
+
     setEventHandler(handler: (msg: EventMsg) => void): void {
         this.eventHandler = handler;
     }
@@ -179,6 +269,8 @@ export class CodexAppServerClient {
 
     private shouldHandleRawNotification(method: string): boolean {
         const isRawNotification = method === 'thread/started'
+            || method === 'thread/goal/updated'
+            || method === 'thread/goal/cleared'
             || method === 'turn/started'
             || method === 'turn/completed'
             || method === 'thread/status/changed'
@@ -269,6 +361,29 @@ export class CodexAppServerClient {
             if (statusType === 'idle' && this.pendingTurnCompletion) {
                 this.emitRawTurnCompletion(this._turnId, 'completed', null, method);
             }
+            return true;
+        }
+
+        if (method === 'thread/goal/updated') {
+            const threadId = typeof params?.threadId === 'string'
+                ? params.threadId
+                : (typeof params?.goal?.threadId === 'string' ? params.goal.threadId : undefined);
+            const turnId = typeof params?.turnId === 'string' ? params.turnId : null;
+            this.eventHandler?.({
+                type: 'thread_goal_updated',
+                ...(threadId ? { thread_id: threadId, threadId } : {}),
+                ...(turnId ? { turn_id: turnId, turnId } : {}),
+                goal: params?.goal,
+            });
+            return true;
+        }
+
+        if (method === 'thread/goal/cleared') {
+            const threadId = typeof params?.threadId === 'string' ? params.threadId : undefined;
+            this.eventHandler?.({
+                type: 'thread_goal_cleared',
+                ...(threadId ? { thread_id: threadId, threadId } : {}),
+            });
             return true;
         }
 
@@ -643,6 +758,100 @@ export class CodexAppServerClient {
         return { threadId: result.thread.id, model: result.model };
     }
 
+    async forkThread(opts: {
+        threadId: string;
+        model?: string;
+        cwd?: string;
+        approvalPolicy?: ApprovalPolicy;
+        sandbox?: SandboxMode;
+        mcpServers?: Record<string, unknown>;
+    }): Promise<{ threadId: string; model: string; thread: Thread }> {
+        const defaults = this.threadDefaults ?? {};
+        const params: ForkConversationParams = {
+            threadId: opts.threadId,
+            model: opts.model ?? defaults.model ?? null,
+            modelProvider: null,
+            cwd: opts.cwd ?? defaults.cwd ?? process.cwd(),
+            approvalPolicy: opts.approvalPolicy ?? defaults.approvalPolicy ?? null,
+            sandbox: opts.sandbox ?? defaults.sandbox ?? null,
+            config: this.buildThreadConfig(opts.mcpServers ?? defaults.mcpServers),
+            baseInstructions: null,
+            developerInstructions: null,
+            ephemeral: false,
+            threadSource: null,
+        };
+
+        const result = await this.request('thread/fork', params) as ForkConversationResponse;
+        this._threadId = result.thread.id;
+        this._turnId = null;
+        this.rememberThreadDefaults({
+            model: opts.model ?? defaults.model,
+            cwd: opts.cwd ?? defaults.cwd,
+            approvalPolicy: opts.approvalPolicy ?? defaults.approvalPolicy,
+            sandbox: opts.sandbox ?? defaults.sandbox,
+            mcpServers: opts.mcpServers ?? defaults.mcpServers,
+        });
+        logger.debug('[CodexAppServer] Thread forked:', opts.threadId, '->', this._threadId);
+        return { threadId: result.thread.id, model: result.model, thread: result.thread };
+    }
+
+    async readThread(opts: {
+        threadId: string;
+        includeTurns?: boolean;
+    }): Promise<ReadConversationResponse> {
+        const params: ReadConversationParams = {
+            threadId: opts.threadId,
+            includeTurns: opts.includeTurns ?? true,
+        };
+        return await this.request('thread/read', params) as ReadConversationResponse;
+    }
+
+    async rollbackThread(opts: {
+        threadId: string;
+        numTurns: number;
+    }): Promise<RollbackConversationResponse> {
+        const params: RollbackConversationParams = {
+            threadId: opts.threadId,
+            numTurns: opts.numTurns,
+        };
+        return await this.request('thread/rollback', params) as RollbackConversationResponse;
+    }
+
+    async injectItems(opts: {
+        threadId: string;
+        items: unknown[];
+    }): Promise<InjectItemsResponse> {
+        const params: InjectItemsParams = {
+            threadId: opts.threadId,
+            items: opts.items,
+        };
+        return await this.request('thread/inject_items', params) as InjectItemsResponse;
+    }
+
+    async setGoal(opts: {
+        threadId: string;
+        objective: string;
+        status?: ThreadGoalSetParams['status'];
+        tokenBudget?: number | null;
+    }): Promise<ThreadGoalSetResponse> {
+        const params: ThreadGoalSetParams = {
+            threadId: opts.threadId,
+            objective: opts.objective,
+            ...(opts.status !== undefined ? { status: opts.status } : {}),
+            ...(opts.tokenBudget !== undefined ? { tokenBudget: opts.tokenBudget } : {}),
+        };
+        return await this.request('thread/goal/set', params) as ThreadGoalSetResponse;
+    }
+
+    async clearGoal(opts: {
+        threadId: string;
+    }): Promise<ThreadGoalClearResponse> {
+        const params: ThreadGoalClearParams = {
+            threadId: opts.threadId,
+        };
+        return await this.request('thread/goal/clear', params) as ThreadGoalClearResponse;
+    }
+
     async reconnectAndResumeThread(): Promise<boolean> {
         const threadId = this._threadId;
         await this.disconnectInternal({ preserveThreadState: !!threadId });
@@ -771,14 +980,18 @@ export class CodexAppServerClient {
         approvalPolicy?: ApprovalPolicy;
         sandbox?: SandboxMode;
         effort?: ReasoningEffort;
+        extraInputItems?: InputItem[];
     }): Promise<void> {
         if (!this._threadId) {
             throw new Error('No active thread. Call startThread first.');
         }
 
-        const input: InputItem[] = [
-            { type: 'text', text: prompt },
-        ];
+        const extraInputItems = opts?.extraInputItems ?? [];
+        const input: InputItem[] = [];
+        if (prompt.length > 0 || extraInputItems.length === 0) {
+            input.push({ type: 'text', text: prompt });
+        }
+        input.push(...extraInputItems);
 
         // Build params — only include optional fields when set (server uses thread defaults otherwise)
         const params: Record<string, unknown> = {
@@ -831,6 +1044,7 @@ export class CodexAppServerClient {
         approvalPolicy?: ApprovalPolicy;
         sandbox?: SandboxMode;
         effort?: ReasoningEffort;
+        extraInputItems?: InputItem[];
         turnTimeoutMs?: number;
     }): Promise<{ aborted: boolean }> {
         // Wait for any in-flight interruptTurn() to complete before starting a new
@@ -902,6 +1116,18 @@ export class CodexAppServerClient {
 
     hasActiveThread(): boolean {
         return this._threadId !== null;
+    }
+
+    clearThreadState(): void {
+        logger.debug(
+            `[CodexAppServer] Clearing thread state: thread=${this._threadId ?? 'none'} turn=${this._turnId ?? 'none'}`,
+        );
+        this.resolvePendingTurn(true);
+        this._threadId = null;
+        this._turnId = null;
+        this.threadDefaults = null;
+        this.completedTurnIds.clear();
+        this.rawFileChangesByItemId.clear();
     }
 
     // ─── JSON-RPC transport ─────────────────────────────────────

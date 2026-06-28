@@ -220,7 +220,7 @@ export const ja: TranslationStructure = {
         analyticsDisabled: 'すべてのトラッキングとテレメトリが無効',
         analyticsEnabled: '匿名の使用状況分析がアクティブ',
         imageUpload: '画像アップロード',
-        imageUploadSubtitle: 'メッセージに画像を添付してClaudeに分析させる',
+        imageUploadSubtitle: '対応エージェントに分析させるため、メッセージに画像を添付する',
     },
 
     errors: {
@@ -412,6 +412,13 @@ export const ja: TranslationStructure = {
             scanQrCode: 'QRコードをスキャン',
             openCamera: 'カメラを開く',
         },
+        agentGoalBar: {
+            currentGoal: '現在の目標',
+            accessibilityLabel: ({ goal }: { goal: string }) => `現在の目標: ${goal}`,
+            clearGoal: '目標をクリア',
+            stopGoal: '目標を停止',
+            editGoal: '目標を編集',
+        },
     },
 
     agentInput: {
@@ -503,6 +510,7 @@ export const ja: TranslationStructure = {
     },
 
     toolGroup: {
+        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => `${count}個のファイルを編集`,
         readFiles: ({ count }: { count: number }) => `${count}個のファイルを読み取り`,
         ranCommands: ({ count }: { count: number }) => `${count}個のコマンドを実行`,
@@ -510,6 +518,7 @@ export const ja: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => `${count}個のURLを取得`,
         ranTasks: ({ count }: { count: number }) => `${count}個のタスクを実行`,
         usedTools: ({ count }: { count: number }) => `${count}個のツールを使用`,
+        workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 
     tools: {
@@ -836,6 +845,7 @@ export const ja: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `${mode}モードに切り替えました`,
         unknownEvent: '不明なイベント',
         usageLimitUntil: ({ time }: { time: string }) => `${time}まで使用制限中`,
+        sentAsGoal: 'Sent as goal',
         unknownTime: '不明な時間',
     },
 
@@ -980,7 +990,7 @@ export const ja: TranslationStructure = {
             ? '1枚の画像をアップロードできず、送信されませんでした。'
             : `${count}枚の画像をアップロードできず、送信されませんでした。`,
         notSupportedTitle: '画像はサポートされていません',
-        notSupportedMessage: 'このエージェントは画像の添付に対応していません。テキストのみが送信されました。',
+        notSupportedMessage: 'このエージェントは画像の添付に対応していません。画像は送信されませんでした。',
     },
 
     feed: {

@@ -8,6 +8,8 @@ export type LauncherResult = { type: 'switch' } | { type: 'exit', code: number }
 
 export async function claudeLocalLauncher(session: Session): Promise<LauncherResult> {
 
+    let scannerMessageChain = Promise.resolve();
+
     // Create scanner
     const scanner = await createSessionScanner({
         sessionId: session.sessionId,
@@ -15,7 +17,13 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
         onMessage: (message) => { 
             // Block SDK summary messages - we generate our own
             if (message.type !== 'summary') {
-                session.client.sendClaudeSessionMessage(message)
+                scannerMessageChain = scannerMessageChain.then(async () => {
+                    try {
+                        await session.client.sendClaudeSessionMessageFromLocalTranscript(message);
+                    } catch (error) {
+                        logger.debug('[local]: failed to send Claude transcript message', error);
+                    }
+                });
             }
         }
     });
@@ -30,6 +38,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
     // Handle abort
     let exitReason: LauncherResult | null = null;
+    let switchRequested = false;
     const processAbortController = new AbortController();
     let exutFuture = new Future<void>();
     try {
@@ -64,25 +73,20 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
         async function doSwitch() {
             logger.debug('[local]: doSwitch');
-
-            // Switching to remote mode
-            if (!exitReason) {
-                exitReason = { type: 'switch' };
+            switchRequested = true;
+            if (!processAbortController.signal.aborted) {
+                processAbortController.abort();
             }
-
-            session.client.closeClaudeSessionTurn('cancelled');
-
-            // Abort
-            await abort();
         }
 
         // When to abort
         session.client.rpcHandlerManager.registerHandler('abort', doAbort); // Abort current process, clean queue and switch to remote mode
         session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When user wants to switch to remote mode
-        session.queue.setOnMessage((message: string, mode) => {
-            // Switch to remote mode when message received
-            doSwitch();
-        }); // When any message is received, abort current process, clean queue and switch to remote mode
+        session.queue.setOnMessage((_message: string, _mode) => {
+            // Remote messages request control from the app. Stop local Claude
+            // so queued app messages can be picked up by remote mode now.
+            void doSwitch();
+        });
 
         // Exit if there are messages in the queue
         if (session.queue.size() > 0) {
@@ -126,7 +130,9 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                 // Normal exit
                 if (!exitReason) {
                     session.client.closeClaudeSessionTurn('completed');
-                    exitReason = { type: 'exit', code: 0 };
+                    exitReason = (switchRequested || session.queue.size() > 0)
+                        ? { type: 'switch' }
+                        : { type: 'exit', code: 0 };
                     break;
                 }
             } catch (e) {
@@ -135,6 +141,11 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                 if (e instanceof ExitCodeError) {
                     if (exitReason) {
                         break; // preserve existing exit reason (e.g. switch intent) — SIGTERM is expected
+                    }
+                    if (switchRequested || session.queue.size() > 0) {
+                        session.client.closeClaudeSessionTurn('failed');
+                        exitReason = { type: 'switch' };
+                        break;
                     }
                     session.client.closeClaudeSessionTurn('failed');
                     exitReason = { type: 'exit', code: e.exitCode };
@@ -164,6 +175,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
         // Cleanup
         await scanner.cleanup();
+        await scannerMessageChain;
     }
 
     // Return

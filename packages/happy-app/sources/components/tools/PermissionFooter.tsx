@@ -179,67 +179,73 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
     const styles = StyleSheet.create({
         container: {
-            paddingHorizontal: 12,
-            paddingVertical: 8,
+            paddingHorizontal: 4,
+            paddingTop: 2,
+            paddingBottom: 6,
             justifyContent: 'center',
         },
         buttonContainer: {
-            flexDirection: 'column',
-            gap: 4,
-            alignItems: 'flex-start',
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 6,
+            alignItems: 'center',
         },
         button: {
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            borderRadius: 1,
+            paddingHorizontal: 9,
+            paddingVertical: 5,
+            borderRadius: 6,
             backgroundColor: 'transparent',
-            alignItems: 'flex-start',
+            alignItems: 'center',
             justifyContent: 'center',
-            minHeight: 32,
-            borderLeftWidth: 3,
-            borderLeftColor: 'transparent',
-            alignSelf: 'stretch',
+            minHeight: 28,
+            maxWidth: '100%',
+            borderWidth: 1,
+            borderColor: theme.colors.textSecondary,
+            flexShrink: 1,
+            opacity: 0.62,
         },
         buttonAllow: {
-            backgroundColor: 'transparent',
+            borderColor: theme.colors.textSecondary,
         },
         buttonDeny: {
-            backgroundColor: 'transparent',
+            borderColor: theme.colors.textSecondary,
         },
         buttonAllowAll: {
-            backgroundColor: 'transparent',
+            borderColor: theme.colors.textSecondary,
         },
         buttonSelected: {
             backgroundColor: 'transparent',
-            borderLeftColor: theme.colors.text,
+            borderColor: theme.colors.textSecondary,
+            opacity: 1,
         },
         buttonInactive: {
-            opacity: 0.3,
+            opacity: 0.62,
         },
         buttonContent: {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 4,
-            minHeight: 20,
+            minHeight: 16,
+            minWidth: 0,
         },
         icon: {
             marginRight: 2,
         },
         buttonText: {
-            fontSize: 14,
+            fontSize: 13,
             fontWeight: '400',
-            color: theme.colors.textSecondary,
+            color: theme.colors.text,
         },
         buttonTextAllow: {
-            color: theme.colors.permissionButton.allow.background,
+            color: theme.colors.text,
             fontWeight: '500',
         },
         buttonTextDeny: {
-            color: theme.colors.permissionButton.deny.background,
+            color: theme.colors.text,
             fontWeight: '500',
         },
         buttonTextAllowAll: {
-            color: theme.colors.permissionButton.allowAll.background,
+            color: theme.colors.text,
             fontWeight: '500',
         },
         buttonTextSelected: {
@@ -247,29 +253,29 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             fontWeight: '500',
         },
         buttonForSession: {
-            backgroundColor: 'transparent',
+            borderColor: theme.colors.textSecondary,
         },
         buttonTextForSession: {
-            color: theme.colors.permissionButton.allowAll.background,
+            color: theme.colors.text,
             fontWeight: '500',
         },
         loadingIndicatorAllow: {
-            color: theme.colors.permissionButton.allow.background,
+            color: theme.colors.text,
         },
         loadingIndicatorDeny: {
-            color: theme.colors.permissionButton.deny.background,
+            color: theme.colors.text,
         },
         loadingIndicatorAllowAll: {
-            color: theme.colors.permissionButton.allowAll.background,
+            color: theme.colors.text,
         },
         loadingIndicatorForSession: {
-            color: theme.colors.permissionButton.allowAll.background,
+            color: theme.colors.text,
         },
         iconApproved: {
-            color: theme.colors.permissionButton.allow.background,
+            color: theme.colors.text,
         },
         iconDenied: {
-            color: theme.colors.permissionButton.deny.background,
+            color: theme.colors.text,
         },
     });
 

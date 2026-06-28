@@ -2,6 +2,16 @@
 
 This document covers the A+ fork release path for `@namsangboy/happy-cli`.
 
+## Fork Scope
+
+The A+ Happy CLI release line is maintained for Buzzni/A+ service integration.
+Do not treat A+ release work as an upstream contribution path to
+`slopus/happy` `main`.
+
+When updating from upstream, merge released upstream tags into the A+ fork and
+validate the A+ service surfaces. Do not open or plan a reverse PR back to
+upstream `main` unless that is explicitly requested as separate work.
+
 ## Version Bump
 
 1. Update `packages/happy-cli/package.json` to the next `*-aplus.*` version.

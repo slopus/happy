@@ -147,7 +147,7 @@ export class GitStatusSync {
             // Get git status in porcelain v2 format (includes branch info)
             // --untracked-files=all ensures we get individual files, not directories
             const statusResult = await sessionBash(sessionId, {
-                command: 'git status --porcelain=v2 --branch --show-stash --untracked-files=all',
+                command: 'git -c core.quotepath=false status --porcelain=v2 --branch --show-stash --untracked-files=all',
                 cwd: session.metadata.path,
                 timeout: 10000
             });
@@ -159,14 +159,14 @@ export class GitStatusSync {
 
             // Get git diff statistics for unstaged changes
             const diffStatResult = await sessionBash(sessionId, {
-                command: 'git diff --numstat',
+                command: 'git -c core.quotepath=false diff --numstat',
                 cwd: session.metadata.path,
                 timeout: 10000
             });
 
             // Get git diff statistics for staged changes
             const stagedDiffStatResult = await sessionBash(sessionId, {
-                command: 'git diff --cached --numstat',
+                command: 'git -c core.quotepath=false diff --cached --numstat',
                 cwd: session.metadata.path,
                 timeout: 10000
             });

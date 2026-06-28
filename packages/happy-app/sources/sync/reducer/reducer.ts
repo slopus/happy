@@ -119,6 +119,7 @@ import { parseMessageAsEvent } from "./messageToEvent";
 
 type ReducerMessage = {
     id: string;
+    localId?: string | null;
     realID: string | null;
     createdAt: number;
     role: 'user' | 'agent';
@@ -128,6 +129,7 @@ type ReducerMessage = {
     tool: ToolCall | null;
     meta?: MessageMeta;
     claudeUuid?: string;
+    codexItemId?: string;
 }
 
 type StoredPermission = {
@@ -659,6 +661,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             let mid = allocateId();
             state.messages.set(mid, {
                 id: mid,
+                localId: msg.localId,
                 realID: msg.id,
                 role: 'user',
                 createdAt: msg.createdAt,
@@ -667,6 +670,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 event: null,
                 meta: msg.meta,
                 claudeUuid: msg.claudeUuid,
+                codexItemId: msg.codexItemId,
             });
 
             // Track both localId and messageId
@@ -1162,12 +1166,13 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
     if (reducerMsg.role === 'user' && reducerMsg.text !== null) {
         return {
             id: reducerMsg.id,
-            localId: null,
+            localId: reducerMsg.localId ?? null,
             createdAt: reducerMsg.createdAt,
             kind: 'user-text',
             text: reducerMsg.text,
             ...(reducerMsg.meta?.displayText && { displayText: reducerMsg.meta.displayText }),
             ...(reducerMsg.claudeUuid && { claudeUuid: reducerMsg.claudeUuid }),
+            ...(reducerMsg.codexItemId && { codexItemId: reducerMsg.codexItemId }),
             meta: reducerMsg.meta
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.text !== null) {

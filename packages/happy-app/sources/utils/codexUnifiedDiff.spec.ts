@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseUnifiedDiff } from './codexUnifiedDiff';
+import { materializeUnifiedDiffPatch, parseUnifiedDiff } from './codexUnifiedDiff';
 
 describe('parseUnifiedDiff', () => {
     it('parses unified diff hunk fragments without file headers', () => {
@@ -39,5 +39,35 @@ describe('parseUnifiedDiff', () => {
         expect(parsed.fileName).toBe('README.md');
         expect(parsed.oldText).toBe('old line');
         expect(parsed.newText).toBe('new line');
+    });
+
+    it('adds file headers to Codex hunk-only patch fragments', () => {
+        expect(materializeUnifiedDiffPatch(
+            [
+                '@@ -1 +1 @@',
+                '-old line',
+                '+new line',
+            ].join('\n'),
+            'README.md',
+            'update',
+        )).toBe([
+            '--- a/README.md',
+            '+++ b/README.md',
+            '@@ -1 +1 @@',
+            '-old line',
+            '+new line',
+        ].join('\n'));
+    });
+
+    it('keeps full unified diffs unchanged', () => {
+        const patch = [
+            '--- a/README.md',
+            '+++ b/README.md',
+            '@@ -1 +1 @@',
+            '-old line',
+            '+new line',
+        ].join('\n');
+
+        expect(materializeUnifiedDiffPatch(patch, 'README.md', 'update')).toBe(patch);
     });
 });

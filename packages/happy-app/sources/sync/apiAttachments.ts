@@ -11,6 +11,10 @@
  *   3. Embed ref in the file event sent to the CLI
  */
 import { AuthCredentials } from '@/auth/tokenStorage';
+import {
+    createAttachmentDiagnosticError,
+    errorMessageFromUnknown,
+} from './attachmentDiagnostics';
 import { getServerUrl } from './serverConfig';
 import { appendFormFile } from './uploadFormFile';
 
@@ -58,27 +62,70 @@ export async function requestAttachmentUpload(
     size: number,
 ): Promise<RequestUploadResult> {
     const API_ENDPOINT = getServerUrl();
+    const requestUrl = `${API_ENDPOINT}/v1/sessions/${sessionId}/attachments/request-upload`;
 
-    const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/attachments/request-upload`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${credentials.token}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ filename, size }),
-    });
+    let response: Response;
+    try {
+        response = await fetch(requestUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ filename, size }),
+        });
+    } catch (err) {
+        const message = errorMessageFromUnknown(err);
+        throw createAttachmentDiagnosticError(formatNetworkErrorMessage('request-upload network error', message), {
+            leg: 'request-upload',
+            method: 'POST',
+            url: requestUrl,
+            serverUrl: API_ENDPOINT,
+            message,
+        });
+    }
 
     if (!response.ok) {
         if (response.status === 413) {
-            throw new Error(`Attachment too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)`);
+            throw createAttachmentDiagnosticError(`Attachment too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)`, {
+                leg: 'request-upload',
+                method: 'POST',
+                url: requestUrl,
+                serverUrl: API_ENDPOINT,
+                response,
+            });
         }
         if (response.status === 404) {
-            throw new Error('Session not found');
+            throw createAttachmentDiagnosticError('Session not found', {
+                leg: 'request-upload',
+                method: 'POST',
+                url: requestUrl,
+                serverUrl: API_ENDPOINT,
+                response,
+            });
         }
-        throw new Error(`request-upload failed: ${response.status}`);
+        throw createAttachmentDiagnosticError(`request-upload failed: ${response.status}`, {
+            leg: 'request-upload',
+            method: 'POST',
+            url: requestUrl,
+            serverUrl: API_ENDPOINT,
+            response,
+        });
     }
 
-    const result = await response.json() as RequestUploadResult;
+    let result: RequestUploadResult;
+    try {
+        result = await response.json() as RequestUploadResult;
+    } catch (err) {
+        const message = errorMessageFromUnknown(err);
+        throw createAttachmentDiagnosticError(formatNetworkErrorMessage('request-upload response parse error', message), {
+            leg: 'request-upload',
+            method: 'POST',
+            url: requestUrl,
+            serverUrl: API_ENDPOINT,
+            message,
+        });
+    }
     return { ...result, uploadUrl: rewriteLoopbackHost(result.uploadUrl) };
 }
 
@@ -97,6 +144,8 @@ export async function uploadEncryptedBlob(
     encryptedData: Uint8Array,
     credentials: AuthCredentials,
 ): Promise<void> {
+    const serverUrl = getServerUrl();
+
     if (upload.method === 'POST') {
         const formData = new FormData();
         if (upload.formFields) {
@@ -107,27 +156,39 @@ export async function uploadEncryptedBlob(
         // S3's content-type rule on presigned POST is satisfied by the
         // policy's Content-Type form field; the per-part type just needs
         // to be something multipart-valid. Filename is cosmetic.
-        const cleanup = await appendFormFile(formData, encryptedData, 'file', 'blob', 'application/octet-stream');
+        let cleanup: (() => Promise<void>) | undefined;
         let response: Response;
         try {
+            cleanup = await appendFormFile(formData, encryptedData, 'file', 'blob', 'application/octet-stream');
             response = await fetch(upload.uploadUrl, {
                 method: 'POST',
                 body: formData,
             });
         } catch (err) {
-            await cleanup();
-            const message = err instanceof Error ? err.message : String(err);
-            throw new Error(`Blob upload (POST) network error to ${upload.uploadUrl}: ${message}`);
+            const message = errorMessageFromUnknown(err);
+            await cleanupIgnoringErrors(cleanup);
+            throw createAttachmentDiagnosticError(formatNetworkErrorMessage('Blob upload (POST) network error', message), {
+                leg: 'blob-upload',
+                method: 'POST',
+                url: upload.uploadUrl,
+                serverUrl,
+                message,
+            });
         }
-        await cleanup();
+        await cleanup?.();
         if (!response.ok) {
-            throw new Error(`Blob upload (POST) failed: ${response.status} ${response.statusText} at ${upload.uploadUrl}`);
+            throw createAttachmentDiagnosticError(`Blob upload (POST) failed: ${response.status} ${response.statusText}`, {
+                leg: 'blob-upload',
+                method: 'POST',
+                url: upload.uploadUrl,
+                serverUrl,
+                response,
+            });
         }
         return;
     }
 
     // PUT (local-storage mode): direct upload to our server.
-    const serverUrl = getServerUrl();
     const isServerUrl = upload.uploadUrl.startsWith(serverUrl);
     const headers: Record<string, string> = {
         'Content-Type': 'application/octet-stream',
@@ -157,16 +218,24 @@ export async function uploadEncryptedBlob(
             body,
         });
     } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        // Surface the URL we actually tried to hit — without this, a generic
-        // "Network request failed" gives no hint whether the server returned
-        // a localhost URL the phone can't resolve, an HTTP URL that ATS
-        // blocked, or a real connectivity issue.
-        throw new Error(`Blob upload (PUT) network error to ${upload.uploadUrl}: ${message}`);
+        const message = errorMessageFromUnknown(err);
+        throw createAttachmentDiagnosticError(formatNetworkErrorMessage('Blob upload (PUT) network error', message), {
+            leg: 'blob-upload',
+            method: 'PUT',
+            url: upload.uploadUrl,
+            serverUrl,
+            message,
+        });
     }
 
     if (!response.ok) {
-        throw new Error(`Blob upload (PUT) failed: ${response.status} ${response.statusText} at ${upload.uploadUrl}`);
+        throw createAttachmentDiagnosticError(`Blob upload (PUT) failed: ${response.status} ${response.statusText}`, {
+            leg: 'blob-upload',
+            method: 'PUT',
+            url: upload.uploadUrl,
+            serverUrl,
+            response,
+        });
     }
 }
 
@@ -186,19 +255,50 @@ export async function downloadEncryptedAttachment(
     ref: string,
 ): Promise<Uint8Array> {
     const API_ENDPOINT = getServerUrl();
+    const requestUrl = `${API_ENDPOINT}/v1/sessions/${sessionId}/attachments/request-download`;
 
-    const requestRes = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/attachments/request-download`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${credentials.token}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ ref }),
-    });
-    if (!requestRes.ok) {
-        throw new Error(`request-download failed: ${requestRes.status}`);
+    let requestRes: Response;
+    try {
+        requestRes = await fetch(requestUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ref }),
+        });
+    } catch (err) {
+        const message = errorMessageFromUnknown(err);
+        throw createAttachmentDiagnosticError(formatNetworkErrorMessage('request-download network error', message), {
+            leg: 'request-download',
+            method: 'POST',
+            url: requestUrl,
+            serverUrl: API_ENDPOINT,
+            message,
+        });
     }
-    const { downloadUrl: rawDownloadUrl } = await requestRes.json() as { downloadUrl: string };
+    if (!requestRes.ok) {
+        throw createAttachmentDiagnosticError(`request-download failed: ${requestRes.status}`, {
+            leg: 'request-download',
+            method: 'POST',
+            url: requestUrl,
+            serverUrl: API_ENDPOINT,
+            response: requestRes,
+        });
+    }
+    let rawDownloadUrl: string;
+    try {
+        ({ downloadUrl: rawDownloadUrl } = await requestRes.json() as { downloadUrl: string });
+    } catch (err) {
+        const message = errorMessageFromUnknown(err);
+        throw createAttachmentDiagnosticError(formatNetworkErrorMessage('request-download response parse error', message), {
+            leg: 'request-download',
+            method: 'POST',
+            url: requestUrl,
+            serverUrl: API_ENDPOINT,
+            message,
+        });
+    }
     const downloadUrl = rewriteLoopbackHost(rawDownloadUrl);
 
     const isServerUrl = downloadUrl.startsWith(API_ENDPOINT);
@@ -210,12 +310,48 @@ export async function downloadEncryptedAttachment(
     try {
         blobRes = await fetch(downloadUrl, { headers });
     } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`Attachment download network error from ${downloadUrl}: ${message}`);
+        const message = errorMessageFromUnknown(err);
+        throw createAttachmentDiagnosticError(formatNetworkErrorMessage('Attachment download network error', message), {
+            leg: 'blob-download',
+            method: 'GET',
+            url: downloadUrl,
+            serverUrl: API_ENDPOINT,
+            message,
+        });
     }
     if (!blobRes.ok) {
-        throw new Error(`Attachment download failed: ${blobRes.status} ${blobRes.statusText} from ${downloadUrl}`);
+        throw createAttachmentDiagnosticError(`Attachment download failed: ${blobRes.status} ${blobRes.statusText}`, {
+            leg: 'blob-download',
+            method: 'GET',
+            url: downloadUrl,
+            serverUrl: API_ENDPOINT,
+            response: blobRes,
+        });
     }
-    const buffer = await blobRes.arrayBuffer();
+    let buffer: ArrayBuffer;
+    try {
+        buffer = await blobRes.arrayBuffer();
+    } catch (err) {
+        const message = errorMessageFromUnknown(err);
+        throw createAttachmentDiagnosticError(formatNetworkErrorMessage('Attachment download body read error', message), {
+            leg: 'blob-download',
+            method: 'GET',
+            url: downloadUrl,
+            serverUrl: API_ENDPOINT,
+            message,
+        });
+    }
     return new Uint8Array(buffer);
+}
+
+function formatNetworkErrorMessage(prefix: string, message: string): string {
+    return message ? `${prefix}: ${message}` : prefix;
+}
+
+async function cleanupIgnoringErrors(cleanup: (() => Promise<void>) | undefined): Promise<void> {
+    try {
+        await cleanup?.();
+    } catch {
+        // Keep the original upload failure as the reported transfer error.
+    }
 }

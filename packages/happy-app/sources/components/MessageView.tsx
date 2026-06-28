@@ -1,6 +1,7 @@
 import * as React from "react";
 import { View, Text, Pressable, Platform } from "react-native";
 import { StyleSheet } from 'react-native-unistyles';
+import { Ionicons } from '@expo/vector-icons';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
@@ -22,7 +23,7 @@ export const MessageView = React.memo((props: {
    * Long-press handler for user-text bubbles. Wired by ChatList from
    * the active session screen and used by the fork-from-message flow.
    */
-  onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
+  onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
 }) => {
   return (
     <View
@@ -48,7 +49,7 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
-  onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
+  onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -87,19 +88,20 @@ function UserTextBlock(props: {
   message: UserTextMessage;
   metadata: Metadata | null;
   sessionId: string;
-  onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
+  onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
-  const claudeUuid = props.message.claudeUuid;
-  const canFork = Boolean(claudeUuid) && Boolean(props.onForkFromUserMessage);
+  const rewindPointId = props.message.claudeUuid ?? props.message.codexItemId;
+  const canFork = Boolean(props.onForkFromUserMessage)
+    && (Boolean(rewindPointId) || props.metadata?.flavor === 'codex');
   const handleLongPress = React.useCallback(() => {
-    if (claudeUuid && props.onForkFromUserMessage) {
-      props.onForkFromUserMessage(props.message.id, claudeUuid);
+    if (props.onForkFromUserMessage) {
+      props.onForkFromUserMessage(props.message.id, rewindPointId, props.message.text);
     }
-  }, [claudeUuid, props.message.id, props.onForkFromUserMessage]);
+  }, [props.message.id, props.message.text, props.onForkFromUserMessage, rewindPointId]);
 
   // Claude Agent SDK emits synthetic user messages wrapped in tags like
   // <local-command-caveat>…</local-command-caveat> and
@@ -122,9 +124,38 @@ function UserTextBlock(props: {
   if (parsed.kind === 'caveat') {
     return null;
   }
+  if (parsed.kind === 'goal-confirmation') {
+    return null;
+  }
+  if (parsed.kind === 'goal-run') {
+    return (
+      <View style={styles.userMessageContainer}>
+        <Pressable
+          onLongPress={canFork ? handleLongPress : undefined}
+          delayLongPress={400}
+          style={[styles.userMessageBubble, styles.goalMessageBubble]}
+        >
+          <MarkdownView markdown={parsed.goal} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+        </Pressable>
+        <View style={styles.goalSentRow}>
+          <Ionicons name="locate-outline" size={16} color={styles.goalSentText.color} />
+          <Text style={styles.goalSentText}>{t('message.sentAsGoal')}</Text>
+        </View>
+      </View>
+    );
+  }
   if (parsed.kind === 'command-run') {
     return (
       <View style={styles.userMessageContainer}>
+        {parsed.args ? (
+          <Pressable
+            onLongPress={canFork ? handleLongPress : undefined}
+            delayLongPress={400}
+            style={[styles.userMessageBubble, styles.commandMessageBubble]}
+          >
+            <MarkdownView markdown={parsed.args} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+          </Pressable>
+        ) : null}
         <View style={styles.commandChip}>
           <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
         </View>
@@ -257,6 +288,24 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 12,
     marginBottom: 12,
     maxWidth: '100%',
+  },
+  goalMessageBubble: {
+    marginBottom: 6,
+  },
+  commandMessageBubble: {
+    marginBottom: 6,
+  },
+  goalSentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+    maxWidth: '100%',
+    opacity: 0.72,
+  },
+  goalSentText: {
+    color: theme.colors.agentEventText,
+    fontSize: 14,
   },
   commandChip: {
     backgroundColor: theme.colors.userMessageBackground,
