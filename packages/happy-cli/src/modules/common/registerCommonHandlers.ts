@@ -142,7 +142,7 @@ export interface SpawnSessionOptions {
     directory: string;
     sessionId?: string;
     approvedNewDirectoryCreation?: boolean;
-    agent?: 'claude' | 'codex' | 'gemini' | 'openclaw';
+    agent?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'opencode';
     environmentVariables?: Record<string, string>;
     /** OAuth token for the agent CLI (e.g. CLAUDE_CODE_OAUTH_TOKEN). */
     token?: string;
