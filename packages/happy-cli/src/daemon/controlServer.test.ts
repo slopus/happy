@@ -6,6 +6,7 @@ import http, { IncomingMessage, ServerResponse } from 'node:http'
 import { AddressInfo } from 'node:net'
 import { createPortRegistry } from './portRegistry'
 import { startDaemonControlServer } from './controlServer'
+import type { SpawnSessionOptions } from '@/modules/common/registerCommonHandlers'
 
 describe('controlServer port allocation endpoints', () => {
   const userId = 'test-user'
@@ -144,6 +145,61 @@ describe('controlServer port allocation endpoints', () => {
   it('GET /get-port rejects empty projectId', async () => {
     const { status } = await getPort(`?userId=${userId}&projectId=`)
     expect(status).toBe(400)
+  })
+})
+
+describe('controlServer POST /spawn-session', () => {
+  let dir: string
+  let baseUrl: string
+  let stopServer: () => Promise<void>
+  let spawnRequests: SpawnSessionOptions[]
+
+  beforeEach(async () => {
+    dir = mkdtempSync(path.join(tmpdir(), 'control-server-'))
+    spawnRequests = []
+    const registry = createPortRegistry({
+      filePath: path.join(dir, 'port-registry.json'),
+      portMin: 30000,
+      portMax: 30010,
+      isPortBindable: async () => true,
+    })
+    const { port, stop } = await startDaemonControlServer({
+      getChildren: () => [],
+      stopSession: () => false,
+      spawnSession: async (options) => {
+        spawnRequests.push(options)
+        return { type: 'success', sessionId: 'happy-opencode-session' }
+      },
+      requestShutdown: () => {},
+      onHappySessionWebhook: () => {},
+      portRegistry: registry,
+    })
+    baseUrl = `http://127.0.0.1:${port}`
+    stopServer = stop
+  })
+
+  afterEach(async () => {
+    await stopServer()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('accepts opencode and forwards it to spawnSession', async () => {
+    const res = await fetch(`${baseUrl}/spawn-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ directory: dir, agent: 'opencode' }),
+    })
+    const body = (await res.json()) as { success?: boolean; sessionId?: string }
+
+    expect(res.status).toBe(200)
+    expect(body).toEqual({
+      success: true,
+      sessionId: 'happy-opencode-session',
+      approvedNewDirectoryCreation: true,
+    })
+    expect(spawnRequests).toEqual([
+      expect.objectContaining({ directory: dir, agent: 'opencode' }),
+    ])
   })
 })
 
