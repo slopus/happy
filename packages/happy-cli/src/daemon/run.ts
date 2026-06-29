@@ -135,8 +135,8 @@ export async function startDaemon(): Promise<void> {
   // Acquire exclusive lock (proves daemon is running)
   const daemonLockHandle = await acquireDaemonLock(5, 200);
   if (!daemonLockHandle) {
-    logger.debug('[DAEMON RUN] Daemon lock file already held, another daemon is running');
-    process.exit(0);
+    logger.warn('[DAEMON RUN] Failed to acquire daemon lock; daemon startup did not complete');
+    process.exit(1);
   }
 
   // At this point we should be safe to startup the daemon:
