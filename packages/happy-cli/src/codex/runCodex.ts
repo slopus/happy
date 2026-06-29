@@ -29,7 +29,7 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
-import { resolveCodexExecutionPolicy } from './executionPolicy';
+import { resolveCodexExecutionPolicy, shouldAutoApproveCodexApproval } from './executionPolicy';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
@@ -381,6 +381,7 @@ export async function runCodex(opts: {
     let codexSubagentTitles = new Map<string, string>();
     let codexCollabReceiverThreadIdsByCall = new Map<string, string[]>();
     let codexCollabToolByCall = new Map<string, string>();
+    let activeTurnPermissionMode: PermissionMode | undefined = undefined;
     session.keepAlive(thinking, 'remote');
     // Periodic keep-alive; store handle so we can clear on exit
     const keepAliveInterval = setInterval(() => {
@@ -675,6 +676,12 @@ export async function runCodex(opts: {
             : params.type === 'patch'
                 ? { changes: params.fileChanges }
                 : (params.input ?? {});
+        const activePermissionMode = activeTurnPermissionMode ?? currentPermissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
+
+        if (shouldAutoApproveCodexApproval(activePermissionMode, client.sandboxEnabled)) {
+            logger.debug(`[Codex] Auto-approving ${params.type} approval in ${activePermissionMode} mode`);
+            return 'approved';
+        }
 
         try {
             const result = await permissionHandler.handleToolCall(params.callId, toolName, input);
@@ -939,6 +946,7 @@ export async function runCodex(opts: {
                     message.mode.permissionMode,
                     sandboxManagedByHappy,
                 );
+                activeTurnPermissionMode = message.mode.permissionMode;
 
                 // Start thread on first turn (thread persists across mode changes)
                 let activeThreadId = client.threadId;
@@ -1016,6 +1024,7 @@ export async function runCodex(opts: {
                 permissionHandler.reset();
                 reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls
                 diffProcessor.reset();
+                activeTurnPermissionMode = undefined;
                 thinking = false;
                 session.keepAlive(thinking, 'remote');
                 emitReadyIfIdle({
