@@ -20,8 +20,9 @@ export interface NewSessionDraft {
     selectedMachineId: string | null;
     selectedPath: string | null;
     agentType: NewSessionAgentType;
-    permissionMode: PermissionModeKey;
-    modelMode: string;
+    permissionMode: PermissionModeKey | null;
+    modelMode: string | null;
+    effortLevel: string | null;
     sessionType: NewSessionSessionType;
     worktreeKey: string | null;
     updatedAt: number;
@@ -148,10 +149,11 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini' || parsed.agentType === 'openclaw'
             ? parsed.agentType
             : 'claude';
-        const permissionMode: PermissionModeKey = typeof parsed.permissionMode === 'string'
+        const permissionMode: PermissionModeKey | null = typeof parsed.permissionMode === 'string'
             ? parsed.permissionMode
-            : 'default';
-        const modelMode: string = typeof parsed.modelMode === 'string' ? parsed.modelMode : 'default';
+            : null;
+        const modelMode: string | null = typeof parsed.modelMode === 'string' ? parsed.modelMode : null;
+        const effortLevel: string | null = typeof parsed.effortLevel === 'string' ? parsed.effortLevel : null;
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
         const worktreeKey = typeof parsed.worktreeKey === 'string' ? parsed.worktreeKey : null;
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
@@ -163,6 +165,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             agentType,
             permissionMode,
             modelMode,
+            effortLevel,
             sessionType,
             worktreeKey,
             updatedAt,

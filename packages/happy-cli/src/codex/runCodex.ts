@@ -93,6 +93,8 @@ export async function runCodex(opts: {
     noSandbox?: boolean;
     resumeThreadId?: string;
     permissionMode?: PermissionMode;
+    model?: string;
+    effort?: ReasoningEffort;
 }): Promise<void> {
     // Early check: ensure Codex CLI is installed before proceeding
     try {
@@ -262,14 +264,14 @@ export async function runCodex(opts: {
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
-    let currentModel: string | undefined = DEFAULT_CODEX_MODEL;
-    let currentEffort: ReasoningEffort | undefined = DEFAULT_CODEX_EFFORT;
+    let currentModel: string | undefined = opts.model ?? DEFAULT_CODEX_MODEL;
+    let currentEffort: ReasoningEffort | undefined = opts.effort ?? DEFAULT_CODEX_EFFORT;
     let currentAppendSystemPrompt: string | undefined = undefined;
 
     const resetCurrentModeDefaults = () => {
         currentPermissionMode = DEFAULT_CODEX_PERMISSION_MODE;
-        currentModel = DEFAULT_CODEX_MODEL;
-        currentEffort = DEFAULT_CODEX_EFFORT;
+        currentModel = opts.model ?? DEFAULT_CODEX_MODEL;
+        currentEffort = opts.effort ?? DEFAULT_CODEX_EFFORT;
         currentAppendSystemPrompt = undefined;
         logger.debug('[Codex] Reset current mode defaults after abort');
     };

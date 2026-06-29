@@ -34,6 +34,21 @@ function shellescape(s: string): string {
     return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
+function appendDaemonSpawnModeArgs(args: string[], options: SpawnSessionOptions, agent: string): void {
+  if (agent !== 'claude' && agent !== 'codex') {
+    return;
+  }
+  if (options.permissionMode) {
+    args.push('--permission-mode', options.permissionMode);
+  }
+  if (options.modelMode && options.modelMode !== 'default') {
+    args.push('--model', options.modelMode);
+  }
+  if (options.effortLevel) {
+    args.push('--effort', options.effortLevel);
+  }
+}
+
 // Prepare initial metadata
 // Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon
 // is visually distinct from the stable one in the machine list (they otherwise
@@ -409,7 +424,14 @@ export async function startDaemon(): Promise<void> {
           const resumeFragment = resumeId
             ? ` --resume ${shellescape(resumeId)}`
             : '';
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
+          const launchArgs = [
+            agent,
+            '--happy-starting-mode', 'remote',
+            '--started-by', 'daemon',
+          ];
+          appendDaemonSpawnModeArgs(launchArgs, options, agent);
+          const modeFragment = launchArgs.map(shellescape).join(' ');
+          const fullCommand = `node --no-warnings --no-deprecation ${shellescape(cliPath)} ${modeFragment}${resumeFragment}`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -518,6 +540,7 @@ export async function startDaemon(): Promise<void> {
             '--happy-starting-mode', 'remote',
             '--started-by', 'daemon'
           ];
+          appendDaemonSpawnModeArgs(args, options, agentCommand);
 
           // Resume ids attach the new Happy session to a pre-existing provider
           // conversation created by the fork / duplicate RPC.
