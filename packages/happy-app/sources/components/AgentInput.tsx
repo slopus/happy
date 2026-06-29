@@ -4,7 +4,7 @@ import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator
 import { Image } from 'expo-image';
 import { AgentInputAttachmentStrip } from './AgentInputAttachmentStrip';
 import type { AttachmentPreview } from '@/sync/attachmentTypes';
-import { generateThumbhash } from '@/utils/thumbhash';
+import { useWebImagePaste } from '@/hooks/useWebImagePaste';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
@@ -614,81 +614,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     React.useImperativeHandle(ref, () => inputRef.current!, []);
 
     // Web paste/drag — intercept image pastes and file drops for the
-    // attachment feature. Both handlers funnel through props.onAddImages.
-    React.useEffect(() => {
-        if (Platform.OS !== 'web' || !props.onAddImages) return;
-
-        const handlePaste = async (e: ClipboardEvent) => {
-            // Only handle pastes targeted at a focused text-editable element.
-            // The listener is attached to document, so without this guard a
-            // paste in the URL bar, another modal, or any focused-elsewhere
-            // input would steal images intended for somewhere else.
-            const active = document.activeElement;
-            const isEditableTarget = active instanceof HTMLInputElement
-                || active instanceof HTMLTextAreaElement
-                || (active instanceof HTMLElement && active.isContentEditable);
-            if (!isEditableTarget) return;
-
-            const { getImagesFromClipboard, fileToAttachmentPreview } = await import('@/utils/pasteImages.web');
-            const files = getImagesFromClipboard(e);
-            if (!files.length) return;
-            e.preventDefault();
-            const previews = (await Promise.all(
-                files.map((f) => fileToAttachmentPreview(f, generateThumbhash))
-            )).filter(Boolean) as Omit<AttachmentPreview, 'id'>[];
-            if (previews.length) {
-                props.onAddImages!(previews.map((p) => ({
-                    ...p,
-                    id: `paste_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-                })));
-            }
-        };
-
-        // dragover must call preventDefault for drop to fire; we gate on
-        // `types.includes('Files')` so we don't hijack drag-text/HTML in the
-        // rest of the app.
-        const isFileDrag = (e: DragEvent) => {
-            const types = e.dataTransfer?.types;
-            if (!types) return false;
-            // DataTransferItemList vs DOMStringList — both expose .includes-ish.
-            for (let i = 0; i < types.length; i++) {
-                if (types[i] === 'Files') return true;
-            }
-            return false;
-        };
-
-        const handleDragOver = (e: DragEvent) => {
-            if (!isFileDrag(e)) return;
-            e.preventDefault();
-            if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-        };
-
-        const handleDrop = async (e: DragEvent) => {
-            if (!isFileDrag(e)) return;
-            e.preventDefault();
-            const { getImagesFromDrop, fileToAttachmentPreview } = await import('@/utils/pasteImages.web');
-            const files = getImagesFromDrop(e);
-            if (!files.length) return;
-            const previews = (await Promise.all(
-                files.map((f) => fileToAttachmentPreview(f, generateThumbhash))
-            )).filter(Boolean) as Omit<AttachmentPreview, 'id'>[];
-            if (previews.length) {
-                props.onAddImages!(previews.map((p) => ({
-                    ...p,
-                    id: `drop_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-                })));
-            }
-        };
-
-        document.addEventListener('paste', handlePaste as any);
-        document.addEventListener('dragover', handleDragOver);
-        document.addEventListener('drop', handleDrop);
-        return () => {
-            document.removeEventListener('paste', handlePaste as any);
-            document.removeEventListener('dragover', handleDragOver);
-            document.removeEventListener('drop', handleDrop);
-        };
-    }, [props.onAddImages]);
+    // attachment feature. Shared with the new-session composer.
+    useWebImagePaste(props.onAddImages);
 
     // Autocomplete state — text + selection. Updated via startTransition so
     // typing renders the character immediately and the autocomplete pipeline
