@@ -377,6 +377,110 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('force-restarts promptly when turn interrupt RPC does not respond', async () => {
+        const firstProcessRequests: MockRpcMessage[] = [];
+        const secondProcessRequests: MockRpcMessage[] = [];
+
+        const proc1 = createMockProcess({
+            pid: 2101,
+            onRequest: (msg, stdout) => {
+                firstProcessRequests.push(msg);
+
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-stuck-interrupt', path: '/tmp/thread-stuck-interrupt' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'readOnly' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { id: msg.id, result: {} });
+                        pushJsonLine(stdout, {
+                            method: 'codex/event',
+                            params: { msg: { type: 'task_started', turn_id: 'turn-stuck-interrupt' } },
+                        });
+                    }, 0);
+                }
+
+                // Deliberately do not respond to turn/interrupt. This used to
+                // block abortTurnWithFallback until the generic 30s RPC timeout.
+            },
+        });
+
+        const proc2 = createMockProcess({
+            pid: 2102,
+            onRequest: (msg, stdout) => {
+                secondProcessRequests.push(msg);
+
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-stuck-interrupt', path: '/tmp/thread-stuck-interrupt' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'readOnly' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn
+            .mockImplementationOnce(() => proc1)
+            .mockImplementationOnce(() => proc2);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'read-only',
+        });
+
+        const pendingTurn = client.sendTurnAndWait('hang on interrupt', { turnTimeoutMs: 5000 });
+        await waitFor(() => firstProcessRequests.some((msg) => msg.method === 'turn/start'));
+        await waitFor(() => client.turnId === 'turn-stuck-interrupt');
+
+        const startedAt = Date.now();
+        const abortResult = await client.abortTurnWithFallback({
+            gracePeriodMs: 20,
+            forceRestartOnTimeout: true,
+        });
+
+        expect(Date.now() - startedAt).toBeLessThan(1000);
+        await expect(pendingTurn).resolves.toEqual({ aborted: true });
+        expect(firstProcessRequests.some((msg) => msg.method === 'turn/interrupt')).toBe(true);
+        expect(abortResult).toEqual({
+            hadActiveTurn: true,
+            aborted: true,
+            forcedRestart: true,
+            resumedThread: true,
+        });
+        expect(secondProcessRequests.some((msg) => msg.method === 'thread/resume')).toBe(true);
+
+        await client.disconnect();
+    });
+
     it('forks, reads, and rolls back Codex threads through app-server RPC', async () => {
         const requests: MockRpcMessage[] = [];
         const proc = createMockProcess({
@@ -758,6 +862,48 @@ describe('CodexAppServerClient sandbox integration', () => {
                                 threadId: 'thread-raw-1',
                                 turnId: 'turn-raw-1',
                                 item: {
+                                    type: 'subAgentActivity',
+                                    id: 'activity-1',
+                                    kind: 'started',
+                                    agentThreadId: 'thread-child-1',
+                                    agentPath: 'Auth explorer',
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turnId: 'turn-raw-1',
+                                item: {
+                                    type: 'subAgentActivity',
+                                    id: 'activity-1',
+                                    kind: 'interrupted',
+                                    agentThreadId: 'thread-child-1',
+                                    agentPath: 'Auth explorer',
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turnId: 'turn-raw-1',
+                                item: {
+                                    type: 'subAgentActivity',
+                                    id: 'activity-1',
+                                    kind: 'started',
+                                    agentThreadId: 'thread-child-1',
+                                    agentPath: 'Auth explorer',
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turnId: 'turn-raw-1',
+                                item: {
                                     type: 'commandExecution',
                                     id: 'call-1',
                                     command: '/bin/zsh -lc pwd',
@@ -766,6 +912,60 @@ describe('CodexAppServerClient sandbox integration', () => {
                                     exitCode: 0,
                                     durationMs: 1,
                                     status: 'completed',
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turnId: 'turn-raw-1',
+                                item: {
+                                    type: 'collabAgentToolCall',
+                                    id: 'collab-1',
+                                    tool: 'spawnAgent',
+                                    status: 'inProgress',
+                                    senderThreadId: 'thread-raw-1',
+                                    receiverThreadIds: ['thread-child-1'],
+                                    prompt: 'Inspect auth flow',
+                                    model: 'gpt-test',
+                                    reasoningEffort: 'medium',
+                                    agentsStates: {},
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turnId: 'turn-raw-1',
+                                item: {
+                                    type: 'collabAgentToolCall',
+                                    id: 'collab-1',
+                                    tool: 'spawnAgent',
+                                    status: 'completed',
+                                    senderThreadId: 'thread-raw-1',
+                                    receiverThreadIds: ['thread-child-1'],
+                                    prompt: 'Inspect auth flow',
+                                    model: 'gpt-test',
+                                    reasoningEffort: 'medium',
+                                    agentsStates: {
+                                        'thread-child-1': { status: 'completed', message: 'done' },
+                                    },
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turnId: 'turn-raw-1',
+                                item: {
+                                    type: 'subAgentActivity',
+                                    id: 'activity-1',
+                                    kind: 'started',
+                                    agentThreadId: 'thread-child-1',
+                                    agentPath: 'Auth explorer',
                                 },
                             },
                         });
@@ -821,8 +1021,36 @@ describe('CodexAppServerClient sandbox integration', () => {
             expect.objectContaining({ type: 'task_started', turn_id: 'turn-raw-1' }),
             expect.objectContaining({ type: 'exec_command_begin', callId: 'call-1' }),
             expect.objectContaining({ type: 'exec_command_end', callId: 'call-1', output: '/tmp/project\n' }),
+            expect.objectContaining({
+                type: 'collab_agent_begin',
+                callId: 'collab-1',
+                tool: 'spawnAgent',
+                receiverThreadIds: ['thread-child-1'],
+                prompt: 'Inspect auth flow',
+            }),
+            expect.objectContaining({
+                type: 'collab_agent_end',
+                callId: 'collab-1',
+                status: 'completed',
+                receiverThreadIds: ['thread-child-1'],
+            }),
+            expect.objectContaining({
+                type: 'subagent_activity',
+                item_id: 'activity-1',
+                kind: 'started',
+                agentThreadId: 'thread-child-1',
+                agentPath: 'Auth explorer',
+            }),
+            expect.objectContaining({
+                type: 'subagent_activity',
+                item_id: 'activity-1',
+                kind: 'interrupted',
+                agentThreadId: 'thread-child-1',
+                agentPath: 'Auth explorer',
+            }),
             expect.objectContaining({ type: 'agent_message', message: 'done' }),
         ]));
+        expect(events.filter((event) => event.type === 'subagent_activity')).toHaveLength(2);
         expect(events.filter((event) => event.type === 'task_complete')).toHaveLength(1);
 
         await client.disconnect();
@@ -1204,7 +1432,10 @@ describe('CodexAppServerClient sandbox integration', () => {
 
         expect(approvals[0]).toEqual(expect.objectContaining({
             type: 'patch',
-            callId: 'patch-approval-1',
+            callId: 'thread-raw-4:patch-approval-1',
+            itemId: 'patch-approval-1',
+            threadId: 'thread-raw-4',
+            turnId: 'turn-raw-4',
             fileChanges: {
                 'README.md': {
                     diff: '@@ -1 +1 @@',
@@ -1213,6 +1444,151 @@ describe('CodexAppServerClient sandbox integration', () => {
             },
             reason: null,
         }));
+
+        await client.disconnect();
+    });
+
+    it('scopes v2 approval IDs and raw file-change metadata by thread', async () => {
+        const approvals: Array<Record<string, unknown>> = [];
+        const proc = createMockProcess({
+            pid: 3008,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-a', path: '/tmp/thread-a' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'workspaceWrite', writableRoots: [], networkAccess: true, excludeTmpdirEnvVar: false, excludeSlashTmp: false },
+                                reasoningEffort: null,
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-a',
+                                turnId: 'turn-a',
+                                item: {
+                                    type: 'fileChange',
+                                    id: 'patch-shared',
+                                    status: 'inProgress',
+                                    changes: [{
+                                        path: 'A.md',
+                                        kind: { type: 'update', move_path: null },
+                                        diff: '@@ A @@',
+                                    }],
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-b',
+                                turnId: 'turn-b',
+                                item: {
+                                    type: 'fileChange',
+                                    id: 'patch-shared',
+                                    status: 'inProgress',
+                                    changes: [{
+                                        path: 'B.md',
+                                        kind: { type: 'update', move_path: null },
+                                        diff: '@@ B @@',
+                                    }],
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            id: 101,
+                            method: 'item/fileChange/requestApproval',
+                            params: {
+                                threadId: 'thread-a',
+                                turnId: 'turn-a',
+                                itemId: 'patch-shared',
+                                reason: null,
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            id: 102,
+                            method: 'item/fileChange/requestApproval',
+                            params: {
+                                threadId: 'thread-b',
+                                turnId: 'turn-b',
+                                itemId: 'patch-shared',
+                                reason: null,
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            id: 103,
+                            method: 'item/commandExecution/requestApproval',
+                            params: {
+                                threadId: 'thread-a',
+                                turnId: 'turn-a',
+                                itemId: 'cmd-shared',
+                                approvalId: 'approval-a',
+                                command: 'npm test',
+                                cwd: '/tmp/project',
+                                reason: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setApprovalHandler(async (params) => {
+            approvals.push(params as Record<string, unknown>);
+            return 'approved';
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        });
+
+        await waitFor(() => approvals.length === 3);
+
+        expect(approvals).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'patch',
+                callId: 'thread-a:patch-shared',
+                itemId: 'patch-shared',
+                threadId: 'thread-a',
+                turnId: 'turn-a',
+                fileChanges: {
+                    'A.md': expect.objectContaining({ diff: '@@ A @@' }),
+                },
+            }),
+            expect.objectContaining({
+                type: 'patch',
+                callId: 'thread-b:patch-shared',
+                itemId: 'patch-shared',
+                threadId: 'thread-b',
+                turnId: 'turn-b',
+                fileChanges: {
+                    'B.md': expect.objectContaining({ diff: '@@ B @@' }),
+                },
+            }),
+            expect.objectContaining({
+                type: 'exec',
+                callId: 'thread-a:cmd-shared:approval-a',
+                itemId: 'cmd-shared',
+                threadId: 'thread-a',
+                turnId: 'turn-a',
+                approvalId: 'approval-a',
+                command: ['npm test'],
+            }),
+        ]));
 
         await client.disconnect();
     });
@@ -1367,7 +1743,11 @@ describe('CodexAppServerClient sandbox integration', () => {
 
         expect(approvals[0]).toEqual(expect.objectContaining({
             type: 'mcp',
-            callId: 'happy:77',
+            callId: 'thread-raw-7:happy:77',
+            itemId: 'happy:77',
+            threadId: 'thread-raw-7',
+            turnId: 'turn-raw-7',
+            approvalId: '77',
             toolName: 'change_title',
             input: { title: 'Casual Greeting' },
             serverName: 'happy',

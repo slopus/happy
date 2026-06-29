@@ -14,5 +14,6 @@ export type {
     SDKSystemMessage,
     SDKResultMessage,
     CanCallToolCallback,
+    CanCallToolOptions,
     PermissionResult
 } from './types'

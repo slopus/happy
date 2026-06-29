@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createId } from '@paralleldrive/cuid2';
 import type { ReasoningOutput } from './reasoningProcessor';
 import type { DiffToolCall, DiffToolResult } from './diffProcessor';
@@ -10,6 +10,9 @@ export type CodexTurnState = {
     startedSubagents?: Set<string>;
     activeSubagents?: Set<string>;
     providerSubagentToSessionSubagent?: Map<string, string>;
+    subagentTitles?: Map<string, string>;
+    collabReceiverThreadIdsByCall?: Map<string, string[]>;
+    collabToolByCall?: Map<string, string>;
 };
 
 type CodexMapperResult = {
@@ -17,6 +20,9 @@ type CodexMapperResult = {
     startedSubagents: Set<string>;
     activeSubagents: Set<string>;
     providerSubagentToSessionSubagent: Map<string, string>;
+    subagentTitles: Map<string, string>;
+    collabReceiverThreadIdsByCall: Map<string, string[]>;
+    collabToolByCall: Map<string, string>;
     envelopes: SessionEnvelope[];
 };
 
@@ -45,20 +51,72 @@ function getProviderSubagentToSessionSubagent(state: CodexTurnState): Map<string
     return state.providerSubagentToSessionSubagent ?? new Map<string, string>();
 }
 
+function getSubagentTitles(state: CodexTurnState): Map<string, string> {
+    return state.subagentTitles ?? new Map<string, string>();
+}
+
+function getCollabReceiverThreadIdsByCall(state: CodexTurnState): Map<string, string[]> {
+    return state.collabReceiverThreadIdsByCall ?? new Map<string, string[]>();
+}
+
+function getCollabToolByCall(state: CodexTurnState): Map<string, string> {
+    return state.collabToolByCall ?? new Map<string, string>();
+}
+
+function deterministicSessionSubagentId(providerSubagent: string): string {
+    const digest = createHash('sha256')
+        .update(`codex-subagent:${providerSubagent}`)
+        .digest('hex');
+    return `c${digest.slice(0, 23)}`;
+}
+
+function ensureSessionSubagent(
+    providerSubagent: string,
+    providerSubagentToSessionSubagent: Map<string, string>,
+): string {
+    const existing = providerSubagentToSessionSubagent.get(providerSubagent);
+    if (existing) {
+        return existing;
+    }
+
+    const created = deterministicSessionSubagentId(providerSubagent);
+    providerSubagentToSessionSubagent.set(providerSubagent, created);
+    return created;
+}
+
 function maybeEmitSubagentStart(
     subagent: string | undefined,
     opts: CreateEnvelopeOptions,
     startedSubagents: Set<string>,
     activeSubagents: Set<string>,
+    subagentTitles: Map<string, string>,
     envelopes: SessionEnvelope[],
 ): void {
     if (!subagent || startedSubagents.has(subagent)) {
         return;
     }
 
-    envelopes.push(createEnvelope('agent', { t: 'start' }, { ...opts, subagent }));
+    const title = subagentTitles.get(subagent);
+    envelopes.push(createEnvelope('agent', {
+        t: 'start',
+        ...(title ? { title } : {}),
+    }, { ...opts, subagent }));
     startedSubagents.add(subagent);
     activeSubagents.add(subagent);
+}
+
+function maybeEmitSubagentStop(
+    subagent: string | undefined,
+    opts: CreateEnvelopeOptions,
+    activeSubagents: Set<string>,
+    envelopes: SessionEnvelope[],
+): void {
+    if (!subagent || !activeSubagents.has(subagent)) {
+        return;
+    }
+
+    envelopes.push(createEnvelope('agent', { t: 'stop' }, { ...opts, subagent }));
+    activeSubagents.delete(subagent);
 }
 
 function emitSubagentStops(
@@ -83,7 +141,13 @@ function buildEnvelopeOptions(currentTurnId: string | null, subagent?: string): 
 }
 
 function pickProviderSubagent(message: Record<string, unknown>): string | undefined {
-    const candidates = [message.subagent, message.parent_call_id, message.parentCallId];
+    const candidates = [
+        message.subagent,
+        message.parent_call_id,
+        message.parentCallId,
+        message.agent_thread_id,
+        message.agentThreadId,
+    ];
     for (const candidate of candidates) {
         if (typeof candidate === 'string' && candidate.length > 0) {
             return candidate;
@@ -101,14 +165,7 @@ function resolveSessionSubagent(
         return undefined;
     }
 
-    const existing = providerSubagentToSessionSubagent.get(providerSubagent);
-    if (existing) {
-        return existing;
-    }
-
-    const created = createId();
-    providerSubagentToSessionSubagent.set(providerSubagent, created);
-    return created;
+    return ensureSessionSubagent(providerSubagent, providerSubagentToSessionSubagent);
 }
 
 function pickCallId(message: Record<string, unknown>): string {
@@ -117,6 +174,233 @@ function pickCallId(message: Record<string, unknown>): string {
         return callId;
     }
     return randomUUID();
+}
+
+function pickString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim().length > 0
+        ? value.trim()
+        : undefined;
+}
+
+function pickStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+}
+
+function shortText(value: string, max = 80): string {
+    return value.length > max ? `${value.slice(0, max - 3)}...` : value;
+}
+
+function collabToolTitle(tool: string | undefined, prompt: string | undefined): string {
+    if (prompt) {
+        return shortText(prompt);
+    }
+
+    switch (tool) {
+        case 'spawnAgent':
+            return 'Spawn Codex subagent';
+        case 'sendInput':
+            return 'Send input to Codex subagent';
+        case 'resumeAgent':
+            return 'Resume Codex subagent';
+        case 'wait':
+            return 'Wait for Codex subagent';
+        case 'closeAgent':
+            return 'Close Codex subagent';
+        default:
+            return 'Codex subagent';
+    }
+}
+
+function collabToolDescription(tool: string | undefined, prompt: string | undefined): string {
+    const title = collabToolTitle(tool, prompt);
+    if (!prompt) {
+        return title;
+    }
+    switch (tool) {
+        case 'spawnAgent':
+            return `Spawn Codex subagent: ${shortText(prompt, 120)}`;
+        case 'sendInput':
+            return `Send input to Codex subagent: ${shortText(prompt, 120)}`;
+        default:
+            return title;
+    }
+}
+
+function pickCollabReceiverThreadIds(message: Record<string, unknown>): string[] {
+    return pickStringArray(message.receiver_thread_ids ?? message.receiverThreadIds);
+}
+
+function pickCollabAgentStateThreadIds(message: Record<string, unknown>): string[] {
+    const raw = message.agents_states ?? message.agentsStates;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return [];
+    }
+    return Object.keys(raw).filter((key) => key.length > 0);
+}
+
+function resolveCollabProviderIds(
+    call: string,
+    message: Record<string, unknown>,
+    collabReceiverThreadIdsByCall: Map<string, string[]>,
+): string[] {
+    const receiverThreadIds = pickCollabReceiverThreadIds(message);
+    if (receiverThreadIds.length > 0) {
+        collabReceiverThreadIdsByCall.set(call, receiverThreadIds);
+        return receiverThreadIds;
+    }
+
+    const remembered = collabReceiverThreadIdsByCall.get(call);
+    if (remembered && remembered.length > 0) {
+        return remembered;
+    }
+
+    const stateThreadIds = pickCollabAgentStateThreadIds(message);
+    if (stateThreadIds.length > 0) {
+        collabReceiverThreadIdsByCall.set(call, stateThreadIds);
+        return stateThreadIds;
+    }
+
+    return [call];
+}
+
+function resolveCollabTool(
+    call: string,
+    message: Record<string, unknown>,
+    collabToolByCall: Map<string, string>,
+): string | undefined {
+    const tool = pickString(message.tool);
+    if (tool) {
+        collabToolByCall.set(call, tool);
+        return tool;
+    }
+    return collabToolByCall.get(call);
+}
+
+function isCollabCallInProgress(message: Record<string, unknown>): boolean {
+    const status = pickString(message.status);
+    return status === 'inProgress';
+}
+
+function collabAgentStates(
+    message: Record<string, unknown>,
+    sessionSubagentsByProviderId: Record<string, string>,
+): Array<{ sessionSubagent: string; status?: string; message?: string | null }> {
+    const raw = message.agents_states ?? message.agentsStates;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return [];
+    }
+
+    const states: Array<{ sessionSubagent: string; status?: string; message?: string | null }> = [];
+    for (const [providerId, state] of Object.entries(raw as Record<string, unknown>)) {
+        const sessionSubagent = sessionSubagentsByProviderId[providerId];
+        if (!sessionSubagent || !state || typeof state !== 'object' || Array.isArray(state)) {
+            continue;
+        }
+        const record = state as Record<string, unknown>;
+        states.push({
+            sessionSubagent,
+            ...(typeof record.status === 'string' ? { status: record.status } : {}),
+            ...(typeof record.message === 'string' || record.message === null ? { message: record.message } : {}),
+        });
+    }
+    return states;
+}
+
+function emitCollabAgentStateMessages(
+    envelopes: SessionEnvelope[],
+    message: Record<string, unknown>,
+    sessionSubagentsByProviderId: Record<string, string>,
+    opts: CreateEnvelopeOptions,
+): void {
+    const raw = message.agents_states ?? message.agentsStates;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return;
+    }
+
+    for (const [providerId, state] of Object.entries(raw as Record<string, unknown>)) {
+        const sessionSubagent = sessionSubagentsByProviderId[providerId];
+        if (!sessionSubagent || !state || typeof state !== 'object' || Array.isArray(state)) {
+            continue;
+        }
+        const status = pickString((state as Record<string, unknown>).status);
+        const statusMessage = pickString((state as Record<string, unknown>).message);
+        if (!statusMessage) {
+            continue;
+        }
+        const prefix = status ? `Codex subagent ${status}` : 'Codex subagent';
+        envelopes.push(createEnvelope('agent', {
+            t: 'service',
+            text: `${prefix}: ${statusMessage}`,
+        }, { ...opts, subagent: sessionSubagent }));
+    }
+}
+
+function subagentActivityServiceText(kind: unknown, agentPath: string | undefined): string | undefined {
+    if (kind === 'started') {
+        return agentPath ? `Codex subagent started: ${agentPath}` : 'Codex subagent started';
+    }
+    if (kind === 'interrupted') {
+        return 'Codex subagent interrupted';
+    }
+    return undefined;
+}
+
+function maybeEmitSubagentActivityService(
+    envelopes: SessionEnvelope[],
+    kind: unknown,
+    agentPath: string | undefined,
+    opts: CreateEnvelopeOptions,
+    sessionSubagent: string,
+): void {
+    const text = subagentActivityServiceText(kind, agentPath);
+    if (!text) {
+        return;
+    }
+    envelopes.push(createEnvelope('agent', { t: 'service', text }, { ...opts, subagent: sessionSubagent }));
+}
+
+function registerCodexSubagents(
+    providerIds: string[],
+    title: string | undefined,
+    providerSubagentToSessionSubagent: Map<string, string>,
+    subagentTitles: Map<string, string>,
+): { primarySubagent?: string; sessionSubagents: Record<string, string> } {
+    const sessionSubagents: Record<string, string> = {};
+    let primarySubagent: string | undefined;
+
+    for (const providerId of providerIds) {
+        const sessionSubagent = ensureSessionSubagent(providerId, providerSubagentToSessionSubagent);
+        sessionSubagents[providerId] = sessionSubagent;
+        if (!primarySubagent) {
+            primarySubagent = sessionSubagent;
+        }
+        if (title) {
+            subagentTitles.set(sessionSubagent, title);
+        }
+    }
+
+    return { primarySubagent, sessionSubagents };
+}
+
+function collabArgs(
+    message: Record<string, unknown>,
+    primarySubagent: string | undefined,
+    sessionSubagents: Record<string, string>,
+): Record<string, unknown> {
+    const sessionSubagentValues = Object.values(sessionSubagents);
+    return {
+        tool: pickString(message.tool) ?? 'unknown',
+        status: pickString(message.status) ?? 'unknown',
+        prompt: pickString(message.prompt) ?? null,
+        model: pickString(message.model) ?? null,
+        reasoningEffort: pickString(message.reasoning_effort ?? message.reasoningEffort) ?? null,
+        agentStates: collabAgentStates(message, sessionSubagents),
+        ...(primarySubagent ? { sessionSubagent: primarySubagent } : {}),
+        ...(sessionSubagentValues.length > 0 ? { sessionSubagents: sessionSubagentValues } : {}),
+    };
 }
 
 function summarizeCommand(command: unknown): string | null {
@@ -191,6 +475,11 @@ export function turnStatus(turn: ThreadTurn): TurnEndStatus {
     return 'completed';
 }
 
+export function isCodexTurnInProgress(turn: ThreadTurn): boolean {
+    const status = typeof turn.status === 'string' ? turn.status : null;
+    return status === 'inProgress' || status === 'running' || status === 'active' || status === 'pending';
+}
+
 function emitHistoricalToolCall(
     envelopes: SessionEnvelope[],
     turn: ThreadTurn,
@@ -246,9 +535,17 @@ export function mapCodexThreadItemToSessionEnvelopes(
         startedAt: number;
         completedAt: number;
     },
+    state?: CodexTurnState,
 ): SessionEnvelope[] {
     const startedAt = timestamps?.startedAt ?? turnTimestampMs(turn);
     const completedAt = timestamps?.completedAt ?? completedTimestampMs(turn);
+    const mappingState = state ?? { currentTurnId: turn.id };
+    const startedSubagents = getStartedSubagents(mappingState);
+    const activeSubagents = getActiveSubagents(mappingState);
+    const providerSubagentToSessionSubagent = getProviderSubagentToSessionSubagent(mappingState);
+    const subagentTitles = getSubagentTitles(mappingState);
+    const collabReceiverThreadIdsByCall = getCollabReceiverThreadIdsByCall(mappingState);
+    const collabToolByCall = getCollabToolByCall(mappingState);
 
     switch (item.type) {
         case 'userMessage': {
@@ -263,25 +560,41 @@ export function mapCodexThreadItemToSessionEnvelopes(
         }
         case 'agentMessage': {
             const text = typeof item.text === 'string' ? item.text.trim() : '';
-            return text.length > 0
-                ? [createEnvelope('agent', { t: 'text', text }, {
-                    id: item.id,
-                    turn: turn.id,
-                    time: completedAt,
-                    codexItemId: item.id,
-                })]
-                : [];
+            if (text.length === 0) {
+                return [];
+            }
+
+            const subagent = resolveSessionSubagent(item as Record<string, unknown>, providerSubagentToSessionSubagent);
+            const opts = {
+                id: item.id,
+                turn: turn.id,
+                time: completedAt,
+                codexItemId: item.id,
+                ...(subagent ? { subagent } : {}),
+            } satisfies CreateEnvelopeOptions;
+            const envelopes: SessionEnvelope[] = [];
+            maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, subagentTitles, envelopes);
+            envelopes.push(createEnvelope('agent', { t: 'text', text }, opts));
+            return envelopes;
         }
         case 'reasoning': {
             const text = reasoningText(item);
-            return text
-                ? [createEnvelope('agent', { t: 'text', text, thinking: true }, {
-                    id: item.id,
-                    turn: turn.id,
-                    time: startedAt,
-                    codexItemId: item.id,
-                })]
-                : [];
+            if (!text) {
+                return [];
+            }
+
+            const subagent = resolveSessionSubagent(item as Record<string, unknown>, providerSubagentToSessionSubagent);
+            const opts = {
+                id: item.id,
+                turn: turn.id,
+                time: startedAt,
+                codexItemId: item.id,
+                ...(subagent ? { subagent } : {}),
+            } satisfies CreateEnvelopeOptions;
+            const envelopes: SessionEnvelope[] = [];
+            maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, subagentTitles, envelopes);
+            envelopes.push(createEnvelope('agent', { t: 'text', text, thinking: true }, opts));
+            return envelopes;
         }
         case 'commandExecution': {
             const envelopes: SessionEnvelope[] = [];
@@ -334,6 +647,100 @@ export function mapCodexThreadItemToSessionEnvelopes(
             );
             return envelopes;
         }
+        case 'collabAgentToolCall': {
+            const itemRecord = item as Record<string, unknown>;
+            const tool = resolveCollabTool(item.id, itemRecord, collabToolByCall);
+            const prompt = pickString(itemRecord.prompt);
+            const title = collabToolTitle(tool, prompt);
+            const providerIds = resolveCollabProviderIds(item.id, itemRecord, collabReceiverThreadIdsByCall);
+            const { primarySubagent, sessionSubagents } = registerCodexSubagents(
+                providerIds,
+                title,
+                providerSubagentToSessionSubagent,
+                subagentTitles,
+            );
+            const startOpts = {
+                turn: turn.id,
+                time: startedAt,
+                codexItemId: item.id,
+            } satisfies CreateEnvelopeOptions;
+            const endOpts = {
+                turn: turn.id,
+                time: completedAt,
+                codexItemId: item.id,
+            } satisfies CreateEnvelopeOptions;
+            const envelopes: SessionEnvelope[] = [
+                createEnvelope('agent', {
+                    t: 'tool-call-start',
+                    call: item.id,
+                    name: 'CodexSubagent',
+                    title,
+                    description: collabToolDescription(tool, prompt),
+                    args: collabArgs(itemRecord, primarySubagent, sessionSubagents),
+                }, {
+                    ...startOpts,
+                    id: `${item.id}:start`,
+                }),
+            ];
+
+            for (const sessionSubagent of Object.values(sessionSubagents)) {
+                maybeEmitSubagentStart(
+                    sessionSubagent,
+                    startOpts,
+                    startedSubagents,
+                    activeSubagents,
+                    subagentTitles,
+                    envelopes,
+                );
+            }
+
+            if (!isCollabCallInProgress(itemRecord)) {
+                emitCollabAgentStateMessages(envelopes, itemRecord, sessionSubagents, endOpts);
+                envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call: item.id }, {
+                    ...endOpts,
+                    id: `${item.id}:end`,
+                }));
+                if (tool === 'closeAgent') {
+                    for (const sessionSubagent of Object.values(sessionSubagents)) {
+                        maybeEmitSubagentStop(sessionSubagent, endOpts, activeSubagents, envelopes);
+                    }
+                }
+                collabReceiverThreadIdsByCall.delete(item.id);
+                collabToolByCall.delete(item.id);
+            }
+            return envelopes;
+        }
+        case 'subAgentActivity': {
+            const itemRecord = item as Record<string, unknown>;
+            const providerSubagent = pickString(itemRecord.agentThreadId ?? itemRecord.agent_thread_id);
+            if (!providerSubagent) {
+                return [];
+            }
+            const sessionSubagent = ensureSessionSubagent(providerSubagent, providerSubagentToSessionSubagent);
+            const agentPath = pickString(itemRecord.agentPath ?? itemRecord.agent_path);
+            if (agentPath) {
+                subagentTitles.set(sessionSubagent, agentPath);
+            }
+            const opts = {
+                turn: turn.id,
+                time: startedAt,
+                codexItemId: item.id,
+            } satisfies CreateEnvelopeOptions;
+            const envelopes: SessionEnvelope[] = [];
+            maybeEmitSubagentStart(
+                sessionSubagent,
+                opts,
+                startedSubagents,
+                activeSubagents,
+                subagentTitles,
+                envelopes,
+            );
+            maybeEmitSubagentActivityService(envelopes, itemRecord.kind, agentPath, opts, sessionSubagent);
+            if (itemRecord.kind === 'interrupted') {
+                maybeEmitSubagentStop(sessionSubagent, opts, activeSubagents, envelopes);
+            }
+            return envelopes;
+        }
         default:
             return [];
     }
@@ -341,10 +748,23 @@ export function mapCodexThreadItemToSessionEnvelopes(
 
 export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>): SessionEnvelope[] {
     const envelopes: SessionEnvelope[] = [];
+    const providerSubagentToSessionSubagent = new Map<string, string>();
+    const subagentTitles = new Map<string, string>();
+    const collabReceiverThreadIdsByCall = new Map<string, string[]>();
+    const collabToolByCall = new Map<string, string>();
 
     for (const turn of thread.turns ?? []) {
         const startedAt = turnTimestampMs(turn);
         const completedAt = completedTimestampMs(turn);
+        const state: CodexTurnState = {
+            currentTurnId: turn.id,
+            startedSubagents: new Set<string>(),
+            activeSubagents: new Set<string>(),
+            providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
+        };
         envelopes.push(createEnvelope('agent', { t: 'turn-start' }, {
             id: `${turn.id}:start`,
             turn: turn.id,
@@ -353,14 +773,21 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
 
         const timestamps = { startedAt, completedAt };
         for (const item of turn.items ?? []) {
-            envelopes.push(...mapCodexThreadItemToSessionEnvelopes(turn, item, timestamps));
+            envelopes.push(...mapCodexThreadItemToSessionEnvelopes(turn, item, timestamps, state));
         }
 
-        envelopes.push(createEnvelope('agent', { t: 'turn-end', status: turnStatus(turn) }, {
-            id: `${turn.id}:end`,
-            turn: turn.id,
-            time: completedAt,
-        }));
+        if (!isCodexTurnInProgress(turn)) {
+            envelopes.push(...emitSubagentStops(
+                { turn: turn.id, time: completedAt },
+                getStartedSubagents(state),
+                getActiveSubagents(state),
+            ));
+            envelopes.push(createEnvelope('agent', { t: 'turn-end', status: turnStatus(turn) }, {
+                id: `${turn.id}:end`,
+                turn: turn.id,
+                time: completedAt,
+            }));
+        }
     }
 
     return envelopes;
@@ -410,18 +837,25 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     const startedSubagents = getStartedSubagents(state);
     const activeSubagents = getActiveSubagents(state);
     const providerSubagentToSessionSubagent = getProviderSubagentToSessionSubagent(state);
+    const subagentTitles = getSubagentTitles(state);
+    const collabReceiverThreadIdsByCall = getCollabReceiverThreadIdsByCall(state);
+    const collabToolByCall = getCollabToolByCall(state);
 
     if (type === 'task_started') {
         const turnId = createId();
         const turnStart = createEnvelope('agent', { t: 'turn-start' }, { turn: turnId });
         startedSubagents.clear();
         activeSubagents.clear();
-        providerSubagentToSessionSubagent.clear();
+        collabReceiverThreadIdsByCall.clear();
+        collabToolByCall.clear();
         return {
             currentTurnId: turnId,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
             envelopes: [turnStart],
         };
     }
@@ -433,17 +867,24 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                 startedSubagents,
                 activeSubagents,
                 providerSubagentToSessionSubagent,
+                subagentTitles,
+                collabReceiverThreadIdsByCall,
+                collabToolByCall,
                 envelopes: [],
             };
         }
 
         const lifecycleOpts = { turn: state.currentTurnId } satisfies CreateEnvelopeOptions;
-        providerSubagentToSessionSubagent.clear();
+        collabReceiverThreadIdsByCall.clear();
+        collabToolByCall.clear();
         return {
             currentTurnId: null,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
             envelopes: [
                 ...emitSubagentStops(lifecycleOpts, startedSubagents, activeSubagents),
                 createEnvelope('agent', {
@@ -460,7 +901,116 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
             envelopes: [],
+        };
+    }
+
+    if (type === 'collab_agent_begin' || type === 'collab_agent_end') {
+        const call = pickCallId(message);
+        const tool = resolveCollabTool(call, message, collabToolByCall);
+        const prompt = pickString(message.prompt);
+        const title = collabToolTitle(tool, prompt);
+        const providerIds = resolveCollabProviderIds(call, message, collabReceiverThreadIdsByCall);
+        const { primarySubagent, sessionSubagents } = registerCodexSubagents(
+            providerIds,
+            title,
+            providerSubagentToSessionSubagent,
+            subagentTitles,
+        );
+        const turnOpts = buildEnvelopeOptions(state.currentTurnId);
+        const envelopes: SessionEnvelope[] = [];
+
+        if (type === 'collab_agent_begin') {
+            envelopes.push(createEnvelope('agent', {
+                t: 'tool-call-start',
+                call,
+                name: 'CodexSubagent',
+                title,
+                description: collabToolDescription(tool, prompt),
+                args: collabArgs(message, primarySubagent, sessionSubagents),
+            }, turnOpts));
+
+            for (const sessionSubagent of Object.values(sessionSubagents)) {
+                maybeEmitSubagentStart(
+                    sessionSubagent,
+                    turnOpts,
+                    startedSubagents,
+                    activeSubagents,
+                    subagentTitles,
+                    envelopes,
+                );
+            }
+        } else {
+            emitCollabAgentStateMessages(envelopes, message, sessionSubagents, turnOpts);
+            envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, turnOpts));
+            if (tool === 'closeAgent') {
+                for (const sessionSubagent of Object.values(sessionSubagents)) {
+                    maybeEmitSubagentStop(sessionSubagent, turnOpts, activeSubagents, envelopes);
+                }
+            }
+            collabReceiverThreadIdsByCall.delete(call);
+            collabToolByCall.delete(call);
+        }
+
+        return {
+            currentTurnId: state.currentTurnId,
+            startedSubagents,
+            activeSubagents,
+            providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
+            envelopes,
+        };
+    }
+
+    if (type === 'subagent_activity') {
+        const providerSubagent = pickString(message.agent_thread_id ?? message.agentThreadId);
+        if (!providerSubagent) {
+            return {
+                currentTurnId: state.currentTurnId,
+                startedSubagents,
+                activeSubagents,
+                providerSubagentToSessionSubagent,
+                subagentTitles,
+                collabReceiverThreadIdsByCall,
+                collabToolByCall,
+                envelopes: [],
+            };
+        }
+
+        const sessionSubagent = ensureSessionSubagent(providerSubagent, providerSubagentToSessionSubagent);
+        const agentPath = pickString(message.agent_path ?? message.agentPath);
+        if (agentPath) {
+            subagentTitles.set(sessionSubagent, agentPath);
+        }
+        const turnOpts = buildEnvelopeOptions(state.currentTurnId);
+        const envelopes: SessionEnvelope[] = [];
+        maybeEmitSubagentStart(
+            sessionSubagent,
+            turnOpts,
+            startedSubagents,
+            activeSubagents,
+            subagentTitles,
+            envelopes,
+        );
+        maybeEmitSubagentActivityService(envelopes, message.kind, agentPath, turnOpts, sessionSubagent);
+        if (message.kind === 'interrupted') {
+            maybeEmitSubagentStop(sessionSubagent, turnOpts, activeSubagents, envelopes);
+        }
+
+        return {
+            currentTurnId: state.currentTurnId,
+            startedSubagents,
+            activeSubagents,
+            providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
+            envelopes,
         };
     }
 
@@ -474,18 +1024,24 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                 startedSubagents,
                 activeSubagents,
                 providerSubagentToSessionSubagent,
+                subagentTitles,
+                collabReceiverThreadIdsByCall,
+                collabToolByCall,
                 envelopes: [],
             };
         }
 
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, subagentTitles, envelopes);
         envelopes.push(createEnvelope('agent', { t: 'text', text: message.message }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
             envelopes,
         };
     }
@@ -501,18 +1057,24 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                 startedSubagents,
                 activeSubagents,
                 providerSubagentToSessionSubagent,
+                subagentTitles,
+                collabReceiverThreadIdsByCall,
+                collabToolByCall,
                 envelopes: [],
             };
         }
 
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, subagentTitles, envelopes);
         envelopes.push(createEnvelope('agent', { t: 'text', text, thinking: true }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
             envelopes,
         };
     }
@@ -530,7 +1092,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             : (command ?? 'Execute command');
 
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, subagentTitles, envelopes);
         envelopes.push(
             createEnvelope('agent', {
                 t: 'tool-call-start',
@@ -546,6 +1108,9 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
             envelopes,
         };
     }
@@ -553,13 +1118,16 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     if (type === 'exec_command_end') {
         const call = pickCallId(message);
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, subagentTitles, envelopes);
         envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
             envelopes,
         };
     }
@@ -570,7 +1138,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         const changes = (message as { changes?: unknown }).changes;
 
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, subagentTitles, envelopes);
         envelopes.push(
             createEnvelope('agent', {
                 t: 'tool-call-start',
@@ -589,6 +1157,9 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
             envelopes,
         };
     }
@@ -596,13 +1167,16 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     if (type === 'patch_apply_end') {
         const call = pickCallId(message);
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, subagentTitles, envelopes);
         envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
             envelopes,
         };
     }
@@ -612,6 +1186,9 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         startedSubagents,
         activeSubagents,
         providerSubagentToSessionSubagent,
+        subagentTitles,
+        collabReceiverThreadIdsByCall,
+        collabToolByCall,
         envelopes: [],
     };
 }

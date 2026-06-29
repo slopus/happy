@@ -63,6 +63,10 @@ type LegacyPatchChanges = Record<string, Record<string, unknown>>;
 export type ApprovalHandler = (params: {
     type: 'exec' | 'patch' | 'mcp';
     callId: string;
+    itemId?: string | null;
+    threadId?: string | null;
+    turnId?: string | null;
+    approvalId?: string | null;
     command?: string[];
     cwd?: string;
     fileChanges?: Record<string, unknown>;
@@ -72,6 +76,23 @@ export type ApprovalHandler = (params: {
     serverName?: string;
     message?: string;
 }) => Promise<ReviewDecision>;
+
+function stringOrNull(value: unknown): string | null {
+    return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function formatScopedApprovalRequestId(
+    threadId: string | null,
+    itemId: string,
+    approvalId?: string | null,
+): string {
+    const scopedItemId = threadId ? `${threadId}:${itemId}` : itemId;
+    return approvalId ? `${scopedItemId}:${approvalId}` : scopedItemId;
+}
+
+function formatScopedItemKey(threadId: string | null, itemId: string): string {
+    return threadId ? `${threadId}:${itemId}` : itemId;
+}
 
 /**
  * Check that `codex app-server` is available.
@@ -228,6 +249,7 @@ export class CodexAppServerClient {
     private notificationProtocol: 'unknown' | 'legacy' | 'raw' = 'unknown';
     private completedTurnIds = new Set<string>();
     private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
+    private rawSubagentActivitySignaturesByItemId = new Map<string, Set<string>>();
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
@@ -434,10 +456,12 @@ export class CodexAppServerClient {
 
         if (item.type === 'fileChange') {
             const callId = typeof item.id === 'string' ? item.id : '';
+            const threadId = stringOrNull(params?.threadId);
+            const itemKey = callId ? formatScopedItemKey(threadId, callId) : '';
             const changes = normalizeRawFileChangeList(item.changes);
 
             if (callId && changes) {
-                this.rawFileChangesByItemId.set(callId, changes);
+                this.rawFileChangesByItemId.set(itemKey, changes);
             }
 
             if (method === 'item/started') {
@@ -459,10 +483,80 @@ export class CodexAppServerClient {
                 });
 
                 if (callId && (item.status === 'completed' || item.status === 'failed' || item.status === 'declined')) {
-                    this.rawFileChangesByItemId.delete(callId);
+                    this.rawFileChangesByItemId.delete(itemKey);
                 }
                 return true;
             }
+        }
+
+        if (item.type === 'collabAgentToolCall') {
+            const callId = typeof item.id === 'string' ? item.id : '';
+            const payload = {
+                call_id: callId,
+                callId,
+                tool: item.tool,
+                status: item.status,
+                sender_thread_id: item.senderThreadId,
+                senderThreadId: item.senderThreadId,
+                receiver_thread_ids: item.receiverThreadIds,
+                receiverThreadIds: item.receiverThreadIds,
+                prompt: item.prompt,
+                model: item.model,
+                reasoning_effort: item.reasoningEffort,
+                reasoningEffort: item.reasoningEffort,
+                agents_states: item.agentsStates,
+                agentsStates: item.agentsStates,
+            };
+
+            if (method === 'item/started') {
+                this.eventHandler?.({
+                    type: 'collab_agent_begin',
+                    ...payload,
+                });
+                return true;
+            }
+
+            if (method === 'item/completed') {
+                this.eventHandler?.({
+                    type: 'collab_agent_end',
+                    ...payload,
+                });
+                return true;
+            }
+        }
+
+        if (item.type === 'subAgentActivity') {
+            if (method === 'item/started' || method === 'item/completed') {
+                const itemId = typeof item.id === 'string' ? item.id : '';
+                const threadId = stringOrNull(params?.threadId);
+                const itemKey = itemId ? formatScopedItemKey(threadId, itemId) : '';
+                const signature = [
+                    String(item.kind ?? ''),
+                    String(item.agentThreadId ?? ''),
+                    String(item.agentPath ?? ''),
+                ].join('\0');
+                const seenSignatures = itemKey
+                    ? this.rawSubagentActivitySignaturesByItemId.get(itemKey)
+                    : undefined;
+                if (seenSignatures?.has(signature)) {
+                    return true;
+                }
+                if (itemKey) {
+                    const signatures = seenSignatures ?? new Set<string>();
+                    signatures.add(signature);
+                    this.rawSubagentActivitySignaturesByItemId.set(itemKey, signatures);
+                }
+                this.eventHandler?.({
+                    type: 'subagent_activity',
+                    item_id: item.id,
+                    kind: item.kind,
+                    agent_thread_id: item.agentThreadId,
+                    agentThreadId: item.agentThreadId,
+                    agent_path: item.agentPath,
+                    agentPath: item.agentPath,
+                });
+            }
+            return true;
         }
 
         if (method === 'item/completed' && item.type === 'agentMessage') {
@@ -712,6 +806,7 @@ export class CodexAppServerClient {
         const result = await this.request('thread/start', params) as NewConversationResponse;
         this._threadId = result.thread.id;
         this._turnId = null;
+        this.rawSubagentActivitySignaturesByItemId.clear();
         this.rememberThreadDefaults(opts);
         logger.debug('[CodexAppServer] Thread started:', this._threadId);
         return { threadId: result.thread.id, model: result.model };
@@ -747,6 +842,7 @@ export class CodexAppServerClient {
         const result = await this.request('thread/resume', params) as ResumeConversationResponse;
         this._threadId = result.thread.id;
         this._turnId = null;
+        this.rawSubagentActivitySignaturesByItemId.clear();
         this.rememberThreadDefaults({
             model: opts?.model ?? defaults.model,
             cwd: opts?.cwd ?? defaults.cwd,
@@ -942,10 +1038,13 @@ export class CodexAppServerClient {
             return { hadActiveTurn: false, aborted: false, forcedRestart: false, resumedThread: false };
         }
 
-        // Best-effort interrupt request first.
-        await this.interruptTurn();
-
         const gracePeriodMs = opts?.gracePeriodMs ?? CodexAppServerClient.ABORT_GRACE_MS;
+        // Best-effort interrupt request first, but do not block the fallback on
+        // the interrupt RPC itself. Codex can stop emitting responses while a
+        // tool/subagent/MCP call is wedged, and in that case the restart fallback
+        // is the mechanism that actually makes Stop Execution reliable.
+        void this.interruptTurn({ timeoutMs: Math.max(1, gracePeriodMs) });
+
         const settled = await this.waitForTurnCompletion(gracePeriodMs);
         if (settled) {
             return { hadActiveTurn: true, aborted: true, forcedRestart: false, resumedThread: false };
@@ -1088,7 +1187,7 @@ export class CodexAppServerClient {
         return { aborted };
     }
 
-    async interruptTurn(): Promise<void> {
+    async interruptTurn(opts?: { timeoutMs?: number }): Promise<void> {
         if (!this._threadId) return;
         if (!this._turnId) {
             logger.debug('[CodexAppServer] interruptTurn: no active turnId, skipping');
@@ -1100,7 +1199,7 @@ export class CodexAppServerClient {
         };
         const doInterrupt = async () => {
             try {
-                await this.request('turn/interrupt', params);
+                await this.request('turn/interrupt', params, opts?.timeoutMs);
             } catch (err) {
                 // Ignore if no turn is active
                 logger.debug('[CodexAppServer] interruptTurn error (may be expected):', err);
@@ -1128,6 +1227,7 @@ export class CodexAppServerClient {
         this.threadDefaults = null;
         this.completedTurnIds.clear();
         this.rawFileChangesByItemId.clear();
+        this.rawSubagentActivitySignaturesByItemId.clear();
     }
 
     // ─── JSON-RPC transport ─────────────────────────────────────
@@ -1304,13 +1404,21 @@ export class CodexAppServerClient {
 
     private async handleServerRequest(id: number, method: string, params: any): Promise<void> {
         if (method === 'mcpServer/elicitation/request') {
-            const toolName = this.parseToolNameFromElicitationMessage(params?.message) ?? params?.serverName ?? 'McpTool';
+            const threadId = stringOrNull(params?.threadId) ?? this._threadId;
+            const turnId = stringOrNull(params?.turnId);
+            const serverName = stringOrNull(params?.serverName) ?? 'mcp';
+            const toolName = this.parseToolNameFromElicitationMessage(params?.message) ?? serverName;
+            const itemId = `${serverName}:${id}`;
             const decision = await this.handleApproval({
                 type: 'mcp',
-                callId: `${params?.serverName ?? 'mcp'}:${id}`,
+                callId: formatScopedApprovalRequestId(threadId, itemId),
+                itemId,
+                threadId,
+                turnId,
+                approvalId: String(id),
                 toolName,
                 input: params?._meta?.tool_params ?? {},
-                serverName: params?.serverName,
+                serverName,
                 message: params?.message,
             });
             this.respond(id, this.mapDecisionToMcpElicitationResponse(decision, params));
@@ -1320,11 +1428,20 @@ export class CodexAppServerClient {
         // Command execution approval
         if (method === 'item/commandExecution/requestApproval' || method === 'execCommandApproval') {
             const legacy = method === 'execCommandApproval';
-            const callId = params.itemId ?? params.callId ?? String(id);
+            const threadId = stringOrNull(params?.threadId) ?? stringOrNull(params?.conversationId) ?? this._threadId;
+            const turnId = stringOrNull(params?.turnId);
+            const itemId = stringOrNull(params?.itemId) ?? stringOrNull(params?.callId) ?? String(id);
+            const approvalId = stringOrNull(params?.approvalId);
             const decision = await this.handleApproval({
                 type: 'exec',
-                callId,
-                command: params.command != null ? [params.command] : [],
+                callId: formatScopedApprovalRequestId(threadId, itemId, approvalId),
+                itemId,
+                threadId,
+                turnId,
+                approvalId,
+                command: Array.isArray(params.command)
+                    ? params.command
+                    : params.command != null ? [params.command] : [],
                 cwd: params.cwd,
                 reason: params.reason,
             });
@@ -1335,12 +1452,18 @@ export class CodexAppServerClient {
         // File change / patch approval
         if (method === 'item/fileChange/requestApproval' || method === 'applyPatchApproval') {
             const legacy = method === 'applyPatchApproval';
-            const callId = params.itemId ?? params.callId ?? String(id);
+            const threadId = stringOrNull(params?.threadId) ?? stringOrNull(params?.conversationId) ?? this._threadId;
+            const turnId = stringOrNull(params?.turnId);
+            const itemId = stringOrNull(params?.itemId) ?? stringOrNull(params?.callId) ?? String(id);
+            const itemKey = formatScopedItemKey(threadId, itemId);
             const decision = await this.handleApproval({
                 type: 'patch',
-                callId,
-                fileChanges: params.fileChanges ?? (typeof callId === 'string'
-                    ? this.rawFileChangesByItemId.get(callId)
+                callId: formatScopedApprovalRequestId(threadId, itemId),
+                itemId,
+                threadId,
+                turnId,
+                fileChanges: params.fileChanges ?? (typeof itemId === 'string'
+                    ? this.rawFileChangesByItemId.get(itemKey) ?? this.rawFileChangesByItemId.get(itemId)
                     : undefined),
                 reason: params.reason,
             });

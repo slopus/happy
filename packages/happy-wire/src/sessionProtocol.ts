@@ -1,9 +1,10 @@
 /**
- * ⚠️ UNDER REVIEW — LIKELY NEEDS MORE CAREFUL DESIGN
+ * UNDER REVIEW - NEEDS MORE CAREFUL DESIGN
  *
- * This session protocol is not used in production and should NOT be used in dev
- * environments either until we revisit the design. The legacy protocol
- * (role: 'user' / role: 'agent') is the active code path everywhere.
+ * This session protocol is currently emitted by multiple CLI runtimes and
+ * normalized by the app, but the format is still evolving. Treat this as a
+ * compatibility contract for current producers/consumers, not as a final
+ * cross-agent standard.
  *
  * Before investing more here, look at how pi.dev standardizes their agent
  * protocol — we may want to align with or build on that approach instead of

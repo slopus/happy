@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createId } from '@paralleldrive/cuid2';
 import type { RawJSONLines } from '@/claude/types';
 import {
@@ -70,6 +71,13 @@ function getSessionSubagentIdForProviderSubagent(
     return getProviderSubagentToSessionSubagent(state).get(providerSubagent);
 }
 
+function deterministicSessionSubagentId(providerSubagent: string): string {
+    const digest = createHash('sha256')
+        .update(`claude-subagent:${providerSubagent}`)
+        .digest('hex');
+    return `c${digest.slice(0, 23)}`;
+}
+
 function ensureSessionSubagentIdForProviderSubagent(
     state: ClaudeSessionProtocolState,
     providerSubagent: string,
@@ -79,7 +87,7 @@ function ensureSessionSubagentIdForProviderSubagent(
         return existing;
     }
 
-    const created = createId();
+    const created = deterministicSessionSubagentId(providerSubagent);
     getProviderSubagentToSessionSubagent(state).set(providerSubagent, created);
     return created;
 }
@@ -364,6 +372,18 @@ function maybeEmitSubagentStop(
     active.delete(subagent);
 }
 
+function emitActiveSubagentStops(
+    state: ClaudeSessionProtocolState,
+    turn: string,
+    envelopes: SessionEnvelope[],
+): void {
+    const active = getActiveSubagents(state);
+    for (const subagent of active) {
+        envelopes.push(createEnvelope('agent', { t: 'stop' }, { turn, subagent }));
+    }
+    active.clear();
+}
+
 function clearSubagentTracking(state: ClaudeSessionProtocolState): void {
     getUuidToProviderSubagent(state).clear();
     getTaskPromptToSubagents(state).clear();
@@ -395,6 +415,7 @@ function closeTurn(
         return;
     }
 
+    emitActiveSubagentStops(state, state.currentTurnId, envelopes);
     envelopes.push(createEnvelope('agent', { t: 'turn-end', status }, { turn: state.currentTurnId }));
     state.currentTurnId = null;
     clearSubagentTracking(state);
