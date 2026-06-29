@@ -4,6 +4,8 @@ import { LocalSettings, localSettingsDefaults, localSettingsParse } from './loca
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
+import type { AttachmentPreview } from '@/sync/attachmentTypes';
+import { parsePersistedAttachments } from '@/sync/attachmentDraft';
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
@@ -24,6 +26,8 @@ export interface NewSessionDraft {
     modelMode: string;
     sessionType: NewSessionSessionType;
     worktreeKey: string | null;
+    /** Image/file attachments staged for the first message (expImageUpload). */
+    attachments: AttachmentPreview[];
     updatedAt: number;
 }
 
@@ -154,6 +158,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const modelMode: string = typeof parsed.modelMode === 'string' ? parsed.modelMode : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
         const worktreeKey = typeof parsed.worktreeKey === 'string' ? parsed.worktreeKey : null;
+        const attachments = parsePersistedAttachments(parsed.attachments);
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
 
         return {
@@ -165,6 +170,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             modelMode,
             sessionType,
             worktreeKey,
+            attachments,
             updatedAt,
         };
     } catch (e) {
