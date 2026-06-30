@@ -46,6 +46,11 @@ export type JsRuntime = 'node' | 'bun'
 export interface StartOptions {
     model?: string
     permissionMode?: PermissionMode
+    /**
+     * Initial Claude thinking effort. When set, seeds `currentEffort` at
+     * session start; otherwise falls back to DEFAULT_CLAUDE_EFFORT.
+     */
+    effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
     startingMode?: 'local' | 'remote'
     shouldStartDaemon?: boolean
     claudeEnvVars?: Record<string, string>
@@ -526,7 +531,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
-    let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
+    // Initial effort: prefer the value the daemon forwarded from the app's
+    // new-session picker; only fall back to the hardcoded default when nothing
+    // was passed.
+    const initialEffort = options.effort ?? DEFAULT_CLAUDE_EFFORT;
+    let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = initialEffort; // Track current Claude effort (thinking depth)
 
     const resetCurrentModeDefaults = () => {
         currentPermissionMode = initialPermissionMode;
@@ -536,7 +545,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         currentAppendSystemPrompt = undefined;
         currentAllowedTools = undefined;
         currentDisallowedTools = undefined;
-        currentEffort = DEFAULT_CLAUDE_EFFORT;
+        currentEffort = initialEffort;
         logger.debug('[loop] Reset current mode defaults after abort');
     };
     const currentEnhancedMode = (): EnhancedMode => ({

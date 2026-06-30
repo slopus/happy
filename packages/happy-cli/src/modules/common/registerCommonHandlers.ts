@@ -140,6 +140,17 @@ export interface SpawnSessionOptions {
     parentSessionId?: string;
     /** Happy message id used as the rewind point (only set for "duplicate"). */
     forkedFromMessageId?: string;
+    /**
+     * Initial permission mode for the spawned Claude session (e.g. 'acceptEdits',
+     * 'plan', 'yolo'). When set, the daemon forwards it via --permission-mode so
+     * runClaude doesn't fall back to its hardcoded 'yolo' default.
+     */
+    permissionMode?: string;
+    /**
+     * Initial Claude thinking effort ('low' | 'medium' | 'high' | 'xhigh' | 'max').
+     * Forwarded via --effort; overrides runClaude's hardcoded 'medium' default.
+     */
+    effort?: string;
 }
 
 export type SpawnSessionResult =
