@@ -180,6 +180,8 @@ export const pl: TranslationStructure = {
         },
         chat: 'Czat',
         chatDescription: 'Dostosuj wygląd wiadomości czatu',
+        sessionStatusBar: 'Pasek statusu sesji',
+        sessionStatusBarDescription: 'Pokazuj model, folder, gałąź i kontekst nad polem wiadomości',
         userMessageBubbleColor: 'Kolor Twoich wiadomości',
         userMessageBubbleColorDescription: 'Ułatw znajdowanie swoich wiadomości w długich czatach',
         userMessageBubbleColorOptions: {
@@ -322,6 +324,8 @@ export const pl: TranslationStructure = {
         inactiveArchived: 'Ta sesja jest nieaktywna.',
         resumeFromTerminal: 'Aby wznowić ją z terminala:',
         newChat: 'Nowy czat',
+        statusBarContext: 'Kontekst',
+        statusBarPathTitle: 'Katalog roboczy',
         forkAction: 'Rozwidl sesję',
         forkSubtitle: 'Kontynuuj w nowej sesji z tym samym kontekstem',
         duplicateAction: 'Duplikuj od wiadomości…',

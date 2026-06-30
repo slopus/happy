@@ -163,6 +163,8 @@ export const ca: TranslationStructure = {
         },
         chat: 'Xat',
         chatDescription: 'Personalitza l\'aspecte dels missatges del xat',
+        sessionStatusBar: 'Barra d\'estat de la sessió',
+        sessionStatusBarDescription: 'Mostra model, carpeta, branca i context sobre el compositor',
         userMessageBubbleColor: 'Color dels teus missatges',
         userMessageBubbleColorDescription: 'Fes que els teus missatges siguin més fàcils de trobar en xats llargs',
         userMessageBubbleColorOptions: {
@@ -305,6 +307,8 @@ export const ca: TranslationStructure = {
         inactiveArchived: 'Aquesta sessió està inactiva.',
         resumeFromTerminal: 'Per reprendre-la des del terminal:',
         newChat: 'Nou xat',
+        statusBarContext: 'Context',
+        statusBarPathTitle: 'Directori de treball',
         forkAction: 'Bifurca la sessió',
         forkSubtitle: 'Continua en una nova sessió amb el mateix context',
         duplicateAction: 'Duplica des d\'un missatge…',

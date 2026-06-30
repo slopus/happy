@@ -16,6 +16,7 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
+import { SessionStatusBar } from '@/components/SessionStatusBar';
 import { Avatar } from '@/components/Avatar';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
@@ -25,7 +26,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort, sessionGoalAction } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -487,7 +488,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
+    const gitStatus = useSessionGitStatus(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
+    const showSessionStatusBar = useSetting('showSessionStatusBar');
     const experiments = useSetting('experiments');
     const expResumeSession = useSetting('expResumeSession');
     const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
@@ -582,6 +585,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             contextSize: source.contextSize,
         };
     }, [sessionUsage, session.latestUsage]);
+    const metadataGitBranch = React.useMemo(() => {
+        const gitBranch = (session.metadata as { gitBranch?: unknown } | null)?.gitBranch;
+        return typeof gitBranch === 'string' && gitBranch.trim() ? gitBranch.trim() : null;
+    }, [session.metadata]);
+    const statusBarGitBranch = gitStatus?.lastUpdatedAt ? gitStatus.branch : metadataGitBranch;
+    const statusBarModelLabel = modelMode?.name ?? session.metadata?.currentModelCode ?? session.modelMode ?? null;
+    const handleStatusPathPress = React.useCallback((path: string) => {
+        Modal.alert(t('session.statusBarPathTitle'), path);
+    }, []);
 
     const visibleAgentGoal = React.useMemo(() => (
         resolveVisibleAgentGoalStatus(session)
@@ -759,6 +771,17 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                         goal={visibleAgentGoal}
                         onAction={handleGoalAction}
                         inFlightAction={goalActionInFlight}
+                    />
+                </CenteredInputWidth>
+            )}
+            {showSessionStatusBar && (
+                <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+                    <SessionStatusBar
+                        modelLabel={statusBarModelLabel}
+                        path={session.metadata?.path}
+                        gitBranch={statusBarGitBranch}
+                        contextSize={usageData?.contextSize}
+                        onPathPress={handleStatusPathPress}
                     />
                 </CenteredInputWidth>
             )}

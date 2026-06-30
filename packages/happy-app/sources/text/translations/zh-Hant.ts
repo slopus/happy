@@ -163,6 +163,8 @@ export const zhHant: TranslationStructure = {
         },
         chat: '聊天',
         chatDescription: '自訂聊天訊息外觀',
+        sessionStatusBar: '工作階段狀態列',
+        sessionStatusBarDescription: '在輸入框上方顯示模型、資料夾、分支和上下文',
         userMessageBubbleColor: '使用者氣泡顏色',
         userMessageBubbleColorDescription: '讓您的訊息在長聊天中更容易找到',
         userMessageBubbleColorOptions: {
@@ -305,6 +307,8 @@ export const zhHant: TranslationStructure = {
         inactiveArchived: '此會話處於非活動狀態。',
         resumeFromTerminal: '若要從終端恢復它：',
         newChat: '新對話',
+        statusBarContext: '上下文',
+        statusBarPathTitle: '工作目錄',
         forkAction: '分叉會話',
         forkSubtitle: '在相同上下文中開啟新會話繼續',
         duplicateAction: '從訊息處複製…',

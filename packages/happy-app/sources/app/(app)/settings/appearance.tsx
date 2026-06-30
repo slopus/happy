@@ -50,6 +50,7 @@ export default function AppearanceSettingsScreen() {
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
     const [userMessageBubbleColor, setUserMessageBubbleColor] = useSettingMutable('userMessageBubbleColor');
+    const [showSessionStatusBar, setShowSessionStatusBar] = useSettingMutable('showSessionStatusBar');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
     
@@ -121,6 +122,17 @@ export default function AppearanceSettingsScreen() {
             </ItemGroup>
 
             <ItemGroup title={t('settingsAppearance.chat')} footer={t('settingsAppearance.chatDescription')}>
+                <Item
+                    title={t('settingsAppearance.sessionStatusBar')}
+                    subtitle={t('settingsAppearance.sessionStatusBarDescription')}
+                    icon={<Ionicons name="stats-chart-outline" size={29} color={theme.colors.status.connecting} />}
+                    rightElement={
+                        <Switch
+                            value={showSessionStatusBar}
+                            onValueChange={setShowSessionStatusBar}
+                        />
+                    }
+                />
                 <Item
                     title={t('settingsAppearance.userMessageBubbleColor')}
                     subtitle={t('settingsAppearance.userMessageBubbleColorDescription')}

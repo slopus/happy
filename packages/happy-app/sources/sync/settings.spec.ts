@@ -189,6 +189,7 @@ describe('settings', () => {
                 avatarStyle: 'brutalist',
                 showFlavorIcons: false,
                 userMessageBubbleColor: 'blue',
+                showSessionStatusBar: true,
                 hideInactiveSessions: false,
                 expResumeSession: false,
                 fileDiffsSidebar: false,

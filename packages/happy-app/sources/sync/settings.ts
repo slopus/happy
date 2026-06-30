@@ -27,6 +27,7 @@ export const SettingsSchema = z.object({
     avatarStyle: z.string().describe('Avatar display style'),
     showFlavorIcons: z.boolean().describe('Whether to show AI provider icons in avatars'),
     userMessageBubbleColor: z.string().describe('User message bubble color preset'),
+    showSessionStatusBar: z.boolean().describe('Whether to show the persistent session status bar above the composer'),
 
     hideInactiveSessions: z.boolean().describe('Hide inactive sessions in the main list'),
     expResumeSession: z.boolean().describe('Enable experimental session resume feature'),
@@ -99,6 +100,7 @@ export const settingsDefaults: Settings = {
     avatarStyle: 'brutalist',
     showFlavorIcons: false,
     userMessageBubbleColor: DEFAULT_USER_MESSAGE_BUBBLE_COLOR,
+    showSessionStatusBar: true,
 
     hideInactiveSessions: false,
     expResumeSession: false,

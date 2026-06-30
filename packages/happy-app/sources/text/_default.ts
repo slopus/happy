@@ -161,6 +161,8 @@ export const en = {
         },
         chat: 'Chat',
         chatDescription: 'Customize chat message appearance',
+        sessionStatusBar: 'Session Status Bar',
+        sessionStatusBarDescription: 'Show model, folder, branch, and context above the composer',
         userMessageBubbleColor: 'User Bubble Color',
         userMessageBubbleColorDescription: 'Make your messages easier to spot in long chats',
         userMessageBubbleColorOptions: {
@@ -318,6 +320,8 @@ export const en = {
         inactiveArchived: 'This session is inactive.',
         resumeFromTerminal: 'To resume it from the terminal:',
         newChat: 'New chat',
+        statusBarContext: 'Context',
+        statusBarPathTitle: 'Working directory',
         // Fork / duplicate / rewind flow (Claude only)
         forkAction: 'Fork session',
         forkSubtitle: 'Continue in a new session with the same context',

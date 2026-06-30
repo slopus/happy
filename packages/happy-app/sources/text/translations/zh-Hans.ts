@@ -164,6 +164,8 @@ export const zhHans: TranslationStructure = {
         },
         chat: '聊天',
         chatDescription: '自定义聊天消息外观',
+        sessionStatusBar: '会话状态栏',
+        sessionStatusBarDescription: '在输入框上方显示模型、文件夹、分支和上下文',
         userMessageBubbleColor: '用户气泡颜色',
         userMessageBubbleColorDescription: '让您的消息在长聊天中更容易找到',
         userMessageBubbleColorOptions: {
@@ -306,6 +308,8 @@ export const zhHans: TranslationStructure = {
         inactiveArchived: '此会话处于非活动状态。',
         resumeFromTerminal: '要从终端恢复它：',
         newChat: '新对话',
+        statusBarContext: '上下文',
+        statusBarPathTitle: '工作目录',
         forkAction: '分叉会话',
         forkSubtitle: '在相同上下文中开启新会话继续',
         duplicateAction: '从消息处复制…',

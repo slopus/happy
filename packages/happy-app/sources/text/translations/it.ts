@@ -161,6 +161,8 @@ export const it: TranslationStructure = {
         },
         chat: 'Chat',
         chatDescription: 'Personalizza l\'aspetto dei messaggi della chat',
+        sessionStatusBar: 'Barra di stato sessione',
+        sessionStatusBarDescription: 'Mostra modello, cartella, branch e contesto sopra il composer',
         userMessageBubbleColor: 'Colore dei tuoi messaggi',
         userMessageBubbleColorDescription: 'Rendi i tuoi messaggi più facili da trovare nelle chat lunghe',
         userMessageBubbleColorOptions: {
@@ -303,6 +305,8 @@ export const it: TranslationStructure = {
         inactiveArchived: 'Questa sessione è inattiva.',
         resumeFromTerminal: 'Per riprenderla dal terminale:',
         newChat: 'Nuova chat',
+        statusBarContext: 'Contesto',
+        statusBarPathTitle: 'Directory di lavoro',
         forkAction: 'Biforca sessione',
         forkSubtitle: 'Continua in una nuova sessione con lo stesso contesto',
         duplicateAction: 'Duplica da un messaggio…',

@@ -149,6 +149,8 @@ export const ru: TranslationStructure = {
         },
         chat: 'Чат',
         chatDescription: 'Настройте внешний вид сообщений в чате',
+        sessionStatusBar: 'Строка статуса сессии',
+        sessionStatusBarDescription: 'Показывать модель, папку, ветку и контекст над полем ввода',
         userMessageBubbleColor: 'Цвет ваших сообщений',
         userMessageBubbleColorDescription: 'Сделайте ваши сообщения заметнее в длинных чатах',
         userMessageBubbleColorOptions: {
@@ -425,6 +427,8 @@ export const ru: TranslationStructure = {
         inactiveArchived: 'Эта сессия неактивна.',
         resumeFromTerminal: 'Чтобы возобновить её из терминала:',
         newChat: 'Новый чат',
+        statusBarContext: 'Контекст',
+        statusBarPathTitle: 'Рабочая директория',
         forkAction: 'Форкнуть сессию',
         forkSubtitle: 'Продолжить в новой сессии с тем же контекстом',
         duplicateAction: 'Откатиться к сообщению…',
