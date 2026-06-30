@@ -3,9 +3,9 @@
  *
  * The CLI returns three optional lines (subscription users see all three;
  * API-key users see a different message):
- *   Current session: N% used · resets <when>
- *   Current week (all models): N% used · resets <when>
- *   Current week (Sonnet only): N% used · resets <when>
+ *   Current session: N% used [· resets <when>]
+ *   Current week (all models): N% used [· resets <when>]
+ *   Current week (Sonnet only): N% used [· resets <when>]
  *
  * spec: specs/20260618-machine-cli-usage-quota/decisions.md (D1)
  */
@@ -19,15 +19,15 @@ export interface ParsedUsage {
     parseError?: string;
 }
 
-const RE_5H = /Current session:\s+(\d+)%\s+used\s+·\s+resets\s+([^\n]+)/;
-const RE_WEEK_ALL = /Current week \(all models\):\s+(\d+)%\s+used\s+·\s+resets\s+([^\n]+)/;
-const RE_WEEK_SONNET = /Current week \(Sonnet only\):\s+(\d+)%\s+used\s+·\s+resets\s+([^\n]+)/;
+const RE_5H = /Current session:\s+(\d+)%\s+used(?:\s+·\s+resets\s+([^\n]+))?/;
+const RE_WEEK_ALL = /Current week \(all models\):\s+(\d+)%\s+used(?:\s+·\s+resets\s+([^\n]+))?/;
+const RE_WEEK_SONNET = /Current week \(Sonnet only\):\s+(\d+)%\s+used(?:\s+·\s+resets\s+([^\n]+))?/;
 const RE_API_KEY_MODE = /Anthropic API keys|using API keys/i;
 
 function toWindow(match: RegExpMatchArray | null): UsageWindow | undefined {
     if (!match) return undefined;
     const usedPct = Math.max(0, Math.min(100, Number(match[1])));
-    const resetAtRaw = match[2].trim();
+    const resetAtRaw = match[2]?.trim() ?? '';
     const parsed = Date.parse(resetAtRaw);
     return {
         usedPct,

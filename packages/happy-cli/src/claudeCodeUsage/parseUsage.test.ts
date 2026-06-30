@@ -17,6 +17,13 @@ Current week (all models): 100% used · resets Jun 24, 12:59pm (Asia/Seoul)
 
 What's contributing to your limits usage?`;
 
+const SESSION_WITHOUT_RESET = `You are currently using your subscription to power your Claude Code usage
+
+Current session: 0% used
+Current week (all models): 10% used · resets Jul 5 at 7:59pm (Asia/Seoul)
+
+What's contributing to your limits usage?`;
+
 const API_KEY_MODE = `You are currently using Anthropic API keys to power your Claude Code usage.
 Track API spend in the Anthropic console.`;
 
@@ -53,6 +60,18 @@ describe('parseUsageOutput', () => {
         expect(result.windowWeeklyAllModels?.usedPct).toBe(100);
         expect(result.windowWeeklyAllModels?.remainingPct).toBe(0);
         expect(result.windowWeeklySonnet).toBeUndefined();
+    });
+
+    it('parses current session even when Claude omits the reset timestamp', () => {
+        const result = parseUsageOutput(SESSION_WITHOUT_RESET);
+        expect(result.parseError).toBeUndefined();
+        expect(result.window5h).toEqual({
+            usedPct: 0,
+            remainingPct: 100,
+            resetAtRaw: '',
+            resetAt: undefined,
+        });
+        expect(result.windowWeeklyAllModels?.usedPct).toBe(10);
     });
 
     it('returns parseError on API-key mode output (no window lines)', () => {
