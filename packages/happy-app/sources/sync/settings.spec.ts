@@ -188,6 +188,7 @@ describe('settings', () => {
                 agentInputEnterToSend: true,
                 avatarStyle: 'brutalist',
                 showFlavorIcons: false,
+                userMessageBubbleColor: 'blue',
                 hideInactiveSessions: false,
                 expResumeSession: false,
                 fileDiffsSidebar: false,

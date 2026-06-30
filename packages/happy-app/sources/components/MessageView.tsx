@@ -1,6 +1,6 @@
 import * as React from "react";
 import { View, Text, Pressable, Platform } from "react-native";
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
@@ -9,9 +9,11 @@ import { Metadata } from "@/sync/storageTypes";
 import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
+import { useSetting } from '@/sync/storage';
 import { Option } from './markdown/MarkdownView';
 import { layout } from "./layout";
 import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
+import { resolveUserMessageBubbleColor } from '@/utils/userMessageBubbleColor';
 
 
 export const MessageView = React.memo((props: {
@@ -97,6 +99,13 @@ function UserTextBlock(props: {
   const rewindPointId = props.message.claudeUuid ?? props.message.codexItemId;
   const canFork = Boolean(props.onForkFromUserMessage)
     && (Boolean(rewindPointId) || props.metadata?.flavor === 'codex');
+  const userMessageBubbleColor = useSetting('userMessageBubbleColor');
+  const { theme } = useUnistyles();
+  const bubblePalette = resolveUserMessageBubbleColor(userMessageBubbleColor, theme.dark);
+  const bubbleStyle = {
+    backgroundColor: bubblePalette.background,
+    borderColor: bubblePalette.border,
+  };
   const handleLongPress = React.useCallback(() => {
     if (props.onForkFromUserMessage) {
       props.onForkFromUserMessage(props.message.id, rewindPointId, props.message.text);
@@ -133,7 +142,7 @@ function UserTextBlock(props: {
         <Pressable
           onLongPress={canFork ? handleLongPress : undefined}
           delayLongPress={400}
-          style={[styles.userMessageBubble, styles.goalMessageBubble]}
+          style={[styles.userMessageBubble, bubbleStyle, styles.goalMessageBubble]}
         >
           <MarkdownView markdown={parsed.goal} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
         </Pressable>
@@ -151,12 +160,12 @@ function UserTextBlock(props: {
           <Pressable
             onLongPress={canFork ? handleLongPress : undefined}
             delayLongPress={400}
-            style={[styles.userMessageBubble, styles.commandMessageBubble]}
+            style={[styles.userMessageBubble, bubbleStyle, styles.commandMessageBubble]}
           >
             <MarkdownView markdown={parsed.args} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
           </Pressable>
         ) : null}
-        <View style={styles.commandChip}>
+        <View style={[styles.commandChip, bubbleStyle]}>
           <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
         </View>
       </View>
@@ -168,7 +177,7 @@ function UserTextBlock(props: {
       <Pressable
         onLongPress={canFork ? handleLongPress : undefined}
         delayLongPress={400}
-        style={styles.userMessageBubble}
+        style={[styles.userMessageBubble, bubbleStyle]}
       >
         <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
       </Pressable>
@@ -283,6 +292,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   userMessageBubble: {
     backgroundColor: theme.colors.userMessageBackground,
+    borderColor: theme.colors.divider,
+    borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
@@ -309,6 +320,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   commandChip: {
     backgroundColor: theme.colors.userMessageBackground,
+    borderColor: theme.colors.divider,
+    borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 2,
     borderRadius: 10,

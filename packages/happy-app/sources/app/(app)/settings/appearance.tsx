@@ -11,12 +11,30 @@ import { Appearance } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { darkTheme, lightTheme } from '@/theme';
 import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
+import { getNextUserMessageBubbleColor, normalizeUserMessageBubbleColor, resolveUserMessageBubbleColor, type UserMessageBubbleColor } from '@/utils/userMessageBubbleColor';
 
 // Define known avatar styles for this version of the app
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
 
 const isKnownAvatarStyle = (style: string): style is KnownAvatarStyle => {
     return style === 'pixelated' || style === 'gradient' || style === 'brutalist';
+};
+
+const getUserMessageBubbleColorLabel = (color: UserMessageBubbleColor): string => {
+    switch (color) {
+        case 'blue':
+            return t('settingsAppearance.userMessageBubbleColorOptions.blue');
+        case 'green':
+            return t('settingsAppearance.userMessageBubbleColorOptions.green');
+        case 'purple':
+            return t('settingsAppearance.userMessageBubbleColorOptions.purple');
+        case 'rose':
+            return t('settingsAppearance.userMessageBubbleColorOptions.rose');
+        case 'sand':
+            return t('settingsAppearance.userMessageBubbleColorOptions.sand');
+        case 'gray':
+            return t('settingsAppearance.userMessageBubbleColorOptions.gray');
+    }
 };
 
 export default function AppearanceSettingsScreen() {
@@ -31,11 +49,14 @@ export default function AppearanceSettingsScreen() {
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
+    const [userMessageBubbleColor, setUserMessageBubbleColor] = useSettingMutable('userMessageBubbleColor');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
     
     // Ensure we have a valid style for display, defaulting to gradient for unknown values
     const displayStyle: KnownAvatarStyle = isKnownAvatarStyle(avatarStyle) ? avatarStyle : 'gradient';
+    const displayBubbleColor = normalizeUserMessageBubbleColor(userMessageBubbleColor);
+    const displayBubblePalette = resolveUserMessageBubbleColor(displayBubbleColor, theme.dark);
     
     // Language display
     const getLanguageDisplayText = () => {
@@ -96,6 +117,16 @@ export default function AppearanceSettingsScreen() {
                     icon={<Ionicons name="language-outline" size={29} color="#007AFF" />}
                     detail={getLanguageDisplayText()}
                     onPress={() => router.push('/settings/language')}
+                />
+            </ItemGroup>
+
+            <ItemGroup title={t('settingsAppearance.chat')} footer={t('settingsAppearance.chatDescription')}>
+                <Item
+                    title={t('settingsAppearance.userMessageBubbleColor')}
+                    subtitle={t('settingsAppearance.userMessageBubbleColorDescription')}
+                    icon={<Ionicons name="chatbubble-ellipses-outline" size={29} color={displayBubblePalette.indicator} />}
+                    detail={getUserMessageBubbleColorLabel(displayBubbleColor)}
+                    onPress={() => setUserMessageBubbleColor(getNextUserMessageBubbleColor(displayBubbleColor))}
                 />
             </ItemGroup>
 

@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { AgentDefaultOverridesSchema } from './agentDefaults';
+import { DEFAULT_USER_MESSAGE_BUBBLE_COLOR } from '../utils/userMessageBubbleColor';
 
 //
 // Settings Schema
@@ -25,6 +26,7 @@ export const SettingsSchema = z.object({
     agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
     avatarStyle: z.string().describe('Avatar display style'),
     showFlavorIcons: z.boolean().describe('Whether to show AI provider icons in avatars'),
+    userMessageBubbleColor: z.string().describe('User message bubble color preset'),
 
     hideInactiveSessions: z.boolean().describe('Hide inactive sessions in the main list'),
     expResumeSession: z.boolean().describe('Enable experimental session resume feature'),
@@ -96,6 +98,7 @@ export const settingsDefaults: Settings = {
     agentInputEnterToSend: true,
     avatarStyle: 'brutalist',
     showFlavorIcons: false,
+    userMessageBubbleColor: DEFAULT_USER_MESSAGE_BUBBLE_COLOR,
 
     hideInactiveSessions: false,
     expResumeSession: false,
