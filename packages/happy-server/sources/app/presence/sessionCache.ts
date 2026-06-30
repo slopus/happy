@@ -14,6 +14,7 @@ interface MachineCacheEntry {
     lastUpdateSent: number;
     pendingUpdate: number | null;
     userId: string;
+    active: boolean;
 }
 
 class ActivityCache {
@@ -111,7 +112,8 @@ class ActivityCache {
                     validUntil: now + this.CACHE_TTL,
                     lastUpdateSent: machine.lastActiveAt?.getTime() || 0,
                     pendingUpdate: null,
-                    userId
+                    userId,
+                    active: machine.active
                 });
                 return true;
             }
@@ -146,9 +148,11 @@ class ActivityCache {
             return false; // Should validate first
         }
         
-        // Only queue if time difference is significant
+        // Always persist a heartbeat that flips an inactive machine online.
+        // New machines start inactive with lastActiveAt defaulting to "now", so
+        // the timestamp threshold alone would skip the first onboarding ping.
         const timeDiff = Math.abs(timestamp - cached.lastUpdateSent);
-        if (timeDiff > this.UPDATE_THRESHOLD) {
+        if (!cached.active || timeDiff > this.UPDATE_THRESHOLD) {
             cached.pendingUpdate = timestamp;
             return true;
         }
@@ -179,6 +183,7 @@ class ActivityCache {
                     userId: entry.userId 
                 });
                 entry.lastUpdateSent = entry.pendingUpdate;
+                entry.active = true;
                 entry.pendingUpdate = null;
             }
         }
@@ -210,7 +215,7 @@ class ActivityCache {
                                 id: update.id
                             }
                         },
-                        data: { lastActiveAt: new Date(update.timestamp) }
+                        data: { lastActiveAt: new Date(update.timestamp), active: true }
                     })
                 ));
                 
