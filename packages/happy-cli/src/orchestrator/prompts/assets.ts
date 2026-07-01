@@ -64,7 +64,7 @@ export const STEP_PLAN = `## Step: plan — Product Manager mode
 
 **Bundle sidecars**:
 - \`spec.md\`: developer-facing source of truth with goals, non-goals, acceptance criteria, and open questions.
-- \`plan.md\`: 3-5 small phases with explicit verification lines.
+- \`plan.md\`: 3-5 small, feature-oriented implementation phases with explicit verification lines. Avoid broad catch-all phases such as "Remaining Behavior" when requirements can be split by user-visible behavior.
 - \`context.md\`: current status, decisions, verification log, and next step.
 
 **Suggesting transition**: when the 6 sections are filled with substantive content, say something like "기획서가 채워졌어요. 채팅창의 '작업 시작하기' 버튼으로 바로 구현을 시작할 수 있어요." Do not switch steps yourself. Do not mention an intermediate visual-selection step or legacy transition buttons.
