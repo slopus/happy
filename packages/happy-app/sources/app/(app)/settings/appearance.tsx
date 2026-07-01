@@ -5,13 +5,19 @@ import { ItemList } from '@/components/ItemList';
 import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import * as Localization from 'expo-localization';
-import { useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
-import { Appearance } from 'react-native';
+import { Appearance, Pressable, Text, View } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { darkTheme, lightTheme } from '@/theme';
 import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
-import { getNextUserMessageBubbleColor, normalizeUserMessageBubbleColor, resolveUserMessageBubbleColor, type UserMessageBubbleColor } from '@/utils/userMessageBubbleColor';
+import {
+    normalizeUserMessageBubbleColor,
+    resolveUserMessageBubbleColor,
+    USER_MESSAGE_BUBBLE_COLORS,
+    type UserMessageBubbleColor,
+} from '@/utils/userMessageBubbleColor';
+import * as React from 'react';
 
 // Define known avatar styles for this version of the app
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
@@ -37,6 +43,72 @@ const getUserMessageBubbleColorLabel = (color: UserMessageBubbleColor): string =
     }
 };
 
+function BubbleColorPreview({ color }: { color: UserMessageBubbleColor }) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+    const palette = resolveUserMessageBubbleColor(color, theme.dark);
+
+    return (
+        <View style={[styles.bubblePreview, { backgroundColor: palette.background, borderColor: palette.border }]}>
+            <View style={[styles.bubblePreviewLine, { backgroundColor: palette.indicator, width: 18 }]} />
+            <View style={[styles.bubblePreviewLine, { backgroundColor: palette.indicator, width: 26 }]} />
+        </View>
+    );
+}
+
+function BubbleColorDropdownValue(props: {
+    color: UserMessageBubbleColor;
+    label: string;
+    expanded: boolean;
+}) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+
+    return (
+        <View style={styles.dropdownValue}>
+            <BubbleColorPreview color={props.color} />
+            <Text style={styles.dropdownValueText} numberOfLines={1}>
+                {props.label}
+            </Text>
+            <Ionicons
+                name={props.expanded ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={theme.colors.groupped.chevron}
+            />
+        </View>
+    );
+}
+
+function BubbleColorOption(props: {
+    color: UserMessageBubbleColor;
+    selected: boolean;
+    onPress: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+
+    return (
+        <Pressable
+            onPress={props.onPress}
+            style={({ pressed }) => [
+                styles.bubbleColorOption,
+                props.selected && styles.bubbleColorOptionSelected,
+                pressed && styles.bubbleColorOptionPressed,
+            ]}
+        >
+            <BubbleColorPreview color={props.color} />
+            <Text style={styles.bubbleColorOptionText} numberOfLines={1}>
+                {getUserMessageBubbleColorLabel(props.color)}
+            </Text>
+            {props.selected ? (
+                <Ionicons name="checkmark-circle" size={20} color={theme.colors.status.connecting} />
+            ) : (
+                <View style={styles.bubbleColorOptionCheckPlaceholder} />
+            )}
+        </Pressable>
+    );
+}
+
 export default function AppearanceSettingsScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
@@ -53,11 +125,13 @@ export default function AppearanceSettingsScreen() {
     const [showSessionStatusBar, setShowSessionStatusBar] = useSettingMutable('showSessionStatusBar');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
+    const [bubbleColorDropdownOpen, setBubbleColorDropdownOpen] = React.useState(false);
     
     // Ensure we have a valid style for display, defaulting to gradient for unknown values
     const displayStyle: KnownAvatarStyle = isKnownAvatarStyle(avatarStyle) ? avatarStyle : 'gradient';
     const displayBubbleColor = normalizeUserMessageBubbleColor(userMessageBubbleColor);
     const displayBubblePalette = resolveUserMessageBubbleColor(displayBubbleColor, theme.dark);
+    const displayBubbleColorLabel = getUserMessageBubbleColorLabel(displayBubbleColor);
     
     // Language display
     const getLanguageDisplayText = () => {
@@ -137,9 +211,33 @@ export default function AppearanceSettingsScreen() {
                     title={t('settingsAppearance.userMessageBubbleColor')}
                     subtitle={t('settingsAppearance.userMessageBubbleColorDescription')}
                     icon={<Ionicons name="chatbubble-ellipses-outline" size={29} color={displayBubblePalette.indicator} />}
-                    detail={getUserMessageBubbleColorLabel(displayBubbleColor)}
-                    onPress={() => setUserMessageBubbleColor(getNextUserMessageBubbleColor(displayBubbleColor))}
+                    rightElement={
+                        <BubbleColorDropdownValue
+                            color={displayBubbleColor}
+                            label={displayBubbleColorLabel}
+                            expanded={bubbleColorDropdownOpen}
+                        />
+                    }
+                    onPress={() => setBubbleColorDropdownOpen((open) => !open)}
+                    showDivider={bubbleColorDropdownOpen}
                 />
+                {bubbleColorDropdownOpen && (
+                    <React.Fragment>
+                        <View style={stylesheet.bubbleColorDropdown}>
+                            {USER_MESSAGE_BUBBLE_COLORS.map((color) => (
+                                <BubbleColorOption
+                                    key={color}
+                                    color={color}
+                                    selected={color === displayBubbleColor}
+                                    onPress={() => {
+                                        setUserMessageBubbleColor(color);
+                                        setBubbleColorDropdownOpen(false);
+                                    }}
+                                />
+                            ))}
+                        </View>
+                    </React.Fragment>
+                )}
             </ItemGroup>
 
             {/* Text Settings */}
@@ -300,3 +398,56 @@ export default function AppearanceSettingsScreen() {
         </ItemList>
     );
 }
+
+const stylesheet = StyleSheet.create((theme) => ({
+    dropdownValue: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        maxWidth: 184,
+    },
+    dropdownValueText: {
+        color: theme.colors.textSecondary,
+        fontSize: 15,
+        flexShrink: 1,
+    },
+    bubbleColorDropdown: {
+        paddingVertical: 6,
+    },
+    bubbleColorOption: {
+        minHeight: 48,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: 16,
+    },
+    bubbleColorOptionSelected: {
+        backgroundColor: theme.colors.surfaceSelected,
+    },
+    bubbleColorOptionPressed: {
+        backgroundColor: theme.colors.surfacePressedOverlay,
+    },
+    bubbleColorOptionText: {
+        color: theme.colors.text,
+        fontSize: 16,
+        flex: 1,
+    },
+    bubbleColorOptionCheckPlaceholder: {
+        width: 20,
+        height: 20,
+    },
+    bubblePreview: {
+        width: 46,
+        height: 28,
+        borderRadius: 14,
+        borderWidth: 1,
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+        gap: 4,
+        paddingHorizontal: 9,
+    },
+    bubblePreviewLine: {
+        height: 3,
+        borderRadius: 999,
+    },
+}));
