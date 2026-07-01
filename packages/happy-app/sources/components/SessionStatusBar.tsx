@@ -166,7 +166,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         width: '100%',
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'flex-end',
+        justifyContent: 'flex-start',
         paddingHorizontal: 8,
         paddingTop: 0,
         paddingBottom: 4,
