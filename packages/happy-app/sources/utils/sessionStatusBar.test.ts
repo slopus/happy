@@ -4,6 +4,7 @@ import {
     getContextUsageLevel,
     getContextUsagePercentage,
     getPathBasename,
+    resolveStatusBarGitBranch,
 } from './sessionStatusBar';
 
 describe('session status bar helpers', () => {
@@ -27,5 +28,13 @@ describe('session status bar helpers', () => {
         expect(getContextUsageLevel(89, 100)).toBe('normal');
         expect(getContextUsageLevel(90, 100)).toBe('warning');
         expect(getContextUsageLevel(95, 100)).toBe('critical');
+    });
+
+    it('falls back to metadata git branch when git status has no branch', () => {
+        expect(resolveStatusBarGitBranch('main', 'metadata-main')).toBe('main');
+        expect(resolveStatusBarGitBranch(null, 'fix/session')).toBe('fix/session');
+        expect(resolveStatusBarGitBranch('', 'fix/session')).toBe('fix/session');
+        expect(resolveStatusBarGitBranch('   ', 'fix/session')).toBe('fix/session');
+        expect(resolveStatusBarGitBranch(null, null)).toBe(null);
     });
 });

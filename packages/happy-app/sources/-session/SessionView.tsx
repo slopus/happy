@@ -35,6 +35,7 @@ import { tracking } from '@/track';
 import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
+import { resolveStatusBarGitBranch } from '@/utils/sessionStatusBar';
 import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
 import { AllFilesDiffView } from '@/components/AllFilesDiffView';
 import { FileViewPanel } from '@/components/FileViewPanel';
@@ -589,7 +590,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         const gitBranch = (session.metadata as { gitBranch?: unknown } | null)?.gitBranch;
         return typeof gitBranch === 'string' && gitBranch.trim() ? gitBranch.trim() : null;
     }, [session.metadata]);
-    const statusBarGitBranch = gitStatus?.lastUpdatedAt ? gitStatus.branch : metadataGitBranch;
+    const statusBarGitBranch = resolveStatusBarGitBranch(gitStatus?.branch, metadataGitBranch);
     const statusBarModelLabel = modelMode?.name ?? session.metadata?.currentModelCode ?? session.modelMode ?? null;
     const handleStatusPathPress = React.useCallback((path: string) => {
         Modal.alert(t('session.statusBarPathTitle'), path);

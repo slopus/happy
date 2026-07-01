@@ -150,24 +150,31 @@ function pickTokenCount(message: Record<string, unknown>, keys: string[]): numbe
     return undefined;
 }
 
+function pickTokenUsageSource(message: Record<string, unknown>): Record<string, unknown> {
+    return message.total && typeof message.total === 'object' && !Array.isArray(message.total)
+        ? message.total as Record<string, unknown>
+        : message;
+}
+
 function pickTokenUsage(message: Record<string, unknown>): SessionUsage | undefined {
-    const input = pickTokenCount(message, ['input_tokens', 'inputTokens', 'input', 'prompt_tokens', 'promptTokens']);
-    const output = pickTokenCount(message, ['output_tokens', 'outputTokens', 'output', 'completion_tokens', 'completionTokens']);
-    const cacheCreation = pickTokenCount(message, [
+    const source = pickTokenUsageSource(message);
+    const input = pickTokenCount(source, ['input_tokens', 'inputTokens', 'input', 'prompt_tokens', 'promptTokens']);
+    const output = pickTokenCount(source, ['output_tokens', 'outputTokens', 'output', 'completion_tokens', 'completionTokens']);
+    const cacheCreation = pickTokenCount(source, [
         'cache_creation_input_tokens',
         'cacheCreationInputTokens',
         'cacheCreation',
         'cache_write_input_tokens',
         'cacheWriteInputTokens',
     ]);
-    const cacheRead = pickTokenCount(message, [
+    const cacheRead = pickTokenCount(source, [
         'cache_read_input_tokens',
         'cacheReadInputTokens',
         'cacheRead',
         'cached_input_tokens',
         'cachedInputTokens',
     ]);
-    const total = pickTokenCount(message, ['total_tokens', 'totalTokens', 'total', 'tokensUsed', 'usedTokens']);
+    const total = pickTokenCount(source, ['total_tokens', 'totalTokens', 'tokensUsed', 'usedTokens']);
 
     if (
         input === undefined
@@ -182,8 +189,14 @@ function pickTokenUsage(message: Record<string, unknown>): SessionUsage | undefi
     const outputTokens = output ?? 0;
     const cacheCreationTokens = cacheCreation ?? 0;
     const cacheReadTokens = cacheRead ?? 0;
-    const inputTokens = input
+    const inputTokensIncludeCache = input !== undefined
+        && total !== undefined
+        && total === input + outputTokens;
+    const fallbackInputTokens = input
         ?? Math.max(0, (total ?? 0) - outputTokens - cacheCreationTokens - cacheReadTokens);
+    const inputTokens = inputTokensIncludeCache && input !== undefined
+        ? Math.max(0, input - cacheCreationTokens - cacheReadTokens)
+        : fallbackInputTokens;
     const serviceTier = typeof message.service_tier === 'string'
         ? message.service_tier
         : (typeof message.serviceTier === 'string' ? message.serviceTier : undefined);

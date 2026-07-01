@@ -449,6 +449,42 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         });
         expect(result.envelopes[0].turn).toBeUndefined();
     });
+
+    it('normalizes nested codex total token usage fields', () => {
+        const result = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'token_count',
+                total: {
+                    totalTokens: 17045,
+                    inputTokens: 16985,
+                    cachedInputTokens: 1920,
+                    outputTokens: 60,
+                    reasoningOutputTokens: 30,
+                },
+                last: {
+                    totalTokens: 17045,
+                    inputTokens: 16985,
+                    cachedInputTokens: 1920,
+                    outputTokens: 60,
+                    reasoningOutputTokens: 30,
+                },
+                modelContextWindow: 258400,
+            },
+            { currentTurnId: 'turn-1' }
+        );
+
+        expect(result.envelopes).toHaveLength(1);
+        expect(result.envelopes[0]).toMatchObject({
+            role: 'agent',
+            turn: 'turn-1',
+            usage: {
+                input_tokens: 15065,
+                cache_read_input_tokens: 1920,
+                output_tokens: 60,
+            },
+            ev: { t: 'service', text: '' },
+        });
+    });
 });
 
 describe('mapCodexProcessorMessageToSessionEnvelopes', () => {
