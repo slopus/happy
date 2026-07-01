@@ -4,6 +4,7 @@ import type { RawJSONLines } from '@/claude/types';
 import {
     createEnvelope,
     type SessionEnvelope,
+    type SessionUsage,
     type SessionTurnEndStatus,
 } from '@slopus/happy-wire';
 
@@ -406,6 +407,40 @@ function ensureTurn(state: ClaudeSessionProtocolState, envelopes: SessionEnvelop
     return turnId;
 }
 
+function usageFromClaudeMessage(message: RawJSONLines): SessionUsage | undefined {
+    if (message.type !== 'assistant') {
+        return undefined;
+    }
+    return message.message?.usage;
+}
+
+function canCarryUsage(envelope: SessionEnvelope): boolean {
+    return envelope.ev.t !== 'turn-start'
+        && envelope.ev.t !== 'turn-end'
+        && envelope.ev.t !== 'start'
+        && envelope.ev.t !== 'stop';
+}
+
+function attachUsageToLastEnvelope(
+    envelopes: SessionEnvelope[],
+    firstCandidateIndex: number,
+    usage: SessionUsage | undefined,
+): void {
+    if (!usage) {
+        return;
+    }
+
+    for (let i = envelopes.length - 1; i >= firstCandidateIndex; i -= 1) {
+        if (canCarryUsage(envelopes[i])) {
+            envelopes[i] = {
+                ...envelopes[i],
+                usage,
+            };
+            return;
+        }
+    }
+}
+
 function closeTurn(
     state: ClaudeSessionProtocolState,
     status: SessionTurnEndStatus,
@@ -502,6 +537,8 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     }
 
     if (message.type === 'assistant') {
+        const firstUsageCandidateIndex = envelopes.length;
+        const usage = usageFromClaudeMessage(message);
         const turnId = ensureTurn(state, envelopes);
         maybeEmitSubagentStart(state, turnId, subagent, envelopes);
         const blocks = Array.isArray(message.message?.content) ? message.message.content : [];
@@ -559,6 +596,8 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                 }
             }
         }
+
+        attachUsageToLastEnvelope(envelopes, firstUsageCandidateIndex, usage);
 
         return {
             currentTurnId: state.currentTurnId,

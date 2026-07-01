@@ -13,7 +13,7 @@ const usageDataSchema = z.object({
     cache_read_input_tokens: z.number().optional(),
     output_tokens: z.number(),
     service_tier: z.string().optional(),
-});
+}).passthrough();
 
 export type UsageData = z.infer<typeof usageDataSchema>;
 
@@ -115,6 +115,9 @@ const sessionEnvelopeSchema = z.object({
     claudeUuid: z.string().min(1).optional(),
     // Codex app-server item id for precise thread rollback points.
     codexItemId: z.string().min(1).optional(),
+    // Optional model usage from the source agent message. The reducer uses it
+    // for context meters; it is not rendered as a separate chat row.
+    usage: usageDataSchema.optional(),
     ev: sessionEventSchema,
 }).superRefine((envelope, ctx) => {
     if (envelope.ev.t === 'service' && envelope.role !== 'agent') {
@@ -593,7 +596,8 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelope.usage,
         } satisfies NormalizedMessage;
     }
 
@@ -637,6 +641,7 @@ function normalizeSessionEnvelope(
             meta,
             claudeUuid: envelope.claudeUuid,
             codexItemId: envelope.codexItemId,
+            usage: envelope.usage,
         } satisfies NormalizedMessage;
     }
 
@@ -656,7 +661,8 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelope.usage,
         } satisfies NormalizedMessage;
     }
 
@@ -675,7 +681,8 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelope.usage,
         } satisfies NormalizedMessage;
     }
 
@@ -728,7 +735,8 @@ function normalizeSessionEnvelope(
                     parentUUID: contentUUID
                 }
             ],
-            meta
+            meta,
+            usage: envelope.usage,
         } satisfies NormalizedMessage;
     }
 

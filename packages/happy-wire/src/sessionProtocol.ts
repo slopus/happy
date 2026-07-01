@@ -25,6 +25,17 @@ export const sessionTextEventSchema = z.object({
   thinking: z.boolean().optional(),
 });
 
+export const sessionUsageSchema = z
+  .object({
+    input_tokens: z.number().int().nonnegative(),
+    cache_creation_input_tokens: z.number().int().nonnegative().optional(),
+    cache_read_input_tokens: z.number().int().nonnegative().optional(),
+    output_tokens: z.number().int().nonnegative(),
+    service_tier: z.string().optional(),
+  })
+  .passthrough();
+export type SessionUsage = z.infer<typeof sessionUsageSchema>;
+
 export const sessionServiceMessageEventSchema = z.object({
   t: z.literal('service'),
   text: z.string(),
@@ -113,6 +124,9 @@ export const sessionEnvelopeSchema = z
     // Codex app-server item id for this envelope. Used as the precise
     // rollback point for Codex thread duplicate/fork-from-message.
     codexItemId: z.string().min(1).optional(),
+    // Optional model usage carried by the source agent message. Consumers use
+    // this to update session context meters without rendering a separate row.
+    usage: sessionUsageSchema.optional(),
     ev: sessionEventSchema,
   })
   .superRefine((envelope, ctx) => {
@@ -141,6 +155,7 @@ export type CreateEnvelopeOptions = {
   subagent?: string;
   claudeUuid?: string;
   codexItemId?: string;
+  usage?: SessionUsage;
 };
 
 export function createEnvelope(role: SessionRole, ev: SessionEvent, opts: CreateEnvelopeOptions = {}): SessionEnvelope {
@@ -152,6 +167,7 @@ export function createEnvelope(role: SessionRole, ev: SessionEvent, opts: Create
     ...(opts.subagent ? { subagent: opts.subagent } : {}),
     ...(opts.claudeUuid ? { claudeUuid: opts.claudeUuid } : {}),
     ...(opts.codexItemId ? { codexItemId: opts.codexItemId } : {}),
+    ...(opts.usage ? { usage: opts.usage } : {}),
     ev,
   });
 }

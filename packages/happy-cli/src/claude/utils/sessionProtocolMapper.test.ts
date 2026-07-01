@@ -75,12 +75,47 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(result.envelopes[2].ev).toEqual({ t: 'text', text: 'internal', thinking: true });
     });
 
+    it('carries Claude usage on the last assistant content envelope', () => {
+        const usage = {
+            input_tokens: 1200,
+            cache_creation_input_tokens: 40,
+            cache_read_input_tokens: 500,
+            output_tokens: 80,
+        };
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-usage-1',
+            message: {
+                role: 'assistant',
+                usage,
+                content: [
+                    { type: 'text', text: 'working...' },
+                    { type: 'thinking', thinking: 'internal' },
+                ],
+            },
+            timestamp: '2025-01-01T00:00:01.000Z',
+        } as any, { currentTurnId: null });
+
+        expect(result.envelopes).toHaveLength(3);
+        expect(result.envelopes[0].ev.t).toBe('turn-start');
+        expect(result.envelopes[0]).not.toHaveProperty('usage');
+        expect(result.envelopes[1]).not.toHaveProperty('usage');
+        expect(result.envelopes[2]).toMatchObject({ usage });
+    });
+
     it('maps tool use and tool result blocks to tool-call lifecycle', () => {
+        const usage = {
+            input_tokens: 900,
+            cache_creation_input_tokens: 10,
+            cache_read_input_tokens: 250,
+            output_tokens: 25,
+        };
         const started = mapClaudeLogMessageToSessionEnvelopes({
             type: 'assistant',
             uuid: 'a-2',
             message: {
                 role: 'assistant',
+                usage,
                 content: [
                     { type: 'tool_use', id: 'tool-1', name: 'Bash', input: { command: 'ls' } },
                 ],
@@ -88,6 +123,7 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         } as any, { currentTurnId: null });
 
         expect(started.envelopes.some((e) => e.ev.t === 'tool-call-start')).toBe(true);
+        expect(started.envelopes.find((e) => e.ev.t === 'tool-call-start')).toMatchObject({ usage });
 
         const ended = mapClaudeLogMessageToSessionEnvelopes({
             type: 'user',
