@@ -141,6 +141,16 @@ export function parseLocalCommandMessage(text: string): LocalCommandMessage {
  * the raw echo and let the wrapper chip stand in — matching how the
  * Claude Code terminal renders slash commands.
  *
+ * Only a LEADING slash command is echoed this way. Claude Code recognizes
+ * a command solely as the first token of a message
+ * (https://code.claude.com/docs/en/commands — "A command is only
+ * recognized at the start of your message"), so a mid-message slash is
+ * ordinary text that produces no `<command-*>` wrapper. Suppressing that
+ * echo would hide the message with nothing to replace it, so we gate on
+ * the start-anchored RAW_SLASH_COMMAND_RE rather than the looser
+ * `rawSlashCommand` (which also matches mid-message tokens for chip
+ * rendering — those stay visible).
+ *
  * Gated on `hasLocalId` so we only ever hide a message the user actually
  * sent from Happy, never an agent/SDK-originated one.
  */
@@ -149,7 +159,7 @@ export function isUserSlashCommandEcho(text: string, hasLocalId: boolean): boole
         return false;
     }
     const trimmed = text.trim();
-    if (!rawSlashCommand(trimmed)) {
+    if (!RAW_SLASH_COMMAND_RE.test(trimmed)) {
         return false;
     }
     // Guard: a real wrapper message also contains <command-name>; never
