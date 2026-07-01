@@ -673,7 +673,7 @@ importers:
         version: 55.0.9(expo@55.0.8)(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))
       expo-router:
         specifier: ~55.0.7
-        version: 55.0.7(xihhe5wos52a6gla7scetrfa2u)
+        version: 55.0.7(f2f128c770bbe20ed6ea8c79a26e6f99)
       expo-screen-capture:
         specifier: ~55.0.0
         version: 55.0.9(expo@55.0.8)(react@19.2.0)
@@ -790,7 +790,7 @@ importers:
         version: 5.7.0(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
       react-native-screen-transitions:
         specifier: ^1.2.0
-        version: 1.2.0(h4n2ro3azd4y7u5ffu5wskcpka)
+        version: 1.2.0(e2a4937795c1abcaf692f7a5f50b0ba2)
       react-native-screens:
         specifier: ~4.22.0
         version: 4.22.0(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
@@ -14101,7 +14101,7 @@ snapshots:
       ws: 8.19.0
       zod: 3.25.76
     optionalDependencies:
-      expo-router: 55.0.7(xihhe5wos52a6gla7scetrfa2u)
+      expo-router: 55.0.7(f2f128c770bbe20ed6ea8c79a26e6f99)
       react-native: 0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0)
     transitivePeerDependencies:
       - '@expo/dom-webview'
@@ -14408,7 +14408,7 @@ snapshots:
       react: 19.2.0
     optionalDependencies:
       '@expo/metro-runtime': 55.0.6(@expo/dom-webview@55.0.3)(expo@55.0.8)(react-dom@19.2.0(react@19.2.0))(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
-      expo-router: 55.0.7(xihhe5wos52a6gla7scetrfa2u)
+      expo-router: 55.0.7(f2f128c770bbe20ed6ea8c79a26e6f99)
       react-dom: 19.2.0(react@19.2.0)
     transitivePeerDependencies:
       - supports-color
@@ -19959,7 +19959,7 @@ snapshots:
       expo: 55.0.8(@babel/core@7.28.6)(@expo/dom-webview@55.0.3)(@expo/metro-runtime@55.0.6)(expo-router@55.0.7)(react-dom@19.2.0(react@19.2.0))(react-native-webview@13.15.0(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0))(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
       react-native: 0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0)
 
-  expo-router@55.0.7(xihhe5wos52a6gla7scetrfa2u):
+  expo-router@55.0.7(f2f128c770bbe20ed6ea8c79a26e6f99):
     dependencies:
       '@expo/log-box': 55.0.7(@expo/dom-webview@55.0.3)(expo@55.0.8)(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
       '@expo/metro-runtime': 55.0.6(@expo/dom-webview@55.0.3)(expo@55.0.8)(react-dom@19.2.0(react@19.2.0))(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
@@ -23697,7 +23697,7 @@ snapshots:
       react: 19.2.0
       react-native: 0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0)
 
-  react-native-screen-transitions@1.2.0(h4n2ro3azd4y7u5ffu5wskcpka):
+  react-native-screen-transitions@1.2.0(e2a4937795c1abcaf692f7a5f50b0ba2):
     dependencies:
       '@react-navigation/native': 7.2.0(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
       '@react-navigation/native-stack': 7.14.7(@react-native-masked-view/masked-view@0.3.2(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0))(@react-navigation/native@7.2.0(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0))(react-native-safe-area-context@5.7.0(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0))(react-native-screens@4.22.0(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0))(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
