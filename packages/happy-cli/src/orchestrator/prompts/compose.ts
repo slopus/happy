@@ -18,7 +18,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { AxState, AxStep, PLAN_MD_FILENAME, DESIGN_MD_FILENAME } from '../state/schema';
+import { AxState, AxStep, DESIGN_MD_FILENAME } from '../state/schema';
 import { BASE_PROMPT, STEP_PLAN, STEP_DESIGN, STEP_WORK, STEP_FREE } from './assets';
 
 const STEP_GUIDES: Record<AxStep, string> = {
@@ -38,7 +38,7 @@ export async function composeStepGuide(step: AxStep): Promise<string> {
 
 export async function composeDynamicContext(workspaceRoot: string, state: AxState): Promise<string> {
     const summary = formatStateSummary(state);
-    const references = await collectReferences(workspaceRoot, state.step);
+    const references = await collectReferences(workspaceRoot, state);
     return [
         '<ax-dynamic-context>',
         '',
@@ -57,11 +57,15 @@ export async function composeDynamicContext(workspaceRoot: string, state: AxStat
 function formatStateSummary(state: AxState): string {
     const summary = {
         step: state.step,
-        plan: { completedAt: state.plan.completedAt },
+        plan: {
+            filePath: state.plan.filePath,
+            completedAt: state.plan.completedAt,
+        },
         design: {
             candidates: state.design.candidates,
             candidatesSource: state.design.candidatesSource,
             selected: state.design.selected,
+            filePath: state.design.filePath,
             completedAt: state.design.completedAt,
         },
         work: {
@@ -72,16 +76,15 @@ function formatStateSummary(state: AxState): string {
     return JSON.stringify(summary, null, 2);
 }
 
-const STEP_REFERENCES: Record<AxStep, readonly string[]> = {
-    plan: [],
-    design: [PLAN_MD_FILENAME],
-    work: [PLAN_MD_FILENAME, DESIGN_MD_FILENAME],
-    free: [PLAN_MD_FILENAME, DESIGN_MD_FILENAME],
-};
+function referenceFilesForState(state: AxState): string[] {
+    if (state.step === 'plan') return [];
+    if (state.step === 'design') return [state.plan.filePath];
+    return [state.plan.filePath, state.design.filePath || DESIGN_MD_FILENAME];
+}
 
-async function collectReferences(workspaceRoot: string, step: AxStep): Promise<string[]> {
+async function collectReferences(workspaceRoot: string, state: AxState): Promise<string[]> {
     const out: string[] = [];
-    for (const filename of STEP_REFERENCES[step]) {
+    for (const filename of referenceFilesForState(state)) {
         const path = join(workspaceRoot, filename);
         try {
             await readFile(path, 'utf8');

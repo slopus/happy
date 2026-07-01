@@ -45,7 +45,7 @@ export const AxStateSchema = z.object({
 });
 export type AxState = z.infer<typeof AxStateSchema>;
 
-export const PLAN_MD_FILENAME = 'AX_PROJECT_PLAN.md';
+export const PLAN_MD_FILENAME = 'specs/[feature-slug]/prd.md';
 export const DESIGN_MD_FILENAME = 'AX_STUDIO_DESIGN.md';
 
 export function createInitialState(step: AxStep, now: Date = new Date()): AxState {
