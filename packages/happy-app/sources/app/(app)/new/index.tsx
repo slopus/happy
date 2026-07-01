@@ -941,6 +941,11 @@ function NewSessionScreen() {
                 directory: spawnDirectory,
                 approvedNewDirectoryCreation,
                 agent: selectedAgent,
+                // Forward the picker values so the daemon-spawned Claude
+                // session starts in the chosen mode + effort instead of the
+                // CLI's hardcoded 'yolo' + 'medium' defaults.
+                permissionMode: currentPermission?.key,
+                effort: currentEffort?.key,
             });
 
             switch (result.type) {

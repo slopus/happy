@@ -409,7 +409,16 @@ export async function startDaemon(): Promise<void> {
           const resumeFragment = resumeId
             ? ` --resume ${shellescape(resumeId)}`
             : '';
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
+          // App-chosen initial mode + effort. Without these, the spawned CLI
+          // falls back to runClaude's hardcoded 'yolo' + 'medium' defaults
+          // regardless of what the user picked in the new-session UI.
+          const permissionModeFragment = options.permissionMode
+            ? ` --permission-mode ${shellescape(options.permissionMode)}`
+            : '';
+          const effortFragment = options.effort
+            ? ` --effort ${shellescape(options.effort)}`
+            : '';
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}${permissionModeFragment}${effortFragment}`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -526,6 +535,13 @@ export async function startDaemon(): Promise<void> {
           }
           if (options.resumeCodexThreadId && agentCommand === 'codex') {
             args.push('--resume', options.resumeCodexThreadId);
+          }
+          // Same app-chosen mode + effort forwarding as the tmux command above.
+          if (options.permissionMode) {
+            args.push('--permission-mode', options.permissionMode);
+          }
+          if (options.effort) {
+            args.push('--effort', options.effort);
           }
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions

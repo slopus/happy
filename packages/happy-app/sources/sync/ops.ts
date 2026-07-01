@@ -160,6 +160,18 @@ export interface SpawnSessionOptions {
     parentSessionId?: string;
     /** Happy message id used as the rewind point (only set for "duplicate"). */
     forkedFromMessageId?: string;
+    /**
+     * Initial permission mode chosen in the new-session UI. Forwarded to the
+     * daemon so the spawned Claude session starts in this mode instead of the
+     * daemon's hardcoded 'yolo' default.
+     */
+    permissionMode?: string;
+    /**
+     * Initial thinking effort chosen in the new-session UI (low | medium | high
+     * | xhigh | max). Forwarded to the daemon so the spawned Claude session
+     * starts at this effort instead of the daemon's hardcoded 'medium' default.
+     */
+    effort?: string;
 }
 
 // Options for forking a Claude session on a machine
@@ -219,7 +231,7 @@ export interface ResumeSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, permissionMode, effort } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -232,10 +244,12 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             resumeCodexThreadId?: string,
             parentSessionId?: string,
             forkedFromMessageId?: string,
+            permissionMode?: string,
+            effort?: string,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, permissionMode, effort }
         );
         return result;
     } catch (error) {
