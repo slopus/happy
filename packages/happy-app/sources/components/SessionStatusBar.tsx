@@ -7,7 +7,6 @@ import { t } from '@/text';
 import {
     clampContextSize,
     getContextUsageLevel,
-    getPathBasename,
     SESSION_STATUS_CONTEXT_MAX,
 } from '@/utils/sessionStatusBar';
 
@@ -15,18 +14,14 @@ type StatusIconName = React.ComponentProps<typeof Ionicons>['name'];
 
 type SessionStatusBarProps = {
     modelLabel: string | null;
-    path: string | null | undefined;
-    gitBranch: string | null | undefined;
+    effortLabel: string | null;
     contextSize: number | null | undefined;
     contextWindow?: number | null | undefined;
-    onPathPress?: (path: string) => void;
 };
 
 export function SessionStatusBar(props: SessionStatusBarProps) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const path = props.path;
-    const pathBasename = getPathBasename(props.path);
     const contextMaxValue = typeof props.contextWindow === 'number' && Number.isFinite(props.contextWindow) && props.contextWindow > 0
         ? Math.trunc(props.contextWindow)
         : SESSION_STATUS_CONTEXT_MAX;
@@ -43,15 +38,8 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
             {props.modelLabel ? (
                 <StatusChip icon="hardware-chip-outline" text={props.modelLabel} />
             ) : null}
-            {pathBasename && path ? (
-                <StatusChip
-                    icon="folder-outline"
-                    text={pathBasename}
-                    onPress={() => props.onPathPress?.(path)}
-                />
-            ) : null}
-            {props.gitBranch ? (
-                <StatusChip icon="git-branch-outline" text={props.gitBranch} />
+            {props.effortLabel ? (
+                <StatusChip icon="flash-outline" text={props.effortLabel} />
             ) : null}
             <View style={styles.contextChip}>
                 <UsageBar
@@ -68,17 +56,30 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
     );
 }
 
+export function SessionBranchBar(props: { gitBranch: string | null | undefined }) {
+    if (!props.gitBranch) {
+        return null;
+    }
+
+    return (
+        <View style={stylesheet.branchContainer}>
+            <StatusChip icon="git-branch-outline" text={props.gitBranch} wide />
+        </View>
+    );
+}
+
 function StatusChip(props: {
     icon: StatusIconName;
     text: string;
     onPress?: () => void;
+    wide?: boolean;
 }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const content = (
         <>
             <Ionicons name={props.icon} size={13} color={theme.colors.textSecondary} />
-            <Text style={styles.chipText} numberOfLines={1} ellipsizeMode="middle">
+            <Text style={[styles.chipText, props.wide && styles.chipTextWide]} numberOfLines={1} ellipsizeMode="middle">
                 {props.text}
             </Text>
         </>
@@ -114,6 +115,14 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingBottom: 2,
         flexWrap: 'wrap',
     },
+    branchContainer: {
+        width: '100%',
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingTop: 0,
+        paddingBottom: 4,
+    },
     chip: {
         minHeight: 24,
         maxWidth: '100%',
@@ -138,6 +147,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         fontSize: 12,
         fontWeight: '500',
+    },
+    chipTextWide: {
+        maxWidth: 360,
     },
     contextChip: {
         minWidth: 116,

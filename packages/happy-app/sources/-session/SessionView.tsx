@@ -16,7 +16,7 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
-import { SessionStatusBar } from '@/components/SessionStatusBar';
+import { SessionBranchBar, SessionStatusBar } from '@/components/SessionStatusBar';
 import { Avatar } from '@/components/Avatar';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
@@ -593,9 +593,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [session.metadata]);
     const statusBarGitBranch = resolveStatusBarGitBranch(gitStatus?.branch, metadataGitBranch);
     const statusBarModelLabel = modelMode?.name ?? session.metadata?.currentModelCode ?? session.modelMode ?? null;
-    const handleStatusPathPress = React.useCallback((path: string) => {
-        Modal.alert(t('session.statusBarPathTitle'), path);
-    }, []);
+    const statusBarEffortLabel = effortLevel?.name
+        ? effortLevel.name.charAt(0).toUpperCase() + effortLevel.name.slice(1)
+        : null;
 
     const visibleAgentGoal = React.useMemo(() => (
         resolveVisibleAgentGoalStatus(session)
@@ -764,15 +764,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </CenteredInputWidth>
     ) : null;
 
+    const sessionBranchBar = showSessionStatusBar && statusBarGitBranch ? (
+        <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+            <SessionBranchBar gitBranch={statusBarGitBranch} />
+        </CenteredInputWidth>
+    ) : null;
+
     const sessionStatusBar = showSessionStatusBar ? (
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
             <SessionStatusBar
                 modelLabel={statusBarModelLabel}
-                path={session.metadata?.path}
-                gitBranch={statusBarGitBranch}
+                effortLabel={statusBarEffortLabel}
                 contextSize={usageData?.contextSize}
                 contextWindow={usageData?.contextWindow}
-                onPathPress={handleStatusPathPress}
             />
         </CenteredInputWidth>
     ) : null;
@@ -789,6 +793,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     />
                 </CenteredInputWidth>
             )}
+            {sessionBranchBar}
             {composer}
             {sessionStatusBar}
         </>

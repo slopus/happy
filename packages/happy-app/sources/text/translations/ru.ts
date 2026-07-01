@@ -150,7 +150,7 @@ export const ru: TranslationStructure = {
         chat: 'Чат',
         chatDescription: 'Настройте внешний вид сообщений в чате',
         sessionStatusBar: 'Строка статуса сессии',
-        sessionStatusBarDescription: 'Показывать модель, папку, ветку и контекст над полем ввода',
+        sessionStatusBarDescription: 'Показывать ветку над полем ввода, а модель, усилия и контекст под ним',
         userMessageBubbleColor: 'Цвет ваших сообщений',
         userMessageBubbleColorDescription: 'Сделайте ваши сообщения заметнее в длинных чатах',
         userMessageBubbleColorOptions: {

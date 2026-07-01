@@ -162,7 +162,7 @@ export const en = {
         chat: 'Chat',
         chatDescription: 'Customize chat message appearance',
         sessionStatusBar: 'Session Status Bar',
-        sessionStatusBarDescription: 'Show model, folder, branch, and context above the composer',
+        sessionStatusBarDescription: 'Show branch above the composer and model, effort, and context below it',
         userMessageBubbleColor: 'User Bubble Color',
         userMessageBubbleColorDescription: 'Make your messages easier to spot in long chats',
         userMessageBubbleColorOptions: {
