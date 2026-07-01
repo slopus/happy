@@ -180,8 +180,12 @@ export const pl: TranslationStructure = {
         },
         chat: 'Czat',
         chatDescription: 'Dostosuj wygląd wiadomości czatu',
-        sessionStatusBar: 'Pasek statusu sesji',
-        sessionStatusBarDescription: 'Pokazuj model, folder, gałąź i kontekst nad polem wiadomości',
+        sessionStatusBar: 'Session Status Info',
+        sessionStatusBarDescription: 'Choose where branch, model, effort, and context appear',
+        sessionStatusPlacementOptions: {
+            composer: 'Below composer',
+            gearbox: 'Gear menu',
+        },
         userMessageBubbleColor: 'Kolor Twoich wiadomości',
         userMessageBubbleColorDescription: 'Ułatw znajdowanie swoich wiadomości w długich czatach',
         userMessageBubbleColorOptions: {

@@ -164,8 +164,12 @@ export const zhHans: TranslationStructure = {
         },
         chat: '聊天',
         chatDescription: '自定义聊天消息外观',
-        sessionStatusBar: '会话状态栏',
-        sessionStatusBarDescription: '在输入框上方显示模型、文件夹、分支和上下文',
+        sessionStatusBar: 'Session Status Info',
+        sessionStatusBarDescription: 'Choose where branch, model, effort, and context appear',
+        sessionStatusPlacementOptions: {
+            composer: 'Below composer',
+            gearbox: 'Gear menu',
+        },
         userMessageBubbleColor: '用户气泡颜色',
         userMessageBubbleColorDescription: '让您的消息在长聊天中更容易找到',
         userMessageBubbleColorOptions: {

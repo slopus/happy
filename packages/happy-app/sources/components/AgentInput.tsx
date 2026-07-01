@@ -17,6 +17,7 @@ import { useActiveWord } from './autocomplete/useActiveWord';
 import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
 import { AgentInputAutocomplete } from './AgentInputAutocomplete';
 import { FloatingOverlay } from './FloatingOverlay';
+import { SessionStatusBar } from './SessionStatusBar';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
@@ -75,6 +76,10 @@ interface AgentInputProps {
         contextWindow?: number;
     };
     alwaysShowContextSize?: boolean;
+    showSessionStatusInfoInSettings?: boolean;
+    sessionStatusGitBranch?: string | null;
+    sessionStatusModelLabel?: string | null;
+    sessionStatusEffortLabel?: string | null;
     onFileViewerPress?: () => void;
     agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw';
     onAgentClick?: () => void;
@@ -151,6 +156,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     overlaySection: {
         paddingVertical: 8,
+    },
+    settingsStatusInfo: {
+        paddingTop: 6,
+        paddingBottom: 4,
+        paddingHorizontal: 8,
     },
     overlaySectionTitle: {
         fontSize: 12,
@@ -932,6 +942,21 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
                         ]}>
                             <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
+                                {props.showSessionStatusInfoInSettings ? (
+                                    <>
+                                        <View style={styles.settingsStatusInfo}>
+                                            <SessionStatusBar
+                                                gitBranch={props.sessionStatusGitBranch}
+                                                modelLabel={props.sessionStatusModelLabel ?? null}
+                                                effortLabel={props.sessionStatusEffortLabel ?? null}
+                                                contextSize={props.usageData?.contextSize}
+                                                contextWindow={props.usageData?.contextWindow}
+                                            />
+                                        </View>
+                                        <View style={styles.overlayDivider} />
+                                    </>
+                                ) : null}
+
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>

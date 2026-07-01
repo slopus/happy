@@ -9,6 +9,9 @@ import { DEFAULT_USER_MESSAGE_BUBBLE_COLOR } from '../utils/userMessageBubbleCol
 // Current schema version for backward compatibility
 export const SUPPORTED_SCHEMA_VERSION = 2;
 
+export const SESSION_STATUS_INFO_PLACEMENTS = ['composer', 'gearbox'] as const;
+export type SessionStatusInfoPlacement = typeof SESSION_STATUS_INFO_PLACEMENTS[number];
+
 export const SettingsSchema = z.object({
     // Schema version for compatibility detection
     schemaVersion: z.number().default(SUPPORTED_SCHEMA_VERSION).describe('Settings schema version for compatibility checks'),
@@ -27,6 +30,7 @@ export const SettingsSchema = z.object({
     avatarStyle: z.string().describe('Avatar display style'),
     showFlavorIcons: z.boolean().describe('Whether to show AI provider icons in avatars'),
     userMessageBubbleColor: z.string().describe('User message bubble color preset'),
+    sessionStatusInfoPlacement: z.enum(SESSION_STATUS_INFO_PLACEMENTS).describe('Where to show branch, model, effort, and context info'),
     showSessionStatusBar: z.boolean().describe('Whether to show branch, model, effort, and context below the composer'),
 
     hideInactiveSessions: z.boolean().describe('Hide inactive sessions in the main list'),
@@ -100,6 +104,7 @@ export const settingsDefaults: Settings = {
     avatarStyle: 'brutalist',
     showFlavorIcons: false,
     userMessageBubbleColor: DEFAULT_USER_MESSAGE_BUBBLE_COLOR,
+    sessionStatusInfoPlacement: 'composer',
     showSessionStatusBar: true,
 
     hideInactiveSessions: false,
@@ -146,6 +151,12 @@ export function settingsParse(settings: unknown): Settings {
     if (parsed.data.preferredLanguage === 'zh') {
         console.log('[Settings Migration] Converting language code from "zh" to "zh-Hans"');
         parsed.data.preferredLanguage = 'zh-Hans';
+    }
+
+    if (parsed.data.sessionStatusInfoPlacement === undefined) {
+        parsed.data.sessionStatusInfoPlacement = parsed.data.showSessionStatusBar === false
+            ? 'gearbox'
+            : settingsDefaults.sessionStatusInfoPlacement;
     }
 
     // Merge defaults, parsed settings, and preserve unknown fields

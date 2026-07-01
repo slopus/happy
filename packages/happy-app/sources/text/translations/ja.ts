@@ -164,8 +164,12 @@ export const ja: TranslationStructure = {
         },
         chat: 'チャット',
         chatDescription: 'チャットメッセージの見た目をカスタマイズ',
-        sessionStatusBar: 'セッションステータスバー',
-        sessionStatusBarDescription: '入力欄の上にモデル、フォルダー、ブランチ、コンテキストを表示します',
+        sessionStatusBar: 'Session Status Info',
+        sessionStatusBarDescription: 'Choose where branch, model, effort, and context appear',
+        sessionStatusPlacementOptions: {
+            composer: 'Below composer',
+            gearbox: 'Gear menu',
+        },
         userMessageBubbleColor: 'ユーザーバブルの色',
         userMessageBubbleColorDescription: '長いチャットで自分のメッセージを見つけやすくします',
         userMessageBubbleColorOptions: {

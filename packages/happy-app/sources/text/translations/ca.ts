@@ -163,8 +163,12 @@ export const ca: TranslationStructure = {
         },
         chat: 'Xat',
         chatDescription: 'Personalitza l\'aspecte dels missatges del xat',
-        sessionStatusBar: 'Barra d\'estat de la sessió',
-        sessionStatusBarDescription: 'Mostra model, carpeta, branca i context sobre el compositor',
+        sessionStatusBar: 'Session Status Info',
+        sessionStatusBarDescription: 'Choose where branch, model, effort, and context appear',
+        sessionStatusPlacementOptions: {
+            composer: 'Below composer',
+            gearbox: 'Gear menu',
+        },
         userMessageBubbleColor: 'Color dels teus missatges',
         userMessageBubbleColorDescription: 'Fes que els teus missatges siguin més fàcils de trobar en xats llargs',
         userMessageBubbleColorOptions: {

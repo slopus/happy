@@ -491,7 +491,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const sessionUsage = useSessionUsage(sessionId);
     const gitStatus = useSessionGitStatus(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
-    const showSessionStatusBar = useSetting('showSessionStatusBar');
+    const sessionStatusInfoPlacement = useSetting('sessionStatusInfoPlacement');
     const experiments = useSetting('experiments');
     const expResumeSession = useSetting('expResumeSession');
     const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
@@ -743,6 +743,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             usageData={usageData}
             alwaysShowContextSize={alwaysShowContextSize}
             zenMode={zenMode}
+            showSessionStatusInfoInSettings={sessionStatusInfoPlacement === 'gearbox'}
+            sessionStatusGitBranch={statusBarGitBranch}
+            sessionStatusModelLabel={statusBarModelLabel}
+            sessionStatusEffortLabel={statusBarEffortLabel}
         />
     );
 
@@ -764,7 +768,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </CenteredInputWidth>
     ) : null;
 
-    const sessionStatusBar = showSessionStatusBar ? (
+    const sessionStatusBar = sessionStatusInfoPlacement === 'composer' ? (
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
             <SessionStatusBar
                 gitBranch={statusBarGitBranch}

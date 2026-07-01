@@ -163,8 +163,12 @@ export const zhHant: TranslationStructure = {
         },
         chat: '聊天',
         chatDescription: '自訂聊天訊息外觀',
-        sessionStatusBar: '工作階段狀態列',
-        sessionStatusBarDescription: '在輸入框上方顯示模型、資料夾、分支和上下文',
+        sessionStatusBar: 'Session Status Info',
+        sessionStatusBarDescription: 'Choose where branch, model, effort, and context appear',
+        sessionStatusPlacementOptions: {
+            composer: 'Below composer',
+            gearbox: 'Gear menu',
+        },
         userMessageBubbleColor: '使用者氣泡顏色',
         userMessageBubbleColorDescription: '讓您的訊息在長聊天中更容易找到',
         userMessageBubbleColorOptions: {

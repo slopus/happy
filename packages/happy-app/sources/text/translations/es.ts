@@ -163,8 +163,12 @@ export const es: TranslationStructure = {
         },
         chat: 'Chat',
         chatDescription: 'Personaliza la apariencia de los mensajes del chat',
-        sessionStatusBar: 'Barra de estado de sesión',
-        sessionStatusBarDescription: 'Muestra modelo, carpeta, rama y contexto sobre el compositor',
+        sessionStatusBar: 'Session Status Info',
+        sessionStatusBarDescription: 'Choose where branch, model, effort, and context appear',
+        sessionStatusPlacementOptions: {
+            composer: 'Below composer',
+            gearbox: 'Gear menu',
+        },
         userMessageBubbleColor: 'Color de tus mensajes',
         userMessageBubbleColorDescription: 'Haz que tus mensajes sean más fáciles de encontrar en chats largos',
         userMessageBubbleColorOptions: {
