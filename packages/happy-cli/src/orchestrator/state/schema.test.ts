@@ -3,6 +3,7 @@ import {
     AxStateSchema,
     AxStepSchema,
     CandidatesSourceSchema,
+    PLAN_MD_FILENAME,
     createInitialState,
 } from './schema';
 
@@ -31,7 +32,8 @@ describe('createInitialState', () => {
         const state = createInitialState('plan');
         expect(state.version).toBe(1);
         expect(state.step).toBe('plan');
-        expect(state.plan.filePath).toBe('AX_PROJECT_PLAN.md');
+        expect(state.plan.filePath).toBe(PLAN_MD_FILENAME);
+        expect(state.plan.filePath).toBe('specs/[feature-slug]/prd.md');
         expect(state.plan.completedAt).toBeNull();
         expect(state.design.candidates).toEqual([]);
         expect(state.design.candidatesSource).toBe('claude-suggested');
