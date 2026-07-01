@@ -763,6 +763,18 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </CenteredInputWidth>
     ) : null;
 
+    const sessionStatusBar = showSessionStatusBar ? (
+        <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+            <SessionStatusBar
+                modelLabel={statusBarModelLabel}
+                path={session.metadata?.path}
+                gitBranch={statusBarGitBranch}
+                contextSize={usageData?.contextSize}
+                onPathPress={handleStatusPathPress}
+            />
+        </CenteredInputWidth>
+    ) : null;
+
     const input = (
         <>
             {inactiveHint}
@@ -775,18 +787,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     />
                 </CenteredInputWidth>
             )}
-            {showSessionStatusBar && (
-                <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
-                    <SessionStatusBar
-                        modelLabel={statusBarModelLabel}
-                        path={session.metadata?.path}
-                        gitBranch={statusBarGitBranch}
-                        contextSize={usageData?.contextSize}
-                        onPathPress={handleStatusPathPress}
-                    />
-                </CenteredInputWidth>
-            )}
             {composer}
+            {sessionStatusBar}
         </>
     );
 
