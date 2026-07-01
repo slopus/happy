@@ -769,7 +769,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             <SessionStatusBar
                 gitBranch={statusBarGitBranch}
                 modelLabel={statusBarModelLabel}
+                modelMode={modelMode}
+                availableModels={availableModels}
+                onModelModeChange={updateModelMode}
                 effortLabel={statusBarEffortLabel}
+                effortLevel={effortLevel}
+                availableEffortLevels={availableEffortLevels}
+                onEffortLevelChange={updateEffortLevel}
                 contextSize={usageData?.contextSize}
                 contextWindow={usageData?.contextWindow}
             />
