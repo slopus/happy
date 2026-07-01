@@ -679,7 +679,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         storage.getState().setCurrentViewingSession(sessionId);
 
         // Initialize git status sync for this session
-        gitStatusSync.getSync(sessionId);
+        gitStatusSync.getSync(sessionId).invalidate();
 
         return () => {
             // Clear viewing session on unmount

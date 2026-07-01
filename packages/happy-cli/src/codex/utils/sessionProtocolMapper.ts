@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createId } from '@paralleldrive/cuid2';
 import type { ReasoningOutput } from './reasoningProcessor';
 import type { DiffToolCall, DiffToolResult } from './diffProcessor';
-import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
+import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope, type SessionUsage } from '@slopus/happy-wire';
 import type { Thread, ThreadItem, ThreadTurn } from '../codexAppServerTypes';
 
 export type CodexTurnState = {
@@ -137,6 +137,63 @@ function buildEnvelopeOptions(currentTurnId: string | null, subagent?: string): 
     return {
         ...(currentTurnId ? { turn: currentTurnId } : {}),
         ...(subagent ? { subagent } : {}),
+    };
+}
+
+function pickTokenCount(message: Record<string, unknown>, keys: string[]): number | undefined {
+    for (const key of keys) {
+        const value = message[key];
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+            return Math.trunc(value);
+        }
+    }
+    return undefined;
+}
+
+function pickTokenUsage(message: Record<string, unknown>): SessionUsage | undefined {
+    const input = pickTokenCount(message, ['input_tokens', 'inputTokens', 'input', 'prompt_tokens', 'promptTokens']);
+    const output = pickTokenCount(message, ['output_tokens', 'outputTokens', 'output', 'completion_tokens', 'completionTokens']);
+    const cacheCreation = pickTokenCount(message, [
+        'cache_creation_input_tokens',
+        'cacheCreationInputTokens',
+        'cacheCreation',
+        'cache_write_input_tokens',
+        'cacheWriteInputTokens',
+    ]);
+    const cacheRead = pickTokenCount(message, [
+        'cache_read_input_tokens',
+        'cacheReadInputTokens',
+        'cacheRead',
+        'cached_input_tokens',
+        'cachedInputTokens',
+    ]);
+    const total = pickTokenCount(message, ['total_tokens', 'totalTokens', 'total', 'tokensUsed', 'usedTokens']);
+
+    if (
+        input === undefined
+        && output === undefined
+        && cacheCreation === undefined
+        && cacheRead === undefined
+        && total === undefined
+    ) {
+        return undefined;
+    }
+
+    const outputTokens = output ?? 0;
+    const cacheCreationTokens = cacheCreation ?? 0;
+    const cacheReadTokens = cacheRead ?? 0;
+    const inputTokens = input
+        ?? Math.max(0, (total ?? 0) - outputTokens - cacheCreationTokens - cacheReadTokens);
+    const serviceTier = typeof message.service_tier === 'string'
+        ? message.service_tier
+        : (typeof message.serviceTier === 'string' ? message.serviceTier : undefined);
+
+    return {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        ...(cacheCreation !== undefined ? { cache_creation_input_tokens: cacheCreationTokens } : {}),
+        ...(cacheRead !== undefined ? { cache_read_input_tokens: cacheReadTokens } : {}),
+        ...(serviceTier ? { service_tier: serviceTier } : {}),
     };
 }
 
@@ -896,6 +953,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     }
 
     if (type === 'token_count') {
+        const usage = pickTokenUsage(message);
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
@@ -904,7 +962,12 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             subagentTitles,
             collabReceiverThreadIdsByCall,
             collabToolByCall,
-            envelopes: [],
+            envelopes: usage
+                ? [createEnvelope('agent', { t: 'service', text: '' }, {
+                    ...buildEnvelopeOptions(state.currentTurnId),
+                    usage,
+                })]
+                : [],
         };
     }
 

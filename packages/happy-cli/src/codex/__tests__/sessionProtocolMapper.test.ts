@@ -405,14 +405,49 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         }
     });
 
-    it('skips token_count messages', () => {
+    it('maps token_count messages to usage-only session envelopes', () => {
         const result = mapCodexMcpMessageToSessionEnvelopes(
             { type: 'token_count', total_tokens: 10 },
             { currentTurnId: 'turn-1' }
         );
 
-        expect(result.envelopes).toHaveLength(0);
+        expect(result.envelopes).toHaveLength(1);
+        expect(result.envelopes[0]).toMatchObject({
+            role: 'agent',
+            turn: 'turn-1',
+            usage: {
+                input_tokens: 10,
+                output_tokens: 0,
+            },
+            ev: { t: 'service', text: '' },
+        });
         expect(result.currentTurnId).toBe('turn-1');
+    });
+
+    it('normalizes camelCase token_count usage fields', () => {
+        const result = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'token_count',
+                inputTokens: 1200,
+                outputTokens: 50,
+                cacheCreationInputTokens: 20,
+                cacheReadInputTokens: 300,
+            },
+            { currentTurnId: null }
+        );
+
+        expect(result.envelopes).toHaveLength(1);
+        expect(result.envelopes[0]).toMatchObject({
+            role: 'agent',
+            usage: {
+                input_tokens: 1200,
+                cache_creation_input_tokens: 20,
+                cache_read_input_tokens: 300,
+                output_tokens: 50,
+            },
+            ev: { t: 'service', text: '' },
+        });
+        expect(result.envelopes[0].turn).toBeUndefined();
     });
 });
 

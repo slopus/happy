@@ -300,6 +300,7 @@ export type Metadata = {
     updatedAt: number
   },
   machineId?: string,
+  gitBranch?: string,
   claudeSessionId?: string, // Claude Code session ID
   codexThreadId?: string, // Codex app-server thread ID
   tools?: string[],

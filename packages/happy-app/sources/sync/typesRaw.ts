@@ -546,9 +546,15 @@ function normalizeSessionEnvelope(
     createdAt: number,
     meta: MessageMeta | undefined,
 ): NormalizedMessage | null {
+    const isUsageOnlyServiceEvent = envelope.role === 'agent'
+        && envelope.ev.t === 'service'
+        && envelope.ev.text.trim().length === 0
+        && !!envelope.usage;
+
     // Session protocol requires turn id on all agent-originated envelopes.
-    // Drop malformed agent events without turn to avoid attaching stray messages.
-    if (envelope.role === 'agent' && !envelope.turn) {
+    // Usage-only updates may arrive after turn-end, when the producer no longer has
+    // an active turn to attach to; they update status bars without rendering rows.
+    if (envelope.role === 'agent' && !envelope.turn && !isUsageOnlyServiceEvent) {
         return null;
     }
 
@@ -590,12 +596,14 @@ function normalizeSessionEnvelope(
             createdAt: messageCreatedAt,
             role: 'agent',
             isSidechain,
-            content: [{
-                type: 'text',
-                text: envelope.ev.text,
-                uuid: contentUUID,
-                parentUUID
-            }],
+            content: isUsageOnlyServiceEvent
+                ? []
+                : [{
+                    type: 'text',
+                    text: envelope.ev.text,
+                    uuid: contentUUID,
+                    parentUUID
+                }],
             meta,
             usage: envelope.usage,
         } satisfies NormalizedMessage;

@@ -228,6 +228,37 @@ describe('reducer', () => {
             });
         });
 
+        it('should update latest usage from usage-only agent messages', () => {
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'agent-usage-only-1',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    usage: {
+                        input_tokens: 1200,
+                        cache_creation_input_tokens: 40,
+                        cache_read_input_tokens: 500,
+                        output_tokens: 80,
+                    },
+                    content: []
+                }
+            ];
+
+            const result = reducer(state, messages);
+
+            expect(result.messages).toHaveLength(0);
+            expect(result.usage).toEqual({
+                inputTokens: 1200,
+                outputTokens: 80,
+                cacheCreation: 40,
+                cacheRead: 500,
+                contextSize: 1740,
+            });
+        });
+
         it('should process multiple text blocks in one agent message', () => {
             const state = createReducer();
             const messages: NormalizedMessage[] = [
