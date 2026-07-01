@@ -584,6 +584,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             cacheCreation: source.cacheCreation,
             cacheRead: source.cacheRead,
             contextSize: source.contextSize,
+            contextWindow: source.contextWindow,
         };
     }, [sessionUsage, session.latestUsage]);
     const metadataGitBranch = React.useMemo(() => {
@@ -770,6 +771,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 path={session.metadata?.path}
                 gitBranch={statusBarGitBranch}
                 contextSize={usageData?.contextSize}
+                contextWindow={usageData?.contextWindow}
                 onPathPress={handleStatusPathPress}
             />
         </CenteredInputWidth>

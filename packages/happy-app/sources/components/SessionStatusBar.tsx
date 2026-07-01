@@ -18,6 +18,7 @@ type SessionStatusBarProps = {
     path: string | null | undefined;
     gitBranch: string | null | undefined;
     contextSize: number | null | undefined;
+    contextWindow?: number | null | undefined;
     onPathPress?: (path: string) => void;
 };
 
@@ -26,8 +27,11 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
     const { theme } = useUnistyles();
     const path = props.path;
     const pathBasename = getPathBasename(props.path);
-    const contextValue = clampContextSize(props.contextSize);
-    const contextLevel = getContextUsageLevel(props.contextSize);
+    const contextMaxValue = typeof props.contextWindow === 'number' && Number.isFinite(props.contextWindow) && props.contextWindow > 0
+        ? Math.trunc(props.contextWindow)
+        : SESSION_STATUS_CONTEXT_MAX;
+    const contextValue = clampContextSize(props.contextSize, contextMaxValue);
+    const contextLevel = getContextUsageLevel(props.contextSize, contextMaxValue);
     const contextColor = contextLevel === 'critical'
         ? theme.colors.warningCritical
         : contextLevel === 'warning'
@@ -53,7 +57,7 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
                 <UsageBar
                     label={t('session.statusBarContext')}
                     value={contextValue}
-                    maxValue={SESSION_STATUS_CONTEXT_MAX}
+                    maxValue={contextMaxValue}
                     color={contextColor}
                     showPercentage
                     height={3}

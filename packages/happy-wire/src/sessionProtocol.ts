@@ -31,6 +31,7 @@ export const sessionUsageSchema = z
     cache_creation_input_tokens: z.number().int().nonnegative().optional(),
     cache_read_input_tokens: z.number().int().nonnegative().optional(),
     output_tokens: z.number().int().nonnegative(),
+    context_window: z.number().int().positive().optional(),
     service_tier: z.string().optional(),
   })
   .passthrough();

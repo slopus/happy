@@ -151,6 +151,9 @@ function pickTokenCount(message: Record<string, unknown>, keys: string[]): numbe
 }
 
 function pickTokenUsageSource(message: Record<string, unknown>): Record<string, unknown> {
+    if (message.last && typeof message.last === 'object' && !Array.isArray(message.last)) {
+        return message.last as Record<string, unknown>;
+    }
     return message.total && typeof message.total === 'object' && !Array.isArray(message.total)
         ? message.total as Record<string, unknown>
         : message;
@@ -175,6 +178,12 @@ function pickTokenUsage(message: Record<string, unknown>): SessionUsage | undefi
         'cachedInputTokens',
     ]);
     const total = pickTokenCount(source, ['total_tokens', 'totalTokens', 'tokensUsed', 'usedTokens']);
+    const contextWindow = pickTokenCount(message, [
+        'context_window',
+        'contextWindow',
+        'model_context_window',
+        'modelContextWindow',
+    ]);
 
     if (
         input === undefined
@@ -206,6 +215,7 @@ function pickTokenUsage(message: Record<string, unknown>): SessionUsage | undefi
         output_tokens: outputTokens,
         ...(cacheCreation !== undefined ? { cache_creation_input_tokens: cacheCreationTokens } : {}),
         ...(cacheRead !== undefined ? { cache_read_input_tokens: cacheReadTokens } : {}),
+        ...(contextWindow !== undefined ? { context_window: contextWindow } : {}),
         ...(serviceTier ? { service_tier: serviceTier } : {}),
     };
 }

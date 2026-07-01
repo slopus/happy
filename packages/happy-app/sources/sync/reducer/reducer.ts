@@ -163,6 +163,7 @@ export type ReducerState = {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        contextWindow?: number;
         timestamp: number;
     };
 };
@@ -241,6 +242,7 @@ export type ReducerResult = {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        contextWindow?: number;
     };
     hasReadyEvent?: boolean;
 };
@@ -1133,7 +1135,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             outputTokens: state.latestUsage.outputTokens,
             cacheCreation: state.latestUsage.cacheCreation,
             cacheRead: state.latestUsage.cacheRead,
-            contextSize: state.latestUsage.contextSize
+            contextSize: state.latestUsage.contextSize,
+            ...(state.latestUsage.contextWindow ? { contextWindow: state.latestUsage.contextWindow } : {}),
         } : undefined,
         hasReadyEvent: hasReadyEvent || undefined
     };
@@ -1150,15 +1153,23 @@ function allocateId() {
 function processUsageData(state: ReducerState, usage: UsageData, timestamp: number) {
     // Only update if this is newer than the current latest usage
     if (!state.latestUsage || timestamp > state.latestUsage.timestamp) {
+        const contextWindow = readPositiveTokenCount(usage.context_window);
         state.latestUsage = {
             inputTokens: usage.input_tokens,
             outputTokens: usage.output_tokens,
             cacheCreation: usage.cache_creation_input_tokens || 0,
             cacheRead: usage.cache_read_input_tokens || 0,
             contextSize: (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0) + usage.input_tokens,
+            ...(contextWindow ? { contextWindow } : {}),
             timestamp: timestamp
         };
     }
+}
+
+function readPositiveTokenCount(value: unknown): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? Math.trunc(value)
+        : undefined;
 }
 
 

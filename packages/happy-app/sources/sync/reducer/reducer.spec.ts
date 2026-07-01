@@ -259,6 +259,37 @@ describe('reducer', () => {
             });
         });
 
+        it('should preserve context window from usage data', () => {
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'agent-usage-window-1',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    usage: {
+                        input_tokens: 10422,
+                        cache_read_input_tokens: 113536,
+                        output_tokens: 2140,
+                        context_window: 258400,
+                    },
+                    content: []
+                }
+            ];
+
+            const result = reducer(state, messages);
+
+            expect(result.usage).toEqual({
+                inputTokens: 10422,
+                outputTokens: 2140,
+                cacheCreation: 0,
+                cacheRead: 113536,
+                contextSize: 123958,
+                contextWindow: 258400,
+            });
+        });
+
         it('should process multiple text blocks in one agent message', () => {
             const state = createReducer();
             const messages: NormalizedMessage[] = [

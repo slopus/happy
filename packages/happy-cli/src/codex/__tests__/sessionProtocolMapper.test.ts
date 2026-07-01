@@ -450,23 +450,23 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         expect(result.envelopes[0].turn).toBeUndefined();
     });
 
-    it('normalizes nested codex total token usage fields', () => {
+    it('uses nested codex last token usage for current context', () => {
         const result = mapCodexMcpMessageToSessionEnvelopes(
             {
                 type: 'token_count',
                 total: {
-                    totalTokens: 17045,
-                    inputTokens: 16985,
-                    cachedInputTokens: 1920,
-                    outputTokens: 60,
-                    reasoningOutputTokens: 30,
+                    totalTokens: 1157682,
+                    inputTokens: 1151131,
+                    cachedInputTokens: 1030784,
+                    outputTokens: 6551,
+                    reasoningOutputTokens: 276,
                 },
                 last: {
-                    totalTokens: 17045,
-                    inputTokens: 16985,
-                    cachedInputTokens: 1920,
-                    outputTokens: 60,
-                    reasoningOutputTokens: 30,
+                    totalTokens: 126098,
+                    inputTokens: 123958,
+                    cachedInputTokens: 113536,
+                    outputTokens: 2140,
+                    reasoningOutputTokens: 44,
                 },
                 modelContextWindow: 258400,
             },
@@ -478,9 +478,10 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
             role: 'agent',
             turn: 'turn-1',
             usage: {
-                input_tokens: 15065,
-                cache_read_input_tokens: 1920,
-                output_tokens: 60,
+                input_tokens: 10422,
+                cache_read_input_tokens: 113536,
+                output_tokens: 2140,
+                context_window: 258400,
             },
             ev: { t: 'service', text: '' },
         });

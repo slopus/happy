@@ -130,6 +130,7 @@ describe('createEnvelope', () => {
       cache_creation_input_tokens: 30,
       cache_read_input_tokens: 400,
       output_tokens: 80,
+      context_window: 258400,
     };
     const envelope = createEnvelope(
       'agent',
