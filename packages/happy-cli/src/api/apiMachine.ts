@@ -24,6 +24,7 @@ import { createPtySession } from '@/daemon/remoteTerminal';
 import { decideTerminalCwd, formatCwdFallbackBanner } from '@/daemon/decideTerminalCwd';
 import { validatePath } from '@/modules/common/pathSecurity';
 import { existsSync, mkdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import {
     addDaemonTerminalSession,
     getDaemonTerminalSession,
@@ -286,6 +287,36 @@ export class ApiMachineClient {
 
             logger.debug(`[API MACHINE] Stopped session ${sessionId}`);
             return { message: 'Session stopped' };
+        });
+
+        // Read opencode config models from ~/.config/opencode/opencode.json so
+        // the desktop can populate the model picker before the first opencode
+        // session runs. Returns { models: [] } when the file is missing or
+        // unparseable — the desktop falls back to session-reported models.
+        this.rpcHandlerManager.registerHandler('read-opencode-models', async () => {
+            const configPath = `${homedir()}/.config/opencode/opencode.json`;
+            try {
+                const raw = await readFile(configPath, 'utf-8');
+                const config = JSON.parse(raw) as unknown;
+                if (!config || typeof config !== 'object') return { models: [] };
+                const providers = (config as Record<string, unknown>).provider;
+                if (!providers || typeof providers !== 'object') return { models: [] };
+                const models: Array<{ code: string; value: string }> = [];
+                for (const [provKey, provData] of Object.entries(providers as Record<string, unknown>)) {
+                    if (!provData || typeof provData !== 'object') continue;
+                    const provModels = (provData as Record<string, unknown>).models;
+                    if (!provModels || typeof provModels !== 'object') continue;
+                    for (const [modelKey, modelData] of Object.entries(provModels as Record<string, unknown>)) {
+                        if (!modelData || typeof modelData !== 'object') continue;
+                        const code = `${provKey}/${modelKey}`;
+                        const name = (modelData as Record<string, unknown>).name;
+                        models.push({ code, value: typeof name === 'string' && name ? name : code });
+                    }
+                }
+                return { models };
+            } catch {
+                return { models: [] };
+            }
         });
 
         // Register Claude session fork handlers (used by app-side fork /
