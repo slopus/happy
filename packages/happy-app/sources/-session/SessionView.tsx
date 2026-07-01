@@ -16,7 +16,7 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
-import { SessionBranchBar, SessionStatusBar } from '@/components/SessionStatusBar';
+import { SessionStatusBar } from '@/components/SessionStatusBar';
 import { Avatar } from '@/components/Avatar';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
@@ -764,15 +764,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </CenteredInputWidth>
     ) : null;
 
-    const sessionBranchBar = showSessionStatusBar && statusBarGitBranch ? (
-        <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
-            <SessionBranchBar gitBranch={statusBarGitBranch} />
-        </CenteredInputWidth>
-    ) : null;
-
     const sessionStatusBar = showSessionStatusBar ? (
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
             <SessionStatusBar
+                gitBranch={statusBarGitBranch}
                 modelLabel={statusBarModelLabel}
                 effortLabel={statusBarEffortLabel}
                 contextSize={usageData?.contextSize}
@@ -793,7 +788,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     />
                 </CenteredInputWidth>
             )}
-            {sessionBranchBar}
             {composer}
             {sessionStatusBar}
         </>

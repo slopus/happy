@@ -178,7 +178,7 @@ export const en: TranslationStructure = {
         chat: 'Chat',
         chatDescription: 'Customize chat message appearance',
         sessionStatusBar: 'Session Status Bar',
-        sessionStatusBarDescription: 'Show branch above the composer and model, effort, and context below it',
+        sessionStatusBarDescription: 'Show branch, model, effort, and context below the composer',
         userMessageBubbleColor: 'User Bubble Color',
         userMessageBubbleColorDescription: 'Make your messages easier to spot in long chats',
         userMessageBubbleColorOptions: {

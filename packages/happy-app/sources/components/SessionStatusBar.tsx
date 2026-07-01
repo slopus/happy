@@ -13,6 +13,7 @@ import {
 type StatusIconName = React.ComponentProps<typeof Ionicons>['name'];
 
 type SessionStatusBarProps = {
+    gitBranch: string | null | undefined;
     modelLabel: string | null;
     effortLabel: string | null;
     contextSize: number | null | undefined;
@@ -36,30 +37,25 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
 
     return (
         <View style={styles.container}>
-            {props.modelLabel ? (
-                <StatusChip icon="hardware-chip-outline" text={props.modelLabel} />
-            ) : null}
-            {props.effortLabel ? (
-                <StatusChip icon="flash-outline" text={props.effortLabel} />
-            ) : null}
-            <ContextUsageCircle
-                value={contextValue}
-                maxValue={contextMaxValue}
-                percentage={contextPercentage}
-                color={contextColor}
-            />
-        </View>
-    );
-}
-
-export function SessionBranchBar(props: { gitBranch: string | null | undefined }) {
-    if (!props.gitBranch) {
-        return null;
-    }
-
-    return (
-        <View style={stylesheet.branchContainer}>
-            <StatusChip icon="git-branch-outline" text={props.gitBranch} wide />
+            <View style={styles.leftCluster}>
+                {props.gitBranch ? (
+                    <StatusChip icon="git-branch-outline" text={props.gitBranch} wide />
+                ) : null}
+            </View>
+            <View style={styles.rightCluster}>
+                {props.modelLabel ? (
+                    <StatusChip icon="hardware-chip-outline" text={props.modelLabel} />
+                ) : null}
+                {props.effortLabel ? (
+                    <StatusChip icon="flash-outline" text={props.effortLabel} />
+                ) : null}
+                <ContextUsageCircle
+                    value={contextValue}
+                    maxValue={contextMaxValue}
+                    percentage={contextPercentage}
+                    color={contextColor}
+                />
+            </View>
         </View>
     );
 }
@@ -155,21 +151,26 @@ const stylesheet = StyleSheet.create((theme) => ({
         width: '100%',
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'flex-end',
+        justifyContent: 'space-between',
         gap: 6,
         paddingHorizontal: 8,
         paddingTop: 4,
         paddingBottom: 2,
         flexWrap: 'nowrap',
     },
-    branchContainer: {
-        width: '100%',
+    leftCluster: {
+        minWidth: 0,
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-start',
-        paddingHorizontal: 8,
-        paddingTop: 0,
-        paddingBottom: 4,
+    },
+    rightCluster: {
+        flexShrink: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        gap: 6,
     },
     chip: {
         minHeight: 24,
