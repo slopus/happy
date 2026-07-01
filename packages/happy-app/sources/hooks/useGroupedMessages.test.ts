@@ -12,7 +12,8 @@ vi.mock('@/text', () => ({
     t: (key: string, params?: { count?: number }) => `${key}:${params?.count ?? ''}`,
 }));
 
-function toolMessage(id: string, createdAt: number, options: { pendingPermission?: boolean } = {}): ToolCallMessage {
+function toolMessage(id: string, createdAt: number, options: { pendingPermission?: boolean; state?: ToolCallMessage['tool']['state'] } = {}): ToolCallMessage {
+    const state = options.state ?? 'completed';
     return {
         kind: 'tool-call',
         id,
@@ -20,11 +21,11 @@ function toolMessage(id: string, createdAt: number, options: { pendingPermission
         createdAt,
         tool: {
             name: 'CodexBash',
-            state: 'completed',
+            state,
             input: { command: id },
             createdAt,
             startedAt: createdAt,
-            completedAt: createdAt + 1,
+            completedAt: state === 'running' ? null : createdAt + 1,
             description: id,
             ...(options.pendingPermission
                 ? {
@@ -157,6 +158,35 @@ describe('useGroupedMessages', () => {
             'agent-progress',
             'tool-earliest',
         ]);
+    });
+
+    it('does not mark completed agent work as running when a hidden tool is stale', () => {
+        const messages: Message[] = [
+            {
+                kind: 'agent-text',
+                id: 'agent-final',
+                localId: null,
+                createdAt: 5,
+                text: 'done',
+            },
+            toolMessage('tool-stale-running', 4, { state: 'running' }),
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: 'run tools',
+            },
+        ];
+
+        const items = groupMessagesForDisplay(messages, true);
+        const group = items.find((item) => item.type === 'agent-work-group');
+
+        expect(group).toMatchObject({
+            type: 'agent-work-group',
+            hasRunning: false,
+            completedAt: 5,
+        });
     });
 
     it('does not collapse the current turn while the agent is still working', () => {

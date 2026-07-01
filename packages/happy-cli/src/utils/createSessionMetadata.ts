@@ -8,6 +8,7 @@
  */
 
 import os from 'node:os';
+import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
 import type { AgentState, Metadata } from '@/api/types';
@@ -51,6 +52,20 @@ export interface SessionMetadataResult {
     metadata: Metadata;
 }
 
+function getGitBranch(cwd: string): string | undefined {
+    try {
+        const branch = execSync('git rev-parse --abbrev-ref HEAD', {
+            cwd,
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+            windowsHide: true,
+        }).trim();
+        return branch && branch !== 'HEAD' ? branch : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 /**
  * Creates session state and metadata for backend agents.
  *
@@ -75,9 +90,11 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
     const state: AgentState = {
         controlledByUser: false,
     };
+    const cwd = process.cwd();
+    const gitBranch = getGitBranch(cwd);
 
     const metadata: Metadata = {
-        path: process.cwd(),
+        path: cwd,
         host: os.hostname(),
         version: packageJson.version,
         os: os.platform(),
@@ -94,6 +111,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         flavor: opts.flavor,
         sandbox: opts.sandbox?.enabled ? opts.sandbox : null,
         dangerouslySkipPermissions: opts.dangerouslySkipPermissions ?? null,
+        ...(gitBranch ? { gitBranch } : {}),
         ...(opts.parentSessionId ? { parentSessionId: opts.parentSessionId } : {}),
         ...(opts.forkedFromMessageId ? { forkedFromMessageId: opts.forkedFromMessageId } : {}),
     };

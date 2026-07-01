@@ -146,14 +146,14 @@ export class ApiMachineClient {
 
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = params || {};
+            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, permissionMode, modelMode, effortLevel, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = params || {};
             logger.debug(`[API MACHINE] Spawning session with params: ${JSON.stringify(params)}`);
 
             if (!directory) {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId });
+            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, permissionMode, modelMode, effortLevel, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId });
 
             switch (result.type) {
                 case 'success':
@@ -505,39 +505,44 @@ export class ApiMachineClient {
         });
     }
 
+    private sendKeepAlive() {
+        const payload = {
+            machineId: this.machine.id,
+            time: Date.now()
+        };
+        if (process.env.DEBUG) {
+            logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
+        }
+        this.socket.emit('machine-alive', payload);
+
+        // Re-detect CLI availability and push metadata update if changed
+        const newAvailability = detectCLIAvailability();
+        const prev = this.lastKnownCLIAvailability;
+        const newResumeSupport = detectResumeSupport();
+        const prevResume = this.lastKnownResumeSupport;
+        const cliAvailabilityChanged = !prev || prev.claude !== newAvailability.claude || prev.codex !== newAvailability.codex || prev.gemini !== newAvailability.gemini || prev.openclaw !== newAvailability.openclaw;
+        const resumeSupportChanged = !prevResume
+            || prevResume.rpcAvailable !== newResumeSupport.rpcAvailable
+            || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;
+
+        if (cliAvailabilityChanged || resumeSupportChanged) {
+            this.lastKnownCLIAvailability = newAvailability;
+            this.lastKnownResumeSupport = newResumeSupport;
+            this.updateMachineMetadata((metadata) => ({
+                ...(metadata || {} as any),
+                cliAvailability: newAvailability,
+                resumeSupport: { ...newResumeSupport, rpcAvailable: !!this.resumeSessionHandler },
+            })).catch((err) => {
+                logger.debug('[API MACHINE] Failed to update machine capabilities:', err);
+            });
+        }
+    }
+
     private startKeepAlive() {
         this.stopKeepAlive();
+        this.sendKeepAlive();
         this.keepAliveInterval = setInterval(() => {
-            const payload = {
-                machineId: this.machine.id,
-                time: Date.now()
-            };
-            if (process.env.DEBUG) {
-                logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
-            }
-            this.socket.emit('machine-alive', payload);
-
-            // Re-detect CLI availability and push metadata update if changed
-            const newAvailability = detectCLIAvailability();
-            const prev = this.lastKnownCLIAvailability;
-            const newResumeSupport = detectResumeSupport();
-            const prevResume = this.lastKnownResumeSupport;
-            const cliAvailabilityChanged = !prev || prev.claude !== newAvailability.claude || prev.codex !== newAvailability.codex || prev.gemini !== newAvailability.gemini || prev.openclaw !== newAvailability.openclaw;
-            const resumeSupportChanged = !prevResume
-                || prevResume.rpcAvailable !== newResumeSupport.rpcAvailable
-                || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;
-
-            if (cliAvailabilityChanged || resumeSupportChanged) {
-                this.lastKnownCLIAvailability = newAvailability;
-                this.lastKnownResumeSupport = newResumeSupport;
-                this.updateMachineMetadata((metadata) => ({
-                    ...(metadata || {} as any),
-                    cliAvailability: newAvailability,
-                    resumeSupport: { ...newResumeSupport, rpcAvailable: !!this.resumeSessionHandler },
-                })).catch((err) => {
-                    logger.debug('[API MACHINE] Failed to update machine capabilities:', err);
-                });
-            }
+            this.sendKeepAlive();
         }, 20000);
         logger.debug('[API MACHINE] Keep-alive started (20s interval)');
     }

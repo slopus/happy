@@ -19,6 +19,33 @@ describe('codex fork ops', () => {
         refreshSessions.mockReset();
     });
 
+    it('passes new-session mode defaults through spawn RPC', async () => {
+        machineRPC.mockResolvedValue({ type: 'success', sessionId: 'happy-new' });
+
+        const { machineSpawnNewSession } = await import('./ops');
+        const result = await machineSpawnNewSession({
+            machineId: 'machine-1',
+            directory: '/tmp/project',
+            agent: 'claude',
+            permissionMode: 'bypassPermissions',
+            modelMode: 'opus',
+            effortLevel: 'xhigh',
+        });
+
+        expect(result).toEqual({ type: 'success', sessionId: 'happy-new' });
+        expect(machineRPC).toHaveBeenCalledWith(
+            'machine-1',
+            'spawn-happy-session',
+            expect.objectContaining({
+                directory: '/tmp/project',
+                agent: 'claude',
+                permissionMode: 'bypassPermissions',
+                modelMode: 'opus',
+                effortLevel: 'xhigh',
+            }),
+        );
+    });
+
     it('forks a full Codex thread and spawns a Codex session resumed to the new thread', async () => {
         machineRPC.mockImplementation(async (_machineId: string, method: string) => {
             if (method === 'codex-fork-thread') {

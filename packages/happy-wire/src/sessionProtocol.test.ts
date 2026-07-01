@@ -125,6 +125,13 @@ describe('createEnvelope', () => {
 
   it('respects explicit options', () => {
     const subagent = createId();
+    const usage = {
+      input_tokens: 1200,
+      cache_creation_input_tokens: 30,
+      cache_read_input_tokens: 400,
+      output_tokens: 80,
+      context_window: 258400,
+    };
     const envelope = createEnvelope(
       'agent',
       { t: 'tool-call-end', call: 'call-1' },
@@ -134,6 +141,7 @@ describe('createEnvelope', () => {
         turn: 'turn-1',
         subagent,
         codexItemId: 'item-1',
+        usage,
       }
     );
 
@@ -144,6 +152,7 @@ describe('createEnvelope', () => {
       turn: 'turn-1',
       subagent,
       codexItemId: 'item-1',
+      usage,
       ev: { t: 'tool-call-end', call: 'call-1' },
     });
   });

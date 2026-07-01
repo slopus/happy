@@ -127,7 +127,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         sessionId: session.sessionId || 'unknown',
         cwd: session.path,
         version: process.env.npm_package_version
-    }, permissionHandler.getResponses());
+    }, permissionHandler.getResponseLookup());
 
 
     // Handle messages
@@ -198,8 +198,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 for (let i = 0; i < content.length; i++) {
                     const c = content[i];
                     if (c.type === 'tool_result' && c.tool_use_id) {
-                        const responses = permissionHandler.getResponses();
-                        const response = responses.get(c.tool_use_id);
+                        const response = permissionHandler.getResponseForToolUseId(c.tool_use_id);
 
                         if (response) {
                             const permissions: PermissionsField = {

@@ -39,6 +39,7 @@ vi.mock('@/api/rpc/RpcHandlerManager', () => ({
         handleRequest = vi.fn(async () => '');
         registerHandler = vi.fn();
         unregisterHandler = vi.fn();
+        hasHandler = vi.fn(() => false);
     }
 }));
 
@@ -142,6 +143,35 @@ describe('ApiMachineClient socket reconnection', () => {
 
         await vi.advanceTimersByTimeAsync(3000);
         expect(mockSocket.connect).toHaveBeenCalledTimes(2);
+
+        client.shutdown();
+    });
+
+    it('emits machine-alive immediately when the socket connects', async () => {
+        vi.useFakeTimers();
+        mockSocket.emitWithAck.mockImplementation(() => new Promise(() => {}));
+
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.connect();
+
+        expect(mockSocket.emit.mock.calls.filter(([event]: [string]) => event === 'machine-alive')).toHaveLength(0);
+
+        emitSocketEvent('connect');
+
+        let aliveCalls = mockSocket.emit.mock.calls.filter(([event]: [string]) => event === 'machine-alive');
+        expect(aliveCalls).toHaveLength(1);
+        expect(aliveCalls[0][1]).toEqual(expect.objectContaining({
+            machineId: 'test-machine-id',
+            time: expect.any(Number)
+        }));
+
+        await vi.advanceTimersByTimeAsync(19999);
+        aliveCalls = mockSocket.emit.mock.calls.filter(([event]: [string]) => event === 'machine-alive');
+        expect(aliveCalls).toHaveLength(1);
+
+        await vi.advanceTimersByTimeAsync(1);
+        aliveCalls = mockSocket.emit.mock.calls.filter(([event]: [string]) => event === 'machine-alive');
+        expect(aliveCalls).toHaveLength(2);
 
         client.shutdown();
     });

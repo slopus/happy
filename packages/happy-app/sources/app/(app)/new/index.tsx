@@ -82,6 +82,20 @@ type PickerType = 'machine' | 'path' | 'worktree' | 'agent' | 'model' | 'effort'
 
 type PermissionStyle = { color: string; icon: 'play-forward' | 'pause' };
 
+function findPreferredModeIndex<T extends { key: string }>(
+    options: T[],
+    preferredKeys: Array<string | null | undefined>,
+): number {
+    for (const key of preferredKeys) {
+        if (!key) continue;
+        const index = options.findIndex((option) => option.key === key);
+        if (index >= 0) {
+            return index;
+        }
+    }
+    return 0;
+}
+
 const COMPOSER_INPUT_VERTICAL_PADDING = Platform.OS === 'web' ? 10 : 8;
 // Taller composer on web/desktop where vertical space is plentiful; keep the
 // compact cap on native mobile so the input doesn't dominate the screen.
@@ -574,6 +588,8 @@ function NewSessionScreen() {
         setPermissionMode: s.setPermissionMode,
         modelMode: s.modelMode,
         setModelMode: s.setModelMode,
+        effortLevel: s.effortLevel,
+        setEffortLevel: s.setEffortLevel,
         sessionType: s.sessionType,
         setSessionType: s.setSessionType,
         worktreeKey: s.worktreeKey,
@@ -754,25 +770,38 @@ function NewSessionScreen() {
 
     // Reset indices when agent/default settings change.
     React.useEffect(() => {
-        const defaultPermIdx = permissionModes.findIndex(m => m.key === effectiveAgentDefaults.permissionMode);
-        setPermissionIndex(defaultPermIdx >= 0 ? defaultPermIdx : 0);
+        setPermissionIndex(findPreferredModeIndex(permissionModes, [
+            draft.permissionMode,
+            effectiveAgentDefaults.permissionMode,
+        ]));
 
-        const defaultModelIdx = modelModes.findIndex(m => m.key === effectiveAgentDefaults.modelMode);
-        setModelIndex(defaultModelIdx >= 0 ? defaultModelIdx : 0);
+        setModelIndex(findPreferredModeIndex(modelModes, [
+            draft.modelMode,
+            effectiveAgentDefaults.modelMode,
+        ]));
 
         if (!supportsWorktree) setWorktreeKey('__none__');
-    }, [permissionModes, modelModes, supportsWorktree, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode]);
+    }, [
+        permissionModes,
+        modelModes,
+        supportsWorktree,
+        draft.permissionMode,
+        draft.modelMode,
+        effectiveAgentDefaults.permissionMode,
+        effectiveAgentDefaults.modelMode,
+    ]);
 
     // Reset effort when model changes
     React.useEffect(() => {
-        const defaultEffort = effectiveAgentDefaults.effortLevel;
-        if (defaultEffort && effortLevels.length > 0) {
-            const idx = effortLevels.findIndex(e => e.key === defaultEffort);
-            setEffortIndex(idx >= 0 ? idx : effortLevels.length - 1);
-        } else {
+        if (effortLevels.length === 0) {
             setEffortIndex(0);
+            return;
         }
-    }, [effectiveAgentDefaults.effortLevel, currentModelKey, effortLevels]);
+        setEffortIndex(findPreferredModeIndex(effortLevels, [
+            draft.effortLevel,
+            effectiveAgentDefaults.effortLevel,
+        ]));
+    }, [draft.effortLevel, effectiveAgentDefaults.effortLevel, currentModelKey, effortLevels]);
 
     // Auto collapse config once when user starts typing (mobile only)
     // On desktop (web / Mac Catalyst) the panel stays expanded
@@ -880,6 +909,7 @@ function NewSessionScreen() {
                 const next = effortLevels.findIndex((level) => level.key === key);
                 if (next >= 0) {
                     setEffortIndex(next);
+                    draft.setEffortLevel(effortLevels[next]?.key ?? key);
                 }
                 break;
             }
@@ -896,6 +926,7 @@ function NewSessionScreen() {
     }, [
         activePicker,
         availableAgents,
+        draft.setEffortLevel,
         draft.setModelMode,
         draft.setPermissionMode,
         effortLevels,
@@ -941,6 +972,9 @@ function NewSessionScreen() {
                 directory: spawnDirectory,
                 approvedNewDirectoryCreation,
                 agent: selectedAgent,
+                permissionMode: currentPermission.key,
+                modelMode: currentModelKey !== 'default' ? currentModelKey : undefined,
+                effortLevel: currentEffort?.key,
             });
 
             switch (result.type) {

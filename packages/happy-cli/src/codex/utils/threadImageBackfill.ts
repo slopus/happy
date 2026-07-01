@@ -9,6 +9,7 @@ import type { Thread, ThreadItem } from '../codexAppServerTypes';
 import { detectSupportedImageType } from './imageInput';
 import {
     completedTimestampMs,
+    isCodexTurnInProgress,
     mapCodexThreadItemToSessionEnvelopes,
     turnStatus,
     turnTimestampMs,
@@ -64,10 +65,23 @@ export async function buildCodexThreadBackfillEnvelopes(opts: {
     uploadLocalImage: LocalImageUpload;
 }): Promise<SessionEnvelope[]> {
     const envelopes: SessionEnvelope[] = [];
+    const providerSubagentToSessionSubagent = new Map<string, string>();
+    const subagentTitles = new Map<string, string>();
+    const collabReceiverThreadIdsByCall = new Map<string, string[]>();
+    const collabToolByCall = new Map<string, string>();
 
     for (const turn of opts.thread.turns ?? []) {
         const startedAt = turnTimestampMs(turn);
         const completedAt = completedTimestampMs(turn);
+        const state = {
+            currentTurnId: turn.id,
+            startedSubagents: new Set<string>(),
+            activeSubagents: new Set<string>(),
+            providerSubagentToSessionSubagent,
+            subagentTitles,
+            collabReceiverThreadIdsByCall,
+            collabToolByCall,
+        };
         envelopes.push(createEnvelope('agent', { t: 'turn-start' }, {
             id: `${turn.id}:start`,
             turn: turn.id,
@@ -94,14 +108,25 @@ export async function buildCodexThreadBackfillEnvelopes(opts: {
             envelopes.push(...mapCodexThreadItemToSessionEnvelopes(turn, item, {
                 startedAt,
                 completedAt,
-            }));
+            }, state));
         }
 
-        envelopes.push(createEnvelope('agent', { t: 'turn-end', status: turnStatus(turn) }, {
-            id: `${turn.id}:end`,
-            turn: turn.id,
-            time: completedAt,
-        }));
+        if (!isCodexTurnInProgress(turn)) {
+            for (const subagent of state.activeSubagents) {
+                envelopes.push(createEnvelope('agent', { t: 'stop' }, {
+                    turn: turn.id,
+                    subagent,
+                    time: completedAt,
+                }));
+            }
+            state.activeSubagents.clear();
+            state.startedSubagents.clear();
+            envelopes.push(createEnvelope('agent', { t: 'turn-end', status: turnStatus(turn) }, {
+                id: `${turn.id}:end`,
+                turn: turn.id,
+                time: completedAt,
+            }));
+        }
     }
 
     return envelopes;

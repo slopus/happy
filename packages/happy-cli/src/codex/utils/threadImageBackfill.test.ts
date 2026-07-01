@@ -163,4 +163,31 @@ describe('buildCodexThreadBackfillEnvelopes', () => {
         ]);
         expect(uploadLocalImage).not.toHaveBeenCalled();
     });
+
+    it('keeps active collab-agent turns open during image backfill replay', async () => {
+        const envelopes = await buildCodexThreadBackfillEnvelopes({
+            thread: {
+                turns: [{
+                    id: 'turn-active',
+                    startedAt: 100,
+                    status: 'inProgress',
+                    items: [{
+                        id: 'collab-active',
+                        type: 'collabAgentToolCall',
+                        tool: 'spawnAgent',
+                        status: 'inProgress',
+                        receiverThreadIds: ['provider-child-thread'],
+                        prompt: 'Inspect auth flow',
+                    }],
+                }],
+            },
+            uploadLocalImage: vi.fn(),
+        });
+
+        expect(envelopes.map((envelope) => envelope.ev.t)).toEqual([
+            'turn-start',
+            'tool-call-start',
+            'start',
+        ]);
+    });
 });

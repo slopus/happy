@@ -357,17 +357,24 @@ export async function acquireDaemonLock(
         // Lock file exists, check if process is still running
         try {
           const lockPid = readFileSync(configuration.daemonLockFile, 'utf-8').trim();
-          if (lockPid && !isNaN(Number(lockPid))) {
-            try {
-              process.kill(Number(lockPid), 0); // Check if process exists
-            } catch {
-              // Process doesn't exist, remove stale lock
-              unlinkSync(configuration.daemonLockFile);
-              continue; // Retry acquisition
-            }
+          const lockPidNumber = Number(lockPid);
+          if (!lockPid || !Number.isSafeInteger(lockPidNumber) || lockPidNumber <= 0) {
+            unlinkSync(configuration.daemonLockFile);
+            continue; // Retry acquisition
+          }
+          try {
+            process.kill(lockPidNumber, 0); // Check if process exists
+          } catch {
+            // Process doesn't exist, remove stale lock
+            unlinkSync(configuration.daemonLockFile);
+            continue; // Retry acquisition
           }
         } catch {
           // Can't read lock file, might be corrupted
+          try {
+            unlinkSync(configuration.daemonLockFile);
+            continue; // Retry acquisition
+          } catch { }
         }
       }
 
@@ -444,4 +451,3 @@ export function persistSession(sessionId: string, session: PersistedSession): vo
     logger.debug(`[PERSISTENCE] Failed to persist session ${sessionId}:`, error);
   }
 }
-

@@ -106,4 +106,20 @@ describe('CodexPermissionHandler', () => {
 
         expect(result).toEqual({ decision: 'approved' });
     });
+
+    it('auto-approves change_title-prefixed IDs after Codex thread scoping', async () => {
+        const { session, getState } = createSessionMock();
+        const handler = new CodexPermissionHandler(session as any);
+
+        const result = await handler.handleToolCall(
+            'thread-1:change_title-1765385846663',
+            'other',
+            { title: 'Greeting' },
+        );
+
+        expect(result).toEqual({ decision: 'approved' });
+        expect(getState().completedRequests['thread-1:change_title-1765385846663']).toMatchObject({
+            status: 'approved',
+        });
+    });
 });
