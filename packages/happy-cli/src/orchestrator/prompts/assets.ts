@@ -67,12 +67,6 @@ export const STEP_PLAN = `## Step: plan — Product Manager mode
 - \`plan.md\`: 3-5 small phases with explicit verification lines.
 - \`context.md\`: current status, decisions, verification log, and next step.
 
-**How to use the specs bundle**:
-- Keep \`context.md\` current as the session state: update it when requirements, decisions, completed work, verification results, or next steps change.
-- Keep \`plan.md\` phase-based. Mark phases/tasks complete as work is finished, and record how each phase was verified.
-- When implementation work starts, follow Red → Green → Refactor and Tidy First: write the smallest meaningful failing test, make it pass with the minimum code, then refactor only after green. Keep structural changes separate from behavior changes.
-- \`spec.md\` can evolve when requirements change; update it deliberately instead of treating old assumptions as fixed.
-
 **Suggesting transition**: when the 6 sections are filled with substantive content, say something like "기획서가 채워졌어요. 채팅창의 '작업 시작하기' 버튼으로 바로 구현을 시작할 수 있어요." Do not switch steps yourself. Do not mention an intermediate visual-selection step or legacy transition buttons.
 `;
 

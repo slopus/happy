@@ -54,11 +54,6 @@ describe('composeStepGuide', () => {
         expect(guide).toMatch(/specs\/\[feature-slug\]\/prd\.md/);
         expect(guide).toMatch(/spec\.md/);
         expect(guide).toMatch(/context\.md/);
-        expect(guide).toMatch(/Keep `context\.md` current as the session state/);
-        expect(guide).toMatch(/Mark phases\/tasks complete/);
-        expect(guide).toMatch(/Red → Green → Refactor/);
-        expect(guide).toMatch(/Tidy First/);
-        expect(guide).toMatch(/`spec\.md` can evolve/);
         expect(guide).toMatch(/AX_PROJECT_PLAN\.md.*explicitly requested/i);
     });
 
