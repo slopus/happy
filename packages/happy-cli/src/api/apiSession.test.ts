@@ -725,7 +725,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         });
     });
 
-    it('does not report AskUserQuestion as a reaper-blocking open tool-call', () => {
+    it('reports AskUserQuestion wait state as idle to the local daemon', () => {
         const client = new ApiSessionClient('fake-token', session);
         mockAxiosPost.mockResolvedValue({
             data: {
@@ -759,7 +759,10 @@ describe('ApiSessionClient v3 messages API migration', () => {
             }
         });
 
-        expect(mockNotifyDaemonSessionRuntime).not.toHaveBeenCalled();
+        expect(mockNotifyDaemonSessionRuntime).toHaveBeenCalledWith('test-session-id', {
+            thinking: false,
+            hasOpenToolCall: false
+        });
     });
 
     it('sends ACP agent messages through enqueueMessage', async () => {

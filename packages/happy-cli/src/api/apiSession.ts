@@ -249,6 +249,7 @@ export class ApiSessionClient extends EventEmitter {
     private receivePollInterval: NodeJS.Timeout | null = null;
     private currentThinking = false;
     private openToolCallIds = new Set<string>();
+    private openAskUserQuestionIds = new Set<string>();
     private lastDaemonRuntimeReport: {
         thinking: boolean;
         hasOpenToolCall: boolean;
@@ -851,16 +852,23 @@ export class ApiSessionClient extends EventEmitter {
 
     private applySessionProtocolRuntimeSideEffects(envelope: SessionEnvelope) {
         const openToolCallCount = this.openToolCallIds.size;
+        const openAskUserQuestionCount = this.openAskUserQuestionIds.size;
 
-        if (envelope.ev.t === 'tool-call-start' && !isAskUserQuestionToolName(envelope.ev.name)) {
-            this.openToolCallIds.add(envelope.ev.call);
+        if (envelope.ev.t === 'tool-call-start') {
+            if (isAskUserQuestionToolName(envelope.ev.name)) {
+                this.openAskUserQuestionIds.add(envelope.ev.call);
+            } else {
+                this.openToolCallIds.add(envelope.ev.call);
+            }
         } else if (envelope.ev.t === 'tool-call-end') {
             this.openToolCallIds.delete(envelope.ev.call);
+            this.openAskUserQuestionIds.delete(envelope.ev.call);
         } else if (envelope.ev.t === 'turn-end') {
             this.openToolCallIds.clear();
+            this.openAskUserQuestionIds.clear();
         }
 
-        if (this.openToolCallIds.size !== openToolCallCount) {
+        if (this.openToolCallIds.size !== openToolCallCount || this.openAskUserQuestionIds.size !== openAskUserQuestionCount) {
             this.reportDaemonRuntime(this.currentThinking, true);
         }
     }
@@ -943,21 +951,23 @@ export class ApiSessionClient extends EventEmitter {
 
     private reportDaemonRuntime(thinking: boolean, force = false) {
         const hasOpenToolCall = this.openToolCallIds.size > 0;
+        const isWaitingForAskUserQuestion = this.openAskUserQuestionIds.size > 0 && !hasOpenToolCall;
+        const daemonThinking = thinking && !isWaitingForAskUserQuestion;
         const now = Date.now();
 
         if (!force && this.lastDaemonRuntimeReport
-            && this.lastDaemonRuntimeReport.thinking === thinking
+            && this.lastDaemonRuntimeReport.thinking === daemonThinking
             && this.lastDaemonRuntimeReport.hasOpenToolCall === hasOpenToolCall
             && now - this.lastDaemonRuntimeReport.reportedAt < DAEMON_RUNTIME_REPORT_MAX_INTERVAL_MS) {
             return;
         }
 
         this.lastDaemonRuntimeReport = {
-            thinking,
+            thinking: daemonThinking,
             hasOpenToolCall,
             reportedAt: now
         };
-        void notifyDaemonSessionRuntime(this.sessionId, { thinking, hasOpenToolCall });
+        void notifyDaemonSessionRuntime(this.sessionId, { thinking: daemonThinking, hasOpenToolCall });
     }
 
     /**
