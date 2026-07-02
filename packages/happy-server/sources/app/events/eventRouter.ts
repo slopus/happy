@@ -281,17 +281,30 @@ class EventRouter {
     // === PRESENCE QUERIES ===
 
     /**
-     * Returns true if the user has any non-machine socket that hasn't
-     * reported `app-state: background`.  Old clients that never send
-     * `app-state` are treated as active (connected = present).
+     * Returns true if the user is actively viewing Happy on one of their own
+     * clients (mobile / web / desktop), used to suppress redundant push
+     * notifications.
+     *
+     * Only `user-scoped` connections count. `session-scoped` sockets belong to
+     * CLI coding sessions (the agent, not the user) and are always connected
+     * while a session runs; `machine-scoped` is the daemon. A viewing client is
+     * "active" unless it has reported `app-state: background`; a client that has
+     * not sent `app-state` yet is treated as active (present).
      *
      * Uses fetchSockets() which works cross-replica via Redis streams adapter.
      */
     async hasActiveNonMachineSocket(userId: string): Promise<boolean> {
         const sockets = await this.io.in(`user:${userId}`).fetchSockets();
         return sockets.some(s => {
-            if (s.data.clientType === 'machine-scoped') return false;
-            // No app-state yet → old client or just connected; assume active
+            // Only the user's own viewing clients (mobile / web / desktop, which
+            // connect `user-scoped`) represent presence. A `session-scoped` socket
+            // is a CLI coding session — the agent, not the user looking at Happy —
+            // and is always connected while that session runs; `machine-scoped` is
+            // the daemon. Counting either meant a session's own "done"/permission
+            // push was suppressed by that session's own socket, so mobile push
+            // never fired while any session was active.
+            if (s.data.clientType !== 'user-scoped') return false;
+            // A viewing client that hasn't reported app-state yet is assumed active.
             const appState = s.data.appState as string | undefined;
             return appState !== 'background';
         });
