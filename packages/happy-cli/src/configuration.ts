@@ -62,6 +62,7 @@ class Configuration {
     this.webappUrl =
       process.env.HAPPY_WEBAPP_URL ||
       readSettingsStringSync(this.settingsFile, 'webappUrl') ||
+      this.serverUrl ||
       'https://app.happy.engineering'
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
