@@ -952,6 +952,47 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect((client as any).lastSeq).toBe(1);
     });
 
+    it('preserves effort in user message metadata after schema parsing', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+
+        const userMessage = {
+            role: 'user',
+            content: {
+                type: 'text',
+                text: 'from fetch'
+            },
+            meta: {
+                model: 'gpt-5.4',
+                effort: 'low'
+            }
+        };
+
+        mockAxiosGet.mockResolvedValueOnce({
+            data: {
+                messages: [
+                    {
+                        id: 'msg-1',
+                        seq: 1,
+                        content: {
+                            t: 'encrypted',
+                            c: encryptContent(session, userMessage)
+                        },
+                        localId: null,
+                        createdAt: 1000,
+                        updatedAt: 1000
+                    }
+                ],
+                hasMore: false
+            }
+        });
+
+        await (client as any).fetchMessages();
+
+        expect(onUserMessage).toHaveBeenCalledWith(userMessage);
+    });
+
     it('fetchMessages uses incremental cursor and paginates while hasMore is true', async () => {
         const client = new ApiSessionClient('fake-token', session);
         const onUserMessage = vi.fn();
