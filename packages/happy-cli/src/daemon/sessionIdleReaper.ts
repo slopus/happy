@@ -2,6 +2,8 @@ import axios from 'axios';
 
 import type { TrackedSession } from './types';
 
+export const DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS = 10_000;
+
 type DaemonSessionIdleReaperObservedSession = {
   sessionId: string;
   agent: 'claude' | 'codex';
@@ -69,7 +71,7 @@ export function readDaemonSessionIdleReaperConfig(env: NodeJS.ProcessEnv = proce
   const presenceStaleMs = parseOptionalMs(env.HAPPY_DAEMON_SESSION_IDLE_REAPER_PRESENCE_STALE_MS);
   return {
     disabled: isTruthy(env.HAPPY_DAEMON_SESSION_IDLE_REAPER_DISABLED),
-    ...(idleAfterMs !== undefined ? { idleAfterMs } : {}),
+    idleAfterMs: idleAfterMs ?? DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS,
     ...(presenceStaleMs !== undefined ? { presenceStaleMs } : {}),
   };
 }

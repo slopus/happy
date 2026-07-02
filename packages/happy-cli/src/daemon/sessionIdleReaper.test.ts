@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS,
   buildDaemonSessionIdleReaperRequest,
+  readDaemonSessionIdleReaperConfig,
   runDaemonSessionIdleReaperTick,
 } from './sessionIdleReaper';
 import type { TrackedSession } from './types';
@@ -76,6 +78,23 @@ describe('buildDaemonSessionIdleReaperRequest', () => {
       idleAfterMs: 123,
       presenceStaleMs: 456,
       sessions: [],
+    });
+  });
+});
+
+describe('readDaemonSessionIdleReaperConfig', () => {
+  it('defaults the idle threshold to 10 seconds for local testing', () => {
+    expect(readDaemonSessionIdleReaperConfig({})).toEqual({
+      disabled: false,
+      idleAfterMs: DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS,
+    });
+  });
+
+  it('allows env to override the test idle threshold', () => {
+    expect(readDaemonSessionIdleReaperConfig({
+      HAPPY_DAEMON_SESSION_IDLE_REAPER_AFTER_MS: '2500',
+    })).toMatchObject({
+      idleAfterMs: 2500,
     });
   });
 });
