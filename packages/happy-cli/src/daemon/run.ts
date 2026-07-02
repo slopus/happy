@@ -1028,7 +1028,7 @@ export async function startDaemon(): Promise<void> {
       if (!idleReaperConfig.disabled) {
         await runDaemonSessionIdleReaperTick({
           machineId,
-          webappUrl: configuration.webappUrl,
+          serverUrl: configuration.serverUrl,
           credentialsToken: credentials.token,
           trackedSessions: getCurrentChildren(),
           sessionStartTimes,

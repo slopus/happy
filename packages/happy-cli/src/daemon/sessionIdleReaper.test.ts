@@ -95,7 +95,7 @@ describe('runDaemonSessionIdleReaperTick', () => {
 
     const result = await runDaemonSessionIdleReaperTick({
       machineId: 'machine-1',
-      webappUrl: 'https://aplus.example.com',
+      serverUrl: 'https://aplus.example.com',
       credentialsToken: 'token-1',
       now: 20_000,
       sessionStartTimes: new Map([[100, 1_000]]),
@@ -120,7 +120,7 @@ describe('runDaemonSessionIdleReaperTick', () => {
 
     const result = await runDaemonSessionIdleReaperTick({
       machineId: 'machine-1',
-      webappUrl: 'https://aplus.example.com',
+      serverUrl: 'https://aplus.example.com',
       credentialsToken: 'token-1',
       now: 20_000,
       sessionStartTimes: new Map([[100, 1_000]]),

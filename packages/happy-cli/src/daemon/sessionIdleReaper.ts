@@ -32,14 +32,14 @@ type DaemonSessionIdleReaperResponse = {
 };
 
 type PostCandidatesInput = {
-  webappUrl: string;
+  serverUrl: string;
   credentialsToken: string;
   request: DaemonSessionIdleReaperRequest;
 };
 
 type RunDaemonSessionIdleReaperTickInput = {
   machineId: string;
-  webappUrl: string;
+  serverUrl: string;
   credentialsToken: string;
   trackedSessions: readonly TrackedSession[];
   sessionStartTimes: ReadonlyMap<number, number>;
@@ -111,7 +111,7 @@ export function buildDaemonSessionIdleReaperRequest(input: {
 
 export async function postDaemonSessionIdleReaperCandidates(input: PostCandidatesInput): Promise<DaemonSessionIdleReaperResponse> {
   const response = await axios.post<DaemonSessionIdleReaperResponse>(
-    `${input.webappUrl.replace(/\/+$/, '')}/api/daemon/session-idle-reaper/candidates`,
+    `${input.serverUrl.replace(/\/+$/, '')}/api/daemon/session-idle-reaper/candidates`,
     input.request,
     {
       headers: {
@@ -143,7 +143,7 @@ export async function runDaemonSessionIdleReaperTick(
   let response: DaemonSessionIdleReaperResponse;
   try {
     response = await (input.postCandidates ?? postDaemonSessionIdleReaperCandidates)({
-      webappUrl: input.webappUrl,
+      serverUrl: input.serverUrl,
       credentialsToken: input.credentialsToken,
       request,
     });
