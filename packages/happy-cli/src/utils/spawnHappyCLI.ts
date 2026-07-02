@@ -51,11 +51,70 @@
 
 import { SpawnOptions, type ChildProcess } from 'child_process';
 import { spawn as crossSpawn } from 'cross-spawn';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { projectPath } from '@/projectPath';
 import { logger } from '@/ui/logger';
 import { existsSync } from 'node:fs';
 import { isBun } from './runtime';
+
+type HappyCliSpawnCommand = {
+  runtime: string;
+  args: string[];
+  entrypoint: string;
+};
+
+type HappyCliSpawnRuntime = {
+  projectRoot: string;
+  execPath: string;
+  execArgv: string[];
+  argv: string[];
+  isBunRuntime: boolean;
+};
+
+function withQuietNodeFlags(execArgv: string[]): string[] {
+  return [
+    ...(execArgv.includes('--no-warnings') ? [] : ['--no-warnings']),
+    ...(execArgv.includes('--no-deprecation') ? [] : ['--no-deprecation']),
+    ...execArgv,
+  ];
+}
+
+export function resolveHappyCliSpawnCommand(
+  args: string[],
+  runtime: HappyCliSpawnRuntime = {
+    projectRoot: projectPath(),
+    execPath: process.execPath,
+    execArgv: process.execArgv,
+    argv: process.argv,
+    isBunRuntime: isBun(),
+  },
+): HappyCliSpawnCommand {
+  const sourceEntrypoint = join(runtime.projectRoot, 'src', 'index.ts');
+  const currentEntrypoint = runtime.argv[1] ? resolve(runtime.argv[1]) : '';
+  if (currentEntrypoint === resolve(sourceEntrypoint)) {
+    return {
+      runtime: runtime.execPath,
+      args: [
+        ...withQuietNodeFlags(runtime.execArgv),
+        sourceEntrypoint,
+        ...args,
+      ],
+      entrypoint: sourceEntrypoint,
+    };
+  }
+
+  const entrypoint = join(runtime.projectRoot, 'dist', 'index.mjs');
+  return {
+    runtime: runtime.isBunRuntime ? 'bun' : 'node',
+    args: [
+      '--no-warnings',
+      '--no-deprecation',
+      entrypoint,
+      ...args,
+    ],
+    entrypoint,
+  };
+}
 
 /**
  * Spawn the Happy CLI with the given arguments in a cross-platform way.
@@ -69,8 +128,7 @@ import { isBun } from './runtime';
  * @returns ChildProcess instance
  */
 export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): ChildProcess {
-  const projectRoot = projectPath();
-  const entrypoint = join(projectRoot, 'dist', 'index.mjs');
+  const command = resolveHappyCliSpawnCommand(args);
 
   let directory: string | URL | undefined;
   if ('cwd' in options) {
@@ -87,26 +145,18 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
   logger.debug(`[SPAWN HAPPY CLI] Spawning: ${fullCommand} in ${directory}`);
   
   // Use the same Node.js flags that the wrapper script uses
-  const nodeArgs = [
-    '--no-warnings',
-    '--no-deprecation',
-    entrypoint,
-    ...args
-  ];
-
   // Sanity check of the entrypoint path exists
-  if (!existsSync(entrypoint)) {
-    const errorMessage = `Entrypoint ${entrypoint} does not exist`;
+  if (!existsSync(command.entrypoint)) {
+    const errorMessage = `Entrypoint ${command.entrypoint} does not exist`;
     logger.debug(`[SPAWN HAPPY CLI] ${errorMessage}`);
     throw new Error(errorMessage);
   }
-  
-  const runtime = isBun() ? 'bun' : 'node';
+
   // Use cross-spawn so `node` resolves to `node.exe` on Windows.
   // Since Node's CVE-2024-27980 hardening, child_process.spawn('node', ...)
   // on Windows no longer falls back to appending `.exe`, producing ENOENT
   // even when node is on PATH (issue #1082).
-  return crossSpawn(runtime, nodeArgs, {
+  return crossSpawn(command.runtime, command.args, {
     windowsHide: true,
     ...options,
   });
