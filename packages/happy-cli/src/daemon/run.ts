@@ -43,6 +43,7 @@ import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { resolveRegularSpawnAgentArgs, resolveTmuxSpawnAgentCommand } from './spawnAgentCommand';
+import { readDaemonSessionIdleReaperConfig, runDaemonSessionIdleReaperTick } from './sessionIdleReaper';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -293,6 +294,9 @@ export async function startDaemon(): Promise<void> {
         existingSession.happySessionId = sessionId;
         existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
         existingSession.encryption = encryption;
+        if (!sessionStartTimes.has(pid)) {
+          sessionStartTimes.set(pid, Date.now());
+        }
         logger.debug(`[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata`);
 
         // Resolve any awaiter for this PID
@@ -314,6 +318,7 @@ export async function startDaemon(): Promise<void> {
           pid
         };
         pidToTrackedSession.set(pid, trackedSession);
+        sessionStartTimes.set(pid, Date.now());
         logger.debug(`[DAEMON RUN] Registered externally-started session ${sessionId}`);
         persistTrackedSessions();
       }
@@ -548,6 +553,7 @@ export async function startDaemon(): Promise<void> {
 
             // Add to tracking map so webhook can find it later
             pidToTrackedSession.set(tmuxResult.pid, trackedSession);
+            sessionStartTimes.set(tmuxResult.pid, Date.now());
 
             // Wait for webhook to populate session with happySessionId (exact same as regular flow)
             logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux)`);
@@ -857,6 +863,7 @@ export async function startDaemon(): Promise<void> {
           }
 
           pidToTrackedSession.delete(pid);
+          sessionStartTimes.delete(pid);
           persistTrackedSessions();
           logger.debug(`[DAEMON RUN] Removed session ${sessionId} from tracking`);
           return true;
@@ -874,6 +881,7 @@ export async function startDaemon(): Promise<void> {
         logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
       }
       pidToTrackedSession.delete(pid);
+      sessionStartTimes.delete(pid);
       persistTrackedSessions();
       if (tracked?.userHomeDir) {
         const homeDir = tracked.userHomeDir;
@@ -991,6 +999,7 @@ export async function startDaemon(): Promise<void> {
     // 3. If outdated, restart with latest version
     // 4. Write heartbeat
     const heartbeatIntervalMs = parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '60000');
+    const idleReaperConfig = readDaemonSessionIdleReaperConfig(process.env);
     let heartbeatRunning = false
     const restartOnStaleVersionAndHeartbeat = setInterval(async () => {
       if (heartbeatRunning) {
@@ -1008,11 +1017,26 @@ export async function startDaemon(): Promise<void> {
         if (!isPidAlive(pid)) {
           logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
           pidToTrackedSession.delete(pid);
+          sessionStartTimes.delete(pid);
           sessionsPruned = true;
         }
       }
       if (sessionsPruned) {
         persistTrackedSessions();
+      }
+
+      if (!idleReaperConfig.disabled) {
+        await runDaemonSessionIdleReaperTick({
+          machineId,
+          webappUrl: configuration.webappUrl,
+          credentialsToken: credentials.token,
+          trackedSessions: getCurrentChildren(),
+          sessionStartTimes,
+          stopSession,
+          ...(idleReaperConfig.idleAfterMs !== undefined ? { idleAfterMs: idleReaperConfig.idleAfterMs } : {}),
+          ...(idleReaperConfig.presenceStaleMs !== undefined ? { presenceStaleMs: idleReaperConfig.presenceStaleMs } : {}),
+          logDebug: (message) => logger.debug(`[DAEMON RUN] ${message}`),
+        });
       }
 
       // Check if daemon needs update by detecting whether `dist/index.mjs` was
