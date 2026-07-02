@@ -213,6 +213,7 @@ export class ApiSessionClient extends EventEmitter {
     private reconnectInterval: NodeJS.Timeout | null = null;
     private ignoreArchiveSignal = false;
     private skipInitialMessages = false;
+    private skippedInitialMessageSeqs = new Set<number>();
     private claudeSessionProtocolState: ClaudeSessionProtocolState = {
         currentTurnId: null,
         uuidToProviderSubagent: new Map<string, string>(),
@@ -316,7 +317,13 @@ export class ApiSessionClient extends EventEmitter {
 
                 if (data.body.t === 'new-message') {
                     const messageSeq = data.body.message?.seq;
-                    if (typeof messageSeq !== 'number' || messageSeq !== this.lastSeq + 1 || data.body.message.content.t !== 'encrypted') {
+                    const isSkippedCatchupMessage =
+                        typeof messageSeq === 'number' && this.skippedInitialMessageSeqs.delete(messageSeq);
+                    if (
+                        typeof messageSeq !== 'number'
+                        || (messageSeq !== this.lastSeq + 1 && !isSkippedCatchupMessage)
+                        || data.body.message.content.t !== 'encrypted'
+                    ) {
                         this.receiveSync.invalidate();
                         return;
                     }
@@ -330,7 +337,7 @@ export class ApiSessionClient extends EventEmitter {
                             : 'unknown',
                     });
                     this.routeIncomingMessage(body);
-                    this.lastSeq = messageSeq;
+                    this.lastSeq = Math.max(this.lastSeq, messageSeq);
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
                         this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
@@ -612,7 +619,12 @@ export class ApiSessionClient extends EventEmitter {
                     maxSeq = message.seq;
                 }
 
-                if (skipRouting) continue;
+                if (skipRouting) {
+                    if (message.content?.t === 'encrypted') {
+                        this.skippedInitialMessageSeqs.add(message.seq);
+                    }
+                    continue;
+                }
 
                 if (message.content?.t !== 'encrypted') {
                     continue;

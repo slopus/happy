@@ -1090,6 +1090,47 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockAxiosGet.mock.calls[1][1].params.after_seq).toBe(5);
     });
 
+    it('routes a live socket message whose seq was just skipped by reconnect catch-up', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+        (client as any).lastSeq = 1;
+
+        const userMessage = {
+            role: 'user',
+            content: { type: 'text', text: 'race after reconnect' }
+        };
+
+        client.skipExistingMessages();
+        mockAxiosGet.mockResolvedValueOnce({
+            data: {
+                messages: [
+                    {
+                        id: 'msg-2',
+                        seq: 2,
+                        content: { t: 'encrypted', c: encryptContent(session, userMessage) },
+                        localId: null,
+                        createdAt: 1000,
+                        updatedAt: 1000
+                    }
+                ],
+                hasMore: false
+            }
+        });
+
+        await (client as any).fetchMessages();
+
+        expect(onUserMessage).not.toHaveBeenCalled();
+        expect((client as any).lastSeq).toBe(2);
+
+        emitSocketEvent('update', createNewMessageUpdate(2, encryptContent(session, userMessage)));
+
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+        expect(onUserMessage).toHaveBeenCalledWith(userMessage);
+        expect((client as any).lastSeq).toBe(2);
+        expect(mockAxiosGet).toHaveBeenCalledTimes(1);
+    });
+
     it('updates lastSeq after successful outbox flush and never moves it backward', async () => {
         const client = new ApiSessionClient('fake-token', session);
         (client as any).lastSeq = 10;
