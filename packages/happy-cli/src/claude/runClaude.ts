@@ -889,6 +889,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 // Cleanup session resources (intervals, callbacks)
                 currentSession?.cleanup();
 
+                // If the daemon stops an idle session while Claude is waiting on
+                // AskUserQuestion, persist an explicit tool-call-end + cancelled
+                // turn before the wrapper exits. Otherwise a later resume reloads
+                // the raw tool-call-start row as an interactive stale question.
+                session.closeOpenAskUserQuestionsAsCancelled();
+
                 // Send session death message
                 session.sendSessionDeath();
 

@@ -250,6 +250,7 @@ export class ApiSessionClient extends EventEmitter {
     private currentThinking = false;
     private openToolCallIds = new Set<string>();
     private openAskUserQuestionIds = new Set<string>();
+    private openAskUserQuestionTurnIds = new Map<string, string>();
     private lastDaemonRuntimeReport: {
         thinking: boolean;
         hasOpenToolCall: boolean;
@@ -822,6 +823,29 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueSessionProtocolEnvelopes(mapped.envelopes);
     }
 
+    closeOpenAskUserQuestionsAsCancelled() {
+        const openQuestionIds = Array.from(this.openAskUserQuestionIds);
+        if (openQuestionIds.length === 0) {
+            return;
+        }
+
+        const turnId = this.claudeSessionProtocolState.currentTurnId
+            ?? this.openAskUserQuestionTurnIds.get(openQuestionIds[0]);
+        if (!turnId) {
+            return;
+        }
+
+        const envelopes: SessionEnvelope[] = openQuestionIds.map((call) => (
+            createEnvelope('agent', { t: 'tool-call-end', call }, {
+                turn: this.openAskUserQuestionTurnIds.get(call) ?? turnId
+            })
+        ));
+        envelopes.push(createEnvelope('agent', { t: 'turn-end', status: 'cancelled' }, { turn: turnId }));
+
+        this.claudeSessionProtocolState.currentTurnId = null;
+        this.enqueueSessionProtocolEnvelopes(envelopes);
+    }
+
     sendCodexMessage(body: any) {
         let content = {
             role: 'agent',
@@ -857,15 +881,20 @@ export class ApiSessionClient extends EventEmitter {
         if (envelope.ev.t === 'tool-call-start') {
             if (isAskUserQuestionToolName(envelope.ev.name)) {
                 this.openAskUserQuestionIds.add(envelope.ev.call);
+                if (typeof envelope.turn === 'string' && envelope.turn.length > 0) {
+                    this.openAskUserQuestionTurnIds.set(envelope.ev.call, envelope.turn);
+                }
             } else {
                 this.openToolCallIds.add(envelope.ev.call);
             }
         } else if (envelope.ev.t === 'tool-call-end') {
             this.openToolCallIds.delete(envelope.ev.call);
             this.openAskUserQuestionIds.delete(envelope.ev.call);
+            this.openAskUserQuestionTurnIds.delete(envelope.ev.call);
         } else if (envelope.ev.t === 'turn-end') {
             this.openToolCallIds.clear();
             this.openAskUserQuestionIds.clear();
+            this.openAskUserQuestionTurnIds.clear();
         }
 
         if (this.openToolCallIds.size !== openToolCallCount || this.openAskUserQuestionIds.size !== openAskUserQuestionCount) {

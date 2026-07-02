@@ -765,6 +765,76 @@ describe('ApiSessionClient v3 messages API migration', () => {
         });
     });
 
+    it('persists pending AskUserQuestion as cancelled before shutdown', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValue({
+            data: {
+                messages: [{ id: 'msg-1', seq: 1, localId: 'local-1', createdAt: 1, updatedAt: 1 }]
+            }
+        });
+
+        client.sendSessionProtocolMessage({
+            id: 'env-ask-start-1',
+            time: 1005,
+            role: 'agent',
+            turn: 'turn-1',
+            ev: {
+                t: 'tool-call-start',
+                call: 'ask-1',
+                name: 'AskUserQuestion',
+                title: 'AskUserQuestion',
+                description: 'Ask the user',
+                args: {
+                    questions: [
+                        {
+                            header: '우선순위',
+                            question: '무엇을 먼저 할까요?',
+                            options: [{ label: '버그 수정' }],
+                        },
+                    ],
+                }
+            }
+        });
+
+        await waitForCheck(() => {
+            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+        });
+        mockAxiosPost.mockClear();
+
+        client.closeOpenAskUserQuestionsAsCancelled();
+        await waitForCheck(() => {
+            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+        });
+
+        const payload = mockAxiosPost.mock.calls[0][1];
+        const decryptedMessages = payload.messages.map((message: { content: string }) => (
+            decrypt(
+                session.encryptionKey,
+                session.encryptionVariant,
+                decodeBase64(message.content)
+            )
+        ));
+
+        expect(decryptedMessages).toEqual([
+            expect.objectContaining({
+                role: 'session',
+                content: expect.objectContaining({
+                    role: 'agent',
+                    turn: 'turn-1',
+                    ev: { t: 'tool-call-end', call: 'ask-1' }
+                })
+            }),
+            expect.objectContaining({
+                role: 'session',
+                content: expect.objectContaining({
+                    role: 'agent',
+                    turn: 'turn-1',
+                    ev: { t: 'turn-end', status: 'cancelled' }
+                })
+            })
+        ]);
+    });
+
     it('sends ACP agent messages through enqueueMessage', async () => {
         const client = new ApiSessionClient('fake-token', session);
         mockAxiosPost.mockResolvedValueOnce({
