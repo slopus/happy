@@ -23,7 +23,7 @@ Control Flow:
    - HTTP server: starts on random port for local CLI control (list, stop, spawn)
    - WebSocket: establishes persistent connection to backend via `ApiMachineClient`
    - RPC registration: exposes `spawn-happy-session`, `stop-session`, `requestShutdown` handlers
-   - Heartbeat loop: every 60s (or HAPPY_DAEMON_HEARTBEAT_INTERVAL) checks for version updates and prunes dead sessions
+   - Heartbeat loop: every 10s checks for version updates and prunes dead sessions
 5. Awaits shutdown promise which resolves when:
    - OS signal received (SIGINT/SIGTERM)
    - HTTP `/stop` endpoint called
@@ -157,7 +157,7 @@ Local HTTP server (127.0.0.1 only) provides:
 Version mismatch test simulates npm upgrade:
 - Test modifies package.json, rebuilds with new version
 - Daemon's compiled version != package.json on disk
-- Critical timing: heartbeat interval must exceed rebuild time
+- Critical timing: heartbeat interval must not fire while dist/ is being rebuilt
 - pkgroll doesn't update compiled imports, must use full pnpm build
 
 # Improvements
@@ -449,7 +449,6 @@ Authorization: Bearer <token>
    - Clients only receive updates for fields that changed
 
 5. **RPC Pattern**: Machine-scoped RPC methods prefixed with machineId (like sessions)
-
 
 
 

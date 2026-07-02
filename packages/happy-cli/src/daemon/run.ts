@@ -993,12 +993,12 @@ export async function startDaemon(): Promise<void> {
       }
     }
 
-    // Every 60 seconds:
+    // Every 10 seconds:
     // 1. Prune stale sessions
     // 2. Check if daemon needs update
     // 3. If outdated, restart with latest version
     // 4. Write heartbeat
-    const heartbeatIntervalMs = parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '60000');
+    const heartbeatIntervalMs = 10_000;
     const idleReaperConfig = readDaemonSessionIdleReaperConfig(process.env);
     let heartbeatRunning = false
     const restartOnStaleVersionAndHeartbeat = setInterval(async () => {
@@ -1110,7 +1110,7 @@ export async function startDaemon(): Promise<void> {
       }
 
       heartbeatRunning = false;
-    }, heartbeatIntervalMs); // Every 60 seconds in production
+    }, heartbeatIntervalMs); // Every 10 seconds
 
     // Setup signal handlers
     const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
