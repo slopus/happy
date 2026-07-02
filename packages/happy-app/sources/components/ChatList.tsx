@@ -186,6 +186,26 @@ const ChatListInternal = React.memo((props: {
                 }
                 return next;
             });
+            // A new latest user-text id only appears on the user's OWN send —
+            // typed, or via tapping an <options>/AskUserQuestion chip. Agent
+            // tokens are agent-text/tool-call and never change latestUserMsgId.
+            // Sending is always an intent to be at the newest message, so
+            // deliberately re-pin the inverted list to the visual bottom
+            // (offset 0). This counteracts the upward viewport drift caused by
+            // maintainVisibleContentPosition (minIndexForVisible: 1): the new
+            // index-0 insert re-anchors MVCP onto a different row and the
+            // collapseCurrentTurn re-group lands a large height change above the
+            // anchor in the same commit. Option taps expose it because they
+            // happen with the keyboard closed (viewport not pinned within the
+            // autoscroll threshold), unlike typed sends. This runs per-send, NOT
+            // per-token, so it does not reintroduce the per-token scrollToOffset
+            // "fight" removed above (see the maintainVisibleContentPosition
+            // comment). rAF defers it until after the collapse/insert commit's
+            // layout settles (Android timing).
+            const raf = requestAnimationFrame(() => {
+                flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+            });
+            return () => cancelAnimationFrame(raf);
         }
     }, [latestUserMsgId]);
 
