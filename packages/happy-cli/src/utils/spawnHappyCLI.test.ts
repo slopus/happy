@@ -15,6 +15,7 @@ describe('resolveHappyCliSpawnCommand', () => {
 
     expect(result.runtime).toBe('/node');
     expect(result.entrypoint).toBe(join(projectRoot, 'src', 'index.ts'));
+    expect(result.tsconfigPath).toBe(join(projectRoot, 'tsconfig.json'));
     expect(result.args).toEqual([
       '--no-warnings',
       '--no-deprecation',
@@ -38,6 +39,7 @@ describe('resolveHappyCliSpawnCommand', () => {
 
     expect(result.runtime).toBe('node');
     expect(result.entrypoint).toBe(join(projectRoot, 'dist', 'index.mjs'));
+    expect(result.tsconfigPath).toBeUndefined();
     expect(result.args).toEqual([
       '--no-warnings',
       '--no-deprecation',

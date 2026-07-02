@@ -61,6 +61,7 @@ type HappyCliSpawnCommand = {
   runtime: string;
   args: string[];
   entrypoint: string;
+  tsconfigPath?: string;
 };
 
 type HappyCliSpawnRuntime = {
@@ -90,6 +91,7 @@ export function resolveHappyCliSpawnCommand(
   },
 ): HappyCliSpawnCommand {
   const sourceEntrypoint = join(runtime.projectRoot, 'src', 'index.ts');
+  const sourceTsconfigPath = join(runtime.projectRoot, 'tsconfig.json');
   const currentEntrypoint = runtime.argv[1] ? resolve(runtime.argv[1]) : '';
   if (currentEntrypoint === resolve(sourceEntrypoint)) {
     return {
@@ -100,6 +102,7 @@ export function resolveHappyCliSpawnCommand(
         ...args,
       ],
       entrypoint: sourceEntrypoint,
+      tsconfigPath: sourceTsconfigPath,
     };
   }
 
@@ -156,8 +159,16 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
   // Since Node's CVE-2024-27980 hardening, child_process.spawn('node', ...)
   // on Windows no longer falls back to appending `.exe`, producing ENOENT
   // even when node is on PATH (issue #1082).
+  const env = command.tsconfigPath
+    ? {
+        ...(options.env ?? process.env),
+        TSX_TSCONFIG_PATH: (options.env as NodeJS.ProcessEnv | undefined)?.TSX_TSCONFIG_PATH ?? command.tsconfigPath,
+      }
+    : options.env;
+
   return crossSpawn(command.runtime, command.args, {
     windowsHide: true,
     ...options,
+    ...(env ? { env } : {}),
   });
 }
