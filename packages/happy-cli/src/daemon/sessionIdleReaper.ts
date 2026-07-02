@@ -8,8 +8,8 @@ type DaemonSessionIdleReaperObservedSession = {
   sessionId: string;
   agent: 'claude' | 'codex';
   active: true;
-  thinking: false;
-  hasOpenToolCall: false;
+  thinking: boolean;
+  hasOpenToolCall: boolean;
   lastActiveAt: number;
 };
 
@@ -97,8 +97,8 @@ export function buildDaemonSessionIdleReaperRequest(input: {
       sessionId: session.happySessionId,
       agent,
       active: true,
-      thinking: false,
-      hasOpenToolCall: false,
+      thinking: session.runtime?.thinking === true,
+      hasOpenToolCall: session.runtime?.hasOpenToolCall === true,
       lastActiveAt: input.sessionStartTimes.get(session.pid) ?? now,
     });
   }

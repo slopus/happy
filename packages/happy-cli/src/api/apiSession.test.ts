@@ -11,7 +11,8 @@ const {
     mockAxiosPut,
     mockBackoff,
     mockDelay,
-    mockShouldReconnect
+    mockShouldReconnect,
+    mockNotifyDaemonSessionRuntime
 } = vi.hoisted(() => ({
     mockIo: vi.fn(),
     mockAxiosGet: vi.fn(),
@@ -29,7 +30,8 @@ const {
         throw lastError;
     }),
     mockDelay: vi.fn(async () => undefined),
-    mockShouldReconnect: vi.fn(() => true)
+    mockShouldReconnect: vi.fn(() => true),
+    mockNotifyDaemonSessionRuntime: vi.fn(async () => ({ status: 'ok' }))
 }));
 
 vi.mock('socket.io-client', () => ({
@@ -76,6 +78,10 @@ vi.mock('@/utils/time', () => ({
 
 vi.mock('@/utils/lidState', () => ({
     shouldReconnect: mockShouldReconnect
+}));
+
+vi.mock('@/daemon/controlClient', () => ({
+    notifyDaemonSessionRuntime: mockNotifyDaemonSessionRuntime
 }));
 
 type SocketHandler = (...args: any[]) => void;
@@ -656,6 +662,67 @@ describe('ApiSessionClient v3 messages API migration', () => {
             }
         });
         expect(typeof (sessionOnly as any).content.time).toBe('number');
+    });
+
+    it('reports keep-alive thinking state to the local daemon', () => {
+        const client = new ApiSessionClient('fake-token', session);
+
+        client.keepAlive(true, 'remote');
+
+        expect(mockSocket.volatile.emit).toHaveBeenCalledWith('session-alive', expect.objectContaining({
+            sid: 'test-session-id',
+            thinking: true,
+            mode: 'remote'
+        }));
+        expect(mockNotifyDaemonSessionRuntime).toHaveBeenCalledWith('test-session-id', {
+            thinking: true,
+            hasOpenToolCall: false
+        });
+    });
+
+    it('reports open tool-call state to the local daemon', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValue({
+            data: {
+                messages: [{ id: 'msg-1', seq: 1, localId: 'local-1', createdAt: 1, updatedAt: 1 }]
+            }
+        });
+
+        client.keepAlive(true, 'remote');
+        mockNotifyDaemonSessionRuntime.mockClear();
+
+        client.sendSessionProtocolMessage({
+            id: 'env-tool-start-1',
+            time: 1003,
+            role: 'agent',
+            turn: 'turn-1',
+            ev: {
+                t: 'tool-call-start',
+                call: 'tool-1',
+                name: 'Bash',
+                title: 'Bash',
+                description: 'Run command',
+                args: {}
+            }
+        });
+
+        expect(mockNotifyDaemonSessionRuntime).toHaveBeenLastCalledWith('test-session-id', {
+            thinking: true,
+            hasOpenToolCall: true
+        });
+
+        client.sendSessionProtocolMessage({
+            id: 'env-tool-end-1',
+            time: 1004,
+            role: 'agent',
+            turn: 'turn-1',
+            ev: { t: 'tool-call-end', call: 'tool-1' }
+        });
+
+        expect(mockNotifyDaemonSessionRuntime).toHaveBeenLastCalledWith('test-session-id', {
+            thinking: true,
+            hasOpenToolCall: false
+        });
     });
 
     it('sends ACP agent messages through enqueueMessage', async () => {

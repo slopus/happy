@@ -13,6 +13,12 @@ export interface SessionEncryptionData {
   agentStateVersion: number;
 }
 
+export interface SessionRuntimeState {
+  thinking: boolean;
+  hasOpenToolCall: boolean;
+  updatedAt: number;
+}
+
 /**
  * Session tracking for daemon
  */
@@ -20,6 +26,7 @@ export interface TrackedSession {
   startedBy: 'daemon' | string;
   happySessionId?: string;
   happySessionMetadataFromLocalWebhook?: Metadata;
+  runtime?: SessionRuntimeState;
   encryption?: SessionEncryptionData;
   pid: number;
   childProcess?: ChildProcess;

@@ -65,6 +65,37 @@ describe('buildDaemonSessionIdleReaperRequest', () => {
     });
   });
 
+  it('includes runtime busy state reported by tracked sessions', () => {
+    const request = buildDaemonSessionIdleReaperRequest({
+      machineId: 'machine-1',
+      now: 10_000,
+      sessionStartTimes: new Map([[100, 1_000]]),
+      trackedSessions: [
+        tracked({
+          pid: 100,
+          happySessionId: 'session-claude',
+          happySessionMetadataFromLocalWebhook: { flavor: 'claude' } as never,
+          runtime: {
+            thinking: true,
+            hasOpenToolCall: true,
+            updatedAt: 9_000,
+          },
+        }),
+      ],
+    });
+
+    expect(request.sessions).toEqual([
+      {
+        sessionId: 'session-claude',
+        agent: 'claude',
+        active: true,
+        thinking: true,
+        hasOpenToolCall: true,
+        lastActiveAt: 1_000,
+      },
+    ]);
+  });
+
   it('passes optional idle and presence thresholds through to the server request', () => {
     expect(buildDaemonSessionIdleReaperRequest({
       machineId: 'machine-1',
@@ -118,12 +149,27 @@ describe('runDaemonSessionIdleReaperTick', () => {
       credentialsToken: 'token-1',
       now: 20_000,
       sessionStartTimes: new Map([[100, 1_000]]),
-      trackedSessions: [tracked({ pid: 100, happySessionId: 'session-1' })],
+      trackedSessions: [tracked({
+        pid: 100,
+        happySessionId: 'session-1',
+        runtime: { thinking: true, hasOpenToolCall: false, updatedAt: 19_000 },
+      })],
       stopSession,
       postCandidates,
     });
 
     expect(postCandidates).toHaveBeenCalledTimes(1);
+    expect(postCandidates).toHaveBeenCalledWith(expect.objectContaining({
+      request: expect.objectContaining({
+        sessions: [
+          expect.objectContaining({
+            sessionId: 'session-1',
+            thinking: true,
+            hasOpenToolCall: false,
+          }),
+        ],
+      }),
+    }));
     expect(stopSession).toHaveBeenCalledTimes(3);
     expect(result).toEqual({
       requestedSessions: 1,

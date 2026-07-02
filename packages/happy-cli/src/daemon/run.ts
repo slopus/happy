@@ -324,6 +324,23 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
+    const onHappySessionRuntime = (
+      sessionId: string,
+      runtime: { thinking?: boolean; hasOpenToolCall?: boolean; updatedAt: number },
+    ) => {
+      const trackedSession = getCurrentChildren().find(session => session.happySessionId === sessionId);
+      if (!trackedSession) {
+        logger.debug(`[DAEMON RUN] Ignoring runtime report for untracked session ${sessionId}`);
+        return;
+      }
+
+      trackedSession.runtime = {
+        thinking: runtime.thinking ?? trackedSession.runtime?.thinking ?? false,
+        hasOpenToolCall: runtime.hasOpenToolCall ?? trackedSession.runtime?.hasOpenToolCall ?? false,
+        updatedAt: runtime.updatedAt,
+      };
+    };
+
     // Spawn a new session (sessionId reserved for future --resume functionality)
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
@@ -905,6 +922,7 @@ export async function startDaemon(): Promise<void> {
       spawnSession,
       requestShutdown: () => requestShutdown('happy-cli'),
       onHappySessionWebhook,
+      onHappySessionRuntime,
       portRegistry
     });
 

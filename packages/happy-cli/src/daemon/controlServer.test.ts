@@ -203,6 +203,70 @@ describe('controlServer POST /spawn-session', () => {
   })
 })
 
+describe('controlServer POST /session-runtime', () => {
+  let dir: string
+  let baseUrl: string
+  let stopServer: () => Promise<void>
+  let runtimeReports: Array<{
+    sessionId: string
+    runtime: { thinking?: boolean; hasOpenToolCall?: boolean; updatedAt: number }
+  }>
+
+  beforeEach(async () => {
+    dir = mkdtempSync(path.join(tmpdir(), 'control-server-'))
+    runtimeReports = []
+    const registry = createPortRegistry({
+      filePath: path.join(dir, 'port-registry.json'),
+      portMin: 30000,
+      portMax: 30010,
+      isPortBindable: async () => true,
+    })
+    const { port, stop } = await startDaemonControlServer({
+      getChildren: () => [],
+      stopSession: () => false,
+      spawnSession: async () => ({ type: 'error', errorMessage: 'unused in this test' }),
+      requestShutdown: () => {},
+      onHappySessionWebhook: () => {},
+      onHappySessionRuntime: (sessionId, runtime) => {
+        runtimeReports.push({ sessionId, runtime })
+      },
+      portRegistry: registry,
+    })
+    baseUrl = `http://127.0.0.1:${port}`
+    stopServer = stop
+  })
+
+  afterEach(async () => {
+    await stopServer()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('accepts runtime busy state reports from a session process', async () => {
+    const res = await fetch(`${baseUrl}/session-runtime`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        thinking: true,
+        hasOpenToolCall: true,
+      }),
+    })
+    const body = (await res.json()) as { status?: string }
+
+    expect(res.status).toBe(200)
+    expect(body).toEqual({ status: 'ok' })
+    expect(runtimeReports).toHaveLength(1)
+    expect(runtimeReports[0]).toMatchObject({
+      sessionId: 'session-1',
+      runtime: {
+        thinking: true,
+        hasOpenToolCall: true,
+      },
+    })
+    expect(runtimeReports[0].runtime.updatedAt).toBeGreaterThan(0)
+  })
+})
+
 describe('controlServer port allocation — range exhaustion', () => {
   const userId = 'test-user'
   let dir: string

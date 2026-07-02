@@ -9,7 +9,7 @@ import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-
 import { logger } from '@/ui/logger';
 import { Metadata } from '@/api/types';
 import { decodeBase64 } from '@/api/encryption';
-import { TrackedSession, SessionEncryptionData } from './types';
+import { TrackedSession, SessionEncryptionData, SessionRuntimeState } from './types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { PortRegistry } from './portRegistry';
 import { proxyHttp, PreviewProxyError } from './previewProxy';
@@ -23,6 +23,7 @@ export function startDaemonControlServer({
   spawnSession,
   requestShutdown,
   onHappySessionWebhook,
+  onHappySessionRuntime = () => {},
   portRegistry
 }: {
   getChildren: () => TrackedSession[];
@@ -30,6 +31,7 @@ export function startDaemonControlServer({
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata, encryption?: SessionEncryptionData) => void;
+  onHappySessionRuntime?: (sessionId: string, runtime: Partial<SessionRuntimeState> & { updatedAt: number }) => void;
   portRegistry: PortRegistry;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
@@ -79,6 +81,31 @@ export function startDaemonControlServer({
       }
 
       onHappySessionWebhook(sessionId, metadata, encryptionData);
+
+      return { status: 'ok' as const };
+    });
+
+    typed.post('/session-runtime', {
+      schema: {
+        body: z.object({
+          sessionId: z.string(),
+          thinking: z.boolean().optional(),
+          hasOpenToolCall: z.boolean().optional()
+        }),
+        response: {
+          200: z.object({
+            status: z.literal('ok')
+          })
+        }
+      }
+    }, async (request) => {
+      const { sessionId, thinking, hasOpenToolCall } = request.body;
+
+      onHappySessionRuntime(sessionId, {
+        ...(thinking !== undefined ? { thinking } : {}),
+        ...(hasOpenToolCall !== undefined ? { hasOpenToolCall } : {}),
+        updatedAt: Date.now()
+      });
 
       return { status: 'ok' as const };
     });

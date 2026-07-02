@@ -20,7 +20,10 @@ import {
     type ClaudeSessionProtocolState,
 } from '@/claude/utils/sessionProtocolMapper';
 import { InvalidateSync } from '@/utils/sync';
+import { notifyDaemonSessionRuntime } from '@/daemon/controlClient';
 import axios from 'axios';
+
+const DAEMON_RUNTIME_REPORT_MAX_INTERVAL_MS = 30_000;
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -230,6 +233,13 @@ export class ApiSessionClient extends EventEmitter {
     private readonly sendSync: InvalidateSync;
     private readonly receiveSync: InvalidateSync;
     private receivePollInterval: NodeJS.Timeout | null = null;
+    private currentThinking = false;
+    private openToolCallIds = new Set<string>();
+    private lastDaemonRuntimeReport: {
+        thinking: boolean;
+        hasOpenToolCall: boolean;
+        reportedAt: number;
+    } | null = null;
 
     constructor(token: string, session: Session) {
         super()
@@ -812,6 +822,8 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true) {
+        this.applySessionProtocolRuntimeSideEffects(envelope);
+
         const content = {
             role: 'session',
             content: envelope,
@@ -821,6 +833,22 @@ export class ApiSessionClient extends EventEmitter {
         };
 
         this.enqueueMessage(content, invalidate);
+    }
+
+    private applySessionProtocolRuntimeSideEffects(envelope: SessionEnvelope) {
+        const openToolCallCount = this.openToolCallIds.size;
+
+        if (envelope.ev.t === 'tool-call-start') {
+            this.openToolCallIds.add(envelope.ev.call);
+        } else if (envelope.ev.t === 'tool-call-end') {
+            this.openToolCallIds.delete(envelope.ev.call);
+        } else if (envelope.ev.t === 'turn-end') {
+            this.openToolCallIds.clear();
+        }
+
+        if (this.openToolCallIds.size !== openToolCallCount) {
+            this.reportDaemonRuntime(this.currentThinking, true);
+        }
     }
 
     sendSessionProtocolMessage(envelope: SessionEnvelope) {
@@ -889,12 +917,33 @@ export class ApiSessionClient extends EventEmitter {
         if (process.env.DEBUG) { // too verbose for production
             logger.debug(`[API] Sending keep alive message: ${thinking}`);
         }
+        this.currentThinking = thinking;
         this.socket.volatile.emit('session-alive', {
             sid: this.sessionId,
             time: Date.now(),
             thinking,
             mode
         });
+        this.reportDaemonRuntime(thinking);
+    }
+
+    private reportDaemonRuntime(thinking: boolean, force = false) {
+        const hasOpenToolCall = this.openToolCallIds.size > 0;
+        const now = Date.now();
+
+        if (!force && this.lastDaemonRuntimeReport
+            && this.lastDaemonRuntimeReport.thinking === thinking
+            && this.lastDaemonRuntimeReport.hasOpenToolCall === hasOpenToolCall
+            && now - this.lastDaemonRuntimeReport.reportedAt < DAEMON_RUNTIME_REPORT_MAX_INTERVAL_MS) {
+            return;
+        }
+
+        this.lastDaemonRuntimeReport = {
+            thinking,
+            hasOpenToolCall,
+            reportedAt: now
+        };
+        void notifyDaemonSessionRuntime(this.sessionId, { thinking, hasOpenToolCall });
     }
 
     /**

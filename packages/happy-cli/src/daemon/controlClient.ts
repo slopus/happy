@@ -90,6 +90,13 @@ export async function notifyDaemonSessionStarted(
   }
 }
 
+export async function notifyDaemonSessionRuntime(
+  sessionId: string,
+  runtime: { thinking?: boolean; hasOpenToolCall?: boolean }
+): Promise<{ error?: string } | any> {
+  return daemonPost('/session-runtime', { sessionId, ...runtime });
+}
+
 export async function listDaemonSessions(): Promise<any[]> {
   const result = await daemonPost('/list');
   return result.children || [];
