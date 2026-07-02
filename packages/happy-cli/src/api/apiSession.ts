@@ -108,6 +108,20 @@ function extensionForImageMime(mimeType: string): string {
     }
 }
 
+function isAskUserQuestionToolName(value: string | undefined | null): boolean {
+    if (!value) return false;
+    const normalized = value
+        .replace(/^functions\./i, '')
+        .replace(/^mcp__.+?__/i, '')
+        .replace(/\s+call$/i, '')
+        .replace(/[._\-\s]+/g, '')
+        .trim()
+        .toLowerCase();
+    return normalized === 'askuserquestion'
+        || normalized === 'requestuserinput'
+        || normalized === '사용자에게질문';
+}
+
 function extractLocalTranscriptImageAttachments(body: RawJSONLines): LocalImageAttachment[] {
     if (body.type !== 'user' || body.isMeta || body.isSidechain) {
         return [];
@@ -838,7 +852,7 @@ export class ApiSessionClient extends EventEmitter {
     private applySessionProtocolRuntimeSideEffects(envelope: SessionEnvelope) {
         const openToolCallCount = this.openToolCallIds.size;
 
-        if (envelope.ev.t === 'tool-call-start') {
+        if (envelope.ev.t === 'tool-call-start' && !isAskUserQuestionToolName(envelope.ev.name)) {
             this.openToolCallIds.add(envelope.ev.call);
         } else if (envelope.ev.t === 'tool-call-end') {
             this.openToolCallIds.delete(envelope.ev.call);

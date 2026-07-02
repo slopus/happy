@@ -725,6 +725,43 @@ describe('ApiSessionClient v3 messages API migration', () => {
         });
     });
 
+    it('does not report AskUserQuestion as a reaper-blocking open tool-call', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValue({
+            data: {
+                messages: [{ id: 'msg-1', seq: 1, localId: 'local-1', createdAt: 1, updatedAt: 1 }]
+            }
+        });
+
+        client.keepAlive(true, 'remote');
+        mockNotifyDaemonSessionRuntime.mockClear();
+
+        client.sendSessionProtocolMessage({
+            id: 'env-ask-start-1',
+            time: 1005,
+            role: 'agent',
+            turn: 'turn-1',
+            ev: {
+                t: 'tool-call-start',
+                call: 'ask-1',
+                name: 'AskUserQuestion',
+                title: 'AskUserQuestion',
+                description: 'Ask the user',
+                args: {
+                    questions: [
+                        {
+                            header: '우선순위',
+                            question: '무엇을 먼저 할까요?',
+                            options: [{ label: '버그 수정' }],
+                        },
+                    ],
+                }
+            }
+        });
+
+        expect(mockNotifyDaemonSessionRuntime).not.toHaveBeenCalled();
+    });
+
     it('sends ACP agent messages through enqueueMessage', async () => {
         const client = new ApiSessionClient('fake-token', session);
         mockAxiosPost.mockResolvedValueOnce({
