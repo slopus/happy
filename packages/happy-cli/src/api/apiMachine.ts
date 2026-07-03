@@ -274,11 +274,16 @@ export class ApiMachineClient {
 
         // Register stop session handler
         this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
-            const { sessionId } = params || {};
+            const { sessionId, source, reason } = params || {};
 
             if (!sessionId) {
                 throw new Error('Session ID is required');
             }
+
+            logger.debug(`[API MACHINE] Stop session request ${sessionId}`, {
+                source: typeof source === 'string' ? source : undefined,
+                reason: typeof reason === 'string' ? reason : undefined,
+            });
 
             const success = stopSession(sessionId);
             if (!success) {
