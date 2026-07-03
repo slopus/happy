@@ -230,6 +230,7 @@ export class ApiSessionClient extends EventEmitter {
     private reconnectInterval: NodeJS.Timeout | null = null;
     private ignoreArchiveSignal = false;
     private skipInitialMessages = false;
+    private skipExistingMessagesThroughSeq: number | null = null;
     private skippedInitialMessageSeqs = new Set<number>();
     private claudeSessionProtocolState: ClaudeSessionProtocolState = {
         currentTurnId: null,
@@ -616,11 +617,16 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private async fetchMessages() {
-        // On reconnect, skip processing existing messages — just advance lastSeq
+        // On reconnect, skip only messages that existed before the agent reattached.
         const skipRouting = this.skipInitialMessages;
+        const skipThroughSeq = this.skipExistingMessagesThroughSeq;
         if (skipRouting) {
             this.skipInitialMessages = false;
-            logger.debug('[API] Reconnect mode: skipping existing messages, advancing lastSeq');
+            this.skipExistingMessagesThroughSeq = null;
+            logger.debug('[API] Reconnect mode: skipping existing messages through baseline seq', {
+                sessionId: this.sessionId,
+                skipThroughSeq,
+            });
         }
 
         let afterSeq = this.lastSeq;
@@ -645,7 +651,9 @@ export class ApiSessionClient extends EventEmitter {
                     maxSeq = message.seq;
                 }
 
-                if (skipRouting) {
+                const shouldSkipExistingMessage = skipRouting
+                    && (skipThroughSeq === null || message.seq <= skipThroughSeq);
+                if (shouldSkipExistingMessage) {
                     if (message.content?.t === 'encrypted') {
                         this.skippedInitialMessageSeqs.add(message.seq);
                     }
@@ -1051,8 +1059,14 @@ export class ApiSessionClient extends EventEmitter {
         this.ignoreArchiveSignal = true;
     }
 
-    skipExistingMessages() {
+    skipExistingMessages(throughSeq?: number) {
         this.skipInitialMessages = true;
+        if (typeof throughSeq === 'number' && Number.isFinite(throughSeq)) {
+            this.skipExistingMessagesThroughSeq = Math.max(0, throughSeq);
+            this.lastSeq = Math.max(this.lastSeq, this.skipExistingMessagesThroughSeq);
+        } else {
+            this.skipExistingMessagesThroughSeq = null;
+        }
     }
 
     updateMetadata(handler: (metadata: Metadata) => Metadata) {

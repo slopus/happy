@@ -281,6 +281,22 @@ describe('runClaude remote JSONL scanner', () => {
         originalListeners.clear();
     });
 
+    it('passes reconnect seq as the skip baseline', async () => {
+        process.env.HAPPY_RECONNECT_SESSION_ID = 'happy-session-1';
+        process.env.HAPPY_RECONNECT_ENCRYPTION_KEY = Buffer.from(new Uint8Array(32)).toString('base64');
+        process.env.HAPPY_RECONNECT_ENCRYPTION_VARIANT = 'legacy';
+        process.env.HAPPY_RECONNECT_SEQ = '42';
+        process.env.HAPPY_RECONNECT_METADATA_VERSION = '3';
+        process.env.HAPPY_RECONNECT_AGENT_STATE_VERSION = '4';
+
+        const harness = await startRemoteRunClaudeHarness();
+
+        expect(harness.sessionClient.suppressNextArchiveSignal).toHaveBeenCalledTimes(1);
+        expect(harness.sessionClient.skipExistingMessages).toHaveBeenCalledWith(42);
+
+        await harness.finish();
+    });
+
     it('does not forward terminal JSONL messages while local mode owns the transcript', async () => {
         const sentMessages: unknown[] = [];
         const sessionClient = {
