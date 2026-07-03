@@ -749,6 +749,10 @@ class Sync {
         });
         trackMessageSent(source, session.metadata);
 
+        // Stamp local activity time so the (opt-in) activity sort bubbles this session
+        // up on user action only — not on background agent output.
+        storage.getState().markSessionMessageSent(sessionId);
+
         this.getSendSync(sessionId).invalidate();
         this.maybeStartBackgroundSendWatchdog();
     }
