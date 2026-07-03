@@ -5,7 +5,7 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
-import type { MachineMetadata } from './storageTypes';
+import type { MachineMetadata, Metadata } from './storageTypes';
 
 // Strict type definitions for all operations
 
@@ -551,6 +551,67 @@ export async function machineUpdateMetadata(
     }
 
     throw new Error('Unexpected error in machineUpdateMetadata');
+}
+
+/**
+ * Update session metadata with optimistic concurrency control and automatic retry.
+ * Mirrors machineUpdateMetadata but uses the per-session encryption and the existing
+ * 'update-metadata' socket event. Used to set a custom, user-visible session name
+ * (metadata.name), which getSessionName() prefers over the AI-generated summary.
+ */
+export async function sessionUpdateMetadata(
+    sessionId: string,
+    metadata: Metadata,
+    expectedVersion: number,
+    maxRetries: number = 3
+): Promise<{ version: number; metadata: string }> {
+    let currentVersion = expectedVersion;
+    let currentMetadata = { ...metadata };
+    let retryCount = 0;
+
+    const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
+    if (!sessionEncryption) {
+        throw new Error(`Session encryption not found for ${sessionId}`);
+    }
+
+    while (retryCount < maxRetries) {
+        const encryptedMetadata = await sessionEncryption.encryptRaw(currentMetadata);
+
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+            message?: string;
+        }>('update-metadata', {
+            sid: sessionId,
+            metadata: encryptedMetadata,
+            expectedVersion: currentVersion
+        });
+
+        if (result.result === 'success') {
+            return {
+                version: result.version!,
+                metadata: result.metadata!
+            };
+        } else if (result.result === 'version-mismatch') {
+            // Latest version won on the server — merge, keeping our intended name change.
+            currentVersion = result.version!;
+            const latestMetadata = await sessionEncryption.decryptRaw(result.metadata!) as Metadata;
+            currentMetadata = {
+                ...latestMetadata,
+                name: metadata.name // Keep our intended name change
+            };
+
+            retryCount++;
+            if (retryCount >= maxRetries) {
+                throw new Error(`Failed to update after ${maxRetries} retries due to version conflicts`);
+            }
+        } else {
+            throw new Error(result.message || 'Failed to update session metadata');
+        }
+    }
+
+    throw new Error('Unexpected error in sessionUpdateMetadata');
 }
 
 /**
