@@ -2,7 +2,7 @@ import axios from 'axios';
 
 import type { TrackedSession } from './types';
 
-export const DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS = 10 * 60 * 1000;
+export const DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS = 5 * 60 * 1000;
 
 type DaemonSessionIdleReaperObservedSession = {
   sessionId: string;

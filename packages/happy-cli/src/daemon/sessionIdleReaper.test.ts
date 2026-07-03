@@ -145,8 +145,8 @@ describe('buildDaemonSessionIdleReaperRequest', () => {
 });
 
 describe('readDaemonSessionIdleReaperConfig', () => {
-  it('defaults the idle threshold to 10 minutes for production safety', () => {
-    expect(DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS).toBe(10 * 60 * 1000);
+  it('defaults the idle threshold to 5 minutes for production safety', () => {
+    expect(DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS).toBe(5 * 60 * 1000);
     expect(readDaemonSessionIdleReaperConfig({})).toEqual({
       disabled: false,
       idleAfterMs: DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS,
