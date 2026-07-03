@@ -188,7 +188,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function mergeToolInputs(existingInput: unknown, nextInput: unknown): unknown {
     if (isRecord(existingInput) && isRecord(nextInput)) {
-        return { ...nextInput, ...existingInput };
+        return { ...existingInput, ...nextInput };
     }
     return nextInput ?? existingInput;
 }
