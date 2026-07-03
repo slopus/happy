@@ -17,7 +17,7 @@ function tracked(overrides: Partial<TrackedSession>): TrackedSession {
 }
 
 describe('buildDaemonSessionIdleReaperRequest', () => {
-  it('includes only tracked claude/codex sessions with stable lastActiveAt', () => {
+  it('includes only tracked claude/codex sessions with start time fallback lastActiveAt', () => {
     const request = buildDaemonSessionIdleReaperRequest({
       machineId: 'machine-1',
       now: 10_000,
@@ -91,7 +91,38 @@ describe('buildDaemonSessionIdleReaperRequest', () => {
         active: true,
         thinking: true,
         hasOpenToolCall: true,
-        lastActiveAt: 1_000,
+        lastActiveAt: 9_000,
+      },
+    ]);
+  });
+
+  it('uses recent runtime activity even after the session is no longer busy', () => {
+    const request = buildDaemonSessionIdleReaperRequest({
+      machineId: 'machine-1',
+      now: 10_000,
+      sessionStartTimes: new Map([[100, 1_000]]),
+      trackedSessions: [
+        tracked({
+          pid: 100,
+          happySessionId: 'session-claude',
+          happySessionMetadataFromLocalWebhook: { flavor: 'claude' } as never,
+          runtime: {
+            thinking: false,
+            hasOpenToolCall: false,
+            updatedAt: 9_000,
+          },
+        }),
+      ],
+    });
+
+    expect(request.sessions).toEqual([
+      {
+        sessionId: 'session-claude',
+        agent: 'claude',
+        active: true,
+        thinking: false,
+        hasOpenToolCall: false,
+        lastActiveAt: 9_000,
       },
     ]);
   });
@@ -114,14 +145,15 @@ describe('buildDaemonSessionIdleReaperRequest', () => {
 });
 
 describe('readDaemonSessionIdleReaperConfig', () => {
-  it('defaults the idle threshold to 10 seconds for local testing', () => {
+  it('defaults the idle threshold to 10 minutes for production safety', () => {
+    expect(DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS).toBe(10 * 60 * 1000);
     expect(readDaemonSessionIdleReaperConfig({})).toEqual({
       disabled: false,
       idleAfterMs: DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS,
     });
   });
 
-  it('allows env to override the test idle threshold', () => {
+  it('allows env to override the idle threshold', () => {
     expect(readDaemonSessionIdleReaperConfig({
       HAPPY_DAEMON_SESSION_IDLE_REAPER_AFTER_MS: '2500',
     })).toMatchObject({

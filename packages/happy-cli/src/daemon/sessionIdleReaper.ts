@@ -2,7 +2,7 @@ import axios from 'axios';
 
 import type { TrackedSession } from './types';
 
-export const DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS = 10_000;
+export const DEFAULT_DAEMON_SESSION_IDLE_REAPER_AFTER_MS = 10 * 60 * 1000;
 
 type DaemonSessionIdleReaperObservedSession = {
   sessionId: string;
@@ -99,7 +99,7 @@ export function buildDaemonSessionIdleReaperRequest(input: {
       active: true,
       thinking: session.runtime?.thinking === true,
       hasOpenToolCall: session.runtime?.hasOpenToolCall === true,
-      lastActiveAt: input.sessionStartTimes.get(session.pid) ?? now,
+      lastActiveAt: resolveSessionLastActiveAt(session, input.sessionStartTimes, now),
     });
   }
 
@@ -178,6 +178,19 @@ function resolveStoppableAgent(session: TrackedSession): 'claude' | 'codex' | nu
   if (flavor === 'claude' || flavor === 'codex') return flavor;
   if (!flavor) return 'claude';
   return null;
+}
+
+function resolveSessionLastActiveAt(
+  session: TrackedSession,
+  sessionStartTimes: ReadonlyMap<number, number>,
+  now: number,
+): number {
+  const activityTimes = [
+    sessionStartTimes.get(session.pid),
+    session.runtime?.updatedAt,
+  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+  return activityTimes.length > 0 ? Math.max(...activityTimes) : now;
 }
 
 function parseOptionalMs(value: string | undefined): number | undefined {
