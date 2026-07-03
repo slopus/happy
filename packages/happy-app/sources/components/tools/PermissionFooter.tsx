@@ -215,11 +215,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         },
         buttonSelected: {
             backgroundColor: 'transparent',
-            borderColor: theme.colors.textSecondary,
+            borderColor: theme.colors.text,
             opacity: 1,
         },
         buttonInactive: {
-            opacity: 0.62,
+            opacity: 0.25,
         },
         buttonContent: {
             flexDirection: 'row',
@@ -250,7 +250,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         },
         buttonTextSelected: {
             color: theme.colors.text,
-            fontWeight: '500',
+            fontWeight: '700',
         },
         buttonForSession: {
             borderColor: theme.colors.textSecondary,
