@@ -77,9 +77,11 @@ function formatStateSummary(state: AxState): string {
 }
 
 function referenceFilesForState(state: AxState): string[] {
+    const planPath = state.plan.filePath;
+    const designPath = state.design.filePath || DESIGN_MD_FILENAME;
     if (state.step === 'plan') return [];
-    if (state.step === 'design') return [state.plan.filePath];
-    return [state.plan.filePath, state.design.filePath || DESIGN_MD_FILENAME];
+    if (state.step === 'design') return planPath ? [planPath] : [];
+    return planPath ? [planPath, designPath] : [designPath];
 }
 
 async function collectReferences(workspaceRoot: string, state: AxState): Promise<string[]> {
