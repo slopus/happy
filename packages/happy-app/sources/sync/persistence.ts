@@ -50,7 +50,15 @@ export function loadPendingSettings(): Partial<Settings> {
     if (pending) {
         try {
             const parsed = JSON.parse(pending);
-            return SettingsSchema.partial().parse(parsed);
+            const validated = SettingsSchema.partial().parse(parsed);
+            // partial().parse() re-injects .default() fields (e.g. a blank agentDefaultOverrides) that were never pending and would clobber synced values — keep only persisted keys.
+            const result: Partial<Settings> = {};
+            Object.keys(parsed).forEach(key => {
+                if (key in validated) {
+                    (result as any)[key] = (validated as any)[key];
+                }
+            });
+            return result;
         } catch (e) {
             console.error('Failed to parse pending settings', e);
             return {};
