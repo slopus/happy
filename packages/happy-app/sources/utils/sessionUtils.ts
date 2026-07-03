@@ -78,6 +78,11 @@ export function useSessionStatus(session: Session): SessionStatus {
  * Returns the last segment of the path, or 'unknown' if no path is available.
  */
 export function getSessionName(session: Session): string {
+    // Prefer a user-set custom name (set via the Rename Session action) over the
+    // AI-generated summary. Empty/unset falls back to summary, then "New Chat".
+    if (session.metadata?.name) {
+        return session.metadata.name;
+    }
     if (session.metadata?.summary) {
         return session.metadata.summary.text;
     }
