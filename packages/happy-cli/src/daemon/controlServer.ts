@@ -141,7 +141,9 @@ export function startDaemonControlServer({
     typed.post('/stop-session', {
       schema: {
         body: z.object({
-          sessionId: z.string()
+          sessionId: z.string(),
+          source: z.string().optional(),
+          reason: z.string().optional()
         }),
         response: {
           200: z.object({
@@ -150,9 +152,9 @@ export function startDaemonControlServer({
         }
       }
     }, async (request) => {
-      const { sessionId } = request.body;
+      const { sessionId, source, reason } = request.body;
 
-      logger.debug(`[CONTROL SERVER] Stop session request: ${sessionId}`);
+      logger.debug(`[CONTROL SERVER] Stop session request: ${sessionId}`, { source, reason });
       const success = stopSession(sessionId);
       return { success };
     });
