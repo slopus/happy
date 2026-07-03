@@ -1067,10 +1067,12 @@ export const storage = create<StorageState>()((set, get) => {
             saveSessionLastMessageSentAt(allTimestamps);
 
             // Rebuild list view data — this timestamp drives activity-based sort.
+            // Pass unreadSessionIds so other sessions keep their unread badges
+            // (omitting it drops every badge until the next rebuild).
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionListViewData: buildSessionListViewData(updatedSessions)
+                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds)
             };
         }),
         getSessionPathKey: (sessionId: string): string | null => {
