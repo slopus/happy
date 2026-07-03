@@ -56,7 +56,8 @@ describe('composeStepGuide', () => {
         expect(guide).toMatch(/context\.md/);
         expect(guide).toMatch(/feature-oriented implementation phases/);
         expect(guide).toMatch(/Avoid broad catch-all phases/);
-        expect(guide).toMatch(/AX_PROJECT_PLAN\.md.*explicitly requested/i);
+        expect(guide).toMatch(/Do not write new planning content to `AX_PROJECT_PLAN\.md`/);
+        expect(guide).toMatch(/AX_PROJECT_PLAN\.md.*explicitly names/i);
     });
 
     it('loads the design step guide', async () => {
@@ -102,10 +103,11 @@ describe('composeDynamicContext', () => {
         expect(ctx).not.toMatch(/build it/);
     });
 
-    it('design step: handles missing state.plan.filePath gracefully', async () => {
+    it('design step: handles a missing selected planning prd gracefully', async () => {
         const state = createInitialState('design');
+        state.plan.filePath = 'specs/missing/prd.md';
         const ctx = await composeDynamicContext(workspace, state);
-        expect(ctx).toMatch(/specs\/\[feature-slug\]\/prd\.md/);
+        expect(ctx).toMatch(/specs\/missing\/prd\.md/);
         expect(ctx).toMatch(/not found|missing|not yet created/i);
     });
 

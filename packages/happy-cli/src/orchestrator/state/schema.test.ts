@@ -60,7 +60,7 @@ describe('AxStateSchema', () => {
         const valid = {
             version: 1,
             step: 'design',
-            plan: { filePath: 'AX_PROJECT_PLAN.md', completedAt: '2026-05-19T10:00:00.000Z' },
+            plan: { filePath: 'specs/todo/prd.md', completedAt: '2026-05-19T10:00:00.000Z' },
             design: {
                 candidates: ['bmw-m', 'linear', 'stripe'],
                 candidatesSource: 'claude-suggested',
