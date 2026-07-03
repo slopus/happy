@@ -107,6 +107,15 @@ export function getOpenClawPermissionModes(translate: Translate): PermissionMode
     ];
 }
 
+// agy --print only distinguishes --sandbox (default) from --dangerously-skip-permissions,
+// so only these two modes are offered.
+export function getAgyPermissionModes(translate: Translate): PermissionMode[] {
+    return [
+        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
+        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
+    ];
+}
+
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
@@ -117,12 +126,29 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     if (flavor === 'openclaw') {
         return getOpenClawPermissionModes(translate);
     }
+    if (flavor === 'agy') {
+        return getAgyPermissionModes(translate);
+    }
     return getClaudePermissionModes(translate);
 }
 
 export function getOpenClawModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
+    ];
+}
+
+// Keys are the exact display names `agy --model` accepts (as printed by `agy models`).
+export function getAgyModelModes(): ModelMode[] {
+    return [
+        { key: 'Gemini 3.1 Pro (High)', name: 'gemini 3.1 pro (high)', description: null },
+        { key: 'Gemini 3.1 Pro (Low)', name: 'gemini 3.1 pro (low)', description: null },
+        { key: 'Gemini 3.5 Flash (High)', name: 'gemini 3.5 flash (high)', description: null },
+        { key: 'Gemini 3.5 Flash (Medium)', name: 'gemini 3.5 flash (medium)', description: null },
+        { key: 'Gemini 3.5 Flash (Low)', name: 'gemini 3.5 flash (low)', description: null },
+        { key: 'Claude Opus 4.6 (Thinking)', name: 'claude opus 4.6 (thinking)', description: null },
+        { key: 'Claude Sonnet 4.6 (Thinking)', name: 'claude sonnet 4.6 (thinking)', description: null },
+        { key: 'GPT-OSS 120B (Medium)', name: 'gpt-oss 120b (medium)', description: null },
     ];
 }
 
@@ -135,6 +161,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     }
     if (flavor === 'openclaw') {
         return getOpenClawModelModes();
+    }
+    if (flavor === 'agy') {
+        return getAgyModelModes();
     }
     return getClaudeModelModes();
 }
@@ -159,7 +188,7 @@ export function getAvailablePermissionModes(
     metadata: Metadata | null | undefined,
     translate: Translate,
 ): PermissionMode[] {
-    if (flavor === 'claude' || flavor === 'codex' || flavor === 'openclaw') {
+    if (flavor === 'claude' || flavor === 'codex' || flavor === 'openclaw' || flavor === 'agy') {
         return hackModes(getHardcodedPermissionModes(flavor, translate));
     }
 
