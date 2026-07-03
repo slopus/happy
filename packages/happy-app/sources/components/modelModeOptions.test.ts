@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    getAgyModelModes,
     getAvailableModels,
     getAvailablePermissionModes,
     getCodexModelModes,
@@ -100,6 +101,21 @@ describe('modelModeOptions', () => {
             { key: 'build', name: 'Build', description: 'Do build steps' },
             { key: 'plan', name: 'Plan', description: 'Plan first' },
         ]);
+    });
+
+    it('gives agy its own models, not the claude fallback', () => {
+        const models = getAvailableModels('agy', null, translate);
+        // must be agy's own list, not claude's opus/sonnet/haiku
+        expect(models).toEqual(getAgyModelModes());
+        const keys = models.map((m) => m.key);
+        // the agentDefaults agy default must be selectable
+        expect(keys).toContain('Gemini 3.1 Pro (High)');
+        expect(getDefaultModelKey('agy')).toBe('Gemini 3.1 Pro (High)');
+        // no 'default' entry — agy would receive the literal string "default" as --model
+        expect(keys).not.toContain('default');
+        // not the claude list
+        expect(keys).not.toContain('opus');
+        expect(keys).not.toContain('sonnet');
     });
 
     it('resolves the first matching preferred key', () => {
