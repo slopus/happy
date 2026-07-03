@@ -1349,6 +1349,41 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockAxiosGet).toHaveBeenCalledTimes(1);
     });
 
+    it('routes reconnect catch-up messages newer than the skip baseline', async () => {
+        const client = new ApiSessionClient('fake-token', { ...session, seq: 1 });
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+
+        const userMessage = {
+            role: 'user',
+            content: { type: 'text', text: 'resume-triggering message' }
+        };
+
+        client.skipExistingMessages(1);
+        mockAxiosGet.mockResolvedValueOnce({
+            data: {
+                messages: [
+                    {
+                        id: 'msg-2',
+                        seq: 2,
+                        content: { t: 'encrypted', c: encryptContent(session, userMessage) },
+                        localId: null,
+                        createdAt: 1000,
+                        updatedAt: 1000
+                    }
+                ],
+                hasMore: false
+            }
+        });
+
+        await (client as any).fetchMessages();
+
+        expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(1);
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+        expect(onUserMessage).toHaveBeenCalledWith(userMessage);
+        expect((client as any).lastSeq).toBe(2);
+    });
+
     it('updates lastSeq after successful outbox flush and never moves it backward', async () => {
         const client = new ApiSessionClient('fake-token', session);
         (client as any).lastSeq = 10;

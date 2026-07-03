@@ -287,7 +287,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // On reconnect, un-archive the session and skip replaying old messages.
     if (reconnectSessionId) {
         session.suppressNextArchiveSignal();
-        session.skipExistingMessages();
+        session.skipExistingMessages(response.seq);
         session.updateMetadata((meta) => ({
             ...meta,
             lifecycleState: 'running',
