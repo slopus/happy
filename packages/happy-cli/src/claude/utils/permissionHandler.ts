@@ -10,6 +10,7 @@ import { PermissionResult } from "../sdk/types";
 import { Session } from "../session";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
+import { mapToClaudeMode } from "./permissionMode";
 
 interface PermissionResponse {
     id: string;
@@ -54,7 +55,9 @@ export class PermissionHandler {
     }
 
     handleModeChange(mode: PermissionMode) {
-        this.permissionMode = mode;
+        // Normalize to Claude's 4-mode form; handleToolCall compares
+        // against 'bypassPermissions'/'acceptEdits' by literal equality.
+        this.permissionMode = mapToClaudeMode(mode);
     }
 
     /**
