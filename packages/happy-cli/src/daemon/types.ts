@@ -16,6 +16,22 @@ export interface SessionEncryptionData {
 export interface SessionRuntimeState {
   thinking: boolean;
   hasOpenToolCall: boolean;
+  /**
+   * True while the agent is blocked waiting on the user (AskUserQuestion or a
+   * permission prompt). This is the opposite of idle, but historically the CLI
+   * reports such a session as `thinking: false`, so the idle guard needs it as
+   * a dedicated signal to avoid reaping a session that is waiting on a human.
+   */
+  pendingUserInput?: boolean;
+  /**
+   * Last time a user-originated action was observed for this session (a new
+   * prompt starting a turn, or an AskUserQuestion being answered). Absent until
+   * the first user interaction is seen. Unlike `updatedAt` this is not a
+   * liveness/keep-alive timestamp — it only advances on real user activity.
+   */
+  lastUserInteractionAt?: number;
+  /** 'local' = a terminal is attached to this session; 'remote' = app-driven. */
+  mode?: 'local' | 'remote';
   updatedAt: number;
 }
 

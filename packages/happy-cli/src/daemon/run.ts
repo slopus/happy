@@ -44,7 +44,15 @@ import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import { resolveRegularSpawnAgentArgs, resolveTmuxSpawnAgentCommand } from './spawnAgentCommand';
 import { applyServerSessionSnapshot, parseServerSessionSnapshot, type ServerSessionSnapshot } from './serverSessionSnapshot';
-import { readDaemonSessionIdleReaperConfig, runDaemonSessionIdleReaperTick } from './sessionIdleReaper';
+import {
+  readDaemonSessionIdleReaperConfig,
+  runDaemonSessionIdleReaperTick,
+  readIdleStopGuardConfig,
+  evaluateIdleStopGuard,
+  resolveStopSessionMode,
+  type StopSessionContext,
+  type StopSessionResult,
+} from './sessionIdleReaper';
 import { waitForSessionWebhook } from './spawnWebhookWait';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
@@ -328,7 +336,14 @@ export async function startDaemon(): Promise<void> {
 
     const onHappySessionRuntime = (
       sessionId: string,
-      runtime: { thinking?: boolean; hasOpenToolCall?: boolean; updatedAt: number },
+      runtime: {
+        thinking?: boolean;
+        hasOpenToolCall?: boolean;
+        pendingUserInput?: boolean;
+        lastUserInteractionAt?: number;
+        mode?: 'local' | 'remote';
+        updatedAt: number;
+      },
     ) => {
       const trackedSession = getCurrentChildren().find(session => session.happySessionId === sessionId);
       if (!trackedSession) {
@@ -336,9 +351,15 @@ export async function startDaemon(): Promise<void> {
         return;
       }
 
+      const prev = trackedSession.runtime;
+      const lastUserInteractionAt = runtime.lastUserInteractionAt ?? prev?.lastUserInteractionAt;
+      const mode = runtime.mode ?? prev?.mode;
       trackedSession.runtime = {
-        thinking: runtime.thinking ?? trackedSession.runtime?.thinking ?? false,
-        hasOpenToolCall: runtime.hasOpenToolCall ?? trackedSession.runtime?.hasOpenToolCall ?? false,
+        thinking: runtime.thinking ?? prev?.thinking ?? false,
+        hasOpenToolCall: runtime.hasOpenToolCall ?? prev?.hasOpenToolCall ?? false,
+        pendingUserInput: runtime.pendingUserInput ?? prev?.pendingUserInput ?? false,
+        ...(lastUserInteractionAt !== undefined ? { lastUserInteractionAt } : {}),
+        ...(mode !== undefined ? { mode } : {}),
         updatedAt: runtime.updatedAt,
       };
     };
@@ -819,16 +840,48 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    // Stop a session by sessionId or PID fallback
-    const stopSession = (sessionId: string): boolean => {
-      logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
+    // Local idle guard config for policy-initiated (if-idle) stops. Read once;
+    // env overrides are picked up on daemon restart, same as other knobs.
+    const idleStopGuardConfig = readIdleStopGuardConfig(process.env);
+
+    // Stop a session by sessionId or PID fallback.
+    //
+    // `context.mode` decides enforcement: 'force' (the default for user actions)
+    // stops unconditionally; 'if-idle' — inferred for any idle/cleanup policy
+    // source — first re-validates against the session's locally-observed activity
+    // so a stale or wrong policy decision cannot kill a session the user is using.
+    const stopSession = (sessionId: string, context?: StopSessionContext): StopSessionResult => {
+      const mode = resolveStopSessionMode(context);
+      logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`, {
+        source: context?.source,
+        reason: context?.reason,
+        mode,
+      });
 
       // Try to find by sessionId first
       for (const [pid, session] of pidToTrackedSession.entries()) {
         if (session.happySessionId === sessionId ||
           (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
 
-          preserveSessionForResume(session, 'stop-session');
+          if (mode === 'if-idle') {
+            const decision = evaluateIdleStopGuard({
+              runtime: session.runtime,
+              sessionStartedAt: sessionStartTimes.get(pid),
+              now: Date.now(),
+              config: idleStopGuardConfig,
+            });
+            if (!decision.allow) {
+              logger.debug(
+                `[session-idle-guard] sessionId=${sessionId} source=${context?.source ?? 'unknown'} decision=deny guard=${decision.guard}`,
+              );
+              return { stopped: false, reason: 'active', guard: decision.guard, activity: decision.activity };
+            }
+            logger.debug(
+              `[session-idle-guard] sessionId=${sessionId} source=${context?.source ?? 'unknown'} decision=allow`,
+            );
+          }
+
+          preserveSessionForResume(session, `stop-session:${context?.source ?? mode}`);
 
           if (session.startedBy === 'daemon' && session.childProcess) {
             try {
@@ -851,12 +904,12 @@ export async function startDaemon(): Promise<void> {
           sessionStartTimes.delete(pid);
           persistTrackedSessions();
           logger.debug(`[DAEMON RUN] Removed session ${sessionId} from tracking`);
-          return true;
+          return { stopped: true };
         }
       }
 
       logger.debug(`[DAEMON RUN] Session ${sessionId} not found`);
-      return false;
+      return { stopped: false, reason: 'not-found' };
     };
 
     // Handle child process exit — preserve session data for resume

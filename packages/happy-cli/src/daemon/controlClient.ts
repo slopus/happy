@@ -92,7 +92,13 @@ export async function notifyDaemonSessionStarted(
 
 export async function notifyDaemonSessionRuntime(
   sessionId: string,
-  runtime: { thinking?: boolean; hasOpenToolCall?: boolean }
+  runtime: {
+    thinking?: boolean;
+    hasOpenToolCall?: boolean;
+    pendingUserInput?: boolean;
+    lastUserInteractionAt?: number;
+    mode?: 'local' | 'remote';
+  }
 ): Promise<{ error?: string } | any> {
   return daemonPost('/session-runtime', { sessionId, ...runtime });
 }

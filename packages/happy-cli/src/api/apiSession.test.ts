@@ -676,7 +676,10 @@ describe('ApiSessionClient v3 messages API migration', () => {
         }));
         expect(mockNotifyDaemonSessionRuntime).toHaveBeenCalledWith('test-session-id', {
             thinking: true,
-            hasOpenToolCall: false
+            hasOpenToolCall: false,
+            pendingUserInput: false,
+            lastUserInteractionAt: expect.any(Number),
+            mode: 'remote'
         });
     });
 
@@ -708,7 +711,10 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
         expect(mockNotifyDaemonSessionRuntime).toHaveBeenLastCalledWith('test-session-id', {
             thinking: true,
-            hasOpenToolCall: true
+            hasOpenToolCall: true,
+            pendingUserInput: false,
+            lastUserInteractionAt: expect.any(Number),
+            mode: 'remote'
         });
 
         client.sendSessionProtocolMessage({
@@ -721,7 +727,10 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
         expect(mockNotifyDaemonSessionRuntime).toHaveBeenLastCalledWith('test-session-id', {
             thinking: true,
-            hasOpenToolCall: false
+            hasOpenToolCall: false,
+            pendingUserInput: false,
+            lastUserInteractionAt: expect.any(Number),
+            mode: 'remote'
         });
     });
 
@@ -761,7 +770,31 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
         expect(mockNotifyDaemonSessionRuntime).toHaveBeenCalledWith('test-session-id', {
             thinking: false,
-            hasOpenToolCall: false
+            hasOpenToolCall: false,
+            pendingUserInput: true,
+            lastUserInteractionAt: expect.any(Number),
+            mode: 'remote'
+        });
+    });
+
+    it('reports a pending permission request as pending user input', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        // Claude/Codex permission handlers mirror pending approvals into
+        // agentState.requests — codex approvals never open a tool call, so
+        // this is the only "waiting on user" signal for them.
+        (client as unknown as { agentState: unknown }).agentState = {
+            requests: {
+                'perm-1': { tool: 'CodexBash', arguments: {}, createdAt: 1000 }
+            }
+        };
+
+        client.keepAlive(true, 'remote');
+
+        expect(mockNotifyDaemonSessionRuntime).toHaveBeenCalledWith('test-session-id', {
+            thinking: false,
+            hasOpenToolCall: false,
+            pendingUserInput: true,
+            mode: 'remote'
         });
     });
 

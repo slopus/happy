@@ -16,6 +16,11 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import type { PortRegistry } from '@/daemon/portRegistry';
+import {
+    resolveStopSessionMode,
+    type StopSessionContext,
+    type StopSessionResult,
+} from '@/daemon/sessionIdleReaper';
 import { proxyHttp, PreviewProxyError } from '@/daemon/previewProxy';
 import { startServerProcess, StartServerError } from '@/daemon/startServer';
 import packageJson from '../../package.json';
@@ -138,7 +143,7 @@ interface DaemonToServerEvents {
 type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
     resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
-    stopSession: (sessionId: string) => boolean;
+    stopSession: (sessionId: string, context?: StopSessionContext) => StopSessionResult;
     requestShutdown: () => void;
     portRegistry: PortRegistry;
 }
@@ -274,24 +279,51 @@ export class ApiMachineClient {
 
         // Register stop session handler
         this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
-            const { sessionId, source, reason } = params || {};
+            const { sessionId, source, reason, mode } = params || {};
 
             if (!sessionId) {
                 throw new Error('Session ID is required');
             }
 
+            const context: StopSessionContext = {
+                ...(typeof source === 'string' ? { source } : {}),
+                ...(typeof reason === 'string' ? { reason } : {}),
+                ...(mode === 'force' || mode === 'if-idle' ? { mode } : {}),
+            };
+            const effectiveMode = resolveStopSessionMode(context);
             logger.debug(`[API MACHINE] Stop session request ${sessionId}`, {
-                source: typeof source === 'string' ? source : undefined,
-                reason: typeof reason === 'string' ? reason : undefined,
+                source: context.source,
+                reason: context.reason,
+                mode: effectiveMode,
             });
 
-            const success = stopSession(sessionId);
-            if (!success) {
-                throw new Error('Session not found or failed to stop');
+            const result = stopSession(sessionId, context);
+
+            if (result.stopped) {
+                logger.debug(`[API MACHINE] Stopped session ${sessionId}`);
+                return { message: 'Session stopped', stopped: true };
             }
 
-            logger.debug(`[API MACHINE] Stopped session ${sessionId}`);
-            return { message: 'Session stopped' };
+            // Duplicate or untracked stop: safe no-op success so callers can retry
+            // idempotently (the process is already gone / never here).
+            if (result.reason === 'not-found') {
+                logger.debug(`[API MACHINE] Session ${sessionId} not tracked; treating stop as no-op success`);
+                return { message: 'Session not tracked', stopped: false, reason: 'not-found' };
+            }
+
+            // Guard refused an if-idle stop because the session is active. Return a
+            // structured refusal (not an error) so a policy caller can back off and
+            // re-evaluate later instead of retrying immediately or escalating.
+            logger.debug(
+                `[API MACHINE] Refused idle stop for active session ${sessionId} (guard=${result.guard})`,
+            );
+            return {
+                message: 'Session active; stop skipped',
+                stopped: false,
+                reason: 'active',
+                guard: result.guard,
+                activity: result.activity,
+            };
         });
 
         // Read opencode config models from ~/.config/opencode/opencode.json so

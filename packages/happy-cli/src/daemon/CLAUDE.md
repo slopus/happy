@@ -98,6 +98,11 @@ Via RPC `stop-session` or health check:
 2. Sends SIGTERM to process
 3. `on('exit')` handler removes from tracking map
 
+Idle cleanup (session idle reaper + `project-session-idle-stop` policy stops) is
+being redesigned to stop killing in-use sessions — see
+`docs/superpowers/specs/2026-07-04-session-idle-cleanup-guardrails-design.md`
+for the activity-signal / stop-guard / grace-window design.
+
 ## 3. HTTP Control Server
 
 Local HTTP server (127.0.0.1 only) provides:
