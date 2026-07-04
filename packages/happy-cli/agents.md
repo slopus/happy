@@ -14,6 +14,7 @@
 - `packages/happy-cli/src/codex/codex.integration.test.ts`
 - `packages/happy-cli/src/claude/claude.integration.test.ts`
 - `packages/happy-cli/src/gemini/gemini.integration.test.ts`
+- `packages/happy-cli/src/minimax/minimax.integration.test.ts`
 - `packages/happy-cli/src/openclaw/openclaw.integration.test.ts`
 
 If an agent has extra integration-style files, only one file is the primary
