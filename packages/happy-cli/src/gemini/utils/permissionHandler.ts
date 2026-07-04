@@ -7,6 +7,7 @@
 
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
+import type { PushNotificationClient } from "@/api/pushNotifications";
 import type { PermissionMode } from '@/api/types';
 import {
     BasePermissionHandler,
@@ -23,8 +24,8 @@ export type { PermissionResult, PendingRequest };
 export class GeminiPermissionHandler extends BasePermissionHandler {
     private currentPermissionMode: PermissionMode = 'default';
 
-    constructor(session: ApiSessionClient) {
-        super(session);
+    constructor(session: ApiSessionClient, pushClient?: PushNotificationClient) {
+        super(session, pushClient);
     }
 
     protected getLogPrefix(): string {
@@ -158,4 +159,3 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
         });
     }
 }
-

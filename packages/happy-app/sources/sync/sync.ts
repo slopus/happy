@@ -134,6 +134,7 @@ class Sync {
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     private appState: AppStateStatus = AppState.currentState;
+    private visibleSessionId: string | null = null;
     private backgroundSendTimeout: ReturnType<typeof setTimeout> | null = null;
     private backgroundSendNotificationId: string | null = null;
     private backgroundSendStartedAt: number | null = null;
@@ -188,6 +189,9 @@ class Sync {
                 this.machinesSync.invalidate();
                 this.pushTokenSync.invalidate();
                 this.sessionsSync.invalidate();
+                if (this.visibleSessionId) {
+                    this.getMessagesSync(this.visibleSessionId).invalidate();
+                }
                 this.nativeUpdateSync.invalidate();
                 log.log('📱 App became active: Invalidating artifacts sync');
                 this.artifactsSync.invalidate();
@@ -285,6 +289,7 @@ class Sync {
 
 
     onSessionVisible = (sessionId: string) => {
+        this.visibleSessionId = sessionId;
         this.getMessagesSync(sessionId).invalidate();
 
         // Also invalidate git status sync for this session

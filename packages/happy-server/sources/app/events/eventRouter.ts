@@ -281,16 +281,20 @@ class EventRouter {
     // === PRESENCE QUERIES ===
 
     /**
-     * Returns true if the user has any non-machine socket that hasn't
-     * reported `app-state: background`.  Old clients that never send
-     * `app-state` are treated as active (connected = present).
+     * Returns true if the user has any UI socket that hasn't reported
+     * `app-state: background`. Session-scoped and machine-scoped sockets are
+     * agent/daemon connections, not a foreground user surface, so they must not
+     * suppress mobile push notifications.
+     *
+     * Old user-scoped clients that never send `app-state` are treated as active
+     * (connected = present).
      *
      * Uses fetchSockets() which works cross-replica via Redis streams adapter.
      */
     async hasActiveNonMachineSocket(userId: string): Promise<boolean> {
         const sockets = await this.io.in(`user:${userId}`).fetchSockets();
         return sockets.some(s => {
-            if (s.data.clientType === 'machine-scoped') return false;
+            if (s.data.clientType && s.data.clientType !== 'user-scoped') return false;
             // No app-state yet → old client or just connected; assume active
             const appState = s.data.appState as string | undefined;
             return appState !== 'background';
