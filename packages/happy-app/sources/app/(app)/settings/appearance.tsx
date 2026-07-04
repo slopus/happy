@@ -31,6 +31,7 @@ export default function AppearanceSettingsScreen() {
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
+    const [replaceAvatarWithFlavorIcon, setReplaceAvatarWithFlavorIcon] = useSettingMutable('replaceAvatarWithFlavorIcon');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
     
@@ -214,6 +215,17 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={showFlavorIcons}
                             onValueChange={setShowFlavorIcons}
+                        />
+                    }
+                />
+                <Item
+                    title={t('settingsAppearance.replaceAvatarWithFlavorIcon')}
+                    subtitle={t('settingsAppearance.replaceAvatarWithFlavorIconDescription')}
+                    icon={<Ionicons name="image-outline" size={29} color="#5856D6" />}
+                    rightElement={
+                        <Switch
+                            value={replaceAvatarWithFlavorIcon}
+                            onValueChange={setReplaceAvatarWithFlavorIcon}
                         />
                     }
                 />

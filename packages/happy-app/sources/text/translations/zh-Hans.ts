@@ -191,6 +191,8 @@ export const zhHans: TranslationStructure = {
         },
         showFlavorIcons: '显示 AI 提供商图标',
         showFlavorIconsDescription: '在会话头像上显示 AI 提供商图标',
+        replaceAvatarWithFlavorIcon: 'Replace Avatar with Model Icon',
+        replaceAvatarWithFlavorIconDescription: 'Show AI provider icon instead of session avatar',
     },
 
     settingsFeatures: {

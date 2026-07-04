@@ -25,6 +25,7 @@ export const SettingsSchema = z.object({
     agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
     avatarStyle: z.string().describe('Avatar display style'),
     showFlavorIcons: z.boolean().describe('Whether to show AI provider icons in avatars'),
+    replaceAvatarWithFlavorIcon: z.boolean().describe('Whether to replace session avatars with AI provider icons'),
 
     hideInactiveSessions: z.boolean().describe('Hide inactive sessions in the main list'),
     sortSessionsByActivity: z.boolean().describe('Sort the session list by last activity instead of creation date'),
@@ -97,6 +98,7 @@ export const settingsDefaults: Settings = {
     agentInputEnterToSend: true,
     avatarStyle: 'brutalist',
     showFlavorIcons: false,
+    replaceAvatarWithFlavorIcon: false,
 
     hideInactiveSessions: false,
     sortSessionsByActivity: false,

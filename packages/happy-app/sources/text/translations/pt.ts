@@ -189,6 +189,8 @@ export const pt: TranslationStructure = {
         },
         showFlavorIcons: 'Mostrar ícones de provedores de IA',
         showFlavorIconsDescription: 'Exibir ícones do provedor de IA nos avatares de sessão',
+        replaceAvatarWithFlavorIcon: 'Replace Avatar with Model Icon',
+        replaceAvatarWithFlavorIconDescription: 'Show AI provider icon instead of session avatar',
     },
 
     settingsFeatures: {

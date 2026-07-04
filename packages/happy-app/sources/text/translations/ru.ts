@@ -176,6 +176,8 @@ export const ru: TranslationStructure = {
         },
         showFlavorIcons: 'Показывать иконки провайдеров ИИ',
         showFlavorIconsDescription: 'Отображать иконки провайдеров ИИ на аватарах сессий',
+        replaceAvatarWithFlavorIcon: 'Replace Avatar with Model Icon',
+        replaceAvatarWithFlavorIconDescription: 'Show AI provider icon instead of session avatar',
     },
 
     settingsFeatures: {

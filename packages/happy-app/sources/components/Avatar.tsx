@@ -48,7 +48,43 @@ export const Avatar = React.memo((props: AvatarProps) => {
     const { flavor, size = 48, imageUrl, thumbhash, ...avatarProps } = props;
     const avatarStyle = useSetting('avatarStyle');
     const showFlavorIcons = useSetting('showFlavorIcons');
+    const replaceAvatarWithFlavorIcon = useSetting('replaceAvatarWithFlavorIcon');
     const { theme } = useUnistyles();
+
+    // Render flavor icon as main avatar when replacement is enabled
+    if (replaceAvatarWithFlavorIcon && flavor) {
+        const effectiveFlavor = flavor || 'claude';
+        const flavorIcon = flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
+        const bgColor = (monochrome?: boolean) => {
+            if (monochrome) return theme.colors.textSecondary + '20';
+            switch (effectiveFlavor) {
+                case 'claude': return '#E57035';
+                case 'codex': return theme.colors.surface;
+                case 'gemini': return '#4285F4';
+                case 'openclaw': return '#FF6B00';
+                default: return theme.colors.surface;
+            }
+        };
+        const iconTint = effectiveFlavor === 'codex' ? theme.colors.text : '#FFFFFF';
+
+        return (
+            <View style={{
+                width: size,
+                height: size,
+                borderRadius: avatarProps.square ? 0 : size / 2,
+                backgroundColor: bgColor(avatarProps.monochrome),
+                alignItems: 'center',
+                justifyContent: 'center',
+            }}>
+                <Image
+                    source={flavorIcon}
+                    style={{ width: size * 0.55, height: size * 0.55 }}
+                    contentFit="contain"
+                    tintColor={avatarProps.monochrome ? theme.colors.textSecondary : iconTint}
+                />
+            </View>
+        );
+    }
 
     // Render custom image if provided
     if (imageUrl) {
