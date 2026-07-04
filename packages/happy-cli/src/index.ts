@@ -611,6 +611,17 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
         unknownArgs.push('--dangerously-skip-permissions')
       } else if (arg === '--model') {
         options.model = args[++i]
+      } else if (arg === '--effort') {
+        // Initial Claude thinking effort (low | medium | high | xhigh | max).
+        // Passed by the daemon when the app spawns a session so runClaude
+        // doesn't fall back to its hardcoded 'medium' default.
+        const value = args[++i]
+        if (value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh' || value === 'max') {
+          options.effort = value
+        } else {
+          console.error(chalk.red(`Invalid --effort value: ${value}. Must be one of low, medium, high, xhigh, max`))
+          process.exit(1)
+        }
       } else if (arg === '--started-by') {
         options.startedBy = args[++i] as 'daemon' | 'terminal'
       } else if (arg === '--js-runtime') {
