@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { KNOWN_ACP_AGENTS, resolveAcpAgentConfig } from './acpAgentConfig';
 
 describe('KNOWN_ACP_AGENTS', () => {
-  it('defines built-in Gemini and OpenCode command mappings', () => {
+  it('defines built-in Gemini, OpenCode, and Kimi command mappings', () => {
     expect(KNOWN_ACP_AGENTS).toEqual({
       gemini: { command: 'gemini', args: ['--experimental-acp'] },
       opencode: { command: 'opencode', args: ['acp'] },
+      kimi: { command: 'kimi', args: ['acp'] },
     });
   });
 });
@@ -16,6 +17,11 @@ describe('resolveAcpAgentConfig', () => {
       agentName: 'gemini',
       command: 'gemini',
       args: ['--experimental-acp'],
+    });
+    expect(resolveAcpAgentConfig(['kimi'])).toEqual({
+      agentName: 'kimi',
+      command: 'kimi',
+      args: ['acp'],
     });
   });
 
