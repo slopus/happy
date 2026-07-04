@@ -1,10 +1,10 @@
 import * as React from 'react';
-import { useRoute } from "@react-navigation/native";
+import { useLocalSearchParams } from 'expo-router';
 import { SessionView } from '@/-session/SessionView';
 
 
 export default React.memo(() => {
-    const route = useRoute();
-    const sessionId = (route.params! as any).id as string;
-    return (<SessionView id={sessionId} />);
+    const { id, autoVoice } = useLocalSearchParams<{ id: string; autoVoice?: string }>();
+    const shouldAutoStartVoice = autoVoice === '1' || autoVoice === 'true';
+    return (<SessionView id={id} autoVoice={shouldAutoStartVoice} />);
 });
