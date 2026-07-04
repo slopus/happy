@@ -108,6 +108,10 @@ function preparePublishPackage() {
             ...cliPackage.dependencies,
             '@slopus/happy-wire': wirePackage.version
         },
+        scripts: {
+            ...cliPackage.scripts,
+            prepublishOnly: 'node scripts/guard-publish-artifact.cjs . --install-smoke'
+        },
         bundledDependencies: BUNDLED_DEPENDENCIES
     };
 

@@ -10,3 +10,19 @@ When the user says `sync to main` or `synt to main`, they mean:
    `git push origin HEAD:main`
 
 Do not force push for this workflow.
+
+## Happy CLI Local Install / Publish
+
+`packages/happy-cli` imports `@slopus/happy-wire` at runtime, while the source
+workspace uses `file:../happy-wire`. Do not use `npm install -g .` or `npm link`
+from `packages/happy-cli` for daemon runtime installs; that can recreate
+`ERR_MODULE_NOT_FOUND: Cannot find package '@slopus/happy-wire'`.
+
+Use:
+
+```bash
+corepack pnpm -C packages/happy-cli run cli:install
+```
+
+Publish only a package prepared by `packages/happy-cli/scripts/prepare-publish-package.cjs`
+and verified with `packages/happy-cli/scripts/guard-publish-artifact.cjs --install-smoke`.

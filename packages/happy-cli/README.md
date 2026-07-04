@@ -148,6 +148,37 @@ yarn workspace happy cli --help
 
 ## Troubleshooting
 
+### `Cannot find package '@slopus/happy-wire'`
+
+Symptom:
+
+```text
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@slopus/happy-wire'
+```
+
+Cause: the source package uses the workspace dependency
+`@slopus/happy-wire: file:../happy-wire`. Installing or linking the source
+directory directly can leave the global package without that runtime
+dependency.
+
+Fix from this checkout:
+
+```bash
+# from the aplus-dev-studio repo root
+cd vendor/happy/packages/happy-cli
+corepack pnpm run cli:install
+```
+
+Avoid `npm install -g .` and `npm link` for daemon runtime installs. For publish
+work, prepare a clean package first and guard it:
+
+```bash
+tmp=$(mktemp -d)
+corepack pnpm run build
+node scripts/prepare-publish-package.cjs --out "$tmp/package"
+node scripts/guard-publish-artifact.cjs "$tmp/package" --install-smoke
+```
+
 ### Remote terminal — `posix_spawnp failed.` on macOS
 
 Symptom (web-ui "터미널" tab 또는 daemon log):

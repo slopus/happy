@@ -1,6 +1,6 @@
 {
   "name": "@namsangboy/happy-cli",
-  "version": "1.1.10-aplus.39",
+  "version": "1.1.10-aplus.40",
   "description": "A+ Dev Studio fork of slopus/happy. Mobile and Web client for Claude Code and Codex.",
   "author": "Kirill Dubovitskiy (upstream), justinbuzzni (aplus fork)",
   "license": "MIT",
@@ -74,7 +74,9 @@
     "test": "pnpm run build && vitest run --project unit",
     "test:integration": "pnpm run build && vitest run --project integration-empty --project integration-plan-mode --project integration-authenticated",
     "cli:install": "node scripts/install-local.cjs",
-    "prepublishOnly": "pnpm test",
+    "prepare:publish": "node scripts/prepare-publish-package.cjs",
+    "guard:publish": "node scripts/guard-publish-artifact.cjs",
+    "prepublishOnly": "pnpm test && node scripts/guard-publish-artifact.cjs . --install-smoke",
     "postinstall": "node scripts/unpack-tools.cjs && node scripts/fix-node-pty-perms.cjs"
   },
   "dependencies": {
