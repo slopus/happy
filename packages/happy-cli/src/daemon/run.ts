@@ -45,6 +45,7 @@ import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import { resolveRegularSpawnAgentArgs, resolveTmuxSpawnAgentCommand } from './spawnAgentCommand';
 import { applyServerSessionSnapshot, parseServerSessionSnapshot, type ServerSessionSnapshot } from './serverSessionSnapshot';
 import { readDaemonSessionIdleReaperConfig, runDaemonSessionIdleReaperTick } from './sessionIdleReaper';
+import { waitForSessionWebhook } from './spawnWebhookWait';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -573,29 +574,11 @@ export async function startDaemon(): Promise<void> {
             pidToTrackedSession.set(tmuxResult.pid, trackedSession);
             sessionStartTimes.set(tmuxResult.pid, Date.now());
 
-            // Wait for webhook to populate session with happySessionId (exact same as regular flow)
-            logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux)`);
-
-            return new Promise((resolve) => {
-              // Set timeout for webhook (same as regular flow)
-              const timeout = setTimeout(() => {
-                pidToAwaiter.delete(tmuxResult.pid!);
-                logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${tmuxResult.pid} (tmux)`);
-                resolve({
-                  type: 'error',
-                  errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`
-                });
-              }, 15_000); // Same timeout as regular sessions
-
-              // Register awaiter for tmux session (exact same as regular flow)
-              pidToAwaiter.set(tmuxResult.pid!, (completedSession) => {
-                clearTimeout(timeout);
-                logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook (tmux)`);
-                resolve({
-                  type: 'success',
-                  sessionId: completedSession.happySessionId!
-                });
-              });
+            return waitForSessionWebhook({
+              pid: tmuxResult.pid,
+              pidToAwaiter,
+              label: '(tmux)',
+              logger,
             });
           } else {
             logger.debug(`[DAEMON RUN] Failed to spawn in tmux: ${tmuxResult.error}, falling back to regular spawning`);
@@ -722,26 +705,10 @@ export async function startDaemon(): Promise<void> {
         }
       });
 
-      logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${happyProcess.pid}`);
-
-      return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          pidToAwaiter.delete(happyProcess.pid!);
-          logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
-          resolve({
-            type: 'error',
-            errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
-          });
-        }, 15_000);
-
-        pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
-          clearTimeout(timeout);
-          logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`);
-          resolve({
-            type: 'success',
-            sessionId: completedSession.happySessionId!
-          });
-        });
+      return waitForSessionWebhook({
+        pid: happyProcess.pid,
+        pidToAwaiter,
+        logger,
       });
     };
 
