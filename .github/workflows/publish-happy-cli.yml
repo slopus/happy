@@ -83,6 +83,20 @@ jobs:
             - name: Verify published package
               run: |
                   VERSION="$(node -p "require('./packages/happy-cli/package.json').version")"
+                  TARBALL_URL=""
+                  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+                      TARBALL_URL="$(npm view "@namsangboy/happy-cli@$VERSION" dist.tarball 2>/dev/null || true)"
+                      if [ -n "$TARBALL_URL" ] && curl -fsI "$TARBALL_URL" >/dev/null; then
+                          break
+                      fi
+                      echo "Waiting for npm tarball propagation ($attempt/20): ${TARBALL_URL:-metadata unavailable}"
+                      sleep 30
+                  done
+                  if [ -z "$TARBALL_URL" ] || ! curl -fsI "$TARBALL_URL" >/dev/null; then
+                      echo "::error::published tarball is not available yet for @namsangboy/happy-cli@$VERSION"
+                      exit 1
+                  fi
+
                   PREFIX="$(mktemp -d)"
                   CACHE="$(mktemp -d)"
                   HAPPY_HOME="$(mktemp -d)"

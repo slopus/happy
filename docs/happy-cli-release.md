@@ -40,13 +40,66 @@ npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/happy-cli-pack"
 PUBLISH_TGZ="$(ls "$RUNNER_TEMP"/happy-cli-pack/*.tgz)"
 node "$REPO/packages/happy-cli/scripts/guard-publish-artifact.cjs" "$PUBLISH_TGZ" --install-smoke
 npm publish --access public --tag latest --ignore-scripts
-npm install -g "@namsangboy/happy-cli@$(node -p 'require("./package.json").version')" --ignore-scripts --prefer-online
+VERSION="$(node -p 'require("./package.json").version')"
+TARBALL_URL="$(npm view "@namsangboy/happy-cli@$VERSION" dist.tarball)"
+until curl -fsI "$TARBALL_URL" >/dev/null; do
+  echo "waiting for npm tarball propagation: $TARBALL_URL"
+  sleep 30
+done
+npm install -g "@namsangboy/happy-cli@$VERSION" --ignore-scripts --prefer-online
 HAPPY_HOME_DIR="$(mktemp -d)" happy daemon status
 ```
 
 The final `npm publish` runs from inside the prepared directory. Do not replace it with `npm publish "$RUNNER_TEMP/happy-cli-publish"`; that form can pack the same files without the bundled dependency set. The command includes `--tag latest` because `*-aplus.*` versions are semver prereleases and npm requires an explicit dist-tag for those publishes.
 
 After publish, always install the exact version from the npm registry and run `happy daemon status`. This verifies that the registry metadata, registry tarball, bundled dependency files, and CLI entrypoint all work outside the monorepo.
+
+## npm Tarball Propagation
+
+`npm publish` can print `+ @namsangboy/happy-cli@<version>` before every registry edge can serve the tarball blob. During that window, `npm view @namsangboy/happy-cli@<version>` and the `latest` dist-tag can already show the new version, while the package tarball URL still returns HTTP 404.
+
+This is an npm registry/CDN propagation delay between package metadata and the tarball object, not a CLI runtime failure. Do not immediately republish just because the first registry install gets a 404. Treat publish as complete only after the tarball URL returns 200 and the registry install smoke passes.
+
+Use this wait loop after every publish:
+
+```sh
+VERSION="$(node -p 'require("./package.json").version')"
+TARBALL_URL="$(npm view "@namsangboy/happy-cli@$VERSION" dist.tarball)"
+until curl -fsI "$TARBALL_URL" >/dev/null; do
+  echo "waiting for npm tarball propagation: $TARBALL_URL"
+  sleep 30
+done
+npm install -g "@namsangboy/happy-cli@$VERSION" --ignore-scripts --prefer-online
+HAPPY_HOME_DIR="$(mktemp -d)" happy daemon status
+```
+
+Observed on `1.1.10-aplus.37` and `1.1.10-aplus.38`: metadata appeared first, tarball URL returned 404 for a few minutes, then the same URL became 200. The fastest safe release path is to start this polling immediately after `npm publish` succeeds, not to retry publish.
+
+## GitHub Repository Targeting
+
+The local git remote can point at `buzzni/happy` while GitHub CLI may still infer `slopus/happy` from repository metadata. Always pass `--repo buzzni/happy` for Happy PR commands:
+
+```sh
+gh pr create --repo buzzni/happy --base main --head <branch> --title "<title>" --body-file <body-file>
+gh pr view <number> --repo buzzni/happy --json state,mergeCommit,url
+gh pr checks <number> --repo buzzni/happy --watch=false
+gh pr merge <number> --repo buzzni/happy --squash --delete-branch
+```
+
+Do not rely on `gh repo view` or the default inferred repository for this fork.
+
+## Completion Checklist
+
+Every Happy CLI publish is complete only after all of these are true:
+
+1. The release change is merged into `buzzni/happy` `main`.
+2. `@namsangboy/happy-cli@<version>` is published and `latest` points to that version.
+3. The npm tarball URL returns 200.
+4. A fresh registry install runs `happy daemon status` successfully.
+5. `buzzni/aplus-dev-studio` updates `vendor/happy` to the merged `buzzni/happy` `main` commit.
+6. The root repo `vendor/happy` pointer PR is merged into `buzzni/aplus-dev-studio` `main`.
+
+When the root repo has unrelated local work, use a temporary root worktree from `origin/main` for the pointer PR so release cleanup does not mix with local changes.
 
 ## Why 1.1.10-aplus.36 Failed
 
