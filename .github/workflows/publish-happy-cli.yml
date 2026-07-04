@@ -72,9 +72,25 @@ jobs:
               run: node packages/happy-cli/scripts/guard-publish-artifact.cjs "${{ steps.pack_publish_artifact.outputs.tarball }}" --install-smoke
 
             - name: Publish to npm
-              # Publish the exact tarball that passed the guard, not a directory path.
+              working-directory: ${{ runner.temp }}/happy-cli-publish
+              # Publish from inside the prepared directory, not by passing a directory path.
               # The guard above fails if workspace/file dependencies leak into npm metadata.
-              run: npm publish "${{ steps.pack_publish_artifact.outputs.tarball }}" --access public --tag latest --ignore-scripts
+              run: npm publish --access public --tag latest --ignore-scripts
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
                   NPM_CONFIG_PROVENANCE: 'true'
+
+            - name: Verify published package
+              run: |
+                  VERSION="$(node -p "require('./packages/happy-cli/package.json').version")"
+                  PREFIX="$(mktemp -d)"
+                  CACHE="$(mktemp -d)"
+                  HAPPY_HOME="$(mktemp -d)"
+                  for attempt in 1 2 3 4 5 6; do
+                      if npm install --prefix "$PREFIX" -g "@namsangboy/happy-cli@$VERSION" --ignore-scripts --prefer-online --cache "$CACHE"; then
+                          HAPPY_HOME_DIR="$HAPPY_HOME" node "$PREFIX/lib/node_modules/@namsangboy/happy-cli/bin/happy.mjs" daemon status
+                          exit 0
+                      fi
+                      sleep 20
+                  done
+                  exit 1

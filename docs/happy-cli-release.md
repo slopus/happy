@@ -39,10 +39,14 @@ mkdir -p "$RUNNER_TEMP/happy-cli-pack"
 npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/happy-cli-pack"
 PUBLISH_TGZ="$(ls "$RUNNER_TEMP"/happy-cli-pack/*.tgz)"
 node "$REPO/packages/happy-cli/scripts/guard-publish-artifact.cjs" "$PUBLISH_TGZ" --install-smoke
-npm publish "$PUBLISH_TGZ" --access public --tag latest --ignore-scripts
+npm publish --access public --tag latest --ignore-scripts
+npm install -g "@namsangboy/happy-cli@$(node -p 'require("./package.json").version')" --ignore-scripts --prefer-online
+HAPPY_HOME_DIR="$(mktemp -d)" happy daemon status
 ```
 
-The final `npm publish` publishes the exact `.tgz` that passed the guard. Do not replace it with `npm publish "$RUNNER_TEMP/happy-cli-publish"`; that form can pack the same files without the bundled dependency set. The command includes `--tag latest` because `*-aplus.*` versions are semver prereleases and npm requires an explicit dist-tag for those publishes.
+The final `npm publish` runs from inside the prepared directory. Do not replace it with `npm publish "$RUNNER_TEMP/happy-cli-publish"`; that form can pack the same files without the bundled dependency set. The command includes `--tag latest` because `*-aplus.*` versions are semver prereleases and npm requires an explicit dist-tag for those publishes.
+
+After publish, always install the exact version from the npm registry and run `happy daemon status`. This verifies that the registry metadata, registry tarball, bundled dependency files, and CLI entrypoint all work outside the monorepo.
 
 ## Why 1.1.10-aplus.36 Failed
 
@@ -58,7 +62,7 @@ That directory-path publish produced registry metadata that still declared bundl
 Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@slopus/happy-wire' imported from .../@namsangboy/happy-cli/dist/index.mjs
 ```
 
-The fix is to pack from inside the prepared directory, guard the resulting `.tgz`, and publish that exact `.tgz`. The install smoke must also execute the installed `happy` entrypoint so missing runtime imports fail before publish.
+The fix is to pack from inside the prepared directory, guard the resulting `.tgz`, publish from inside that same prepared directory, and then run a post-publish registry install smoke. The install smoke must also execute the installed `happy` entrypoint so missing runtime imports fail before release completion.
 
 ## Why 1.1.8-aplus.22 Failed
 
@@ -95,6 +99,6 @@ Do not remove this guard from the publish workflow.
 
 That is not enough for this fork right now. The CLI currently needs the local A+ `@slopus/happy-wire` build bundled into the CLI package, and direct packing from the pnpm workspace can still expose workspace-shaped paths or incomplete bundled dependency content if the artifact is not prepared cleanly first.
 
-Current rule: build with pnpm, prepare a clean publish directory, pack a `.tgz` from inside that directory, guard that `.tgz`, then publish that exact `.tgz`.
+Current rule: build with pnpm, prepare a clean publish directory, pack a `.tgz` from inside that directory, guard that `.tgz`, publish from inside the prepared directory, then verify the exact published version by installing from the npm registry.
 
 If `@slopus/happy-wire` or an A+ scoped replacement is later published independently with its own bumped version, we can revisit this and simplify the release path to versioned workspace dependencies plus `pnpm publish`/`pnpm pack`.
