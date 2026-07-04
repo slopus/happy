@@ -28,6 +28,7 @@ import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
+import { scheduleSigkillFallback } from './processLifecycle';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -65,15 +66,27 @@ export async function startDaemon(): Promise<void> {
     requestShutdown = (source, errorMessage) => {
       logger.debug(`[DAEMON RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
 
-      // Fallback - in case startup malfunctions - we will force exit the process with code 1
+      // Fallback - in case startup malfunctions - we will force exit the process with code 1.
+      //
+      // The graceful shutdown path runs `cleanupAndShutdown` which awaits
+      // metadata updates, `apiMachine.shutdown()`, `stopControlServer()`,
+      // `cleanupDaemonState()`, `stopCaffeinate()`, and `releaseDaemonLock()`
+      // — and any in-flight `persistSession(...)` writes for session
+      // encryption keys must finish before we hard-exit, otherwise a session
+      // started <100ms before this fires becomes unresumable on next launch
+      // (its key never made it to `sessions.json`).
+      //
+      // 1s was empirically too tight on slow disks (CI runners, FileVault
+      // throttling, network-mounted home dirs). 5s leaves comfortable
+      // headroom while still bounding shutdown latency.
       setTimeout(async () => {
-        logger.debug('[DAEMON RUN] Startup malfunctioned, forcing exit with code 1');
+        logger.debug('[DAEMON RUN] Graceful shutdown did not finish in time, forcing exit with code 1');
 
         // Give time for logs to be flushed
         await new Promise(resolve => setTimeout(resolve, 100))
 
         process.exit(1);
-      }, 1_000);
+      }, 5_000);
 
       // Start graceful shutdown
       resolve({ source, errorMessage });
@@ -722,6 +735,12 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
+    // Grace period after SIGTERM before SIGKILL fallback escalation.
+    // Agent CLIs (claude, codex, gemini) may have signal handlers that
+    // checkpoint conversation state or run cleanup tools — allow ~3s for
+    // a clean exit before forcing termination.
+    const SIGKILL_GRACE_MS = 3_000;
+
     // Stop a session by sessionId or PID fallback
     const stopSession = (sessionId: string): boolean => {
       logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
@@ -735,6 +754,13 @@ export async function startDaemon(): Promise<void> {
             try {
               session.childProcess.kill('SIGTERM');
               logger.debug(`[DAEMON RUN] Sent SIGTERM to daemon-spawned session ${sessionId}`);
+              scheduleSigkillFallback({
+                pid,
+                sessionId,
+                childProcess: session.childProcess,
+                graceMs: SIGKILL_GRACE_MS,
+                log: logger.debug.bind(logger),
+              });
             } catch (error) {
               logger.debug(`[DAEMON RUN] Failed to kill session ${sessionId}:`, error);
             }
