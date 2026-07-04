@@ -51,6 +51,7 @@ import {
     getHardcodedModelModes,
     getEffortLevelsForModel,
     getSupportsWorktree,
+    resolveModeIndex,
     type PermissionMode,
     type ModelMode,
     type EffortLevel,
@@ -752,16 +753,16 @@ function NewSessionScreen() {
     const showEffort = effortLevels.length > 0;
     const showPermission = permissionModes.length > 1;
 
-    // Reset indices when agent/default settings change.
+    // Restore the user's saved pick (or fall back to the agent default) when
+    // the agent / default settings change. The draft persists the last
+    // explicit model & permission pick; prefer it so selections survive
+    // navigation and app restarts, else use the agent default.
     React.useEffect(() => {
-        const defaultPermIdx = permissionModes.findIndex(m => m.key === effectiveAgentDefaults.permissionMode);
-        setPermissionIndex(defaultPermIdx >= 0 ? defaultPermIdx : 0);
-
-        const defaultModelIdx = modelModes.findIndex(m => m.key === effectiveAgentDefaults.modelMode);
-        setModelIndex(defaultModelIdx >= 0 ? defaultModelIdx : 0);
+        setPermissionIndex(resolveModeIndex(permissionModes, draft.permissionMode, effectiveAgentDefaults.permissionMode));
+        setModelIndex(resolveModeIndex(modelModes, draft.modelMode, effectiveAgentDefaults.modelMode));
 
         if (!supportsWorktree) setWorktreeKey('__none__');
-    }, [permissionModes, modelModes, supportsWorktree, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode]);
+    }, [permissionModes, modelModes, supportsWorktree, draft.permissionMode, draft.modelMode, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode]);
 
     // Reset effort when model changes
     React.useEffect(() => {
