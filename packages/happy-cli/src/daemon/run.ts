@@ -28,6 +28,7 @@ import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
+import { createHappyChildEnv, createHappyTmuxChildEnv } from '@/utils/happyReconnectEnv';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -412,22 +413,15 @@ export async function startDaemon(): Promise<void> {
           const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
 
           // Spawn in tmux with environment variables
-          // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
+          // IMPORTANT: Pass complete non-reconnect environment (process.env + extraEnv) because:
           // 1. tmux sessions need daemon's expanded auth variables (e.g., ANTHROPIC_AUTH_TOKEN)
-          // 2. Regular spawn uses env: { ...process.env, ...extraEnv }
+          // 2. Regular spawn uses the same sanitized env base
           // 3. tmux needs explicit environment via -e flags to ensure all variables are available
           const windowName = `happy-${Date.now()}-${agent}`;
-          const tmuxEnv: Record<string, string> = {};
-
-          // Add all daemon environment variables (filtering out undefined)
-          for (const [key, value] of Object.entries(process.env)) {
-            if (value !== undefined) {
-              tmuxEnv[key] = value;
-            }
-          }
-
-          // Add extra environment variables (these should already be filtered)
-          Object.assign(tmuxEnv, extraEnv);
+          const tmuxEnv = createHappyTmuxChildEnv({
+            ...process.env,
+            ...extraEnv,
+          });
 
           const tmuxResult = await tmux.spawnInTmux([fullCommand], {
             sessionName: tmuxSessionName,
@@ -533,10 +527,10 @@ export async function startDaemon(): Promise<void> {
           return spawnTrackedHappyProcess({
             args,
             cwd: directory,
-            env: {
+            env: createHappyChildEnv({
               ...process.env,
-              ...extraEnv
-            },
+              ...extraEnv,
+            }),
             directoryCreated,
             message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined,
           });
@@ -703,7 +697,7 @@ export async function startDaemon(): Promise<void> {
           args: launch.args,
           cwd: launch.cwd,
           env: {
-            ...process.env,
+            ...createHappyChildEnv(),
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
             HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption.encryptionKey),
             HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption.encryptionVariant,
@@ -901,7 +895,8 @@ export async function startDaemon(): Promise<void> {
         try {
           spawnHappyCLI(['daemon', 'start'], {
             detached: true,
-            stdio: 'ignore'
+            stdio: 'ignore',
+            env: createHappyChildEnv(),
           });
         } catch (error) {
           logger.debug('[DAEMON RUN] Failed to spawn new daemon, this is quite likely to happen during integration tests as we are cleaning out dist/ directory', error);

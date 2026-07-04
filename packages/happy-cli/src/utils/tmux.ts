@@ -820,7 +820,7 @@ export class TmuxUtilities {
                         .replace(/\$/g, '\\$')    // Dollar signs
                         .replace(/`/g, '\\`');    // Backticks
 
-                    createWindowArgs.push('-e', `${key}="${escapedValue}"`);
+                    createWindowArgs.push('-e', value === '' ? `${key}=` : `${key}="${escapedValue}"`);
                 }
                 logger.debug(`[TMUX] Setting ${Object.keys(env).length} environment variables in tmux window`);
             }

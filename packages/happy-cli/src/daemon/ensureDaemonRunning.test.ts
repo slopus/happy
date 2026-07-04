@@ -47,7 +47,11 @@ describe('ensureDaemonRunning', () => {
 
   it('starts the daemon and waits for readiness when the installed version is not running', async () => {
     const mockUnref = vi.fn()
+    const originalReconnectSessionId = process.env.HAPPY_RECONNECT_SESSION_ID
+    const originalReconnectEncryptionKey = process.env.HAPPY_RECONNECT_ENCRYPTION_KEY
     mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion.mockResolvedValue(false)
+    process.env.HAPPY_RECONNECT_SESSION_ID = 'stale-session'
+    process.env.HAPPY_RECONNECT_ENCRYPTION_KEY = 'stale-key'
     mocks.mockSpawnHappyCLI.mockReturnValue({
       unref: mockUnref,
     })
@@ -55,16 +59,34 @@ describe('ensureDaemonRunning', () => {
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true)
 
-    await ensureDaemonRunning()
+    try {
+      await ensureDaemonRunning()
 
-    expect(mocks.mockSpawnHappyCLI).toHaveBeenCalledWith(['daemon', 'start-sync'], {
-      detached: true,
-      stdio: 'ignore',
-      env: process.env,
-    })
-    expect(mockUnref).toHaveBeenCalled()
-    expect(mocks.mockCheckIfDaemonRunningAndCleanupStaleState).toHaveBeenCalledTimes(2)
-    expect(mocks.mockLoggerDebug).toHaveBeenCalledWith('Starting Happy background service...')
-    expect(mocks.mockLoggerDebug).toHaveBeenCalledWith('Happy background service is ready')
+      expect(mocks.mockSpawnHappyCLI).toHaveBeenCalledWith(['daemon', 'start-sync'], expect.objectContaining({
+        detached: true,
+        stdio: 'ignore',
+        env: expect.objectContaining({
+          PATH: process.env.PATH,
+        }),
+      }))
+      const spawnOptions = mocks.mockSpawnHappyCLI.mock.calls[0][1]
+      expect(spawnOptions.env).not.toHaveProperty('HAPPY_RECONNECT_SESSION_ID')
+      expect(spawnOptions.env).not.toHaveProperty('HAPPY_RECONNECT_ENCRYPTION_KEY')
+      expect(mockUnref).toHaveBeenCalled()
+      expect(mocks.mockCheckIfDaemonRunningAndCleanupStaleState).toHaveBeenCalledTimes(2)
+      expect(mocks.mockLoggerDebug).toHaveBeenCalledWith('Starting Happy background service...')
+      expect(mocks.mockLoggerDebug).toHaveBeenCalledWith('Happy background service is ready')
+    } finally {
+      if (originalReconnectSessionId === undefined) {
+        delete process.env.HAPPY_RECONNECT_SESSION_ID
+      } else {
+        process.env.HAPPY_RECONNECT_SESSION_ID = originalReconnectSessionId
+      }
+      if (originalReconnectEncryptionKey === undefined) {
+        delete process.env.HAPPY_RECONNECT_ENCRYPTION_KEY
+      } else {
+        process.env.HAPPY_RECONNECT_ENCRYPTION_KEY = originalReconnectEncryptionKey
+      }
+    }
   })
 })
