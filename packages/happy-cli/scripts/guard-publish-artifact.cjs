@@ -19,6 +19,13 @@ const EXPECTED_BUNDLED_FILES = [
     'package/node_modules/@paralleldrive/cuid2/package.json',
     'package/node_modules/@paralleldrive/cuid2/node_modules/@noble/hashes/package.json'
 ];
+const EXPECTED_INSTALLED_FILES = [
+    'node_modules/@slopus/happy-wire/package.json',
+    'node_modules/@slopus/happy-wire/dist/index.mjs',
+    'node_modules/zod/package.json',
+    'node_modules/@paralleldrive/cuid2/package.json',
+    'node_modules/@paralleldrive/cuid2/node_modules/@noble/hashes/package.json'
+];
 const MAX_PRINTED_ERRORS = 30;
 
 function parseArgs(argv) {
@@ -158,6 +165,7 @@ function collectTarErrors(entries) {
 
 function runInstallSmoke(tarball, packageJson) {
     const prefix = fs.mkdtempSync(path.join(os.tmpdir(), 'happy-cli-install-'));
+    const happyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'happy-cli-smoke-home-'));
 
     try {
         run('npm', [
@@ -177,24 +185,24 @@ function runInstallSmoke(tarball, packageJson) {
             'happy-cli',
             'package.json'
         );
-        const installedWirePath = path.join(
+        const installedRoot = path.join(
             prefix,
             'lib',
             'node_modules',
             '@namsangboy',
-            'happy-cli',
-            'node_modules',
-            '@slopus',
-            'happy-wire',
-            'package.json'
+            'happy-cli'
         );
 
         if (!fs.existsSync(installedPackagePath)) {
             throw new Error(`Smoke install did not create ${installedPackagePath}`);
         }
 
-        if (!fs.existsSync(installedWirePath)) {
-            throw new Error(`Smoke install did not include bundled happy-wire at ${installedWirePath}`);
+        for (const expectedFile of EXPECTED_INSTALLED_FILES) {
+            const installedPath = path.join(installedRoot, expectedFile);
+
+            if (!fs.existsSync(installedPath)) {
+                throw new Error(`Smoke install did not include bundled file at ${installedPath}`);
+            }
         }
 
         const installedPackage = JSON.parse(fs.readFileSync(installedPackagePath, 'utf8'));
@@ -202,8 +210,21 @@ function runInstallSmoke(tarball, packageJson) {
         if (installedPackage.version !== packageJson.version) {
             throw new Error(`Smoke install version mismatch: expected ${packageJson.version}, got ${installedPackage.version}`);
         }
+
+        run(process.execPath, [
+            path.join(installedRoot, 'bin', 'happy.mjs'),
+            'daemon',
+            'status'
+        ], {
+            env: {
+                ...process.env,
+                HAPPY_HOME_DIR: happyHome
+            },
+            timeout: 30000
+        });
     } finally {
         fs.rmSync(prefix, { force: true, recursive: true });
+        fs.rmSync(happyHome, { force: true, recursive: true });
     }
 }
 

@@ -59,14 +59,22 @@ jobs:
             - name: Prepare publish artifact
               run: node packages/happy-cli/scripts/prepare-publish-package.cjs --out "$RUNNER_TEMP/happy-cli-publish"
 
+            - name: Pack publish artifact
+              id: pack_publish_artifact
+              working-directory: ${{ runner.temp }}/happy-cli-publish
+              run: |
+                  mkdir -p "$RUNNER_TEMP/happy-cli-pack"
+                  npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/happy-cli-pack"
+                  TARBALL="$(ls "$RUNNER_TEMP"/happy-cli-pack/*.tgz)"
+                  echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+
             - name: Guard publish artifact
-              run: node packages/happy-cli/scripts/guard-publish-artifact.cjs "$RUNNER_TEMP/happy-cli-publish" --install-smoke
+              run: node packages/happy-cli/scripts/guard-publish-artifact.cjs "${{ steps.pack_publish_artifact.outputs.tarball }}" --install-smoke
 
             - name: Publish to npm
-              working-directory: ${{ runner.temp }}/happy-cli-publish
-              # Publish the prepared artifact, not the raw pnpm workspace package.
+              # Publish the exact tarball that passed the guard, not a directory path.
               # The guard above fails if workspace/file dependencies leak into npm metadata.
-              run: npm publish --access public --tag latest --ignore-scripts
+              run: npm publish "${{ steps.pack_publish_artifact.outputs.tarball }}" --access public --tag latest --ignore-scripts
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
                   NPM_CONFIG_PROVENANCE: 'true'

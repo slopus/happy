@@ -32,13 +32,33 @@ The source package can use local workspace wiring during development, but the np
 The release workflow therefore does this after build:
 
 ```sh
+REPO="$(pwd)"
 node packages/happy-cli/scripts/prepare-publish-package.cjs --out "$RUNNER_TEMP/happy-cli-publish"
-node packages/happy-cli/scripts/guard-publish-artifact.cjs "$RUNNER_TEMP/happy-cli-publish" --install-smoke
 cd "$RUNNER_TEMP/happy-cli-publish"
-npm publish --access public --tag latest --ignore-scripts
+mkdir -p "$RUNNER_TEMP/happy-cli-pack"
+npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/happy-cli-pack"
+PUBLISH_TGZ="$(ls "$RUNNER_TEMP"/happy-cli-pack/*.tgz)"
+node "$REPO/packages/happy-cli/scripts/guard-publish-artifact.cjs" "$PUBLISH_TGZ" --install-smoke
+npm publish "$PUBLISH_TGZ" --access public --tag latest --ignore-scripts
 ```
 
-The final `npm publish` runs inside the prepared directory so npm preserves bundled dependencies. Do not replace it with `npm publish "$RUNNER_TEMP/happy-cli-publish"`; that form can pack the same files without the bundled dependency set. The command includes `--tag latest` because `*-aplus.*` versions are semver prereleases and npm requires an explicit dist-tag for those publishes.
+The final `npm publish` publishes the exact `.tgz` that passed the guard. Do not replace it with `npm publish "$RUNNER_TEMP/happy-cli-publish"`; that form can pack the same files without the bundled dependency set. The command includes `--tag latest` because `*-aplus.*` versions are semver prereleases and npm requires an explicit dist-tag for those publishes.
+
+## Why 1.1.10-aplus.36 Failed
+
+`1.1.10-aplus.36` was prepared from the clean publish directory but was manually published with:
+
+```sh
+npm publish "$RUNNER_TEMP/happy-cli-publish" --access public --tag latest --ignore-scripts
+```
+
+That directory-path publish produced registry metadata that still declared bundled dependencies, including `@slopus/happy-wire`, `zod`, `@paralleldrive/cuid2`, and `@noble/hashes`, but the published tarball did not contain the bundled `node_modules` entries. npm then trusted the `bundledDependencies` metadata and did not install those packages from the registry. A fresh global install failed before daemon code ran:
+
+```text
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@slopus/happy-wire' imported from .../@namsangboy/happy-cli/dist/index.mjs
+```
+
+The fix is to pack from inside the prepared directory, guard the resulting `.tgz`, and publish that exact `.tgz`. The install smoke must also execute the installed `happy` entrypoint so missing runtime imports fail before publish.
 
 ## Why 1.1.8-aplus.22 Failed
 
@@ -64,7 +84,8 @@ This was introduced when upstream pnpm workspace metadata was merged back into t
 - `@slopus/happy-wire` is missing or points to a local-only protocol;
 - the tarball contains pnpm workspace paths such as `node_modules/.pnpm` or `../`;
 - required bundled files are missing;
-- the optional global install smoke test cannot install the tarball.
+- the optional global install smoke test cannot install the tarball;
+- the optional global install smoke test cannot execute the installed `happy daemon status` entrypoint.
 
 Do not remove this guard from the publish workflow.
 
@@ -74,6 +95,6 @@ Do not remove this guard from the publish workflow.
 
 That is not enough for this fork right now. The CLI currently needs the local A+ `@slopus/happy-wire` build bundled into the CLI package, and direct packing from the pnpm workspace can still expose workspace-shaped paths or incomplete bundled dependency content if the artifact is not prepared cleanly first.
 
-Current rule: build with pnpm, prepare a clean publish directory, guard the packed artifact, then run `npm publish --access public --tag latest --ignore-scripts` from inside that directory.
+Current rule: build with pnpm, prepare a clean publish directory, pack a `.tgz` from inside that directory, guard that `.tgz`, then publish that exact `.tgz`.
 
 If `@slopus/happy-wire` or an A+ scoped replacement is later published independently with its own bumped version, we can revisit this and simplify the release path to versioned workspace dependencies plus `pnpm publish`/`pnpm pack`.
