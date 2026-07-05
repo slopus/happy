@@ -87,7 +87,6 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
                             text={props.modelLabel}
                             active={openMenu === 'model'}
                             onPress={canSelectModel ? () => setOpenMenu((current) => current === 'model' ? null : 'model') : undefined}
-                            trailingIcon={canSelectModel ? 'chevron-up' : undefined}
                         />
                     ) : null}
                     {props.effortLabel ? (
@@ -96,7 +95,6 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
                             text={props.effortLabel}
                             active={openMenu === 'effort'}
                             onPress={canSelectEffort ? () => setOpenMenu((current) => current === 'effort' ? null : 'effort') : undefined}
-                            trailingIcon={canSelectEffort ? 'chevron-up' : undefined}
                         />
                     ) : null}
                     <ContextUsageCircle
@@ -175,14 +173,13 @@ function ContextUsageCircle(props: {
 }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const size = 30;
+    const size = 18;
     const strokeWidth = 3;
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
     const progress = props.maxValue > 0 ? Math.min(100, Math.max(0, props.percentage)) : 0;
     const dashOffset = circumference * (1 - progress / 100);
-    const label = `${Math.round(progress)}%`;
-    const accessibilityLabel = `Context ${props.value.toLocaleString()} of ${props.maxValue.toLocaleString()} tokens, ${label}`;
+    const accessibilityLabel = `Context ${props.value.toLocaleString()} of ${props.maxValue.toLocaleString()} tokens, ${Math.round(progress)}%`;
 
     return (
         <View style={styles.contextCircle} accessibilityLabel={accessibilityLabel}>
@@ -210,9 +207,6 @@ function ContextUsageCircle(props: {
                     originY={size / 2}
                 />
             </Svg>
-            <Text style={styles.contextCircleText} numberOfLines={1} adjustsFontSizeToFit>
-                {label}
-            </Text>
         </View>
     );
 }
@@ -221,30 +215,31 @@ function StatusChip(props: {
     icon: StatusIconName;
     text: string;
     onPress?: () => void;
-    trailingIcon?: StatusIconName;
     active?: boolean;
     wide?: boolean;
 }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
+    const tint = props.active ? theme.colors.radio.active : theme.colors.textSecondary;
     const content = (
         <>
-            <Ionicons name={props.icon} size={13} color={theme.colors.textSecondary} />
-            <Text style={[styles.chipText, props.wide && styles.chipTextWide]} numberOfLines={1} ellipsizeMode="middle">
+            <Ionicons name={props.icon} size={13} color={tint} />
+            <Text
+                style={[styles.chipText, props.wide && styles.chipTextWide, props.active && { color: tint }]}
+                numberOfLines={1}
+                ellipsizeMode="middle"
+            >
                 {props.text}
             </Text>
-            {props.trailingIcon ? (
-                <Ionicons name={props.trailingIcon} size={12} color={theme.colors.textSecondary} />
-            ) : null}
         </>
     );
 
     if (props.onPress) {
         return (
             <Pressable
-                style={({ pressed }) => [styles.chip, props.active && styles.chipActive, pressed && styles.chipPressed]}
+                style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
                 onPress={props.onPress}
-                hitSlop={4}
+                hitSlop={8}
             >
                 {content}
             </Pressable>
@@ -252,7 +247,7 @@ function StatusChip(props: {
     }
 
     return (
-        <View style={[styles.chip, props.active && styles.chipActive]}>
+        <View style={styles.chip}>
             {content}
         </View>
     );
@@ -287,7 +282,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-end',
-        gap: 6,
+        gap: 12,
     },
     chip: {
         minHeight: 24,
@@ -296,19 +291,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
-        backgroundColor: theme.colors.surfaceHigh,
-        paddingHorizontal: 8,
         paddingVertical: 3,
     },
     chipPressed: {
-        backgroundColor: theme.colors.surfacePressed,
-    },
-    chipActive: {
-        borderColor: theme.colors.radio.active,
-        backgroundColor: theme.colors.surfacePressed,
+        opacity: 0.6,
     },
     chipText: {
         minWidth: 0,
@@ -322,23 +308,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         maxWidth: 360,
     },
     contextCircle: {
-        width: 30,
-        height: 30,
+        width: 18,
+        height: 18,
         flexShrink: 0,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 15,
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
-        backgroundColor: theme.colors.surfaceHigh,
-    },
-    contextCircleText: {
-        position: 'absolute',
-        maxWidth: 24,
-        color: theme.colors.textSecondary,
-        fontSize: 9,
-        fontWeight: '700',
-        textAlign: 'center',
     },
     menu: {
         position: 'absolute',
