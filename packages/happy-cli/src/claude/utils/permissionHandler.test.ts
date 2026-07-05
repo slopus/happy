@@ -50,6 +50,52 @@ function getPermissionResponseHandler(handlers: Map<string, (message: any) => Pr
 }
 
 describe('PermissionHandler', () => {
+    it('auto-approves tool calls in yolo mode without surfacing a request', async () => {
+        const { session, getState } = createSessionMock();
+        const handler = new PermissionHandler(session as any);
+        const controller = new AbortController();
+
+        handler.handleModeChange('yolo');
+
+        const result = await handler.handleToolCall(
+            'Bash',
+            { command: 'pwd' },
+            mode,
+            { signal: controller.signal, toolUseID: 'toolu_yolo' },
+        );
+
+        expect(result).toMatchObject({ behavior: 'allow' });
+        expect(getState().requests).toBeUndefined();
+    });
+
+    it('auto-approves tool calls in bypassPermissions mode', async () => {
+        const { session } = createSessionMock();
+        const handler = new PermissionHandler(session as any);
+        const controller = new AbortController();
+
+        handler.handleModeChange('bypassPermissions');
+
+        const result = await handler.handleToolCall(
+            'Write',
+            { file_path: '/tmp/x', content: 'y' },
+            mode,
+            { signal: controller.signal, toolUseID: 'toolu_bypass' },
+        );
+
+        expect(result).toMatchObject({ behavior: 'allow' });
+    });
+
+    it('syncs the mapped mode into the live query on mode change', async () => {
+        const { session } = createSessionMock();
+        const handler = new PermissionHandler(session as any);
+        const setMode = vi.fn(async () => {});
+
+        handler.setPermissionModeUpdater(setMode);
+        handler.handleModeChange('yolo');
+
+        expect(setMode).toHaveBeenCalledWith('bypassPermissions');
+    });
+
     it('keeps main-thread request IDs unchanged', async () => {
         const { session, getState, handlers } = createSessionMock();
         const handler = new PermissionHandler(session as any);

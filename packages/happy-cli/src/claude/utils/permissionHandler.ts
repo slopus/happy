@@ -10,6 +10,7 @@ import type { CanCallToolOptions, PermissionResult } from "../sdk/types";
 import { Session } from "../session";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
+import { isClaudeBypassEquivalent, mapToClaudeMode } from "./permissionMode";
 
 export interface PermissionResponse {
     id: string;
@@ -57,7 +58,17 @@ export class PermissionHandler {
     }
 
     handleModeChange(mode: PermissionMode) {
+        const previousMode = this.permissionMode;
         this.permissionMode = mode;
+
+        // The message-queue hash excludes permissionMode, so a default -> yolo
+        // switch never restarts the SDK query. Push the mapped mode into the
+        // live query so the SDK stops consulting canUseTool on its own.
+        if (this.setPermissionModeCallback && mapToClaudeMode(previousMode) !== mapToClaudeMode(mode)) {
+            this.setPermissionModeCallback(mapToClaudeMode(mode)).catch((err) => {
+                logger.debug('Failed to sync permission mode via SDK:', err);
+            });
+        }
     }
 
     /**
@@ -172,7 +183,7 @@ export class PermissionHandler {
         // Handle special cases
         //
 
-        if (this.permissionMode === 'bypassPermissions') {
+        if (isClaudeBypassEquivalent(this.permissionMode)) {
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 

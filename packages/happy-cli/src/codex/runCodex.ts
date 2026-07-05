@@ -679,9 +679,13 @@ export async function runCodex(opts: {
                 ? { changes: params.fileChanges }
                 : (params.input ?? {});
         const activePermissionMode = activeTurnPermissionMode ?? currentPermissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
+        // Check the latest session mode too: a turn pinned under an untrusted
+        // policy keeps prompting after the user flips to yolo mid-turn otherwise.
+        const latestPermissionMode = currentPermissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
 
-        if (shouldAutoApproveCodexApproval(activePermissionMode, client.sandboxEnabled)) {
-            logger.debug(`[Codex] Auto-approving ${params.type} approval in ${activePermissionMode} mode`);
+        if (shouldAutoApproveCodexApproval(activePermissionMode, client.sandboxEnabled)
+            || shouldAutoApproveCodexApproval(latestPermissionMode, client.sandboxEnabled)) {
+            logger.debug(`[Codex] Auto-approving ${params.type} approval in ${activePermissionMode} mode (latest: ${latestPermissionMode})`);
             return 'approved';
         }
 
