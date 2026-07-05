@@ -2,10 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
     Animated,
     Easing,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
+    useWindowDimensions,
     type StyleProp,
     type TextStyle,
     type ViewStyle,
@@ -14,6 +16,7 @@ import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
+import { useIsTablet } from '@/utils/responsive';
 
 interface PermissionActionButtonProps {
     label: string;
@@ -125,6 +128,8 @@ interface PermissionFooterProps {
 
 export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, sessionId, toolName, toolInput, metadata }) => {
     const { theme } = useUnistyles();
+    const isTablet = useIsTablet();
+    const { height: windowHeight } = useWindowDimensions();
     const [loadingButton, setLoadingButton] = useState<'allow' | 'deny' | 'abort' | null>(null);
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
     const [loadingBypass, setLoadingBypass] = useState(false);
@@ -286,11 +291,13 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             paddingBottom: 8,
             justifyContent: 'center',
         },
+        optionsScroll: {
+            maxHeight: Math.min(260, Math.round(windowHeight * 0.35)),
+        },
         buttonContainer: {
-            flexDirection: 'row',
-            flexWrap: 'wrap',
+            flexDirection: 'column',
             gap: 7,
-            alignItems: 'center',
+            alignItems: isTablet ? 'flex-end' : 'stretch',
         },
         button: {
             paddingHorizontal: 10,
@@ -414,7 +421,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     if (isCodex) {
         return (
             <View style={styles.container}>
-                <View style={styles.buttonContainer}>
+                <ScrollView
+                    style={styles.optionsScroll}
+                    contentContainerStyle={styles.buttonContainer}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                >
                     {renderPermissionButton({
                         label: t('common.yes'),
                         loading: loadingButton === 'allow',
@@ -470,7 +482,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         ],
                         numberOfLines: 2,
                     })}
-                </View>
+                </ScrollView>
             </View>
         );
     }
@@ -478,7 +490,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     // Render Claude buttons (existing behavior)
     return (
         <View style={styles.container}>
-            <View style={styles.buttonContainer}>
+            <ScrollView
+                style={styles.optionsScroll}
+                contentContainerStyle={styles.buttonContainer}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}
+            >
                 {renderPermissionButton({
                     label: t('common.yes'),
                     loading: loadingButton === 'allow',
@@ -581,7 +598,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     ],
                     numberOfLines: 2,
                 })}
-            </View>
+            </ScrollView>
         </View>
     );
 };
