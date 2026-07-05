@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
+import type { AgentGoalStatus } from '@/api/types';
 import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
 import { DefaultTransport } from '@/agent/transport';
@@ -48,6 +49,17 @@ type AcpFormattedLog = {
   text: string;
 };
 
+type AcpGoalActionCommand =
+  | { type: 'clear' }
+  | { type: 'set'; objective: string };
+
+type PendingAcpGoalAction = {
+  command: AcpGoalActionCommand;
+  resolve: (value: { ok: true }) => void;
+  reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+};
+
 function shouldUseColoredAcpLogs(): boolean {
   if (process.env.FORCE_COLOR === '0') {
     return false;
@@ -78,6 +90,23 @@ function logAcp(kind: AcpLogKind, message: string): void {
 
 function toSingleLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+function parseAcpGoalActionParams(params: unknown): AcpGoalActionCommand | null {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) {
+    return null;
+  }
+  const record = params as Record<string, unknown>;
+  if (record.action === 'clear') {
+    return { type: 'clear' };
+  }
+  if (record.action === 'edit') {
+    const objective = typeof record.objective === 'string' ? record.objective.trim() : '';
+    if (objective.length > 0) {
+      return { type: 'set', objective };
+    }
+  }
+  return null;
 }
 
 function truncateForConsole(text: string, limit: number): string {
@@ -580,6 +609,9 @@ export async function runAcp(opts: {
   let sawSlashCommands = false;
   let sawModes = false;
   let sawModels = false;
+  const goalStatusSource = opts.agentName === 'kiro' ? 'claude' as const : undefined;
+  let latestAcpGoalStatus: AgentGoalStatus | null = null;
+  let pendingAcpGoalAction: PendingAcpGoalAction | null = null;
 
   const happyServer = await startHappyServer(session);
   const mcpServers = {
@@ -598,6 +630,7 @@ export async function runAcp(opts: {
     permissionHandler,
     transportHandler: new DefaultTransport(opts.agentName),
     verbose,
+    goalStatusSource,
   });
 
   let thinking = false;
@@ -621,6 +654,15 @@ export async function runAcp(opts: {
       return;
     }
     current.resolve();
+  };
+
+  const clearPendingAcpGoalAction = (error: Error) => {
+    if (!pendingAcpGoalAction) {
+      return;
+    }
+    clearTimeout(pendingAcpGoalAction.timeout);
+    pendingAcpGoalAction.reject(error);
+    pendingAcpGoalAction = null;
   };
 
   const waitForTurnEnd = () => new Promise<void>((resolve, reject) => {
@@ -767,6 +809,30 @@ export async function runAcp(opts: {
     }
   };
 
+  const settlePendingAcpGoalAction = (goalStatus: AgentGoalStatus) => {
+    const pending = pendingAcpGoalAction;
+    if (!pending) {
+      return;
+    }
+    if (pending.command.type === 'clear' && goalStatus.status === 'inactive') {
+      clearTimeout(pending.timeout);
+      pendingAcpGoalAction = null;
+      pending.resolve({ ok: true });
+      return;
+    }
+    if (pending.command.type === 'set') {
+      const expected = pending.command.objective.trim();
+      const activeMatches = goalStatus.status === 'active'
+        && goalStatus.text.trim() === expected;
+      const completedOrClearedAfterCommand = goalStatus.status === 'inactive';
+      if (activeMatches || completedOrClearedAfterCommand) {
+        clearTimeout(pending.timeout);
+        pendingAcpGoalAction = null;
+        pending.resolve({ ok: true });
+      }
+    }
+  };
+
   const onBackendMessage = (msg: AgentMessage) => {
     if (verbose) {
       logAcp('muted', `Outgoing raw backend message from ${opts.agentName}: ${formatUnknownForConsole(msg, ACP_RAW_PREVIEW_CHARS)}`);
@@ -888,6 +954,16 @@ export async function runAcp(opts: {
       }
     }
 
+    if (msg.type === 'event' && msg.name === 'agent_goal_status') {
+      const goalStatus = msg.payload as AgentGoalStatus;
+      latestAcpGoalStatus = goalStatus;
+      settlePendingAcpGoalAction(goalStatus);
+      session.updateAgentState((currentState) => ({
+        ...currentState,
+        agentGoalStatus: latestAcpGoalStatus ?? goalStatus,
+      }));
+    }
+
     if (msg.type === 'status') {
       const suffix = msg.detail ? `: ${msg.detail}` : '';
       const statusLine = `Status: ${msg.status}${suffix}`;
@@ -957,6 +1033,60 @@ export async function runAcp(opts: {
     session.keepAlive(thinking, 'remote');
   }, 2000);
 
+  if (opts.agentName === 'kiro') {
+    session.rpcHandlerManager.registerHandler('goal-action', async (params: unknown) => {
+      const command = parseAcpGoalActionParams(params);
+      if (!command) {
+        throw new Error('Unsupported Kiro goal action');
+      }
+      if (pendingAcpGoalAction) {
+        throw new Error('Kiro goal action already in progress');
+      }
+      if (!latestAcpGoalStatus || latestAcpGoalStatus.status !== 'active') {
+        throw new Error('No active Kiro goal');
+      }
+      const capabilities = latestAcpGoalStatus.capabilities ?? {};
+      if (command.type === 'clear' && !capabilities.clear) {
+        throw new Error('Kiro clear goal action is not supported');
+      }
+      if (command.type === 'set' && !capabilities.edit) {
+        throw new Error('Kiro edit goal action is not supported');
+      }
+      if (turnInProgress) {
+        throw new Error('Kiro goal action is not ready while Kiro is thinking');
+      }
+      if (messageQueue.size() > 0) {
+        throw new Error('Kiro message queue is busy');
+      }
+
+      const slashCommand = command.type === 'clear'
+        ? '/goal clear'
+        : `/goal ${command.objective}`;
+      const mode: AcpSwitchMode = {
+        permissionMode: currentPermissionMode,
+        model: currentModel,
+        effort: currentEffort,
+      };
+
+      return await new Promise<{ ok: true }>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          pendingAcpGoalAction = null;
+          reject(new Error('Timed out waiting for Kiro goal confirmation'));
+        }, 30_000);
+
+        pendingAcpGoalAction = { command, resolve, reject, timeout };
+        try {
+          // 目标动作必须单独成轮，否则 `/goal clear` 可能和用户下一条消息被合并。
+          messageQueue.pushIsolated(slashCommand, mode);
+        } catch (error) {
+          clearTimeout(timeout);
+          pendingAcpGoalAction = null;
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      });
+    });
+  }
+
   async function handleAbort() {
     cancelInProgress = true;
     if (turnInProgress) {
@@ -970,6 +1100,7 @@ export async function runAcp(opts: {
       permissionHandler.reset();
       abortController.abort();
       messageQueue.reset();
+      clearPendingAcpGoalAction(new Error('Kiro goal action was interrupted'));
     } catch (error) {
       logger.debug(`[${opts.agentName}] Abort failed:`, error);
     } finally {
@@ -983,12 +1114,20 @@ export async function runAcp(opts: {
     shouldExit = true;
     messageQueue.close();
     clearPendingTurn(new Error('Session terminated'));
+    clearPendingAcpGoalAction(new Error('Session terminated'));
     await handleAbort();
   });
 
   try {
     const started = await backend.startSession();
     acpSessionId = started.sessionId;
+    if (goalStatusSource === 'claude') {
+      session.updateMetadata((currentMetadata) => ({
+        ...currentMetadata,
+        // Kiro 通过 Claude alias 给旧客户端使用；复用 claudeSessionId 让现有目标栏身份校验通过。
+        claudeSessionId: started.sessionId,
+      }));
+    }
     if (verbose) {
       if (!sawSlashCommands) {
         logAcp('muted', `Outgoing slash commands from ${opts.agentName}: not reported yet`);
@@ -1060,6 +1199,7 @@ export async function runAcp(opts: {
     clearInterval(keepAliveInterval);
     reconnectionHandle?.cancel();
     clearPendingTurn(new Error('ACP runner shutting down'));
+    clearPendingAcpGoalAction(new Error('ACP runner shutting down'));
 
     try {
       permissionHandler.reset();

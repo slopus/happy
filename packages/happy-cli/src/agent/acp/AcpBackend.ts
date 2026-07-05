@@ -107,6 +107,10 @@ import {
   handlePlanUpdate,
   handleThinkingUpdate,
 } from './sessionUpdateHandlers';
+import {
+  handleKiroCustomNotificationLine,
+  type KiroGoalStatusSource,
+} from './kiroCustomNotifications';
 
 /**
  * Extended RequestPermissionRequest with additional fields that may be present
@@ -206,6 +210,9 @@ export interface AcpBackendOptions {
 
   /** Log raw session updates to console */
   verbose?: boolean;
+
+  /** Kiro 通过私有通知上报 goal 状态；这里指定要伪装成哪个前端已知来源。 */
+  goalStatusSource?: KiroGoalStatusSource;
 }
 
 /**
@@ -491,6 +498,22 @@ export class AcpBackend implements AgentBackend {
       // Filter stdout via transport handler before ACP parsing
       // Some agents output debug info that breaks JSON-RPC parsing
       const transport = this.transport;
+      const handleCustomStdoutLine = (line: string): string | null | undefined => {
+        if (this.options.agentName !== 'kiro') {
+          return undefined;
+        }
+        const result = handleKiroCustomNotificationLine(line, {
+          goalStatusSource: this.options.goalStatusSource,
+          sourceSessionId: this.acpSessionId,
+        });
+        if (!result.handled) {
+          return undefined;
+        }
+        for (const message of result.messages) {
+          this.emit(message);
+        }
+        return null;
+      };
       const filteredReadable = new ReadableStream<Uint8Array>({
         async start(controller) {
           const reader = readable.getReader();
@@ -505,7 +528,10 @@ export class AcpBackend implements AgentBackend {
               if (done) {
                 // Flush any remaining buffer
                 if (buffer.trim()) {
-                  const filtered = transport.filterStdoutLine?.(buffer);
+                  const customFiltered = handleCustomStdoutLine(buffer);
+                  const filtered = customFiltered === undefined
+                    ? transport.filterStdoutLine?.(buffer)
+                    : customFiltered;
                   if (filtered === undefined) {
                     controller.enqueue(encoder.encode(buffer));
                   } else if (filtered !== null) {
@@ -534,7 +560,10 @@ export class AcpBackend implements AgentBackend {
                 // Use transport handler to filter lines
                 // Note: filterStdoutLine returns null to filter out, string to keep
                 // If method not implemented (undefined), pass through original line
-                const filtered = transport.filterStdoutLine?.(line);
+                const customFiltered = handleCustomStdoutLine(line);
+                const filtered = customFiltered === undefined
+                  ? transport.filterStdoutLine?.(line)
+                  : customFiltered;
                 if (filtered === undefined) {
                   // Method not implemented, pass through
                   controller.enqueue(encoder.encode(line + '\n'));

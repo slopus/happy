@@ -26,6 +26,18 @@ The source material for this change is stored under `docs/references/kiro-cli/`:
   - `--agent-engine <ENGINE>` with `v2` default and `v1`/`v3` alternatives
   - `--verbose`
 - The official docs and samples describe ACP as JSON-RPC over stdio, which matches Happy's existing generic ACP runner.
+- Runtime probing on 2026-07-05 confirmed Kiro ACP sends several custom JSON-RPC notifications that the stock ACP SDK client does not expose:
+  - `_kiro.dev/commands/available`
+  - `_kiro.dev/goal/status`
+  - `_kiro.dev/session/update`
+  - `_kiro.dev/metadata`
+  - `_kiro.dev/mcp/server_initialized`
+  - `_kiro.dev/subagent/list_update`
+- `_kiro.dev/commands/available` includes `/goal` with description `Set a goal with validation criteria for iterative completion` and subcommand `clear`.
+- A temporary-directory ACP smoke test successfully ran `/goal create GOAL_DONE.txt containing yes and verify it`; Kiro created the file, verified it, and emitted:
+  - `{ "state": "active", "iteration": 0, "maxIterations": 5, "message": "create GOAL_DONE.txt containing yes and verify it" }`
+  - `{ "state": "completed", "iteration": 0, "maxIterations": 5, "message": "Goal achieved in 0 iterations" }`
+- Kiro ACP returns its model list dynamically. The observed list includes `auto`, `claude-sonnet-5`, `claude-opus-4.8`, `claude-opus-4.7`, `claude-opus-4.6`, `claude-sonnet-4.6`, `claude-opus-4.5`, `claude-sonnet-4.5`, `claude-sonnet-4`, `claude-haiku-4.5`, `deepseek-3.2`, `minimax-m2.5`, `minimax-m2.1`, `glm-5`, and `qwen3-coder-next`.
 
 ## Existing Happy integration points
 
@@ -98,7 +110,21 @@ Use Happy's generic ACP runner rather than writing a Kiro-specific protocol back
    - Effort metadata should be forwarded to Kiro when present.
    - Keep the Happy runner alive after a `happy kiro` cancel. Kiro's ACP process can report `stopped` for a cancelled turn, but the user should still be able to send the next prompt in the same Happy session.
 
-7. Update user-facing docs.
+7. Handle Kiro ACP custom notifications before the SDK sees them.
+   - The current ACP SDK client rejects Kiro's `_kiro.dev/...` notifications as unknown client methods.
+   - Intercept those stdout JSON-RPC lines in `AcpBackend` before they reach `ClientSideConnection`.
+   - Convert `_kiro.dev/commands/available` to Happy's existing `available_commands` event, normalizing command names from `/goal` to `goal` so the app autocomplete stays consistent.
+   - Convert `_kiro.dev/goal/status` to Happy `AgentGoalStatus`.
+   - In Claude alias mode, publish Kiro goal state as `source: "claude"` and write the ACP session id into `metadata.claudeSessionId`; this lets old desktop and iOS clients show the existing goal bar without a new app bundle.
+   - Filter unhandled Kiro-only notifications such as `_kiro.dev/session/update` after logging, so the SDK does not emit `Method not found` errors.
+
+8. Add Kiro goal actions.
+   - Register the existing `goal-action` RPC for Kiro sessions.
+   - Map clear to `/goal clear`.
+   - Map edit/set to `/goal <objective>`.
+   - Queue those commands as isolated messages and resolve when `_kiro.dev/goal/status` confirms the expected active/inactive state.
+
+9. Update user-facing docs.
    - Update root `README.md` and `packages/happy-cli/README.md` to list `happy kiro` as a CLI command.
    - Document the local Claude-to-Kiro alias for deployments where the installed app cannot be updated.
    - Keep implementation notes in this plan doc.
@@ -110,6 +136,8 @@ Use Happy's generic ACP runner rather than writing a Kiro-specific protocol back
   - add/update tests for Kiro ACP mapping.
   - add targeted tests for Kiro command parsing if a separate command parser is introduced.
   - add targeted tests for Claude-to-Kiro alias resolution and legacy Claude model normalization.
+  - add targeted tests for Kiro custom ACP notification parsing, including slash commands and goal status state mapping.
+  - add `runAcp` tests for updating agent goal state and handling `goal-action`.
 - Type checks/builds:
   - `pnpm --filter happy typecheck`
   - `pnpm --filter happy build`

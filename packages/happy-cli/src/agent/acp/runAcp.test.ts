@@ -348,6 +348,110 @@ describe('runAcp', () => {
     expect(mocks.backendState.cancelCalls).toEqual(['acp-session-1', 'acp-session-1']);
   });
 
+  it('publishes Kiro goal status through Claude-compatible agent state', async () => {
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'kiro',
+      command: 'kiro-cli',
+      args: ['acp'],
+      sessionFlavor: 'claude',
+      compatAgent: 'claude',
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.startSessionCalls).toBe(1);
+    });
+
+    const listener = mocks.backendState.listeners[0];
+    listener({
+      type: 'event',
+      name: 'agent_goal_status',
+      payload: {
+        source: 'claude',
+        status: 'active',
+        observedAt: 1,
+        sourceSessionId: 'acp-session-1',
+        text: 'ship Kiro goal support',
+        capabilities: { clear: true, edit: true, stop: true },
+      },
+    });
+
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    expect(mocks.mockSession.updateMetadata).toHaveBeenCalledWith(expect.any(Function));
+    const metadataUpdater = mocks.mockSession.updateMetadata.mock.calls
+      .map(([updater]) => updater)
+      .find((updater) => updater({}).claudeSessionId === 'acp-session-1');
+    expect(metadataUpdater).toBeTypeOf('function');
+
+    const goalUpdater = mocks.mockSession.updateAgentState.mock.calls[1][0];
+    expect(goalUpdater({})).toMatchObject({
+      agentGoalStatus: {
+        source: 'claude',
+        status: 'active',
+        sourceSessionId: 'acp-session-1',
+        text: 'ship Kiro goal support',
+      },
+    });
+  });
+
+  it('routes Kiro goal-action clear through an isolated /goal command', async () => {
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'kiro',
+      command: 'kiro-cli',
+      args: ['acp'],
+      sessionFlavor: 'claude',
+      compatAgent: 'claude',
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.startSessionCalls).toBe(1);
+    });
+
+    const listener = mocks.backendState.listeners[0];
+    listener({
+      type: 'event',
+      name: 'agent_goal_status',
+      payload: {
+        source: 'claude',
+        status: 'active',
+        observedAt: 1,
+        sourceSessionId: 'acp-session-1',
+        text: 'ship Kiro goal support',
+        capabilities: { clear: true, edit: true, stop: true },
+      },
+    });
+
+    const goalActionHandler = mocks.sessionHandlers.get('goal-action');
+    expect(goalActionHandler).toBeTypeOf('function');
+    const actionPromise = goalActionHandler!({ action: 'clear' });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.prompts).toContainEqual({
+        sessionId: 'acp-session-1',
+        prompt: '/goal clear',
+      });
+    });
+
+    listener({
+      type: 'event',
+      name: 'agent_goal_status',
+      payload: {
+        source: 'claude',
+        status: 'inactive',
+        reason: 'cleared',
+        observedAt: 2,
+        sourceSessionId: 'acp-session-1',
+      },
+    });
+
+    await expect(actionPromise).resolves.toEqual({ ok: true });
+    await mocks.getKillHandler()!();
+    await runPromise;
+  });
+
   it('emits thinking messages in default mode', async () => {
     const runPromise = runAcp({
       credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
