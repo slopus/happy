@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { KNOWN_ACP_AGENTS, resolveAcpAgentConfig } from './acpAgentConfig';
 
 describe('KNOWN_ACP_AGENTS', () => {
-  it('defines built-in Gemini and OpenCode command mappings', () => {
+  it('defines built-in ACP command mappings', () => {
     expect(KNOWN_ACP_AGENTS).toEqual({
       gemini: { command: 'gemini', args: ['--experimental-acp'] },
+      kiro: { command: 'kiro-cli', args: ['acp'] },
       opencode: { command: 'opencode', args: ['acp'] },
     });
   });
@@ -16,6 +17,14 @@ describe('resolveAcpAgentConfig', () => {
       agentName: 'gemini',
       command: 'gemini',
       args: ['--experimental-acp'],
+    });
+  });
+
+  it('resolves Kiro to kiro-cli acp', () => {
+    expect(resolveAcpAgentConfig(['kiro', '--model', 'auto'])).toEqual({
+      agentName: 'kiro',
+      command: 'kiro-cli',
+      args: ['acp', '--model', 'auto'],
     });
   });
 

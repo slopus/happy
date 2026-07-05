@@ -32,6 +32,7 @@ This will:
 
 ```
 happy codex
+happy kiro
 happy gemini
 happy openclaw
 
@@ -39,6 +40,20 @@ happy openclaw
 happy acp opencode
 happy acp -- custom-agent --flag
 ```
+
+### Claude-to-Kiro daemon alias
+
+If an installed desktop or iOS app does not yet expose Kiro in the agent picker, the local daemon can route Claude sessions to Kiro while keeping the app-compatible Claude session flavor:
+
+```json
+{
+  "agentAliases": {
+    "claude": "kiro"
+  }
+}
+```
+
+Add this to `~/.happy/settings.json`, then restart the daemon. New sessions created as Claude from the app will run `kiro-cli acp` locally, while direct terminal usage can still use `happy kiro`.
 
 ## Daemon
 
@@ -99,6 +114,7 @@ happy connect status
 |---------|-------------|
 | `happy` | Start Claude Code session (default) |
 | `happy codex` | Start Codex mode |
+| `happy kiro` | Start Kiro CLI session through ACP |
 | `happy gemini` | Start Gemini CLI session |
 | `happy openclaw` | Start OpenClaw session |
 | `happy acp` | Start any ACP-compatible agent |
@@ -144,6 +160,7 @@ yarn workspace happy cli --help
 - Node.js >= 20.0.0
 - For Claude: `claude` CLI installed & logged in
 - For Codex: `codex` CLI installed & logged in
+- For Kiro: `kiro-cli` installed & logged in
 - For Gemini: `npm install -g @google/gemini-cli` + `happy connect gemini`
 
 ## License

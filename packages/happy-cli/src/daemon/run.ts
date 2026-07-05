@@ -14,8 +14,8 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession } from '@/persistence';
-import type { PersistedSession } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, readSettings } from '@/persistence';
+import type { PersistedSession, Settings } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
@@ -32,6 +32,42 @@ import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
     return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
+type SpawnAgent = NonNullable<SpawnSessionOptions['agent']>;
+
+// App 侧暂时不暴露 Kiro；这里把旧 App 发来的 Claude 请求解析成本机实际要启动的 agent。
+function normalizeSpawnAgent(agent: SpawnSessionOptions['agent']): SpawnAgent {
+  switch (agent) {
+    case 'codex':
+    case 'gemini':
+    case 'kiro':
+    case 'openclaw':
+    case 'claude':
+      return agent;
+    case undefined:
+      return 'claude';
+    default:
+      return 'claude';
+  }
+}
+
+export function resolveSpawnAgentFromSettings(
+  agent: SpawnSessionOptions['agent'],
+  settings: Pick<Settings, 'agentAliases'>,
+): { requestedAgent: SpawnAgent; agentCommand: SpawnAgent; compatAgent?: 'claude' } {
+  const requestedAgent = normalizeSpawnAgent(agent);
+
+  // 兼容旧 iOS/桌面端：UI 仍选择 Claude，但 daemon 可通过本地设置改为启动 Kiro。
+  if (requestedAgent === 'claude' && settings.agentAliases?.claude === 'kiro') {
+    return { requestedAgent, agentCommand: 'kiro', compatAgent: 'claude' };
+  }
+
+  return { requestedAgent, agentCommand: requestedAgent };
+}
+
+async function resolveSpawnAgent(agent: SpawnSessionOptions['agent']): Promise<{ requestedAgent: SpawnAgent; agentCommand: SpawnAgent; compatAgent?: 'claude' }> {
+  return resolveSpawnAgentFromSettings(agent, await readSettings());
 }
 
 // Prepare initial metadata
@@ -294,6 +330,8 @@ export async function startDaemon(): Promise<void> {
       }
 
       try {
+        const resolvedAgent = await resolveSpawnAgent(options.agent);
+        logger.debug(`[DAEMON RUN] Agent request resolved: ${resolvedAgent.requestedAgent} -> ${resolvedAgent.agentCommand}${resolvedAgent.compatAgent ? ` (compat=${resolvedAgent.compatAgent})` : ''}`);
 
         // Build environment variables for session spawning
         // Authentication tokens are resolved here
@@ -301,7 +339,7 @@ export async function startDaemon(): Promise<void> {
         // Resolve authentication token if provided
         const authEnv: Record<string, string> = {};
         if (options.token) {
-          if (options.agent === 'codex') {
+          if (resolvedAgent.requestedAgent === 'codex') {
 
             // Create a temporary directory for Codex
             const codexHomeDir = tmp.dirSync();
@@ -401,15 +439,21 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : 'claude'));
+          const agent = resolvedAgent.agentCommand;
           const resumeId = agent === 'claude'
             ? options.resumeClaudeSessionId
             : (agent === 'codex' ? options.resumeCodexThreadId : undefined);
           const resumeFragment = resumeId
             ? ` --resume ${shellescape(resumeId)}`
             : '';
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
+          const compatFragment = resolvedAgent.compatAgent
+            ? ` --compat-agent ${shellescape(resolvedAgent.compatAgent)}`
+            : '';
+          // Claude 当前默认是绕过权限确认；别名到 Kiro 时用 trust-all 保持交互习惯一致。
+          const compatPermissionFragment = resolvedAgent.compatAgent === 'claude'
+            ? ` --permission-mode ${shellescape('bypassPermissions')}`
+            : '';
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${compatFragment}${compatPermissionFragment}${resumeFragment}`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -491,33 +535,19 @@ export async function startDaemon(): Promise<void> {
         if (!useTmux) {
           logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
-          // Construct arguments for the CLI - support claude, codex, and gemini
-          let agentCommand: string;
-          switch (options.agent) {
-            case 'claude':
-            case undefined:
-              agentCommand = 'claude';
-              break;
-            case 'codex':
-              agentCommand = 'codex';
-              break;
-            case 'gemini':
-              agentCommand = 'gemini';
-              break;
-            case 'openclaw':
-              agentCommand = 'openclaw';
-              break;
-            default:
-              return {
-                type: 'error',
-                errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
-              };
-          }
+          const agentCommand = resolvedAgent.agentCommand;
           const args = [
             agentCommand,
             '--happy-starting-mode', 'remote',
             '--started-by', 'daemon'
           ];
+          if (resolvedAgent.compatAgent) {
+            args.push('--compat-agent', resolvedAgent.compatAgent);
+          }
+          // Claude 当前默认是绕过权限确认；别名到 Kiro 时用 trust-all 保持交互习惯一致。
+          if (resolvedAgent.compatAgent === 'claude') {
+            args.push('--permission-mode', 'bypassPermissions');
+          }
 
           // Resume ids attach the new Happy session to a pre-existing provider
           // conversation created by the fork / duplicate RPC.

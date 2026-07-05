@@ -522,7 +522,12 @@ export class ApiMachineClient {
             const prev = this.lastKnownCLIAvailability;
             const newResumeSupport = detectResumeSupport();
             const prevResume = this.lastKnownResumeSupport;
-            const cliAvailabilityChanged = !prev || prev.claude !== newAvailability.claude || prev.codex !== newAvailability.codex || prev.gemini !== newAvailability.gemini || prev.openclaw !== newAvailability.openclaw;
+            const cliAvailabilityChanged = !prev
+                || prev.claude !== newAvailability.claude
+                || prev.codex !== newAvailability.codex
+                || prev.gemini !== newAvailability.gemini
+                || prev.kiro !== newAvailability.kiro
+                || prev.openclaw !== newAvailability.openclaw;
             const resumeSupportChanged = !prevResume
                 || prevResume.rpcAvailable !== newResumeSupport.rpcAvailable
                 || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;

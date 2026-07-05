@@ -35,7 +35,10 @@ export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
 // Used for migration logic in readSettings()
 export const SUPPORTED_SCHEMA_VERSION = 2;
 
-interface Settings {
+export type AgentAliasSource = 'claude';
+export type AgentAliasTarget = 'kiro';
+
+export interface Settings {
   schemaVersion: number
   onboardingCompleted: boolean
   machineId?: string
@@ -45,6 +48,7 @@ interface Settings {
   sandboxConfig?: SandboxConfig
   serverUrl?: string
   webappUrl?: string
+  agentAliases?: Partial<Record<AgentAliasSource, AgentAliasTarget>>
 }
 
 const defaultSettings: Settings = {
@@ -444,4 +448,3 @@ export function persistSession(sessionId: string, session: PersistedSession): vo
     logger.debug(`[PERSISTENCE] Failed to persist session ${sessionId}:`, error);
   }
 }
-
