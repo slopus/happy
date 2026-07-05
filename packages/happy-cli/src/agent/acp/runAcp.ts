@@ -12,7 +12,7 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
-import { createSessionMetadata } from '@/utils/createSessionMetadata';
+import { createSessionMetadata, type BackendFlavor } from '@/utils/createSessionMetadata';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { encodeBase64 } from '@/api/encryption';
@@ -269,6 +269,7 @@ function formatEnvelopeForServerLog(agentName: string, envelope: SessionEnvelope
 type AcpSwitchMode = {
   permissionMode?: string;
   model?: string | null;
+  effort?: string | null;
 };
 
 type AcpSelectableOption = {
@@ -321,7 +322,7 @@ function flattenSelectOptions(options: unknown): AcpSelectableOption[] {
 
 function extractConfigSelector(
   configOptions: SessionConfigOption[],
-  category: 'mode' | 'model',
+  category: 'mode' | 'model' | 'effort',
 ): AcpConfigSelector | null {
   const optionMatchesCategory = (option: SessionConfigOption): boolean => {
     if (option.category === category) {
@@ -332,6 +333,10 @@ function extractConfigSelector(
     const name = normalizeComparable(option.name);
     if (category === 'model') {
       return id.includes('model') || name.includes('model');
+    }
+    if (category === 'effort') {
+      return id.includes('effort') || id.includes('thought') || id.includes('thinking')
+        || name.includes('effort') || name.includes('thought') || name.includes('thinking');
     }
     return id.includes('mode') || id.includes('permission') || name.includes('mode') || name.includes('permission');
   };
@@ -404,6 +409,45 @@ function resolveRequestedLegacyModelCode(models: SessionModelState, requested: s
   return null;
 }
 
+function normalizeClaudeAliasModelForKiro(model: string | null | undefined): string | null | undefined {
+  if (model === null || model === undefined) {
+    return model;
+  }
+
+  // 旧 App 发送的是 Claude UI 的短 key；Kiro ACP 侧需要完整模型 ID。
+  switch (model) {
+    case 'default':
+      return null;
+    case 'opus':
+      return 'claude-opus-4.8';
+    case 'fable':
+      return 'claude-sonnet-5';
+    case 'sonnet':
+      return 'claude-sonnet-4.6';
+    case 'haiku':
+      return 'claude-haiku-4.5';
+    default:
+      return model;
+  }
+}
+
+function normalizeClaudeAliasPermissionForKiro(permissionMode: string | undefined): string | undefined {
+  // Claude 的 bypassPermissions 与 Kiro 的 yolo/trust-all 是同一类交互意图。
+  if (permissionMode === 'bypassPermissions') {
+    return 'yolo';
+  }
+  return permissionMode;
+}
+
+export function normalizeClaudeAliasModeForKiro(mode: AcpSwitchMode): AcpSwitchMode {
+  // 只在 Claude->Kiro 别名模式使用，直接 happy kiro 不会经过这层 UI 兼容映射。
+  return {
+    permissionMode: normalizeClaudeAliasPermissionForKiro(mode.permissionMode),
+    model: normalizeClaudeAliasModelForKiro(mode.model),
+    effort: mode.effort === 'default' ? null : mode.effort,
+  };
+}
+
 class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPermissionHandler {
   private readonly logPrefix: string;
 
@@ -436,9 +480,12 @@ type PendingTurn = {
   timeout: NodeJS.Timeout;
 };
 
-function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' {
+function resolveSessionFlavor(agentName: string): BackendFlavor {
   if (agentName === 'gemini') {
     return 'gemini';
+  }
+  if (agentName === 'kiro') {
+    return 'kiro';
   }
   if (agentName === 'opencode') {
     return 'opencode';
@@ -453,6 +500,9 @@ export async function runAcp(opts: {
   args: string[];
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
+  keepSessionAliveAfterCancel?: boolean;
+  sessionFlavor?: BackendFlavor;
+  compatAgent?: 'claude';
 }): Promise<void> {
   const verbose = opts.verbose === true;
   const sessionTag = randomUUID();
@@ -470,7 +520,8 @@ export async function runAcp(opts: {
   });
 
   const { state, metadata } = createSessionMetadata({
-    flavor: resolveSessionFlavor(opts.agentName),
+    // 别名模式下可以让 Kiro 后端伪装成 Claude flavor，兼容尚未重新打包的客户端。
+    flavor: opts.sessionFlavor ?? resolveSessionFlavor(opts.agentName),
     machineId: settings.machineId,
     startedBy: opts.startedBy,
     sandbox: settings.sandboxConfig,
@@ -520,8 +571,10 @@ export async function runAcp(opts: {
   const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
   let currentPermissionMode: string | undefined;
   let currentModel: string | null | undefined;
+  let currentEffort: string | null | undefined;
   let modeSelector: AcpConfigSelector | null = null;
   let modelSelector: AcpConfigSelector | null = null;
+  let effortSelector: AcpConfigSelector | null = null;
   let legacyModes: SessionModeState | null = null;
   let legacyModels: SessionModelState | null = null;
   let sawSlashCommands = false;
@@ -552,6 +605,9 @@ export async function runAcp(opts: {
   let shouldExit = false;
   let abortController = new AbortController();
   let pendingTurn: PendingTurn | null = null;
+  let cancelInProgress = false;
+  let turnInProgress = false;
+  let currentTurnCancelled = false;
 
   const clearPendingTurn = (error?: Error) => {
     if (!pendingTurn) {
@@ -576,6 +632,14 @@ export async function runAcp(opts: {
   });
 
   const stopRunnerFromBackendStatus = (status: 'error' | 'stopped', detail?: string) => {
+    if (status === 'stopped' && opts.keepSessionAliveAfterCancel === true && cancelInProgress) {
+      logger.debug(`[${opts.agentName}] Backend reported stopped during user cancel; keeping ACP runner alive`);
+      thinking = false;
+      session.keepAlive(false, 'remote');
+      clearPendingTurn();
+      return;
+    }
+
     const reason = detail
       ? `${opts.agentName} backend ${status}: ${detail}`
       : `${opts.agentName} backend ${status}`;
@@ -684,6 +748,25 @@ export async function runAcp(opts: {
     }
   };
 
+  const switchEffortIfRequested = async (requestedEffort: string): Promise<void> => {
+    if (!requestedEffort || !effortSelector) {
+      return;
+    }
+
+    const resolved = resolveRequestedCode(effortSelector.options, requestedEffort);
+    if (!resolved) {
+      logger.debug(`[${opts.agentName}] Ignoring unknown ACP effort request: ${requestedEffort}`);
+      return;
+    }
+    if (resolved === effortSelector.currentCode) {
+      return;
+    }
+    const switched = await backend.setSessionConfigOption(effortSelector.configId, resolved);
+    if (switched) {
+      effortSelector.currentCode = resolved;
+    }
+  };
+
   const onBackendMessage = (msg: AgentMessage) => {
     if (verbose) {
       logAcp('muted', `Outgoing raw backend message from ${opts.agentName}: ${formatUnknownForConsole(msg, ACP_RAW_PREVIEW_CHARS)}`);
@@ -722,6 +805,8 @@ export async function runAcp(opts: {
 
         modeSelector = extractConfigSelector(configOptions, 'mode');
         modelSelector = extractConfigSelector(configOptions, 'model');
+        // Kiro 可通过 ACP config options 暴露 effort/thought-level；前端无需写死 Kiro 专用列表。
+        effortSelector = extractConfigSelector(configOptions, 'effort');
         if (verbose) {
           if (modeSelector) {
             sawModes = true;
@@ -835,20 +920,36 @@ export async function runAcp(opts: {
       return;
     }
 
-    if (typeof message.meta?.permissionMode === 'string') {
-      currentPermissionMode = message.meta.permissionMode;
+    const messageMeta = message.meta as { permissionMode?: unknown; model?: unknown; effort?: unknown } | undefined;
+
+    if (typeof messageMeta?.permissionMode === 'string') {
+      currentPermissionMode = messageMeta.permissionMode;
       logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
     }
 
-    if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
-      currentModel = message.meta.model ?? null;
+    if (messageMeta && Object.prototype.hasOwnProperty.call(messageMeta, 'model')) {
+      currentModel = typeof messageMeta.model === 'string' ? messageMeta.model : null;
       logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
     }
 
-    messageQueue.push(message.content.text, {
+    if (messageMeta && Object.prototype.hasOwnProperty.call(messageMeta, 'effort')) {
+      currentEffort = typeof messageMeta.effort === 'string' ? messageMeta.effort : null;
+      logger.debug(`[${opts.agentName}] Requested ACP effort: ${currentEffort ?? 'null'}`);
+    }
+
+    const requestedMode: AcpSwitchMode = {
       permissionMode: currentPermissionMode,
       model: currentModel,
-    });
+      effort: currentEffort,
+    };
+
+    messageQueue.push(
+      message.content.text,
+      // App 继续发 Claude 元数据，只有别名到 Kiro 时才转换成 Kiro 可识别的值。
+      opts.compatAgent === 'claude' && opts.agentName === 'kiro'
+        ? normalizeClaudeAliasModeForKiro(requestedMode)
+        : requestedMode,
+    );
   });
   session.keepAlive(thinking, 'remote');
 
@@ -857,16 +958,23 @@ export async function runAcp(opts: {
   }, 2000);
 
   async function handleAbort() {
+    cancelInProgress = true;
+    if (turnInProgress) {
+      currentTurnCancelled = true;
+      clearPendingTurn();
+    }
     try {
       if (acpSessionId) {
         await backend.cancel(acpSessionId);
       }
       permissionHandler.reset();
       abortController.abort();
+      messageQueue.reset();
     } catch (error) {
       logger.debug(`[${opts.agentName}] Abort failed:`, error);
     } finally {
       abortController = new AbortController();
+      cancelInProgress = false;
     }
   }
 
@@ -913,6 +1021,8 @@ export async function runAcp(opts: {
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
       sendEnvelopes(sessionManager.startTurn());
       const turnEnded = waitForTurnEnd();
+      turnInProgress = true;
+      currentTurnCancelled = false;
       try {
         if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
           await switchPermissionModeIfRequested(batch.mode.permissionMode);
@@ -920,19 +1030,30 @@ export async function runAcp(opts: {
         if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
           await switchModelIfRequested(batch.mode.model);
         }
+        if (typeof batch.mode.effort === 'string' && batch.mode.effort.length > 0) {
+          await switchEffortIfRequested(batch.mode.effort);
+        }
         await backend.sendPrompt(acpSessionId, batch.message);
         await turnEnded;
-        sendEnvelopes(sessionManager.endTurn('completed'));
+        sendEnvelopes(sessionManager.endTurn(currentTurnCancelled ? 'cancelled' : 'completed'));
         session.sendSessionEvent({ type: 'ready' });
         if (verbose) {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
         }
       } catch (error) {
+        if (opts.keepSessionAliveAfterCancel === true && currentTurnCancelled) {
+          sendEnvelopes(sessionManager.endTurn('cancelled'));
+          session.sendSessionEvent({ type: 'ready' });
+          logAcp('muted', `Prompt cancelled for ${opts.agentName}`);
+          continue;
+        }
         sendEnvelopes(sessionManager.endTurn('failed'));
         session.sendSessionEvent({ type: 'ready' });
         logAcp('error', `Prompt error from ${opts.agentName}: ${error instanceof Error ? error.message : String(error)}`);
         clearPendingTurn(error instanceof Error ? error : new Error(String(error)));
         throw error;
+      } finally {
+        turnInProgress = false;
       }
     }
   } finally {

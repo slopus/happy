@@ -1,0 +1,46 @@
+# Kiro CLI models
+
+Source: https://kiro.dev/docs/cli/models/
+Fetched/verified: 2026-07-05
+
+Kiro CLI supports model selection through the chat UI, the `/model` command,
+and command-line defaults such as:
+
+```bash
+kiro-cli settings chat.defaultModel claude-opus-4.8
+```
+
+Happy passes the selected model to Kiro ACP as:
+
+```bash
+kiro-cli acp --model <model-id>
+```
+
+## Model IDs used by Happy
+
+The official Kiro model names are mapped to the CLI's kebab-case model IDs.
+
+| Kiro model | Happy/Kiro model ID |
+| --- | --- |
+| Auto | `auto` |
+| Claude Sonnet 5 | `claude-sonnet-5` |
+| Claude Opus 4.8 | `claude-opus-4.8` |
+| Claude Opus 4.7 | `claude-opus-4.7` |
+| Claude Opus 4.6 | `claude-opus-4.6` |
+| Claude Opus 4.5 | `claude-opus-4.5` |
+| Claude Sonnet 4.6 | `claude-sonnet-4.6` |
+| Claude Sonnet 4.5 | `claude-sonnet-4.5` |
+| Claude Sonnet 4.0 | `claude-sonnet-4.0` |
+| Claude Haiku 4.5 | `claude-haiku-4.5` |
+| MiniMax M2.5 | `minimax-m2.5` |
+| GLM-5 | `glm-5` |
+| DeepSeek 3.2 | `deepseek-3.2` |
+| MiniMax M2.1 | `minimax-m2.1` |
+| Qwen3 Coder Next | `qwen3-coder-next` |
+
+## Notes
+
+- Auto is the recommended default; Kiro routes each task to the optimal model.
+- Model availability can vary by region and account tier.
+- Kiro docs advise restarting the client if an available model does not appear in the model selector.
+- Kiro reasoning effort levels are controlled separately with `/effort` or `kiro-cli acp --effort <level>`.

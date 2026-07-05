@@ -181,7 +181,7 @@ vi.mock('./AcpBackend', () => ({
   },
 }));
 
-import { runAcp } from './runAcp';
+import { normalizeClaudeAliasModeForKiro, runAcp } from './runAcp';
 
 describe('runAcp', () => {
   const stripAnsi = (line: string) => line.replace(/\u001b\[[0-9;]*m/g, '');
@@ -218,6 +218,28 @@ describe('runAcp', () => {
     mocks.mockStartHappyServer.mockResolvedValue({
       url: 'http://127.0.0.1:9876',
       stop: vi.fn(),
+    });
+  });
+
+  it('normalizes Claude app metadata for Kiro alias sessions', () => {
+    expect(normalizeClaudeAliasModeForKiro({
+      permissionMode: 'bypassPermissions',
+      model: 'opus',
+      effort: 'high',
+    })).toEqual({
+      permissionMode: 'yolo',
+      model: 'claude-opus-4.8',
+      effort: 'high',
+    });
+
+    expect(normalizeClaudeAliasModeForKiro({
+      permissionMode: 'default',
+      model: 'fable',
+      effort: 'default',
+    })).toEqual({
+      permissionMode: 'default',
+      model: 'claude-sonnet-5',
+      effort: null,
     });
   });
 
@@ -289,6 +311,41 @@ describe('runAcp', () => {
 
     await mocks.getKillHandler()!();
     await runPromise;
+  });
+
+  it('can keep an opt-in ACP session alive after cancel reports stopped', async () => {
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'kiro',
+      command: 'kiro-cli',
+      args: ['acp'],
+      keepSessionAliveAfterCancel: true,
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.startSessionCalls).toBe(1);
+    });
+
+    const abortHandler = mocks.sessionHandlers.get('abort');
+    expect(abortHandler).toBeTypeOf('function');
+
+    await abortHandler!({});
+
+    mocks.getUserMessageHandler()!({
+      role: 'user',
+      content: { type: 'text', text: 'answer after cancel' },
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.prompts).toEqual([
+        { sessionId: 'acp-session-1', prompt: 'answer after cancel' },
+      ]);
+    });
+
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    expect(mocks.backendState.cancelCalls).toEqual(['acp-session-1', 'acp-session-1']);
   });
 
   it('emits thinking messages in default mode', async () => {
@@ -587,6 +644,92 @@ describe('runAcp', () => {
     ]);
     expect(mocks.backendState.setModeCalls).toEqual([]);
     expect(mocks.backendState.setModelCalls).toEqual([]);
+  });
+
+  it('keeps Claude-compatible metadata while routing Claude app choices to Kiro config options', async () => {
+    mocks.backendState.startSessionMessages = [
+      {
+        type: 'event',
+        name: 'config_options_update',
+        payload: {
+          configOptions: [
+            {
+              type: 'select',
+              id: 'permission-mode',
+              name: 'Permission Mode',
+              category: 'mode',
+              currentValue: 'ask',
+              options: [
+                { value: 'ask', name: 'Ask' },
+                { value: 'yolo', name: 'YOLO' },
+              ],
+            },
+            {
+              type: 'select',
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              currentValue: 'claude-sonnet-4.6',
+              options: [
+                { value: 'claude-sonnet-4.6', name: 'Claude Sonnet 4.6' },
+                { value: 'claude-opus-4.8', name: 'Claude Opus 4.8' },
+              ],
+            },
+            {
+              type: 'select',
+              id: 'thought-level',
+              name: 'Thought Level',
+              category: 'effort',
+              currentValue: 'medium',
+              options: [
+                { value: 'medium', name: 'Medium' },
+                { value: 'high', name: 'High' },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'kiro',
+      command: 'kiro-cli',
+      args: ['acp', '--trust-all-tools'],
+      sessionFlavor: 'claude',
+      compatAgent: 'claude',
+      keepSessionAliveAfterCancel: true,
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+    });
+
+    mocks.getUserMessageHandler()!({
+      role: 'user',
+      content: { type: 'text', text: 'Use Kiro behind Claude UI' },
+      meta: {
+        permissionMode: 'bypassPermissions',
+        model: 'opus',
+        effort: 'high',
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.prompts).toHaveLength(1);
+    });
+
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    expect(mocks.mockGetOrCreateSession).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: expect.objectContaining({ flavor: 'claude' }),
+    }));
+    expect(mocks.backendState.setConfigOptionCalls).toEqual([
+      { configId: 'permission-mode', value: 'yolo' },
+      { configId: 'model', value: 'claude-opus-4.8' },
+      { configId: 'thought-level', value: 'high' },
+    ]);
   });
 
   it('ignores ACP model and permission mode requests when values do not match advertised options', async () => {

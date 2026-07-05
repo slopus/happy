@@ -1,0 +1,59 @@
+ACP Integration, Help Agent, and Tool Improvements - Kiro Loading image...
+CLI
+IDE
+Web
+Mobile
+Enterprise
+Pricing
+Docs
+Community
+Resources
+SIGN IN DOWNLOADS Loading image... Back to CLI Changelog February 4, 2026
+ACP Integration, Help Agent, and Tool Improvements
+1.25.0
+This release adds Agent Client Protocol (ACP) support for integrating Kiro into ACP-compatible IDEs and clients, a Help Agent for instant CLI guidance, and a range of tool and configuration improvements.
+Agent Client Protocol (ACP) Support
+ACP-compatible editors like JetBrains IDEs and Zed can now use Kiro as a custom agent. Run kiro-cli acp to start Kiro as an ACP-compliant agent that communicates over stdin/stdout using JSON-RPC. Kiro supports standard ACP methods plus extensions for slash commands, MCP tools, and session management. Learn more ->
+Help Agent
+Get instant answers about Kiro CLI without leaving your conversation. The built-in Help Agent uses documentation to answer questions about commands, tools, settings, and configuration — and can even create config files in .kiro/ for you. Use /help to switch to the Help Agent, or /help How do I configure MCP? to ask directly . Learn more ->
+Enterprise Web Tools Governance
+Administrators can now disable web_search and web_fetch tools organization-wide. Users see a notification in /tools when web access is disabled by their organization. Learn more ->
+Subagent Access Control
+New availableAgents and trustedAgents settings give fine-grained control over which agents can be spawned as subagents. Both support glob patterns like test-* . Learn more ->
+Exit Codes & Startup Checks
+Structured exit codes for scripting and automation. --require-mcp-startup ensures MCP servers are up before your session starts. Learn more ->
+Improvements Fixes { PREVIOUS }
+Skills, Custom Diff Tools, Improved Code Intelligence, and Conversation Compaction
+{ NEXT }
+External Identity Provider Support for Kiro CLI
+Loading image...
+Product
+About Kiro
+IDE
+CLI
+Web
+Mobile
+Pricing
+Downloads
+For
+Enterprise
+Startups
+Students
+Community
+Overview
+Ambassadors
+Discord
+Events
+Powers
+Shop
+Showcase
+Resources
+Docs
+Blog
+Changelog
+FAQs
+Report a bug
+Suggest an idea
+Billing support
+Social
+Site Terms License Responsible AI Policy Legal Privacy Policy Cookie Preferences

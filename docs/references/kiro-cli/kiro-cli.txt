@@ -1,0 +1,111 @@
+CLI - Kiro Loading image...
+CLI
+IDE
+Web
+Mobile
+Enterprise
+Pricing
+Docs
+Community
+Resources
+SIGN IN DOWNLOADS Loading image...
+Prompt to code to deployment in your terminal
+Unleash custom agents in a highly interactive terminal experience. Build features in complex codebases. Automate workflows in seconds. Analyze errors and trace bugs with precision.
+Install on macOS, Linux, or Windows
+curl -fsSL https://cli.kiro.dev/install | bash
+Terminal — 80×24
+Loading cast file...
+Quality code every time
+Kiro agents deliver precise code changes across large codebases with the power of Claude frontier models and advanced context management .
+Powerful at any scale
+Kiro CLI is a lightning-fast coding experience that adapts to how you work, from simple bash commands to complex enterprise workflows.
+Fast, secure development
+With powerful agent steering and native MCP support , Kiro helps you ship with precision, from prompt to production.
+Loading image...
+Multi-step workflows
+Build task-specific agents optimized for your best practices through pre-defined tool permissions and prompts . Run multiple tasks in parallel , each working off its own context and with real-time updates, you're always in the loop.
+bash autofix.sh
+git checkout -b fix/deploy-issue kiro --print "Look at the latest CI failure logs, find the root cause, and apply a fix." git add -A git commit -m "fix: resolve deploy step failure" git push origin fix/deploy-issue gh pr create --title "fix: resolve deploy step failure" --body "Automated fix via Kiro CLI"
+Automate your CI/CD pipelines
+Invoke the CLI headlessly with the right context and tools to automatically execute prompts like troubleshooting production failures or generating and publishing pull requests.
+Loading image...
+Precise context, precise code
+Leverage code intelligence along with your agent skills , knowledge base , steering files , and MCP tools to develop production-grade code, documentation, and tests that match your requirements.
+Loading image...
+Maintain flow across tools
+Kiro understands the intent behind your prompts and helps you implement complex features on larger codebases across Kiro tools and any ACP supported IDEs such as JetBrain IDEs, Eclipse, Zed and more.
+Loading image...
+Transform ideas into structured plans
+Safely explore potential changes without modifying any code . Gather requirements, explore your codebase, and breakdown your tasks down to the smallest details - once you're ready, Kiro agents will put the approved plans into action.
+{ Resources }
+Get started with Kiro CLI
+{ Documentation }
+CLI Documentation
+Complete guide to Kiro CLI commands, configuration, and best practices.
+{ Community }
+Join Discord
+Connect with other developers using Kiro CLI and get help from our community.
+Common questions
+With which tools can I use my Kiro subscription?
+With which tools can I use my Kiro subscription?
+Kiro subscriptions can be used with Kiro IDE, Kiro CLI, Kiro on the web, ACP compatible IDEs, and automation in software development (ex: reviews during CI/CD). Use with OpenClaw and similar tools that leverage third-party harnesses is prohibited.
+What is Kiro CLI?
+What is Kiro CLI?
+Kiro CLI is a tool that allows you to interact with Kiro’s AI agents directly from your terminal. The CLI enables you to use AI for tasks like writing, reviewing, modifying code, and automating workflows, all within your command-line environment. It understands your codebase and speeds up development through adaptive, natural dialogue. Kiro CLI carries over [steering files](/docs/cli/steering/) and [MCP configurations](/docs/cli/mcp/) from the Kiro IDE, leveraging the [Auto agent](/docs/cli/models/) to deliver the best results at the best price.
+How do I install Kiro CLI?
+How do I install Kiro CLI?
+See [Kiro CLI installation](/docs/cli/installation/) in the docs.
+What are the main use cases of Kiro CLI?
+What are the main use cases of Kiro CLI?
+The Kiro CLI is perfect for: * **Interactive Development:** [Chat](/docs/cli/chat/) with Kiro directly in your terminal for instant help * **Custom Automation:** Create specialized [agents](/docs/cli/custom-agents/creating/) for your specific workflows * **Team Standardization:** Use team level best practices and preferences with [steering](/docs/cli/steering/) * **External Integrations:** Connect tools and services through [MCP servers](/docs/cli/mcp/) * **Intelligent Assistance:** Get context-aware suggestions and [autocomplete](/docs/cli/autocomplete/) * **Workflow Optimization:** Automate repetitive tasks with smart [hooks](/docs/cli/hooks/)
+What are the main features of Kiro CLI?
+What are the main features of Kiro CLI?
+Kiro CLI’s core features include: * **Interactive Chat:** Engage with Kiro through natural [conversation](/docs/cli/chat/conversations/) in your terminal. * **Custom Agents:** Create and deploy specialized [agents](/docs/cli/custom-agents/creating/) for your workflows. * **MCP Integration:** Connect external tools and data sources through [Model Context Protocol](/docs/cli/mcp/examples/). * **Smart Hooks:** Automate workflows with intelligent pre/post command [hooks](/docs/cli/hooks/). * **Agent Steering:** [Steer](/docs/cli/steering/) Kiro agents with your best practices and preferences. * **Auto Complete:** Intelligent command [completion](/docs/cli/autocomplete/) with context awareness.
+What are some essential Kiro CLI commands?
+What are some essential Kiro CLI commands?
+Kiro CLI supports several commands that you can use during a chat session. These commands start with a forward slash (`/`). See the full [slash commands reference](/docs/cli/reference/slash-commands/). _Chat commands_ |Command |Description | |--- |--- | |`/load` |Import conversation state from a JSON file | |`/save` |Export conversation state to a JSON file | |`/prompts` |Lists all available prompts | |`/usage` |Displays an estimate of the context window usage | |`!` |Executes a shell command from inside a Kiro CLI session | |`ctrl-j` |Allows multi-line input | |`ctrl-k` |Fuzzy search | |`/editor` |Uses the configured editor to compose prompts | |`/help` |Displays a list of available commands | |`/issue` |Reports an issue or make a feature request | |`/model` |Displays available models and allows you to select one for your current chat session | |`/quit` |Exits the chat session |
+How does Kiro CLI maintain context?
+How does Kiro CLI maintain context?
+Kiro CLI maintains context primarily through directory-based [conversation persistence](/docs/cli/chat/conversations/) and explicit [context management](/docs/cli/chat/context/) options. Kiro CLI uses a directory-based system for conversation persistence, automatically associating chat sessions with specific working directories. It maintains context through both automatic and explicit mechanisms: automatically by preserving project-specific conversation history within directories (accessible via kiro chat), and explicitly through features like @workspace modifiers, file/folder specifications, and [steering files](/docs/cli/steering/). Kiro CLI also supports dynamic context addition through [hooks](/docs/cli/hooks/) and allows manual context management via /save and /load commands for conversation histories. This approach helps to ensure that relevant project context is maintained throughout development conversations.
+How are the Kiro IDE and CLI licensed?
+How are the Kiro IDE and CLI licensed?
+Kiro IDE and Kiro CLI are both distributed under a [standard proprietary license](/license/) as part of the Kiro developer experience. For users upgrading from the Q Developer CLI, you can use the [existing GitHub repository to report issues](https://github.com/aws/amazon-q-developer-cli/issues/new/choose). The [Q Developer CLI repository](https://github.com/aws/amazon-q-developer-cli/) remains available and open source for anyone who wishes to use it.
+Does Kiro CLI have separate pricing from Kiro IDE?
+Does Kiro CLI have separate pricing from Kiro IDE?
+No. Kiro CLI pricing is included in the standard Kiro [pricing tiers](/pricing/).
+What environments are supported for Kiro CLI?
+What environments are supported for Kiro CLI?
+Kiro CLI is supported on [macOS, Windows, and Linux](/docs/cli/installation/), including AppImage and Ubuntu. View CLI docs
+Transform your terminal into an AI-powered development environment
+Install on macOS, Linux, or Windows
+curl -fsSL https://cli.kiro.dev/install | bash Loading image...
+Product
+About Kiro
+IDE
+CLI
+Web
+Mobile
+Pricing
+Downloads
+For
+Enterprise
+Startups
+Students
+Community
+Overview
+Ambassadors
+Discord
+Events
+Powers
+Shop
+Showcase
+Resources
+Docs
+Blog
+Changelog
+FAQs
+Report a bug
+Suggest an idea
+Billing support
+Social
+Site Terms License Responsible AI Policy Legal Privacy Policy Cookie Preferences
