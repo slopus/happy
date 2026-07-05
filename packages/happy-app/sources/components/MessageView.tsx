@@ -295,9 +295,9 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.divider,
     borderWidth: 1,
     paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginBottom: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    marginBottom: 16,
     maxWidth: '100%',
   },
   goalMessageBubble: {
@@ -336,7 +336,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   agentMessageContainer: {
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginTop: 4,
+    marginBottom: 16,
     borderRadius: 16,
     maxWidth: '100%',
   },

@@ -346,6 +346,9 @@ const ChatListInternal = React.memo((props: {
                 }}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
+                // Inverted list: paddingTop renders at the visual bottom,
+                // keeping the newest message off the composer edge.
+                contentContainerStyle={{ paddingTop: 8 }}
                 renderItem={renderItem}
                 onScroll={handleScroll}
                 scrollEventThrottle={16}
