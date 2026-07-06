@@ -45,6 +45,31 @@ export const debugMessages: Message[] = [
         kind: 'user-text',
         text: 'Can you help me debug my application and make some improvements?'
     },
+
+    // Agent message with LaTeX math (inline + display equations, KaTeX)
+    {
+        id: 'agent-latex-demo',
+        localId: null,
+        createdAt: Date.now() - 199000,
+        kind: 'agent-text',
+        text: String.raw`Here's a quick tour of the math rendering.
+
+The loss is $\mathcal{L} = -\sum_i y_i \log \hat{y}_i$ and its gradient is $\nabla_\theta \mathcal{L}$. Euler's identity is $e^{i\pi} + 1 = 0$.
+
+The Gaussian integral evaluates in closed form:
+
+$$ \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi} $$
+
+Key quantities:
+- Softmax: $\sigma(z)_i = \frac{e^{z_i}}{\sum_j e^{z_j}}$
+- Attention: $\mathrm{Attn}(Q,K,V) = \mathrm{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V$
+
+And the quadratic formula in display mode:
+
+$$ x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a} $$
+
+Prices like $5 and $10 stay as plain text, not math.`
+    },
     
     // Agent message
     {
