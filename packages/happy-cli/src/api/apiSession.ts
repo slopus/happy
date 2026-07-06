@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { deriveKey } from '@/utils/deriveKey';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { registerChangeTitleHandler } from './rpc/registerChangeTitleHandler';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
 import { shouldReconnect } from '@/utils/lidState';
@@ -250,6 +251,7 @@ export class ApiSessionClient extends EventEmitter {
             logger: (msg, data) => logger.debug(msg, data)
         });
         registerCommonHandlers(this.rpcHandlerManager, this.metadata.path);
+        registerChangeTitleHandler(this.rpcHandlerManager, (title) => this.changeTitle(title));
 
         //
         // Create socket
@@ -709,6 +711,22 @@ export class ApiSessionClient extends EventEmitter {
                 }
             }));
         }
+    }
+
+    /**
+     * Rename the session by writing a Claude `summary` record.
+     *
+     * Single source of truth for session titles: the `change_title` MCP tool
+     * (agent-driven) and the `changeTitle` RPC (user-driven rename from the app)
+     * both call this, so the Happy metadata summary and the underlying Claude
+     * Code session name stay in sync.
+     */
+    changeTitle(title: string) {
+        this.sendClaudeSessionMessage({
+            type: 'summary',
+            summary: title,
+            leafUuid: randomUUID()
+        });
     }
 
     /**

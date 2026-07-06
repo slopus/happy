@@ -13,7 +13,6 @@ import { AddressInfo } from "node:net";
 import { z } from "zod";
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
-import { randomUUID } from "node:crypto";
 
 function createMcpServer(handler: (title: string) => Promise<{ success: boolean; error?: string }>): McpServer {
     const mcp = new McpServer({
@@ -63,11 +62,7 @@ export async function startHappyServer(client: ApiSessionClient) {
     const handler = async (title: string) => {
         logger.debug('[happyMCP] Changing title to:', title);
         try {
-            client.sendClaudeSessionMessage({
-                type: 'summary',
-                summary: title,
-                leafUuid: randomUUID()
-            });
+            client.changeTitle(title);
             return { success: true };
         } catch (error) {
             return { success: false, error: String(error) };

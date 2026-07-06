@@ -389,6 +389,11 @@ export const zhHant: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `已安裝版本 ${currentVersion}。請更新到 ${requiredVersion} 或更高版本`,
         updateCliInstructions: '請執行 npm install -g happy@latest',
+        renameSession: '重新命名工作階段',
+        renameSessionSubtitle: '變更聊天標題',
+        renameSessionPlaceholder: '輸入標題',
+        renameSessionOffline: '請連線到此工作階段以重新命名',
+        renameSessionFailed: '重新命名工作階段失敗',
         deleteSession: '刪除工作階段',
         deleteSessionSubtitle: '永久刪除此工作階段',
         deleteSessionConfirm: '永久刪除工作階段？',

@@ -347,6 +347,11 @@ export const ru: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Установлена версия ${currentVersion}. Обновите до ${requiredVersion} или новее`,
         updateCliInstructions: 'Пожалуйста, выполните npm install -g happy@latest',
+        renameSession: 'Переименовать сессию',
+        renameSessionSubtitle: 'Изменить название чата',
+        renameSessionPlaceholder: 'Введите название',
+        renameSessionOffline: 'Подключитесь к этой сессии, чтобы переименовать её',
+        renameSessionFailed: 'Не удалось переименовать сессию',
         deleteSession: 'Удалить сессию',
         deleteSessionSubtitle: 'Удалить эту сессию навсегда',
         deleteSessionConfirm: 'Удалить сессию навсегда?',

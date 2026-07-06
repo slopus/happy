@@ -390,6 +390,11 @@ export const zhHans: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `已安装版本 ${currentVersion}。请更新到 ${requiredVersion} 或更高版本`,
         updateCliInstructions: '请运行 npm install -g happy@latest',
+        renameSession: '重命名会话',
+        renameSessionSubtitle: '更改聊天标题',
+        renameSessionPlaceholder: '输入标题',
+        renameSessionOffline: '请连接到此会话后再重命名',
+        renameSessionFailed: '重命名会话失败',
         deleteSession: '删除会话',
         deleteSessionSubtitle: '永久删除此会话',
         deleteSessionConfirm: '永久删除会话？',

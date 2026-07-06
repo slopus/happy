@@ -389,6 +389,11 @@ export const ca: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versió ${currentVersion} instal·lada. Actualitzeu a ${requiredVersion} o posterior`,
         updateCliInstructions: 'Si us plau executeu npm install -g happy@latest',
+        renameSession: 'Reanomena la sessió',
+        renameSessionSubtitle: 'Canvia el títol del xat',
+        renameSessionPlaceholder: 'Introdueix un títol',
+        renameSessionOffline: 'Connecta\'t a aquesta sessió per reanomenar-la',
+        renameSessionFailed: 'Ha fallat reanomenar la sessió',
         deleteSession: 'Elimina la sessió',
         deleteSessionSubtitle: 'Elimina permanentment aquesta sessió',
         deleteSessionConfirm: 'Eliminar la sessió permanentment?',

@@ -11,7 +11,7 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionArchive, sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionArchive, sessionKill, sessionDelete, sessionRename } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -23,6 +23,7 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
 import { HappyError } from '@/utils/errors';
+import { resolveSessionRename } from '@/utils/sessionRename';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -214,6 +215,37 @@ function SessionInfoContent({ session }: { session: Session }) {
         );
     }, [performDelete]);
 
+    // Rename the session. The new title is applied by the CLI, which writes it
+    // into the underlying Claude Code session, so it requires an online session.
+    // Note: a later agent-driven `change_title` can still overwrite a manual
+    // rename — the summary is a single shared field, by design.
+    const [renamingSession, performRename] = useHappyAction(async () => {
+        if (!sessionStatus.isConnected) {
+            Modal.alert(t('sessionInfo.renameSession'), t('sessionInfo.renameSessionOffline'));
+            return;
+        }
+        const currentTitle = session.metadata?.summary?.text ?? '';
+        const input = await Modal.prompt(
+            t('sessionInfo.renameSession'),
+            undefined,
+            {
+                defaultValue: currentTitle,
+                placeholder: t('sessionInfo.renameSessionPlaceholder'),
+                confirmText: t('common.save'),
+                cancelText: t('common.cancel'),
+            },
+        );
+        const title = resolveSessionRename(input, currentTitle);
+        if (title === null) {
+            return;
+        }
+        try {
+            await sessionRename(session.id, title);
+        } catch {
+            throw new HappyError(t('sessionInfo.renameSessionFailed'), false);
+        }
+    });
+
     const formatDate = useCallback((timestamp: number) => {
         return new Date(timestamp).toLocaleString();
     }, []);
@@ -348,6 +380,13 @@ function SessionInfoContent({ session }: { session: Session }) {
 
                 {/* Quick Actions */}
                 <ItemGroup title={t('sessionInfo.quickActions')}>
+                    <Item
+                        title={t('sessionInfo.renameSession')}
+                        subtitle={t('sessionInfo.renameSessionSubtitle')}
+                        icon={<Ionicons name="create-outline" size={29} color="#007AFF" />}
+                        onPress={performRename}
+                        loading={renamingSession}
+                    />
                     {session.metadata?.machineId && (
                         <Item
                             title={t('sessionInfo.viewMachine')}

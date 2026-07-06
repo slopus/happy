@@ -30,6 +30,16 @@ interface SessionGoalActionRequest {
     objective?: string;
 }
 
+// Rename (title) operation types
+interface SessionChangeTitleRequest {
+    title: string;
+}
+
+interface SessionChangeTitleResponse {
+    success: boolean;
+    error?: string;
+}
+
 // Bash operation types
 interface SessionBashRequest {
     command: string;
@@ -603,6 +613,25 @@ export async function sessionGoalAction(
         action,
         ...(objective !== undefined ? { objective } : {}),
     } satisfies SessionGoalActionRequest);
+}
+
+/**
+ * Rename a session by changing its title.
+ *
+ * The rename is applied by the CLI, which writes it into the underlying Claude
+ * Code session (the `summary` record) and propagates it back as the session's
+ * metadata summary — the same value {@link getSessionName} renders. Requires the
+ * session to be online; throws if it is offline or the CLI rejects the title.
+ */
+export async function sessionRename(sessionId: string, title: string): Promise<void> {
+    const response = await apiSocket.sessionRPC<SessionChangeTitleResponse, SessionChangeTitleRequest>(
+        sessionId,
+        'changeTitle',
+        { title },
+    );
+    if (!response.success) {
+        throw new Error(response.error || 'Failed to rename session');
+    }
 }
 
 /**
