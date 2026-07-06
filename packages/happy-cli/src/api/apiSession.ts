@@ -105,6 +105,69 @@ function extensionForImageMime(mimeType: string): string {
     }
 }
 
+type ToolResultImage = {
+    toolUseId: string;
+    attachments: LocalImageAttachment[];
+};
+
+/**
+ * Extract base64 image blocks nested inside tool_result content.
+ * These are agent-generated images (e.g. screenshots from MCP tools) that
+ * should be forwarded to the app as encrypted blob attachments so they
+ * render inline in the conversation.
+ */
+function extractToolResultImages(body: RawJSONLines): ToolResultImage[] {
+    if (body.type !== 'user' || body.isMeta) {
+        return [];
+    }
+
+    const content = (body as { message?: { content?: unknown } }).message?.content;
+    if (!Array.isArray(content)) {
+        return [];
+    }
+
+    const results: ToolResultImage[] = [];
+    for (const block of content) {
+        if (!isRecord(block) || block.type !== 'tool_result' || typeof block.tool_use_id !== 'string') {
+            continue;
+        }
+        const innerContent = block.content;
+        if (!Array.isArray(innerContent)) {
+            continue;
+        }
+
+        const attachments: LocalImageAttachment[] = [];
+        for (const inner of innerContent) {
+            if (!isRecord(inner) || inner.type !== 'image') {
+                continue;
+            }
+            const source = inner.source;
+            if (!isRecord(source) || source.type !== 'base64' || typeof source.data !== 'string') {
+                continue;
+            }
+            const data = decodeBase64(source.data);
+            if (data.length === 0) {
+                continue;
+            }
+            const mimeType = typeof source.media_type === 'string' && source.media_type.startsWith('image/')
+                ? source.media_type
+                : 'image/png';
+            const index = attachments.length + 1;
+            attachments.push({
+                data,
+                mimeType,
+                name: `tool-image-${index}.${extensionForImageMime(mimeType)}`,
+            });
+        }
+
+        if (attachments.length > 0) {
+            results.push({ toolUseId: block.tool_use_id as string, attachments });
+        }
+    }
+
+    return results;
+}
+
 function extractLocalTranscriptImageAttachments(body: RawJSONLines): LocalImageAttachment[] {
     if (body.type !== 'user' || body.isMeta || body.isSidechain) {
         return [];
@@ -115,8 +178,8 @@ function extractLocalTranscriptImageAttachments(body: RawJSONLines): LocalImageA
         return [];
     }
 
-    // Tool results are user-role messages from Claude's protocol, but they
-    // represent agent tool lifecycle, not human multimodal input.
+    // Tool results are user-role messages from Claude's protocol — handled
+    // separately by extractToolResultImages, not as user multimodal input.
     if (content.some((block) => isRecord(block) && block.type === 'tool_result')) {
         return [];
     }
@@ -712,10 +775,40 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
+     * Upload base64 images from tool results as encrypted blobs and enqueue
+     * them as file events so the app renders them inline in the conversation.
+     */
+    private async uploadAndEnqueueToolResultImages(toolResultImages: ToolResultImage[]): Promise<void> {
+        for (const { attachments } of toolResultImages) {
+            for (const attachment of attachments) {
+                try {
+                    const envelope = await this.uploadLocalImageAttachmentEnvelope(attachment);
+                    this.enqueueSessionProtocolEnvelope(envelope);
+                } catch (error) {
+                    logger.debug('[API] Failed to upload tool result image attachment', {
+                        sessionId: this.sessionId,
+                        name: attachment.name,
+                        errorName: error instanceof Error ? error.name : typeof error,
+                    });
+                }
+            }
+        }
+    }
+
+    /**
      * Send message to session
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
+        const toolResultImages = extractToolResultImages(body);
+        if (toolResultImages.length > 0) {
+            void this.uploadAndEnqueueToolResultImages(toolResultImages).catch((error) => {
+                logger.debug('[API] Unexpected error uploading tool result images', {
+                    sessionId: this.sessionId,
+                    errorName: error instanceof Error ? error.name : typeof error,
+                });
+            });
+        }
         const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
         this.enqueueSessionProtocolEnvelopes(mapped.envelopes);
