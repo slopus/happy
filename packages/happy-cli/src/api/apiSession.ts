@@ -105,10 +105,35 @@ function extensionForImageMime(mimeType: string): string {
     }
 }
 
-type ToolResultImage = {
-    toolUseId: string;
-    attachments: LocalImageAttachment[];
-};
+/**
+ * Decode a single base64 `image` content block into an attachment, or null
+ * if the block is not a base64 image. `makeName` receives the resolved file
+ * extension so callers can label the attachment (e.g. `tool-image-1.png`).
+ */
+function decodeBase64ImageBlock(
+    block: unknown,
+    makeName: (extension: string) => string,
+): LocalImageAttachment | null {
+    if (!isRecord(block) || block.type !== 'image') {
+        return null;
+    }
+    const source = block.source;
+    if (!isRecord(source) || source.type !== 'base64' || typeof source.data !== 'string') {
+        return null;
+    }
+    const data = decodeBase64(source.data);
+    if (data.length === 0) {
+        return null;
+    }
+    const mimeType = typeof source.media_type === 'string' && source.media_type.startsWith('image/')
+        ? source.media_type
+        : 'image/png';
+    return {
+        data,
+        mimeType,
+        name: makeName(extensionForImageMime(mimeType)),
+    };
+}
 
 /**
  * Extract base64 image blocks nested inside tool_result content.
@@ -116,8 +141,8 @@ type ToolResultImage = {
  * should be forwarded to the app as encrypted blob attachments so they
  * render inline in the conversation.
  */
-function extractToolResultImages(body: RawJSONLines): ToolResultImage[] {
-    if (body.type !== 'user' || body.isMeta) {
+function extractToolResultImages(body: RawJSONLines): LocalImageAttachment[] {
+    if (body.type !== 'user' || body.isMeta || body.isSidechain) {
         return [];
     }
 
@@ -126,46 +151,20 @@ function extractToolResultImages(body: RawJSONLines): ToolResultImage[] {
         return [];
     }
 
-    const results: ToolResultImage[] = [];
+    const attachments: LocalImageAttachment[] = [];
     for (const block of content) {
-        if (!isRecord(block) || block.type !== 'tool_result' || typeof block.tool_use_id !== 'string') {
+        if (!isRecord(block) || block.type !== 'tool_result' || !Array.isArray(block.content)) {
             continue;
         }
-        const innerContent = block.content;
-        if (!Array.isArray(innerContent)) {
-            continue;
-        }
-
-        const attachments: LocalImageAttachment[] = [];
-        for (const inner of innerContent) {
-            if (!isRecord(inner) || inner.type !== 'image') {
-                continue;
+        for (const inner of block.content) {
+            const attachment = decodeBase64ImageBlock(inner, (ext) => `tool-image-${attachments.length + 1}.${ext}`);
+            if (attachment) {
+                attachments.push(attachment);
             }
-            const source = inner.source;
-            if (!isRecord(source) || source.type !== 'base64' || typeof source.data !== 'string') {
-                continue;
-            }
-            const data = decodeBase64(source.data);
-            if (data.length === 0) {
-                continue;
-            }
-            const mimeType = typeof source.media_type === 'string' && source.media_type.startsWith('image/')
-                ? source.media_type
-                : 'image/png';
-            const index = attachments.length + 1;
-            attachments.push({
-                data,
-                mimeType,
-                name: `tool-image-${index}.${extensionForImageMime(mimeType)}`,
-            });
-        }
-
-        if (attachments.length > 0) {
-            results.push({ toolUseId: block.tool_use_id as string, attachments });
         }
     }
 
-    return results;
+    return attachments;
 }
 
 function extractLocalTranscriptImageAttachments(body: RawJSONLines): LocalImageAttachment[] {
@@ -186,28 +185,10 @@ function extractLocalTranscriptImageAttachments(body: RawJSONLines): LocalImageA
 
     const attachments: LocalImageAttachment[] = [];
     for (const block of content) {
-        if (!isRecord(block) || block.type !== 'image') {
-            continue;
+        const attachment = decodeBase64ImageBlock(block, (ext) => `claude-image-${attachments.length + 1}.${ext}`);
+        if (attachment) {
+            attachments.push(attachment);
         }
-        const source = block.source;
-        if (!isRecord(source) || source.type !== 'base64' || typeof source.data !== 'string') {
-            continue;
-        }
-
-        const data = decodeBase64(source.data);
-        if (data.length === 0) {
-            continue;
-        }
-
-        const mimeType = typeof source.media_type === 'string' && source.media_type.startsWith('image/')
-            ? source.media_type
-            : 'image/png';
-        const index = attachments.length + 1;
-        attachments.push({
-            data,
-            mimeType,
-            name: `claude-image-${index}.${extensionForImageMime(mimeType)}`,
-        });
     }
 
     return attachments;
@@ -778,19 +759,17 @@ export class ApiSessionClient extends EventEmitter {
      * Upload base64 images from tool results as encrypted blobs and enqueue
      * them as file events so the app renders them inline in the conversation.
      */
-    private async uploadAndEnqueueToolResultImages(toolResultImages: ToolResultImage[]): Promise<void> {
-        for (const { attachments } of toolResultImages) {
-            for (const attachment of attachments) {
-                try {
-                    const envelope = await this.uploadLocalImageAttachmentEnvelope(attachment);
-                    this.enqueueSessionProtocolEnvelope(envelope);
-                } catch (error) {
-                    logger.debug('[API] Failed to upload tool result image attachment', {
-                        sessionId: this.sessionId,
-                        name: attachment.name,
-                        errorName: error instanceof Error ? error.name : typeof error,
-                    });
-                }
+    private async uploadAndEnqueueToolResultImages(attachments: LocalImageAttachment[]): Promise<void> {
+        for (const attachment of attachments) {
+            try {
+                const envelope = await this.uploadLocalImageAttachmentEnvelope(attachment);
+                this.enqueueSessionProtocolEnvelope(envelope);
+            } catch (error) {
+                logger.debug('[API] Failed to upload tool result image attachment', {
+                    sessionId: this.sessionId,
+                    name: attachment.name,
+                    errorName: error instanceof Error ? error.name : typeof error,
+                });
             }
         }
     }
