@@ -91,8 +91,10 @@ export class AgyBackend implements AgentBackend {
 
   async startSession(): Promise<StartSessionResult> {
     // agy spawns lazily per prompt; there is nothing long-lived to start.
-    // Pick up any existing conversation for this cwd so the first turn resumes it.
-    this.conversationId = this.resolveConversationId(this.cwd);
+    // Deliberately do NOT seed from the cwd conversation cache: it holds whatever
+    // conversation last ran in this cwd — possibly another live session's — so
+    // seeding would cross-resume it. A fresh session starts a fresh conversation;
+    // resuming a specific one across restarts needs explicit id plumbing (follow-up).
     return { sessionId: this.cwd };
   }
 
@@ -107,6 +109,12 @@ export class AgyBackend implements AgentBackend {
     });
 
     this.emit({ type: 'status', status: 'running' });
+
+    // Until we have pinned our own conversation, snapshot the cwd cache so we can
+    // tell after the turn whether the entry is ours (changed → our turn wrote it)
+    // or a leftover from another session (unchanged → not ours to adopt).
+    const preTurnCacheId =
+      this.conversationId === null ? this.resolveConversationId(this.cwd) : null;
 
     await new Promise<void>((resolve, reject) => {
       const child = this.spawnFn(resolveAgyBin(), args, {
@@ -163,10 +171,23 @@ export class AgyBackend implements AgentBackend {
         if (settled) return;
         settled = true;
         cleanup();
-        // Capture the conversation id agy recorded for this cwd so the next turn resumes it.
-        const cid = this.resolveConversationId(this.cwd);
-        if (cid) {
-          this.conversationId = cid;
+        // Pin the conversation our first turn created so later turns resume it.
+        // Once pinned, never re-read the cache: another session in the same cwd
+        // may have updated it since, and adopting that id would cross-resume.
+        // Best effort while unpinned: any concurrent same-cwd write that differs
+        // from the pre-turn snapshot (another session's turn, or bare interactive
+        // agy) would be adopted just the same — agy doesn't echo the id it
+        // created, so we cannot attribute the cache entry more precisely.
+        // Deliberately runs on failed turns too: agy may have created the
+        // conversation before the turn errored, and resuming it keeps context.
+        if (this.conversationId === null) {
+          const cid = this.resolveConversationId(this.cwd);
+          if (cid && cid !== preTurnCacheId) {
+            this.conversationId = cid;
+            this.log(`pinned agy conversation ${cid}`);
+          } else {
+            this.log('agy conversation cache unchanged after turn; not adopting (will retry next turn)');
+          }
         }
 
         if (code === 0) {

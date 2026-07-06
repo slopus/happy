@@ -120,6 +120,155 @@ describe('AgyBackend', () => {
     expect(spawnCalls[1][idx + 1]).toBe('cid-xyz');
   });
 
+  it('starts fresh instead of resuming a pre-existing cwd conversation (cross-resume guard)', async () => {
+    const spawnCalls: string[][] = [];
+    let current = makeFakeChild();
+    const spawnFn = vi.fn((_bin: string, args: string[]) => {
+      spawnCalls.push(args);
+      return current.child;
+    }) as unknown as SpawnFn;
+
+    // The cwd cache already holds a conversation from another (possibly live) session.
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => 'other-sessions-conversation',
+    });
+
+    await backend.startSession();
+
+    const t1 = backend.sendPrompt('/work', 'first');
+    current.child.emit('close', 0);
+    await t1;
+    expect(spawnCalls[0]).not.toContain('--conversation');
+
+    // The cache entry never changed, so it was not ours to adopt.
+    current = makeFakeChild();
+    const t2 = backend.sendPrompt('/work', 'second');
+    current.child.emit('close', 0);
+    await t2;
+    expect(spawnCalls[1]).not.toContain('--conversation');
+  });
+
+  it('adopts the id recorded during the first turn even when a stale entry existed', async () => {
+    const spawnCalls: string[][] = [];
+    let current = makeFakeChild();
+    const spawnFn = vi.fn((_bin: string, args: string[]) => {
+      spawnCalls.push(args);
+      return current.child;
+    }) as unknown as SpawnFn;
+
+    let recorded: string | null = 'stale-old';
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => recorded,
+    });
+
+    await backend.startSession();
+
+    const t1 = backend.sendPrompt('/work', 'first');
+    recorded = 'fresh-1'; // our turn created a new conversation
+    current.child.emit('close', 0);
+    await t1;
+    expect(spawnCalls[0]).not.toContain('--conversation');
+
+    current = makeFakeChild();
+    const t2 = backend.sendPrompt('/work', 'second');
+    current.child.emit('close', 0);
+    await t2;
+    const idx = spawnCalls[1].indexOf('--conversation');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(spawnCalls[1][idx + 1]).toBe('fresh-1');
+  });
+
+  it('re-snapshots the cache every turn while unpinned: a foreign write between turns is not adopted', async () => {
+    const spawnCalls: string[][] = [];
+    let current = makeFakeChild();
+    const spawnFn = vi.fn((_bin: string, args: string[]) => {
+      spawnCalls.push(args);
+      return current.child;
+    }) as unknown as SpawnFn;
+
+    let recorded: string | null = 'stale-S';
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => recorded,
+    });
+
+    await backend.startSession();
+
+    // Turn 1: cache stays at the stale value → nothing to adopt.
+    const t1 = backend.sendPrompt('/work', 'first');
+    current.child.emit('close', 0);
+    await t1;
+
+    // While idle, a foreign session writes a new id. If the backend kept using
+    // turn 1's snapshot ('stale-S'), turn 2's close would mis-adopt 'foreign-F'.
+    recorded = 'foreign-F';
+
+    current = makeFakeChild();
+    const t2 = backend.sendPrompt('/work', 'second');
+    current.child.emit('close', 0);
+    await t2;
+
+    current = makeFakeChild();
+    const t3 = backend.sendPrompt('/work', 'third');
+    current.child.emit('close', 0);
+    await t3;
+
+    for (const call of spawnCalls) {
+      expect(call).not.toContain('--conversation');
+    }
+  });
+
+  it('keeps the pinned conversation when another session updates the cache', async () => {
+    const spawnCalls: string[][] = [];
+    let current = makeFakeChild();
+    const spawnFn = vi.fn((_bin: string, args: string[]) => {
+      spawnCalls.push(args);
+      return current.child;
+    }) as unknown as SpawnFn;
+
+    let recorded: string | null = null;
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => recorded,
+    });
+
+    await backend.startSession();
+
+    const t1 = backend.sendPrompt('/work', 'first');
+    recorded = 'mine';
+    current.child.emit('close', 0);
+    await t1;
+
+    // A second agy session in the same cwd finishes a turn: cache now points elsewhere.
+    recorded = 'theirs';
+
+    current = makeFakeChild();
+    const t2 = backend.sendPrompt('/work', 'second');
+    current.child.emit('close', 0);
+    await t2;
+
+    current = makeFakeChild();
+    const t3 = backend.sendPrompt('/work', 'third');
+    current.child.emit('close', 0);
+    await t3;
+
+    for (const call of [spawnCalls[1], spawnCalls[2]]) {
+      const idx = call.indexOf('--conversation');
+      expect(idx).toBeGreaterThanOrEqual(0);
+      expect(call[idx + 1]).toBe('mine');
+    }
+  });
+
   it('emits only one error when error is followed by close (no double-emit)', async () => {
     const { child } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
