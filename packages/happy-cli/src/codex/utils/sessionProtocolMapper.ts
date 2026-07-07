@@ -986,10 +986,13 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             collabReceiverThreadIdsByCall,
             collabToolByCall,
             envelopes: usage
-                ? [createEnvelope('agent', { t: 'service', text: '' }, {
-                    ...buildEnvelopeOptions(state.currentTurnId),
-                    usage,
-                })]
+                // Deliberately NO turn id: app versions without the
+                // usage-only-service filter render any agent service envelope
+                // that has a turn as a chat row — one blank bubble per
+                // token_count event. Turn-less agent envelopes are dropped by
+                // those versions, while versions with the filter read the
+                // usage either way.
+                ? [createEnvelope('agent', { t: 'service', text: '' }, { usage })]
                 : [],
         };
     }

@@ -5,6 +5,7 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
+import { storage } from './storage';
 import type { MachineMetadata } from './storageTypes';
 
 // Strict type definitions for all operations
@@ -557,6 +558,92 @@ export async function machineUpdateMetadata(
     }
 
     throw new Error('Unexpected error in machineUpdateMetadata');
+}
+
+import type { SessionAgentModesPatch } from './storageTypes';
+export type { SessionAgentModesPatch };
+
+/**
+ * Persist per-session mode picks into synced session metadata with optimistic
+ * concurrency and automatic retry. On version conflict the latest metadata is
+ * taken from the server via the schema-free raw decrypt, so fields this app
+ * version doesn't know about survive the read-modify-write.
+ */
+async function sessionUpdateAgentModesMetadata(
+    sessionId: string,
+    patch: SessionAgentModesPatch,
+    maxRetries: number = 3
+): Promise<void> {
+    const encryption = sync.encryption.getSessionEncryption(sessionId);
+    const session = storage.getState().sessions[sessionId];
+    if (!encryption || !session?.metadata) {
+        throw new Error(`Session ${sessionId} is not ready for metadata updates`);
+    }
+
+    let currentVersion = session.metadataVersion;
+    let currentMetadata: Record<string, unknown> = { ...session.metadata, ...patch };
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const encrypted = await encryption.encryptRaw(currentMetadata);
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+        }>('update-metadata', {
+            sid: sessionId,
+            metadata: encrypted,
+            expectedVersion: currentVersion
+        });
+
+        if (result.result === 'success') {
+            return;
+        }
+        if (result.result === 'version-mismatch') {
+            currentVersion = result.version!;
+            const latest = await encryption.decryptRaw(result.metadata!);
+            if (!latest) {
+                throw new Error('Failed to decrypt latest session metadata');
+            }
+            currentMetadata = { ...latest, ...patch };
+            continue;
+        }
+        throw new Error('Failed to update session metadata');
+    }
+
+    throw new Error(`Failed to update session metadata after ${maxRetries} retries due to version conflicts`);
+}
+
+/**
+ * Apply a per-session model / effort pick: updates local state immediately for
+ * a snappy UI and pushes the pick into synced session metadata so other
+ * devices receive it through the update-session broadcast. Never throws — a
+ * failed push leaves the optimistic local value, and the next inbound
+ * metadata update reconciles the UI.
+ */
+export function sessionSetAgentModes(sessionId: string, patch: SessionAgentModesPatch): void {
+    const state = storage.getState();
+    const session = state.sessions[sessionId];
+
+    // Only touch fields that actually change — clearing modes on a session
+    // with no picks (e.g. every abort) must not cost a metadata round-trip.
+    const changed: SessionAgentModesPatch = {};
+    if (patch.permissionMode !== undefined && patch.permissionMode !== (session?.permissionMode ?? null)) {
+        changed.permissionMode = patch.permissionMode;
+    }
+    if (patch.modelMode !== undefined && patch.modelMode !== (session?.modelMode ?? null)) {
+        changed.modelMode = patch.modelMode;
+    }
+    if (patch.effortLevel !== undefined && patch.effortLevel !== (session?.effortLevel ?? null)) {
+        changed.effortLevel = patch.effortLevel;
+    }
+    if (Object.keys(changed).length === 0) {
+        return;
+    }
+
+    state.updateSessionAgentModes(sessionId, changed);
+    sessionUpdateAgentModesMetadata(sessionId, changed).catch((error) => {
+        console.error(`Failed to sync agent modes for session ${sessionId}`, error);
+    });
 }
 
 /**

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import Svg, { Circle } from 'react-native-svg';
 import { hapticsLight } from './haptics';
+import { t } from '@/text';
 import type { EffortLevel, ModelMode, ModeOption } from './modelModeOptions';
 import {
     clampContextSize,
@@ -179,7 +180,11 @@ function ContextUsageCircle(props: {
     const circumference = 2 * Math.PI * radius;
     const progress = props.maxValue > 0 ? Math.min(100, Math.max(0, props.percentage)) : 0;
     const dashOffset = circumference * (1 - progress / 100);
-    const accessibilityLabel = `Context ${props.value.toLocaleString()} of ${props.maxValue.toLocaleString()} tokens, ${Math.round(progress)}%`;
+    const accessibilityLabel = t('components.sessionStatusBar.contextUsage', {
+        used: props.value.toLocaleString(),
+        total: props.maxValue.toLocaleString(),
+        percent: Math.round(progress),
+    });
 
     return (
         <View style={styles.contextCircle} accessibilityLabel={accessibilityLabel}>

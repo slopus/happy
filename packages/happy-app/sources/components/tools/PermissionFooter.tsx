@@ -12,7 +12,7 @@ import {
     type TextStyle,
     type ViewStyle,
 } from 'react-native';
-import { sessionAllow, sessionDeny } from '@/sync/ops';
+import { sessionAllow, sessionDeny, sessionSetAgentModes } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
@@ -158,7 +158,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         try {
             await sessionAllow(sessionId, permission.id, 'acceptEdits');
             // Update the session permission mode to 'acceptEdits' for future permissions
-            storage.getState().updateSessionPermissionMode(sessionId, 'acceptEdits');
+            sessionSetAgentModes(sessionId, { permissionMode: 'acceptEdits' });
         } catch (error) {
             console.error('Failed to approve all edits:', error);
         } finally {
@@ -172,7 +172,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         setLoadingBypass(true);
         try {
             await sessionAllow(sessionId, permission.id, 'bypassPermissions');
-            storage.getState().updateSessionPermissionMode(sessionId, 'bypassPermissions');
+            sessionSetAgentModes(sessionId, { permissionMode: 'bypassPermissions' });
         } catch (error) {
             console.error('Failed to bypass permissions:', error);
         } finally {

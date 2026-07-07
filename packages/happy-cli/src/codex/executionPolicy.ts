@@ -53,5 +53,9 @@ export function shouldAutoApproveCodexApproval(
         return true;
     }
 
-    return permissionMode === 'safe-yolo' || permissionMode === 'yolo' || permissionMode === 'bypassPermissions';
+    // safe-yolo is deliberately absent: its turns run with approvalPolicy
+    // 'never' inside the workspace sandbox, so any approval codex still
+    // surfaces (a sandbox-escalation retry or an MCP elicitation) is exactly
+    // what safe-yolo promises to ask the user about.
+    return permissionMode === 'yolo' || permissionMode === 'bypassPermissions';
 }

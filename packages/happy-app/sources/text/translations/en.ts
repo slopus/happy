@@ -452,6 +452,9 @@ export const en: TranslationStructure = {
             stopGoal: 'Stop goal',
             editGoal: 'Edit goal',
         },
+        sessionStatusBar: {
+            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Context ${used} of ${total} tokens, ${percent}%`,
+        },
     },
 
     agentInput: {
@@ -485,6 +488,10 @@ export const en: TranslationStructure = {
             readOnly: 'read-only',
             safeYolo: 'safe yolo',
             yolo: 'yolo',
+            defaultDescription: 'ask before untrusted commands',
+            readOnlyDescription: 'no writes',
+            safeYoloDescription: 'no prompts, workspace sandbox',
+            yoloDescription: 'no prompts, full access',
             badgeReadOnly: 'read-only',
             badgeSafeYolo: 'safe yolo',
             badgeYolo: 'yolo',

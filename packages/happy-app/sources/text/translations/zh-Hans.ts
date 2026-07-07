@@ -439,6 +439,9 @@ export const zhHans: TranslationStructure = {
             stopGoal: '停止目标',
             editGoal: '编辑目标',
         },
+        sessionStatusBar: {
+            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `上下文 ${used}/${total} 个令牌，${percent}%`,
+        },
     },
 
     agentInput: {
@@ -472,6 +475,10 @@ export const zhHans: TranslationStructure = {
             readOnly: 'Read Only Mode',
             safeYolo: 'Safe YOLO',
             yolo: 'YOLO',
+            defaultDescription: '不受信任的命令前询问',
+            readOnlyDescription: '禁止写入',
+            safeYoloDescription: '无需确认，工作区沙盒',
+            yoloDescription: '无需确认，完全访问',
             badgeReadOnly: 'Read Only Mode',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',

@@ -25,7 +25,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort, sessionGoalAction } from '@/sync/ops';
+import { sessionAbort, sessionGoalAction, sessionSetAgentModes } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
@@ -522,15 +522,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     // Function to update permission mode
     const updatePermissionMode = React.useCallback((mode: PermissionMode) => {
-        storage.getState().updateSessionPermissionMode(sessionId, mode.key);
+        sessionSetAgentModes(sessionId, { permissionMode: mode.key });
     }, [sessionId]);
 
     const updateModelMode = React.useCallback((mode: ModelMode) => {
-        storage.getState().updateSessionModelMode(sessionId, mode.key);
+        sessionSetAgentModes(sessionId, { modelMode: mode.key });
     }, [sessionId]);
 
     const updateEffortLevel = React.useCallback((level: EffortLevel) => {
-        storage.getState().updateSessionEffortLevel(sessionId, level.key);
+        sessionSetAgentModes(sessionId, { effortLevel: level.key });
     }, [sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders
@@ -556,7 +556,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [sessionId, expImageUpload, selectedImages, clearImages]);
 
     const handleAbort = React.useCallback(() => {
-        storage.getState().resetSessionAgentOverrides(sessionId);
+        // Mode picks live in synced metadata — clear them there, otherwise the
+        // next inbound metadata update resurrects them (#1492)
+        sessionSetAgentModes(sessionId, { permissionMode: null, modelMode: null, effortLevel: null });
         sessionAbort(sessionId);
     }, [sessionId]);
 

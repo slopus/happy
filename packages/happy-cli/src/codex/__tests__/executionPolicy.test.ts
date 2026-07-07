@@ -59,7 +59,11 @@ describe('resolveCodexExecutionPolicy', () => {
     it('auto-approves bridge prompts for no-prompt modes without managed sandbox', () => {
         expect(shouldAutoApproveCodexApproval('default', false)).toBe(false);
         expect(shouldAutoApproveCodexApproval('read-only', false)).toBe(false);
-        expect(shouldAutoApproveCodexApproval('safe-yolo', false)).toBe(true);
+        // safe-yolo must keep prompting: its turns run with approvalPolicy
+        // 'never' inside the workspace sandbox, so any approval codex still
+        // surfaces is a sandbox escalation — the one thing safe-yolo
+        // promises to ask the user about.
+        expect(shouldAutoApproveCodexApproval('safe-yolo', false)).toBe(false);
         expect(shouldAutoApproveCodexApproval('yolo', false)).toBe(true);
         expect(shouldAutoApproveCodexApproval('bypassPermissions', false)).toBe(true);
     });

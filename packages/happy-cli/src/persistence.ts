@@ -342,6 +342,12 @@ export async function acquireDaemonLock(
   maxAttempts: number = 5,
   delayIncrementMs: number = 200
 ): Promise<FileHandle | null> {
+  // Lock creation is not atomic with the PID write: another acquirer's lock
+  // is legitimately empty between its O_EXCL open and its writeFile. So an
+  // invalid/empty payload is only treated as stale — and unlinked — when it
+  // is STILL invalid on a later attempt, after a delay long enough for a
+  // live acquirer to have finished writing its PID.
+  let sawInvalidLock = false;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       // O_EXCL ensures we only create if it doesn't exist (atomic lock acquisition)
@@ -355,26 +361,40 @@ export async function acquireDaemonLock(
     } catch (error: any) {
       if (error.code === 'EEXIST') {
         // Lock file exists, check if process is still running
+        let lockIsInvalid = false;
         try {
           const lockPid = readFileSync(configuration.daemonLockFile, 'utf-8').trim();
           const lockPidNumber = Number(lockPid);
           if (!lockPid || !Number.isSafeInteger(lockPidNumber) || lockPidNumber <= 0) {
-            unlinkSync(configuration.daemonLockFile);
-            continue; // Retry acquisition
-          }
-          try {
-            process.kill(lockPidNumber, 0); // Check if process exists
-          } catch {
-            // Process doesn't exist, remove stale lock
-            unlinkSync(configuration.daemonLockFile);
-            continue; // Retry acquisition
+            lockIsInvalid = true;
+          } else {
+            try {
+              process.kill(lockPidNumber, 0); // Check if process exists
+            } catch {
+              // A written PID whose process is gone is unambiguously stale —
+              // no race window there, reclaim immediately.
+              try {
+                unlinkSync(configuration.daemonLockFile);
+                continue; // Retry acquisition
+              } catch { }
+            }
           }
         } catch {
-          // Can't read lock file, might be corrupted
-          try {
-            unlinkSync(configuration.daemonLockFile);
-            continue; // Retry acquisition
-          } catch { }
+          // Can't read lock file, might be corrupted (or mid-creation)
+          lockIsInvalid = true;
+        }
+
+        if (lockIsInvalid) {
+          if (sawInvalidLock) {
+            // Second sighting after a delay — nobody wrote a PID, reclaim
+            try {
+              unlinkSync(configuration.daemonLockFile);
+              continue; // Retry acquisition
+            } catch { }
+          }
+          sawInvalidLock = true;
+        } else {
+          sawInvalidLock = false;
         }
       }
 

@@ -140,10 +140,14 @@ describe('PermissionHandler', () => {
             'agent-a:toolu_shared': {
                 tool: 'Bash',
                 arguments: { command: 'pwd' },
+                // Raw provider id rides along so the app can attach the
+                // permission card to the sidechain tool call.
+                toolUseId: 'toolu_shared',
             },
             'agent-b:toolu_shared': {
                 tool: 'Bash',
                 arguments: { command: 'whoami' },
+                toolUseId: 'toolu_shared',
             },
         });
         expect(sendSessionNotification).toHaveBeenNthCalledWith(1, expect.objectContaining({
@@ -171,9 +175,11 @@ describe('PermissionHandler', () => {
         });
         expect(getState().completedRequests['agent-a:toolu_shared']).toMatchObject({
             status: 'approved',
+            toolUseId: 'toolu_shared',
         });
         expect(getState().completedRequests['agent-b:toolu_shared']).toMatchObject({
             status: 'denied',
+            toolUseId: 'toolu_shared',
         });
     });
 

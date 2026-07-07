@@ -2,20 +2,6 @@ export const SESSION_STATUS_CONTEXT_MAX = 190000;
 
 export type ContextUsageLevel = 'normal' | 'warning' | 'critical';
 
-export function getPathBasename(path: string | null | undefined): string | null {
-    const trimmed = path?.trim();
-    if (!trimmed) {
-        return null;
-    }
-
-    const segments = trimmed.split(/[/\\]/).filter(Boolean);
-    if (segments.length === 0) {
-        return trimmed;
-    }
-
-    return segments[segments.length - 1];
-}
-
 export function resolveStatusBarGitBranch(
     gitStatusBranch: string | null | undefined,
     metadataGitBranch: string | null | undefined,

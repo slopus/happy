@@ -269,7 +269,11 @@ export async function runCodex(opts: {
     let currentAppendSystemPrompt: string | undefined = undefined;
 
     const resetCurrentModeDefaults = () => {
-        currentPermissionMode = DEFAULT_CODEX_PERMISSION_MODE;
+        // Reset to the mode the session was launched with, NOT the yolo
+        // constant: resetting a prompting session to yolo would let the
+        // latest-mode auto-approve check wave through an approval that
+        // arrives in the post-abort grace window.
+        currentPermissionMode = initialPermissionMode;
         currentModel = opts.model ?? DEFAULT_CODEX_MODEL;
         currentEffort = opts.effort ?? DEFAULT_CODEX_EFFORT;
         currentAppendSystemPrompt = undefined;

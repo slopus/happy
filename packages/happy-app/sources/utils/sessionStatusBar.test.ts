@@ -3,19 +3,10 @@ import {
     clampContextSize,
     getContextUsageLevel,
     getContextUsagePercentage,
-    getPathBasename,
     resolveStatusBarGitBranch,
 } from './sessionStatusBar';
 
 describe('session status bar helpers', () => {
-    it('extracts path basenames across path styles', () => {
-        expect(getPathBasename('/Users/alice/project')).toBe('project');
-        expect(getPathBasename('C:\\Users\\alice\\project')).toBe('project');
-        expect(getPathBasename('/')).toBe('/');
-        expect(getPathBasename('')).toBe(null);
-        expect(getPathBasename(null)).toBe(null);
-    });
-
     it('clamps context values to the valid range', () => {
         expect(clampContextSize(-10, 100)).toBe(0);
         expect(clampContextSize(50, 100)).toBe(50);

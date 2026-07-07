@@ -81,15 +81,11 @@ function stringOrNull(value: unknown): string | null {
     return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-function formatScopedApprovalRequestId(
-    threadId: string | null,
-    itemId: string,
-    approvalId?: string | null,
-): string {
-    const scopedItemId = threadId ? `${threadId}:${itemId}` : itemId;
-    return approvalId ? `${scopedItemId}:${approvalId}` : scopedItemId;
-}
-
+// Codex item ids are per-thread counters, so items from collab subagent
+// threads collide with the main thread's. Scoping with the thread id keeps
+// them unique — but the SAME scoped id must be used both for the tool-call
+// events and for the approval requests of an item: the app attaches a
+// permission card to its tool call by exact id equality.
 function formatScopedItemKey(threadId: string | null, itemId: string): string {
     return threadId ? `${threadId}:${itemId}` : itemId;
 }
@@ -426,7 +422,10 @@ export class CodexAppServerClient {
         }
 
         if (method === 'item/started' && item.type === 'commandExecution') {
-            const callId = typeof item.id === 'string' ? item.id : '';
+            const itemId = typeof item.id === 'string' ? item.id : '';
+            // Scoped the same way as the approval request for this item, so
+            // the app can attach the permission card to the tool call.
+            const callId = itemId ? formatScopedItemKey(stringOrNull(params?.threadId) ?? this._threadId, itemId) : '';
             this.eventHandler?.({
                 type: 'exec_command_begin',
                 call_id: callId,
@@ -439,7 +438,8 @@ export class CodexAppServerClient {
         }
 
         if (method === 'item/completed' && item.type === 'commandExecution') {
-            const callId = typeof item.id === 'string' ? item.id : '';
+            const itemId = typeof item.id === 'string' ? item.id : '';
+            const callId = itemId ? formatScopedItemKey(stringOrNull(params?.threadId) ?? this._threadId, itemId) : '';
             this.eventHandler?.({
                 type: 'exec_command_end',
                 call_id: callId,
@@ -455,20 +455,20 @@ export class CodexAppServerClient {
         }
 
         if (item.type === 'fileChange') {
-            const callId = typeof item.id === 'string' ? item.id : '';
-            const threadId = stringOrNull(params?.threadId);
-            const itemKey = callId ? formatScopedItemKey(threadId, callId) : '';
+            const itemId = typeof item.id === 'string' ? item.id : '';
+            const threadId = stringOrNull(params?.threadId) ?? this._threadId;
+            const itemKey = itemId ? formatScopedItemKey(threadId, itemId) : '';
             const changes = normalizeRawFileChangeList(item.changes);
 
-            if (callId && changes) {
+            if (itemId && changes) {
                 this.rawFileChangesByItemId.set(itemKey, changes);
             }
 
             if (method === 'item/started') {
                 this.eventHandler?.({
                     type: 'patch_apply_begin',
-                    call_id: callId,
-                    callId,
+                    call_id: itemKey,
+                    callId: itemKey,
                     changes: changes ?? {},
                 });
                 return true;
@@ -477,12 +477,12 @@ export class CodexAppServerClient {
             if (method === 'item/completed') {
                 this.eventHandler?.({
                     type: 'patch_apply_end',
-                    call_id: callId,
-                    callId,
+                    call_id: itemKey,
+                    callId: itemKey,
                     status: item.status,
                 });
 
-                if (callId && (item.status === 'completed' || item.status === 'failed' || item.status === 'declined')) {
+                if (itemId && (item.status === 'completed' || item.status === 'failed' || item.status === 'declined')) {
                     this.rawFileChangesByItemId.delete(itemKey);
                 }
                 return true;
@@ -1411,7 +1411,7 @@ export class CodexAppServerClient {
             const itemId = `${serverName}:${id}`;
             const decision = await this.handleApproval({
                 type: 'mcp',
-                callId: formatScopedApprovalRequestId(threadId, itemId),
+                callId: formatScopedItemKey(threadId, itemId),
                 itemId,
                 threadId,
                 turnId,
@@ -1432,9 +1432,13 @@ export class CodexAppServerClient {
             const turnId = stringOrNull(params?.turnId);
             const itemId = stringOrNull(params?.itemId) ?? stringOrNull(params?.callId) ?? String(id);
             const approvalId = stringOrNull(params?.approvalId);
+            // Legacy events pass through with raw call ids, so legacy
+            // approvals must stay raw too; v2 uses the scoped item key that
+            // exec_command_begin emitted for this item. No approvalId suffix:
+            // the app joins permission ↔ tool call by exact id equality.
             const decision = await this.handleApproval({
                 type: 'exec',
-                callId: formatScopedApprovalRequestId(threadId, itemId, approvalId),
+                callId: legacy ? itemId : formatScopedItemKey(threadId, itemId),
                 itemId,
                 threadId,
                 turnId,
@@ -1458,7 +1462,7 @@ export class CodexAppServerClient {
             const itemKey = formatScopedItemKey(threadId, itemId);
             const decision = await this.handleApproval({
                 type: 'patch',
-                callId: formatScopedApprovalRequestId(threadId, itemId),
+                callId: legacy ? itemId : itemKey,
                 itemId,
                 threadId,
                 turnId,

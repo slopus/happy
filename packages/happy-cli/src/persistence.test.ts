@@ -105,12 +105,24 @@ describe('acquireDaemonLock', () => {
     ])('treats a %s lock file as stale and acquires a fresh lock', async (_label, lockContent) => {
         writeFileSync(mockConfiguration.daemonLockFile, lockContent, 'utf-8');
 
-        const lockHandle = await acquireDaemonLock(2, 0);
+        // Invalid payloads are reclaimed only on the second sighting (the
+        // first could be another acquirer mid-creation), so this needs one
+        // observation attempt, one reclaim attempt, and the final acquisition.
+        const lockHandle = await acquireDaemonLock(3, 0);
 
         expect(lockHandle).not.toBeNull();
         expect(readFileSync(mockConfiguration.daemonLockFile, 'utf-8')).toBe(String(process.pid));
         await releaseDaemonLock(lockHandle!);
         expect(existsSync(mockConfiguration.daemonLockFile)).toBe(false);
+    });
+
+    it('leaves a still-empty lock in place on first sight (concurrent acquirer mid-creation)', async () => {
+        writeFileSync(mockConfiguration.daemonLockFile, '', 'utf-8');
+
+        const lockHandle = await acquireDaemonLock(1, 0);
+
+        expect(lockHandle).toBeNull();
+        expect(existsSync(mockConfiguration.daemonLockFile)).toBe(true);
     });
 
     it('does not clear a lock held by a live process', async () => {

@@ -36,7 +36,7 @@ import { useAllMachines, useLocalSetting, useSessions, useSetting, storage } fro
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { machineSpawnNewSession } from '@/sync/ops';
+import { machineSpawnNewSession, sessionSetAgentModes, type SessionAgentModesPatch } from '@/sync/ops';
 import { createWorktree, listWorktrees } from '@/utils/worktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
@@ -972,7 +972,7 @@ function NewSessionScreen() {
                 directory: spawnDirectory,
                 approvedNewDirectoryCreation,
                 agent: selectedAgent,
-                permissionMode: currentPermission.key,
+                permissionMode: currentPermission.key !== 'default' ? currentPermission.key : undefined,
                 modelMode: currentModelKey !== 'default' ? currentModelKey : undefined,
                 effortLevel: currentEffort?.key,
             });
@@ -993,9 +993,16 @@ function NewSessionScreen() {
                     const effortOverride = currentEffortKey === effectiveAgentDefaults.effortLevel
                         ? null
                         : currentEffortKey;
-                    storage.getState().updateSessionPermissionMode(result.sessionId, permissionOverride);
-                    storage.getState().updateSessionModelMode(result.sessionId, modelOverride);
-                    storage.getState().updateSessionEffortLevel(result.sessionId, effortOverride);
+                    // Mode picks sync via session metadata (#1492). Nothing to
+                    // push when they match the defaults — a fresh session has
+                    // no picks in its metadata yet.
+                    const modesPatch: SessionAgentModesPatch = {};
+                    if (permissionOverride !== null) modesPatch.permissionMode = permissionOverride;
+                    if (modelOverride !== null) modesPatch.modelMode = modelOverride;
+                    if (effortOverride !== null) modesPatch.effortLevel = effortOverride;
+                    if (Object.keys(modesPatch).length > 0) {
+                        sessionSetAgentModes(result.sessionId, modesPatch);
+                    }
 
                     // Pull live prompt and clear it. We read via getState() so this
                     // callback doesn't have to subscribe to `input` (which would

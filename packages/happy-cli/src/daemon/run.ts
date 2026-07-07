@@ -38,7 +38,10 @@ function appendDaemonSpawnModeArgs(args: string[], options: SpawnSessionOptions,
   if (agent !== 'claude' && agent !== 'codex') {
     return;
   }
-  if (options.permissionMode) {
+  // 'default' is the app's ambient "no override" value, not an explicit choice.
+  // Forwarding it would pin the session to prompting mode and lose the CLI's
+  // own default (e.g. a --yolo setup where sessions must bypass permissions).
+  if (options.permissionMode && options.permissionMode !== 'default') {
     args.push('--permission-mode', options.permissionMode);
   }
   if (options.modelMode && options.modelMode !== 'default') {
@@ -716,7 +719,8 @@ export async function startDaemon(): Promise<void> {
         if (options?.model) {
           launch.args.push('--model', options.model);
         }
-        if (options?.permissionMode) {
+        // Same as spawnSession: ambient 'default' must not override the CLI default
+        if (options?.permissionMode && options.permissionMode !== 'default') {
           launch.args.push('--permission-mode', options.permissionMode);
         }
 

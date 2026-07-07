@@ -1019,8 +1019,8 @@ describe('CodexAppServerClient sandbox integration', () => {
 
         expect(events).toEqual(expect.arrayContaining([
             expect.objectContaining({ type: 'task_started', turn_id: 'turn-raw-1' }),
-            expect.objectContaining({ type: 'exec_command_begin', callId: 'call-1' }),
-            expect.objectContaining({ type: 'exec_command_end', callId: 'call-1', output: '/tmp/project\n' }),
+            expect.objectContaining({ type: 'exec_command_begin', callId: 'thread-raw-1:call-1' }),
+            expect.objectContaining({ type: 'exec_command_end', callId: 'thread-raw-1:call-1', output: '/tmp/project\n' }),
             expect.objectContaining({
                 type: 'collab_agent_begin',
                 callId: 'collab-1',
@@ -1337,7 +1337,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(events).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 type: 'patch_apply_begin',
-                callId: 'patch-1',
+                callId: 'thread-raw-3:patch-1',
                 changes: {
                     'README.md': {
                         diff: '@@ -1 +1 @@',
@@ -1351,7 +1351,7 @@ describe('CodexAppServerClient sandbox integration', () => {
             }),
             expect.objectContaining({
                 type: 'patch_apply_end',
-                callId: 'patch-1',
+                callId: 'thread-raw-3:patch-1',
                 status: 'completed',
             }),
         ]));
@@ -1579,9 +1579,12 @@ describe('CodexAppServerClient sandbox integration', () => {
                     'B.md': expect.objectContaining({ diff: '@@ B @@' }),
                 },
             }),
+            // No approvalId suffix in callId: the app attaches the permission
+            // card to its tool call by exact id equality with the scoped
+            // exec_command_begin call id.
             expect.objectContaining({
                 type: 'exec',
-                callId: 'thread-a:cmd-shared:approval-a',
+                callId: 'thread-a:cmd-shared',
                 itemId: 'cmd-shared',
                 threadId: 'thread-a',
                 turnId: 'turn-a',

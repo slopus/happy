@@ -393,6 +393,9 @@ export const ru: TranslationStructure = {
             stopGoal: 'Остановить цель',
             editGoal: 'Изменить цель',
         },
+        sessionStatusBar: {
+            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Контекст ${used} из ${total} токенов, ${percent}%`,
+        },
     },
 
     profile: {
@@ -487,6 +490,10 @@ export const ru: TranslationStructure = {
             readOnly: 'Read Only Mode',
             safeYolo: 'Safe YOLO',
             yolo: 'YOLO',
+            defaultDescription: 'спрашивать перед недоверенными командами',
+            readOnlyDescription: 'без записи',
+            safeYoloDescription: 'без запросов, песочница рабочей папки',
+            yoloDescription: 'без запросов, полный доступ',
             badgeReadOnly: 'Только чтение',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',

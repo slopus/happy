@@ -439,6 +439,9 @@ export const ja: TranslationStructure = {
             stopGoal: '目標を停止',
             editGoal: '目標を編集',
         },
+        sessionStatusBar: {
+            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `コンテキスト ${total}トークン中${used}、${percent}%`,
+        },
     },
 
     agentInput: {
@@ -472,6 +475,10 @@ export const ja: TranslationStructure = {
             readOnly: '読み取り専用モード',
             safeYolo: 'セーフYOLO',
             yolo: 'YOLO',
+            defaultDescription: '信頼されていないコマンドの前に確認',
+            readOnlyDescription: '書き込みなし',
+            safeYoloDescription: '確認なし、ワークスペースサンドボックス',
+            yoloDescription: '確認なし、フルアクセス',
             badgeReadOnly: '読み取り専用モード',
             badgeSafeYolo: 'セーフYOLO',
             badgeYolo: 'YOLO',

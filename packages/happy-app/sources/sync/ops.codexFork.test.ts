@@ -13,6 +13,12 @@ vi.mock('./sync', () => ({
     sync: { refreshSessions },
 }));
 
+// ops.ts imports storage (for sessionSetAgentModes), which transitively pulls
+// in react-native — mock it out, these tests never touch it.
+vi.mock('./storage', () => ({
+    storage: { getState: vi.fn(() => ({ sessions: {} })) },
+}));
+
 describe('codex fork ops', () => {
     beforeEach(() => {
         machineRPC.mockReset();

@@ -438,6 +438,9 @@ export const zhHant: TranslationStructure = {
             stopGoal: '停止目標',
             editGoal: '編輯目標',
         },
+        sessionStatusBar: {
+            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `上下文 ${used}/${total} 個權杖，${percent}%`,
+        },
     },
 
     agentInput: {
@@ -471,6 +474,10 @@ export const zhHant: TranslationStructure = {
             readOnly: '唯讀模式',
             safeYolo: '安全 YOLO',
             yolo: 'YOLO',
+            defaultDescription: '不受信任的命令前詢問',
+            readOnlyDescription: '禁止寫入',
+            safeYoloDescription: '無需確認，工作區沙盒',
+            yoloDescription: '無需確認，完全存取',
             badgeReadOnly: '唯讀模式',
             badgeSafeYolo: '安全 YOLO',
             badgeYolo: 'YOLO',

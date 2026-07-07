@@ -149,7 +149,7 @@ export class PermissionHandler {
         // AskUserQuestion requires user interaction — never auto-approve, even in bypassPermissions mode.
         // This mirrors Claude SDK's internal requiresUserInteraction() check.
         if (toolName === 'AskUserQuestion') {
-            return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
+            return this.handlePermissionRequest(toolCallId, toolName, input, options.signal, options.toolUseID);
         }
 
         // Check if tool is explicitly allowed
@@ -176,7 +176,7 @@ export class PermissionHandler {
 
         // ExitPlanMode always requires user approval — never auto-approve it.
         if (descriptor.exitPlan) {
-            return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
+            return this.handlePermissionRequest(toolCallId, toolName, input, options.signal, options.toolUseID);
         }
 
         //
@@ -201,7 +201,7 @@ export class PermissionHandler {
         // Approval flow
         //
 
-        return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
+        return this.handlePermissionRequest(toolCallId, toolName, input, options.signal, options.toolUseID);
     }
 
     private getPermissionRequestId(options: CanCallToolOptions): string {
@@ -215,7 +215,8 @@ export class PermissionHandler {
         id: string,
         toolName: string,
         input: unknown,
-        signal: AbortSignal
+        signal: AbortSignal,
+        toolUseId: string
     ): Promise<PermissionResult> {
         return new Promise<PermissionResult>((resolve, reject) => {
             // Set up abort signal handling
@@ -257,7 +258,9 @@ export class PermissionHandler {
                 }
             });
 
-            // Update agent state
+            // Update agent state. toolUseId carries the raw provider id so the
+            // app can attach the permission card to its tool call even when
+            // the request id is subagent-scoped (`agentID:toolUseID`).
             this.session.client.updateAgentState((currentState) => ({
                 ...currentState,
                 requests: {
@@ -265,7 +268,8 @@ export class PermissionHandler {
                     [id]: {
                         tool: toolName,
                         arguments: input,
-                        createdAt: Date.now()
+                        createdAt: Date.now(),
+                        ...(toolUseId !== id ? { toolUseId } : {})
                     }
                 }
             }));

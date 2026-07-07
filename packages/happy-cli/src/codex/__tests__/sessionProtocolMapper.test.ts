@@ -414,13 +414,16 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         expect(result.envelopes).toHaveLength(1);
         expect(result.envelopes[0]).toMatchObject({
             role: 'agent',
-            turn: 'turn-1',
             usage: {
                 input_tokens: 10,
                 output_tokens: 0,
             },
             ev: { t: 'service', text: '' },
         });
+        // Usage-only envelopes deliberately carry no turn id: app versions
+        // without the usage-only-service filter render turn-bearing agent
+        // service envelopes as blank chat rows.
+        expect(result.envelopes[0].turn).toBeUndefined();
         expect(result.currentTurnId).toBe('turn-1');
     });
 
@@ -476,7 +479,6 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         expect(result.envelopes).toHaveLength(1);
         expect(result.envelopes[0]).toMatchObject({
             role: 'agent',
-            turn: 'turn-1',
             usage: {
                 input_tokens: 10422,
                 cache_read_input_tokens: 113536,
@@ -485,6 +487,7 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
             },
             ev: { t: 'service', text: '' },
         });
+        expect(result.envelopes[0].turn).toBeUndefined();
     });
 });
 

@@ -103,7 +103,7 @@ describe('modelModeOptions', () => {
         } as any, translate);
 
         expect(modes.map((mode) => mode.key)).toEqual(['default', 'read-only', 'safe-yolo', 'yolo']);
-        expect(modes.find((mode) => mode.key === 'safe-yolo')?.description).toBe('no prompts, workspace sandbox');
+        expect(modes.find((mode) => mode.key === 'safe-yolo')?.description).toBe('tr:agentInput.codexPermissionMode.safeYoloDescription');
     });
 
     it('applies hacks to metadata-provided operating modes', () => {
