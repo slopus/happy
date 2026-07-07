@@ -14,8 +14,9 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, markSessionExited, readSettings } from '@/persistence';
 import type { PersistedSession } from '@/persistence';
+import { selectAutoResumeCandidates, isPidAlive, AUTO_RESUME_DEFAULT_MAX_SESSIONS, AUTO_RESUME_DEFAULT_MAX_AGE_MS } from './autoResume';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
@@ -749,6 +750,9 @@ export async function startDaemon(): Promise<void> {
           }
 
           pidToTrackedSession.delete(pid);
+          if (session.happySessionId) {
+            markSessionExited(session.happySessionId);
+          }
           logger.debug(`[DAEMON RUN] Removed session ${sessionId} from tracking`);
           return true;
         }
@@ -763,6 +767,7 @@ export async function startDaemon(): Promise<void> {
       const session = pidToTrackedSession.get(pid);
       if (session?.happySessionId && session.encryption) {
         sessionIdToFinishedSession.set(session.happySessionId, session);
+        markSessionExited(session.happySessionId);
         logger.debug(`[DAEMON RUN] Process PID ${pid} exited, preserved session ${session.happySessionId} for resume`);
       } else {
         logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
@@ -839,6 +844,48 @@ export async function startDaemon(): Promise<void> {
     // Connect to server
     apiMachine.connect();
 
+    // Auto-resume sessions that were interrupted by a crash or reboot.
+    // Opt-in via settings.json `autoResumeSessions` or HAPPY_AUTO_RESUME_SESSIONS=1.
+    // Uses the same resume-in-place flow as the app-triggered `resumeSession`
+    // RPC, so sessions keep their identity (history, title, encryption).
+    const settings = await readSettings();
+    const autoResumeEnv = process.env.HAPPY_AUTO_RESUME_SESSIONS;
+    const autoResumeEnabled = autoResumeEnv !== undefined
+      ? autoResumeEnv === '1' || autoResumeEnv === 'true'
+      : settings.autoResumeSessions === true;
+    if (autoResumeEnabled) {
+      const candidates = selectAutoResumeCandidates(readPersistedSessions(), {
+        isPidAlive,
+        now: Date.now(),
+        maxSessions: AUTO_RESUME_DEFAULT_MAX_SESSIONS,
+        maxAgeMs: AUTO_RESUME_DEFAULT_MAX_AGE_MS,
+      });
+      if (candidates.length > 0) {
+        logger.debug(`[DAEMON RUN] Auto-resuming ${candidates.length} interrupted session(s): ${candidates.map(c => c.sessionId).join(', ')}`);
+        // Fire-and-forget: resuming sessions must not block daemon startup.
+        void (async () => {
+          // Give the machine socket a moment to settle before spawning children.
+          await new Promise(resolve => setTimeout(resolve, 3_000));
+          for (const candidate of candidates) {
+            try {
+              const result = await resumeSession(candidate.sessionId);
+              if (result.type === 'success') {
+                logger.debug(`[DAEMON RUN] Auto-resumed session ${candidate.sessionId}`);
+              } else {
+                logger.debug(`[DAEMON RUN] Auto-resume failed for session ${candidate.sessionId}: ${result.type === 'error' ? result.errorMessage : result.type}`);
+              }
+            } catch (error) {
+              logger.debug(`[DAEMON RUN] Auto-resume threw for session ${candidate.sessionId}:`, error);
+            }
+            // Stagger spawns to avoid a thundering herd after reboot.
+            await new Promise(resolve => setTimeout(resolve, 1_000));
+          }
+        })();
+      } else {
+        logger.debug('[DAEMON RUN] Auto-resume enabled, no interrupted sessions found');
+      }
+    }
+
     // Every 60 seconds:
     // 1. Prune stale sessions
     // 2. Check if daemon needs update
@@ -857,13 +904,18 @@ export async function startDaemon(): Promise<void> {
       }
 
       // Prune stale sessions
-      for (const [pid, _] of pidToTrackedSession.entries()) {
+      for (const [pid, session] of pidToTrackedSession.entries()) {
         try {
           // Check if process is still alive (signal 0 doesn't kill, just checks)
           process.kill(pid, 0);
         } catch (error) {
           // Process is dead, remove from tracking
           logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
+          // The daemon observed the death while it was alive, so this was not
+          // an interruption (crash/reboot) - do not auto-resume it next start.
+          if (session.happySessionId) {
+            markSessionExited(session.happySessionId);
+          }
           pidToTrackedSession.delete(pid);
         }
       }

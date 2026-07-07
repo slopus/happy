@@ -45,6 +45,11 @@ interface Settings {
   sandboxConfig?: SandboxConfig
   serverUrl?: string
   webappUrl?: string
+  /**
+   * When enabled, the daemon automatically resumes daemon-spawned sessions
+   * that were interrupted by a crash or reboot (see daemon/autoResume.ts).
+   */
+  autoResumeSessions?: boolean
 }
 
 const defaultSettings: Settings = {
@@ -406,6 +411,12 @@ export type PersistedSession = {
   agentStateVersion: number;
   metadata: Metadata;
   savedAt: number;
+  /**
+   * Set when the daemon observed this session's process exit (or stopped it).
+   * Sessions without this field that are no longer running were interrupted
+   * (crash/reboot) and are eligible for auto-resume on daemon startup.
+   */
+  exitedAt?: number;
 };
 
 type SessionsFile = {
@@ -442,6 +453,21 @@ export function persistSession(sessionId: string, session: PersistedSession): vo
     renameSync(tmpFile, configuration.sessionsFile);
   } catch (error) {
     logger.debug(`[PERSISTENCE] Failed to persist session ${sessionId}:`, error);
+  }
+}
+
+/**
+ * Record that a session's process exited under daemon supervision.
+ * Sessions marked this way are not auto-resumed on the next daemon start.
+ */
+export function markSessionExited(sessionId: string, exitedAt: number = Date.now()): void {
+  try {
+    const existing = readPersistedSessions();
+    const session = existing[sessionId];
+    if (!session) return;
+    persistSession(sessionId, { ...session, exitedAt });
+  } catch (error) {
+    logger.debug(`[PERSISTENCE] Failed to mark session ${sessionId} as exited:`, error);
   }
 }
 
