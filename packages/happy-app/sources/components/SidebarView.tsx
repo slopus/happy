@@ -169,18 +169,6 @@ export const SidebarView = React.memo(() => {
                 <Text style={styles.newSessionText}>{t('sidebar.newSession')}</Text>
             </Pressable>
 
-            {/* Search history sessions */}
-            <Pressable
-                onPress={() => go('/session/search')}
-                style={({ pressed }) => [
-                    styles.newSessionButton,
-                    pressed && styles.newSessionButtonPressed,
-                ]}
-            >
-                <Ionicons name="search-outline" size={16} color={stylesheet.newSessionText.color} />
-                <Text style={styles.newSessionText}>{t('sidebar.searchSessions')}</Text>
-            </Pressable>
-
             {realtimeStatus !== 'disconnected' && (
                 <VoiceAssistantStatusBar variant="sidebar" />
             )}

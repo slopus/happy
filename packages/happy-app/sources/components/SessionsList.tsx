@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Pressable, FlatList, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
-import { usePathname } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { SessionListViewItem, SessionRowData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
@@ -194,11 +194,39 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 12,
         ...Typography.default('semiBold'),
     },
+    managementSection: {
+        paddingHorizontal: 16,
+        paddingTop: 10,
+        paddingBottom: 4,
+        backgroundColor: theme.colors.groupped.background,
+    },
+    managementButton: {
+        minHeight: 48,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingHorizontal: 14,
+        borderRadius: 12,
+        backgroundColor: theme.colors.surface,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+    },
+    managementButtonPressed: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    managementText: {
+        flex: 1,
+        fontSize: 14,
+        fontWeight: '600',
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
 }));
 
 export function SessionsList() {
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
+    const router = useRouter();
     const data = useVisibleSessionListViewData();
     const pathname = usePathname();
     const isTablet = useIsTablet();
@@ -310,9 +338,26 @@ export function SessionsList() {
 
     const HeaderComponent = React.useCallback(() => {
         return (
-            <UpdateBanner />
+            <>
+                <UpdateBanner />
+                <View style={styles.managementSection}>
+                    <Pressable
+                        onPress={() => router.navigate('/session/search' as any)}
+                        style={({ pressed }) => [
+                            styles.managementButton,
+                            pressed && styles.managementButtonPressed,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('sidebar.searchSessions')}
+                    >
+                        <Ionicons name="search-outline" size={17} color={stylesheet.managementText.color} />
+                        <Text style={styles.managementText}>{t('sidebar.searchSessions')}</Text>
+                        <Ionicons name="chevron-forward" size={16} color={stylesheet.managementText.color} />
+                    </Pressable>
+                </View>
+            </>
         );
-    }, []);
+    }, [router, styles]);
 
     // Footer removed - all sessions now shown inline
 
