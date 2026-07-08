@@ -383,6 +383,7 @@ export const pl: TranslationStructure = {
         failedToCopySessionId: 'Nie udało się skopiować ID sesji Happy',
         happySessionId: 'ID sesji Happy',
         copySessionId: 'Kopiuj ID sesji',
+        copyOriginalSessionId: 'Kopiuj oryginalny ID sesji',
         claudeCodeSessionId: 'ID sesji Claude Code',
         claudeCodeSessionIdCopied: 'ID sesji Claude Code skopiowane do schowka',
         codexThreadId: 'ID wątku Codex',

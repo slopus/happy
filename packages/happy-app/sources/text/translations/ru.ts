@@ -322,6 +322,7 @@ export const ru: TranslationStructure = {
         failedToCopySessionId: 'Не удалось скопировать ID сессии Happy',
         happySessionId: 'ID сессии Happy',
         copySessionId: 'Копировать ID сессии',
+        copyOriginalSessionId: 'Копировать оригинальный ID сессии',
         claudeCodeSessionId: 'ID сессии Claude Code',
         claudeCodeSessionIdCopied: 'ID сессии Claude Code скопирован в буфер обмена',
         codexThreadId: 'ID треда Codex',

@@ -380,6 +380,7 @@ export const en: TranslationStructure = {
         failedToCopySessionId: 'Failed to copy Happy Session ID',
         happySessionId: 'Happy Session ID',
         copySessionId: 'Copy session ID',
+        copyOriginalSessionId: 'Copy original session ID',
         claudeCodeSessionId: 'Claude Code Session ID',
         claudeCodeSessionIdCopied: 'Claude Code Session ID copied to clipboard',
         codexThreadId: 'Codex Thread ID',

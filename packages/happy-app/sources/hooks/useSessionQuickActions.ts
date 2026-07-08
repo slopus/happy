@@ -10,7 +10,7 @@ import { sync } from '@/sync/sync';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
 import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
-import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard, copySessionIdToClipboard } from '@/utils/copySessionMetadataToClipboard';
+import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard, copySessionIdToClipboard, copyOriginalSessionIdToClipboard } from '@/utils/copySessionMetadataToClipboard';
 import { useSessionStatus } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionForkSource } from '@/utils/sessionFork';
@@ -168,6 +168,19 @@ export function useSessionQuickActions(
         })();
     }, [onAfterCopySessionMetadata, session]);
 
+    // The underlying agent's own session id (Claude Code session id, or the
+    // Codex thread id for Codex sessions). Absent until the CLI reports it.
+    const originalSessionId = session.metadata?.claudeSessionId ?? session.metadata?.codexThreadId;
+
+    const copyOriginalSessionId = React.useCallback(() => {
+        void (async () => {
+            const copied = await copyOriginalSessionIdToClipboard(session);
+            if (copied) {
+                onAfterCopySessionMetadata?.();
+            }
+        })();
+    }, [onAfterCopySessionMetadata, session]);
+
     const [resumingSession, performResume] = useHappyAction(async () => {
         if (!resumeAvailability.canResume) {
             throw new HappyError(resumeAvailability.message, false);
@@ -273,6 +286,10 @@ export function useSessionQuickActions(
 
         items.push({ id: 'copy-session-id', icon: 'copy-outline', label: t('sessionInfo.copySessionId'), onPress: copySessionId });
 
+        if (originalSessionId) {
+            items.push({ id: 'copy-original-session-id', icon: 'code-slash-outline', label: t('sessionInfo.copyOriginalSessionId'), onPress: copyOriginalSessionId });
+        }
+
         if (canCopySessionMetadata) {
             items.push({ id: 'copy-metadata', icon: 'bug-outline', label: t('sessionInfo.copyMetadata'), onPress: copySessionMetadata });
             items.push({ id: 'copy-metadata-and-logs', icon: 'document-text-outline', label: t('sessionInfo.copyMetadata') + ' & Client Logs', onPress: copySessionMetadataAndLogs });
@@ -285,10 +302,12 @@ export function useSessionQuickActions(
         archiveSession,
         canCopySessionMetadata,
         canFork,
+        copyOriginalSessionId,
         copySessionId,
         copySessionMetadata,
         copySessionMetadataAndLogs,
         forkSource,
+        originalSessionId,
         forkSession,
         openDetails,
         openDuplicateSheet,
@@ -316,6 +335,7 @@ export function useSessionQuickActions(
         canResume: resumeAvailability.canResume,
         canShowResume: resumeAvailability.canShowResume,
         canFork,
+        copyOriginalSessionId,
         copySessionId,
         copySessionMetadata,
         copySessionMetadataAndLogs,
