@@ -24,6 +24,7 @@ export type ToolViewProps = {
     metadata: Metadata | null;
     messages: Message[];
     sessionId?: string;
+    permissionFooter?: React.ReactNode;
 }
 
 // Type for tool view components

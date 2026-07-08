@@ -70,3 +70,16 @@ html.happy-app-zoomed body {
     scrollbar-width: thin;
     scrollbar-color: rgba(150, 150, 150, 0.4) transparent;
 }
+
+/* @pierre/diffs (agent file-change diffs in chat) renders its own thin
+   6px horizontal scrollbar inside shadow DOM via ::-webkit-scrollbar.
+   `scrollbar-color` is an inherited property, so the rule above crosses
+   the shadow boundary, forces Chrome onto the fat standard scrollbar and
+   ignores Pierre's custom one (Pierre's stylesheet documents this exact
+   pitfall). Reset on the host so the inner 6px bar is honored again. One
+   rule covers every Pierre surface: WriteView/EditView, InlineFileDiff,
+   AllFilesDiffView, FileViewPanel. */
+diffs-container {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+}

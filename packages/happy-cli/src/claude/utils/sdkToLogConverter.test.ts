@@ -114,6 +114,21 @@ describe('SDKToLogConverter', () => {
 
             expect((logMessage as any).requestId).toBe('req_123')
         })
+
+        it('should preserve compact summary marker on assistant messages', () => {
+            const sdkMessage: any = {
+                type: 'assistant',
+                isCompactSummary: true,
+                message: {
+                    role: 'assistant',
+                    content: [{ type: 'text', text: 'Long compaction summary' }]
+                }
+            }
+
+            const logMessage = converter.convert(sdkMessage)
+
+            expect((logMessage as any).isCompactSummary).toBe(true)
+        })
     })
 
     describe('System messages', () => {

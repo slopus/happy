@@ -247,9 +247,12 @@ function buildSessionListViewData(
         }
     });
 
-    // Sort by creation date (newest first) — matches applySessions behavior
-    activeSessions.sort((a, b) => b.createdAt - a.createdAt);
-    inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
+    // Sort by last activity or creation date (newest first), per user setting — matches applySessions behavior
+    const sortKey = storage.getState().settings.sortSessionsByActivity
+        ? (s: Session) => s.updatedAt
+        : (s: Session) => s.createdAt;
+    activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
+    inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
@@ -268,7 +271,7 @@ function buildSessionListViewData(
     let currentDateString: string | null = null;
 
     for (const session of inactiveSessions) {
-        const sessionDate = new Date(session.createdAt);
+        const sessionDate = new Date(sortKey(session));
         const dateString = sessionDate.toDateString();
 
         if (currentDateString !== dateString) {
@@ -459,9 +462,12 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             });
 
-            // Sort both arrays by creation date for stable ordering
-            activeSessions.sort((a, b) => b.createdAt - a.createdAt);
-            inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
+            // Sort both arrays by last activity or creation date (newest first), per user setting
+            const sortKey = get().settings.sortSessionsByActivity
+                ? (s: Session) => s.updatedAt
+                : (s: Session) => s.createdAt;
+            activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
+            inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
 
             // Build flat list data for FlashList
             const listData: SessionListItem[] = [];

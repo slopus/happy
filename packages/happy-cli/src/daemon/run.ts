@@ -333,6 +333,9 @@ export async function startDaemon(): Promise<void> {
         if (options.resumeClaudeSessionId) {
           extraEnv.HAPPY_FORK_CLAUDE_SESSION_ID = options.resumeClaudeSessionId;
         }
+        if (options.resumeCodexThreadId) {
+          extraEnv.HAPPY_FORK_CODEX_THREAD_ID = options.resumeCodexThreadId;
+        }
         logger.debug(`[DAEMON RUN] Environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
 
         // Expand ${VAR} references from daemon's process.env
@@ -400,10 +403,11 @@ export async function startDaemon(): Promise<void> {
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : 'claude'));
-          // Restrict resume to Claude — Codex/Gemini don't honour the
-          // happy-pass-through `--resume <id>` argument the same way.
-          const resumeFragment = options.resumeClaudeSessionId && agent === 'claude'
-            ? ` --resume ${shellescape(options.resumeClaudeSessionId)}`
+          const resumeId = agent === 'claude'
+            ? options.resumeClaudeSessionId
+            : (agent === 'codex' ? options.resumeCodexThreadId : undefined);
+          const resumeFragment = resumeId
+            ? ` --resume ${shellescape(resumeId)}`
             : '';
           const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
 
@@ -515,11 +519,13 @@ export async function startDaemon(): Promise<void> {
             '--started-by', 'daemon'
           ];
 
-          // resumeClaudeSessionId attaches the new Happy session to a pre-existing
-          // Claude conversation file (used by the fork / duplicate flow). We pass
-          // it through `--resume <id>` as Happy's existing pass-through to claude.
+          // Resume ids attach the new Happy session to a pre-existing provider
+          // conversation created by the fork / duplicate RPC.
           if (options.resumeClaudeSessionId && agentCommand === 'claude') {
             args.push('--resume', options.resumeClaudeSessionId);
+          }
+          if (options.resumeCodexThreadId && agentCommand === 'codex') {
+            args.push('--resume', options.resumeCodexThreadId);
           }
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions

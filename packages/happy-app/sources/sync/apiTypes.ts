@@ -39,6 +39,28 @@ export const ApiDeleteMachineSchema = z.object({
     machineId: z.string(),
 });
 
+// Machine creation. Carries the per-machine data encryption key so an
+// already-connected app can register encryption and decrypt this machine's
+// metadata/daemonState without waiting for a full /v1/machines refetch.
+// Mirrors the server's buildNewMachineUpdate(). The companion 'update-machine'
+// emit on creation is machine-scoped-only and never reaches the user's app, so
+// 'new-machine' is the only machine-creation signal the app receives — it must
+// be handled or freshly onboarded machines stay invisible until app restart.
+export const ApiUpdateNewMachineSchema = z.object({
+    t: z.literal('new-machine'),
+    machineId: z.string(),
+    seq: z.number(),
+    metadata: z.string(),
+    metadataVersion: z.number(),
+    daemonState: z.string().nullish(),
+    daemonStateVersion: z.number(),
+    dataEncryptionKey: z.string().nullish(),
+    active: z.boolean(),
+    activeAt: z.number(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+});
+
 export const ApiUpdateAccountSchema = z.object({
     t: z.literal('update-account'),
     id: z.string(),
@@ -125,6 +147,7 @@ export const ApiUpdateSchema = z.union([
     ApiUpdateSessionStateSchema,
     ApiUpdateAccountSchema,
     ApiUpdateMachineStateSchema,
+    ApiUpdateNewMachineSchema,
     ApiDeleteMachineSchema,
     ApiNewArtifactSchema,
     ApiUpdateArtifactSchema,

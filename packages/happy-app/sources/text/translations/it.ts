@@ -217,7 +217,7 @@ export const it: TranslationStructure = {
         analyticsDisabled: 'Tutto il tracciamento e la telemetria disabilitati',
         analyticsEnabled: 'Analisi anonime di utilizzo attive',
         imageUpload: 'Caricamento immagini',
-        imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare da Claude',
+        imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare dagli agenti supportati',
     },
 
     errors: {
@@ -409,6 +409,13 @@ export const it: TranslationStructure = {
             scanQrCode: 'Scansiona il codice QR',
             openCamera: 'Apri fotocamera',
         },
+        agentGoalBar: {
+            currentGoal: 'Obiettivo attuale',
+            accessibilityLabel: ({ goal }: { goal: string }) => `Obiettivo attuale: ${goal}`,
+            clearGoal: 'Cancella obiettivo',
+            stopGoal: 'Ferma obiettivo',
+            editGoal: 'Modifica obiettivo',
+        },
     },
 
     agentInput: {
@@ -500,6 +507,7 @@ export const it: TranslationStructure = {
     },
 
     toolGroup: {
+        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => count === 1 ? 'Modificato 1 file' : `Modificati ${count} file`,
         readFiles: ({ count }: { count: number }) => count === 1 ? 'Letto 1 file' : `Letti ${count} file`,
         ranCommands: ({ count }: { count: number }) => count === 1 ? 'Eseguito 1 comando' : `Eseguiti ${count} comandi`,
@@ -507,6 +515,7 @@ export const it: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => count === 1 ? 'Recuperato 1 URL' : `Recuperati ${count} URL`,
         ranTasks: ({ count }: { count: number }) => count === 1 ? 'Eseguito 1 task' : `Eseguiti ${count} task`,
         usedTools: ({ count }: { count: number }) => count === 1 ? 'Usato 1 strumento' : `Usati ${count} strumenti`,
+        workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 
     tools: {
@@ -833,6 +842,7 @@ export const it: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `Passato alla modalità ${mode}`,
         unknownEvent: 'Evento sconosciuto',
         usageLimitUntil: ({ time }: { time: string }) => `Limite di utilizzo raggiunto fino a ${time}`,
+        sentAsGoal: 'Sent as goal',
         unknownTime: 'ora sconosciuta',
     },
 
@@ -977,7 +987,7 @@ export const it: TranslationStructure = {
             ? 'Un\'immagine non è stata caricata e non è stata inviata.'
             : `Non è stato possibile caricare ${count} immagini e non sono state inviate.`,
         notSupportedTitle: 'Immagini non supportate',
-        notSupportedMessage: 'Questo agente non supporta gli allegati immagine. È stato inviato solo il testo.',
+        notSupportedMessage: 'Questo agente non supporta gli allegati immagine. Le immagini non sono state inviate.',
     },
 
     feed: {

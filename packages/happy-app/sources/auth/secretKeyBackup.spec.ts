@@ -7,7 +7,7 @@ import {
 import { encodeBase64, decodeBase64 } from '@/encryption/base64';
 import { describe, it, expect } from 'vitest';
 
-describe.skip('secretKeyBackup', () => {
+describe('secretKeyBackup', () => {
     // Test data: a valid 32-byte secret key
     const testSecretBytes = new Uint8Array(32);
     for (let i = 0; i < 32; i++) {

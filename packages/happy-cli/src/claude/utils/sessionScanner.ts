@@ -1,5 +1,6 @@
 import { InvalidateSync } from "@/utils/sync";
 import { RawJSONLines, RawJSONLinesSchema } from "../types";
+import { parseClaudeGoalStatusTranscriptEvent, type ClaudeGoalStatusTranscriptEvent } from "../claudeGoalStatus";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { logger } from "@/ui/logger";
@@ -17,10 +18,23 @@ const INTERNAL_CLAUDE_EVENT_TYPES = new Set([
     'queue-operation',
 ]);
 
+export type ScannerTranscriptEvent = ClaudeGoalStatusTranscriptEvent;
+
+type SessionLogEntry =
+    | { kind: 'message'; key: string; message: RawJSONLines }
+    | { kind: 'transcript-event'; key: string; event: ScannerTranscriptEvent };
+
 export async function createSessionScanner(opts: {
     sessionId: string | null,
     workingDirectory: string
     onMessage: (message: RawJSONLines) => void
+    onTranscriptEvent?: (event: ScannerTranscriptEvent) => void
+    /**
+     * How long a session transcript may stay absent before its watcher gives
+     * up and the session is dropped. Defaults to the startFileWatcher default
+     * (60s). Exposed mainly so tests can exercise the drop path quickly.
+     */
+    missingFileTimeoutMs?: number
 }) {
 
     // Resolve project directory
@@ -31,14 +45,20 @@ export async function createSessionScanner(opts: {
     let pendingSessions = new Set<string>();
     let currentSessionId: string | null = null;
     let watchers = new Map<string, (() => void)>();
-    let processedMessageKeys = new Set<string>();
+    let processedEntryKeys = new Set<string>();
+    // Sessions whose transcript file never appeared. Their watcher gave up,
+    // so we must stop re-reading them and never re-create a watcher for them
+    // — otherwise a phantom session id (e.g. a remote launch whose .jsonl is
+    // never written) keeps itself alive forever via the watchers map below
+    // and spins the CPU / floods the log (the "dead Happy instance" bug).
+    let deadSessions = new Set<string>();
 
-    // Mark existing messages as processed and start watching the initial session
+    // Mark existing entries as processed and start watching the initial session
     if (opts.sessionId) {
-        let messages = await readSessionLog(projectDir, opts.sessionId);
-        logger.debug(`[SESSION_SCANNER] Marking ${messages.length} existing messages as processed from session ${opts.sessionId}`);
-        for (let m of messages) {
-            processedMessageKeys.add(messageKey(m));
+        let entries = await readSessionEntries(projectDir, opts.sessionId);
+        logger.debug(`[SESSION_SCANNER] Marking ${entries.length} existing entries as processed from session ${opts.sessionId}`);
+        for (let entry of entries) {
+            processedEntryKeys.add(entry.key);
         }
         // IMPORTANT: Also start watching the initial session file because Claude Code
         // may continue writing to it even after creating a new session with --resume
@@ -53,36 +73,44 @@ export async function createSessionScanner(opts: {
         // This ensures we continue processing sessions that Claude Code may still write to
         let sessions: string[] = [];
         for (let p of pendingSessions) {
-            sessions.push(p);
+            if (!deadSessions.has(p)) {
+                sessions.push(p);
+            }
         }
-        if (currentSessionId && !pendingSessions.has(currentSessionId)) {
+        if (currentSessionId && !pendingSessions.has(currentSessionId) && !deadSessions.has(currentSessionId)) {
             sessions.push(currentSessionId);
         }
         // Also process sessions that have active watchers (they may still receive updates)
         for (let [sessionId] of watchers) {
-            if (!sessions.includes(sessionId)) {
+            if (!sessions.includes(sessionId) && !deadSessions.has(sessionId)) {
                 sessions.push(sessionId);
             }
         }
 
         // Process sessions
         for (let session of sessions) {
-            const sessionMessages = await readSessionLog(projectDir, session);
+            const sessionEntries = await readSessionEntries(projectDir, session);
             let skipped = 0;
-            let sent = 0;
-            for (let file of sessionMessages) {
-                let key = messageKey(file);
-                if (processedMessageKeys.has(key)) {
+            let sentMessages = 0;
+            let sentTranscriptEvents = 0;
+            for (let entry of sessionEntries) {
+                if (processedEntryKeys.has(entry.key)) {
                     skipped++;
                     continue;
                 }
-                processedMessageKeys.add(key);
-                logger.debug(`[SESSION_SCANNER] Sending new message: type=${file.type}, uuid=${file.type === 'summary' ? file.leafUuid : file.uuid}`);
-                opts.onMessage(file);
-                sent++;
+                processedEntryKeys.add(entry.key);
+                if (entry.kind === 'message') {
+                    logger.debug(`[SESSION_SCANNER] Sending new message: type=${entry.message.type}, uuid=${entry.message.type === 'summary' ? entry.message.leafUuid : entry.message.uuid}`);
+                    opts.onMessage(entry.message);
+                    sentMessages++;
+                } else {
+                    logger.debug(`[SESSION_SCANNER] Sending new transcript event: type=${entry.event.type}, uuid=${entry.event.uuid}`);
+                    opts.onTranscriptEvent?.(entry.event);
+                    sentTranscriptEvents++;
+                }
             }
-            if (sessionMessages.length > 0) {
-                logger.debug(`[SESSION_SCANNER] Session ${session}: found=${sessionMessages.length}, skipped=${skipped}, sent=${sent}`);
+            if (sessionEntries.length > 0) {
+                logger.debug(`[SESSION_SCANNER] Session ${session}: found=${sessionEntries.length}, skipped=${skipped}, sentMessages=${sentMessages}, sentTranscriptEvents=${sentTranscriptEvents}`);
             }
         }
 
@@ -96,9 +124,27 @@ export async function createSessionScanner(opts: {
 
         // Update watchers for all sessions
         for (let p of sessions) {
-            if (!watchers.has(p)) {
+            if (!watchers.has(p) && !deadSessions.has(p)) {
                 logger.debug(`[SESSION_SCANNER] Starting watcher for session: ${p}`);
-                watchers.set(p, startFileWatcher(join(projectDir, `${p}.jsonl`), () => { sync.invalidate(); }));
+                watchers.set(p, startFileWatcher(
+                    join(projectDir, `${p}.jsonl`),
+                    () => { sync.invalidate(); },
+                    {
+                        missingFileTimeoutMs: opts.missingFileTimeoutMs,
+                        onGaveUp: () => {
+                            // The transcript for this session never appeared.
+                            // Tear the watcher down and blacklist the session
+                            // so the collection loop above stops resurrecting
+                            // it. Without this the phantom session would keep
+                            // itself in `watchers` forever.
+                            logger.debug(`[SESSION_SCANNER] Session ${p} transcript never appeared — dropping it`);
+                            watchers.get(p)?.();
+                            watchers.delete(p);
+                            deadSessions.add(p);
+                            pendingSessions.delete(p);
+                        },
+                    },
+                ));
             }
         }
     });
@@ -123,6 +169,11 @@ export async function createSessionScanner(opts: {
                 logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is the same as the current session, skipping`);
                 return;
             }
+            // The caller explicitly re-announces this session, so give a
+            // previously-dropped id another chance (its file may exist now).
+            if (deadSessions.delete(sessionId)) {
+                logger.debug(`[SESSION_SCANNER] Reviving previously-dropped session: ${sessionId}`);
+            }
             if (finishedSessions.has(sessionId)) {
                 logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is already finished, skipping`);
                 return;
@@ -139,10 +190,10 @@ export async function createSessionScanner(opts: {
             // file as fresh user prompts. Without this, every previous
             // user message re-appears in the chat after reconnect.
             if (options?.treatExistingAsProcessed) {
-                const existing = await readSessionLog(projectDir, sessionId);
-                logger.debug(`[SESSION_SCANNER] Pre-marking ${existing.length} existing messages as processed for new session ${sessionId}`);
-                for (const m of existing) {
-                    processedMessageKeys.add(messageKey(m));
+                const existing = await readSessionEntries(projectDir, sessionId);
+                logger.debug(`[SESSION_SCANNER] Pre-marking ${existing.length} existing entries as processed for new session ${sessionId}`);
+                for (const entry of existing) {
+                    processedEntryKeys.add(entry.key);
                 }
             }
             if (currentSessionId) {
@@ -176,11 +227,16 @@ function messageKey(message: RawJSONLines): string {
     }
 }
 
+function transcriptEventKey(event: ScannerTranscriptEvent): string {
+    return `event:${event.uuid}`;
+}
+
 /**
  * Read and parse session log file
- * Returns only valid conversation messages, silently skipping internal events
+ * Returns only valid conversation messages and recognized side-channel events,
+ * silently skipping internal events.
  */
-async function readSessionLog(projectDir: string, sessionId: string): Promise<RawJSONLines[]> {
+async function readSessionEntries(projectDir: string, sessionId: string): Promise<SessionLogEntry[]> {
     const expectedSessionFile = join(projectDir, `${sessionId}.jsonl`);
     logger.debug(`[SESSION_SCANNER] Reading session file: ${expectedSessionFile}`);
     let file: string;
@@ -191,7 +247,7 @@ async function readSessionLog(projectDir: string, sessionId: string): Promise<Ra
         return [];
     }
     let lines = file.split('\n');
-    let messages: RawJSONLines[] = [];
+    let entries: SessionLogEntry[] = [];
     for (let l of lines) {
         try {
             if (l.trim() === '') {
@@ -204,18 +260,31 @@ async function readSessionLog(projectDir: string, sessionId: string): Promise<Ra
             if (message.type && INTERNAL_CLAUDE_EVENT_TYPES.has(message.type)) {
                 continue;
             }
+
+            const transcriptEvent = parseClaudeGoalStatusTranscriptEvent(message);
+            if (transcriptEvent) {
+                entries.push({
+                    kind: 'transcript-event',
+                    key: transcriptEventKey(transcriptEvent),
+                    event: transcriptEvent,
+                });
+                continue;
+            }
             
             let parsed = RawJSONLinesSchema.safeParse(message);
             if (!parsed.success) {
                 // Unknown message types are silently skipped
-                // They will be tracked by processedMessageKeys to avoid reprocessing
                 continue;
             }
-            messages.push(parsed.data);
+            entries.push({
+                kind: 'message',
+                key: messageKey(parsed.data),
+                message: parsed.data,
+            });
         } catch (e) {
             logger.debug(`[SESSION_SCANNER] Error processing message: ${e}`);
             continue;
         }
     }
-    return messages;
+    return entries;
 }

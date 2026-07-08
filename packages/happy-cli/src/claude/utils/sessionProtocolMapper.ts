@@ -473,6 +473,13 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         };
     }
 
+    if ((message as any).isCompactSummary) {
+        return {
+            currentTurnId: state.currentTurnId,
+            envelopes,
+        };
+    }
+
     if (message.type === 'assistant') {
         const turnId = ensureTurn(state, envelopes);
         maybeEmitSubagentStart(state, turnId, subagent, envelopes);
@@ -569,6 +576,23 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
 
         const blocks = Array.isArray(message.message.content) ? message.message.content : [];
         if (blocks.length === 0) {
+            return {
+                currentTurnId: state.currentTurnId,
+                envelopes,
+            };
+        }
+
+        const hasToolResult = blocks.some((block) => {
+            return block?.type === 'tool_result';
+        });
+        if (!message.isSidechain && !hasToolResult) {
+            closeTurn(state, 'completed', envelopes);
+            for (const block of blocks) {
+                if (block.type === 'text' && typeof block.text === 'string' && block.text.trim().length > 0) {
+                    envelopes.push(createEnvelope('user', { t: 'text', text: block.text }, { claudeUuid }));
+                }
+            }
+
             return {
                 currentTurnId: state.currentTurnId,
                 envelopes,

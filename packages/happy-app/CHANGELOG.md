@@ -1,3 +1,16 @@
+# July 2 — Fable in Claude Code
+
+Fable is available from the Claude Code model picker.
+
+# June 22 — Goals and cleaner commands
+
+Agent goals and slash commands are easier to follow, with steadier remote sessions.
+
+- Active goals appear above the composer for supported Claude and Codex sessions.
+- `/goal` and skill commands render cleanly in chat instead of showing raw command internals.
+- Codex skills now appear in the slash-command menu.
+- Remote sessions handle first messages and resumed transcripts more reliably.
+
 # May 15 — Cleaner, steadier chat
 
 Less clutter in the conversation, fewer stuck states, smoother scrolling.

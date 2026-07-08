@@ -1,5 +1,7 @@
 import { AgentContentView } from '@/components/AgentContentView';
+import { AgentGoalBar, type AgentGoalAction } from '@/components/AgentGoalBar';
 import { AgentInput } from '@/components/AgentInput';
+import { resolveVisibleAgentGoalStatus } from '@/components/agentGoalStatus';
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import {
@@ -14,6 +16,7 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
+import { Avatar } from '@/components/Avatar';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { useImagePicker } from '@/hooks/useImagePicker';
@@ -21,7 +24,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort } from '@/sync/ops';
+import { sessionAbort, sessionGoalAction } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
@@ -37,7 +40,7 @@ import { FileViewPanel } from '@/components/FileViewPanel';
 import { prefetchPierreDiff } from '@/components/diff/PierreDiffView';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { useOverlayNav } from '@/-session/sessionOverlayNav';
-import { formatPathRelativeToHome, getResumeCommandBlock, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import * as Clipboard from 'expo-clipboard';
@@ -51,6 +54,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
 import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { performAgentGoalAction } from './agentGoalActionHandler';
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -67,19 +71,6 @@ export const SessionView = React.memo((props: { id: string }) => {
     const { width: windowWidth } = useWindowDimensions();
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
-
-    // Escape key exits zen mode (web only)
-    React.useEffect(() => {
-        if (Platform.OS !== 'web' || !zenMode) return;
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                storage.getState().applyLocalSettings({ zenMode: false });
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [zenMode]);
 
     // Base condition: can we show the diff sidebar at all?
     const canShowSidebar = fileDiffsSidebarEnabled
@@ -206,6 +197,21 @@ export const SessionView = React.memo((props: { id: string }) => {
             isConnected,
         };
     }, [session, isDataReady]);
+    const headerRight = session && deviceType === 'phone' && Platform.OS !== 'web'
+        ? (
+            <Pressable
+                onPress={() => router.push(`/session/${sessionId}/info`)}
+                hitSlop={10}
+            >
+                <Avatar
+                    id={getSessionAvatarId(session)}
+                    size={28}
+                    monochrome={!headerProps.isConnected}
+                    flavor={session.metadata?.flavor}
+                />
+            </Pressable>
+        )
+        : null;
 
     const mainContent = (
         <>
@@ -244,7 +250,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         folderName={headerProps.folderName}
                         isConnected={headerProps.isConnected}
                         extraPathSegment={fileViewPath ?? undefined}
-                        rightSlot={(diffViewOpen || !!fileViewPath) ? headerRightSlot : null}
+                        rightSlot={(diffViewOpen || !!fileViewPath) ? headerRightSlot : headerRight}
                         onTitlePress={session ? () => router.push(`/session/${sessionId}/info`) : undefined}
                         onBackPress={() => router.back()}
                     />
@@ -577,6 +583,30 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         };
     }, [sessionUsage, session.latestUsage]);
 
+    const visibleAgentGoal = React.useMemo(() => (
+        resolveVisibleAgentGoalStatus(session)
+    ), [
+        session.agentState?.agentGoalStatus,
+        session.presence,
+        session.metadata?.claudeSessionId,
+        session.metadata?.codexThreadId,
+    ]);
+    const [goalActionInFlight, setGoalActionInFlight] = React.useState<AgentGoalAction | null>(null);
+    const handleGoalAction = React.useCallback(async (action: AgentGoalAction) => {
+        await performAgentGoalAction({
+            action,
+            currentGoalText: visibleAgentGoal?.text ?? '',
+            promptEditGoal: (currentGoalText) => Modal.prompt(t('components.agentGoalBar.editGoal'), undefined, {
+                placeholder: t('components.agentGoalBar.currentGoal'),
+                defaultValue: currentGoalText,
+                cancelText: t('common.cancel'),
+                confirmText: t('common.save'),
+            }),
+            dispatchGoalAction: (nextAction, objective) => sessionGoalAction(sessionId, nextAction, objective),
+            setInFlight: setGoalActionInFlight,
+            onError: (error) => console.error('Failed to perform goal action', error),
+        });
+    }, [sessionId, visibleAgentGoal?.text]);
 
     // Handle microphone button press - memoized to prevent button flashing
     const handleMicrophonePress = React.useCallback(async () => {
@@ -723,6 +753,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const input = (
         <>
             {inactiveHint}
+            {visibleAgentGoal && (
+                <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+                    <AgentGoalBar
+                        goal={visibleAgentGoal}
+                        onAction={handleGoalAction}
+                        inFlightAction={goalActionInFlight}
+                    />
+                </CenteredInputWidth>
+            )}
             {composer}
         </>
     );

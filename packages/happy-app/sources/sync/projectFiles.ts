@@ -30,7 +30,7 @@ export async function getProjectFiles(sessionId: string): Promise<ProjectFilesLi
     const cwd = session.metadata.path;
 
     const res = await sessionBash(sessionId, {
-        command: 'git ls-files --cached --others --exclude-standard',
+        command: 'git -c core.quotepath=false ls-files --cached --others --exclude-standard',
         cwd,
         timeout: 15000,
     });

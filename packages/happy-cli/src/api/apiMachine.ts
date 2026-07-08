@@ -22,6 +22,12 @@ import {
     ForkTruncateUuidNotFoundError,
     ForkSourceMissingError,
 } from '@/claude/utils/claudeSessionFork';
+import { CodexAppServerClient } from '@/codex/codexAppServerClient';
+import {
+    CodexForkRewindPointNotFoundError,
+    forkCodexThread,
+    listCodexRewindPoints,
+} from '@/codex/codexThreadFork';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -89,6 +95,23 @@ type MachineRpcHandlers = {
     requestShutdown: () => void;
 }
 
+function requireNonEmptyString(value: unknown, name: string): string {
+    if (typeof value !== 'string' || value.length === 0) {
+        throw new Error(`${name} is required`);
+    }
+    return value;
+}
+
+async function withCodexAppServerClient<T>(handler: (client: CodexAppServerClient) => Promise<T>): Promise<T> {
+    const client = new CodexAppServerClient();
+    await client.connect();
+    try {
+        return await handler(client);
+    } finally {
+        await client.disconnect();
+    }
+}
+
 export class ApiMachineClient {
     private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
     private keepAliveInterval: NodeJS.Timeout | null = null;
@@ -123,14 +146,14 @@ export class ApiMachineClient {
 
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, parentSessionId, forkedFromMessageId } = params || {};
+            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = params || {};
             logger.debug(`[API MACHINE] Spawning session with params: ${JSON.stringify(params)}`);
 
             if (!directory) {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, parentSessionId, forkedFromMessageId });
+            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId });
 
             switch (result.type) {
                 case 'success':
@@ -239,6 +262,53 @@ export class ApiMachineClient {
                 if (error instanceof ForkTruncateUuidNotFoundError) {
                     throw new Error(
                         'The chosen rewind point is no longer present in the source session — try forking without truncation',
+                    );
+                }
+                throw error;
+            }
+        });
+
+        this.rpcHandlerManager.registerHandler('codex-fork-thread', async (params: any) => {
+            const directory = requireNonEmptyString(params?.directory, 'directory');
+            const codexThreadId = requireNonEmptyString(params?.codexThreadId, 'codexThreadId');
+
+            const result = await withCodexAppServerClient((client) => forkCodexThread(client, {
+                threadId: codexThreadId,
+                cwd: directory,
+            }));
+            return result;
+        });
+
+        this.rpcHandlerManager.registerHandler('codex-list-rewind-points', async (params: any) => {
+            const codexThreadId = requireNonEmptyString(params?.codexThreadId, 'codexThreadId');
+
+            return withCodexAppServerClient(async (client) => {
+                const { thread } = await client.readThread({
+                    threadId: codexThreadId,
+                    includeTurns: true,
+                });
+                return {
+                    type: 'success',
+                    points: listCodexRewindPoints(thread),
+                };
+            });
+        });
+
+        this.rpcHandlerManager.registerHandler('codex-duplicate-thread', async (params: any) => {
+            const directory = requireNonEmptyString(params?.directory, 'directory');
+            const codexThreadId = requireNonEmptyString(params?.codexThreadId, 'codexThreadId');
+            const cutAfterItemId = requireNonEmptyString(params?.cutAfterItemId, 'cutAfterItemId');
+
+            try {
+                return await withCodexAppServerClient((client) => forkCodexThread(client, {
+                    threadId: codexThreadId,
+                    cwd: directory,
+                    cutAfterItemId,
+                }));
+            } catch (error) {
+                if (error instanceof CodexForkRewindPointNotFoundError) {
+                    throw new Error(
+                        'The chosen rewind point is no longer present in the source Codex thread — try forking without truncation',
                     );
                 }
                 throw error;

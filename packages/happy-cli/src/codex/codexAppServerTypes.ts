@@ -61,6 +61,126 @@ export type ResumeConversationParams = {
 
 export type ResumeConversationResponse = NewConversationResponse;
 
+export type ThreadItem =
+    | { type: "userMessage"; id: string; content: InputItem[] }
+    | { type: "agentMessage"; id: string; text: string; phase?: string | null; memoryCitation?: unknown | null }
+    | { type: "reasoning"; id: string; summary?: string[]; content?: string[] }
+    | { type: "commandExecution"; id: string; command: string; cwd?: string; status?: string; aggregatedOutput?: string | null; exitCode?: number | null; durationMs?: number | null }
+    | { type: "fileChange"; id: string; changes: unknown[]; status?: string }
+    | { type: "mcpToolCall"; id: string; server: string; tool: string; status?: string; arguments?: unknown; result?: unknown; error?: unknown; durationMs?: number | null }
+    | ({ type: string; id: string } & Record<string, unknown>);
+
+export type ThreadTurn = {
+    id: string;
+    items: ThreadItem[];
+    itemsView?: unknown;
+    status?: unknown;
+    error?: unknown;
+    startedAt?: number | null;
+    completedAt?: number | null;
+    durationMs?: number | null;
+};
+
+export type Thread = {
+    id: ThreadId;
+    forkedFromId?: string | null;
+    path?: string | null;
+    cwd?: string;
+    turns?: ThreadTurn[];
+    [key: string]: unknown;
+};
+
+export type ThreadGoalStatus = "active" | "paused" | "blocked" | "usageLimited" | "budgetLimited" | "complete";
+
+export type ThreadGoal = {
+    threadId: ThreadId;
+    objective: string;
+    status: ThreadGoalStatus;
+    tokenBudget: number | null;
+    tokensUsed: number;
+    timeUsedSeconds: number;
+    createdAt: number;
+    updatedAt: number;
+};
+
+export type ThreadGoalUpdatedNotification = {
+    threadId: ThreadId;
+    turnId: string | null;
+    goal: ThreadGoal;
+};
+
+export type ThreadGoalClearedNotification = {
+    threadId: ThreadId;
+};
+
+export type ThreadGoalSetParams = {
+    threadId: ThreadId;
+    objective?: string | null;
+    status?: ThreadGoalStatus | null;
+    tokenBudget?: number | null;
+};
+
+export type ThreadGoalSetResponse = {
+    goal: ThreadGoal;
+};
+
+export type ThreadGoalClearParams = {
+    threadId: ThreadId;
+};
+
+export type ThreadGoalClearResponse = {
+    cleared: boolean;
+};
+
+export type ForkConversationParams = {
+    threadId: ThreadId;
+    model?: string | null;
+    modelProvider?: string | null;
+    cwd?: string | null;
+    approvalPolicy?: ApprovalPolicy | null;
+    sandbox?: SandboxMode | null;
+    config?: Record<string, unknown> | null;
+    baseInstructions?: string | null;
+    developerInstructions?: string | null;
+    ephemeral?: boolean;
+    threadSource?: unknown | null;
+};
+
+export type ForkConversationResponse = {
+    thread: Thread;
+    model: string;
+    modelProvider?: string;
+    cwd?: string;
+    approvalPolicy?: ApprovalPolicy;
+    sandbox?: unknown;
+    reasoningEffort?: ReasoningEffort | null;
+};
+
+export type ReadConversationParams = {
+    threadId: ThreadId;
+    includeTurns: boolean;
+};
+
+export type ReadConversationResponse = {
+    thread: Thread;
+};
+
+export type RollbackConversationParams = {
+    threadId: ThreadId;
+    numTurns: number;
+};
+
+export type RollbackConversationResponse = {
+    thread: Thread;
+};
+
+export type InjectItemsParams = {
+    threadId: ThreadId;
+    items: unknown[];
+};
+
+export type InjectItemsResponse = Record<string, never>;
+
 // --- Turn lifecycle ---
 
 export type SendUserTurnParams = {
@@ -131,10 +251,12 @@ export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "
 export type ReasoningSummary = "auto" | "concise" | "detailed" | "none";
 export type TurnAbortReason = "interrupted" | "replaced" | "review_ended";
 
+export type ImageDetail = "auto" | "low" | "high";
+
 export type InputItem =
     | { type: "text"; text: string; text_elements?: unknown[] }
-    | { type: "image"; url: string }
-    | { type: "localImage"; path: string };
+    | { type: "image"; detail?: ImageDetail; url: string }
+    | { type: "localImage"; detail?: ImageDetail; path: string };
 
 export type SandboxPolicy =
     | { type: "dangerFullAccess" }

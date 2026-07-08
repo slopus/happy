@@ -219,7 +219,7 @@ export const ca: TranslationStructure = {
         analyticsDisabled: 'Tot el seguiment i telemetria desactivats',
         analyticsEnabled: 'Analítica anònima d\'ús activa',
         imageUpload: 'Pujada d\'imatges',
-        imageUploadSubtitle: 'Adjunta imatges als missatges perquè Claude les analitzi',
+        imageUploadSubtitle: 'Adjunta imatges als missatges perquè els agents compatibles les analitzin',
     },
 
     errors: {
@@ -411,6 +411,13 @@ export const ca: TranslationStructure = {
             scanQrCode: 'Escaneja el codi QR',
             openCamera: 'Obre la càmera',
         },
+        agentGoalBar: {
+            currentGoal: 'Objectiu actual',
+            accessibilityLabel: ({ goal }: { goal: string }) => `Objectiu actual: ${goal}`,
+            clearGoal: 'Esborra objectiu',
+            stopGoal: 'Atura objectiu',
+            editGoal: 'Edita objectiu',
+        },
     },
 
     agentInput: {
@@ -502,6 +509,7 @@ export const ca: TranslationStructure = {
     },
 
     toolGroup: {
+        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => count === 1 ? 'S\'ha editat 1 fitxer' : `S'han editat ${count} fitxers`,
         readFiles: ({ count }: { count: number }) => count === 1 ? 'S\'ha llegit 1 fitxer' : `S'han llegit ${count} fitxers`,
         ranCommands: ({ count }: { count: number }) => count === 1 ? 'S\'ha executat 1 comanda' : `S'han executat ${count} comandes`,
@@ -509,6 +517,7 @@ export const ca: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => count === 1 ? 'S\'ha obtingut 1 URL' : `S'han obtingut ${count} URLs`,
         ranTasks: ({ count }: { count: number }) => count === 1 ? 'S\'ha executat 1 tasca' : `S'han executat ${count} tasques`,
         usedTools: ({ count }: { count: number }) => count === 1 ? 'S\'ha usat 1 eina' : `S'han usat ${count} eines`,
+        workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 
     tools: {
@@ -835,6 +844,7 @@ export const ca: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `S'ha canviat al mode ${mode}`,
         unknownEvent: 'Esdeveniment desconegut',
         usageLimitUntil: ({ time }: { time: string }) => `Límit d'ús assolit fins a ${time}`,
+        sentAsGoal: 'Sent as goal',
         unknownTime: 'temps desconegut',
     },
 
@@ -978,7 +988,7 @@ export const ca: TranslationStructure = {
             ? 'No s\'ha pogut pujar una imatge i no s\'ha enviat.'
             : `No s'han pogut pujar ${count} imatges i no s'han enviat.`,
         notSupportedTitle: 'Imatges no compatibles',
-        notSupportedMessage: 'Aquest agent no admet imatges adjuntes. Només s\'ha enviat el text.',
+        notSupportedMessage: 'Aquest agent no admet fitxers adjunts d\'imatge. Les imatges no s\'han enviat.',
     },
 
     feed: {

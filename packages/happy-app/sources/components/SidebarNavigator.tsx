@@ -6,7 +6,7 @@ import { SidebarView } from './SidebarView';
 import { useWindowDimensions, View, Pressable, Platform } from 'react-native';
 import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, usePathname } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
@@ -14,47 +14,10 @@ import { t } from '@/text';
 import { isTauri } from '@/utils/isTauri';
 import { useOverlayNav } from '@/-session/sessionOverlayNav';
 import { DEFAULT_APP_ZOOM } from '@/hooks/useTauriZoom';
+import { canRouteForward, canUseRouteBack, getNavigatorCanGoBack } from '@/navigation/browserNavigation';
+import { useBrowserNavigationStore } from '@/navigation/browserNavigationStore';
 
 const TAURI_HEADER_CONTROL_LEFT = Math.ceil(92 / DEFAULT_APP_ZOOM);
-
-/**
- * Tracks navigation history to determine if back/forward is possible.
- * We maintain our own stack + cursor because the web History API
- * doesn't expose whether forward entries exist.
- */
-function useNavHistory() {
-    const pathname = usePathname();
-    const historyRef = React.useRef<string[]>([pathname]);
-    const cursorRef = React.useRef(0);
-    const directionRef = React.useRef<'back' | 'forward' | null>(null);
-    const [canGoBack, setCanGoBack] = React.useState(false);
-    const [canGoForward, setCanGoForward] = React.useState(false);
-
-    React.useEffect(() => {
-        const dir = directionRef.current;
-        directionRef.current = null;
-
-        if (dir === 'back') {
-            cursorRef.current = Math.max(0, cursorRef.current - 1);
-        } else if (dir === 'forward') {
-            cursorRef.current = Math.min(historyRef.current.length - 1, cursorRef.current + 1);
-        } else {
-            // Regular navigation — trim forward entries and push
-            const cursor = cursorRef.current;
-            historyRef.current = historyRef.current.slice(0, cursor + 1);
-            historyRef.current.push(pathname);
-            cursorRef.current = historyRef.current.length - 1;
-        }
-
-        setCanGoBack(cursorRef.current > 0);
-        setCanGoForward(cursorRef.current < historyRef.current.length - 1);
-    }, [pathname]);
-
-    const markBack = React.useCallback(() => { directionRef.current = 'back'; }, []);
-    const markForward = React.useCallback(() => { directionRef.current = 'forward'; }, []);
-
-    return { canGoBack, canGoForward, markBack, markForward };
-}
 
 export const SidebarNavigator = React.memo(() => {
     const auth = useAuth();
@@ -140,9 +103,13 @@ const PersistentHeader = React.memo(() => {
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
 
-    const { canGoBack, canGoForward, markBack, markForward } = useNavHistory();
+    const routeHistory = useBrowserNavigationStore((s) => s.routeHistory);
+    const canGoForward = useBrowserNavigationStore((s) => s.routeHistory ? canRouteForward(s.routeHistory) : false);
     const overlayCanBack = useOverlayNav((s) => s.canBack);
     const overlayCanForward = useOverlayNav((s) => s.canForward);
+    const canGoBack = routeHistory
+        ? canUseRouteBack(routeHistory, getNavigatorCanGoBack(router))
+        : false;
 
     const handleZenToggle = React.useCallback(() => {
         setZenMode(!zenMode);
@@ -152,17 +119,21 @@ const PersistentHeader = React.memo(() => {
         // Intra-session overlay (file diff / file view) consumes back first,
         // so the chat → diff → file flow can be unwound without a close X.
         if (useOverlayNav.getState().back()) return;
-        markBack();
+        const nav = useBrowserNavigationStore.getState();
+        if (!nav.routeHistory || !canUseRouteBack(nav.routeHistory, getNavigatorCanGoBack(router))) return;
+        nav.markRouteBack();
         router.back();
-    }, [router, markBack]);
+    }, [router]);
 
     const handleForward = React.useCallback(() => {
         if (useOverlayNav.getState().forward()) return;
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
-            markForward();
+            const nav = useBrowserNavigationStore.getState();
+            if (!nav.routeHistory || !canRouteForward(nav.routeHistory)) return;
+            nav.markRouteForward();
             window.history.forward();
         }
-    }, [markForward]);
+    }, []);
 
     const canGoBackEffective = canGoBack || overlayCanBack;
     const canGoForwardEffective = canGoForward || overlayCanForward;
