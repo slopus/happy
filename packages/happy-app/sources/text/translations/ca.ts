@@ -365,7 +365,7 @@ export const ca: TranslationStructure = {
         happySessionIdCopied: 'ID de la sessió de Happy copiat al porta-retalls',
         failedToCopySessionId: 'Ha fallat copiar l\'ID de la sessió de Happy',
         happySessionId: 'ID de la sessió de Happy',
-        copySessionId: 'Copia l\'ID de sessió',
+        copySessionId: 'Copia l\'ID de sessió de Happy',
         copyOriginalSessionId: 'Copia l\'ID de sessió original',
         claudeCodeSessionId: 'ID de la sessió de Claude Code',
         claudeCodeSessionIdCopied: 'ID de la sessió de Claude Code copiat al porta-retalls',

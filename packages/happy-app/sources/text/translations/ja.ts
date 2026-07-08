@@ -366,7 +366,7 @@ export const ja: TranslationStructure = {
         happySessionIdCopied: 'Happy Session IDがクリップボードにコピーされました',
         failedToCopySessionId: 'Happy Session IDのコピーに失敗しました',
         happySessionId: 'Happy Session ID',
-        copySessionId: 'セッションIDをコピー',
+        copySessionId: 'HappyセッションIDをコピー',
         copyOriginalSessionId: '元のセッションIDをコピー',
         claudeCodeSessionId: 'Claude Code Session ID',
         claudeCodeSessionIdCopied: 'Claude Code Session IDがクリップボードにコピーされました',
