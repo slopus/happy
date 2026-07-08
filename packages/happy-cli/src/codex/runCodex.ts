@@ -264,16 +264,23 @@ export async function runCodex(opts: {
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
+    // True only while currentPermissionMode reflects an explicit user pick
+    // (message meta), not the launch default or an abort-reset. The approval
+    // handler's latest-mode check trusts only explicit picks — the launch
+    // default for plain codex is yolo, and it must not wave through a
+    // straggler approval after an abort.
+    let currentPermissionModeExplicitlySet = false;
     let currentModel: string | undefined = opts.model ?? DEFAULT_CODEX_MODEL;
     let currentEffort: ReasoningEffort | undefined = opts.effort ?? DEFAULT_CODEX_EFFORT;
     let currentAppendSystemPrompt: string | undefined = undefined;
 
     const resetCurrentModeDefaults = () => {
-        // Reset to the mode the session was launched with, NOT the yolo
-        // constant: resetting a prompting session to yolo would let the
-        // latest-mode auto-approve check wave through an approval that
-        // arrives in the post-abort grace window.
+        // Reset to the mode the session was launched with. Note this is NOT
+        // a safety guarantee by itself — for plain `happy codex` the launch
+        // mode IS yolo; the post-abort grace window is protected by the
+        // approval handler only trusting explicitly-picked modes.
         currentPermissionMode = initialPermissionMode;
+        currentPermissionModeExplicitlySet = false;
         currentModel = opts.model ?? DEFAULT_CODEX_MODEL;
         currentEffort = opts.effort ?? DEFAULT_CODEX_EFFORT;
         currentAppendSystemPrompt = undefined;
@@ -310,6 +317,7 @@ export async function runCodex(opts: {
             if (VALID_REMOTE_PERMISSION_MODES.includes(incoming)) {
                 messagePermissionMode = incoming;
                 currentPermissionMode = messagePermissionMode;
+                currentPermissionModeExplicitlySet = true;
                 logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
             } else {
                 logger.debug(`[Codex] Ignoring invalid permission mode from user message: ${String(message.meta.permissionMode)}`);
@@ -684,12 +692,19 @@ export async function runCodex(opts: {
                 : (params.input ?? {});
         const activePermissionMode = activeTurnPermissionMode ?? currentPermissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
         // Check the latest session mode too: a turn pinned under an untrusted
-        // policy keeps prompting after the user flips to yolo mid-turn otherwise.
-        const latestPermissionMode = currentPermissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
+        // policy keeps prompting after the user flips to yolo mid-turn
+        // otherwise. Only when the mode was EXPLICITLY picked by the user —
+        // the abort-reset restores the launch default (yolo for plain codex),
+        // and a straggler approval from the dying turn (the ~3s abort grace
+        // window, when the pinned turn mode is still set) must not be waved
+        // through by that reset value.
+        const latestPermissionMode = currentPermissionModeExplicitlySet
+            ? currentPermissionMode ?? DEFAULT_CODEX_PERMISSION_MODE
+            : undefined;
 
         if (shouldAutoApproveCodexApproval(activePermissionMode, client.sandboxEnabled)
-            || shouldAutoApproveCodexApproval(latestPermissionMode, client.sandboxEnabled)) {
-            logger.debug(`[Codex] Auto-approving ${params.type} approval in ${activePermissionMode} mode (latest: ${latestPermissionMode})`);
+            || (latestPermissionMode !== undefined && shouldAutoApproveCodexApproval(latestPermissionMode, client.sandboxEnabled))) {
+            logger.debug(`[Codex] Auto-approving ${params.type} approval in ${activePermissionMode} mode (latest: ${latestPermissionMode ?? 'n/a'})`);
             return 'approved';
         }
 
@@ -798,10 +813,15 @@ export async function runCodex(opts: {
 
         // Convert events into the unified session-protocol envelope stream.
         // Reasoning deltas are handled by ReasoningProcessor to avoid duplicate text output.
+        // Subagent-scoped reasoning bypasses the processor, so only forward the
+        // FINAL agent_reasoning for subagents — the mapper renders deltas and
+        // the final text identically, and forwarding both would emit one
+        // thinking bubble per fragment plus a duplicate full-text bubble.
         const isReasoningEvent = msg.type === 'agent_reasoning_delta'
             || msg.type === 'agent_reasoning'
             || msg.type === 'agent_reasoning_section_break';
-        if (msg.type !== 'turn_diff' && (!isReasoningEvent || isSubagentScopedEvent)) {
+        const isForwardableSubagentReasoning = isSubagentScopedEvent && msg.type === 'agent_reasoning';
+        if (msg.type !== 'turn_diff' && (!isReasoningEvent || isForwardableSubagentReasoning)) {
             const mapped = mapCodexMcpMessageToSessionEnvelopes(msg, {
                 currentTurnId,
                 startedSubagents: codexStartedSubagents,

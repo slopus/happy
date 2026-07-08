@@ -6,7 +6,10 @@
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import { storage } from './storage';
-import type { MachineMetadata } from './storageTypes';
+import type { MachineMetadata, SessionAgentModesPatch } from './storageTypes';
+import { markAgentModePushPending, clearAgentModePushPending, type AgentModeField } from './agentModesPending';
+
+export type { SessionAgentModesPatch };
 
 // Strict type definitions for all operations
 
@@ -560,9 +563,6 @@ export async function machineUpdateMetadata(
     throw new Error('Unexpected error in machineUpdateMetadata');
 }
 
-import type { SessionAgentModesPatch } from './storageTypes';
-export type { SessionAgentModesPatch };
-
 /**
  * Persist per-session mode picks into synced session metadata with optimistic
  * concurrency and automatic retry. On version conflict the latest metadata is
@@ -580,8 +580,10 @@ async function sessionUpdateAgentModesMetadata(
         throw new Error(`Session ${sessionId} is not ready for metadata updates`);
     }
 
+    // Defensive copy: retries drop fields from the patch (see below)
+    let pendingPatch: SessionAgentModesPatch = { ...patch };
     let currentVersion = session.metadataVersion;
-    let currentMetadata: Record<string, unknown> = { ...session.metadata, ...patch };
+    let currentMetadata: Record<string, unknown> = { ...session.metadata, ...pendingPatch };
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         const encrypted = await encryption.encryptRaw(currentMetadata);
@@ -604,7 +606,20 @@ async function sessionUpdateAgentModesMetadata(
             if (!latest) {
                 throw new Error('Failed to decrypt latest session metadata');
             }
-            currentMetadata = { ...latest, ...patch };
+            // A newer local action (another pick, an abort clearing modes) may
+            // have changed the mirror since this push started — that action
+            // owns the field now, and blindly replaying the original patch
+            // would resurrect a pick the user already cleared.
+            const liveSession = storage.getState().sessions[sessionId];
+            for (const field of Object.keys(pendingPatch) as (keyof SessionAgentModesPatch)[]) {
+                if ((liveSession?.[field] ?? null) !== (pendingPatch[field] ?? null)) {
+                    delete pendingPatch[field];
+                }
+            }
+            if (Object.keys(pendingPatch).length === 0) {
+                return;
+            }
+            currentMetadata = { ...latest, ...pendingPatch };
             continue;
         }
         throw new Error('Failed to update session metadata');
@@ -626,14 +641,24 @@ export function sessionSetAgentModes(sessionId: string, patch: SessionAgentModes
 
     // Only touch fields that actually change — clearing modes on a session
     // with no picks (e.g. every abort) must not cost a metadata round-trip.
+    // A pick counts as changed when it differs from the local mirror OR from
+    // synced metadata: a local-only value (e.g. the EnterPlanMode auto-switch
+    // writes the mirror without metadata) must still be pushed when the user
+    // picks it explicitly, or other devices never see it.
+    const isChanged = (value: string | null, field: keyof SessionAgentModesPatch): boolean => {
+        const mirror = session?.[field] ?? null;
+        const metaRaw = session?.metadata?.[field];
+        const meta = metaRaw === undefined ? null : (metaRaw ?? null);
+        return value !== mirror || value !== meta;
+    };
     const changed: SessionAgentModesPatch = {};
-    if (patch.permissionMode !== undefined && patch.permissionMode !== (session?.permissionMode ?? null)) {
+    if (patch.permissionMode !== undefined && isChanged(patch.permissionMode, 'permissionMode')) {
         changed.permissionMode = patch.permissionMode;
     }
-    if (patch.modelMode !== undefined && patch.modelMode !== (session?.modelMode ?? null)) {
+    if (patch.modelMode !== undefined && isChanged(patch.modelMode, 'modelMode')) {
         changed.modelMode = patch.modelMode;
     }
-    if (patch.effortLevel !== undefined && patch.effortLevel !== (session?.effortLevel ?? null)) {
+    if (patch.effortLevel !== undefined && isChanged(patch.effortLevel, 'effortLevel')) {
         changed.effortLevel = patch.effortLevel;
     }
     if (Object.keys(changed).length === 0) {
@@ -641,9 +666,19 @@ export function sessionSetAgentModes(sessionId: string, patch: SessionAgentModes
     }
 
     state.updateSessionAgentModes(sessionId, changed);
-    sessionUpdateAgentModesMetadata(sessionId, changed).catch((error) => {
-        console.error(`Failed to sync agent modes for session ${sessionId}`, error);
-    });
+
+    // While the push is in flight, inbound updates still carry the OLD
+    // metadata; mark the fields pending so applySessions keeps the fresher
+    // local mirror instead of bouncing the pick back.
+    const changedFields = Object.keys(changed) as AgentModeField[];
+    markAgentModePushPending(sessionId, changedFields);
+    sessionUpdateAgentModesMetadata(sessionId, changed)
+        .catch((error) => {
+            console.error(`Failed to sync agent modes for session ${sessionId}`, error);
+        })
+        .finally(() => {
+            clearAgentModePushPending(sessionId, changedFields);
+        });
 }
 
 /**

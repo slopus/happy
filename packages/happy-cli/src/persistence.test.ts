@@ -105,10 +105,10 @@ describe('acquireDaemonLock', () => {
     ])('treats a %s lock file as stale and acquires a fresh lock', async (_label, lockContent) => {
         writeFileSync(mockConfiguration.daemonLockFile, lockContent, 'utf-8');
 
-        // Invalid payloads are reclaimed only on the second sighting (the
-        // first could be another acquirer mid-creation), so this needs one
-        // observation attempt, one reclaim attempt, and the final acquisition.
-        const lockHandle = await acquireDaemonLock(3, 0);
+        // Lock creation is atomic including the PID payload (temp file +
+        // hard link), so a payload-less lock can never belong to a live
+        // acquirer and is reclaimed on first sight.
+        const lockHandle = await acquireDaemonLock(2, 0);
 
         expect(lockHandle).not.toBeNull();
         expect(readFileSync(mockConfiguration.daemonLockFile, 'utf-8')).toBe(String(process.pid));
@@ -116,13 +116,13 @@ describe('acquireDaemonLock', () => {
         expect(existsSync(mockConfiguration.daemonLockFile)).toBe(false);
     });
 
-    it('leaves a still-empty lock in place on first sight (concurrent acquirer mid-creation)', async () => {
-        writeFileSync(mockConfiguration.daemonLockFile, '', 'utf-8');
-
+    it('creates the lock with its PID payload atomically (no temp file left behind)', async () => {
         const lockHandle = await acquireDaemonLock(1, 0);
 
-        expect(lockHandle).toBeNull();
-        expect(existsSync(mockConfiguration.daemonLockFile)).toBe(true);
+        expect(lockHandle).not.toBeNull();
+        expect(readFileSync(mockConfiguration.daemonLockFile, 'utf-8')).toBe(String(process.pid));
+        expect(existsSync(`${mockConfiguration.daemonLockFile}.${process.pid}.tmp`)).toBe(false);
+        await releaseDaemonLock(lockHandle!);
     });
 
     it('does not clear a lock held by a live process', async () => {

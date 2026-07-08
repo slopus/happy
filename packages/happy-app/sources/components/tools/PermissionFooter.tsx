@@ -144,6 +144,13 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         setLoadingButton('allow');
         try {
             await sessionAllow(sessionId, permission.id);
+            // Plain plan approval switches the CLI's live SDK query to
+            // 'default' — mirror that here, otherwise the next message's meta
+            // still carries the stale 'plan' and pushes the SDK back into
+            // plan mode, undoing the approval.
+            if (toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode') {
+                sessionSetAgentModes(sessionId, { permissionMode: 'default' });
+            }
         } catch (error) {
             console.error('Failed to approve permission:', error);
         } finally {

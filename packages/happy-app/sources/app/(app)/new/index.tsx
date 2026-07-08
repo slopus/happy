@@ -972,7 +972,10 @@ function NewSessionScreen() {
                 directory: spawnDirectory,
                 approvedNewDirectoryCreation,
                 agent: selectedAgent,
-                permissionMode: currentPermission.key !== 'default' ? currentPermission.key : undefined,
+                // For codex, 'default' is a concrete ask-first mode (the codex
+                // launch default is yolo) — it must be forwarded. For other
+                // agents 'default' is the ambient no-override value.
+                permissionMode: selectedAgent === 'codex' || currentPermission.key !== 'default' ? currentPermission.key : undefined,
                 modelMode: currentModelKey !== 'default' ? currentModelKey : undefined,
                 effortLevel: currentEffort?.key,
             });

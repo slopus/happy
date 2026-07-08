@@ -23,6 +23,7 @@ import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts } from "./persistence";
+import { isAgentModePushPending } from "./agentModesPending";
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -177,7 +178,7 @@ interface StorageState {
     deleteMachine: (machineId: string) => void;
     applyLoaded: () => void;
     applyReady: () => void;
-    applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
+    applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean, enteredPlanMode: boolean };
     applyMessagesLoaded: (sessionId: string) => void;
     applyOlderMessagesPagination: (sessionId: string, info: { hasMore: boolean }) => void;
     applyOlderMessagesLoading: (sessionId: string, isLoading: boolean) => void;
@@ -402,21 +403,23 @@ export const storage = create<StorageState>()((set, get) => {
 
                 // Permission / model / effort picks sync through session
                 // metadata (#1492). A metadata value (including explicit
-                // null = reset) wins over the local mirror; metadata without
-                // the field keeps the optimistic local value written by
-                // sessionSetAgentModes while its server push is still in flight.
-                const existingPermissionMode = state.sessions[session.id]?.permissionMode ?? null;
-                const resolvedPermissionMode = session.metadata && session.metadata.permissionMode !== undefined
-                    ? session.metadata.permissionMode ?? null
-                    : existingPermissionMode;
-                const existingModelMode = state.sessions[session.id]?.modelMode ?? null;
-                const resolvedModelMode = session.metadata && session.metadata.modelMode !== undefined
-                    ? session.metadata.modelMode ?? null
-                    : existingModelMode;
-                const existingEffortLevel = state.sessions[session.id]?.effortLevel ?? null;
-                const resolvedEffortLevel = session.metadata && session.metadata.effortLevel !== undefined
-                    ? session.metadata.effortLevel ?? null
-                    : existingEffortLevel;
+                // null = reset) wins over the local mirror, EXCEPT while an
+                // optimistic push for the field is still in flight — inbound
+                // events then still carry the OLD metadata, and applying it
+                // would bounce the fresh local pick back. Metadata without
+                // the field keeps the local value.
+                const resolveModePick = (field: 'permissionMode' | 'modelMode' | 'effortLevel'): string | null => {
+                    const existing = state.sessions[session.id]?.[field] ?? null;
+                    if (isAgentModePushPending(session.id, field)) {
+                        return existing;
+                    }
+                    return session.metadata && session.metadata[field] !== undefined
+                        ? session.metadata[field] ?? null
+                        : existing;
+                };
+                const resolvedPermissionMode = resolveModePick('permissionMode');
+                const resolvedModelMode = resolveModePick('modelMode');
+                const resolvedEffortLevel = resolveModePick('effortLevel');
 
                 mergedSessions[session.id] = {
                     ...session,
@@ -695,7 +698,7 @@ export const storage = create<StorageState>()((set, get) => {
                 };
             });
 
-            return { changed: Array.from(changed), hasReadyEvent };
+            return { changed: Array.from(changed), hasReadyEvent, enteredPlanMode: shouldEnterPlanMode };
         },
         applyMessagesLoaded: (sessionId: string) => set((state) => {
             const existingSession = state.sessionMessages[sessionId];

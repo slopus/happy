@@ -246,6 +246,12 @@ export class CodexAppServerClient {
     private completedTurnIds = new Set<string>();
     private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
     private rawSubagentActivitySignaturesByItemId = new Map<string, Set<string>>();
+    // Approval callIds currently awaiting an answer. One codex item can raise
+    // several approval callbacks (approvalId exists to disambiguate them);
+    // the bare scoped key is kept for the first so the app's permission ↔
+    // tool-call join works, and only a concurrent second approval for the
+    // same item gets a disambiguating suffix.
+    private pendingApprovalCallIds = new Set<string>();
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
@@ -1434,22 +1440,31 @@ export class CodexAppServerClient {
             const approvalId = stringOrNull(params?.approvalId);
             // Legacy events pass through with raw call ids, so legacy
             // approvals must stay raw too; v2 uses the scoped item key that
-            // exec_command_begin emitted for this item. No approvalId suffix:
-            // the app joins permission ↔ tool call by exact id equality.
-            const decision = await this.handleApproval({
-                type: 'exec',
-                callId: legacy ? itemId : formatScopedItemKey(threadId, itemId),
-                itemId,
-                threadId,
-                turnId,
-                approvalId,
-                command: Array.isArray(params.command)
-                    ? params.command
-                    : params.command != null ? [params.command] : [],
-                cwd: params.cwd,
-                reason: params.reason,
-            });
-            this.respond(id, { decision: this.mapDecisionToWire(decision, legacy) });
+            // exec_command_begin emitted for this item, so the app joins
+            // permission ↔ tool call by exact id equality. Only a concurrent
+            // second approval for the same item gets an approvalId suffix.
+            const callId = legacy
+                ? itemId
+                : this.resolveApprovalCallId(formatScopedItemKey(threadId, itemId), approvalId ?? String(id));
+            this.pendingApprovalCallIds.add(callId);
+            try {
+                const decision = await this.handleApproval({
+                    type: 'exec',
+                    callId,
+                    itemId,
+                    threadId,
+                    turnId,
+                    approvalId,
+                    command: Array.isArray(params.command)
+                        ? params.command
+                        : params.command != null ? [params.command] : [],
+                    cwd: params.cwd,
+                    reason: params.reason,
+                });
+                this.respond(id, { decision: this.mapDecisionToWire(decision, legacy) });
+            } finally {
+                this.pendingApprovalCallIds.delete(callId);
+            }
             return;
         }
 
@@ -1460,24 +1475,41 @@ export class CodexAppServerClient {
             const turnId = stringOrNull(params?.turnId);
             const itemId = stringOrNull(params?.itemId) ?? stringOrNull(params?.callId) ?? String(id);
             const itemKey = formatScopedItemKey(threadId, itemId);
-            const decision = await this.handleApproval({
-                type: 'patch',
-                callId: legacy ? itemId : itemKey,
-                itemId,
-                threadId,
-                turnId,
-                fileChanges: params.fileChanges ?? (typeof itemId === 'string'
-                    ? this.rawFileChangesByItemId.get(itemKey) ?? this.rawFileChangesByItemId.get(itemId)
-                    : undefined),
-                reason: params.reason,
-            });
-            this.respond(id, { decision: this.mapDecisionToWire(decision, legacy) });
+            const callId = legacy ? itemId : this.resolveApprovalCallId(itemKey, String(id));
+            this.pendingApprovalCallIds.add(callId);
+            try {
+                const decision = await this.handleApproval({
+                    type: 'patch',
+                    callId,
+                    itemId,
+                    threadId,
+                    turnId,
+                    fileChanges: params.fileChanges ?? (typeof itemId === 'string'
+                        ? this.rawFileChangesByItemId.get(itemKey) ?? this.rawFileChangesByItemId.get(itemId)
+                        : undefined),
+                    reason: params.reason,
+                });
+                this.respond(id, { decision: this.mapDecisionToWire(decision, legacy) });
+            } finally {
+                this.pendingApprovalCallIds.delete(callId);
+            }
             return;
         }
 
         // Unknown server request — respond so server doesn't hang
         logger.debug(`[CodexAppServer] Unknown server request: ${method}`);
         this.respond(id, {});
+    }
+
+    // The bare scoped key keeps the app's permission ↔ tool-call join for the
+    // common single-approval case; a SECOND approval arriving while the first
+    // is still pending gets a disambiguating suffix instead of silently
+    // overwriting the first one's pending entry (which would orphan its
+    // promise and hang the codex request forever).
+    private resolveApprovalCallId(baseCallId: string, disambiguator: string): string {
+        return this.pendingApprovalCallIds.has(baseCallId)
+            ? `${baseCallId}:${disambiguator}`
+            : baseCallId;
     }
 
     private async handleApproval(params: Parameters<ApprovalHandler>[0]): Promise<ReviewDecision> {

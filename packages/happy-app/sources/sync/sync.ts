@@ -5,6 +5,9 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
+// Circular at module level (ops.ts imports sync) but safe: both sides only
+// touch each other's exports at runtime, never during module initialization.
+import { sessionSetAgentModes } from './ops';
 import { getImageAttachmentSendPlan } from './attachmentSupport';
 import {
     errorMessageFromUnknown,
@@ -2739,6 +2742,12 @@ class Sync {
         }
         if (result.hasReadyEvent) {
             voiceHooks.onReady(sessionId);
+        }
+        if (result.enteredPlanMode) {
+            // The EnterPlanMode auto-switch only wrote the local mirror; push
+            // it into synced metadata so other devices see plan mode and the
+            // next inbound metadata update doesn't revert it (#1492)
+            sessionSetAgentModes(sessionId, { permissionMode: 'plan' });
         }
     }
 
