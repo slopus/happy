@@ -12,7 +12,7 @@ import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
 import type { PermissionMode } from "@/api/types";
-import { mapToClaudeMode } from "./utils/permissionMode";
+import { resolveLocalPermissionModeArgs } from "./utils/permissionMode";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
 
 /**
@@ -249,28 +249,9 @@ export async function claudeLocal(opts: {
                 args.push(...opts.claudeArgs)
             }
 
-            // Translate the resolved permission mode into a Claude CLI flag. The
-            // remote/SDK path does this via the SDK's permissionMode option (which
-            // emits --permission-mode); the local spawn must mirror it, otherwise a
-            // session Happy resolved to bypass/plan/acceptEdits silently runs in
-            // Claude's default mode (slopus/happy local bypass bug). Skip when the
-            // user already carries an explicit permission flag in claudeArgs. Bypass
-            // uses --dangerously-skip-permissions to match the interactive sandbox
-            // branch below and `claude --dangerously-skip-permissions` directly.
-            if (opts.permissionMode) {
-                const claudeMode = mapToClaudeMode(opts.permissionMode);
-                const hasPermissionFlag =
-                    args.includes('--permission-mode') ||
-                    args.some((arg) => arg.startsWith('--permission-mode=')) ||
-                    args.includes('--dangerously-skip-permissions');
-                if (!hasPermissionFlag) {
-                    if (claudeMode === 'bypassPermissions') {
-                        args.push('--dangerously-skip-permissions');
-                    } else if (claudeMode !== 'default') {
-                        args.push('--permission-mode', claudeMode);
-                    }
-                }
-            }
+            // Mirror the resolved permission mode into a Claude CLI flag so the local
+            // spawn enters the same mode the remote/SDK path already applies.
+            args.push(...resolveLocalPermissionModeArgs(opts.permissionMode, args));
 
             // Add hook settings for session tracking (when available)
             if (opts.hookSettingsPath) {
