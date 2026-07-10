@@ -4,6 +4,7 @@ import { ApiClient } from '@/api/api';
 import { CodexAppServerClient } from './codexAppServerClient';
 import type { ReasoningEffort } from './codexAppServerTypes';
 import { CodexPermissionHandler } from './utils/permissionHandler';
+import { toMetadataModels } from './utils/modelMetadata';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
@@ -70,9 +71,39 @@ function describeCodexFailure(msg: any): string | null {
     return 'Unknown error';
 }
 
+/**
+ * Fallback only. Used when the app sends no model override at all; a running
+ * backend advertises its real model list via `model/list` (see
+ * publishCodexModelMetadata) so the picker does not depend on this constant.
+ */
 const DEFAULT_CODEX_MODEL = 'gpt-5.5';
 const DEFAULT_CODEX_EFFORT: ReasoningEffort = 'medium';
 const DEFAULT_CODEX_PERMISSION_MODE: PermissionMode = 'yolo';
+
+/**
+ * Ask the connected Codex backend which models it offers and publish them to
+ * session metadata, so the app renders a live picker instead of a hardcoded
+ * list that goes stale every time OpenAI ships a model.
+ *
+ * Best-effort: an older `codex` without `model/list` simply leaves
+ * `metadata.models` unset, and the app falls back to its hardcoded options.
+ */
+async function publishCodexModelMetadata(
+    client: CodexAppServerClient,
+    session: ApiSessionClient,
+): Promise<void> {
+    try {
+        const models = toMetadataModels(await client.listModels());
+        if (models.length === 0) {
+            logger.debug('[codex] model/list returned no visible models; keeping app defaults');
+            return;
+        }
+        session.updateMetadata((meta) => ({ ...meta, models }));
+        logger.debug(`[codex] published ${models.length} models to session metadata`);
+    } catch (error) {
+        logger.debug('[codex] model/list unavailable; app will fall back to hardcoded models', error);
+    }
+}
 
 /**
  * Main entry point for the codex command with ink UI
@@ -804,6 +835,8 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect begin');
         await client.connect();
         logger.debug('[codex]: client.connect done');
+
+        await publishCodexModelMetadata(client, session);
 
         if (opts.resumeThreadId) {
             await resumeExistingThread({
