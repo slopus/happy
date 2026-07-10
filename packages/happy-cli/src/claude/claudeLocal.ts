@@ -11,6 +11,8 @@ import { getProjectPath } from "./utils/path";
 import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
+import type { PermissionMode } from "@/api/types";
+import { mapToClaudeMode } from "./utils/permissionMode";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
 
 /**
@@ -44,6 +46,9 @@ export async function claudeLocal(opts: {
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
     allowedTools?: string[],
+    /** Resolved permission mode for this session (default = yolo/bypass). Mirrors the
+     * remote/SDK path so the local interactive spawn actually enters that mode. */
+    permissionMode?: PermissionMode,
     /** Path to temporary settings file with SessionStart hook (optional - for session tracking) */
     hookSettingsPath?: string,
     sandboxConfig?: SandboxConfig,
@@ -242,6 +247,29 @@ export async function claudeLocal(opts: {
             // Add custom Claude arguments
             if (opts.claudeArgs) {
                 args.push(...opts.claudeArgs)
+            }
+
+            // Translate the resolved permission mode into a Claude CLI flag. The
+            // remote/SDK path does this via the SDK's permissionMode option (which
+            // emits --permission-mode); the local spawn must mirror it, otherwise a
+            // session Happy resolved to bypass/plan/acceptEdits silently runs in
+            // Claude's default mode (slopus/happy local bypass bug). Skip when the
+            // user already carries an explicit permission flag in claudeArgs. Bypass
+            // uses --dangerously-skip-permissions to match the interactive sandbox
+            // branch below and `claude --dangerously-skip-permissions` directly.
+            if (opts.permissionMode) {
+                const claudeMode = mapToClaudeMode(opts.permissionMode);
+                const hasPermissionFlag =
+                    args.includes('--permission-mode') ||
+                    args.some((arg) => arg.startsWith('--permission-mode=')) ||
+                    args.includes('--dangerously-skip-permissions');
+                if (!hasPermissionFlag) {
+                    if (claudeMode === 'bypassPermissions') {
+                        args.push('--dangerously-skip-permissions');
+                    } else if (claudeMode !== 'default') {
+                        args.push('--permission-mode', claudeMode);
+                    }
+                }
             }
 
             // Add hook settings for session tracking (when available)

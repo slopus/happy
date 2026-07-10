@@ -316,3 +316,135 @@ describe('claudeLocal --continue handling', () => {
         expect(spawnedArgs).not.toContain('--dangerously-skip-permissions');
     });
 });
+
+describe('claudeLocal permission mode forwarding', () => {
+    let onSessionFound: any;
+
+    beforeEach(() => {
+        mockSpawn.mockReturnValue({
+            stdio: [null, null, null, null],
+            on: vi.fn((event, callback) => {
+                if (event === 'exit') {
+                    process.nextTick(() => callback(0));
+                }
+            }),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            kill: vi.fn(),
+            stdout: { on: vi.fn() },
+            stderr: { on: vi.fn() },
+            stdin: { on: vi.fn(), end: vi.fn() },
+        });
+        onSessionFound = vi.fn();
+        vi.clearAllMocks();
+    });
+
+    const spawnedArgs = () => mockSpawn.mock.calls[0][1] as string[];
+
+    it('injects --dangerously-skip-permissions for the default yolo mode', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+            permissionMode: 'yolo',
+        });
+        expect(spawnedArgs()).toContain('--dangerously-skip-permissions');
+    });
+
+    it('injects --dangerously-skip-permissions for bypassPermissions', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+            permissionMode: 'bypassPermissions',
+        });
+        expect(spawnedArgs()).toContain('--dangerously-skip-permissions');
+    });
+
+    it('does not inject any permission flag for default mode', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+            permissionMode: 'default',
+        });
+        expect(spawnedArgs()).not.toContain('--dangerously-skip-permissions');
+        expect(spawnedArgs()).not.toContain('--permission-mode');
+    });
+
+    it('injects --permission-mode for plan mode', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+            permissionMode: 'plan',
+        });
+        const args = spawnedArgs();
+        expect(args).toContain('--permission-mode');
+        expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan');
+        expect(args).not.toContain('--dangerously-skip-permissions');
+    });
+
+    it('does not duplicate the flag when claudeArgs already carries --dangerously-skip-permissions', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: ['--dangerously-skip-permissions'],
+            permissionMode: 'yolo',
+        });
+        const occurrences = spawnedArgs().filter((a) => a === '--dangerously-skip-permissions');
+        expect(occurrences).toHaveLength(1);
+    });
+
+    it('does not duplicate the bypass flag when sandbox is enabled', async () => {
+        mockInitializeSandbox.mockResolvedValue(mockSandboxCleanup);
+        mockWrapCommand.mockResolvedValue('wrapped claude command');
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+            permissionMode: 'bypassPermissions',
+            sandboxConfig: {
+                enabled: true,
+                sessionIsolation: 'workspace',
+                customWritePaths: [],
+                denyReadPaths: [],
+                extraWritePaths: [],
+                denyWritePaths: [],
+                networkMode: 'allowed',
+                allowedDomains: [],
+                deniedDomains: [],
+                allowLocalBinding: true,
+            },
+        });
+        const wrappedCommand = mockWrapCommand.mock.calls[0][0] as string;
+        const occurrences = wrappedCommand.match(/--dangerously-skip-permissions/g) ?? [];
+        expect(occurrences).toHaveLength(1);
+    });
+
+    it('respects an explicit --permission-mode in claudeArgs and does not add bypass', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: ['--permission-mode', 'plan'],
+            permissionMode: 'yolo',
+        });
+        const args = spawnedArgs();
+        expect(args).not.toContain('--dangerously-skip-permissions');
+        expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan');
+    });
+});
