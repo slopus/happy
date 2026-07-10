@@ -296,3 +296,31 @@ export type JsonRpcResponse = {
     result?: unknown;
     error?: { code: number; message: string; data?: unknown };
 };
+
+//
+// model/list — enumerate the models the Codex backend currently offers.
+// Response shape mirrors codex-rs `ModelListResponse` (see
+// `codex app-server generate-json-schema`, v2/ModelListResponse.json).
+//
+
+export type CodexModel = {
+    id: string;
+    model: string;
+    displayName: string;
+    description: string;
+    hidden: boolean;
+    isDefault: boolean;
+    defaultReasoningEffort: string;
+    supportedReasoningEfforts: string[];
+};
+
+export type ListModelsParams = {
+    cursor?: string | null;
+    includeHidden?: boolean | null;
+    limit?: number | null;
+};
+
+export type ListModelsResponse = {
+    data: CodexModel[];
+    nextCursor?: string | null;
+};

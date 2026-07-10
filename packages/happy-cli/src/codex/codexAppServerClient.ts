@@ -31,6 +31,9 @@ import type {
     RollbackConversationResponse,
     InjectItemsParams,
     InjectItemsResponse,
+    CodexModel,
+    ListModelsParams,
+    ListModelsResponse,
     ThreadGoalSetParams,
     ThreadGoalSetResponse,
     ThreadGoalClearParams,
@@ -192,6 +195,9 @@ function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | unde
 
     return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
+
+const MODEL_LIST_PAGE_SIZE = 100;
+const MODEL_LIST_MAX_PAGES = 10;
 
 export class CodexAppServerClient {
     private process: ChildProcess | null = null;
@@ -826,6 +832,32 @@ export class CodexAppServerClient {
             items: opts.items,
         };
         return await this.request('thread/inject_items', params) as InjectItemsResponse;
+    }
+
+    /**
+     * Enumerate the models this Codex backend offers, following pagination.
+     * Hidden models are excluded unless explicitly requested — they are the
+     * ones Codex itself keeps out of its picker.
+     */
+    async listModels(opts?: { includeHidden?: boolean }): Promise<CodexModel[]> {
+        const models: CodexModel[] = [];
+        let cursor: string | null | undefined = undefined;
+        // Bound the walk so a backend that always returns a cursor cannot hang startup.
+        for (let page = 0; page < MODEL_LIST_MAX_PAGES; page++) {
+            const params: ListModelsParams = {
+                includeHidden: opts?.includeHidden ?? false,
+                limit: MODEL_LIST_PAGE_SIZE,
+                ...(cursor ? { cursor } : {}),
+            };
+            const response = await this.request('model/list', params) as ListModelsResponse;
+            models.push(...response.data);
+            cursor = response.nextCursor;
+            if (!cursor) {
+                return models;
+            }
+        }
+        logger.debug(`[codex] model/list exceeded ${MODEL_LIST_MAX_PAGES} pages; returning ${models.length} models`);
+        return models;
     }
 
     async setGoal(opts: {
