@@ -12,6 +12,7 @@ import {
     type NewSessionSessionType,
 } from '@/sync/persistence';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
+import type { AttachmentPreview } from '@/sync/attachmentTypes';
 
 interface NewSessionDraftState {
     input: string;
@@ -23,6 +24,7 @@ interface NewSessionDraftState {
     effortLevel: string | null;
     sessionType: NewSessionSessionType;
     worktreeKey: string | null;
+    attachments: AttachmentPreview[];
 
     setInput: (input: string) => void;
     setMachineId: (id: string | null) => void;
@@ -33,6 +35,7 @@ interface NewSessionDraftState {
     setEffortLevel: (level: string) => void;
     setSessionType: (type: NewSessionSessionType) => void;
     setWorktreeKey: (key: string | null) => void;
+    setAttachments: (attachments: AttachmentPreview[]) => void;
 }
 
 function persist(state: NewSessionDraftState) {
@@ -46,6 +49,7 @@ function persist(state: NewSessionDraftState) {
         effortLevel: state.effortLevel,
         sessionType: state.sessionType,
         worktreeKey: state.worktreeKey,
+        attachments: state.attachments,
         updatedAt: Date.now(),
     });
 }
@@ -62,6 +66,7 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     effortLevel: initial?.effortLevel ?? null,
     sessionType: initial?.sessionType ?? 'simple',
     worktreeKey: initial?.worktreeKey ?? null,
+    attachments: initial?.attachments ?? [],
 
     setInput: (input) => { set({ input }); persist(get()); },
     setMachineId: (id) => { set({ selectedMachineId: id, selectedPath: null, worktreeKey: null }); persist(get()); },
@@ -72,4 +77,5 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     setEffortLevel: (level) => { set({ effortLevel: level }); persist(get()); },
     setSessionType: (type) => { set({ sessionType: type }); persist(get()); },
     setWorktreeKey: (key) => { set({ worktreeKey: key }); persist(get()); },
+    setAttachments: (attachments) => { set({ attachments }); persist(get()); },
 }));
