@@ -412,6 +412,11 @@ export const ja: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `バージョン ${currentVersion} がインストールされています。${requiredVersion} 以降に更新してください`,
         updateCliInstructions: 'npm install -g happy@latest を実行してください',
+        renameSession: 'セッションの名前を変更',
+        renameSessionSubtitle: 'チャットのタイトルを変更',
+        renameSessionPlaceholder: 'タイトルを入力',
+        renameSessionOffline: '名前を変更するにはこのセッションに接続してください',
+        renameSessionFailed: 'セッションの名前の変更に失敗しました',
         deleteSession: 'セッションを削除',
         deleteSessionSubtitle: 'このセッションを完全に削除',
         deleteSessionConfirm: 'セッションを完全に削除しますか？',

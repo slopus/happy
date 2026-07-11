@@ -409,6 +409,11 @@ export const it: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versione ${currentVersion} installata. Aggiorna a ${requiredVersion} o successiva`,
         updateCliInstructions: 'Esegui npm install -g happy@latest',
+        renameSession: 'Rinomina sessione',
+        renameSessionSubtitle: 'Cambia il titolo della chat',
+        renameSessionPlaceholder: 'Inserisci un titolo',
+        renameSessionOffline: 'Connettiti a questa sessione per rinominarla',
+        renameSessionFailed: 'Impossibile rinominare la sessione',
         deleteSession: 'Elimina sessione',
         deleteSessionSubtitle: 'Rimuovi definitivamente questa sessione',
         deleteSessionConfirm: 'Eliminare definitivamente la sessione?',

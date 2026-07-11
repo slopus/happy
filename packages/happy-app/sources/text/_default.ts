@@ -425,6 +425,11 @@ export const en = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Version ${currentVersion} installed. Update to ${requiredVersion} or later`,
         updateCliInstructions: 'Please run npm install -g happy@latest',
+        renameSession: 'Rename Session',
+        renameSessionSubtitle: 'Change the chat title',
+        renameSessionPlaceholder: 'Enter a title',
+        renameSessionOffline: 'Connect to this session to rename it',
+        renameSessionFailed: 'Failed to rename session',
         deleteSession: 'Delete Session',
         deleteSessionSubtitle: 'Permanently remove this session',
         deleteSessionConfirm: 'Delete Session Permanently?',
