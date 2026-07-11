@@ -153,7 +153,6 @@ export const ru: TranslationStructure = {
         sessionStatusBarDescription: 'Выберите, где показывать ветку, модель, усилия и контекст',
         sessionStatusDisplayOptions: {
             hidden: 'Скрыто',
-            hiddenOnMobile: 'Скрыто на телефоне',
             above: 'Над полем ввода',
             below: 'Под полем ввода',
         },

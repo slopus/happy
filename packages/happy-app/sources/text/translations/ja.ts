@@ -168,7 +168,6 @@ export const ja: TranslationStructure = {
         sessionStatusBarDescription: 'ブランチ、モデル、エフォート、コンテキストの表示場所を選択',
         sessionStatusDisplayOptions: {
             hidden: '非表示',
-            hiddenOnMobile: 'モバイルで非表示',
             above: '入力欄の上',
             below: '入力欄の下',
         },

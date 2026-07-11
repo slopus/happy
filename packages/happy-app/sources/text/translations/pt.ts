@@ -166,7 +166,6 @@ export const pt: TranslationStructure = {
         sessionStatusBarDescription: 'Escolha onde a branch, o modelo, o esforço e o contexto aparecem',
         sessionStatusDisplayOptions: {
             hidden: 'Oculto',
-            hiddenOnMobile: 'Oculto no celular',
             above: 'Acima do compositor',
             below: 'Abaixo do compositor',
         },

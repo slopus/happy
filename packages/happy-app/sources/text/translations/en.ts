@@ -181,7 +181,6 @@ export const en: TranslationStructure = {
         sessionStatusBarDescription: 'Choose where branch, model, effort, and context appear',
         sessionStatusDisplayOptions: {
             hidden: 'Hidden',
-            hiddenOnMobile: 'Hidden on mobile',
             above: 'Above composer',
             below: 'Below composer',
         },

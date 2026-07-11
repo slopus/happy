@@ -167,7 +167,6 @@ export const zhHant: TranslationStructure = {
         sessionStatusBarDescription: '選擇分支、模型、工作量和上下文的顯示位置',
         sessionStatusDisplayOptions: {
             hidden: '隱藏',
-            hiddenOnMobile: '在手機上隱藏',
             above: '輸入框上方',
             below: '輸入框下方',
         },

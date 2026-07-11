@@ -1014,11 +1014,7 @@ export function SessionViewLoaded({
         </CenteredInputWidth>
     ) : null;
 
-    // 'hiddenOnMobile' hides the bar on phones but still shows it (below the
-    // composer) on tablet/desktop/web. 'above'/'below' show it everywhere.
-    const showSessionStatusBar = sessionStatusBarDisplay === 'above'
-        || sessionStatusBarDisplay === 'below'
-        || (sessionStatusBarDisplay === 'hiddenOnMobile' && deviceType !== 'phone');
+    const showSessionStatusBar = sessionStatusBarDisplay === 'above' || sessionStatusBarDisplay === 'below';
     const sessionStatusBarPosition = sessionStatusBarDisplay === 'above' ? 'above' : 'below';
     const sessionStatusBar = showSessionStatusBar ? (
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>

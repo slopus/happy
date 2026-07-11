@@ -167,7 +167,6 @@ export const ca: TranslationStructure = {
         sessionStatusBarDescription: 'Tria on es mostren la branca, el model, l\'esforç i el context',
         sessionStatusDisplayOptions: {
             hidden: 'Ocult',
-            hiddenOnMobile: 'Ocult al mòbil',
             above: 'Sobre el compositor',
             below: 'Sota el compositor',
         },

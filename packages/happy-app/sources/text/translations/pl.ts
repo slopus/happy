@@ -184,7 +184,6 @@ export const pl: TranslationStructure = {
         sessionStatusBarDescription: 'Wybierz, gdzie wyświetlać gałąź, model, wysiłek i kontekst',
         sessionStatusDisplayOptions: {
             hidden: 'Ukryte',
-            hiddenOnMobile: 'Ukryte na telefonie',
             above: 'Nad polem wprowadzania',
             below: 'Pod polem wprowadzania',
         },

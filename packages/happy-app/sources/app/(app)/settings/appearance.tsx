@@ -51,8 +51,6 @@ const getSessionStatusDisplayLabel = (mode: SessionStatusBarDisplay): string => 
     switch (mode) {
         case 'hidden':
             return t('settingsAppearance.sessionStatusDisplayOptions.hidden');
-        case 'hiddenOnMobile':
-            return t('settingsAppearance.sessionStatusDisplayOptions.hiddenOnMobile');
         case 'above':
             return t('settingsAppearance.sessionStatusDisplayOptions.above');
         case 'below':
@@ -64,8 +62,6 @@ const getSessionStatusDisplayIcon = (mode: SessionStatusBarDisplay): React.Compo
     switch (mode) {
         case 'hidden':
             return 'eye-off-outline';
-        case 'hiddenOnMobile':
-            return 'phone-portrait-outline';
         case 'above':
             return 'chevron-up-outline';
         case 'below':

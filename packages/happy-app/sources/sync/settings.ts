@@ -10,9 +10,8 @@ import { DEFAULT_USER_MESSAGE_BUBBLE_COLOR } from '../utils/userMessageBubbleCol
 export const SUPPORTED_SCHEMA_VERSION = 2;
 
 // Where (and whether) the branch/model/effort/context status bar renders
-// around the composer. 'hiddenOnMobile' hides it on phones but shows it
-// below the composer on tablet/desktop/web.
-export const SESSION_STATUS_BAR_DISPLAY_MODES = ['hidden', 'hiddenOnMobile', 'above', 'below'] as const;
+// around the composer.
+export const SESSION_STATUS_BAR_DISPLAY_MODES = ['hidden', 'above', 'below'] as const;
 export type SessionStatusBarDisplay = typeof SESSION_STATUS_BAR_DISPLAY_MODES[number];
 
 export const SettingsSchema = z.object({
