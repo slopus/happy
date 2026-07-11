@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
+import { readForcedModel, resolveForcedModel } from '@/claude/utils/forceModel';
 import { AgentGoalStatus, AgentState, Metadata } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
@@ -74,6 +75,14 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     
     const workingDirectory = process.cwd();
     const sessionTag = randomUUID();
+
+    // A `.happy-force-model` marker in the working directory pins the Claude
+    // model for this session. Read once at startup; when set it wins at every
+    // model-resolution site below.
+    const forcedModel = readForcedModel(workingDirectory);
+    if (forcedModel) {
+        logger.debug(`[CLAUDE] .happy-force-model active: forcing model=${forcedModel} (app model choices ignored)`);
+    }
 
     // Log environment info at startup
     logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
@@ -521,7 +530,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Forward messages to the queue
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
-    let currentModel: string | undefined = options.model ?? DEFAULT_CLAUDE_MODEL; // Track current model state
+    let currentModel: string | undefined = resolveForcedModel(forcedModel, options.model ?? DEFAULT_CLAUDE_MODEL); // Track current model state
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
@@ -531,7 +540,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     const resetCurrentModeDefaults = () => {
         currentPermissionMode = initialPermissionMode;
-        currentModel = options.model ?? DEFAULT_CLAUDE_MODEL;
+        currentModel = resolveForcedModel(forcedModel, options.model ?? DEFAULT_CLAUDE_MODEL);
         currentFallbackModel = undefined;
         currentCustomSystemPrompt = undefined;
         currentAppendSystemPrompt = undefined;
@@ -674,9 +683,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Resolve model - use message.meta.model if provided, otherwise use current model
         let messageModel = currentModel;
         if (message.meta?.hasOwnProperty('model')) {
-            messageModel = message.meta.model || undefined; // null becomes undefined
+            messageModel = resolveForcedModel(forcedModel, message.meta.model || undefined); // null becomes undefined
             currentModel = messageModel;
-            logger.debug(`[loop] Model updated from user message: ${messageModel || 'reset to default'}`);
+            logger.debug(`[loop] Model updated from user message: ${messageModel || 'reset to default'}${forcedModel ? ' (forced by .happy-force-model)' : ''}`);
         } else {
             logger.debug(`[loop] User message received with no model override, using current: ${currentModel || 'default'}`);
         }
@@ -920,7 +929,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Create claude loop
     const exitCode = await loop({
         path: workingDirectory,
-        model: options.model,
+        model: resolveForcedModel(forcedModel, options.model),
         permissionMode: initialPermissionMode,
         startingMode: options.startingMode,
         messageQueue,
