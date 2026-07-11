@@ -101,7 +101,7 @@ export function applySandboxPermissionPolicy(
     return 'bypassPermissions';
 }
 
-function isClaudeBypassEquivalent(mode: PermissionMode | undefined): boolean {
+export function isClaudeBypassEquivalent(mode: PermissionMode | undefined): boolean {
     return mode === 'bypassPermissions' || mode === 'yolo';
 }
 

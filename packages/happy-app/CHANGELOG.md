@@ -1,3 +1,7 @@
+# July 2 — Fable in Claude Code
+
+Fable is available from the Claude Code model picker.
+
 # June 22 — Goals and cleaner commands
 
 Agent goals and slash commands are easier to follow, with steadier remote sessions.

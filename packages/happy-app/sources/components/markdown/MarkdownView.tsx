@@ -385,9 +385,9 @@ const style = StyleSheet.create((theme) => ({
     text: {
         ...Typography.default(),
         fontSize: 16,
-        lineHeight: 24, // Reduced from 28 to 24
+        lineHeight: 25,
         marginTop: 8,
-        marginBottom: 8,
+        marginBottom: 10,
         color: theme.colors.text,
         fontWeight: '400',
     },

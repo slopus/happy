@@ -1,6 +1,11 @@
 {
   "entries": [
     {
+      "title": "July 2 — Fable in Claude Code",
+      "summary": "Fable is available from the Claude Code model picker.",
+      "markdown": ""
+    },
+    {
       "title": "June 22 — Goals and cleaner commands",
       "summary": "Agent goals and slash commands are easier to follow, with steadier remote sessions.",
       "markdown": "- Active goals appear above the composer for supported Claude and Codex sessions.\n- `/goal` and skill commands render cleanly in chat instead of showing raw command internals.\n- Codex skills now appear in the slash-command menu.\n- Remote sessions handle first messages and resumed transcripts more reliably."
@@ -61,5 +66,5 @@
       "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],
-  "latestTitle": "June 22 — Goals and cleaner commands"
+  "latestTitle": "July 2 — Fable in Claude Code"
 }

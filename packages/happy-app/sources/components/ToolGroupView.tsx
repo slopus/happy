@@ -28,13 +28,15 @@ interface ToolGroupViewProps {
     onToggle: () => void;
     nested?: boolean;
     hideSingleToolChildren?: boolean;
+    forceCompleted?: boolean;
 }
 
 export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
-    const { group, metadata, sessionId, expanded, onToggle, nested, hideSingleToolChildren } = props;
+    const { group, metadata, sessionId, expanded, onToggle, nested, hideSingleToolChildren, forceCompleted } = props;
     const router = useRouter();
     const summary = React.useMemo(() => generateGroupSummary(group.messages), [group.messages]);
     const summaryCategory = React.useMemo(() => getGroupSummaryCategory(group.messages), [group.messages]);
+    const hasRunning = !forceCompleted && group.hasRunning;
     const suppressChildren = hideSingleToolChildren && group.messages.length === 1 && group.messages[0]?.kind === 'tool-call';
     const singleToolMessage = suppressChildren && group.messages[0]?.kind === 'tool-call'
         ? group.messages[0]
@@ -66,7 +68,7 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
         <View style={nested ? styles.nestedInnerContainer : styles.innerContainer}>
             <CollapseHeader
                 expanded={expanded}
-                hasRunning={group.hasRunning}
+                hasRunning={hasRunning}
                 label={summary}
                 onPress={singleToolMessage ? handleSingleToolPress : onToggle}
                 category={summaryCategory}
@@ -105,6 +107,7 @@ interface AgentWorkGroupViewProps {
 
 export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) => {
     const { group, metadata, sessionId, expanded, onToggle } = props;
+    const isCompleted = group.completedAt !== null;
     const runningElapsedSeconds = useElapsedTime(group.completedAt === null ? group.startedAt : null);
     const durationMs = group.completedAt === null
         ? runningElapsedSeconds * 1000
@@ -178,6 +181,7 @@ export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) =>
                     onToggle={() => handleToggleNestedGroup(item.id)}
                     nested
                     hideSingleToolChildren
+                    forceCompleted={isCompleted}
                 />
             );
         }
@@ -196,7 +200,7 @@ export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) =>
             <View style={styles.innerContainer}>
                 <CollapseHeader
                     expanded={expanded}
-                    hasRunning={group.hasRunning}
+                    hasRunning={!isCompleted && group.hasRunning}
                     label={label}
                     onPress={onToggle}
                 />
@@ -437,7 +441,7 @@ const styles = StyleSheet.create((theme) => ({
         flexBasis: 0,
         minWidth: 0,
         maxWidth: layout.maxWidth,
-        marginVertical: 6,
+        marginVertical: 8,
         overflow: 'hidden',
     },
     nestedOuterContainer: {
@@ -453,8 +457,8 @@ const styles = StyleSheet.create((theme) => ({
         gap: 6,
         alignSelf: 'stretch',
         marginHorizontal: 16,
-        minHeight: 24,
-        paddingVertical: 2,
+        minHeight: 28,
+        paddingVertical: 4,
         borderRadius: 4,
     },
     headerPressed: {
@@ -475,16 +479,16 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
     },
     content: {
-        marginTop: 2,
-        gap: 2,
+        marginTop: 6,
+        gap: 4,
     },
     toolSummaryRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        minHeight: 24,
+        minHeight: 28,
         marginHorizontal: 16,
-        paddingVertical: 2,
+        paddingVertical: 4,
         borderRadius: 4,
         overflow: 'hidden',
     },

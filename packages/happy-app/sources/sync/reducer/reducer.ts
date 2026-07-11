@@ -133,6 +133,10 @@ type ReducerMessage = {
 }
 
 type StoredPermission = {
+    // Canonical request id (the key in agentState.requests) — the id the CLI
+    // expects back in the permission response. May differ from the map key
+    // when the request carries a raw toolUseId used for the tool-call join.
+    id: string;
     tool: string;
     arguments: any;
     createdAt: number;
@@ -163,6 +167,7 @@ export type ReducerState = {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        contextWindow?: number;
         timestamp: number;
     };
 };
@@ -241,6 +246,7 @@ export type ReducerResult = {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        contextWindow?: number;
     };
     hasReadyEvent?: boolean;
 };
@@ -412,8 +418,13 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     continue;
                 }
 
+                // Join key for the tool call: the raw provider tool-use id when
+                // the request id is scoped (claude subagents use
+                // `agentID:toolUseID`), otherwise the request id itself.
+                const joinId = request.toolUseId || permId;
+
                 // Check if we already have a message for this permission ID
-                const existingMessageId = state.toolIdToMessageId.get(permId);
+                const existingMessageId = state.toolIdToMessageId.get(joinId);
                 if (existingMessageId) {
                     // Update existing tool message with permission info
                     const message = state.messages.get(existingMessageId);
@@ -459,14 +470,15 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         event: null,
                     });
 
-                    // Store by permission ID (which will match tool ID)
-                    state.toolIdToMessageId.set(permId, mid);
+                    // Store by the join id (which will match the tool ID)
+                    state.toolIdToMessageId.set(joinId, mid);
 
                     changed.add(mid);
                 }
 
                 // Store permission details for quick lookup
-                state.permissions.set(permId, {
+                state.permissions.set(joinId, {
+                    id: permId,
                     tool: request.tool,
                     arguments: request.arguments,
                     createdAt: request.createdAt || Date.now(),
@@ -478,8 +490,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         // Process completed permission requests
         if (agentState.completedRequests) {
             for (const [permId, completed] of Object.entries(agentState.completedRequests)) {
+                // Same join key as pending requests: raw tool-use id when scoped
+                const joinId = completed.toolUseId || permId;
+
                 // Check if we have a message for this permission ID
-                const messageId = state.toolIdToMessageId.get(permId);
+                const messageId = state.toolIdToMessageId.get(joinId);
                 if (messageId) {
                     const message = state.messages.get(messageId);
                     if (message?.tool) {
@@ -549,7 +564,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         }
 
                         // Update stored permission
-                        state.permissions.set(permId, {
+                        state.permissions.set(joinId, {
+                            id: permId,
                             tool: completed.tool,
                             arguments: completed.arguments,
                             createdAt: completed.createdAt || Date.now(),
@@ -567,12 +583,13 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     }
                 } else {
                     // No existing message - check if tool ID is in incoming messages
-                    if (incomingToolIds.has(permId)) {
+                    if (incomingToolIds.has(joinId)) {
                         if (ENABLE_LOGGING) {
                             console.log(`[REDUCER] Storing permission ${permId} for incoming tool`);
                         }
                         // Store permission for when tool arrives in Phase 2
-                        state.permissions.set(permId, {
+                        state.permissions.set(joinId, {
+                            id: permId,
                             tool: completed.tool,
                             arguments: completed.arguments,
                             createdAt: completed.createdAt || Date.now(),
@@ -621,10 +638,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         event: null,
                     });
 
-                    state.toolIdToMessageId.set(permId, mid);
+                    state.toolIdToMessageId.set(joinId, mid);
 
                     // Store permission details
-                    state.permissions.set(permId, {
+                    state.permissions.set(joinId, {
+                        id: permId,
                         tool: completed.tool,
                         arguments: completed.arguments,
                         createdAt: completed.createdAt || Date.now(),
@@ -774,7 +792,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                                 console.log(`[REDUCER] Found stored permission for tool ${c.id}`);
                             }
                             toolCall.permission = {
-                                id: c.id,
+                                // Canonical request id — the CLI resolves the
+                                // response by this, not by the tool-call id.
+                                id: permission.id,
                                 status: permission.status,
                                 reason: permission.reason,
                                 mode: permission.mode,
@@ -1133,7 +1153,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             outputTokens: state.latestUsage.outputTokens,
             cacheCreation: state.latestUsage.cacheCreation,
             cacheRead: state.latestUsage.cacheRead,
-            contextSize: state.latestUsage.contextSize
+            contextSize: state.latestUsage.contextSize,
+            ...(state.latestUsage.contextWindow ? { contextWindow: state.latestUsage.contextWindow } : {}),
         } : undefined,
         hasReadyEvent: hasReadyEvent || undefined
     };
@@ -1150,15 +1171,23 @@ function allocateId() {
 function processUsageData(state: ReducerState, usage: UsageData, timestamp: number) {
     // Only update if this is newer than the current latest usage
     if (!state.latestUsage || timestamp > state.latestUsage.timestamp) {
+        const contextWindow = readPositiveTokenCount(usage.context_window);
         state.latestUsage = {
             inputTokens: usage.input_tokens,
             outputTokens: usage.output_tokens,
             cacheCreation: usage.cache_creation_input_tokens || 0,
             cacheRead: usage.cache_read_input_tokens || 0,
             contextSize: (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0) + usage.input_tokens,
+            ...(contextWindow ? { contextWindow } : {}),
             timestamp: timestamp
         };
     }
+}
+
+function readPositiveTokenCount(value: unknown): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? Math.trunc(value)
+        : undefined;
 }
 
 

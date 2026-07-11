@@ -193,6 +193,103 @@ describe('reducer', () => {
             }
         });
 
+        it('should update latest usage from agent messages', () => {
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'agent-usage-1',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    usage: {
+                        input_tokens: 1200,
+                        cache_creation_input_tokens: 40,
+                        cache_read_input_tokens: 500,
+                        output_tokens: 80,
+                    },
+                    content: [{
+                        type: 'text',
+                        text: 'Hello with usage',
+                        uuid: 'test-usage-uuid-1',
+                        parentUUID: null
+                    }]
+                }
+            ];
+
+            const result = reducer(state, messages);
+
+            expect(result.usage).toEqual({
+                inputTokens: 1200,
+                outputTokens: 80,
+                cacheCreation: 40,
+                cacheRead: 500,
+                contextSize: 1740,
+            });
+        });
+
+        it('should update latest usage from usage-only agent messages', () => {
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'agent-usage-only-1',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    usage: {
+                        input_tokens: 1200,
+                        cache_creation_input_tokens: 40,
+                        cache_read_input_tokens: 500,
+                        output_tokens: 80,
+                    },
+                    content: []
+                }
+            ];
+
+            const result = reducer(state, messages);
+
+            expect(result.messages).toHaveLength(0);
+            expect(result.usage).toEqual({
+                inputTokens: 1200,
+                outputTokens: 80,
+                cacheCreation: 40,
+                cacheRead: 500,
+                contextSize: 1740,
+            });
+        });
+
+        it('should preserve context window from usage data', () => {
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'agent-usage-window-1',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    usage: {
+                        input_tokens: 10422,
+                        cache_read_input_tokens: 113536,
+                        output_tokens: 2140,
+                        context_window: 258400,
+                    },
+                    content: []
+                }
+            ];
+
+            const result = reducer(state, messages);
+
+            expect(result.usage).toEqual({
+                inputTokens: 10422,
+                outputTokens: 2140,
+                cacheCreation: 0,
+                cacheRead: 113536,
+                contextSize: 123958,
+                contextWindow: 258400,
+            });
+        });
+
         it('should process multiple text blocks in one agent message', () => {
             const state = createReducer();
             const messages: NormalizedMessage[] = [
@@ -3041,6 +3138,56 @@ describe('reducer', () => {
                 if (result.messages[0].children[0].kind === 'tool-call') {
                     expect(result.messages[0].children[0].tool.name).toBe('Read');
                 }
+            }
+        });
+
+        it('nests CodexSubagent sidechains via sessionSubagent', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                {
+                    id: 'codex-subagent-parent-msg',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'collab-parent',
+                        name: 'CodexSubagent',
+                        input: {
+                            tool: 'spawnAgent',
+                            prompt: 'Inspect auth flow',
+                            sessionSubagent: 'session-subagent-codex-1',
+                        },
+                        description: 'Inspect auth flow',
+                        uuid: 'codex-parent-uuid',
+                        parentUUID: null
+                    }]
+                },
+                {
+                    id: 'codex-subagent-child',
+                    localId: null,
+                    createdAt: 1100,
+                    role: 'agent',
+                    isSidechain: true,
+                    content: [{
+                        type: 'text',
+                        text: 'found auth handler',
+                        uuid: 'codex-child-uuid',
+                        parentUUID: 'session-subagent-codex-1'
+                    }]
+                }
+            ]);
+
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].kind).toBe('tool-call');
+            if (result.messages[0].kind === 'tool-call') {
+                expect(result.messages[0].tool.name).toBe('CodexSubagent');
+                expect(result.messages[0].children).toHaveLength(1);
+                expect(result.messages[0].children[0]).toMatchObject({
+                    kind: 'agent-text',
+                    text: 'found auth handler',
+                });
             }
         });
     });

@@ -122,19 +122,29 @@ export abstract class BasePermissionHandler {
 
     /**
      * Add a pending request to the agent state.
+     *
+     * If the same id already sits in completedRequests (one codex item can
+     * raise several sequential approvals — sandbox-escalation retries), the
+     * completed entry must be dropped: the app reducer gives completed
+     * entries precedence, so a re-raised request would otherwise never
+     * render and the provider would hang awaiting an answer.
      */
     protected addPendingRequestToState(toolCallId: string, toolName: string, input: unknown): void {
-        this.session.updateAgentState((currentState) => ({
-            ...currentState,
-            requests: {
-                ...currentState.requests,
-                [toolCallId]: {
-                    tool: toolName,
-                    arguments: input,
-                    createdAt: Date.now()
-                }
-            }
-        }));
+        this.session.updateAgentState((currentState) => {
+            const { [toolCallId]: _completed, ...remainingCompleted } = currentState.completedRequests || {};
+            return {
+                ...currentState,
+                requests: {
+                    ...currentState.requests,
+                    [toolCallId]: {
+                        tool: toolName,
+                        arguments: input,
+                        createdAt: Date.now()
+                    }
+                },
+                completedRequests: remainingCompleted
+            };
+        });
     }
 
     /**

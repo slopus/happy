@@ -10,25 +10,41 @@ interface UsageBarProps {
     color?: string;
     showPercentage?: boolean;
     height?: number;
+    compact?: boolean;
 }
 
 const styles = StyleSheet.create((theme) => ({
     container: {
         marginVertical: 8,
     },
+    compactContainer: {
+        marginVertical: 0,
+    },
     labelRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         marginBottom: 4,
     },
+    compactLabelRow: {
+        marginBottom: 2,
+        gap: 8,
+    },
     label: {
         fontSize: 14,
         color: theme.colors.text,
+    },
+    compactLabel: {
+        fontSize: 10,
+        color: theme.colors.textSecondary,
+        fontWeight: '600',
     },
     value: {
         fontSize: 14,
         color: theme.colors.textSecondary,
         fontWeight: '600',
+    },
+    compactValue: {
+        fontSize: 10,
     },
     barContainer: {
         height: 8,
@@ -48,7 +64,8 @@ export const UsageBar: React.FC<UsageBarProps> = ({
     maxValue,
     color,
     showPercentage = false,
-    height = 8
+    height = 8,
+    compact = false
 }) => {
     const { theme } = useUnistyles();
     const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
@@ -59,10 +76,10 @@ export const UsageBar: React.FC<UsageBarProps> = ({
         : value.toLocaleString();
     
     return (
-        <View style={styles.container}>
-            <View style={styles.labelRow}>
-                <Text style={styles.label}>{label}</Text>
-                <Text style={styles.value}>{displayValue}</Text>
+        <View style={[styles.container, compact && styles.compactContainer]}>
+            <View style={[styles.labelRow, compact && styles.compactLabelRow]}>
+                <Text style={[styles.label, compact && styles.compactLabel]}>{label}</Text>
+                <Text style={[styles.value, compact && styles.compactValue]}>{displayValue}</Text>
             </View>
             <View style={[styles.barContainer, { height }]}>
                 <View 

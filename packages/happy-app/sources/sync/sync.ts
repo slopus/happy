@@ -5,6 +5,9 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
+// Circular at module level (ops.ts imports sync) but safe: both sides only
+// touch each other's exports at runtime, never during module initialization.
+import { sessionSetAgentModes } from './ops';
 import { getImageAttachmentSendPlan } from './attachmentSupport';
 import {
     errorMessageFromUnknown,
@@ -55,6 +58,7 @@ import { getFriendsList, getUserProfile } from './apiFriends';
 import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
+import { resolveControlHandoffDirection } from './controlHandoff';
 import { resolveMessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
@@ -2311,12 +2315,14 @@ class Sync {
                         voiceHooks.onPermissionRequested(updateData.body.id, requestIds[0], toolName, firstRequest?.arguments);
                     }
 
-                    // Re-fetch messages when control returns to mobile (local -> remote mode switch)
-                    // This catches up on any messages that were exchanged while desktop had control
+                    // Re-fetch messages on control handoff so the newly active
+                    // side catches up on messages exchanged while it was passive.
                     const wasControlledByUser = session.agentState?.controlledByUser;
                     const isNowControlledByUser = agentState?.controlledByUser;
-                    if (!wasControlledByUser && isNowControlledByUser) {
-                        log.log(`🔄 Control returned to mobile for session ${updateData.body.id}, re-fetching messages`);
+                    const handoffDirection = resolveControlHandoffDirection(wasControlledByUser, isNowControlledByUser);
+                    if (handoffDirection) {
+                        const target = handoffDirection === 'desktop-to-mobile' ? 'mobile' : 'desktop';
+                        log.log(`🔄 Control returned to ${target} for session ${updateData.body.id}, re-fetching messages`);
                         this.onSessionVisible(updateData.body.id);
                     }
                 }
@@ -2736,6 +2742,12 @@ class Sync {
         }
         if (result.hasReadyEvent) {
             voiceHooks.onReady(sessionId);
+        }
+        if (result.enteredPlanMode) {
+            // The EnterPlanMode auto-switch only wrote the local mirror; push
+            // it into synced metadata so other devices see plan mode and the
+            // next inbound metadata update doesn't revert it (#1492)
+            sessionSetAgentModes(sessionId, { permissionMode: 'plan' });
         }
     }
 

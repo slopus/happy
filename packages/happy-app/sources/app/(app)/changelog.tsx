@@ -56,9 +56,11 @@ export default function ChangelogScreen() {
                                 {entry.summary}
                             </Text>
                         ) : null}
-                        <View style={styles.card}>
-                            <MarkdownView markdown={entry.markdown} />
-                        </View>
+                        {entry.markdown ? (
+                            <View style={styles.card}>
+                                <MarkdownView markdown={entry.markdown} />
+                            </View>
+                        ) : null}
                     </View>
                 ))}
             </ScrollView>

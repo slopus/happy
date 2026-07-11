@@ -1,9 +1,12 @@
 import { existsSync } from 'node:fs';
 
 import type { Metadata } from '@/api/types';
+import { encodeBase64 } from '@/api/encryption';
+import { hasLocalHappyAgentAuth } from '@/resume/localHappyAgentAuth';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 
-import { resolveHappySession, type ResumableHappySession } from './resolveHappySession';
+import { LocalResumeSessionError, resolveLocalReconnectableSession } from './localResumeStore';
+import { resolveHappySession, type ReconnectableHappySession, type ResumableHappySession } from './resolveHappySession';
 
 export type ResumeLaunch = {
     cwd: string;
@@ -101,11 +104,23 @@ export function formatResumeHelp(): string {
     ].join('\n');
 }
 
-function spawnResumeChild(launch: ResumeLaunch): Promise<number | null> {
+function buildReconnectEnv(session: ReconnectableHappySession): NodeJS.ProcessEnv {
+    return {
+        ...process.env,
+        HAPPY_RECONNECT_SESSION_ID: session.id,
+        HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(session.encryptionKey),
+        HAPPY_RECONNECT_ENCRYPTION_VARIANT: session.encryptionVariant,
+        HAPPY_RECONNECT_SEQ: String(session.seq),
+        HAPPY_RECONNECT_METADATA_VERSION: String(session.metadataVersion),
+        HAPPY_RECONNECT_AGENT_STATE_VERSION: String(session.agentStateVersion),
+    };
+}
+
+function spawnResumeChild(launch: ResumeLaunch, env: NodeJS.ProcessEnv = process.env): Promise<number | null> {
     return new Promise((resolve, reject) => {
         const child = spawnHappyCLI(launch.args, {
             cwd: launch.cwd,
-            env: process.env,
+            env,
             stdio: 'inherit',
         });
 
@@ -120,6 +135,13 @@ function spawnResumeChild(launch: ResumeLaunch): Promise<number | null> {
     });
 }
 
+async function resolveLegacySessionIfAvailable(sessionId: string): Promise<ResumableHappySession | null> {
+    if (!hasLocalHappyAgentAuth()) {
+        return null;
+    }
+    return resolveHappySession(sessionId);
+}
+
 export async function handleResumeCommand(args: string[]): Promise<void> {
     const parsed = parseResumeCommandArgs(args);
     if (parsed.showHelp) {
@@ -127,7 +149,35 @@ export async function handleResumeCommand(args: string[]): Promise<void> {
         return;
     }
 
-    const session = await resolveHappySession(parsed.sessionId);
+    let localError: unknown;
+    let reconnectableSession: ReconnectableHappySession | null = null;
+    try {
+        reconnectableSession = await resolveLocalReconnectableSession(parsed.sessionId);
+    } catch (error) {
+        localError = error;
+        if (error instanceof LocalResumeSessionError && error.code === 'ambiguous') {
+            throw error;
+        }
+    }
+
+    if (reconnectableSession) {
+        const launch = buildResumeLaunch(reconnectableSession);
+
+        if (!existsSync(launch.cwd)) {
+            throw new Error(`Saved session path does not exist: ${launch.cwd}`);
+        }
+
+        const exitCode = await spawnResumeChild(launch, buildReconnectEnv(reconnectableSession));
+        if (typeof exitCode === 'number' && exitCode !== 0) {
+            process.exit(exitCode);
+        }
+        return;
+    }
+
+    const session = await resolveLegacySessionIfAvailable(parsed.sessionId);
+    if (!session) {
+        throw localError;
+    }
     const launch = buildResumeLaunch(session);
 
     if (!existsSync(launch.cwd)) {
