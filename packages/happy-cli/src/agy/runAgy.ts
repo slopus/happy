@@ -239,6 +239,7 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         log(`Turn ended: ${msg}`);
+        sendEnvelopes(sessionManager.mapMessage({ type: 'model-output', textDelta: `Error: ${msg}` }));
         sendEnvelopes(sessionManager.endTurn('failed'));
       }
       thinking = false;
