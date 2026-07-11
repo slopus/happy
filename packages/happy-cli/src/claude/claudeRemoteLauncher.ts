@@ -1,6 +1,7 @@
 import { render } from "ink";
 import { Session } from "./session";
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
+import { isHeicOrHeif, transcodeHeicToJpeg } from "@/claude/utils/heicTranscode";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import React from "react";
 import { claudeRemote } from "./claudeRemote";
@@ -354,7 +355,21 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                     // strict enum validation error. If the bytes look like one
                                     // of the four formats Claude accepts, send that label —
                                     // otherwise skip the attachment with a debug log.
-                                    const detected = detectClaudeImageMime(att.data);
+                                    // HEIC/HEIF is not accepted by Claude's media_type
+                                    // enum. Transcode it to JPEG instead of dropping the
+                                    // photo. A failed transcode falls through to the skip
+                                    // below rather than crashing.
+                                    let imageData = att.data;
+                                    let detected = detectClaudeImageMime(imageData);
+                                    if (!detected && isHeicOrHeif(imageData)) {
+                                        try {
+                                            imageData = await transcodeHeicToJpeg(imageData);
+                                            detected = detectClaudeImageMime(imageData) ?? 'image/jpeg';
+                                            logger.debug(`[remote] Transcoded HEIC/HEIF attachment ${att.name} to JPEG (${imageData.length} bytes)`);
+                                        } catch (err) {
+                                            logger.debug(`[remote] HEIC transcode failed for ${att.name}: ${err instanceof Error ? err.message : err}`);
+                                        }
+                                    }
                                     if (!detected) {
                                         logger.debug(`[remote] Skipping unsupported attachment (no magic-byte match): ${att.name}, claimed mimeType=${att.mimeType}`);
                                         continue;
@@ -364,7 +379,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                         source: {
                                             type: 'base64' as const,
                                             media_type: detected,
-                                            data: Buffer.from(att.data).toString('base64'),
+                                            data: Buffer.from(imageData).toString('base64'),
                                         },
                                     });
                                 }

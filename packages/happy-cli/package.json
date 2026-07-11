@@ -93,6 +93,7 @@
     "expo-server-sdk": "^3.15.0",
     "fastify": "^5.6.2",
     "fastify-type-provider-zod": "^6.1.0",
+    "heic-convert": "2.1.0",
     "http-proxy": "^1.18.1",
     "http-proxy-middleware": "^3.0.5",
     "ink": "^6.5.1",
@@ -110,6 +111,7 @@
   },
   "devDependencies": {
     "@eslint/compat": "^1",
+    "@types/heic-convert": "^2.1.1",
     "@types/inquirer": "^9.0.9",
     "@types/node": ">=20",
     "@types/ws": "^8.18.1",
