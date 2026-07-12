@@ -450,7 +450,8 @@ export const it: TranslationStructure = {
             acceptEdits: 'Accetta modifiche',
             plan: 'Modalità piano',
             dontAsk: 'Non chiedere',
-            bypassPermissions: 'Modalità YOLO',
+            auto: 'automatico',
+            bypassPermissions: 'salta pericolosamente',
             badgeAcceptAllEdits: 'Accetta tutte le modifiche',
             badgeBypassAllPermissions: 'Bypassa tutti i permessi',
             badgePlanMode: 'Modalità piano',
@@ -1007,6 +1008,8 @@ export const it: TranslationStructure = {
     imageUpload: {
         permissionTitle: 'Accesso alla libreria foto',
         permissionMessage: "Consenti l'accesso alla tua libreria foto per allegare immagini ai messaggi.",
+        cameraPermissionTitle: 'Accesso alla fotocamera',
+        cameraPermissionMessage: "Consenti l'accesso alla fotocamera per scattare foto da allegare ai messaggi.",
         limitTitle: 'Limite immagini raggiunto',
         limitMessage: ({ max }: { max: number }) => `Puoi allegare fino a ${max} immagini per messaggio.`,
         fileTooLargeTitle: 'File troppo grande',
@@ -1017,6 +1020,13 @@ export const it: TranslationStructure = {
             : `Non è stato possibile caricare ${count} immagini e non sono state inviate.`,
         notSupportedTitle: 'Immagini non supportate',
         notSupportedMessage: 'Questo agente non supporta gli allegati immagine. Le immagini non sono state inviate.',
+        addTitle: 'Aggiungi allegato',
+        optionLibrary: 'Libreria foto',
+        optionCamera: 'Scatta foto',
+        optionFiles: 'Scegli file',
+        optionPaste: 'Incolla dagli appunti',
+        pasteFailedTitle: 'Incolla non riuscito',
+        pasteFailedMessage: 'Impossibile leggere un\'immagine dagli appunti.',
     },
 
     feed: {

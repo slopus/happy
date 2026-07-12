@@ -468,7 +468,8 @@ export const ru: TranslationStructure = {
             acceptEdits: 'Принимать правки',
             plan: 'Режим планирования',
             dontAsk: 'Не спрашивать',
-            bypassPermissions: 'YOLO режим',
+            auto: 'авто',
+            bypassPermissions: 'опасный пропуск',
             badgeAcceptAllEdits: 'Принимать все правки',
             badgeBypassAllPermissions: 'Обход всех разрешений',
             badgePlanMode: 'Режим планирования',
@@ -1037,6 +1038,8 @@ export const ru: TranslationStructure = {
     imageUpload: {
         permissionTitle: 'Доступ к библиотеке фото',
         permissionMessage: 'Разрешите доступ к вашей библиотеке фото, чтобы прикреплять изображения к сообщениям.',
+        cameraPermissionTitle: 'Доступ к камере',
+        cameraPermissionMessage: 'Разрешите доступ к камере, чтобы делать фото и прикреплять их к сообщениям.',
         limitTitle: 'Достигнут лимит изображений',
         limitMessage: ({ max }: { max: number }) => `Можно прикрепить не более ${max} изображений на сообщение.`,
         fileTooLargeTitle: 'Файл слишком большой',
@@ -1047,6 +1050,13 @@ export const ru: TranslationStructure = {
             : `${count} изображений не удалось загрузить — они не были отправлены.`,
         notSupportedTitle: 'Изображения не поддерживаются',
         notSupportedMessage: 'Этот агент не поддерживает вложения изображений. Изображения не были отправлены.',
+        addTitle: 'Добавить вложение',
+        optionLibrary: 'Фототека',
+        optionCamera: 'Сделать фото',
+        optionFiles: 'Выбрать файл',
+        optionPaste: 'Вставить из буфера обмена',
+        pasteFailedTitle: 'Не удалось вставить',
+        pasteFailedMessage: 'Не удалось прочитать изображение из буфера обмена.',
     },
 
     feed: {
