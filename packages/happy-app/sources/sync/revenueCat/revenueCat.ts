@@ -5,6 +5,7 @@ import Purchases, {
     LOG_LEVEL
 } from 'react-native-purchases';
 import RevenueCatUI, { PAYWALL_RESULT, CustomVariableValue } from 'react-native-purchases-ui';
+import { delay } from '@/utils/time';
 import { 
     RevenueCatInterface, 
     CustomerInfo, 
@@ -76,11 +77,24 @@ class RevenueCatNative implements RevenueCatInterface {
 
     async presentPaywall(options?: PaywallOptions): Promise<PaywallResult> {
         try {
+            let nativeOfferings;
+            try {
+                nativeOfferings = await Purchases.getOfferings();
+            } catch (error) {
+                console.warn('Failed to fetch RevenueCat offerings, retrying:', error);
+                await delay(500);
+                nativeOfferings = await Purchases.getOfferings();
+            }
+
             // If offering is provided, we need to get the native offering object
-            let nativeOffering = undefined;
+            let nativeOffering = nativeOfferings.current;
             if (options?.offering) {
-                const nativeOfferings = await Purchases.getOfferings();
                 nativeOffering = nativeOfferings.all[options.offering.identifier];
+            }
+
+            if (!nativeOffering) {
+                console.error('RevenueCat current offering is unavailable');
+                return PaywallResult.ERROR;
             }
 
             // Convert custom variables to RevenueCat format
@@ -91,7 +105,7 @@ class RevenueCatNative implements RevenueCatInterface {
                 : undefined;
 
             const nativeResult = await RevenueCatUI.presentPaywall({
-                ...(nativeOffering && { offering: nativeOffering }),
+                offering: nativeOffering,
                 ...(nativeCustomVars && { customVariables: nativeCustomVars }),
             });
 
