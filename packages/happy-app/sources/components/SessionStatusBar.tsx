@@ -10,7 +10,7 @@ import {
     clampContextSize,
     getContextUsageLevel,
     getContextUsagePercentage,
-    SESSION_STATUS_CONTEXT_MAX,
+    resolveContextMaxValue,
 } from '@/utils/sessionStatusBar';
 
 type StatusIconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -39,9 +39,7 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
     const availableEffortLevels = props.availableEffortLevels ?? [];
     const canSelectModel = availableModels.length > 0 && !!props.onModelModeChange;
     const canSelectEffort = availableEffortLevels.length > 0 && !!props.onEffortLevelChange;
-    const contextMaxValue = typeof props.contextWindow === 'number' && Number.isFinite(props.contextWindow) && props.contextWindow > 0
-        ? Math.trunc(props.contextWindow)
-        : SESSION_STATUS_CONTEXT_MAX;
+    const contextMaxValue = resolveContextMaxValue(props.contextWindow, props.modelMode?.key);
     const contextValue = clampContextSize(props.contextSize, contextMaxValue);
     const contextPercentage = getContextUsagePercentage(props.contextSize, contextMaxValue);
     const contextLevel = getContextUsageLevel(props.contextSize, contextMaxValue);

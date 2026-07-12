@@ -10,6 +10,7 @@ import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { PermissionMode, ModelMode } from './PermissionModeSelector';
 import { EffortLevel } from './modelModeOptions';
+import { maxContextSizeForModel } from '@/utils/contextWindow';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
@@ -610,7 +611,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
-        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme, props.usageData.contextWindow)
+        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme, props.usageData.contextWindow ?? maxContextSizeForModel(props.modelMode?.key))
         : null;
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
