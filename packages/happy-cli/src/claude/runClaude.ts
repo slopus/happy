@@ -307,29 +307,34 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // message it needs.
     const forkClaudeSessionId = process.env.HAPPY_FORK_CLAUDE_SESSION_ID;
     if (!reconnectSessionId && forkClaudeSessionId) {
-        const jsonlPath = join(getProjectPath(workingDirectory), `${forkClaudeSessionId}.jsonl`);
-        try {
-            const file = await readFile(jsonlPath, 'utf-8');
-            const lines = file.split('\n');
-            let backfilled = 0;
-            for (const line of lines) {
-                if (line.trim().length === 0) continue;
-                let parsed: unknown;
-                try { parsed = JSON.parse(line); } catch { continue; }
-                const result = RawJSONLinesSchema.safeParse(parsed);
-                if (!result.success) continue;
-                await session.sendClaudeSessionMessageFromLocalTranscript(result.data as RawJSONLines);
-                backfilled += 1;
+        // Side chats resume the forked JSONL for full model context via the
+        // SDK (`resume:`), but we deliberately do NOT replay the pre-fork
+        // history into the UI — a side chat starts empty from the moment it
+        // was opened, so the user only sees the aside they began.
+        if (!isSideChat) {
+            const jsonlPath = join(getProjectPath(workingDirectory), `${forkClaudeSessionId}.jsonl`);
+            try {
+                const file = await readFile(jsonlPath, 'utf-8');
+                const lines = file.split('\n');
+                let backfilled = 0;
+                for (const line of lines) {
+                    if (line.trim().length === 0) continue;
+                    let parsed: unknown;
+                    try { parsed = JSON.parse(line); } catch { continue; }
+                    const result = RawJSONLinesSchema.safeParse(parsed);
+                    if (!result.success) continue;
+                    await session.sendClaudeSessionMessageFromLocalTranscript(result.data as RawJSONLines);
+                    backfilled += 1;
+                }
+                logger.debug(`[FORK BACKFILL] Replayed ${backfilled} historical messages from ${jsonlPath}`);
+            } catch (error) {
+                logger.debug(`[FORK BACKFILL] Failed to read ${jsonlPath}:`, error);
             }
-            logger.debug(`[FORK BACKFILL] Replayed ${backfilled} historical messages from ${jsonlPath}`);
-            // Bind the new Happy session to the forked Claude UUID up
-            // front so the metadata is consistent the moment the app
-            // opens this session — even before the SDK's hook callback
-            // fires.
-            session.updateMetadata((meta) => ({ ...meta, claudeSessionId: forkClaudeSessionId }));
-        } catch (error) {
-            logger.debug(`[FORK BACKFILL] Failed to read ${jsonlPath}:`, error);
         }
+        // Bind the new Happy session to the forked Claude UUID up front so the
+        // metadata is consistent the moment the app opens this session — even
+        // before the SDK's hook callback fires. Done regardless of backfill.
+        session.updateMetadata((meta) => ({ ...meta, claudeSessionId: forkClaudeSessionId }));
     }
 
     // Ring buffer of user prompts that just arrived from the app via the
