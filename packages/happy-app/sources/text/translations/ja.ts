@@ -644,6 +644,8 @@ export const ja: TranslationStructure = {
         deleted: '削除済み',
         changedFiles: ({ count }: { count: number }) => `${count}件の変更ファイル`,
         allFiles: 'すべてのファイル',
+        addPanel: 'パネルを追加',
+        closePanel: 'パネルを閉じる',
         editFile: '編集',
         saveFile: '保存',
         failedToRead: 'ファイルの読み取りに失敗しました',

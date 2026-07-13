@@ -644,6 +644,8 @@ export const zhHans: TranslationStructure = {
         deleted: '已删除',
         changedFiles: ({ count }: { count: number }) => `${count} 个已更改的文件`,
         allFiles: '所有文件',
+        addPanel: '添加面板',
+        closePanel: '关闭面板',
         editFile: '编辑',
         saveFile: '保存',
         failedToRead: '读取文件失败',

@@ -643,6 +643,8 @@ export const ca: TranslationStructure = {
         deleted: 'Eliminat',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'fitxer modificat' : 'fitxers modificats'}`,
         allFiles: 'Tots els fitxers',
+        addPanel: 'Afegeix un panell',
+        closePanel: 'Tanca el panell',
         editFile: 'Editar',
         saveFile: 'Desar',
         failedToRead: 'No s\'ha pogut llegir el fitxer',

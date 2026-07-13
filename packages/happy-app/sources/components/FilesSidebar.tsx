@@ -18,12 +18,28 @@ import { t } from '@/text';
 
 export type SidebarMode = 'changes' | 'allFiles';
 
+const ALL_PANELS: { key: SidebarMode; icon: keyof typeof Octicons.glyphMap }[] = [
+    { key: 'changes', icon: 'git-compare' },
+    { key: 'allFiles', icon: 'file-directory' },
+];
+
+function panelIcon(panel: SidebarMode): keyof typeof Octicons.glyphMap {
+    return ALL_PANELS.find((p) => p.key === panel)?.icon ?? 'file';
+}
+
+function panelLabel(panel: SidebarMode): string {
+    return panel === 'changes' ? t('files.changes') : t('files.allFiles');
+}
+
 interface FilesSidebarProps {
     sessionId: string;
     selectedPath?: string | null;
     onFilePress?: (file: GitFileStatus) => void;
-    mode?: SidebarMode;
-    onModeChange?: (mode: SidebarMode) => void;
+    openPanels: SidebarMode[];
+    activePanel: SidebarMode | null;
+    onOpenPanel: (panel: SidebarMode) => void;
+    onSelectPanel: (panel: SidebarMode) => void;
+    onClosePanel: (panel: SidebarMode) => void;
     onAllFilesFilePress?: (filePath: string) => void;
 }
 
@@ -149,8 +165,11 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
     sessionId,
     selectedPath,
     onFilePress,
-    mode = 'changes',
-    onModeChange,
+    openPanels,
+    activePanel,
+    onOpenPanel,
+    onSelectPanel,
+    onClosePanel,
     onAllFilesFilePress,
 }) => {
     const router = useRouter();
@@ -204,57 +223,76 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
         });
     }, []);
 
+    // 'switch' lists open panels (activate / close), 'add' lists panels not yet open.
+    const [menu, setMenu] = React.useState<'none' | 'switch' | 'add'>('none');
+    React.useEffect(() => {
+        setMenu('none');
+    }, [activePanel, openPanels.length]);
+
+    const availablePanels = ALL_PANELS.filter((p) => !openPanels.includes(p.key));
+
+    // Empty sidebar: picker of panels to open (no header).
+    if (activePanel === null) {
+        return (
+            <View style={styles.container}>
+                <View style={styles.pickerWrap}>
+                    {ALL_PANELS.map((p) => (
+                        <Pressable
+                            key={p.key}
+                            onPress={() => onOpenPanel(p.key)}
+                            style={({ pressed }) => [styles.pickerCard, pressed && styles.pickerCardPressed]}
+                        >
+                            <Octicons name={p.icon} size={15} color={theme.colors.textSecondary} />
+                            <Text style={styles.pickerCardText} numberOfLines={1}>{panelLabel(p.key)}</Text>
+                        </Pressable>
+                    ))}
+                </View>
+            </View>
+        );
+    }
+
     return (
         <View style={styles.container}>
-            {/* Tab selector */}
+            {/* Panel switcher + add-panel button */}
             <View style={styles.header}>
-                {onModeChange ? (
-                    <View style={styles.tabRow}>
+                <Pressable
+                    onPress={() => setMenu((m) => (m === 'switch' ? 'none' : 'switch'))}
+                    style={({ pressed }) => [
+                        styles.panelSwitcher,
+                        (pressed || menu === 'switch') && { backgroundColor: theme.colors.surface },
+                    ]}
+                >
+                    <Octicons name={panelIcon(activePanel)} size={13} color={theme.colors.textSecondary} />
+                    <Text style={styles.panelSwitcherText} numberOfLines={1}>{panelLabel(activePanel)}</Text>
+                    <Octicons name="chevron-down" size={12} color={theme.colors.textSecondary} />
+                </Pressable>
+                <View style={styles.headerRight}>
+                    {activePanel === 'changes' && hasFiles && gitStatus && (gitStatus.linesAdded > 0 || gitStatus.linesRemoved > 0) ? (
+                        <View style={styles.headerLineChanges}>
+                            {gitStatus.linesAdded > 0 && (
+                                <Text style={styles.headerAdded}>+{gitStatus.linesAdded}</Text>
+                            )}
+                            {gitStatus.linesRemoved > 0 && (
+                                <Text style={styles.headerRemoved}>-{gitStatus.linesRemoved}</Text>
+                            )}
+                        </View>
+                    ) : null}
+                    {availablePanels.length > 0 && (
                         <Pressable
-                            onPress={() => onModeChange('changes')}
-                            style={[
-                                styles.tab,
-                                mode === 'changes' && { backgroundColor: theme.colors.surface },
+                            onPress={() => setMenu((m) => (m === 'add' ? 'none' : 'add'))}
+                            accessibilityLabel={t('files.addPanel')}
+                            style={({ pressed }) => [
+                                styles.iconButton,
+                                (pressed || menu === 'add') && { backgroundColor: theme.colors.surface },
                             ]}
                         >
-                            <Text style={[
-                                styles.tabText,
-                                mode === 'changes' && styles.tabTextActive,
-                            ]} numberOfLines={1}>
-                                {t('files.changes')}
-                            </Text>
+                            <Octicons name="plus" size={14} color={theme.colors.textSecondary} />
                         </Pressable>
-                        <Pressable
-                            onPress={() => onModeChange('allFiles')}
-                            style={[
-                                styles.tab,
-                                mode === 'allFiles' && { backgroundColor: theme.colors.surface },
-                            ]}
-                        >
-                            <Text style={[
-                                styles.tabText,
-                                mode === 'allFiles' && styles.tabTextActive,
-                            ]} numberOfLines={1}>
-                                {t('files.allFiles')}
-                            </Text>
-                        </Pressable>
-                    </View>
-                ) : (
-                    <Text style={styles.headerTitle} numberOfLines={1}>{t('files.changes')}</Text>
-                )}
-                {mode === 'changes' && hasFiles && gitStatus && (gitStatus.linesAdded > 0 || gitStatus.linesRemoved > 0) ? (
-                    <View style={styles.headerLineChanges}>
-                        {gitStatus.linesAdded > 0 && (
-                            <Text style={styles.headerAdded}>+{gitStatus.linesAdded}</Text>
-                        )}
-                        {gitStatus.linesRemoved > 0 && (
-                            <Text style={styles.headerRemoved}>-{gitStatus.linesRemoved}</Text>
-                        )}
-                    </View>
-                ) : null}
+                    )}
+                </View>
             </View>
 
-            {mode === 'changes' ? (
+            {activePanel === 'changes' ? (
                 <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
                     {!hasFiles ? (
                         <View style={styles.emptyState}>
@@ -286,6 +324,56 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                     selectedPath={selectedPath ?? null}
                     onFilePress={onAllFilesFilePress}
                 />
+            )}
+
+            {menu !== 'none' && (
+                <>
+                    <Pressable style={styles.menuBackdrop} onPress={() => setMenu('none')} />
+                    <View style={styles.menuCard}>
+                        {menu === 'switch'
+                            ? openPanels.map((key) => (
+                                <View key={key} style={styles.menuRow}>
+                                    <Pressable
+                                        onPress={() => {
+                                            setMenu('none');
+                                            onSelectPanel(key);
+                                        }}
+                                        style={({ pressed }) => [styles.menuRowMain, pressed && { backgroundColor: theme.colors.surfaceSelected }]}
+                                    >
+                                        <Octicons name={panelIcon(key)} size={13} color={theme.colors.textSecondary} />
+                                        <Text style={styles.menuRowText} numberOfLines={1}>{panelLabel(key)}</Text>
+                                        {key === activePanel && (
+                                            <Octicons name="check" size={13} color={theme.colors.textSecondary} />
+                                        )}
+                                    </Pressable>
+                                    <Pressable
+                                        onPress={() => {
+                                            setMenu('none');
+                                            onClosePanel(key);
+                                        }}
+                                        accessibilityLabel={t('files.closePanel')}
+                                        hitSlop={6}
+                                        style={({ pressed }) => [styles.menuRowClose, pressed && { backgroundColor: theme.colors.surfaceSelected }]}
+                                    >
+                                        <Octicons name="x" size={13} color={theme.colors.textSecondary} />
+                                    </Pressable>
+                                </View>
+                            ))
+                            : availablePanels.map((p) => (
+                                <Pressable
+                                    key={p.key}
+                                    onPress={() => {
+                                        setMenu('none');
+                                        onOpenPanel(p.key);
+                                    }}
+                                    style={({ pressed }) => [styles.menuAddRow, pressed && { backgroundColor: theme.colors.surfaceSelected }]}
+                                >
+                                    <Octicons name={p.icon} size={13} color={theme.colors.textSecondary} />
+                                    <Text style={styles.menuRowText} numberOfLines={1}>{panelLabel(p.key)}</Text>
+                                </Pressable>
+                            ))}
+                    </View>
+                </>
             )}
         </View>
     );
@@ -557,16 +645,127 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingTop: 14,
+        paddingHorizontal: 12,
+        paddingTop: 10,
         paddingBottom: 8,
+        gap: 8,
+        zIndex: 2,
     },
-    headerTitle: {
-        flex: 1,
-        fontSize: 14,
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    panelSwitcher: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 7,
+        flexShrink: 1,
+    },
+    panelSwitcherText: {
+        fontSize: 13,
         fontWeight: '600',
         color: theme.colors.text,
+        flexShrink: 1,
         ...Typography.default('semiBold'),
+    },
+    iconButton: {
+        width: 26,
+        height: 26,
+        borderRadius: 7,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    pickerWrap: {
+        paddingHorizontal: 12,
+        paddingTop: 14,
+        gap: 8,
+    },
+    pickerCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 14,
+        borderRadius: 12,
+        backgroundColor: theme.colors.surface,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+    },
+    pickerCardPressed: {
+        backgroundColor: theme.colors.surfaceSelected,
+    },
+    pickerCardText: {
+        flex: 1,
+        fontSize: 14,
+        fontWeight: '500',
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    menuBackdrop: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 3,
+    },
+    menuCard: {
+        position: 'absolute',
+        top: 42,
+        left: 12,
+        minWidth: 180,
+        maxWidth: '90%',
+        padding: 4,
+        borderRadius: 10,
+        backgroundColor: theme.colors.surface,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+        shadowColor: theme.colors.shadow.color,
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 8,
+        zIndex: 4,
+    },
+    menuRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 2,
+        paddingRight: 4,
+    },
+    menuRowMain: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 8,
+        paddingVertical: 7,
+        borderRadius: 6,
+    },
+    menuRowText: {
+        flex: 1,
+        fontSize: 13,
+        color: theme.colors.text,
+        ...Typography.default(),
+    },
+    menuRowClose: {
+        width: 22,
+        height: 22,
+        borderRadius: 5,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    menuAddRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 8,
+        paddingVertical: 7,
+        borderRadius: 6,
     },
     headerCountWrap: {
         flexDirection: 'row',
@@ -705,28 +904,6 @@ const styles = StyleSheet.create((theme) => ({
     emptySearch: {
         paddingTop: 24,
         alignItems: 'center',
-    },
-    tabRow: {
-        flexDirection: 'row',
-        gap: 2,
-        padding: 2,
-        borderRadius: 8,
-        backgroundColor: theme.colors.groupped.background,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.divider,
-    },
-    tab: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 6,
-    },
-    tabText: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        ...Typography.default(),
-    },
-    tabTextActive: {
-        color: theme.colors.text,
     },
     fileSubpath: {
         fontSize: 11,

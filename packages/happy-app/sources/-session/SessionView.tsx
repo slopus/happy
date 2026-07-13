@@ -106,7 +106,27 @@ export const SessionView = React.memo((props: { id: string }) => {
         overflow: 'hidden' as const,
     }));
 
-    const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
+    // Sidebar panels are user-managed: starts empty (picker shown), the user
+    // opens panels via the picker / "+" button and switches via the dropdown.
+    const [sidebarPanels, setSidebarPanels] = React.useState<{ open: SidebarMode[]; active: SidebarMode | null }>(
+        { open: [], active: null }
+    );
+    const openSidebarPanel = React.useCallback((panel: SidebarMode) => {
+        setSidebarPanels((prev) => ({
+            open: prev.open.includes(panel) ? prev.open : [...prev.open, panel],
+            active: panel,
+        }));
+    }, []);
+    const selectSidebarPanel = React.useCallback((panel: SidebarMode) => {
+        setSidebarPanels((prev) => (prev.open.includes(panel) ? { ...prev, active: panel } : prev));
+    }, []);
+    const closeSidebarPanel = React.useCallback((panel: SidebarMode) => {
+        setSidebarPanels((prev) => {
+            const open = prev.open.filter((p) => p !== panel);
+            const active = prev.active === panel ? (open[open.length - 1] ?? null) : prev.active;
+            return { open, active };
+        });
+    }, []);
 
     // Overlay state is managed as a browser-style history stack so the
     // sidebar's back / forward arrows can navigate between chat ↔ diff ↔ file
@@ -346,10 +366,13 @@ export const SessionView = React.memo((props: { id: string }) => {
                 <View style={{ width: sidebarWidth, flex: 1 }}>
                     <FilesSidebar
                         sessionId={sessionId}
-                        selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
+                        selectedPath={sidebarPanels.active === 'changes' ? scrollToFile : sidebarPanels.active === 'allFiles' ? fileViewPath : null}
                         onFilePress={handleSidebarFilePress}
-                        mode={sidebarMode}
-                        onModeChange={setSidebarMode}
+                        openPanels={sidebarPanels.open}
+                        activePanel={sidebarPanels.active}
+                        onOpenPanel={openSidebarPanel}
+                        onSelectPanel={selectSidebarPanel}
+                        onClosePanel={closeSidebarPanel}
                         onAllFilesFilePress={handleAllFilesFilePress}
                     />
                 </View>

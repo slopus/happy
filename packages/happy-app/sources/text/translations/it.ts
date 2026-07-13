@@ -641,6 +641,8 @@ export const it: TranslationStructure = {
         deleted: 'Eliminato',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'file modificato' : 'file modificati'}`,
         allFiles: 'Tutti i file',
+        addPanel: 'Aggiungi pannello',
+        closePanel: 'Chiudi pannello',
         editFile: 'Modifica',
         saveFile: 'Salva',
         failedToRead: 'Impossibile leggere il file',
