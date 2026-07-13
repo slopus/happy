@@ -654,6 +654,16 @@ export const ca: TranslationStructure = {
         reload: 'Recarregar',
         overwrite: 'Sobreescriure',
     },
+    sideChat: {
+        panelTitle: 'Xat lateral',
+        emptyTitle: 'Inicia un xat lateral',
+        emptySubtitle: 'Pregunta alguna cosa a l’agent a part. Hereta el context d’aquest xat però es manté aïllat — res d’aquí no afecta la conversa principal.',
+        startButton: 'Inicia el xat lateral',
+        creating: 'Iniciant el xat lateral…',
+        unavailable: 'Aquesta sessió encara no pot iniciar un xat lateral — espera que l’agent estigui en línia.',
+        composerPlaceholder: 'Missatge al xat lateral…',
+        expand: 'Obre a pantalla completa',
+    },
 
     settingsVoice: {
         // Voice settings screen

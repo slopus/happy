@@ -655,6 +655,16 @@ export const zhHans: TranslationStructure = {
         reload: '重新加载',
         overwrite: '覆盖',
     },
+    sideChat: {
+        panelTitle: '侧边聊天',
+        emptyTitle: '开始侧边聊天',
+        emptySubtitle: '在一旁向智能体提问。它会继承此聊天的上下文，但保持独立——这里的任何操作都不会影响主对话。',
+        startButton: '开始侧边聊天',
+        creating: '正在开始侧边聊天…',
+        unavailable: '此会话暂时无法开始侧边聊天——请等待智能体上线。',
+        composerPlaceholder: '给侧边聊天发消息…',
+        expand: '全屏打开',
+    },
 
     settingsVoice: {
         // Voice settings screen

@@ -16,12 +16,14 @@ import { FileIcon } from '@/components/FileIcon';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { SideChatPanel } from './SideChatPanel';
 
-export type SidebarMode = 'changes' | 'allFiles';
+export type SidebarMode = 'changes' | 'allFiles' | 'sideChat';
 
 const ALL_PANELS: { key: SidebarMode; icon: keyof typeof Octicons.glyphMap }[] = [
     { key: 'changes', icon: 'git-compare' },
     { key: 'allFiles', icon: 'file-directory' },
+    { key: 'sideChat', icon: 'comment-discussion' },
 ];
 
 function panelIcon(panel: SidebarMode): keyof typeof Octicons.glyphMap {
@@ -29,7 +31,11 @@ function panelIcon(panel: SidebarMode): keyof typeof Octicons.glyphMap {
 }
 
 function panelLabel(panel: SidebarMode): string {
-    return panel === 'changes' ? t('files.changes') : t('files.allFiles');
+    switch (panel) {
+        case 'changes': return t('files.changes');
+        case 'allFiles': return t('files.allFiles');
+        case 'sideChat': return t('sideChat.panelTitle');
+    }
 }
 
 interface FilesSidebarProps {
@@ -293,7 +299,9 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                 </View>
             </View>
 
-            {activePanel === 'changes' ? (
+            {activePanel === 'sideChat' ? (
+                <SideChatPanel parentSessionId={sessionId} />
+            ) : activePanel === 'changes' ? (
                 <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
                     {!hasFiles ? (
                         <View style={styles.emptyState}>

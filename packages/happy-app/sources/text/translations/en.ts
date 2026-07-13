@@ -668,6 +668,16 @@ export const en: TranslationStructure = {
         reload: 'Reload',
         overwrite: 'Overwrite',
     },
+    sideChat: {
+        panelTitle: 'Side chat',
+        emptyTitle: 'Start a side chat',
+        emptySubtitle: 'Ask the agent something on the side. It inherits this chat’s context but stays isolated — nothing here touches the main conversation.',
+        startButton: 'Start side chat',
+        creating: 'Starting side chat…',
+        unavailable: 'This session can’t start a side chat yet — wait for the agent to come online.',
+        composerPlaceholder: 'Message side chat…',
+        expand: 'Open full screen',
+    },
 
     settingsVoice: {
         // Voice settings screen

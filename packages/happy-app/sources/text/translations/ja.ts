@@ -655,6 +655,16 @@ export const ja: TranslationStructure = {
         reload: '再読み込み',
         overwrite: '上書き',
     },
+    sideChat: {
+        panelTitle: 'サイドチャット',
+        emptyTitle: 'サイドチャットを始める',
+        emptySubtitle: 'エージェントに脇で質問しましょう。このチャットのコンテキストを引き継ぎますが独立しており — ここでの操作はメインの会話に影響しません。',
+        startButton: 'サイドチャットを開始',
+        creating: 'サイドチャットを開始しています…',
+        unavailable: 'このセッションではまだサイドチャットを開始できません — エージェントがオンラインになるまでお待ちください。',
+        composerPlaceholder: 'サイドチャットにメッセージ…',
+        expand: '全画面で開く',
+    },
 
     settingsVoice: {
         // Voice settings screen

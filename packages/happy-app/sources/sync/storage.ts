@@ -238,6 +238,11 @@ function buildSessionListViewData(
     const inactiveSessions: Session[] = [];
 
     Object.values(sessions).forEach(session => {
+        // Side chats are hidden children of another session — they render only
+        // inside the parent's sidebar panel, never in the top-level list.
+        if (session.metadata?.isSideChat) {
+            return;
+        }
         if (isSessionActive(session)) {
             activeSessions.push(session);
         } else {
@@ -1300,6 +1305,27 @@ export function useSessions() {
 
 export function useSession(id: string): Session | null {
     return storage(useShallow((state) => state.sessions[id] ?? null));
+}
+
+/**
+ * Resolve the hidden "side chat" session belonging to a given parent session,
+ * if one has been created. A side chat is a forked child flagged
+ * `metadata.isSideChat` whose `metadata.parentSessionId` points at the parent.
+ * There is at most one per parent. Returns null when none exists yet (the
+ * sidebar panel then offers to start one).
+ */
+export function useSideChatSession(parentSessionId: string | null): Session | null {
+    return storage(useShallow((state) => {
+        if (!parentSessionId) {
+            return null;
+        }
+        for (const session of Object.values(state.sessions)) {
+            if (session.metadata?.isSideChat && session.metadata?.parentSessionId === parentSessionId) {
+                return session;
+            }
+        }
+        return null;
+    }));
 }
 
 const emptyArray: unknown[] = [];
