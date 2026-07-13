@@ -372,8 +372,12 @@ const PanelChip = React.memo(function PanelChip({
     return (
         <Pressable
             onPress={onSelect}
-            onHoverIn={() => setHovered(true)}
-            onHoverOut={() => setHovered(false)}
+            // Pointer enter/leave (not hover in/out): leave only fires when the
+            // cursor exits the chip *and its descendants*, so moving onto the
+            // nested close (x) doesn't unmount the overlay. onHoverOut would
+            // fire on child entry and make the x flicker away.
+            onPointerEnter={() => setHovered(true)}
+            onPointerLeave={() => setHovered(false)}
             style={[
                 styles.chip,
                 active && styles.chipActive,
