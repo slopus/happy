@@ -677,6 +677,9 @@ export const en: TranslationStructure = {
         unavailable: 'This session can’t start a side chat yet — wait for the agent to come online.',
         composerPlaceholder: 'Message side chat…',
         expand: 'Open full screen',
+        tabLabel: ({ index }: { index: number }) => `Side chat ${index}`,
+        newChat: 'New side chat',
+        close: 'Close side chat',
     },
 
     settingsVoice: {

@@ -664,6 +664,9 @@ export const ja: TranslationStructure = {
         unavailable: 'このセッションではまだサイドチャットを開始できません — エージェントがオンラインになるまでお待ちください。',
         composerPlaceholder: 'サイドチャットにメッセージ…',
         expand: '全画面で開く',
+        tabLabel: ({ index }: { index: number }) => `サイドチャット ${index}`,
+        newChat: '新しいサイドチャット',
+        close: 'サイドチャットを閉じる',
     },
 
     settingsVoice: {

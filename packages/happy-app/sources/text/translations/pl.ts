@@ -679,6 +679,9 @@ export const pl: TranslationStructure = {
         unavailable: 'Ta sesja nie może jeszcze rozpocząć czatu bocznego — poczekaj, aż agent będzie online.',
         composerPlaceholder: 'Napisz na czacie bocznym…',
         expand: 'Otwórz na pełnym ekranie',
+        tabLabel: ({ index }: { index: number }) => `Czat boczny ${index}`,
+        newChat: 'Nowy czat boczny',
+        close: 'Zamknij czat boczny',
     },
 
     settingsVoice: {

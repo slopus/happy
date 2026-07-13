@@ -661,6 +661,9 @@ export const it: TranslationStructure = {
         unavailable: 'Questa sessione non può ancora avviare una chat laterale — attendi che l’agente sia online.',
         composerPlaceholder: 'Messaggio alla chat laterale…',
         expand: 'Apri a schermo intero',
+        tabLabel: ({ index }: { index: number }) => `Chat laterale ${index}`,
+        newChat: 'Nuova chat laterale',
+        close: 'Chiudi chat laterale',
     },
 
     settingsVoice: {

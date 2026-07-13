@@ -1,16 +1,17 @@
 import * as React from 'react';
-import { View, Text, Pressable, TextInput, Platform, ActivityIndicator, NativeSyntheticEvent, TextInputKeyPressEventData } from 'react-native';
+import { View, Text, Pressable, TextInput, Platform, ActivityIndicator, ScrollView, useWindowDimensions, NativeSyntheticEvent, TextInputKeyPressEventData } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { useSession, useSideChatSession } from '@/sync/storage';
+import { useSession, useSideChatSessions } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { spawnSideChat } from '@/sync/ops';
+import { spawnSideChat, sessionKill, sessionArchive } from '@/sync/ops';
 import { getSessionForkSource } from '@/utils/sessionFork';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
+import { Modal } from '@/modal';
+import type { Session } from '@/sync/storageTypes';
 import { ChatList } from './ChatList';
 
 /**
@@ -18,40 +19,38 @@ import { ChatList } from './ChatList';
  *
  * A side chat is a forked child session of `parentSessionId`: it inherits the
  * parent's full context at creation time but is provably isolated (writes only
- * to its own transcript, never back into the parent). It is flagged
- * `metadata.isSideChat` so it never shows up in the top-level session list —
- * it lives only here, scoped to this one parent chat.
+ * to its own transcript, never back into the parent) and is flagged
+ * `metadata.isSideChat` so it never shows up in the top-level session list.
  *
- * When no side chat exists yet the panel offers to start one (an explicit
- * action, so toggling the panel on never silently spawns an agent process).
- * Once it exists the panel embeds the child's message list plus a compact
- * composer that sends straight to the child session.
+ * A parent can have several side chats at once. The panel shows them as tabs:
+ * switch between them, spin up new ones (+), and close individual ones (x)
+ * without touching siblings or the parent. Closing archives just that child.
  */
 export const SideChatPanel = React.memo(function SideChatPanel({ parentSessionId }: { parentSessionId: string }) {
     const parent = useSession(parentSessionId);
-    const child = useSideChatSession(parentSessionId);
-    const childId = child?.id ?? null;
-
-    // Pull the child's messages into the store while the panel is mounted.
-    React.useEffect(() => {
-        if (childId) {
-            sync.onSessionVisible(childId);
-        }
-    }, [childId]);
-
-    if (child) {
-        return <SideChatConversation session={child} />;
-    }
-
-    return <SideChatEmptyState parent={parent} />;
-});
-
-/** Empty state: explain the side chat and offer to start one. */
-const SideChatEmptyState = React.memo(function SideChatEmptyState({ parent }: { parent: ReturnType<typeof useSession> }) {
-    const { theme } = useUnistyles();
+    const sideChats = useSideChatSessions(parentSessionId);
     const forkSource = parent ? getSessionForkSource(parent) : null;
 
-    const [creating, startSideChat] = useHappyAction(async () => {
+    // Which side chat the panel is focused on. Derived-with-fallback: if the
+    // selected id is gone (closed) we fall back to the newest remaining tab.
+    const [selectedId, setSelectedId] = React.useState<string | null>(null);
+    const activeSession = React.useMemo(() => {
+        if (selectedId) {
+            const match = sideChats.find((s) => s.id === selectedId);
+            if (match) return match;
+        }
+        return sideChats.length > 0 ? sideChats[sideChats.length - 1] : null;
+    }, [selectedId, sideChats]);
+
+    // Pull the focused side chat's messages into the store while mounted.
+    const activeId = activeSession?.id ?? null;
+    React.useEffect(() => {
+        if (activeId) {
+            sync.onSessionVisible(activeId);
+        }
+    }, [activeId]);
+
+    const [creating, createSideChat] = useHappyAction(async () => {
         if (!forkSource) {
             throw new HappyError(t('sideChat.unavailable'), false);
         }
@@ -59,11 +58,176 @@ const SideChatEmptyState = React.memo(function SideChatEmptyState({ parent }: { 
         if (result.type === 'error') {
             throw new HappyError(result.errorMessage, true);
         }
-        // On success the child session is pulled into the store by
-        // forkAndSpawn -> refreshSessions; useSideChatSession then resolves it
-        // and the panel swaps to the conversation view automatically.
+        if (result.type === 'success') {
+            setSelectedId(result.sessionId);
+        }
     });
 
+    const closeSideChat = React.useCallback((id: string) => {
+        // Move focus to a neighbour *before* the tab disappears so the panel
+        // doesn't flash to the newest chat on the way out.
+        const idx = sideChats.findIndex((s) => s.id === id);
+        if (idx !== -1) {
+            const neighbour = sideChats[idx - 1] ?? sideChats[idx + 1] ?? null;
+            setSelectedId(neighbour?.id ?? null);
+        }
+        // Best-effort close: kill the running agent, fall back to server-side
+        // archive if the process is already gone. Either way the child gets
+        // `lifecycleState: 'archived'` and drops out of useSideChatSessions.
+        (async () => {
+            const killed = await sessionKill(id);
+            if (!killed.success) {
+                await sessionArchive(id);
+            }
+            try {
+                await sync.refreshSessions();
+            } catch {
+                // Broadcast sync will reconcile shortly even if this flaked.
+            }
+        })();
+    }, [sideChats]);
+
+    if (sideChats.length === 0) {
+        return (
+            <SideChatEmptyState
+                creating={creating}
+                canStart={!!forkSource}
+                onStart={createSideChat}
+            />
+        );
+    }
+
+    return (
+        <View style={styles.panel}>
+            <SideChatTabs
+                sessions={sideChats}
+                activeId={activeId}
+                creating={creating}
+                canCreate={!!forkSource}
+                onSelect={setSelectedId}
+                onClose={closeSideChat}
+                onNew={createSideChat}
+            />
+            {activeSession && (
+                <SideChatConversation key={activeSession.id} session={activeSession} />
+            )}
+        </View>
+    );
+});
+
+/** Compute a short, stable label for a side-chat tab / header. */
+function sideChatLabel(session: Session, index: number): string {
+    const title = session.metadata?.summary?.text?.trim();
+    if (title) return title;
+    return t('sideChat.tabLabel', { index: index + 1 });
+}
+
+/** Horizontal tab strip: one pill per side chat + a "new" button. */
+const SideChatTabs = React.memo(function SideChatTabs({
+    sessions,
+    activeId,
+    creating,
+    canCreate,
+    onSelect,
+    onClose,
+    onNew,
+}: {
+    sessions: Session[];
+    activeId: string | null;
+    creating: boolean;
+    canCreate: boolean;
+    onSelect: (id: string) => void;
+    onClose: (id: string) => void;
+    onNew: () => void;
+}) {
+    const { theme } = useUnistyles();
+    return (
+        <View style={styles.tabsRow}>
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tabsScroll}
+            >
+                {sessions.map((session, index) => (
+                    <SideChatTab
+                        key={session.id}
+                        label={sideChatLabel(session, index)}
+                        active={session.id === activeId}
+                        onSelect={() => onSelect(session.id)}
+                        onClose={() => onClose(session.id)}
+                    />
+                ))}
+            </ScrollView>
+            <Pressable
+                onPress={onNew}
+                disabled={creating || !canCreate}
+                accessibilityLabel={t('sideChat.newChat')}
+                hitSlop={6}
+                style={({ pressed, hovered }: any) => [
+                    styles.newTabButton,
+                    (pressed || hovered) && { backgroundColor: theme.colors.surface },
+                    (creating || !canCreate) && { opacity: 0.5 },
+                ]}
+            >
+                {creating
+                    ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    : <Octicons name="plus" size={14} color={theme.colors.textSecondary} />}
+            </Pressable>
+        </View>
+    );
+});
+
+const SideChatTab = React.memo(function SideChatTab({
+    label,
+    active,
+    onSelect,
+    onClose,
+}: {
+    label: string;
+    active: boolean;
+    onSelect: () => void;
+    onClose: () => void;
+}) {
+    const { theme } = useUnistyles();
+    return (
+        <Pressable
+            onPress={onSelect}
+            style={[styles.tab, active && styles.tabActive]}
+        >
+            <Octicons
+                name="comment-discussion"
+                size={12}
+                color={active ? theme.colors.text : theme.colors.textSecondary}
+            />
+            <Text style={[styles.tabText, active && styles.tabTextActive]} numberOfLines={1}>
+                {label}
+            </Text>
+            <Pressable
+                onPress={(e) => {
+                    e.stopPropagation?.();
+                    onClose();
+                }}
+                accessibilityLabel={t('sideChat.close')}
+                hitSlop={6}
+                style={styles.tabClose}
+            >
+                <Octicons name="x" size={11} color={active ? theme.colors.text : theme.colors.textSecondary} />
+            </Pressable>
+        </Pressable>
+    );
+});
+
+/** Empty state: explain the side chat and offer to start the first one. */
+const SideChatEmptyState = React.memo(function SideChatEmptyState({
+    creating,
+    canStart,
+    onStart,
+}: {
+    creating: boolean;
+    canStart: boolean;
+    onStart: () => void;
+}) {
+    const { theme } = useUnistyles();
     return (
         <View style={styles.emptyContainer}>
             <View style={styles.emptyIconWrap}>
@@ -72,12 +236,12 @@ const SideChatEmptyState = React.memo(function SideChatEmptyState({ parent }: { 
             <Text style={styles.emptyTitle}>{t('sideChat.emptyTitle')}</Text>
             <Text style={styles.emptySubtitle}>{t('sideChat.emptySubtitle')}</Text>
             <Pressable
-                onPress={startSideChat}
-                disabled={creating || !forkSource}
+                onPress={onStart}
+                disabled={creating || !canStart}
                 style={({ pressed, hovered }: any) => [
                     styles.startButton,
                     (pressed || hovered) && styles.startButtonPressed,
-                    (creating || !forkSource) && styles.startButtonDisabled,
+                    (creating || !canStart) && styles.startButtonDisabled,
                 ]}
             >
                 {creating ? (
@@ -92,23 +256,25 @@ const SideChatEmptyState = React.memo(function SideChatEmptyState({ parent }: { 
                     </>
                 )}
             </Pressable>
-            {!forkSource && (
+            {!canStart && (
                 <Text style={styles.unavailableHint}>{t('sideChat.unavailable')}</Text>
             )}
         </View>
     );
 });
 
-/** Conversation view: embedded message list + compact composer. */
-const SideChatConversation = React.memo(function SideChatConversation({ session }: { session: NonNullable<ReturnType<typeof useSession>> }) {
+/** Focused side chat inside the panel: message list + compact composer. */
+const SideChatConversation = React.memo(function SideChatConversation({ session }: { session: Session }) {
     const { theme } = useUnistyles();
-    const router = useRouter();
+    const openFullScreen = React.useCallback(() => {
+        Modal.show({ component: SideChatModal, props: { sessionId: session.id } });
+    }, [session.id]);
 
     return (
         <View style={styles.conversationContainer}>
             <View style={styles.toolbar}>
                 <Pressable
-                    onPress={() => router.push(`/session/${session.id}`)}
+                    onPress={openFullScreen}
                     accessibilityLabel={t('sideChat.expand')}
                     hitSlop={6}
                     style={({ pressed, hovered }: any) => [
@@ -117,6 +283,50 @@ const SideChatConversation = React.memo(function SideChatConversation({ session 
                     ]}
                 >
                     <Octicons name="screen-full" size={13} color={theme.colors.textSecondary} />
+                </Pressable>
+            </View>
+            <View style={styles.chatWrap}>
+                <ChatList session={session} />
+            </View>
+            <SideChatComposer sessionId={session.id} />
+        </View>
+    );
+});
+
+/** Full-screen modal presentation of a single side chat. */
+const SideChatModal = React.memo(function SideChatModal({ sessionId, onClose }: { sessionId: string; onClose?: () => void }) {
+    const { theme } = useUnistyles();
+    const { width, height } = useWindowDimensions();
+    const session = useSession(sessionId);
+
+    React.useEffect(() => {
+        sync.onSessionVisible(sessionId);
+    }, [sessionId]);
+
+    // If the side chat was closed while the modal was open, dismiss it.
+    React.useEffect(() => {
+        if (!session && onClose) onClose();
+    }, [session, onClose]);
+
+    if (!session) return null;
+
+    return (
+        <View style={[styles.modalContainer, { width, height, backgroundColor: theme.colors.groupped.background }]}>
+            <View style={styles.modalHeader}>
+                <Octicons name="comment-discussion" size={15} color={theme.colors.textSecondary} />
+                <Text style={styles.modalTitle} numberOfLines={1}>
+                    {sideChatLabel(session, 0)}
+                </Text>
+                <Pressable
+                    onPress={onClose}
+                    accessibilityLabel={t('sideChat.close')}
+                    hitSlop={8}
+                    style={({ pressed, hovered }: any) => [
+                        styles.toolbarButton,
+                        (pressed || hovered) && { backgroundColor: theme.colors.surface },
+                    ]}
+                >
+                    <Octicons name="x" size={18} color={theme.colors.text} />
                 </Pressable>
             </View>
             <View style={styles.chatWrap}>
@@ -166,7 +376,7 @@ const SideChatComposer = React.memo(function SideChatComposer({ sessionId }: { s
             <Pressable
                 onPress={send}
                 disabled={!canSend}
-                accessibilityLabel={t('sideChat.startButton')}
+                accessibilityLabel={t('sideChat.composerPlaceholder')}
                 hitSlop={6}
                 style={({ pressed, hovered }: any) => [
                     styles.sendButton,
@@ -185,6 +395,62 @@ const SideChatComposer = React.memo(function SideChatComposer({ sessionId }: { s
 });
 
 const styles = StyleSheet.create((theme) => ({
+    panel: {
+        flex: 1,
+    },
+    tabsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingLeft: 8,
+        paddingRight: 6,
+        paddingBottom: 6,
+        gap: 4,
+    },
+    tabsScroll: {
+        alignItems: 'center',
+        gap: 4,
+        paddingRight: 4,
+    },
+    tab: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingLeft: 8,
+        paddingRight: 5,
+        paddingVertical: 5,
+        borderRadius: 7,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'transparent',
+        maxWidth: 140,
+    },
+    tabActive: {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.divider,
+    },
+    tabText: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        flexShrink: 1,
+        ...Typography.default(),
+    },
+    tabTextActive: {
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    tabClose: {
+        width: 16,
+        height: 16,
+        borderRadius: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    newTabButton: {
+        width: 26,
+        height: 26,
+        borderRadius: 7,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     emptyContainer: {
         flex: 1,
         alignItems: 'center',
@@ -257,14 +523,34 @@ const styles = StyleSheet.create((theme) => ({
         paddingVertical: 4,
     },
     toolbarButton: {
-        width: 26,
-        height: 26,
+        width: 30,
+        height: 30,
         borderRadius: 7,
         alignItems: 'center',
         justifyContent: 'center',
     },
     chatWrap: {
         flex: 1,
+    },
+    modalContainer: {
+        borderRadius: Platform.select({ web: 12, default: 0 }),
+        overflow: 'hidden',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: theme.colors.divider,
+    },
+    modalTitle: {
+        flex: 1,
+        fontSize: 15,
+        fontWeight: '600',
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
     },
     composer: {
         flexDirection: 'row',

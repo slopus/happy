@@ -663,6 +663,9 @@ export const ca: TranslationStructure = {
         unavailable: 'Aquesta sessió encara no pot iniciar un xat lateral — espera que l’agent estigui en línia.',
         composerPlaceholder: 'Missatge al xat lateral…',
         expand: 'Obre a pantalla completa',
+        tabLabel: ({ index }: { index: number }) => `Xat lateral ${index}`,
+        newChat: 'Nou xat lateral',
+        close: 'Tanca el xat lateral',
     },
 
     settingsVoice: {

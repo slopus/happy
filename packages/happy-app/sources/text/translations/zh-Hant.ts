@@ -663,6 +663,9 @@ export const zhHant: TranslationStructure = {
         unavailable: '此工作階段暫時無法開始側邊聊天——請等待智能體上線。',
         composerPlaceholder: '傳送訊息到側邊聊天…',
         expand: '全螢幕開啟',
+        tabLabel: ({ index }: { index: number }) => `側邊聊天 ${index}`,
+        newChat: '新增側邊聊天',
+        close: '關閉側邊聊天',
     },
 
     settingsVoice: {

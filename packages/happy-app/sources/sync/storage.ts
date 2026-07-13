@@ -1308,23 +1308,34 @@ export function useSession(id: string): Session | null {
 }
 
 /**
- * Resolve the hidden "side chat" session belonging to a given parent session,
- * if one has been created. A side chat is a forked child flagged
- * `metadata.isSideChat` whose `metadata.parentSessionId` points at the parent.
- * There is at most one per parent. Returns null when none exists yet (the
- * sidebar panel then offers to start one).
+ * Resolve the live "side chat" sessions belonging to a given parent session.
+ * A side chat is a forked child flagged `metadata.isSideChat` whose
+ * `metadata.parentSessionId` points at the parent. A parent can have several;
+ * closing one archives it (`lifecycleState === 'archived'`), which drops it
+ * from this list so the sidebar panel only shows open side chats. Sorted
+ * oldest-first so tab order stays stable as new ones are created. Empty when
+ * none are open (the panel then offers to start one).
  */
-export function useSideChatSession(parentSessionId: string | null): Session | null {
+export function useSideChatSessions(parentSessionId: string | null): Session[] {
     return storage(useShallow((state) => {
         if (!parentSessionId) {
-            return null;
+            return emptyArray as Session[];
         }
+        const result: Session[] = [];
         for (const session of Object.values(state.sessions)) {
-            if (session.metadata?.isSideChat && session.metadata?.parentSessionId === parentSessionId) {
-                return session;
+            if (
+                session.metadata?.isSideChat
+                && session.metadata?.parentSessionId === parentSessionId
+                && session.metadata?.lifecycleState !== 'archived'
+            ) {
+                result.push(session);
             }
         }
-        return null;
+        if (result.length === 0) {
+            return emptyArray as Session[];
+        }
+        result.sort((a, b) => a.createdAt - b.createdAt);
+        return result;
     }));
 }
 

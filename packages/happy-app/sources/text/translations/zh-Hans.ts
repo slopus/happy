@@ -664,6 +664,9 @@ export const zhHans: TranslationStructure = {
         unavailable: '此会话暂时无法开始侧边聊天——请等待智能体上线。',
         composerPlaceholder: '给侧边聊天发消息…',
         expand: '全屏打开',
+        tabLabel: ({ index }: { index: number }) => `侧边聊天 ${index}`,
+        newChat: '新建侧边聊天',
+        close: '关闭侧边聊天',
     },
 
     settingsVoice: {
