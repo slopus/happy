@@ -50,6 +50,25 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         expect(result.envelopes[0].ev).toEqual({ t: 'text', text: 'hello' });
     });
 
+    it('drops control-only background task notifications from live agent text', () => {
+        const result = mapCodexMcpMessageToSessionEnvelopes(
+            {
+                type: 'agent_message',
+                message: `<task-notification>
+<task-id>agent-123</task-id>
+<status>completed</status>
+<result>already rendered in the subagent sidechain</result>
+<usage><subagent_tokens>29207</subagent_tokens></usage>
+</task-notification>`,
+                agent_thread_id: 'provider-child-thread',
+            },
+            { currentTurnId: 'turn-1' }
+        );
+
+        expect(result.envelopes).toEqual([]);
+        expect(result.startedSubagents.size).toBe(0);
+    });
+
     it('maps parent call linkage to subagent field', () => {
         const result = mapCodexMcpMessageToSessionEnvelopes(
             { type: 'agent_message', message: 'subagent hello', parent_call_id: 'parent-call-1' },
@@ -568,6 +587,39 @@ describe('mapCodexThreadToSessionEnvelopes', () => {
             turn: 'turn-1',
             codexItemId: 'agent-1',
             ev: { t: 'text', text: 'hello human' },
+        });
+    });
+
+    it('drops backfilled task-notification wrappers while preserving following user text', () => {
+        const notification = `<task-notification>
+<task-id>agent-123</task-id>
+<status>completed</status>
+<result>already rendered in the subagent sidechain</result>
+</task-notification>`;
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-1',
+                startedAt: 100,
+                completedAt: 101,
+                status: 'completed',
+                items: [
+                    { id: 'notification-only', type: 'userMessage', content: [{ type: 'text', text: notification }] },
+                    {
+                        id: 'notification-with-text',
+                        type: 'userMessage',
+                        content: [{ type: 'text', text: `${notification}\nContinue with the fix` }],
+                    },
+                    { id: 'agent-notification', type: 'agentMessage', text: notification },
+                ],
+            }],
+        });
+
+        const textEnvelopes = envelopes.filter((envelope) => envelope.ev.t === 'text');
+        expect(textEnvelopes).toHaveLength(1);
+        expect(textEnvelopes[0]).toMatchObject({
+            role: 'user',
+            codexItemId: 'notification-with-text',
+            ev: { t: 'text', text: 'Continue with the fix' },
         });
     });
 
