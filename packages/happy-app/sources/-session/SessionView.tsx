@@ -106,26 +106,38 @@ export const SessionView = React.memo((props: { id: string }) => {
         overflow: 'hidden' as const,
     }));
 
-    // Sidebar panels are user-managed: starts empty (picker shown), the user
-    // opens panels via the picker / "+" button and switches via the dropdown.
-    const [sidebarPanels, setSidebarPanels] = React.useState<{ open: SidebarMode[]; active: SidebarMode | null }>(
-        { open: [], active: null }
-    );
+    // Sidebar panels are user-managed and persisted in local settings so the
+    // layout (which panels are open + which is active) survives reloads and
+    // long absences. State is device-local, shared across sessions.
+    const sidebarPanelsOpen = useLocalSetting('sidebarPanelsOpen') as SidebarMode[];
+    const sidebarPanelActiveRaw = useLocalSetting('sidebarPanelActive') as SidebarMode | null;
+    // Guard against an inconsistent persisted value: the active panel must be
+    // one of the open panels, otherwise fall back to the last opened (or none).
+    const sidebarPanelActive = React.useMemo<SidebarMode | null>(() => {
+        if (sidebarPanelActiveRaw && sidebarPanelsOpen.includes(sidebarPanelActiveRaw)) {
+            return sidebarPanelActiveRaw;
+        }
+        return sidebarPanelsOpen[sidebarPanelsOpen.length - 1] ?? null;
+    }, [sidebarPanelActiveRaw, sidebarPanelsOpen]);
+
     const openSidebarPanel = React.useCallback((panel: SidebarMode) => {
-        setSidebarPanels((prev) => ({
-            open: prev.open.includes(panel) ? prev.open : [...prev.open, panel],
-            active: panel,
-        }));
+        const cur = storage.getState().localSettings.sidebarPanelsOpen as SidebarMode[];
+        const open = cur.includes(panel) ? cur : [...cur, panel];
+        storage.getState().applyLocalSettings({ sidebarPanelsOpen: open, sidebarPanelActive: panel });
     }, []);
     const selectSidebarPanel = React.useCallback((panel: SidebarMode) => {
-        setSidebarPanels((prev) => (prev.open.includes(panel) ? { ...prev, active: panel } : prev));
+        const cur = storage.getState().localSettings.sidebarPanelsOpen as SidebarMode[];
+        if (cur.includes(panel)) {
+            storage.getState().applyLocalSettings({ sidebarPanelActive: panel });
+        }
     }, []);
     const closeSidebarPanel = React.useCallback((panel: SidebarMode) => {
-        setSidebarPanels((prev) => {
-            const open = prev.open.filter((p) => p !== panel);
-            const active = prev.active === panel ? (open[open.length - 1] ?? null) : prev.active;
-            return { open, active };
-        });
+        const state = storage.getState().localSettings;
+        const open = (state.sidebarPanelsOpen as SidebarMode[]).filter((p) => p !== panel);
+        const active = state.sidebarPanelActive === panel
+            ? (open[open.length - 1] ?? null)
+            : (state.sidebarPanelActive as SidebarMode | null);
+        storage.getState().applyLocalSettings({ sidebarPanelsOpen: open, sidebarPanelActive: active });
     }, []);
 
     // Overlay state is managed as a browser-style history stack so the
@@ -366,10 +378,10 @@ export const SessionView = React.memo((props: { id: string }) => {
                 <View style={{ width: sidebarWidth, flex: 1 }}>
                     <FilesSidebar
                         sessionId={sessionId}
-                        selectedPath={sidebarPanels.active === 'changes' ? scrollToFile : sidebarPanels.active === 'allFiles' ? fileViewPath : null}
+                        selectedPath={sidebarPanelActive === 'changes' ? scrollToFile : sidebarPanelActive === 'allFiles' ? fileViewPath : null}
                         onFilePress={handleSidebarFilePress}
-                        openPanels={sidebarPanels.open}
-                        activePanel={sidebarPanels.active}
+                        openPanels={sidebarPanelsOpen}
+                        activePanel={sidebarPanelActive}
                         onOpenPanel={openSidebarPanel}
                         onSelectPanel={selectSidebarPanel}
                         onClosePanel={closeSidebarPanel}
