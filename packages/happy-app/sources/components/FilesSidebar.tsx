@@ -223,10 +223,10 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
         });
     }, []);
 
-    // 'switch' lists open panels (activate / close), 'add' lists panels not yet open.
-    const [menu, setMenu] = React.useState<'none' | 'switch' | 'add'>('none');
+    // Add-panel menu (lists panels not yet open). Open panels live inline as chips.
+    const [addMenuOpen, setAddMenuOpen] = React.useState(false);
     React.useEffect(() => {
-        setMenu('none');
+        setAddMenuOpen(false);
     }, [activePanel, openPanels.length]);
 
     const availablePanels = ALL_PANELS.filter((p) => !openPanels.includes(p.key));
@@ -253,19 +253,19 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
 
     return (
         <View style={styles.container}>
-            {/* Panel switcher + add-panel button */}
+            {/* Open panels as chips + add-panel button */}
             <View style={styles.header}>
-                <Pressable
-                    onPress={() => setMenu((m) => (m === 'switch' ? 'none' : 'switch'))}
-                    style={({ pressed }) => [
-                        styles.panelSwitcher,
-                        (pressed || menu === 'switch') && { backgroundColor: theme.colors.surface },
-                    ]}
-                >
-                    <Octicons name={panelIcon(activePanel)} size={13} color={theme.colors.textSecondary} />
-                    <Text style={styles.panelSwitcherText} numberOfLines={1}>{panelLabel(activePanel)}</Text>
-                    <Octicons name="chevron-down" size={12} color={theme.colors.textSecondary} />
-                </Pressable>
+                <View style={styles.chipRow}>
+                    {openPanels.map((key) => (
+                        <PanelChip
+                            key={key}
+                            panel={key}
+                            active={key === activePanel}
+                            onSelect={() => onSelectPanel(key)}
+                            onClose={() => onClosePanel(key)}
+                        />
+                    ))}
+                </View>
                 <View style={styles.headerRight}>
                     {activePanel === 'changes' && hasFiles && gitStatus && (gitStatus.linesAdded > 0 || gitStatus.linesRemoved > 0) ? (
                         <View style={styles.headerLineChanges}>
@@ -279,11 +279,11 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                     ) : null}
                     {availablePanels.length > 0 && (
                         <Pressable
-                            onPress={() => setMenu((m) => (m === 'add' ? 'none' : 'add'))}
+                            onPress={() => setAddMenuOpen((v) => !v)}
                             accessibilityLabel={t('files.addPanel')}
-                            style={({ pressed }) => [
+                            style={({ pressed, hovered }: any) => [
                                 styles.iconButton,
-                                (pressed || menu === 'add') && { backgroundColor: theme.colors.surface },
+                                (pressed || hovered || addMenuOpen) && { backgroundColor: theme.colors.surface },
                             ]}
                         >
                             <Octicons name="plus" size={14} color={theme.colors.textSecondary} />
@@ -326,56 +326,74 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                 />
             )}
 
-            {menu !== 'none' && (
+            {addMenuOpen && (
                 <>
-                    <Pressable style={styles.menuBackdrop} onPress={() => setMenu('none')} />
+                    <Pressable style={styles.menuBackdrop} onPress={() => setAddMenuOpen(false)} />
                     <View style={styles.menuCard}>
-                        {menu === 'switch'
-                            ? openPanels.map((key) => (
-                                <View key={key} style={styles.menuRow}>
-                                    <Pressable
-                                        onPress={() => {
-                                            setMenu('none');
-                                            onSelectPanel(key);
-                                        }}
-                                        style={({ pressed }) => [styles.menuRowMain, pressed && { backgroundColor: theme.colors.surfaceSelected }]}
-                                    >
-                                        <Octicons name={panelIcon(key)} size={13} color={theme.colors.textSecondary} />
-                                        <Text style={styles.menuRowText} numberOfLines={1}>{panelLabel(key)}</Text>
-                                        {key === activePanel && (
-                                            <Octicons name="check" size={13} color={theme.colors.textSecondary} />
-                                        )}
-                                    </Pressable>
-                                    <Pressable
-                                        onPress={() => {
-                                            setMenu('none');
-                                            onClosePanel(key);
-                                        }}
-                                        accessibilityLabel={t('files.closePanel')}
-                                        hitSlop={6}
-                                        style={({ pressed }) => [styles.menuRowClose, pressed && { backgroundColor: theme.colors.surfaceSelected }]}
-                                    >
-                                        <Octicons name="x" size={13} color={theme.colors.textSecondary} />
-                                    </Pressable>
-                                </View>
-                            ))
-                            : availablePanels.map((p) => (
-                                <Pressable
-                                    key={p.key}
-                                    onPress={() => {
-                                        setMenu('none');
-                                        onOpenPanel(p.key);
-                                    }}
-                                    style={({ pressed }) => [styles.menuAddRow, pressed && { backgroundColor: theme.colors.surfaceSelected }]}
-                                >
-                                    <Octicons name={p.icon} size={13} color={theme.colors.textSecondary} />
-                                    <Text style={styles.menuRowText} numberOfLines={1}>{panelLabel(p.key)}</Text>
-                                </Pressable>
-                            ))}
+                        {availablePanels.map((p) => (
+                            <Pressable
+                                key={p.key}
+                                onPress={() => {
+                                    setAddMenuOpen(false);
+                                    onOpenPanel(p.key);
+                                }}
+                                style={({ pressed, hovered }: any) => [styles.menuAddRow, (pressed || hovered) && { backgroundColor: theme.colors.surfaceSelected }]}
+                            >
+                                <Octicons name={p.icon} size={13} color={theme.colors.textSecondary} />
+                                <Text style={styles.menuRowText} numberOfLines={1}>{panelLabel(p.key)}</Text>
+                            </Pressable>
+                        ))}
                     </View>
                 </>
             )}
         </View>
+    );
+});
+
+/** A single open-panel chip: click body to activate, hover to reveal close (x). */
+const PanelChip = React.memo(function PanelChip({
+    panel,
+    active,
+    onSelect,
+    onClose,
+}: {
+    panel: SidebarMode;
+    active: boolean;
+    onSelect: () => void;
+    onClose: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const [hovered, setHovered] = React.useState(false);
+    const iconColor = active ? theme.colors.text : theme.colors.textSecondary;
+    return (
+        <Pressable
+            onPress={onSelect}
+            onHoverIn={() => setHovered(true)}
+            onHoverOut={() => setHovered(false)}
+            style={[
+                styles.chip,
+                active && styles.chipActive,
+                hovered && !active && styles.chipHovered,
+            ]}
+        >
+            <Octicons name={panelIcon(panel)} size={13} color={iconColor} />
+            <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                {panelLabel(panel)}
+            </Text>
+            {hovered && (
+                <Pressable
+                    onPress={(e) => {
+                        e.stopPropagation?.();
+                        onClose();
+                    }}
+                    accessibilityLabel={t('files.closePanel')}
+                    hitSlop={6}
+                    style={styles.chipClose}
+                >
+                    <Octicons name="x" size={12} color={theme.colors.textSecondary} />
+                </Pressable>
+            )}
+        </Pressable>
     );
 });
 
@@ -656,21 +674,48 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         gap: 8,
     },
-    panelSwitcher: {
+    chipRow: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    chip: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
         paddingHorizontal: 8,
         paddingVertical: 5,
         borderRadius: 7,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'transparent',
         flexShrink: 1,
     },
-    panelSwitcherText: {
+    chipHovered: {
+        backgroundColor: theme.colors.surface,
+    },
+    chipActive: {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.divider,
+    },
+    chipText: {
         fontSize: 13,
-        fontWeight: '600',
-        color: theme.colors.text,
+        color: theme.colors.textSecondary,
         flexShrink: 1,
+        ...Typography.default(),
+    },
+    chipTextActive: {
+        color: theme.colors.text,
+        fontWeight: '600',
         ...Typography.default('semiBold'),
+    },
+    chipClose: {
+        width: 16,
+        height: 16,
+        borderRadius: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: -2,
     },
     iconButton: {
         width: 26,
@@ -716,8 +761,8 @@ const styles = StyleSheet.create((theme) => ({
     menuCard: {
         position: 'absolute',
         top: 42,
-        left: 12,
-        minWidth: 180,
+        right: 12,
+        minWidth: 160,
         maxWidth: '90%',
         padding: 4,
         borderRadius: 10,
@@ -731,33 +776,11 @@ const styles = StyleSheet.create((theme) => ({
         elevation: 8,
         zIndex: 4,
     },
-    menuRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 2,
-        paddingRight: 4,
-    },
-    menuRowMain: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 8,
-        paddingVertical: 7,
-        borderRadius: 6,
-    },
     menuRowText: {
         flex: 1,
         fontSize: 13,
         color: theme.colors.text,
         ...Typography.default(),
-    },
-    menuRowClose: {
-        width: 22,
-        height: 22,
-        borderRadius: 5,
-        alignItems: 'center',
-        justifyContent: 'center',
     },
     menuAddRow: {
         flexDirection: 'row',
