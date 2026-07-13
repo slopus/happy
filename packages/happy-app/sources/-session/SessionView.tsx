@@ -25,9 +25,12 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort, sessionGoalAction, sessionSetAgentModes } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { sessionAbort, sessionGoalAction, sessionSetAgentModes, spawnSideChat, sessionKill, sessionArchive } from '@/sync/ops';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionUsage, useSetting, useSideChatSessions } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
+import { getSessionForkSource } from '@/utils/sessionFork';
+import { useHappyAction } from '@/hooks/useHappyAction';
+import { HappyError } from '@/utils/errors';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
@@ -131,7 +134,9 @@ export const SessionView = React.memo((props: { id: string }) => {
             storage.getState().applyLocalSettings({ sidebarPanelActive: panel });
         }
     }, []);
-    const closeSidebarPanel = React.useCallback((panel: SidebarMode) => {
+    // Raw panel removal (no side-chat teardown). Public closeSidebarPanel below
+    // wraps this so closing the "Side chat" chip also tears down its children.
+    const removeSidebarPanel = React.useCallback((panel: SidebarMode) => {
         const state = storage.getState().localSettings;
         const open = (state.sidebarPanelsOpen as SidebarMode[]).filter((p) => p !== panel);
         const active = state.sidebarPanelActive === panel
@@ -139,6 +144,96 @@ export const SessionView = React.memo((props: { id: string }) => {
             : (state.sidebarPanelActive as SidebarMode | null);
         storage.getState().applyLocalSettings({ sidebarPanelsOpen: open, sidebarPanelActive: active });
     }, []);
+
+    // Side chats live inside the single "sideChat" panel as switchable tabs.
+    // Creation is unified into the sidebar panel picker (the top "+") so there
+    // is no separate per-tab add button. Which side chat is focused lives here
+    // (not in the panel) so the picker can create-and-focus a new one in one go.
+    const rawSideChats = useSideChatSessions(sessionId);
+    const sideChatForkSource = session ? getSessionForkSource(session) : null;
+    const [activeSideChatId, setActiveSideChatId] = React.useState<string | null>(null);
+    // Optimistically hide a side chat the instant it's closed. The server's
+    // /archive only flips active=false (not lifecycleState), so if the CLI is
+    // already dead the fallback archive wouldn't drop the tab via
+    // useSideChatSessions — this makes the tab disappear immediately regardless.
+    const [closedSideChatIds, setClosedSideChatIds] = React.useState<Set<string>>(() => new Set());
+    const sideChats = React.useMemo(
+        () => rawSideChats.filter((s) => !closedSideChatIds.has(s.id)),
+        [rawSideChats, closedSideChatIds],
+    );
+    // Prune closed ids once the underlying sessions actually leave the store, so
+    // the set can't grow without bound.
+    React.useEffect(() => {
+        setClosedSideChatIds((prev) => {
+            if (prev.size === 0) return prev;
+            const live = new Set(rawSideChats.map((s) => s.id));
+            const next = new Set<string>();
+            let changed = false;
+            prev.forEach((id) => { if (live.has(id)) next.add(id); else changed = true; });
+            return changed ? next : prev;
+        });
+    }, [rawSideChats]);
+
+    // Best-effort close: kill the agent, fall back to server-side archive.
+    const archiveSideChatSession = React.useCallback((id: string) => {
+        (async () => {
+            const killed = await sessionKill(id);
+            if (!killed.success) {
+                await sessionArchive(id);
+            }
+            try {
+                await sync.refreshSessions();
+            } catch {
+                // Broadcast sync reconciles shortly even if this flaked.
+            }
+        })();
+    }, []);
+
+    const [creatingSideChat, createSideChat] = useHappyAction(async () => {
+        if (!sideChatForkSource) {
+            throw new HappyError(t('sideChat.unavailable'), false);
+        }
+        const result = await spawnSideChat(sideChatForkSource);
+        if (result.type === 'error') {
+            throw new HappyError(result.errorMessage, true);
+        }
+        if (result.type === 'success') {
+            setActiveSideChatId(result.sessionId);
+            openSidebarPanel('sideChat');
+        }
+    });
+
+    const closeSideChat = React.useCallback((id: string) => {
+        const idx = sideChats.findIndex((s) => s.id === id);
+        const neighbour = idx !== -1 ? (sideChats[idx - 1] ?? sideChats[idx + 1] ?? null) : null;
+        setActiveSideChatId(neighbour?.id ?? null);
+        setClosedSideChatIds((prev) => new Set(prev).add(id));
+        if (!neighbour) {
+            removeSidebarPanel('sideChat');
+        }
+        archiveSideChatSession(id);
+    }, [sideChats, removeSidebarPanel, archiveSideChatSession]);
+
+    // Closing the "Side chat" panel chip tears down every side chat at once.
+    const closeAllSideChats = React.useCallback(() => {
+        const ids = sideChats.map((s) => s.id);
+        setActiveSideChatId(null);
+        setClosedSideChatIds((prev) => {
+            const next = new Set(prev);
+            ids.forEach((id) => next.add(id));
+            return next;
+        });
+        removeSidebarPanel('sideChat');
+        ids.forEach(archiveSideChatSession);
+    }, [sideChats, removeSidebarPanel, archiveSideChatSession]);
+
+    const closeSidebarPanel = React.useCallback((panel: SidebarMode) => {
+        if (panel === 'sideChat') {
+            closeAllSideChats();
+            return;
+        }
+        removeSidebarPanel(panel);
+    }, [closeAllSideChats, removeSidebarPanel]);
 
     // Overlay state is managed as a browser-style history stack so the
     // sidebar's back / forward arrows can navigate between chat ↔ diff ↔ file
@@ -386,6 +481,13 @@ export const SessionView = React.memo((props: { id: string }) => {
                         onSelectPanel={selectSidebarPanel}
                         onClosePanel={closeSidebarPanel}
                         onAllFilesFilePress={handleAllFilesFilePress}
+                        sideChats={sideChats}
+                        activeSideChatId={activeSideChatId}
+                        onSelectSideChat={setActiveSideChatId}
+                        onCloseSideChat={closeSideChat}
+                        onCreateSideChat={createSideChat}
+                        canCreateSideChat={!!sideChatForkSource}
+                        creatingSideChat={creatingSideChat}
                     />
                 </View>
             </Animated.View>
@@ -463,7 +565,7 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
     );
 });
 
-function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session }) {
+export function SessionViewLoaded({ sessionId, session, embedded = false }: { sessionId: string, session: Session, embedded?: boolean }) {
     const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
@@ -714,20 +816,27 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         // Trigger session sync
         sync.onSessionVisible(sessionId);
 
-        // Mark session as currently being viewed (clears unread)
-        storage.getState().setCurrentViewingSession(sessionId);
+        // Mark session as currently being viewed (clears unread). Skipped when
+        // embedded (e.g. the side-chat panel) so a second mounted chat body
+        // doesn't steal "currently viewing" from the primary session.
+        if (!embedded) {
+            storage.getState().setCurrentViewingSession(sessionId);
+        }
 
         // Initialize git status sync for this session
         gitStatusSync.getSync(sessionId).invalidate();
 
         return () => {
+            if (embedded) {
+                return;
+            }
             // Clear viewing session on unmount
             const current = storage.getState().currentViewingSessionId;
             if (current === sessionId) {
                 storage.getState().setCurrentViewingSession(null);
             }
         };
-    }, [sessionId, realtimeStatus]);
+    }, [sessionId, realtimeStatus, embedded]);
 
     let content = (
         <>
@@ -766,8 +875,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             connectionStatus={connectionStatus}
             blockSend={false}
             onSend={handleSend}
-            onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
-            isMicActive={isDisconnected ? false : micButtonState.isMicActive}
+            onMicPress={(embedded || isDisconnected) ? undefined : micButtonState.onMicPress}
+            isMicActive={(embedded || isDisconnected) ? false : micButtonState.isMicActive}
             onAbort={isDisconnected ? undefined : handleAbort}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments && !isTablet ? handleFileViewerPress : undefined}

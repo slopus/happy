@@ -453,6 +453,10 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Process all sessions from merged set
             Object.values(mergedSessions).forEach(session => {
+                // Side chats are hidden children — never in any session list.
+                if (session.metadata?.isSideChat) {
+                    return;
+                }
                 if (activeSet.has(session.id)) {
                     activeSessions.push(session);
                 } else {
@@ -1412,7 +1416,10 @@ export function useSessionListViewData(): SessionListViewItem[] | null {
 export function useAllSessions(): Session[] {
     return storage(useShallow((state) => {
         if (!state.isDataReady) return [];
-        return Object.values(state.sessions).sort((a, b) => b.updatedAt - a.updatedAt);
+        // Side chats are hidden children — exclude them from every list.
+        return Object.values(state.sessions)
+            .filter((s) => !s.metadata?.isSideChat)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
     }));
 }
 
