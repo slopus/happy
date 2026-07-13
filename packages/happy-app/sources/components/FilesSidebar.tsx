@@ -8,6 +8,7 @@ import Animated, {
     withTiming,
     Easing,
 } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { storage, useSessionGitStatus, useSessionGitStatusFiles, useSessionProjectFiles } from '@/sync/storage';
 import { getGitStatusFiles, GitFileStatus } from '@/sync/gitStatusFiles';
 import { getProjectFiles, ProjectFile } from '@/sync/projectFiles';
@@ -231,16 +232,16 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
 
     const availablePanels = ALL_PANELS.filter((p) => !openPanels.includes(p.key));
 
-    // Empty sidebar: picker of panels to open (no header).
+    // Empty sidebar: vertically-centered picker of panels to open (no header).
     if (activePanel === null) {
         return (
-            <View style={styles.container}>
+            <View style={[styles.container, styles.pickerContainer]}>
                 <View style={styles.pickerWrap}>
                     {ALL_PANELS.map((p) => (
                         <Pressable
                             key={p.key}
                             onPress={() => onOpenPanel(p.key)}
-                            style={({ pressed }) => [styles.pickerCard, pressed && styles.pickerCardPressed]}
+                            style={({ pressed, hovered }: any) => [styles.pickerCard, (pressed || hovered) && styles.pickerCardPressed]}
                         >
                             <Octicons name={p.icon} size={15} color={theme.colors.textSecondary} />
                             <Text style={styles.pickerCardText} numberOfLines={1}>{panelLabel(p.key)}</Text>
@@ -365,6 +366,9 @@ const PanelChip = React.memo(function PanelChip({
     const { theme } = useUnistyles();
     const [hovered, setHovered] = React.useState(false);
     const iconColor = active ? theme.colors.text : theme.colors.textSecondary;
+    // Fade colour matches the chip background so the close (x) reads as an
+    // overlay at the chip's end instead of resizing it.
+    const fadeColor = theme.colors.surface;
     return (
         <Pressable
             onPress={onSelect}
@@ -381,17 +385,26 @@ const PanelChip = React.memo(function PanelChip({
                 {panelLabel(panel)}
             </Text>
             {hovered && (
-                <Pressable
-                    onPress={(e) => {
-                        e.stopPropagation?.();
-                        onClose();
-                    }}
-                    accessibilityLabel={t('files.closePanel')}
-                    hitSlop={6}
-                    style={styles.chipClose}
-                >
-                    <Octicons name="x" size={12} color={theme.colors.textSecondary} />
-                </Pressable>
+                <View style={styles.chipCloseOverlay} pointerEvents="box-none">
+                    <LinearGradient
+                        colors={['transparent', fadeColor, fadeColor]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.chipCloseFade}
+                        pointerEvents="none"
+                    />
+                    <Pressable
+                        onPress={(e) => {
+                            e.stopPropagation?.();
+                            onClose();
+                        }}
+                        accessibilityLabel={t('files.closePanel')}
+                        hitSlop={6}
+                        style={styles.chipClose}
+                    >
+                        <Octicons name="x" size={12} color={theme.colors.text} />
+                    </Pressable>
+                </View>
             )}
         </Pressable>
     );
@@ -690,6 +703,7 @@ const styles = StyleSheet.create((theme) => ({
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: 'transparent',
         flexShrink: 1,
+        overflow: 'hidden',
     },
     chipHovered: {
         backgroundColor: theme.colors.surface,
@@ -709,13 +723,23 @@ const styles = StyleSheet.create((theme) => ({
         fontWeight: '600',
         ...Typography.default('semiBold'),
     },
+    chipCloseOverlay: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        flexDirection: 'row',
+        alignItems: 'stretch',
+    },
+    chipCloseFade: {
+        width: 18,
+    },
     chipClose: {
-        width: 16,
-        height: 16,
-        borderRadius: 4,
+        paddingRight: 8,
+        paddingLeft: 2,
         alignItems: 'center',
         justifyContent: 'center',
-        marginLeft: -2,
+        backgroundColor: theme.colors.surface,
     },
     iconButton: {
         width: 26,
@@ -724,9 +748,11 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    pickerContainer: {
+        justifyContent: 'center',
+    },
     pickerWrap: {
         paddingHorizontal: 12,
-        paddingTop: 14,
         gap: 8,
     },
     pickerCard: {
