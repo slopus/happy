@@ -14,6 +14,38 @@ describe('sessionScanner', () => {
   let collectedMessages: RawJSONLines[]
   let collectedTranscriptEvents: ClaudeGoalStatusTranscriptEvent[]
   let scanner: Awaited<ReturnType<typeof createSessionScanner>> | null = null
+
+  const createScanner = async () => {
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      onTranscriptEvent: (event) => collectedTranscriptEvents.push(event),
+      missingFileTimeoutMs: 120,
+      watcherInitialRetryDelayMs: 20,
+      watcherMaxRetryDelayMs: 20,
+    })
+    return scanner
+  }
+
+  const writeUserTranscript = async (sessionId: string, content: string = `message from ${sessionId}`) => {
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+    await writeFile(sessionFile, JSON.stringify({
+      type: 'user',
+      uuid: `${sessionId}:user`,
+      parentUuid: null,
+      sessionId,
+      message: {
+        role: 'user',
+        content,
+      },
+    }) + '\n')
+    return sessionFile
+  }
+
+  const waitForWatcherGiveUp = async () => {
+    await new Promise((r) => setTimeout(r, 350))
+  }
   
   beforeEach(async () => {
     testDir = join(tmpdir(), `scanner-test-${Date.now()}`)
@@ -324,19 +356,13 @@ describe('sessionScanner', () => {
     // (e.g. a remote launch) but its .jsonl is never written. The scanner
     // must give up on it instead of spinning forever, and must still process
     // a real session that arrives afterwards.
-    scanner = await createSessionScanner({
-      sessionId: null,
-      workingDirectory: testDir,
-      onMessage: (msg) => collectedMessages.push(msg),
-      missingFileTimeoutMs: 100,
-    })
+    scanner = await createScanner()
 
     // Phantom: announced but no file on disk, ever.
     const phantomId = 'fd4aa0c2-000a-4cd3-a066-80c6d87c3456'
     scanner.onNewSession(phantomId)
 
-    // Long enough for the first ~1s backoff + give-up to fire.
-    await new Promise((r) => setTimeout(r, 2500))
+    await waitForWatcherGiveUp()
 
     expect(collectedMessages).toHaveLength(0)
 
@@ -352,5 +378,69 @@ describe('sessionScanner', () => {
 
     expect(collectedMessages).toHaveLength(1)
     expect(collectedMessages[0].type).toBe('user')
+  })
+
+  it('recovers a phantom session to the hook transcript path when Claude reports a different file', async () => {
+    scanner = await createScanner()
+
+    const ghostId = 'fd4aa0c2-000a-4cd3-a066-80c6d87c3456'
+    const realId = '25ef1f81-a227-4ffe-a2e8-495b772f6ca3'
+    const realFile = await writeUserTranscript(realId, 'real hook transcript')
+
+    scanner.onNewSession(ghostId, { transcriptPath: realFile })
+    await waitForWatcherGiveUp()
+    await new Promise((r) => setTimeout(r, 100))
+
+    expect(collectedMessages).toHaveLength(1)
+    expect(collectedMessages[0]).toMatchObject({
+      type: 'user',
+      sessionId: realId,
+    })
+  })
+
+  it('does not infer recovery from a single new transcript without a hook path', async () => {
+    await writeUserTranscript('93a9705e-bc6a-406d-8dce-8acc014dedbd', 'existing session before scanner start')
+    scanner = await createScanner()
+
+    const ghostId = 'fd4aa0c2-000a-4cd3-a066-80c6d87c3456'
+    scanner.onNewSession(ghostId)
+
+    const realId = '25ef1f81-a227-4ffe-a2e8-495b772f6ca3'
+    await writeUserTranscript(realId, 'only new transcript')
+
+    await waitForWatcherGiveUp()
+    await new Promise((r) => setTimeout(r, 100))
+
+    expect(collectedMessages).toHaveLength(0)
+  })
+
+  it('does not recover a phantom session when multiple new transcript candidates exist', async () => {
+    scanner = await createScanner()
+
+    const ghostId = 'fd4aa0c2-000a-4cd3-a066-80c6d87c3456'
+    scanner.onNewSession(ghostId)
+
+    await writeUserTranscript('25ef1f81-a227-4ffe-a2e8-495b772f6ca3', 'first concurrent transcript')
+    await writeUserTranscript('789e105f-ae33-486d-9271-0696266f072d', 'second concurrent transcript')
+
+    await waitForWatcherGiveUp()
+    await new Promise((r) => setTimeout(r, 100))
+
+    expect(collectedMessages).toHaveLength(0)
+  })
+
+  it('stops phantom recovery and retries after cleanup', async () => {
+    scanner = await createScanner()
+
+    const ghostId = 'fd4aa0c2-000a-4cd3-a066-80c6d87c3456'
+    scanner.onNewSession(ghostId)
+    await scanner.cleanup()
+    scanner = null
+
+    await writeUserTranscript('25ef1f81-a227-4ffe-a2e8-495b772f6ca3', 'written after cleanup')
+    await waitForWatcherGiveUp()
+    await new Promise((r) => setTimeout(r, 100))
+
+    expect(collectedMessages).toHaveLength(0)
   })
 })

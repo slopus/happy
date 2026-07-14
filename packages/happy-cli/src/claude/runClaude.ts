@@ -477,7 +477,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // the chat on reconnect. The scanner's real job is forwarding
             // *future* JSONL writes from a parallel `claude --resume`
             // terminal, which the file watcher will pick up.
-            remoteScanner.onNewSession(sessionId, { treatExistingAsProcessed: true });
+            remoteScanner.onNewSession(sessionId, {
+                treatExistingAsProcessed: true,
+                transcriptPath: typeof data.transcript_path === 'string' ? data.transcript_path : undefined,
+            });
 
             // Update session ID in the Session instance
             if (currentSession) {

@@ -16,6 +16,16 @@ export interface FileWatcherOptions {
      * so a session id that never produces a file cannot wedge the process.
      */
     missingFileTimeoutMs?: number;
+    /**
+     * Initial retry delay after watch setup fails. Defaults to 1s; tests can
+     * lower it so bounded-missing behavior stays deterministic without waiting
+     * for wall-clock seconds.
+     */
+    initialRetryDelayMs?: number;
+    /**
+     * Maximum retry delay after repeated watch setup failures. Defaults to 15s.
+     */
+    maxRetryDelayMs?: number;
 }
 
 /**
@@ -43,6 +53,8 @@ export function startFileWatcher(
 ) {
     const abortController = new AbortController();
     const missingFileTimeoutMs = options.missingFileTimeoutMs ?? 60_000;
+    const initialRetryDelayMs = options.initialRetryDelayMs ?? 1_000;
+    const maxRetryDelayMs = options.maxRetryDelayMs ?? 15_000;
 
     // Timeout/abort-aware wait so a long backoff does not delay cleanup.
     const wait = (ms: number) => new Promise<void>((resolve) => {
@@ -106,7 +118,7 @@ export function startFileWatcher(
                 }
 
                 failureCount++;
-                const backoffMs = Math.min(1000 * 2 ** Math.min(failureCount - 1, 4), 15_000);
+                const backoffMs = Math.min(initialRetryDelayMs * 2 ** Math.min(failureCount - 1, 4), maxRetryDelayMs);
                 logger.debug(`[FILE_WATCHER] Watch error: ${e.message}, retrying in ${backoffMs}ms`);
                 await wait(backoffMs);
             }
