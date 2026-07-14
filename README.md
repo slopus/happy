@@ -50,6 +50,9 @@ Step 3: Start using `happy` instead of `claude` or `codex`
 happy claude
 # or
 happy codex
+
+# Forward Codex-only CLI flags after --
+happy codex -- --dangerously-bypass-approvals-and-sandbox
 ```
 
 ## How does it work?

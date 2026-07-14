@@ -95,6 +95,7 @@ export async function runCodex(opts: {
     permissionMode?: PermissionMode;
     model?: string;
     effort?: ReasoningEffort;
+    codexCliArgs?: string[];
 }): Promise<void> {
     // Early check: ensure Codex CLI is installed before proceeding
     try {
@@ -592,7 +593,7 @@ export async function runCodex(opts: {
     // Start Context 
     //
 
-    client = new CodexAppServerClient(sandboxConfig);
+    client = new CodexAppServerClient(sandboxConfig, opts.codexCliArgs);
 
     permissionHandler = new CodexPermissionHandler(session);
     // Drop any permission requests left in agent state from a previous CLI
