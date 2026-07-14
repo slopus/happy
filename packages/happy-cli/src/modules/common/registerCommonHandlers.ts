@@ -3,11 +3,11 @@ import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
 import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { createHash } from 'crypto';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
-import { validatePath } from './pathSecurity';
+import { validatePath, PathValidationResult } from './pathSecurity';
 
 const execAsync = promisify(exec);
 
@@ -120,7 +120,10 @@ export interface SpawnSessionOptions {
     directory: string;
     sessionId?: string;
     approvedNewDirectoryCreation?: boolean;
-    agent?: 'claude' | 'codex' | 'gemini' | 'openclaw';
+    agent?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy';
+    permissionMode?: string;
+    modelMode?: string;
+    effortLevel?: string;
     environmentVariables?: Record<string, string>;
     token?: string;
     /**
@@ -149,8 +152,18 @@ export type SpawnSessionResult =
 
 /**
  * Register all RPC handlers with the session
+ *
+ * workingDirectory scopes file/shell RPCs to a workspace. Session-scoped
+ * handlers pass the session's path; machine-scoped (daemon) handlers pass
+ * null — the daemon serves the whole machine and its process.cwd() is just
+ * wherever it happened to be started from, not a meaningful boundary.
  */
-export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string) {
+export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string | null) {
+
+    const checkPath = (targetPath: string): PathValidationResult =>
+        workingDirectory === null
+            ? { valid: true, resolvedPath: resolve(targetPath) }
+            : validatePath(targetPath, workingDirectory);
 
     // Shell command handler - executes commands in the default shell
     rpcHandlerManager.registerHandler<BashRequest, BashResponse>('bash', async (data) => {
@@ -160,7 +173,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         // Special case: "/" means "use shell's default cwd" (used by CLI detection)
         // Security: Still validate all other paths to prevent directory traversal
         if (data.cwd && data.cwd !== '/') {
-            const validation = validatePath(data.cwd, workingDirectory);
+            const validation = checkPath(data.cwd);
             if (!validation.valid) {
                 return { success: false, error: validation.error };
             }
@@ -243,7 +256,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         logger.debug('Read file request:', data.path);
 
         // Validate path is within working directory
-        const validation = validatePath(data.path, workingDirectory);
+        const validation = checkPath(data.path);
         if (!validation.valid) {
             return { success: false, error: validation.error };
         }
@@ -263,7 +276,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         logger.debug('Write file request:', data.path);
 
         // Validate path is within working directory
-        const validation = validatePath(data.path, workingDirectory);
+        const validation = checkPath(data.path);
         if (!validation.valid) {
             return { success: false, error: validation.error };
         }
@@ -329,7 +342,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         logger.debug('List directory request:', data.path);
 
         // Validate path is within working directory
-        const validation = validatePath(data.path, workingDirectory);
+        const validation = checkPath(data.path);
         if (!validation.valid) {
             return { success: false, error: validation.error };
         }
@@ -388,7 +401,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         logger.debug('Get directory tree request:', data.path, 'maxDepth:', data.maxDepth);
 
         // Validate path is within working directory
-        const validation = validatePath(data.path, workingDirectory);
+        const validation = checkPath(data.path);
         if (!validation.valid) {
             return { success: false, error: validation.error };
         }
@@ -475,7 +488,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
 
         // Validate cwd if provided
         if (data.cwd) {
-            const validation = validatePath(data.cwd, workingDirectory);
+            const validation = checkPath(data.cwd);
             if (!validation.valid) {
                 return { success: false, error: validation.error };
             }
@@ -505,7 +518,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
 
         // Validate cwd if provided
         if (data.cwd) {
-            const validation = validatePath(data.cwd, workingDirectory);
+            const validation = checkPath(data.cwd);
             if (!validation.valid) {
                 return { success: false, error: validation.error };
             }

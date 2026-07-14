@@ -16,6 +16,7 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
+import { SessionStatusBar } from '@/components/SessionStatusBar';
 import { Avatar } from '@/components/Avatar';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
@@ -24,8 +25,8 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort, sessionGoalAction } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { sessionAbort, sessionGoalAction, sessionSetAgentModes } from '@/sync/ops';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -34,6 +35,7 @@ import { tracking } from '@/track';
 import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
+import { resolveStatusBarGitBranch } from '@/utils/sessionStatusBar';
 import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
 import { AllFilesDiffView } from '@/components/AllFilesDiffView';
 import { FileViewPanel } from '@/components/FileViewPanel';
@@ -104,7 +106,39 @@ export const SessionView = React.memo((props: { id: string }) => {
         overflow: 'hidden' as const,
     }));
 
-    const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
+    // Sidebar panels are user-managed and persisted in local settings so the
+    // layout (which panels are open + which is active) survives reloads and
+    // long absences. State is device-local, shared across sessions.
+    const sidebarPanelsOpen = useLocalSetting('sidebarPanelsOpen') as SidebarMode[];
+    const sidebarPanelActiveRaw = useLocalSetting('sidebarPanelActive') as SidebarMode | null;
+    // Guard against an inconsistent persisted value: the active panel must be
+    // one of the open panels, otherwise fall back to the last opened (or none).
+    const sidebarPanelActive = React.useMemo<SidebarMode | null>(() => {
+        if (sidebarPanelActiveRaw && sidebarPanelsOpen.includes(sidebarPanelActiveRaw)) {
+            return sidebarPanelActiveRaw;
+        }
+        return sidebarPanelsOpen[sidebarPanelsOpen.length - 1] ?? null;
+    }, [sidebarPanelActiveRaw, sidebarPanelsOpen]);
+
+    const openSidebarPanel = React.useCallback((panel: SidebarMode) => {
+        const cur = storage.getState().localSettings.sidebarPanelsOpen as SidebarMode[];
+        const open = cur.includes(panel) ? cur : [...cur, panel];
+        storage.getState().applyLocalSettings({ sidebarPanelsOpen: open, sidebarPanelActive: panel });
+    }, []);
+    const selectSidebarPanel = React.useCallback((panel: SidebarMode) => {
+        const cur = storage.getState().localSettings.sidebarPanelsOpen as SidebarMode[];
+        if (cur.includes(panel)) {
+            storage.getState().applyLocalSettings({ sidebarPanelActive: panel });
+        }
+    }, []);
+    const closeSidebarPanel = React.useCallback((panel: SidebarMode) => {
+        const state = storage.getState().localSettings;
+        const open = (state.sidebarPanelsOpen as SidebarMode[]).filter((p) => p !== panel);
+        const active = state.sidebarPanelActive === panel
+            ? (open[open.length - 1] ?? null)
+            : (state.sidebarPanelActive as SidebarMode | null);
+        storage.getState().applyLocalSettings({ sidebarPanelsOpen: open, sidebarPanelActive: active });
+    }, []);
 
     // Overlay state is managed as a browser-style history stack so the
     // sidebar's back / forward arrows can navigate between chat ↔ diff ↔ file
@@ -344,10 +378,13 @@ export const SessionView = React.memo((props: { id: string }) => {
                 <View style={{ width: sidebarWidth, flex: 1 }}>
                     <FilesSidebar
                         sessionId={sessionId}
-                        selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
+                        selectedPath={sidebarPanelActive === 'changes' ? scrollToFile : sidebarPanelActive === 'allFiles' ? fileViewPath : null}
                         onFilePress={handleSidebarFilePress}
-                        mode={sidebarMode}
-                        onModeChange={setSidebarMode}
+                        openPanels={sidebarPanelsOpen}
+                        activePanel={sidebarPanelActive}
+                        onOpenPanel={openSidebarPanel}
+                        onSelectPanel={selectSidebarPanel}
+                        onClosePanel={closeSidebarPanel}
                         onAllFilesFilePress={handleAllFilesFilePress}
                     />
                 </View>
@@ -487,7 +524,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
+    const gitStatus = useSessionGitStatus(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
+    const sessionStatusBarDisplay = useSetting('sessionStatusBarDisplay');
     const experiments = useSetting('experiments');
     const expResumeSession = useSetting('expResumeSession');
     const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
@@ -518,15 +557,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     // Function to update permission mode
     const updatePermissionMode = React.useCallback((mode: PermissionMode) => {
-        storage.getState().updateSessionPermissionMode(sessionId, mode.key);
+        sessionSetAgentModes(sessionId, { permissionMode: mode.key });
     }, [sessionId]);
 
     const updateModelMode = React.useCallback((mode: ModelMode) => {
-        storage.getState().updateSessionModelMode(sessionId, mode.key);
+        sessionSetAgentModes(sessionId, { modelMode: mode.key });
     }, [sessionId]);
 
     const updateEffortLevel = React.useCallback((level: EffortLevel) => {
-        storage.getState().updateSessionEffortLevel(sessionId, level.key);
+        sessionSetAgentModes(sessionId, { effortLevel: level.key });
     }, [sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders
@@ -552,7 +591,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [sessionId, expImageUpload, selectedImages, clearImages]);
 
     const handleAbort = React.useCallback(() => {
-        storage.getState().resetSessionAgentOverrides(sessionId);
+        // Mode picks live in synced metadata — clear them there, otherwise the
+        // next inbound metadata update resurrects them (#1492)
+        sessionSetAgentModes(sessionId, { permissionMode: null, modelMode: null, effortLevel: null });
         sessionAbort(sessionId);
     }, [sessionId]);
 
@@ -580,8 +621,18 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             cacheCreation: source.cacheCreation,
             cacheRead: source.cacheRead,
             contextSize: source.contextSize,
+            contextWindow: source.contextWindow,
         };
     }, [sessionUsage, session.latestUsage]);
+    const metadataGitBranch = React.useMemo(() => {
+        const gitBranch = (session.metadata as { gitBranch?: unknown } | null)?.gitBranch;
+        return typeof gitBranch === 'string' && gitBranch.trim() ? gitBranch.trim() : null;
+    }, [session.metadata]);
+    const statusBarGitBranch = resolveStatusBarGitBranch(gitStatus?.branch, metadataGitBranch);
+    const statusBarModelLabel = modelMode?.name ?? session.metadata?.currentModelCode ?? session.modelMode ?? null;
+    const statusBarEffortLabel = effortLevel?.name
+        ? effortLevel.name.charAt(0).toUpperCase() + effortLevel.name.slice(1)
+        : null;
 
     const visibleAgentGoal = React.useMemo(() => (
         resolveVisibleAgentGoalStatus(session)
@@ -667,7 +718,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         storage.getState().setCurrentViewingSession(sessionId);
 
         // Initialize git status sync for this session
-        gitStatusSync.getSync(sessionId);
+        gitStatusSync.getSync(sessionId).invalidate();
 
         return () => {
             // Clear viewing session on unmount
@@ -729,6 +780,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             usageData={usageData}
             alwaysShowContextSize={alwaysShowContextSize}
             zenMode={zenMode}
+            showSessionStatusInfoInSettings={false}
+            sessionStatusGitBranch={statusBarGitBranch}
+            sessionStatusModelLabel={statusBarModelLabel}
+            sessionStatusEffortLabel={statusBarEffortLabel}
         />
     );
 
@@ -750,6 +805,30 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </CenteredInputWidth>
     ) : null;
 
+    // 'hiddenOnMobile' hides the bar on phones but still shows it (below the
+    // composer) on tablet/desktop/web. 'above'/'below' show it everywhere.
+    const showSessionStatusBar = sessionStatusBarDisplay === 'above'
+        || sessionStatusBarDisplay === 'below'
+        || (sessionStatusBarDisplay === 'hiddenOnMobile' && deviceType !== 'phone');
+    const sessionStatusBarPosition = sessionStatusBarDisplay === 'above' ? 'above' : 'below';
+    const sessionStatusBar = showSessionStatusBar ? (
+        <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+            <SessionStatusBar
+                gitBranch={statusBarGitBranch}
+                modelLabel={statusBarModelLabel}
+                modelMode={modelMode}
+                availableModels={availableModels}
+                onModelModeChange={updateModelMode}
+                effortLabel={statusBarEffortLabel}
+                effortLevel={effortLevel}
+                availableEffortLevels={availableEffortLevels}
+                onEffortLevelChange={updateEffortLevel}
+                contextSize={usageData?.contextSize}
+                contextWindow={usageData?.contextWindow}
+            />
+        </CenteredInputWidth>
+    ) : null;
+
     const input = (
         <>
             {inactiveHint}
@@ -762,7 +841,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     />
                 </CenteredInputWidth>
             )}
+            {sessionStatusBarPosition === 'above' ? sessionStatusBar : null}
             {composer}
+            {sessionStatusBarPosition === 'below' ? sessionStatusBar : null}
         </>
     );
 

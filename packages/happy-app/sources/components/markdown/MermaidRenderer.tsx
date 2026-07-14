@@ -5,6 +5,9 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
+// Tall diagrams scroll inside a capped container instead of taking over the chat
+const MAX_DIAGRAM_HEIGHT = 600;
+
 // Style for Web platform
 const webStyle: any = {
     backgroundColor: '#1a1a1a',
@@ -139,23 +142,39 @@ export const MermaidRenderer = React.memo((props: {
         <body>
             <div id="mermaid-container"></div>
             <script>
+                function reportHeight() {
+                    const height = Math.max(
+                        document.body.scrollHeight,
+                        document.documentElement.scrollHeight
+                    );
+                    if (window.ReactNativeWebView) {
+                        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'dimensions', height: height }));
+                    }
+                }
+
                 (async function() {
                     const content = ${mermaidContent};
                     const container = document.getElementById('mermaid-container');
-                    
+
                     try {
                         mermaid.initialize({
                             startOnLoad: false,
                             theme: 'dark'
                         });
-                        
+
                         const { svg } = await mermaid.render('mermaid-diagram', content);
                         container.innerHTML = svg;
                     } catch (error) {
-                        container.innerHTML = '<div class="error">Diagram error: ' + 
-                            (error.message || String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;') + 
+                        container.innerHTML = '<div class="error">Diagram error: ' +
+                            (error.message || String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;') +
                             '</div>';
                     }
+
+                    // SVG sizing can settle asynchronously, so report again after a delay
+                    requestAnimationFrame(() => {
+                        reportHeight();
+                        setTimeout(reportHeight, 200);
+                    });
                 })();
             </script>
         </body>
@@ -164,11 +183,11 @@ export const MermaidRenderer = React.memo((props: {
 
     return (
         <View style={style.container} onLayout={onLayout}>
-            <View style={[style.innerContainer, { height: dimensions.height }]}>
+            <View style={[style.innerContainer, { height: Math.min(dimensions.height, MAX_DIAGRAM_HEIGHT) }]}>
                 <WebView
                     source={{ html }}
                     style={{ flex: 1 }}
-                    scrollEnabled={false}
+                    scrollEnabled={true}
                     onMessage={(event) => {
                         const data = JSON.parse(event.nativeEvent.data);
                         if (data.type === 'dimensions') {

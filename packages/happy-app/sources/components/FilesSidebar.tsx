@@ -8,6 +8,7 @@ import Animated, {
     withTiming,
     Easing,
 } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { storage, useSessionGitStatus, useSessionGitStatusFiles, useSessionProjectFiles } from '@/sync/storage';
 import { getGitStatusFiles, GitFileStatus } from '@/sync/gitStatusFiles';
 import { getProjectFiles, ProjectFile } from '@/sync/projectFiles';
@@ -18,12 +19,28 @@ import { t } from '@/text';
 
 export type SidebarMode = 'changes' | 'allFiles';
 
+const ALL_PANELS: { key: SidebarMode; icon: keyof typeof Octicons.glyphMap }[] = [
+    { key: 'changes', icon: 'git-compare' },
+    { key: 'allFiles', icon: 'file-directory' },
+];
+
+function panelIcon(panel: SidebarMode): keyof typeof Octicons.glyphMap {
+    return ALL_PANELS.find((p) => p.key === panel)?.icon ?? 'file';
+}
+
+function panelLabel(panel: SidebarMode): string {
+    return panel === 'changes' ? t('files.changes') : t('files.allFiles');
+}
+
 interface FilesSidebarProps {
     sessionId: string;
     selectedPath?: string | null;
     onFilePress?: (file: GitFileStatus) => void;
-    mode?: SidebarMode;
-    onModeChange?: (mode: SidebarMode) => void;
+    openPanels: SidebarMode[];
+    activePanel: SidebarMode | null;
+    onOpenPanel: (panel: SidebarMode) => void;
+    onSelectPanel: (panel: SidebarMode) => void;
+    onClosePanel: (panel: SidebarMode) => void;
     onAllFilesFilePress?: (filePath: string) => void;
 }
 
@@ -149,8 +166,11 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
     sessionId,
     selectedPath,
     onFilePress,
-    mode = 'changes',
-    onModeChange,
+    openPanels,
+    activePanel,
+    onOpenPanel,
+    onSelectPanel,
+    onClosePanel,
     onAllFilesFilePress,
 }) => {
     const router = useRouter();
@@ -204,57 +224,76 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
         });
     }, []);
 
+    // Add-panel menu (lists panels not yet open). Open panels live inline as chips.
+    const [addMenuOpen, setAddMenuOpen] = React.useState(false);
+    React.useEffect(() => {
+        setAddMenuOpen(false);
+    }, [activePanel, openPanels.length]);
+
+    const availablePanels = ALL_PANELS.filter((p) => !openPanels.includes(p.key));
+
+    // Empty sidebar: vertically-centered picker of panels to open (no header).
+    if (activePanel === null) {
+        return (
+            <View style={[styles.container, styles.pickerContainer]}>
+                <View style={styles.pickerWrap}>
+                    {ALL_PANELS.map((p) => (
+                        <Pressable
+                            key={p.key}
+                            onPress={() => onOpenPanel(p.key)}
+                            style={({ pressed, hovered }: any) => [styles.pickerCard, (pressed || hovered) && styles.pickerCardPressed]}
+                        >
+                            <Octicons name={p.icon} size={15} color={theme.colors.textSecondary} />
+                            <Text style={styles.pickerCardText} numberOfLines={1}>{panelLabel(p.key)}</Text>
+                        </Pressable>
+                    ))}
+                </View>
+            </View>
+        );
+    }
+
     return (
         <View style={styles.container}>
-            {/* Tab selector */}
+            {/* Open panels as chips + add-panel button */}
             <View style={styles.header}>
-                {onModeChange ? (
-                    <View style={styles.tabRow}>
+                <View style={styles.chipRow}>
+                    {openPanels.map((key) => (
+                        <PanelChip
+                            key={key}
+                            panel={key}
+                            active={key === activePanel}
+                            onSelect={() => onSelectPanel(key)}
+                            onClose={() => onClosePanel(key)}
+                        />
+                    ))}
+                </View>
+                <View style={styles.headerRight}>
+                    {activePanel === 'changes' && hasFiles && gitStatus && (gitStatus.linesAdded > 0 || gitStatus.linesRemoved > 0) ? (
+                        <View style={styles.headerLineChanges}>
+                            {gitStatus.linesAdded > 0 && (
+                                <Text style={styles.headerAdded}>+{gitStatus.linesAdded}</Text>
+                            )}
+                            {gitStatus.linesRemoved > 0 && (
+                                <Text style={styles.headerRemoved}>-{gitStatus.linesRemoved}</Text>
+                            )}
+                        </View>
+                    ) : null}
+                    {availablePanels.length > 0 && (
                         <Pressable
-                            onPress={() => onModeChange('changes')}
-                            style={[
-                                styles.tab,
-                                mode === 'changes' && { backgroundColor: theme.colors.surface },
+                            onPress={() => setAddMenuOpen((v) => !v)}
+                            accessibilityLabel={t('files.addPanel')}
+                            style={({ pressed, hovered }: any) => [
+                                styles.iconButton,
+                                (pressed || hovered || addMenuOpen) && { backgroundColor: theme.colors.surface },
                             ]}
                         >
-                            <Text style={[
-                                styles.tabText,
-                                mode === 'changes' && styles.tabTextActive,
-                            ]} numberOfLines={1}>
-                                {t('files.changes')}
-                            </Text>
+                            <Octicons name="plus" size={14} color={theme.colors.textSecondary} />
                         </Pressable>
-                        <Pressable
-                            onPress={() => onModeChange('allFiles')}
-                            style={[
-                                styles.tab,
-                                mode === 'allFiles' && { backgroundColor: theme.colors.surface },
-                            ]}
-                        >
-                            <Text style={[
-                                styles.tabText,
-                                mode === 'allFiles' && styles.tabTextActive,
-                            ]} numberOfLines={1}>
-                                {t('files.allFiles')}
-                            </Text>
-                        </Pressable>
-                    </View>
-                ) : (
-                    <Text style={styles.headerTitle} numberOfLines={1}>{t('files.changes')}</Text>
-                )}
-                {mode === 'changes' && hasFiles && gitStatus && (gitStatus.linesAdded > 0 || gitStatus.linesRemoved > 0) ? (
-                    <View style={styles.headerLineChanges}>
-                        {gitStatus.linesAdded > 0 && (
-                            <Text style={styles.headerAdded}>+{gitStatus.linesAdded}</Text>
-                        )}
-                        {gitStatus.linesRemoved > 0 && (
-                            <Text style={styles.headerRemoved}>-{gitStatus.linesRemoved}</Text>
-                        )}
-                    </View>
-                ) : null}
+                    )}
+                </View>
             </View>
 
-            {mode === 'changes' ? (
+            {activePanel === 'changes' ? (
                 <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
                     {!hasFiles ? (
                         <View style={styles.emptyState}>
@@ -287,7 +326,91 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                     onFilePress={onAllFilesFilePress}
                 />
             )}
+
+            {addMenuOpen && (
+                <>
+                    <Pressable style={styles.menuBackdrop} onPress={() => setAddMenuOpen(false)} />
+                    <View style={styles.menuCard}>
+                        {availablePanels.map((p) => (
+                            <Pressable
+                                key={p.key}
+                                onPress={() => {
+                                    setAddMenuOpen(false);
+                                    onOpenPanel(p.key);
+                                }}
+                                style={({ pressed, hovered }: any) => [styles.menuAddRow, (pressed || hovered) && { backgroundColor: theme.colors.surfaceSelected }]}
+                            >
+                                <Octicons name={p.icon} size={13} color={theme.colors.textSecondary} />
+                                <Text style={styles.menuRowText} numberOfLines={1}>{panelLabel(p.key)}</Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                </>
+            )}
         </View>
+    );
+});
+
+/** A single open-panel chip: click body to activate, hover to reveal close (x). */
+const PanelChip = React.memo(function PanelChip({
+    panel,
+    active,
+    onSelect,
+    onClose,
+}: {
+    panel: SidebarMode;
+    active: boolean;
+    onSelect: () => void;
+    onClose: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const [hovered, setHovered] = React.useState(false);
+    const iconColor = active ? theme.colors.text : theme.colors.textSecondary;
+    // Fade colour matches the chip background so the close (x) reads as an
+    // overlay at the chip's end instead of resizing it.
+    const fadeColor = theme.colors.surface;
+    return (
+        <Pressable
+            onPress={onSelect}
+            // Pointer enter/leave (not hover in/out): leave only fires when the
+            // cursor exits the chip *and its descendants*, so moving onto the
+            // nested close (x) doesn't unmount the overlay. onHoverOut would
+            // fire on child entry and make the x flicker away.
+            onPointerEnter={() => setHovered(true)}
+            onPointerLeave={() => setHovered(false)}
+            style={[
+                styles.chip,
+                active && styles.chipActive,
+                hovered && !active && styles.chipHovered,
+            ]}
+        >
+            <Octicons name={panelIcon(panel)} size={13} color={iconColor} />
+            <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                {panelLabel(panel)}
+            </Text>
+            {hovered && (
+                <View style={styles.chipCloseOverlay} pointerEvents="box-none">
+                    <LinearGradient
+                        colors={['transparent', fadeColor, fadeColor]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.chipCloseFade}
+                        pointerEvents="none"
+                    />
+                    <Pressable
+                        onPress={(e) => {
+                            e.stopPropagation?.();
+                            onClose();
+                        }}
+                        accessibilityLabel={t('files.closePanel')}
+                        hitSlop={6}
+                        style={styles.chipClose}
+                    >
+                        <Octicons name="x" size={12} color={theme.colors.text} />
+                    </Pressable>
+                </View>
+            )}
+        </Pressable>
     );
 });
 
@@ -557,16 +680,145 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingTop: 14,
+        paddingHorizontal: 12,
+        paddingTop: 10,
         paddingBottom: 8,
+        gap: 8,
+        zIndex: 2,
     },
-    headerTitle: {
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    chipRow: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    chip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 7,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'transparent',
+        flexShrink: 1,
+        overflow: 'hidden',
+    },
+    chipHovered: {
+        backgroundColor: theme.colors.surface,
+    },
+    chipActive: {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.divider,
+    },
+    chipText: {
+        fontSize: 13,
+        color: theme.colors.textSecondary,
+        flexShrink: 1,
+        ...Typography.default(),
+    },
+    chipTextActive: {
+        color: theme.colors.text,
+        fontWeight: '600',
+        ...Typography.default('semiBold'),
+    },
+    chipCloseOverlay: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        flexDirection: 'row',
+        alignItems: 'stretch',
+    },
+    chipCloseFade: {
+        width: 18,
+    },
+    chipClose: {
+        paddingRight: 8,
+        paddingLeft: 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.surface,
+    },
+    iconButton: {
+        width: 26,
+        height: 26,
+        borderRadius: 7,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    pickerContainer: {
+        justifyContent: 'center',
+    },
+    pickerWrap: {
+        paddingHorizontal: 12,
+        gap: 8,
+    },
+    pickerCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 14,
+        borderRadius: 12,
+        backgroundColor: theme.colors.surface,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+    },
+    pickerCardPressed: {
+        backgroundColor: theme.colors.surfaceSelected,
+    },
+    pickerCardText: {
         flex: 1,
         fontSize: 14,
-        fontWeight: '600',
+        fontWeight: '500',
         color: theme.colors.text,
         ...Typography.default('semiBold'),
+    },
+    menuBackdrop: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 3,
+    },
+    menuCard: {
+        position: 'absolute',
+        top: 42,
+        right: 12,
+        minWidth: 160,
+        maxWidth: '90%',
+        padding: 4,
+        borderRadius: 10,
+        backgroundColor: theme.colors.surface,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+        shadowColor: theme.colors.shadow.color,
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 8,
+        zIndex: 4,
+    },
+    menuRowText: {
+        flex: 1,
+        fontSize: 13,
+        color: theme.colors.text,
+        ...Typography.default(),
+    },
+    menuAddRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 8,
+        paddingVertical: 7,
+        borderRadius: 6,
     },
     headerCountWrap: {
         flexDirection: 'row',
@@ -705,28 +957,6 @@ const styles = StyleSheet.create((theme) => ({
     emptySearch: {
         paddingTop: 24,
         alignItems: 'center',
-    },
-    tabRow: {
-        flexDirection: 'row',
-        gap: 2,
-        padding: 2,
-        borderRadius: 8,
-        backgroundColor: theme.colors.groupped.background,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.divider,
-    },
-    tab: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 6,
-    },
-    tabText: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        ...Typography.default(),
-    },
-    tabTextActive: {
-        color: theme.colors.text,
     },
     fileSubpath: {
         fontSize: 11,
