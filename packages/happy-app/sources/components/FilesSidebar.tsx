@@ -18,8 +18,16 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { SideChatPanel } from './SideChatPanel';
 import type { Session } from '@/sync/storageTypes';
+import {
+    formatShortcutChord,
+    getPreferredShortcutModifier,
+    matchesShortcutChord,
+    SIDEBAR_PICKER_SHORTCUTS,
+    type SidebarPickerShortcutId,
+} from '@/keyboard/shortcuts';
 
 export type SidebarMode = 'changes' | 'allFiles' | 'sideChat';
+type PickableSidebarMode = Exclude<SidebarMode, 'sideChat'>;
 
 const ALL_PANELS: { key: SidebarMode; icon: keyof typeof Octicons.glyphMap }[] = [
     { key: 'changes', icon: 'git-compare' },
@@ -30,7 +38,10 @@ const ALL_PANELS: { key: SidebarMode; icon: keyof typeof Octicons.glyphMap }[] =
 // Panels that are opened directly from the picker. The 'sideChat' panel is not
 // here: it isn't opened empty — it appears when you create a side chat via the
 // dedicated "New side chat" picker action, which forks a new child session.
-const PICKABLE_PANELS = ALL_PANELS.filter((p) => p.key !== 'sideChat');
+const PICKABLE_PANELS = ALL_PANELS.filter((p) => p.key !== 'sideChat') as Array<{
+    key: PickableSidebarMode;
+    icon: keyof typeof Octicons.glyphMap;
+}>;
 const SIDE_CHAT_ICON: keyof typeof Octicons.glyphMap = 'comment-discussion';
 
 function panelIcon(panel: SidebarMode): keyof typeof Octicons.glyphMap {
@@ -204,6 +215,9 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
 }) => {
     const router = useRouter();
     const { theme } = useUnistyles();
+    const preferredModifier = React.useMemo(() => getPreferredShortcutModifier(
+        typeof navigator === 'undefined' ? undefined : navigator
+    ), []);
     const gitStatusFiles = useSessionGitStatusFiles(sessionId);
     const gitStatus = useSessionGitStatus(sessionId);
 
@@ -259,7 +273,55 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
         setAddMenuOpen(false);
     }, [activePanel, openPanels.length]);
 
-    const availablePanels = PICKABLE_PANELS.filter((p) => !openPanels.includes(p.key));
+    const availablePanels = React.useMemo(
+        () => PICKABLE_PANELS.filter((panel) => !openPanels.includes(panel.key)),
+        [openPanels],
+    );
+    const availablePickerActionIds = React.useMemo<SidebarPickerShortcutId[]>(() => [
+        ...availablePanels.map((panel) => panel.key),
+        'newSideChat',
+    ], [availablePanels]);
+
+    const runPickerAction = React.useCallback((actionId: SidebarPickerShortcutId): boolean => {
+        if (actionId === 'newSideChat') {
+            if (creatingSideChat || !canCreateSideChat) {
+                return false;
+            }
+            setAddMenuOpen(false);
+            onCreateSideChat();
+            return true;
+        }
+
+        if (!availablePanels.some((panel) => panel.key === actionId)) {
+            return false;
+        }
+        setAddMenuOpen(false);
+        onOpenPanel(actionId);
+        return true;
+    }, [availablePanels, canCreateSideChat, creatingSideChat, onCreateSideChat, onOpenPanel]);
+
+    React.useEffect(() => {
+        const shortcutsActive = activePanel === null || addMenuOpen;
+        if (Platform.OS !== 'web' || typeof window === 'undefined' || !shortcutsActive) {
+            return;
+        }
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            const actionId = availablePickerActionIds.find((candidate) => matchesShortcutChord(
+                event,
+                preferredModifier,
+                SIDEBAR_PICKER_SHORTCUTS[candidate],
+            ));
+            if (!actionId || !runPickerAction(actionId)) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+        };
+
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }, [activePanel, addMenuOpen, availablePickerActionIds, preferredModifier, runPickerAction]);
 
     // Empty sidebar: vertically-centered picker of panels to open (no header).
     if (activePanel === null) {
@@ -274,6 +336,9 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                         >
                             <Octicons name={p.icon} size={15} color={theme.colors.textSecondary} />
                             <Text style={styles.pickerCardText} numberOfLines={1}>{panelLabel(p.key)}</Text>
+                            <Text style={styles.pickerShortcut}>
+                                {formatShortcutChord(preferredModifier, SIDEBAR_PICKER_SHORTCUTS[p.key])}
+                            </Text>
                         </Pressable>
                     ))}
                     <Pressable
@@ -289,6 +354,9 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                             ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                             : <Octicons name={SIDE_CHAT_ICON} size={15} color={theme.colors.textSecondary} />}
                         <Text style={styles.pickerCardText} numberOfLines={1}>{t('sideChat.newChat')}</Text>
+                        <Text style={styles.pickerShortcut}>
+                            {formatShortcutChord(preferredModifier, SIDEBAR_PICKER_SHORTCUTS.newSideChat)}
+                        </Text>
                     </Pressable>
                 </View>
             </View>
@@ -394,6 +462,9 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                             >
                                 <Octicons name={p.icon} size={13} color={theme.colors.textSecondary} />
                                 <Text style={styles.menuRowText} numberOfLines={1}>{panelLabel(p.key)}</Text>
+                                <Text style={styles.menuShortcut}>
+                                    {formatShortcutChord(preferredModifier, SIDEBAR_PICKER_SHORTCUTS[p.key])}
+                                </Text>
                             </Pressable>
                         ))}
                         <Pressable
@@ -412,6 +483,9 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                                 ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                                 : <Octicons name={SIDE_CHAT_ICON} size={13} color={theme.colors.textSecondary} />}
                             <Text style={styles.menuRowText} numberOfLines={1}>{t('sideChat.newChat')}</Text>
+                            <Text style={styles.menuShortcut}>
+                                {formatShortcutChord(preferredModifier, SIDEBAR_PICKER_SHORTCUTS.newSideChat)}
+                            </Text>
                         </Pressable>
                     </View>
                 </>
@@ -849,6 +923,12 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         ...Typography.default('semiBold'),
     },
+    pickerShortcut: {
+        flexShrink: 0,
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default('semiBold'),
+    },
     menuBackdrop: {
         position: 'absolute',
         top: 0,
@@ -861,7 +941,7 @@ const styles = StyleSheet.create((theme) => ({
         position: 'absolute',
         top: 42,
         right: 12,
-        minWidth: 160,
+        minWidth: 220,
         maxWidth: '90%',
         padding: 4,
         borderRadius: 10,
@@ -880,6 +960,12 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
         color: theme.colors.text,
         ...Typography.default(),
+    },
+    menuShortcut: {
+        flexShrink: 0,
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default('semiBold'),
     },
     menuAddRow: {
         flexDirection: 'row',

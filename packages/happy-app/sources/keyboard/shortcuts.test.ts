@@ -8,6 +8,7 @@ import {
     getRecentSessionShortcutIndex,
     matchesShortcutChord,
     SESSION_ACTION_SHORTCUTS,
+    SIDEBAR_PICKER_SHORTCUTS,
 } from './shortcuts';
 
 function keyboardEvent(overrides: Partial<Parameters<typeof getGlobalShortcutId>[0]> = {}) {
@@ -137,5 +138,18 @@ describe('session action shortcuts', () => {
         expect(matchesShortcutChord(keyboardEvent({ key: 'o', altKey: true, metaKey: false, ctrlKey: true }), 'control', details)).toBe(true);
         expect(matchesShortcutChord(keyboardEvent({ key: 'o', altKey: true, repeat: true }), 'meta', details)).toBe(false);
         expect(matchesShortcutChord(keyboardEvent({ key: 'ø', code: 'KeyO', altKey: true }), 'meta', details)).toBe(true);
+    });
+});
+
+describe('sidebar picker shortcuts', () => {
+    it('defines mnemonic shortcuts for every picker action', () => {
+        expect(Object.keys(SIDEBAR_PICKER_SHORTCUTS)).toEqual([
+            'changes',
+            'allFiles',
+            'newSideChat',
+        ]);
+        expect(formatShortcutChord('meta', SIDEBAR_PICKER_SHORTCUTS.changes)).toBe('⌥⌘C');
+        expect(formatShortcutChord('meta', SIDEBAR_PICKER_SHORTCUTS.allFiles)).toBe('⌥⌘F');
+        expect(formatShortcutChord('meta', SIDEBAR_PICKER_SHORTCUTS.newSideChat)).toBe('⌥⌘S');
     });
 });
