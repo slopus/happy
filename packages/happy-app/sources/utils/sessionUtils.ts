@@ -74,12 +74,16 @@ export function useSessionStatus(session: Session): SessionStatus {
 }
 
 /**
- * Extracts a display name from a session's metadata path.
- * Returns the last segment of the path, or 'unknown' if no path is available.
+ * Returns the best available display title for a session.
  */
 export function getSessionName(session: Session): string {
-    if (session.metadata?.summary) {
-        return session.metadata.summary.text;
+    const summary = session.metadata?.summary?.text.trim();
+    if (summary) {
+        return summary;
+    }
+    const name = session.metadata?.name?.trim();
+    if (name) {
+        return name;
     }
     return t('session.newChat');
 }
