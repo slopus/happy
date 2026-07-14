@@ -28,31 +28,11 @@ import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
+import { appendDaemonSpawnModeArgs } from './spawnModeArgs';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
     return "'" + s.replace(/'/g, "'\\''") + "'";
-}
-
-function appendDaemonSpawnModeArgs(args: string[], options: SpawnSessionOptions, agent: string): void {
-  if (agent !== 'claude' && agent !== 'codex') {
-    return;
-  }
-  // For claude, 'default' is the app's ambient "no override" value — forwarding
-  // it would pin the session to prompting mode and lose the CLI's own default
-  // (e.g. a --yolo setup where sessions must bypass permissions). For codex,
-  // 'default' IS a concrete ask-first mode (untrusted + workspace-write)
-  // distinct from the codex launch default ('yolo'), so it must be forwarded
-  // or the user's explicit ask-first pick silently yields a yolo session.
-  if (options.permissionMode && (agent === 'codex' || options.permissionMode !== 'default')) {
-    args.push('--permission-mode', options.permissionMode);
-  }
-  if (options.modelMode && options.modelMode !== 'default') {
-    args.push('--model', options.modelMode);
-  }
-  if (options.effortLevel) {
-    args.push('--effort', options.effortLevel);
-  }
 }
 
 // Prepare initial metadata
