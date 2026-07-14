@@ -654,6 +654,19 @@ export const es: TranslationStructure = {
         reload: 'Recargar',
         overwrite: 'Sobrescribir',
     },
+    sideChat: {
+        panelTitle: 'Chat lateral',
+        emptyTitle: 'Inicia un chat lateral',
+        emptySubtitle: 'Pregunta algo al agente por separado. Hereda el contexto de este chat pero permanece aislado — nada de aquí afecta a la conversación principal.',
+        startButton: 'Iniciar chat lateral',
+        creating: 'Iniciando chat lateral…',
+        unavailable: 'Esta sesión aún no puede iniciar un chat lateral — espera a que el agente esté en línea.',
+        composerPlaceholder: 'Mensaje al chat lateral…',
+        expand: 'Abrir en pantalla completa',
+        tabLabel: ({ index }: { index: number }) => `Chat lateral ${index}`,
+        newChat: 'Nuevo chat lateral',
+        close: 'Cerrar chat lateral',
+    },
 
     settingsVoice: {
         // Voice settings screen

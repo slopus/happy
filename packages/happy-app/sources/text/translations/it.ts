@@ -652,6 +652,19 @@ export const it: TranslationStructure = {
         reload: 'Ricarica',
         overwrite: 'Sovrascrivi',
     },
+    sideChat: {
+        panelTitle: 'Chat laterale',
+        emptyTitle: 'Avvia una chat laterale',
+        emptySubtitle: 'Chiedi qualcosa all’agente a parte. Eredita il contesto di questa chat ma rimane isolata — nulla qui tocca la conversazione principale.',
+        startButton: 'Avvia chat laterale',
+        creating: 'Avvio della chat laterale…',
+        unavailable: 'Questa sessione non può ancora avviare una chat laterale — attendi che l’agente sia online.',
+        composerPlaceholder: 'Messaggio alla chat laterale…',
+        expand: 'Apri a schermo intero',
+        tabLabel: ({ index }: { index: number }) => `Chat laterale ${index}`,
+        newChat: 'Nuova chat laterale',
+        close: 'Chiudi chat laterale',
+    },
 
     settingsVoice: {
         // Voice settings screen

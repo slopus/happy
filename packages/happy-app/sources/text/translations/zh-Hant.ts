@@ -654,6 +654,19 @@ export const zhHant: TranslationStructure = {
         reload: '重新載入',
         overwrite: '覆蓋',
     },
+    sideChat: {
+        panelTitle: '側邊聊天',
+        emptyTitle: '開始側邊聊天',
+        emptySubtitle: '在一旁向智能體提問。它會繼承此聊天的上下文，但保持獨立——這裡的任何操作都不會影響主對話。',
+        startButton: '開始側邊聊天',
+        creating: '正在開始側邊聊天…',
+        unavailable: '此工作階段暫時無法開始側邊聊天——請等待智能體上線。',
+        composerPlaceholder: '傳送訊息到側邊聊天…',
+        expand: '全螢幕開啟',
+        tabLabel: ({ index }: { index: number }) => `側邊聊天 ${index}`,
+        newChat: '新增側邊聊天',
+        close: '關閉側邊聊天',
+    },
 
     settingsVoice: {
         // Voice settings screen

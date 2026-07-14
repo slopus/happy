@@ -40,6 +40,8 @@ export interface CreateSessionMetadataOptions {
     parentSessionId?: string;
     /** Happy message id used as the fork rewind point. */
     forkedFromMessageId?: string;
+    /** Marks this session as a hidden side chat of `parentSessionId`. */
+    isSideChat?: boolean;
 }
 
 /**
@@ -114,6 +116,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         ...(gitBranch ? { gitBranch } : {}),
         ...(opts.parentSessionId ? { parentSessionId: opts.parentSessionId } : {}),
         ...(opts.forkedFromMessageId ? { forkedFromMessageId: opts.forkedFromMessageId } : {}),
+        ...(opts.isSideChat ? { isSideChat: true } : {}),
     };
 
     return { state, metadata };

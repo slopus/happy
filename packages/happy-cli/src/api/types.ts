@@ -325,6 +325,12 @@ export type Metadata = {
   /** Lineage for sessions created via the fork / duplicate flow. */
   parentSessionId?: string
   forkedFromMessageId?: string
+  /**
+   * Marks a session as a hidden "side chat" forked from `parentSessionId`.
+   * Side chats never appear in the top-level session list; they render only
+   * inside the parent session's sidebar panel.
+   */
+  isSideChat?: boolean
 };
 
 export type AgentGoalStatus = {

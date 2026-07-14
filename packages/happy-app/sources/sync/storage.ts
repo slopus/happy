@@ -238,6 +238,11 @@ function buildSessionListViewData(
     const inactiveSessions: Session[] = [];
 
     Object.values(sessions).forEach(session => {
+        // Side chats are hidden children of another session — they render only
+        // inside the parent's sidebar panel, never in the top-level list.
+        if (session.metadata?.isSideChat) {
+            return;
+        }
         if (isSessionActive(session)) {
             activeSessions.push(session);
         } else {
@@ -448,6 +453,10 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Process all sessions from merged set
             Object.values(mergedSessions).forEach(session => {
+                // Side chats are hidden children — never in any session list.
+                if (session.metadata?.isSideChat) {
+                    return;
+                }
                 if (activeSet.has(session.id)) {
                     activeSessions.push(session);
                 } else {
@@ -1302,6 +1311,38 @@ export function useSession(id: string): Session | null {
     return storage(useShallow((state) => state.sessions[id] ?? null));
 }
 
+/**
+ * Resolve the live "side chat" sessions belonging to a given parent session.
+ * A side chat is a forked child flagged `metadata.isSideChat` whose
+ * `metadata.parentSessionId` points at the parent. A parent can have several;
+ * closing one archives it (`lifecycleState === 'archived'`), which drops it
+ * from this list so the sidebar panel only shows open side chats. Sorted
+ * oldest-first so tab order stays stable as new ones are created. Empty when
+ * none are open (the panel then offers to start one).
+ */
+export function useSideChatSessions(parentSessionId: string | null): Session[] {
+    return storage(useShallow((state) => {
+        if (!parentSessionId) {
+            return emptyArray as Session[];
+        }
+        const result: Session[] = [];
+        for (const session of Object.values(state.sessions)) {
+            if (
+                session.metadata?.isSideChat
+                && session.metadata?.parentSessionId === parentSessionId
+                && session.metadata?.lifecycleState !== 'archived'
+            ) {
+                result.push(session);
+            }
+        }
+        if (result.length === 0) {
+            return emptyArray as Session[];
+        }
+        result.sort((a, b) => a.createdAt - b.createdAt);
+        return result;
+    }));
+}
+
 const emptyArray: unknown[] = [];
 
 export function useSessionMessages(sessionId: string): {
@@ -1375,7 +1416,10 @@ export function useSessionListViewData(): SessionListViewItem[] | null {
 export function useAllSessions(): Session[] {
     return storage(useShallow((state) => {
         if (!state.isDataReady) return [];
-        return Object.values(state.sessions).sort((a, b) => b.updatedAt - a.updatedAt);
+        // Side chats are hidden children — exclude them from every list.
+        return Object.values(state.sessions)
+            .filter((s) => !s.metadata?.isSideChat)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
     }));
 }
 
