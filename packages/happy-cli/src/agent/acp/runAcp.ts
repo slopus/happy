@@ -42,6 +42,15 @@ const ACP_LOG_COLORS = {
   tool: '\u001b[38;5;208m',
 } as const;
 
+const USER_CANCELLED_TURN_DETAIL = 'Cancelled by user';
+
+class AcpTurnCancelledError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AcpTurnCancelledError';
+  }
+}
+
 type AcpLogKind = keyof typeof ACP_LOG_COLORS;
 type AcpFormattedLog = {
   kind: AcpLogKind;
@@ -552,6 +561,7 @@ export async function runAcp(opts: {
   let shouldExit = false;
   let abortController = new AbortController();
   let pendingTurn: PendingTurn | null = null;
+  let userCancellationPending = false;
 
   const clearPendingTurn = (error?: Error) => {
     if (!pendingTurn) {
@@ -583,6 +593,15 @@ export async function runAcp(opts: {
     shouldExit = true;
     messageQueue.close();
     clearPendingTurn(new Error(reason));
+  };
+
+  const cancelPendingTurnFromBackendStatus = (status: 'stopped', detail?: string) => {
+    const reason = detail
+      ? `${opts.agentName} backend ${status}: ${detail}`
+      : `${opts.agentName} backend ${status}`;
+    logger.debug(`[${opts.agentName}] ${reason}; keeping ACP runner active after user cancellation`);
+    userCancellationPending = false;
+    clearPendingTurn(new AcpTurnCancelledError(reason));
   };
 
   const sendEnvelopes = (envelopes: SessionEnvelope[]) => {
@@ -813,10 +832,18 @@ export async function runAcp(opts: {
         session.keepAlive(thinking, 'remote');
       }
       if (msg.status === 'idle') {
+        userCancellationPending = false;
         clearPendingTurn();
       }
-      if (msg.status === 'error' || msg.status === 'stopped') {
+      if (msg.status === 'error') {
         stopRunnerFromBackendStatus(msg.status, msg.detail);
+      }
+      if (msg.status === 'stopped') {
+        if (userCancellationPending && !shouldExit && msg.detail === USER_CANCELLED_TURN_DETAIL) {
+          cancelPendingTurnFromBackendStatus(msg.status, msg.detail);
+        } else {
+          stopRunnerFromBackendStatus(msg.status, msg.detail);
+        }
       }
     }
 
@@ -858,12 +885,14 @@ export async function runAcp(opts: {
 
   async function handleAbort() {
     try {
+      userCancellationPending = !!pendingTurn && !!acpSessionId;
       if (acpSessionId) {
         await backend.cancel(acpSessionId);
       }
       permissionHandler.reset();
       abortController.abort();
     } catch (error) {
+      userCancellationPending = false;
       logger.debug(`[${opts.agentName}] Abort failed:`, error);
     } finally {
       abortController = new AbortController();
@@ -913,6 +942,10 @@ export async function runAcp(opts: {
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
       sendEnvelopes(sessionManager.startTurn());
       const turnEnded = waitForTurnEnd();
+      let turnEndError: unknown;
+      const guardedTurnEnded = turnEnded.catch((error: unknown) => {
+        turnEndError = error;
+      });
       try {
         if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
           await switchPermissionModeIfRequested(batch.mode.permissionMode);
@@ -921,15 +954,23 @@ export async function runAcp(opts: {
           await switchModelIfRequested(batch.mode.model);
         }
         await backend.sendPrompt(acpSessionId, batch.message);
-        await turnEnded;
+        await guardedTurnEnded;
+        if (turnEndError) {
+          throw turnEndError;
+        }
         sendEnvelopes(sessionManager.endTurn('completed'));
         session.sendSessionEvent({ type: 'ready' });
         if (verbose) {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
         }
       } catch (error) {
-        sendEnvelopes(sessionManager.endTurn('failed'));
+        const turnWasCancelled = error instanceof AcpTurnCancelledError;
+        sendEnvelopes(sessionManager.endTurn(turnWasCancelled ? 'cancelled' : 'failed'));
         session.sendSessionEvent({ type: 'ready' });
+        if (turnWasCancelled) {
+          logAcp('muted', `Prompt cancelled from ${opts.agentName}: ${error.message}`);
+          continue;
+        }
         logAcp('error', `Prompt error from ${opts.agentName}: ${error instanceof Error ? error.message : String(error)}`);
         clearPendingTurn(error instanceof Error ? error : new Error(String(error)));
         throw error;
