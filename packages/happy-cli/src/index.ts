@@ -608,6 +608,18 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
 `)
     }
     return;
+  } else if (subcommand === 'update') {
+    // Pass through to claude update directly without session wrapper/hooks
+    // The session launcher appends --settings which claude update doesn't accept
+    try {
+      execFileSync(claudeCliPath, args, { stdio: 'inherit', windowsHide: true })
+    } catch (error) {
+      if (error && typeof error === 'object' && 'status' in error) {
+        process.exit((error as { status: number }).status || 1)
+      }
+      process.exit(1)
+    }
+    return;
   } else {
 
     // If the first argument is claude, remove it
