@@ -24,9 +24,9 @@ import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
 import { hackMode, hackModes } from '@/sync/modeHacks';
-import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
+import { resolveAgentInputContextWarning } from '@/utils/agentInputContextWarning';
 
 interface AgentInputProps {
     // `initialValue` seeds the uncontrolled textarea once; keystrokes never
@@ -98,8 +98,6 @@ interface AgentInputProps {
     onRemoveImage?: (id: string) => void;
     onAddImages?: (images: AttachmentPreview[]) => void;
 }
-
-const MAX_CONTEXT_SIZE = 190000;
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -310,22 +308,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         color: theme.colors.button.primary.tint,
     },
 }));
-
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme, contextWindow: number = MAX_CONTEXT_SIZE) => {
-    const maxContextSize = Number.isFinite(contextWindow) && contextWindow > 0 ? contextWindow : MAX_CONTEXT_SIZE;
-    const percentageUsed = (contextSize / maxContextSize) * 100;
-    const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
-
-    if (percentageRemaining <= 5) {
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warningCritical };
-    } else if (percentageRemaining <= 10) {
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
-    } else if (alwaysShow) {
-        // Show context remaining in neutral color when not near limit
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
-    }
-    return null; // No display needed
-};
 
 // Stable sub-trees extracted from AgentInput so they don't reconcile when
 // the input's keystroke-derived state (hasText / inputState) flips. Their
@@ -609,9 +591,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [isSandboxEnabled]);
 
     // Calculate context warning
-    const contextWarning = props.usageData?.contextSize
-        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme, props.usageData.contextWindow)
-        : null;
+    const contextWarning = resolveAgentInputContextWarning(
+        props.usageData,
+        props.alwaysShowContextSize ?? false,
+        theme,
+    );
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
