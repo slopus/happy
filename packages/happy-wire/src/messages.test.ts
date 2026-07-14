@@ -130,10 +130,12 @@ describe('shared wire message schemas', () => {
       },
       meta: {
         sentFrom: 'mobile',
+        effort: 'max',
       },
     });
 
     expect(parsed.success).toBe(true);
+    expect(parsed.data?.meta?.effort).toBe('max');
   });
 
   it('parses legacy decrypted agent message payload', () => {
@@ -189,10 +191,12 @@ describe('shared wire message schemas', () => {
       },
       meta: {
         sentFrom: 'cli',
+        effort: null,
       },
     });
 
     expect(parsed.success).toBe(true);
+    expect(parsed.data?.meta?.effort).toBeNull();
   });
 
   it('parses top-level message discriminated union for legacy and modern roles', () => {
