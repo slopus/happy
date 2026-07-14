@@ -17,6 +17,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Modal } from '@/modal';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { resolveControlMode } from '@/sync/controlHandoff';
+import { getInvertedChatListKeyboardScrollDelta } from './chatListKeyboardScroll';
 
 const SCROLL_THRESHOLD = 300;
 
@@ -322,6 +323,24 @@ const ChatListInternal = React.memo((props: {
         return () => node.removeEventListener('wheel', handler);
     }, []);
 
+    // Web applies keyboard scrolling to the transformed DOM node underneath the
+    // inverted FlatList, so native key behavior reveals content backward.
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        if (typeof window === 'undefined' || typeof document === 'undefined') return;
+        const node = (flatListRef.current as any)?.getScrollableNode?.() as HTMLElement | undefined;
+        if (!node) return;
+        const handler = (e: KeyboardEvent) => {
+            if (!shouldHandleChatListKeyboardEvent(node, e.target)) return;
+            const delta = getInvertedChatListKeyboardScrollDelta(e, node.clientHeight);
+            if (delta === null) return;
+            node.scrollTop += delta;
+            e.preventDefault();
+        };
+        window.addEventListener('keydown', handler, true);
+        return () => window.removeEventListener('keydown', handler, true);
+    }, []);
+
     return (
         <View style={{ flex: 1 }}>
             <FlatList
@@ -376,6 +395,12 @@ const ChatListInternal = React.memo((props: {
 
 function isCollapsibleDisplayItem(item: DisplayItem): item is ToolGroupItem | Extract<DisplayItem, { type: 'agent-work-group' }> {
     return item.type === 'tool-group' || item.type === 'agent-work-group';
+}
+
+function shouldHandleChatListKeyboardEvent(node: HTMLElement, target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return true;
+    if (target.isContentEditable || target.closest('input, textarea, select')) return false;
+    return target === document.body || target === document.documentElement || node.contains(target);
 }
 
 const styles = StyleSheet.create((theme) => ({
