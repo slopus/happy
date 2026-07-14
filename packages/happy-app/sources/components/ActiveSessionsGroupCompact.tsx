@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Pressable, Platform } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
-import { Machine } from '@/sync/storageTypes';
 import { SessionRowData } from '@/sync/storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLastSeen } from '@/utils/sessionUtils';
@@ -21,6 +20,8 @@ import { sessionKill } from '@/sync/ops';
 import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
+import { SessionShortcutHintBadge } from './ShortcutHints';
+import { buildActiveSessionDisplayGroups } from '@/utils/sessionDisplayOrder';
 
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
     disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
@@ -167,63 +168,12 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
     const styles = stylesheet;
     const machines = useAllMachines();
 
-    const machinesMap = React.useMemo(() => {
-        const map: Record<string, Machine> = {};
-        machines.forEach(machine => {
-            map[machine.id] = machine;
-        });
-        return map;
-    }, [machines]);
-
-    // Group sessions by machine, then by project within each machine
-    const { machineGroups, hasMultipleMachines } = React.useMemo(() => {
-        const unknownText = t('status.unknown');
-        const byMachine = new Map<string, {
-            machineId: string;
-            machineName: string;
-            projects: Map<string, {
-                displayPath: string;
-                sessions: SessionRowData[];
-            }>;
-        }>();
-
-        sessions.forEach(session => {
-            const machineId = session.machineId || unknownText;
-            const machine = machineId !== unknownText ? machinesMap[machineId] : null;
-            const machineName = machine?.metadata?.displayName ||
-                machine?.metadata?.host ||
-                (machineId !== unknownText ? machineId : `<${unknownText}>`);
-
-            let machineGroup = byMachine.get(machineId);
-            if (!machineGroup) {
-                machineGroup = { machineId, machineName, projects: new Map() };
-                byMachine.set(machineId, machineGroup);
-            }
-
-            const projectPath = session.path || '';
-            let projectGroup = machineGroup.projects.get(projectPath);
-            if (!projectGroup) {
-                const displayPath = formatPathRelativeToHome(projectPath, session.homeDir ?? undefined);
-                projectGroup = { displayPath, sessions: [] };
-                machineGroup.projects.set(projectPath, projectGroup);
-            }
-
-            projectGroup.sessions.push(session);
-        });
-
-        // Sort sessions within each project group
-        byMachine.forEach(mg => {
-            mg.projects.forEach(pg => {
-                pg.sessions.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-            });
-        });
-
-        const sorted = Array.from(byMachine.values()).sort((a, b) =>
-            a.machineName.localeCompare(b.machineName)
-        );
-
-        return { machineGroups: sorted, hasMultipleMachines: byMachine.size > 1 };
-    }, [sessions, machinesMap]);
+    const machineGroups = React.useMemo(() => buildActiveSessionDisplayGroups(
+        sessions,
+        machines,
+        t('status.unknown'),
+    ), [machines, sessions]);
+    const hasMultipleMachines = machineGroups.length > 1;
 
     return (
         <View style={styles.container}>
@@ -366,6 +316,10 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     >
                         {session.name}
                     </Text>
+                    <SessionShortcutHintBadge
+                        sessionId={session.id}
+                        style={styles.sessionShortcutBadge}
+                    />
                 </View>
             </View>
         </Pressable>
@@ -536,6 +490,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 15,
         flex: 1,
         ...Typography.default('regular'),
+    },
+    sessionShortcutBadge: {
+        flexShrink: 0,
+        marginLeft: 8,
     },
     sessionTitleConnected: {
         color: theme.colors.text,

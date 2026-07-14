@@ -21,6 +21,7 @@ import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPop
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
+import { SessionShortcutHintBadge } from './ShortcutHints';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -118,6 +119,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontWeight: '500',
         flex: 1,
         ...Typography.default('semiBold'),
+    },
+    sessionShortcutBadge: {
+        flexShrink: 0,
+        marginLeft: 8,
     },
     sessionTitleConnected: {
         color: theme.colors.text,
@@ -431,6 +436,10 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     ]} numberOfLines={1}>
                         {session.name}
                     </Text>
+                    <SessionShortcutHintBadge
+                        sessionId={session.id}
+                        style={styles.sessionShortcutBadge}
+                    />
                 </View>
 
                 {session.path ? (

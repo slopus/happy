@@ -10,6 +10,7 @@ import { getServerInfo } from '@/sync/serverConfig';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { ShortcutHintBadge, useShortcutHints } from './ShortcutHints';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     headerButton: {
@@ -18,6 +19,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         height: 32,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    headerButtonShortcutActive: {
+        borderRadius: 8,
+        backgroundColor: theme.colors.surfaceSelected,
+    },
+    headerShortcutBadge: {
+        position: 'absolute',
+        top: -8,
+        right: -12,
     },
     iconButton: {
         color: theme.colors.header.tint,
@@ -118,14 +128,19 @@ function HeaderRight() {
     const router = useRouter();
     const styles = stylesheet;
     const { theme } = useUnistyles();
+    const { visible: shortcutHintsVisible } = useShortcutHints();
 
     return (
         <Pressable
             onPress={() => router.navigate('/new')}
             hitSlop={15}
-            style={styles.headerButton}
+            style={[
+                styles.headerButton,
+                shortcutHintsVisible && styles.headerButtonShortcutActive,
+            ]}
         >
             <Ionicons name="add-outline" size={28} color={theme.colors.header.tint} />
+            <ShortcutHintBadge shortcutKey="N" style={styles.headerShortcutBadge} />
         </Pressable>
     );
 }

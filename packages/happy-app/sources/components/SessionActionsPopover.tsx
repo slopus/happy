@@ -6,6 +6,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { useSessionQuickActions, SessionActionItem } from '@/hooks/useSessionQuickActions';
 import { useSession } from '@/sync/storage';
+import {
+    formatShortcutChord,
+    getPreferredShortcutModifier,
+    matchesShortcutChord,
+    SESSION_ACTION_SHORTCUTS,
+} from '@/keyboard/shortcuts';
 
 export type SessionActionsAnchor =
     | {
@@ -31,7 +37,7 @@ interface SessionActionsPopoverProps {
 }
 
 
-const WEB_MENU_WIDTH = 232;
+const WEB_MENU_WIDTH = 288;
 const WEB_MENU_ITEM_HEIGHT = 48;
 const WEB_MENU_MARGIN = 12;
 
@@ -85,6 +91,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         lineHeight: 20,
         ...Typography.default(),
     },
+    menuItemShortcut: {
+        flexShrink: 0,
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        lineHeight: 18,
+        ...Typography.default('semiBold'),
+    },
     nativeContainer: {
         flex: 1,
         justifyContent: 'flex-end',
@@ -120,6 +133,9 @@ export function SessionActionsPopover({
         onAfterArchive,
         onAfterDelete,
     });
+    const preferredModifier = React.useMemo(() => getPreferredShortcutModifier(
+        typeof navigator === 'undefined' ? undefined : navigator
+    ), []);
 
     const position = React.useMemo(() => {
         if (!anchor) {
@@ -150,6 +166,30 @@ export function SessionActionsPopover({
         action.onPress();
     }, [onClose]);
 
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || typeof window === 'undefined' || !visible || !anchor || !session) {
+            return;
+        }
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            const action = actions.find((candidate) => matchesShortcutChord(
+                event,
+                preferredModifier,
+                SESSION_ACTION_SHORTCUTS[candidate.id],
+            ));
+            if (!action) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            handleActionPress(action);
+        };
+
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }, [actions, anchor, handleActionPress, preferredModifier, session, visible]);
+
     if (!visible || !anchor || !session) {
         return null;
     }
@@ -162,6 +202,10 @@ export function SessionActionsPopover({
             {actions.map((action, index) => {
                 const isLast = index === actions.length - 1;
                 const color = action.destructive ? theme.colors.status.error : theme.colors.text;
+                const shortcutLabel = formatShortcutChord(
+                    preferredModifier,
+                    SESSION_ACTION_SHORTCUTS[action.id],
+                );
 
                 return (
                     <Pressable
@@ -182,6 +226,9 @@ export function SessionActionsPopover({
                         <Text numberOfLines={1} style={[styles.menuItemLabel, { color }]}>
                             {action.label}
                         </Text>
+                        {Platform.OS === 'web' && (
+                            <Text style={styles.menuItemShortcut}>{shortcutLabel}</Text>
+                        )}
                     </Pressable>
                 );
             })}

@@ -1,29 +1,113 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+import {
+    getGlobalShortcutId,
+    getPressedShortcutModifier,
+    getRecentSessionShortcutIndex,
+    GlobalShortcutId,
+    ShortcutModifier,
+} from '@/keyboard/shortcuts';
 
-export function useGlobalKeyboard(onCommandPalette: () => void) {
+const SHORTCUT_HINT_DELAY_MS = 240;
+
+export interface GlobalKeyboardActions {
+    commandPalette?: () => void;
+    newSession?: () => void;
+    settings?: () => void;
+    recentSession?: (index: number) => boolean;
+}
+
+export function useGlobalKeyboard(
+    actions: GlobalKeyboardActions,
+    browserSafeShortcuts = false,
+) {
+    const [visibleModifier, setVisibleModifier] = useState<ShortcutModifier | null>(null);
+    const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const actionsRef = useRef(actions);
+    actionsRef.current = actions;
+
+    const hideShortcutHints = useCallback(() => {
+        if (hintTimerRef.current) {
+            clearTimeout(hintTimerRef.current);
+            hintTimerRef.current = null;
+        }
+        setVisibleModifier(null);
+    }, []);
+
     useEffect(() => {
-        if (Platform.OS !== 'web') {
+        if (Platform.OS !== 'web' || typeof window === 'undefined') {
             return;
         }
 
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Check for CMD+K (Mac) or Ctrl+K (Windows/Linux)
-            const isModifierPressed = e.metaKey || e.ctrlKey;
-            
-            if (isModifierPressed && e.key === 'k') {
+            const modifier = getPressedShortcutModifier(e);
+            if (modifier) {
+                if (!e.repeat && !hintTimerRef.current) {
+                    hintTimerRef.current = setTimeout(() => {
+                        setVisibleModifier(modifier);
+                        hintTimerRef.current = null;
+                    }, SHORTCUT_HINT_DELAY_MS);
+                }
+                return;
+            }
+
+            const recentSessionIndex = getRecentSessionShortcutIndex(e, browserSafeShortcuts);
+            if (recentSessionIndex !== null) {
+                const handled = actionsRef.current.recentSession?.(recentSessionIndex) ?? false;
+                if (handled) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    hideShortcutHints();
+                }
+                return;
+            }
+
+            const shortcutId = getGlobalShortcutId(e, browserSafeShortcuts);
+            if (!shortcutId) {
+                return;
+            }
+
+            const action = actionsRef.current[shortcutId as GlobalShortcutId];
+            if (action) {
                 e.preventDefault();
                 e.stopPropagation();
-                onCommandPalette();
+                hideShortcutHints();
+                action();
             }
         };
 
-        // Add event listener
-        window.addEventListener('keydown', handleKeyDown);
-
-        // Cleanup
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.key === 'Meta' || e.key === 'Control') {
+                hideShortcutHints();
+            }
         };
-    }, [onCommandPalette]);
+
+        const handleVisibilityChange = () => {
+            if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+                hideShortcutHints();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown, true);
+        window.addEventListener('keyup', handleKeyUp);
+        window.addEventListener('blur', hideShortcutHints);
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+        }
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown, true);
+            window.removeEventListener('keyup', handleKeyUp);
+            window.removeEventListener('blur', hideShortcutHints);
+            if (typeof document !== 'undefined') {
+                document.removeEventListener('visibilitychange', handleVisibilityChange);
+            }
+            if (hintTimerRef.current) {
+                clearTimeout(hintTimerRef.current);
+                hintTimerRef.current = null;
+            }
+        };
+    }, [browserSafeShortcuts, hideShortcutHints]);
+
+    return visibleModifier;
 }

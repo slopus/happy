@@ -17,9 +17,10 @@ import { getSessionForkSource } from '@/utils/sessionFork';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/sync/storage';
 import { DuplicateSheet } from '@/components/DuplicateSheet';
+import type { SessionActionShortcutId } from '@/keyboard/shortcuts';
 
 export interface SessionActionItem {
-    id: string;
+    id: SessionActionShortcutId;
     label: string;
     icon: string;
     onPress: () => void;
