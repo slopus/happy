@@ -39,6 +39,15 @@ import { handleCodexCommand } from './commands/codexCommand'
 (async () => {
   const args = process.argv.slice(2)
 
+  // `happy --version` / `happy -v` on its own: print the CLI version and exit
+  // immediately — no auth, no daemon, no Claude Code startup. When --version is
+  // combined with other args we fall through below so it is still forwarded to
+  // Claude Code (which prints its own version after ours).
+  if (args.length === 1 && (args[0] === '--version' || args[0] === '-v')) {
+    console.log(`happy version: ${packageJson.version}`)
+    process.exit(0)
+  }
+
   // If --version is passed - do not log, its likely daemon inquiring about our version
   if (!args.includes('--version')) {
     logger.debug('Starting happy CLI with args: ', process.argv)
