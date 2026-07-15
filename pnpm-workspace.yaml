@@ -6,3 +6,69 @@ packages:
   - "packages/happy-wire"
   - "packages/happy-app-logs"
   - "packages/codium"
+
+# node_modules layout. IMPORTANT: pnpm 11 reads these settings ONLY from this
+# file — the same keys in .npmrc are silently ignored (https://pnpm.io/settings:
+# "Only auth and registry settings are read from .npmrc files"). The "hoisted"
+# linker is required because several workspace packages import dependencies they
+# do not declare and rely on them being hoisted to the root node_modules to
+# resolve — e.g. @anthropic-ai/sdk (happy-cli) and @octokit/webhooks (happy-server,
+# via octokit). pnpm's default "isolated" linker leaves those unresolved and
+# breaks the CLI and server builds.
+nodeLinker: hoisted
+shamefullyHoist: true
+
+# Peer dependencies (match pnpm's current defaults; pinned explicitly). Also
+# ignored in .npmrc under pnpm 11.
+autoInstallPeers: true
+strictPeerDependencies: false
+
+# Lockfile enforcement (CI-style). Refuse any `pnpm install` that would modify
+# pnpm-lock.yaml: if a package.json and the lockfile disagree, the install FAILS
+# instead of silently rewriting the lockfile. Guarantees reproducible installs on
+# this hardening branch. Equivalent to passing --frozen-lockfile to every install.
+# The `frozen-lockfile` key in .npmrc is ignored by pnpm 11 — this is the only
+# place it takes effect. To update deps, temporarily run `pnpm install --no-frozen-lockfile`.
+frozenLockfile: true
+
+# Supply-chain hardening: refuse dependency versions published less than
+# 14 days ago (14 * 24 * 60 = 20160 minutes). Gives time for a compromised or
+# malicious release to be detected and yanked before it reaches us. Requires
+# pnpm >= 10.16. Applies at resolution time (pnpm add/update); the frozen
+# lockfile and workspace-internal packages are unaffected.
+minimumReleaseAge: 20160
+
+# Moved from the package.json "pnpm" field — pnpm 11 no longer reads that field.
+# Force patched versions of transitive dependencies with known advisories.
+overrides:
+  whatwg-url: "14.2.0"
+  parse-path: "7.0.3"
+  "@types/parse-path": "7.0.3"
+  # Critical-severity advisory fixes (pnpm audit) — force patched versions.
+  basic-ftp: "^5.2.0"        # path traversal; transitive via release-it (dev)
+  fast-xml-parser: "^4.5.4"  # entity-encoding bypass; transitive via minio
+  shell-quote: "^1.8.4"      # newline escaping; transitive via expo/react-devtools (dev)
+  "vitest@3": "^3.2.6"       # UI-server file read/exec; scoped to the vulnerable 3.x line only
+
+# Allowlist of dependencies permitted to run install/build (lifecycle) scripts.
+# pnpm blocks lifecycle scripts for every other dependency by default — this is
+# the primary defense against malicious postinstall scripts in the dep tree.
+# NOTE: pnpm 11 renamed onlyBuiltDependencies -> allowBuilds (a name:true|false map).
+allowBuilds:
+  "@more-tech/react-native-libsodium": true
+  "@prisma/client": true
+  "@prisma/engines": true
+  "@shopify/react-native-skia": true
+  "@tailwindcss/oxide": true
+  better-sqlite3: true
+  electron: true
+  esbuild: true
+  node-pty: true
+  prisma: true
+  # sharp loads prebuilt @img/sharp-* bindings (installed as optional deps), so
+  # it does not need its source-build install script. false avoids a from-source
+  # compile that would require libvips + headers on the build host.
+  sharp: false
+  # Reviewed, intentionally NOT built (matches prior pnpm 10 behavior). Flip to
+  # true if the Claude Code SDK's postinstall turns out to be required.
+  "@anthropic-ai/claude-code": false
