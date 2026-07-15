@@ -27,11 +27,14 @@ describe('session status bar helpers', () => {
         // Explicit API-reported window always wins.
         expect(resolveContextMaxValue(500000, 'claude-opus-4-8[1m]')).toBe(500000);
         expect(resolveContextMaxValue(210000, 'claude-opus-4-8')).toBe(210000);
-        // No API window: size from the selected model. A [1m] model must NOT
+        // No API window: size from the selected model. A 1M model must NOT
         // clamp to the 190K default (regression #910 via SessionStatusBar).
         expect(resolveContextMaxValue(undefined, 'claude-opus-4-8[1m]')).toBe(1_000_000);
         expect(resolveContextMaxValue(0, 'claude-opus-4-8[1m]')).toBe(1_000_000);
-        expect(resolveContextMaxValue(null, 'claude-opus-4-8')).toBe(SESSION_STATUS_CONTEXT_MAX);
+        // Opus 4.8 always runs the 1M window on the Anthropic API, even without
+        // the [1m] suffix — the gauge must not clamp it to 190K.
+        expect(resolveContextMaxValue(null, 'claude-opus-4-8')).toBe(1_000_000);
+        // Unknown model + no API window stays conservative at the 190K default.
         expect(resolveContextMaxValue(undefined, undefined)).toBe(SESSION_STATUS_CONTEXT_MAX);
     });
 
