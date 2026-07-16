@@ -1,9 +1,9 @@
 # Stage 1: install dependencies with workspace context
-FROM node:20 AS deps
+FROM node:22 AS deps
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y python3 ffmpeg make g++ build-essential && rm -rf /var/lib/apt/lists/*
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+RUN corepack enable && corepack prepare pnpm@11.13.0 --activate
 
 WORKDIR /repo
 
