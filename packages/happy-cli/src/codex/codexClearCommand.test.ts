@@ -7,6 +7,7 @@ describe('enqueueCodexUserText', () => {
         const mode = { permissionMode: 'default' as const };
         const queue = {
             push: vi.fn(),
+            pushIsolated: vi.fn(),
             pushIsolateAndClear: vi.fn(),
         };
 
@@ -19,6 +20,45 @@ describe('enqueueCodexUserText', () => {
         expect(result).toBe('clear');
         expect(queue.pushIsolateAndClear).toHaveBeenCalledWith('  /clear  ', mode, undefined);
         expect(queue.push).not.toHaveBeenCalled();
+        expect(queue.pushIsolated).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        '/goal pause',
+        '/goal resume',
+        '/goal clear',
+        '/goal edit',
+        '/goal finish the release',
+    ])('queues exact goal command %s in isolation without clearing pending prompts', (text) => {
+        const mode = { permissionMode: 'default' as const };
+        const queue = {
+            push: vi.fn(),
+            pushIsolated: vi.fn(),
+            pushIsolateAndClear: vi.fn(),
+        };
+
+        const result = enqueueCodexUserText({ text, mode, queue });
+
+        expect(result).toBe('goal');
+        expect(queue.pushIsolated).toHaveBeenCalledWith(text, mode, undefined);
+        expect(queue.push).not.toHaveBeenCalled();
+        expect(queue.pushIsolateAndClear).not.toHaveBeenCalled();
+    });
+
+    it('leaves bare /goal as ordinary text when no view command is implemented', () => {
+        const mode = { permissionMode: 'default' as const };
+        const queue = {
+            push: vi.fn(),
+            pushIsolated: vi.fn(),
+            pushIsolateAndClear: vi.fn(),
+        };
+
+        const result = enqueueCodexUserText({ text: '  /goal  ', mode, queue });
+
+        expect(result).toBe('queued');
+        expect(queue.push).toHaveBeenCalledWith('  /goal  ', mode, undefined);
+        expect(queue.pushIsolated).not.toHaveBeenCalled();
+        expect(queue.pushIsolateAndClear).not.toHaveBeenCalled();
     });
 
     it('passes attachments to normal queued messages', () => {
@@ -30,6 +70,7 @@ describe('enqueueCodexUserText', () => {
         }];
         const queue = {
             push: vi.fn(),
+            pushIsolated: vi.fn(),
             pushIsolateAndClear: vi.fn(),
         };
 
@@ -42,6 +83,7 @@ describe('enqueueCodexUserText', () => {
 
         expect(result).toBe('queued');
         expect(queue.push).toHaveBeenCalledWith('inspect this image', mode, attachments);
+        expect(queue.pushIsolated).not.toHaveBeenCalled();
         expect(queue.pushIsolateAndClear).not.toHaveBeenCalled();
     });
 
@@ -54,6 +96,7 @@ describe('enqueueCodexUserText', () => {
         }];
         const queue = {
             push: vi.fn(),
+            pushIsolated: vi.fn(),
             pushIsolateAndClear: vi.fn(),
         };
 
@@ -67,5 +110,6 @@ describe('enqueueCodexUserText', () => {
         expect(result).toBe('clear');
         expect(queue.pushIsolateAndClear).toHaveBeenCalledWith('/clear', mode, attachments);
         expect(queue.push).not.toHaveBeenCalled();
+        expect(queue.pushIsolated).not.toHaveBeenCalled();
     });
 });

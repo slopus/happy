@@ -1156,8 +1156,8 @@ describe('CodexAppServerClient sandbox integration', () => {
                             result: {
                                 goal: {
                                     threadId: 'thread-goal-1',
-                                    objective: msg.params?.objective,
-                                    status: 'active',
+                                    objective: msg.params?.objective ?? 'finish the task',
+                                    status: msg.params?.status ?? 'active',
                                     tokenBudget: null,
                                     tokensUsed: 0,
                                     timeUsedSeconds: 0,
@@ -1196,6 +1196,16 @@ describe('CodexAppServerClient sandbox integration', () => {
                 status: 'active',
             },
         });
+        await expect(client.setGoal({
+            threadId: 'thread-goal-1',
+            status: 'paused',
+        })).resolves.toMatchObject({
+            goal: {
+                threadId: 'thread-goal-1',
+                objective: 'finish the task',
+                status: 'paused',
+            },
+        });
         await expect(client.clearGoal({
             threadId: 'thread-goal-1',
         })).resolves.toEqual({ cleared: true });
@@ -1214,7 +1224,303 @@ describe('CodexAppServerClient sandbox integration', () => {
                     threadId: 'thread-goal-1',
                 },
             }),
+            expect.objectContaining({
+                method: 'thread/goal/set',
+                params: {
+                    threadId: 'thread-goal-1',
+                    status: 'paused',
+                },
+            }),
         ]));
+
+        await client.disconnect();
+    });
+
+    it('uses the native goal snapshot sent immediately after thread resume without polling', async () => {
+        mockExecSync.mockReturnValue('codex-cli 0.140.0');
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3005,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    setTimeout(() => {
+                        const response = {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-native-goal', path: '/tmp/thread-native-goal' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        };
+                        const snapshot = {
+                            method: 'thread/goal/updated',
+                            params: {
+                                threadId: 'thread-native-goal',
+                                turnId: null,
+                                goal: {
+                                    threadId: 'thread-native-goal',
+                                    objective: 'persist across reconnect',
+                                    status: 'paused',
+                                    tokenBudget: null,
+                                    tokensUsed: 10,
+                                    timeUsedSeconds: 5,
+                                    createdAt: 1781680000,
+                                    updatedAt: 1781680010,
+                                },
+                            },
+                        };
+                        stdout.push(
+                            [response, snapshot]
+                                .map((payload) => JSON.stringify(payload) + '\n')
+                                .join(''),
+                        );
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        const threadIdsAtEvent: Array<string | null> = [];
+        client.setEventHandler((event) => {
+            if (event.type === 'thread_goal_updated') {
+                events.push(event as Record<string, unknown>);
+                threadIdsAtEvent.push(client.threadId);
+            }
+        });
+
+        await client.connect();
+        await client.resumeThread({ threadId: 'thread-native-goal' });
+        await waitFor(() => events.length === 1);
+
+        expect(events).toContainEqual(expect.objectContaining({
+            type: 'thread_goal_updated',
+            threadId: 'thread-native-goal',
+            goal: expect.objectContaining({
+                objective: 'persist across reconnect',
+                status: 'paused',
+            }),
+        }));
+        expect(threadIdsAtEvent).toEqual(['thread-native-goal']);
+        expect(requests.map((request) => request.method)).not.toContain('thread/goal/get');
+
+        await client.disconnect();
+    });
+
+    it('rejects a resume response superseded by an explicit thread clear', async () => {
+        mockExecSync.mockReturnValue('codex-cli 0.140.0');
+        let releaseResume: (() => void) | undefined;
+        const proc = createMockProcess({
+            pid: 3006,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    releaseResume = () => {
+                        const response = {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-stale-resume', path: '/tmp/thread-stale-resume' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        };
+                        const snapshot = {
+                            method: 'thread/goal/updated',
+                            params: {
+                                threadId: 'thread-stale-resume',
+                                turnId: null,
+                                goal: {
+                                    threadId: 'thread-stale-resume',
+                                    objective: 'stale objective',
+                                    status: 'paused',
+                                    tokenBudget: null,
+                                    tokensUsed: 0,
+                                    timeUsedSeconds: 0,
+                                    createdAt: 1781680000,
+                                    updatedAt: 1781680001,
+                                },
+                            },
+                        };
+                        stdout.push(
+                            [response, snapshot]
+                                .map((payload) => JSON.stringify(payload) + '\n')
+                                .join(''),
+                        );
+                    };
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const threadIdsAtEvent: Array<string | null> = [];
+        client.setEventHandler((event) => {
+            if (event.type === 'thread_goal_updated') {
+                threadIdsAtEvent.push(client.threadId);
+            }
+        });
+
+        await client.connect();
+        const resumeExpectation = expect(
+            client.resumeThread({ threadId: 'thread-stale-resume' }),
+        ).rejects.toThrow('Discarding stale thread/resume response');
+        await waitFor(() => releaseResume !== undefined);
+
+        // A deliberate null -> null clear must still invalidate the pending
+        // resume; comparing only thread ids cannot protect this case.
+        client.clearThreadState();
+        releaseResume?.();
+
+        await resumeExpectation;
+        expect(client.threadId).toBeNull();
+        expect(threadIdsAtEvent).toEqual([null]);
+
+        await client.disconnect();
+    });
+
+    it('does not clear a newer thread when an older reconnect resume loses ownership', async () => {
+        mockExecSync.mockReturnValue('codex-cli 0.140.0');
+        let releaseOldResume: (() => void) | undefined;
+        const firstProcess = createMockProcess({
+            pid: 3007,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-before-reconnect', path: '/tmp/thread-before-reconnect' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        const secondProcess = createMockProcess({
+            pid: 3008,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    releaseOldResume = () => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-before-reconnect', path: '/tmp/thread-before-reconnect' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    };
+                }
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-after-clear', path: '/tmp/thread-after-clear' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn
+            .mockImplementationOnce(() => firstProcess)
+            .mockImplementationOnce(() => secondProcess);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({ model: 'gpt-test' });
+        const reconnect = client.reconnectAndResumeThread();
+        await waitFor(() => releaseOldResume !== undefined);
+
+        client.clearThreadState();
+        await client.startThread({ model: 'gpt-test' });
+        expect(client.threadId).toBe('thread-after-clear');
+
+        releaseOldResume?.();
+        await expect(reconnect).resolves.toBe(false);
+        expect(client.threadId).toBe('thread-after-clear');
+
+        await client.disconnect();
+    });
+
+    it('does not resume a preserved thread cleared while the replacement process connects', async () => {
+        mockExecSync.mockReturnValue('codex-cli 0.140.0');
+        const secondProcessRequests: MockRpcMessage[] = [];
+        const firstProcess = createMockProcess({
+            pid: 3009,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-cleared-during-connect', path: '/tmp/thread-cleared' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        const secondProcess = createMockProcess({
+            pid: 3010,
+            initializeDelayMs: 50,
+            onRequest: (msg) => {
+                secondProcessRequests.push(msg);
+            },
+        });
+        mockSpawn
+            .mockImplementationOnce(() => firstProcess)
+            .mockImplementationOnce(() => secondProcess);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({ model: 'gpt-test' });
+        const reconnect = client.reconnectAndResumeThread();
+        await waitFor(() => secondProcessRequests.some((request) => request.method === 'initialize'));
+
+        client.clearThreadState();
+
+        await expect(reconnect).resolves.toBe(false);
+        expect(secondProcessRequests.some((request) => request.method === 'thread/resume')).toBe(false);
+        expect(client.threadId).toBeNull();
 
         await client.disconnect();
     });

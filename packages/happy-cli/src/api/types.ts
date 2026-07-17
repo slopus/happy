@@ -361,6 +361,48 @@ export type AgentGoalStatus = {
     }
 );
 
+/**
+ * Detailed goal projection for clients that understand provider lifecycle
+ * states. Keep AgentGoalStatus unchanged so older, strict app schemas can
+ * continue to decode agent state while newer clients opt in to this field.
+ */
+export type AgentGoalStatusV2 = {
+  version: 2,
+  source: 'claude' | 'codex',
+  observedAt: number,
+  sourceSessionId?: string,
+  sourceRevision?: string | number,
+} & (
+  | {
+      status: 'unavailable',
+      reason?: 'unsupported' | 'not_loaded' | 'stale' | 'malformed' | 'error' | 'unknown',
+    }
+  | {
+      status: 'inactive',
+      reason?: 'none' | 'cleared' | 'completed' | 'unknown',
+    }
+  | {
+      status: 'active',
+      sourceSessionId: string,
+      text: string,
+      providerStatus: 'active' | 'paused' | 'blocked' | 'usageLimited' | 'budgetLimited',
+      capabilities?: {
+        clear?: boolean,
+        edit?: boolean,
+        pause?: boolean,
+        resume?: boolean,
+      },
+      progress?: {
+        currentStep?: number,
+        totalSteps?: number,
+        steps?: Array<{
+          text: string,
+          status: 'pending' | 'in_progress' | 'completed',
+        }>,
+      },
+    }
+);
+
 export type AgentState = {
   controlledByUser?: boolean | null | undefined
   requests?: {
@@ -389,4 +431,5 @@ export type AgentState = {
     }
   }
   agentGoalStatus?: AgentGoalStatus
+  agentGoalStatusV2?: AgentGoalStatusV2
 }

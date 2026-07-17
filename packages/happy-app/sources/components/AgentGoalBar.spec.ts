@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ActivityIndicator } from 'react-native';
 import { describe, expect, it, vi } from 'vitest';
 import type { VisibleAgentGoalStatus } from './agentGoalStatus';
 
@@ -37,8 +38,13 @@ vi.mock('@/text', () => ({
         const values: Record<string, string> = {
             'components.agentGoalBar.currentGoal': 'Current goal',
             'components.agentGoalBar.clearGoal': 'Clear goal',
-            'components.agentGoalBar.stopGoal': 'Stop goal',
+            'components.agentGoalBar.pauseGoal': 'Pause goal',
+            'components.agentGoalBar.resumeGoal': 'Resume goal',
             'components.agentGoalBar.editGoal': 'Edit goal',
+            'components.agentGoalBar.statusPaused': 'Paused',
+            'components.agentGoalBar.statusBlocked': 'Blocked',
+            'components.agentGoalBar.statusUsageLimited': 'Usage limited',
+            'components.agentGoalBar.statusBudgetLimited': 'Budget limited',
         };
         if (key === 'components.agentGoalBar.accessibilityLabel') {
             return `Current goal: ${params?.goal ?? ''}`;
@@ -53,6 +59,7 @@ const goal: VisibleAgentGoalStatus = {
     text: 'finish the current task',
     observedAt: 11_000,
     sourceSessionId: 'claude-session-1',
+    providerStatus: 'active',
 };
 
 type ElementWithProps = React.ReactElement<Record<string, any>>;
@@ -85,6 +92,20 @@ function findAllByLabel(node: React.ReactNode, label: string): ElementWithProps[
     return matches;
 }
 
+function findAllByType(node: React.ReactNode, type: React.ElementType): ElementWithProps[] {
+    const matches: ElementWithProps[] = [];
+    if (React.isValidElement(node)) {
+        const element = node as ElementWithProps;
+        if (element.type === type) {
+            matches.push(element);
+        }
+        for (const child of childrenOf(element)) {
+            matches.push(...findAllByType(child, type));
+        }
+    }
+    return matches;
+}
+
 async function renderGoalBar(props: Record<string, unknown>): Promise<ElementWithProps> {
     const { AgentGoalBar } = await import('./AgentGoalBar');
     return AgentGoalBar(props as any) as ElementWithProps;
@@ -96,6 +117,7 @@ describe('AgentGoalBar', () => {
 
         expect(textContent(element)).toContain('Current goal');
         expect(textContent(element)).toContain('finish the current task');
+        expect(textContent(element)).not.toContain('Active');
         expect(findAllByLabel(element, 'Current goal: finish the current task')).toHaveLength(1);
     });
 
@@ -103,12 +125,12 @@ describe('AgentGoalBar', () => {
         const element = await renderGoalBar({
             goal: {
                 ...goal,
-                capabilities: { clear: true, stop: true, edit: true },
+                capabilities: { clear: true, pause: true, edit: true },
             },
         });
 
         expect(findAllByLabel(element, 'Clear goal')).toHaveLength(0);
-        expect(findAllByLabel(element, 'Stop goal')).toHaveLength(0);
+        expect(findAllByLabel(element, 'Pause goal')).toHaveLength(0);
         expect(findAllByLabel(element, 'Edit goal')).toHaveLength(0);
     });
 
@@ -117,14 +139,14 @@ describe('AgentGoalBar', () => {
         const element = await renderGoalBar({
             goal: {
                 ...goal,
-                capabilities: { clear: true, stop: false, edit: true },
+                capabilities: { clear: true, pause: false, edit: true },
             },
             onAction,
         });
 
         const clearButton = findAllByLabel(element, 'Clear goal')[0];
         const editButton = findAllByLabel(element, 'Edit goal')[0];
-        expect(findAllByLabel(element, 'Stop goal')).toHaveLength(0);
+        expect(findAllByLabel(element, 'Pause goal')).toHaveLength(0);
 
         clearButton.props.onPress();
         editButton.props.onPress();
@@ -144,21 +166,82 @@ describe('AgentGoalBar', () => {
 
         expect(findAllByLabel(element, 'Edit goal')).toHaveLength(1);
         expect(findAllByLabel(element, 'Clear goal')).toHaveLength(0);
-        expect(findAllByLabel(element, 'Stop goal')).toHaveLength(0);
+        expect(findAllByLabel(element, 'Pause goal')).toHaveLength(0);
     });
 
-    it('disables the in-flight action button', async () => {
+    it('renders and dispatches Pause for an active goal', async () => {
         const onAction = vi.fn();
         const element = await renderGoalBar({
             goal: {
                 ...goal,
-                capabilities: { clear: true },
+                providerStatus: 'active',
+                capabilities: { pause: true },
+            },
+            onAction,
+        });
+
+        const pauseButton = findAllByLabel(element, 'Pause goal')[0];
+        expect(findAllByLabel(element, 'Resume goal')).toHaveLength(0);
+
+        pauseButton.props.onPress();
+        expect(onAction).toHaveBeenCalledWith('pause');
+    });
+
+    it('renders Paused state and dispatches Resume for a paused goal', async () => {
+        const onAction = vi.fn();
+        const element = await renderGoalBar({
+            goal: {
+                ...goal,
+                providerStatus: 'paused',
+                capabilities: { resume: true },
+            },
+            onAction,
+        });
+
+        expect(textContent(element)).toContain('Current goal · Paused');
+        expect(findAllByLabel(element, 'Current goal: finish the current task. Paused')).toHaveLength(1);
+        const resumeButton = findAllByLabel(element, 'Resume goal')[0];
+        expect(findAllByLabel(element, 'Pause goal')).toHaveLength(0);
+
+        resumeButton.props.onPress();
+        expect(onAction).toHaveBeenCalledWith('resume');
+    });
+
+    it.each([
+        ['blocked', 'Blocked'],
+        ['usageLimited', 'Usage limited'],
+        ['budgetLimited', 'Budget limited'],
+    ] as const)('renders %s state without a lifecycle action', async (providerStatus, label) => {
+        const element = await renderGoalBar({
+            goal: {
+                ...goal,
+                providerStatus,
+                capabilities: { pause: true, resume: true, clear: true },
+            },
+            onAction: vi.fn(),
+        });
+
+        expect(textContent(element)).toContain(`Current goal · ${label}`);
+        expect(findAllByLabel(element, 'Pause goal')).toHaveLength(0);
+        expect(findAllByLabel(element, 'Resume goal')).toHaveLength(0);
+        expect(findAllByLabel(element, 'Clear goal')).toHaveLength(1);
+    });
+
+    it('disables every action while showing a spinner only on the in-flight action', async () => {
+        const onAction = vi.fn();
+        const element = await renderGoalBar({
+            goal: {
+                ...goal,
+                capabilities: { clear: true, edit: true },
             },
             onAction,
             inFlightAction: 'clear',
         });
 
         const clearButton = findAllByLabel(element, 'Clear goal')[0];
+        const editButton = findAllByLabel(element, 'Edit goal')[0];
         expect(clearButton.props.accessibilityState).toEqual({ disabled: true });
+        expect(editButton.props.accessibilityState).toEqual({ disabled: true });
+        expect(findAllByType(element, ActivityIndicator)).toHaveLength(1);
     });
 });

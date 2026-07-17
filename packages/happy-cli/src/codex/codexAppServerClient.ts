@@ -56,6 +56,9 @@ type PendingRequest = {
     reject: (error: Error) => void;
     method: string;
     epoch: number;
+    // Runs synchronously before the request Promise settles, allowing state
+    // needed by an immediately following notification to be claimed first.
+    beforeResolve?: (result: unknown) => void;
 };
 
 type LegacyPatchChanges = Record<string, Record<string, unknown>>;
@@ -223,6 +226,9 @@ export class CodexAppServerClient {
 
     // Session state
     private _threadId: string | null = null;
+    // Invalidates in-flight resume claims whenever thread ownership changes.
+    // Deliberate null -> null clears also advance the revision.
+    private threadStateRevision = 0;
     private _turnId: string | null = null;
     private threadDefaults: {
         model?: string;
@@ -267,6 +273,11 @@ export class CodexAppServerClient {
 
     get turnId(): string | null {
         return this._turnId;
+    }
+
+    private replaceThreadId(threadId: string | null): void {
+        this._threadId = threadId;
+        this.threadStateRevision += 1;
     }
 
     supportsGoalActions(): boolean {
@@ -737,7 +748,7 @@ export class CodexAppServerClient {
         this.notificationProtocol = 'unknown';
         this.completedTurnIds.clear();
         if (!opts?.preserveThreadState) {
-            this._threadId = null;
+            this.replaceThreadId(null);
             this.threadDefaults = null;
         }
 
@@ -810,7 +821,7 @@ export class CodexAppServerClient {
         };
 
         const result = await this.request('thread/start', params) as NewConversationResponse;
-        this._threadId = result.thread.id;
+        this.replaceThreadId(result.thread.id);
         this._turnId = null;
         this.rawSubagentActivitySignaturesByItemId.clear();
         this.rememberThreadDefaults(opts);
@@ -845,9 +856,33 @@ export class CodexAppServerClient {
             persistExtendedHistory: true,
         };
 
-        const result = await this.request('thread/resume', params) as ResumeConversationResponse;
-        this._threadId = result.thread.id;
-        this._turnId = null;
+        const resumeRevision = this.threadStateRevision;
+        const result = await this.request(
+            'thread/resume',
+            params,
+            undefined,
+            (rawResult) => {
+                const resumed = rawResult as ResumeConversationResponse;
+                const resumedThreadId = resumed?.thread?.id;
+                if (typeof resumedThreadId !== 'string' || resumedThreadId.length === 0) {
+                    throw new Error('thread/resume returned no thread id');
+                }
+                if (resumedThreadId !== threadId) {
+                    throw new Error(
+                        `thread/resume returned unexpected thread ${resumedThreadId}; expected ${threadId}`,
+                    );
+                }
+                if (this.threadStateRevision !== resumeRevision) {
+                    throw new Error(`Discarding stale thread/resume response for ${threadId}`);
+                }
+                // App-server sends the persisted goal snapshot immediately after
+                // the resume response. Claim the thread before resolving the
+                // request so a notification in the same stdout batch is scoped
+                // to the resumed thread instead of being discarded.
+                this.replaceThreadId(resumedThreadId);
+                this._turnId = null;
+            },
+        ) as ResumeConversationResponse;
         this.rawSubagentActivitySignaturesByItemId.clear();
         this.rememberThreadDefaults({
             model: opts?.model ?? defaults.model,
@@ -884,7 +919,7 @@ export class CodexAppServerClient {
         };
 
         const result = await this.request('thread/fork', params) as ForkConversationResponse;
-        this._threadId = result.thread.id;
+        this.replaceThreadId(result.thread.id);
         this._turnId = null;
         this.rememberThreadDefaults({
             model: opts.model ?? defaults.model,
@@ -932,13 +967,13 @@ export class CodexAppServerClient {
 
     async setGoal(opts: {
         threadId: string;
-        objective: string;
+        objective?: string;
         status?: ThreadGoalSetParams['status'];
         tokenBudget?: number | null;
     }): Promise<ThreadGoalSetResponse> {
         const params: ThreadGoalSetParams = {
             threadId: opts.threadId,
-            objective: opts.objective,
+            ...(opts.objective !== undefined ? { objective: opts.objective } : {}),
             ...(opts.status !== undefined ? { status: opts.status } : {}),
             ...(opts.tokenBudget !== undefined ? { tokenBudget: opts.tokenBudget } : {}),
         };
@@ -956,10 +991,15 @@ export class CodexAppServerClient {
 
     async reconnectAndResumeThread(): Promise<boolean> {
         const threadId = this._threadId;
+        const reconnectRevision = this.threadStateRevision;
         await this.disconnectInternal({ preserveThreadState: !!threadId });
         await this.connect();
 
         if (!threadId) {
+            return false;
+        }
+        if (this.threadStateRevision !== reconnectRevision || this._threadId !== threadId) {
+            logger.debug('[CodexAppServer] Skipping resume because thread state changed during reconnect');
             return false;
         }
 
@@ -968,8 +1008,13 @@ export class CodexAppServerClient {
             return true;
         } catch (error) {
             logger.warn('[CodexAppServer] Failed to resume thread after reconnect', error);
-            this._threadId = null;
-            this.threadDefaults = null;
+            // A clear or a newly established thread may have superseded this
+            // reconnect while the resume RPC was in flight. Only clear state
+            // that is still owned by this attempt.
+            if (this.threadStateRevision === reconnectRevision && this._threadId === threadId) {
+                this.replaceThreadId(null);
+                this.threadDefaults = null;
+            }
             return false;
         }
     }
@@ -1228,7 +1273,7 @@ export class CodexAppServerClient {
             `[CodexAppServer] Clearing thread state: thread=${this._threadId ?? 'none'} turn=${this._turnId ?? 'none'}`,
         );
         this.resolvePendingTurn(true);
-        this._threadId = null;
+        this.replaceThreadId(null);
         this._turnId = null;
         this.threadDefaults = null;
         this.completedTurnIds.clear();
@@ -1241,7 +1286,12 @@ export class CodexAppServerClient {
     /** Default timeout for RPC requests (ms). */
     private static readonly REQUEST_TIMEOUT_MS = 30_000;
 
-    private request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown> {
+    private request(
+        method: string,
+        params?: unknown,
+        timeoutMs?: number,
+        beforeResolve?: (result: unknown) => void,
+    ): Promise<unknown> {
         const timeout = timeoutMs ?? CodexAppServerClient.REQUEST_TIMEOUT_MS;
         return new Promise((resolve, reject) => {
             if (!this.process?.stdin?.writable) {
@@ -1260,6 +1310,7 @@ export class CodexAppServerClient {
                 reject: (err) => { clearTimeout(timer); reject(err); },
                 method,
                 epoch: this.processEpoch,
+                beforeResolve,
             });
 
             const msg: JsonRpcRequest = { jsonrpc: '2.0', id, method, params };
@@ -1309,7 +1360,12 @@ export class CodexAppServerClient {
                 if (msg.error) {
                     pending.reject(new Error(`${pending.method}: ${msg.error.message} (code=${msg.error.code})`));
                 } else {
-                    pending.resolve(msg.result);
+                    try {
+                        pending.beforeResolve?.(msg.result);
+                        pending.resolve(msg.result);
+                    } catch (error) {
+                        pending.reject(error instanceof Error ? error : new Error(String(error)));
+                    }
                 }
             }
             return;

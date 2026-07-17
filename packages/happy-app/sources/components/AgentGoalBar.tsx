@@ -5,7 +5,7 @@ import * as React from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
-export type AgentGoalAction = 'clear' | 'stop' | 'edit';
+export type AgentGoalAction = 'clear' | 'pause' | 'resume' | 'edit';
 
 type AgentGoalBarProps = {
     goal: VisibleAgentGoalStatus;
@@ -14,30 +14,52 @@ type AgentGoalBarProps = {
     onPressDetails?: () => void;
 };
 
-const ACTION_CONFIG: Array<{
+type GoalActionConfig = {
     action: AgentGoalAction;
     capability: keyof NonNullable<VisibleAgentGoalStatus['capabilities']>;
     icon: keyof typeof Ionicons.glyphMap;
-}> = [
+};
+
+const BASE_ACTION_CONFIG: GoalActionConfig[] = [
     { action: 'edit', capability: 'edit', icon: 'create-outline' },
-    { action: 'stop', capability: 'stop', icon: 'pause-outline' },
     { action: 'clear', capability: 'clear', icon: 'trash-outline' },
 ];
 
 export function AgentGoalBar(props: AgentGoalBarProps) {
     const { theme } = useUnistyles();
+    const lifecycleAction: GoalActionConfig | null = props.goal.providerStatus === 'active'
+        ? { action: 'pause', capability: 'pause', icon: 'pause-outline' }
+        : props.goal.providerStatus === 'paused'
+            ? { action: 'resume', capability: 'resume', icon: 'play-outline' }
+            : null;
+    const actionConfig = lifecycleAction
+        ? [BASE_ACTION_CONFIG[0], lifecycleAction, BASE_ACTION_CONFIG[1]]
+        : BASE_ACTION_CONFIG;
     const actions = props.onAction
-        ? ACTION_CONFIG.filter((item) => props.goal.capabilities?.[item.capability])
+        ? actionConfig.filter((item) => props.goal.capabilities?.[item.capability])
         : [];
     const actionLabels: Record<AgentGoalAction, string> = {
         edit: t('components.agentGoalBar.editGoal'),
-        stop: t('components.agentGoalBar.stopGoal'),
+        pause: t('components.agentGoalBar.pauseGoal'),
+        resume: t('components.agentGoalBar.resumeGoal'),
         clear: t('components.agentGoalBar.clearGoal'),
     };
+    const statusLabel = props.goal.providerStatus === 'paused'
+        ? t('components.agentGoalBar.statusPaused')
+        : props.goal.providerStatus === 'blocked'
+            ? t('components.agentGoalBar.statusBlocked')
+            : props.goal.providerStatus === 'usageLimited'
+                ? t('components.agentGoalBar.statusUsageLimited')
+                : props.goal.providerStatus === 'budgetLimited'
+                    ? t('components.agentGoalBar.statusBudgetLimited')
+                    : null;
 
     return (
         <Pressable
-            accessibilityLabel={t('components.agentGoalBar.accessibilityLabel', { goal: props.goal.text })}
+            accessibilityLabel={[
+                t('components.agentGoalBar.accessibilityLabel', { goal: props.goal.text }),
+                statusLabel,
+            ].filter(Boolean).join('. ')}
             onPress={props.onPressDetails}
             style={({ pressed }) => ({
                 backgroundColor: theme.colors.surfaceHigh,
@@ -65,6 +87,7 @@ export function AgentGoalBar(props: AgentGoalBarProps) {
                     numberOfLines={1}
                 >
                     {t('components.agentGoalBar.currentGoal')}
+                    {statusLabel ? ` · ${statusLabel}` : null}
                 </Text>
                 <Text
                     style={{
@@ -81,7 +104,8 @@ export function AgentGoalBar(props: AgentGoalBarProps) {
             {actions.length > 0 && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     {actions.map((item) => {
-                        const disabled = props.inFlightAction === item.action;
+                        const disabled = props.inFlightAction != null;
+                        const showSpinner = props.inFlightAction === item.action;
                         return (
                             <Pressable
                                 key={item.action}
@@ -101,7 +125,7 @@ export function AgentGoalBar(props: AgentGoalBarProps) {
                                     opacity: disabled ? 0.6 : 1,
                                 })}
                             >
-                                {disabled ? (
+                                {showSpinner ? (
                                     <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                                 ) : (
                                     <Ionicons name={item.icon} size={16} color={theme.colors.button.secondary.tint} />

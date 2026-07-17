@@ -57,13 +57,13 @@ describe('performAgentGoalAction', () => {
         expect(setInFlight).not.toHaveBeenCalled();
     });
 
-    it('does nothing for stop before setting in-flight state', async () => {
+    it.each(['pause', 'resume'] as const)('dispatches %s without an objective', async (action) => {
         const promptEditGoal = vi.fn();
-        const dispatchGoalAction = vi.fn();
+        const dispatchGoalAction = vi.fn().mockResolvedValue(undefined);
         const setInFlight = vi.fn();
 
         await performAgentGoalAction({
-            action: 'stop',
+            action,
             currentGoalText: 'finish the branch',
             promptEditGoal,
             dispatchGoalAction,
@@ -71,7 +71,27 @@ describe('performAgentGoalAction', () => {
         });
 
         expect(promptEditGoal).not.toHaveBeenCalled();
-        expect(dispatchGoalAction).not.toHaveBeenCalled();
-        expect(setInFlight).not.toHaveBeenCalled();
+        expect(dispatchGoalAction).toHaveBeenCalledWith(action, undefined);
+        expect(setInFlight).toHaveBeenNthCalledWith(1, action);
+        expect(setInFlight).toHaveBeenNthCalledWith(2, null);
+    });
+
+    it('reports RPC failures and always clears in-flight state', async () => {
+        const error = new Error('Goal is not loaded');
+        const onError = vi.fn();
+        const setInFlight = vi.fn();
+
+        await performAgentGoalAction({
+            action: 'resume',
+            currentGoalText: 'finish the branch',
+            promptEditGoal: vi.fn(),
+            dispatchGoalAction: vi.fn().mockRejectedValue(error),
+            setInFlight,
+            onError,
+        });
+
+        expect(onError).toHaveBeenCalledWith(error);
+        expect(setInFlight).toHaveBeenNthCalledWith(1, 'resume');
+        expect(setInFlight).toHaveBeenNthCalledWith(2, null);
     });
 });

@@ -1,10 +1,41 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
     codexGoalActionCapabilities,
+    codexGoalActionCapabilitiesV2,
+    createCodexGoalInvalidationProjection,
+    getCodexGoalEventThreadId,
     mapCodexGoalEventToAgentGoalStatus,
+    mapCodexGoalEventToAgentGoalStatusV2,
     parseCodexGoalActionParams,
     parseCodexGoalCommand,
+    reduceCodexGoalProjection,
+    shouldApplyCodexGoalStatusV2,
 } from './codexGoalStatus';
+
+function goalProjection(
+    providerStatus: 'active' | 'paused',
+    sourceRevision: number,
+    threadId = 'thread-1',
+) {
+    const event = {
+        type: 'thread_goal_updated',
+        threadId,
+        goal: {
+            threadId,
+            objective: 'finish the release',
+            status: providerStatus,
+            tokenBudget: null,
+            tokensUsed: 42,
+            timeUsedSeconds: 7,
+            createdAt: 1,
+            updatedAt: sourceRevision,
+        },
+    };
+    return {
+        legacy: mapCodexGoalEventToAgentGoalStatus(event, threadId)!,
+        detailed: mapCodexGoalEventToAgentGoalStatusV2(event, threadId)!,
+    };
+}
 
 describe('mapCodexGoalEventToAgentGoalStatus', () => {
     it('maps an active Codex goal update into agent goal status', () => {
@@ -66,6 +97,24 @@ describe('mapCodexGoalEventToAgentGoalStatus', () => {
             edit: true,
         });
         expect(codexGoalActionCapabilities(false)).toBeUndefined();
+    });
+
+    it('keeps V1 capabilities stable while V2 exposes state-specific pause and resume actions', () => {
+        expect(codexGoalActionCapabilitiesV2(true, 'active')).toEqual({
+            clear: true,
+            edit: true,
+            pause: true,
+        });
+        expect(codexGoalActionCapabilitiesV2(true, 'paused')).toEqual({
+            clear: true,
+            edit: true,
+            resume: true,
+        });
+        expect(codexGoalActionCapabilitiesV2(true, 'blocked')).toEqual({
+            clear: true,
+            edit: true,
+        });
+        expect(codexGoalActionCapabilitiesV2(false, 'active')).toBeUndefined();
     });
 
     it('keeps paused and limited Codex goal states visible as current goals', () => {
@@ -172,6 +221,138 @@ describe('mapCodexGoalEventToAgentGoalStatus', () => {
     });
 });
 
+describe('mapCodexGoalEventToAgentGoalStatusV2', () => {
+    it('preserves the provider status and publishes pause/resume capabilities', () => {
+        const active = mapCodexGoalEventToAgentGoalStatusV2({
+            type: 'thread_goal_updated',
+            threadId: 'thread-1',
+            goal: {
+                threadId: 'thread-1',
+                objective: 'finish the release',
+                status: 'active',
+                tokenBudget: null,
+                tokensUsed: 42,
+                timeUsedSeconds: 7,
+                createdAt: 1781680000,
+                updatedAt: 1781680007,
+            },
+        }, 'thread-1', { actionsSupported: true });
+        const paused = mapCodexGoalEventToAgentGoalStatusV2({
+            type: 'thread_goal_updated',
+            threadId: 'thread-1',
+            goal: {
+                threadId: 'thread-1',
+                objective: 'finish the release',
+                status: 'paused',
+                tokenBudget: null,
+                tokensUsed: 42,
+                timeUsedSeconds: 7,
+                createdAt: 1781680000,
+                updatedAt: 1781680008,
+            },
+        }, 'thread-1', { actionsSupported: true });
+
+        expect(active).toMatchObject({
+            version: 2,
+            status: 'active',
+            providerStatus: 'active',
+            capabilities: { clear: true, edit: true, pause: true },
+        });
+        expect(paused).toMatchObject({
+            version: 2,
+            status: 'active',
+            providerStatus: 'paused',
+            capabilities: { clear: true, edit: true, resume: true },
+        });
+    });
+
+    it('deduplicates equal revisions and rejects stale goal snapshots', () => {
+        const current = {
+            version: 2 as const,
+            source: 'codex' as const,
+            observedAt: 10,
+            sourceSessionId: 'thread-1',
+            sourceRevision: 5,
+            status: 'active' as const,
+            text: 'current goal',
+            providerStatus: 'active' as const,
+        };
+
+        expect(shouldApplyCodexGoalStatusV2(current, {
+            ...current,
+            observedAt: 11,
+        })).toBe(false);
+        expect(shouldApplyCodexGoalStatusV2(current, {
+            ...current,
+            observedAt: 12,
+            sourceRevision: 4,
+            text: 'stale goal',
+        })).toBe(false);
+        expect(shouldApplyCodexGoalStatusV2(current, {
+            ...current,
+            observedAt: 13,
+            providerStatus: 'paused',
+        })).toBe(true);
+        expect(shouldApplyCodexGoalStatusV2(current, {
+            ...current,
+            observedAt: 14,
+            sourceRevision: 6,
+            providerStatus: 'paused',
+        })).toBe(true);
+    });
+
+    it('does not let an older async persisted snapshot roll back the latest projection', () => {
+        const revisionTen = goalProjection('active', 10);
+        const sameRevisionChanged = goalProjection('paused', 10);
+        const revisionNine = goalProjection('paused', 9);
+        const revisionEleven = goalProjection('paused', 11);
+
+        expect(reduceCodexGoalProjection(revisionTen, sameRevisionChanged, 'event')).toBe(sameRevisionChanged);
+        expect(reduceCodexGoalProjection(revisionTen, sameRevisionChanged, 'persisted')).toBe(revisionTen);
+        expect(reduceCodexGoalProjection(revisionTen, revisionNine, 'persisted')).toBe(revisionTen);
+        expect(reduceCodexGoalProjection(revisionTen, revisionEleven, 'persisted')).toBe(revisionEleven);
+        expect(reduceCodexGoalProjection(
+            revisionTen,
+            goalProjection('paused', 12, 'old-thread'),
+            'persisted',
+        )).toBe(revisionTen);
+    });
+
+    it('creates explicit V1/V2 invalidations for thread replacement and reset', () => {
+        const projection = createCodexGoalInvalidationProjection({
+            sourceSessionId: 'thread-1',
+            observedAt: 123,
+            state: { status: 'unavailable', reason: 'error' },
+        });
+
+        expect(projection).toEqual({
+            legacy: {
+                source: 'codex',
+                observedAt: 123,
+                sourceSessionId: 'thread-1',
+                status: 'unavailable',
+                reason: 'error',
+            },
+            detailed: {
+                version: 2,
+                source: 'codex',
+                observedAt: 123,
+                sourceSessionId: 'thread-1',
+                status: 'unavailable',
+                reason: 'error',
+            },
+        });
+    });
+
+    it('extracts an explicit thread id for stale-event rejection', () => {
+        expect(getCodexGoalEventThreadId({
+            type: 'thread_goal_updated',
+            goal: { threadId: 'thread-from-goal' },
+        })).toBe('thread-from-goal');
+        expect(getCodexGoalEventThreadId({ type: 'thread_goal_cleared' })).toBeNull();
+    });
+});
+
 describe('parseCodexGoalCommand', () => {
     it('parses explicit Codex goal commands', () => {
         expect(parseCodexGoalCommand('/goal finish the release')).toEqual({
@@ -180,6 +361,36 @@ describe('parseCodexGoalCommand', () => {
         });
         expect(parseCodexGoalCommand('  /goal   clear  ')).toEqual({
             type: 'clear',
+        });
+        expect(parseCodexGoalCommand('/goal pause')).toEqual({
+            type: 'set-status',
+            status: 'paused',
+        });
+        expect(parseCodexGoalCommand('/goal RESUME')).toEqual({
+            type: 'set-status',
+            status: 'active',
+        });
+        expect(parseCodexGoalCommand('/goal edit')).toEqual({
+            type: 'edit',
+        });
+    });
+
+    it('only reserves exact action words', () => {
+        expect(parseCodexGoalCommand('/goal resume migration work')).toEqual({
+            type: 'set',
+            objective: 'resume migration work',
+        });
+        expect(parseCodexGoalCommand('/goal pause notifications rollout')).toEqual({
+            type: 'set',
+            objective: 'pause notifications rollout',
+        });
+        expect(parseCodexGoalCommand('/goal clear old failures')).toEqual({
+            type: 'set',
+            objective: 'clear old failures',
+        });
+        expect(parseCodexGoalCommand('/goal edit the release objective')).toEqual({
+            type: 'set',
+            objective: 'edit the release objective',
         });
     });
 
@@ -190,13 +401,21 @@ describe('parseCodexGoalCommand', () => {
 });
 
 describe('parseCodexGoalActionParams', () => {
-    it('parses clear and edit RPC params into Codex goal commands', () => {
+    it('parses clear, edit, pause, and resume RPC params into Codex goal commands', () => {
         expect(parseCodexGoalActionParams({ action: 'clear' })).toEqual({
             type: 'clear',
         });
         expect(parseCodexGoalActionParams({ action: 'edit', objective: '  revised goal  ' })).toEqual({
             type: 'set',
             objective: 'revised goal',
+        });
+        expect(parseCodexGoalActionParams({ action: 'pause' })).toEqual({
+            type: 'set-status',
+            status: 'paused',
+        });
+        expect(parseCodexGoalActionParams({ action: 'resume' })).toEqual({
+            type: 'set-status',
+            status: 'active',
         });
     });
 

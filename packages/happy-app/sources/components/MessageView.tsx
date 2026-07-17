@@ -129,12 +129,24 @@ function UserTextBlock(props: {
     return null;
   }
 
-  const parsed = parseLocalCommandMessage(props.message.displayText || props.message.text);
+  const parsed = parseLocalCommandMessage(
+    props.message.displayText || props.message.text,
+    props.metadata?.flavor,
+  );
   if (parsed.kind === 'caveat') {
     return null;
   }
   if (parsed.kind === 'goal-confirmation') {
     return null;
+  }
+  if (parsed.kind === 'goal-action') {
+    return (
+      <View style={styles.userMessageContainer}>
+        <View style={[styles.commandChip, bubbleStyle]}>
+          <Text style={styles.commandChipText}>/goal {parsed.action}</Text>
+        </View>
+      </View>
+    );
   }
   if (parsed.kind === 'goal-run') {
     return (

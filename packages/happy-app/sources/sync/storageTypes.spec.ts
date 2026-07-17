@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AgentGoalStatusSchema, AgentStateSchema, MetadataSchema } from './storageTypes';
+import { AgentGoalStatusSchema, AgentGoalStatusV2Schema, AgentStateSchema, MetadataSchema } from './storageTypes';
 
 describe('MetadataSchema', () => {
     it('preserves archive lifecycle metadata', () => {
@@ -155,5 +155,117 @@ describe('AgentGoalStatusSchema', () => {
         });
 
         expect(state.agentGoalStatus?.status).toBe('active');
+    });
+
+    it('accepts a V2 paused goal with pause/resume capabilities', () => {
+        const goal = AgentGoalStatusV2Schema.parse({
+            version: 2,
+            status: 'active',
+            providerStatus: 'paused',
+            source: 'codex',
+            text: 'review the branch',
+            observedAt: 1710000000000,
+            sourceSessionId: 'codex-thread-1',
+            sourceRevision: 8,
+            capabilities: {
+                clear: true,
+                edit: true,
+                pause: false,
+                resume: true,
+            },
+        });
+
+        expect(goal).toMatchObject({
+            version: 2,
+            status: 'active',
+            providerStatus: 'paused',
+            capabilities: { resume: true },
+        });
+    });
+
+    it('rejects completed as an active provider state', () => {
+        expect(() => AgentGoalStatusV2Schema.parse({
+            version: 2,
+            status: 'active',
+            providerStatus: 'complete',
+            source: 'codex',
+            text: 'review the branch',
+            observedAt: 1710000000000,
+            sourceSessionId: 'codex-thread-1',
+        })).toThrow();
+    });
+
+    it('preserves both V1 and V2 goal projections through AgentStateSchema', () => {
+        const payload = {
+            controlledByUser: true,
+            agentGoalStatus: {
+                status: 'active' as const,
+                source: 'codex' as const,
+                text: 'review the branch',
+                observedAt: 1710000000000,
+                sourceSessionId: 'codex-thread-1',
+                capabilities: { clear: true, edit: true },
+            },
+            agentGoalStatusV2: {
+                version: 2 as const,
+                status: 'active' as const,
+                providerStatus: 'blocked' as const,
+                source: 'codex' as const,
+                text: 'review the branch',
+                observedAt: 1710000000001,
+                sourceSessionId: 'codex-thread-1',
+                capabilities: { clear: true, edit: true },
+            },
+        };
+
+        const state = AgentStateSchema.parse(payload);
+        expect(state.agentGoalStatus?.status).toBe('active');
+        expect(state.agentGoalStatusV2).toMatchObject({
+            providerStatus: 'blocked',
+            version: 2,
+        });
+
+        // Models the old app's non-strict top-level schema: it ignores the
+        // unknown V2 sibling and still parses the unchanged strict V1 value.
+        const legacyState = AgentStateSchema
+            .omit({ agentGoalStatusV2: true })
+            .parse(payload);
+        expect(legacyState.agentGoalStatus?.status).toBe('active');
+        expect(legacyState).not.toHaveProperty('agentGoalStatusV2');
+    });
+
+    it('keeps the legacy V1 capabilities schema strict and unchanged', () => {
+        expect(() => AgentGoalStatusSchema.parse({
+            status: 'active',
+            source: 'codex',
+            text: 'review the branch',
+            observedAt: 1710000000000,
+            sourceSessionId: 'codex-thread-1',
+            capabilities: { clear: true, pause: true },
+        })).toThrow();
+    });
+
+    it('falls back to V1 when the optional V2 projection is malformed', () => {
+        const state = AgentStateSchema.parse({
+            agentGoalStatus: {
+                status: 'active',
+                source: 'codex',
+                text: 'review the branch',
+                observedAt: 1710000000000,
+                sourceSessionId: 'codex-thread-1',
+            },
+            agentGoalStatusV2: {
+                version: 2,
+                status: 'active',
+                providerStatus: 'future-status',
+                source: 'codex',
+                text: 'review the branch',
+                observedAt: 1710000000001,
+                sourceSessionId: 'codex-thread-1',
+            },
+        });
+
+        expect(state.agentGoalStatus?.status).toBe('active');
+        expect(state.agentGoalStatusV2).toBeUndefined();
     });
 });
