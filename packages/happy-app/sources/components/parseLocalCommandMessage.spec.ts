@@ -47,9 +47,9 @@ describe('parseLocalCommandMessage', () => {
     });
 
     it.each(['pause', 'resume', 'clear', 'edit'] as const)(
-        'collapses exact raw /goal %s to a control-action chip',
+        'collapses exact Codex /goal %s to a control-action chip',
         (action) => {
-            expect(parseLocalCommandMessage(`  /goal ${action}  `)).toEqual({
+            expect(parseLocalCommandMessage(`  /goal ${action}  `, 'codex')).toEqual({
                 kind: 'goal-action',
                 action,
             });
@@ -62,14 +62,58 @@ describe('parseLocalCommandMessage', () => {
             '<command-name>/goal</command-name>' +
             '<command-args>resume</command-args>';
 
-        expect(parseLocalCommandMessage(text)).toEqual({
+        expect(parseLocalCommandMessage(text, 'codex')).toEqual({
             kind: 'goal-action',
             action: 'resume',
         });
     });
 
+    it.each(['pause', 'resume', 'edit'] as const)(
+        'keeps exact Claude /goal %s as an objective',
+        (goal) => {
+            expect(parseLocalCommandMessage(`/goal ${goal}`, 'claude')).toEqual({
+                kind: 'goal-run',
+                goal,
+            });
+        },
+    );
+
+    it('recognizes exact Claude /goal clear as a control action', () => {
+        expect(parseLocalCommandMessage('/goal clear', 'claude')).toEqual({
+            kind: 'goal-action',
+            action: 'clear',
+        });
+    });
+
+    it('keeps provider semantics for Claude goal wrappers', () => {
+        const wrapper = (args: string) =>
+            '<command-message>goal</command-message>' +
+            '<command-name>/goal</command-name>' +
+            `<command-args>${args}</command-args>`;
+
+        expect(parseLocalCommandMessage(wrapper('resume'), 'claude')).toEqual({
+            kind: 'goal-run',
+            goal: 'resume',
+        });
+        expect(parseLocalCommandMessage(wrapper('clear'), 'claude')).toEqual({
+            kind: 'goal-action',
+            action: 'clear',
+        });
+    });
+
+    it('defaults missing flavor to Claude goal semantics', () => {
+        expect(parseLocalCommandMessage('/goal resume')).toEqual({
+            kind: 'goal-run',
+            goal: 'resume',
+        });
+        expect(parseLocalCommandMessage('/goal clear')).toEqual({
+            kind: 'goal-action',
+            action: 'clear',
+        });
+    });
+
     it('keeps a goal beginning with a reserved verb as goal text', () => {
-        expect(parseLocalCommandMessage('/goal resume the migration work')).toEqual({
+        expect(parseLocalCommandMessage('/goal resume the migration work', 'codex')).toEqual({
             kind: 'goal-run',
             goal: 'resume the migration work',
         });
@@ -153,8 +197,9 @@ describe('isUserSlashCommandEcho', () => {
         expect(isUserSlashCommandEcho('/goal проанализируй проект', true)).toBe(true);
     });
 
-    it('detects an exact /goal control-action echo with a localId', () => {
+    it('detects a reserved-word /goal echo with a localId', () => {
         expect(isUserSlashCommandEcho('/goal resume', true)).toBe(true);
+        expect(isUserSlashCommandEcho('/goal clear', true)).toBe(true);
     });
 
     it('ignores echoes without a localId (SDK-originated, not user-sent)', () => {

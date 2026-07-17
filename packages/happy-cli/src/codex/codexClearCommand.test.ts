@@ -24,7 +24,6 @@ describe('enqueueCodexUserText', () => {
     });
 
     it.each([
-        '/goal',
         '/goal pause',
         '/goal resume',
         '/goal clear',
@@ -43,6 +42,22 @@ describe('enqueueCodexUserText', () => {
         expect(result).toBe('goal');
         expect(queue.pushIsolated).toHaveBeenCalledWith(text, mode, undefined);
         expect(queue.push).not.toHaveBeenCalled();
+        expect(queue.pushIsolateAndClear).not.toHaveBeenCalled();
+    });
+
+    it('leaves bare /goal as ordinary text when no view command is implemented', () => {
+        const mode = { permissionMode: 'default' as const };
+        const queue = {
+            push: vi.fn(),
+            pushIsolated: vi.fn(),
+            pushIsolateAndClear: vi.fn(),
+        };
+
+        const result = enqueueCodexUserText({ text: '  /goal  ', mode, queue });
+
+        expect(result).toBe('queued');
+        expect(queue.push).toHaveBeenCalledWith('  /goal  ', mode, undefined);
+        expect(queue.pushIsolated).not.toHaveBeenCalled();
         expect(queue.pushIsolateAndClear).not.toHaveBeenCalled();
     });
 

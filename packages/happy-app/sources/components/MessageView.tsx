@@ -129,7 +129,10 @@ function UserTextBlock(props: {
     return null;
   }
 
-  const parsed = parseLocalCommandMessage(props.message.displayText || props.message.text);
+  const parsed = parseLocalCommandMessage(
+    props.message.displayText || props.message.text,
+    props.metadata?.flavor,
+  );
   if (parsed.kind === 'caveat') {
     return null;
   }

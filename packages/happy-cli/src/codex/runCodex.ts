@@ -536,24 +536,54 @@ export async function runCodex(opts: {
                         forceRestartOnTimeout: true,
                     });
                     if (abortResult.forcedRestart) {
-                        if (abortResult.resumedThread && client.threadId) {
+                        const resumedPreviousThread = Boolean(
+                            abortResult.resumedThread
+                            && threadIdBeforeAbort
+                            && client.threadId === threadIdBeforeAbort
+                            && trackedCodexThreadId === threadIdBeforeAbort,
+                        );
+                        const previousThreadStillOwned = Boolean(
+                            threadIdBeforeAbort
+                            && trackedCodexThreadId === threadIdBeforeAbort
+                            && (client.threadId === threadIdBeforeAbort || client.threadId === null),
+                        );
+                        let restartMessage: string;
+
+                        if (resumedPreviousThread && threadIdBeforeAbort) {
                             // Invalidate goal mutations captured against the old
-                            // app-server process while preserving its hydrated goal.
-                            advanceCodexThreadEpoch(client.threadId);
-                        } else {
+                            // app-server process while preserving the latest
+                            // provider-owned goal projection.
+                            advanceCodexThreadEpoch(threadIdBeforeAbort);
+                            restartMessage =
+                                'Force-stopped active task after interrupt timeout. ' +
+                                'Codex backend was restarted and the previous thread was resumed.';
+                        } else if (previousThreadStillOwned) {
                             replaceCodexThreadGoalState({
                                 nextThreadId: null,
                                 sourceSessionId: threadIdBeforeAbort,
                                 state: { status: 'unavailable', reason: 'error' },
                                 clearMetadata: true,
                             });
+                            restartMessage =
+                                'Force-stopped active task after interrupt timeout. ' +
+                                'Codex backend was restarted, but the previous thread could not be resumed.';
+                        } else {
+                            logger.debug(
+                                '[Codex] Restart resume was superseded by newer thread state; preserving it',
+                                {
+                                    threadIdBeforeAbort,
+                                    activeThreadId: client.threadId,
+                                    trackedCodexThreadId,
+                                },
+                            );
+                            restartMessage =
+                                'Force-stopped active task after interrupt timeout. ' +
+                                'Codex backend was restarted; newer thread state superseded resuming the previous thread.';
                         }
                         logger.warn('[Codex] Forced app-server restart after interrupt timeout');
                         session.sendSessionEvent({
                             type: 'message',
-                            message: abortResult.resumedThread
-                                ? 'Force-stopped active task after interrupt timeout. Codex backend was restarted and the previous thread was resumed.'
-                                : 'Force-stopped active task after interrupt timeout. Codex backend was restarted, but the previous thread could not be resumed.',
+                            message: restartMessage,
                         });
                     }
                 }

@@ -23,7 +23,7 @@ export function enqueueCodexUserText<T>(opts: {
         return 'clear';
     }
 
-    if (parseCodexGoalCommand(opts.text) || /^\s*\/goal\s*$/i.test(opts.text)) {
+    if (parseCodexGoalCommand(opts.text)) {
         opts.queue.pushIsolated(opts.text, opts.mode, opts.attachments);
         return 'goal';
     }
