@@ -58,10 +58,10 @@ export function getClaudePermissionModes(translate: Translate): PermissionMode[]
 
 export function getCodexPermissionModes(translate: Translate): PermissionMode[] {
     return [
-        { key: 'default', name: translate('agentInput.codexPermissionMode.default'), description: null },
-        { key: 'read-only', name: translate('agentInput.codexPermissionMode.readOnly'), description: null },
-        { key: 'safe-yolo', name: translate('agentInput.codexPermissionMode.safeYolo'), description: null },
-        { key: 'yolo', name: translate('agentInput.codexPermissionMode.yolo'), description: null },
+        { key: 'default', name: translate('agentInput.codexPermissionMode.default'), description: translate('agentInput.codexPermissionMode.defaultDescription') },
+        { key: 'read-only', name: translate('agentInput.codexPermissionMode.readOnly'), description: translate('agentInput.codexPermissionMode.readOnlyDescription') },
+        { key: 'safe-yolo', name: translate('agentInput.codexPermissionMode.safeYolo'), description: translate('agentInput.codexPermissionMode.safeYoloDescription') },
+        { key: 'yolo', name: translate('agentInput.codexPermissionMode.yolo'), description: translate('agentInput.codexPermissionMode.yoloDescription') },
     ];
 }
 
@@ -87,6 +87,9 @@ export function getClaudeModelModes(): ModelMode[] {
 export function getCodexModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
+        { key: 'gpt-5.6-sol', name: 'gpt-5.6 sol', description: null },
+        { key: 'gpt-5.6-terra', name: 'gpt-5.6 terra', description: null },
+        { key: 'gpt-5.6-luna', name: 'gpt-5.6 luna', description: null },
         { key: 'gpt-5.5', name: 'gpt-5.5', description: null },
         { key: 'gpt-5.4', name: 'gpt-5.4', description: null },
         { key: 'gpt-5.3-codex', name: 'gpt-5.3-codex', description: null },
@@ -108,6 +111,15 @@ export function getOpenClawPermissionModes(translate: Translate): PermissionMode
     ];
 }
 
+// agy --print only distinguishes --sandbox (default) from --dangerously-skip-permissions,
+// so only these two modes are offered.
+export function getAgyPermissionModes(translate: Translate): PermissionMode[] {
+    return [
+        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
+        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
+    ];
+}
+
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
@@ -118,12 +130,29 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     if (flavor === 'openclaw') {
         return getOpenClawPermissionModes(translate);
     }
+    if (flavor === 'agy') {
+        return getAgyPermissionModes(translate);
+    }
     return getClaudePermissionModes(translate);
 }
 
 export function getOpenClawModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
+    ];
+}
+
+// Keys are the exact display names `agy --model` accepts (as printed by `agy models`).
+export function getAgyModelModes(): ModelMode[] {
+    return [
+        { key: 'Gemini 3.1 Pro (High)', name: 'gemini 3.1 pro (high)', description: null },
+        { key: 'Gemini 3.1 Pro (Low)', name: 'gemini 3.1 pro (low)', description: null },
+        { key: 'Gemini 3.5 Flash (High)', name: 'gemini 3.5 flash (high)', description: null },
+        { key: 'Gemini 3.5 Flash (Medium)', name: 'gemini 3.5 flash (medium)', description: null },
+        { key: 'Gemini 3.5 Flash (Low)', name: 'gemini 3.5 flash (low)', description: null },
+        { key: 'Claude Opus 4.6 (Thinking)', name: 'claude opus 4.6 (thinking)', description: null },
+        { key: 'Claude Sonnet 4.6 (Thinking)', name: 'claude sonnet 4.6 (thinking)', description: null },
+        { key: 'GPT-OSS 120B (Medium)', name: 'gpt-oss 120b (medium)', description: null },
     ];
 }
 
@@ -136,6 +165,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     }
     if (flavor === 'openclaw') {
         return getOpenClawModelModes();
+    }
+    if (flavor === 'agy') {
+        return getAgyModelModes();
     }
     return getClaudeModelModes();
 }
@@ -160,7 +192,7 @@ export function getAvailablePermissionModes(
     metadata: Metadata | null | undefined,
     translate: Translate,
 ): PermissionMode[] {
-    if (flavor === 'claude' || flavor === 'codex' || flavor === 'openclaw') {
+    if (flavor === 'claude' || flavor === 'codex' || flavor === 'openclaw' || flavor === 'agy') {
         return hackModes(getHardcodedPermissionModes(flavor, translate));
     }
 

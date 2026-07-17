@@ -310,7 +310,7 @@ const styles = StyleSheet.create((theme) => ({
     container: {
         backgroundColor: theme.colors.surfaceHigh,
         borderRadius: 8,
-        marginVertical: 4,
+        marginVertical: 8,
         overflow: 'hidden'
     },
     compactContainer: {

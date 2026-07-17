@@ -34,6 +34,27 @@ function shellescape(s: string): string {
     return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
+function appendDaemonSpawnModeArgs(args: string[], options: SpawnSessionOptions, agent: string): void {
+  if (agent !== 'claude' && agent !== 'codex') {
+    return;
+  }
+  // For claude, 'default' is the app's ambient "no override" value — forwarding
+  // it would pin the session to prompting mode and lose the CLI's own default
+  // (e.g. a --yolo setup where sessions must bypass permissions). For codex,
+  // 'default' IS a concrete ask-first mode (untrusted + workspace-write)
+  // distinct from the codex launch default ('yolo'), so it must be forwarded
+  // or the user's explicit ask-first pick silently yields a yolo session.
+  if (options.permissionMode && (agent === 'codex' || options.permissionMode !== 'default')) {
+    args.push('--permission-mode', options.permissionMode);
+  }
+  if (options.modelMode && options.modelMode !== 'default') {
+    args.push('--model', options.modelMode);
+  }
+  if (options.effortLevel) {
+    args.push('--effort', options.effortLevel);
+  }
+}
+
 // Prepare initial metadata
 // Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon
 // is visually distinct from the stable one in the machine list (they otherwise
@@ -135,8 +156,8 @@ export async function startDaemon(): Promise<void> {
   // Acquire exclusive lock (proves daemon is running)
   const daemonLockHandle = await acquireDaemonLock(5, 200);
   if (!daemonLockHandle) {
-    logger.debug('[DAEMON RUN] Daemon lock file already held, another daemon is running');
-    process.exit(0);
+    logger.warn('[DAEMON RUN] Failed to acquire daemon lock; daemon startup did not complete');
+    process.exit(1);
   }
 
   // At this point we should be safe to startup the daemon:
@@ -401,15 +422,22 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : 'claude'));
+          // Determine agent command - support claude, codex, gemini, openclaw, and agy
+          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : (options.agent === 'agy' ? 'agy' : 'claude')));
           const resumeId = agent === 'claude'
             ? options.resumeClaudeSessionId
             : (agent === 'codex' ? options.resumeCodexThreadId : undefined);
           const resumeFragment = resumeId
             ? ` --resume ${shellescape(resumeId)}`
             : '';
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
+          const launchArgs = [
+            agent,
+            '--happy-starting-mode', 'remote',
+            '--started-by', 'daemon',
+          ];
+          appendDaemonSpawnModeArgs(launchArgs, options, agent);
+          const modeFragment = launchArgs.map(shellescape).join(' ');
+          const fullCommand = `node --no-warnings --no-deprecation ${shellescape(cliPath)} ${modeFragment}${resumeFragment}`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -507,6 +535,9 @@ export async function startDaemon(): Promise<void> {
             case 'openclaw':
               agentCommand = 'openclaw';
               break;
+            case 'agy':
+              agentCommand = 'agy';
+              break;
             default:
               return {
                 type: 'error',
@@ -518,6 +549,7 @@ export async function startDaemon(): Promise<void> {
             '--happy-starting-mode', 'remote',
             '--started-by', 'daemon'
           ];
+          appendDaemonSpawnModeArgs(args, options, agentCommand);
 
           // Resume ids attach the new Happy session to a pre-existing provider
           // conversation created by the fork / duplicate RPC.
@@ -693,7 +725,10 @@ export async function startDaemon(): Promise<void> {
         if (options?.model) {
           launch.args.push('--model', options.model);
         }
-        if (options?.permissionMode) {
+        // Same as spawnSession: for claude, ambient 'default' must not
+        // override the CLI default; for codex, 'default' is a concrete
+        // ask-first mode and must be forwarded.
+        if (options?.permissionMode && (metadata.flavor === 'codex' || options.permissionMode !== 'default')) {
           launch.args.push('--permission-mode', options.permissionMode);
         }
 

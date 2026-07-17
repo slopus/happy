@@ -1,3 +1,17 @@
+# July 11 — GPT-5.6, Antigravity, bugfixes
+
+New models, a new agent, and live subagent rendering.
+
+- GPT-5.6 Sol, Terra, and Luna in the Codex model picker.
+- New agent: Antigravity (agy) — Google's CLI (update the CLI first: `npm i -g happy`).
+- Claude and Codex subagents render live in chat.
+- Codex yolo actually stops asking for permissions.
+- New status bar — branch, model, effort, context. Tap to switch model or effort.
+- Your first machine appears immediately during onboarding.
+- Resuming phone-created sessions works reliably.
+- Message bubble colors in Settings → Appearance.
+- Model/permission/effort picks reset once — they now sync across devices.
+
 # July 2 — Fable in Claude Code
 
 Fable is available from the Claude Code model picker.

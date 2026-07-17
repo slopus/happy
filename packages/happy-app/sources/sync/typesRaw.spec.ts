@@ -1529,6 +1529,62 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
+        it('preserves session protocol usage for context tracking', () => {
+            const usage = {
+                input_tokens: 1200,
+                cache_creation_input_tokens: 40,
+                cache_read_input_tokens: 500,
+                output_tokens: 80
+            };
+            const normalized = normalizeRawMessage('db-usage-1', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-usage-1',
+                        time: 1,
+                        role: 'agent',
+                        turn: 'turn-usage-1',
+                        usage,
+                        ev: { t: 'text', text: 'usage-bearing response' }
+                    }
+                }
+            });
+
+            expect(normalized).toBeTruthy();
+            expect(normalized?.role).toBe('agent');
+            expect(normalized?.usage).toEqual(usage);
+        });
+
+        it('normalizes usage-only service envelopes without chat content or turn', () => {
+            const usage = {
+                input_tokens: 1200,
+                cache_creation_input_tokens: 40,
+                cache_read_input_tokens: 500,
+                output_tokens: 80
+            };
+            const normalized = normalizeRawMessage('db-usage-only-1', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-usage-only-1',
+                        time: 1,
+                        role: 'agent',
+                        usage,
+                        ev: { t: 'service', text: '' }
+                    }
+                }
+            });
+
+            expect(normalized).toBeTruthy();
+            expect(normalized?.role).toBe('agent');
+            if (normalized?.role === 'agent') {
+                expect(normalized.content).toEqual([]);
+            }
+            expect(normalized?.usage).toEqual(usage);
+        });
+
         it('normalizes new direct session-role envelope shape', () => {
             const normalized = normalizeRawMessage('db-1-direct', null, 1, {
                 role: 'session',

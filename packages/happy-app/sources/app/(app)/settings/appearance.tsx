@@ -5,12 +5,20 @@ import { ItemList } from '@/components/ItemList';
 import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import * as Localization from 'expo-localization';
-import { useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
-import { Appearance } from 'react-native';
+import { Appearance, Pressable, Text, View } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { darkTheme, lightTheme } from '@/theme';
+import { SESSION_STATUS_BAR_DISPLAY_MODES, type SessionStatusBarDisplay } from '@/sync/settings';
 import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
+import {
+    normalizeUserMessageBubbleColor,
+    resolveUserMessageBubbleColor,
+    USER_MESSAGE_BUBBLE_COLORS,
+    type UserMessageBubbleColor,
+} from '@/utils/userMessageBubbleColor';
+import * as React from 'react';
 
 // Define known avatar styles for this version of the app
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
@@ -18,6 +26,170 @@ type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
 const isKnownAvatarStyle = (style: string): style is KnownAvatarStyle => {
     return style === 'pixelated' || style === 'gradient' || style === 'brutalist';
 };
+
+const getUserMessageBubbleColorLabel = (color: UserMessageBubbleColor): string => {
+    switch (color) {
+        case 'blue':
+            return t('settingsAppearance.userMessageBubbleColorOptions.blue');
+        case 'green':
+            return t('settingsAppearance.userMessageBubbleColorOptions.green');
+        case 'purple':
+            return t('settingsAppearance.userMessageBubbleColorOptions.purple');
+        case 'rose':
+            return t('settingsAppearance.userMessageBubbleColorOptions.rose');
+        case 'sand':
+            return t('settingsAppearance.userMessageBubbleColorOptions.sand');
+        case 'gray':
+            return t('settingsAppearance.userMessageBubbleColorOptions.gray');
+    }
+};
+
+const getSessionStatusDisplayLabel = (mode: SessionStatusBarDisplay): string => {
+    switch (mode) {
+        case 'hidden':
+            return t('settingsAppearance.sessionStatusDisplayOptions.hidden');
+        case 'hiddenOnMobile':
+            return t('settingsAppearance.sessionStatusDisplayOptions.hiddenOnMobile');
+        case 'above':
+            return t('settingsAppearance.sessionStatusDisplayOptions.above');
+        case 'below':
+            return t('settingsAppearance.sessionStatusDisplayOptions.below');
+    }
+};
+
+const getSessionStatusDisplayIcon = (mode: SessionStatusBarDisplay): React.ComponentProps<typeof Ionicons>['name'] => {
+    switch (mode) {
+        case 'hidden':
+            return 'eye-off-outline';
+        case 'hiddenOnMobile':
+            return 'phone-portrait-outline';
+        case 'above':
+            return 'chevron-up-outline';
+        case 'below':
+            return 'chevron-down-outline';
+    }
+};
+
+function BubbleColorPreview({ color }: { color: UserMessageBubbleColor }) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+    const palette = resolveUserMessageBubbleColor(color, theme.dark);
+
+    return (
+        <View style={[styles.bubblePreview, { backgroundColor: palette.background, borderColor: palette.border }]}>
+            <View style={[styles.bubblePreviewLine, { backgroundColor: palette.indicator, width: 18 }]} />
+            <View style={[styles.bubblePreviewLine, { backgroundColor: palette.indicator, width: 26 }]} />
+        </View>
+    );
+}
+
+function BubbleColorDropdownValue(props: {
+    color: UserMessageBubbleColor;
+    label: string;
+    expanded: boolean;
+}) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+
+    return (
+        <View style={styles.dropdownValue}>
+            <BubbleColorPreview color={props.color} />
+            <Text style={styles.dropdownValueText} numberOfLines={1}>
+                {props.label}
+            </Text>
+            <Ionicons
+                name={props.expanded ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={theme.colors.groupped.chevron}
+            />
+        </View>
+    );
+}
+
+function StatusDisplayDropdownValue(props: {
+    mode: SessionStatusBarDisplay;
+    expanded: boolean;
+}) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+
+    return (
+        <View style={styles.dropdownValue}>
+            <Text style={styles.dropdownValueText} numberOfLines={1}>
+                {getSessionStatusDisplayLabel(props.mode)}
+            </Text>
+            <Ionicons
+                name={props.expanded ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={theme.colors.groupped.chevron}
+            />
+        </View>
+    );
+}
+
+function StatusDisplayOption(props: {
+    mode: SessionStatusBarDisplay;
+    selected: boolean;
+    onPress: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+
+    return (
+        <Pressable
+            onPress={props.onPress}
+            style={({ pressed }) => [
+                styles.statusPlacementOption,
+                props.selected && styles.statusPlacementOptionSelected,
+                pressed && styles.statusPlacementOptionPressed,
+            ]}
+        >
+            <Ionicons
+                name={getSessionStatusDisplayIcon(props.mode)}
+                size={20}
+                color={props.selected ? theme.colors.status.connecting : theme.colors.textSecondary}
+            />
+            <Text style={styles.statusPlacementOptionText} numberOfLines={1}>
+                {getSessionStatusDisplayLabel(props.mode)}
+            </Text>
+            {props.selected ? (
+                <Ionicons name="checkmark-circle" size={20} color={theme.colors.status.connecting} />
+            ) : (
+                <View style={styles.bubbleColorOptionCheckPlaceholder} />
+            )}
+        </Pressable>
+    );
+}
+
+function BubbleColorOption(props: {
+    color: UserMessageBubbleColor;
+    selected: boolean;
+    onPress: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+
+    return (
+        <Pressable
+            onPress={props.onPress}
+            style={({ pressed }) => [
+                styles.bubbleColorOption,
+                props.selected && styles.bubbleColorOptionSelected,
+                pressed && styles.bubbleColorOptionPressed,
+            ]}
+        >
+            <BubbleColorPreview color={props.color} />
+            <Text style={styles.bubbleColorOptionText} numberOfLines={1}>
+                {getUserMessageBubbleColorLabel(props.color)}
+            </Text>
+            {props.selected ? (
+                <Ionicons name="checkmark-circle" size={20} color={theme.colors.status.connecting} />
+            ) : (
+                <View style={styles.bubbleColorOptionCheckPlaceholder} />
+            )}
+        </Pressable>
+    );
+}
 
 export default function AppearanceSettingsScreen() {
     const { theme } = useUnistyles();
@@ -31,11 +203,22 @@ export default function AppearanceSettingsScreen() {
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
+    const [userMessageBubbleColor, setUserMessageBubbleColor] = useSettingMutable('userMessageBubbleColor');
+    const [sessionStatusBarDisplay, setSessionStatusBarDisplay] = useSettingMutable('sessionStatusBarDisplay');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
+    const [statusPlacementDropdownOpen, setStatusPlacementDropdownOpen] = React.useState(false);
+    const [bubbleColorDropdownOpen, setBubbleColorDropdownOpen] = React.useState(false);
     
     // Ensure we have a valid style for display, defaulting to gradient for unknown values
     const displayStyle: KnownAvatarStyle = isKnownAvatarStyle(avatarStyle) ? avatarStyle : 'gradient';
+    const displayBubbleColor = normalizeUserMessageBubbleColor(userMessageBubbleColor);
+    const displayBubblePalette = resolveUserMessageBubbleColor(displayBubbleColor, theme.dark);
+    const displayBubbleColorLabel = getUserMessageBubbleColorLabel(displayBubbleColor);
+    const applySessionStatusDisplay = React.useCallback((mode: SessionStatusBarDisplay) => {
+        setSessionStatusBarDisplay(mode);
+        setStatusPlacementDropdownOpen(false);
+    }, [setSessionStatusBarDisplay]);
     
     // Language display
     const getLanguageDisplayText = () => {
@@ -97,6 +280,71 @@ export default function AppearanceSettingsScreen() {
                     detail={getLanguageDisplayText()}
                     onPress={() => router.push('/settings/language')}
                 />
+            </ItemGroup>
+
+            <ItemGroup title={t('settingsAppearance.chat')} footer={t('settingsAppearance.chatDescription')}>
+                <Item
+                    title={t('settingsAppearance.sessionStatusBar')}
+                    subtitle={t('settingsAppearance.sessionStatusBarDescription')}
+                    icon={<Ionicons name="stats-chart-outline" size={29} color={theme.colors.status.connecting} />}
+                    rightElement={
+                        <StatusDisplayDropdownValue
+                            mode={sessionStatusBarDisplay}
+                            expanded={statusPlacementDropdownOpen}
+                        />
+                    }
+                    onPress={() => {
+                        setBubbleColorDropdownOpen(false);
+                        setStatusPlacementDropdownOpen((open) => !open);
+                    }}
+                    showDivider={statusPlacementDropdownOpen}
+                />
+                {statusPlacementDropdownOpen && (
+                    <View style={stylesheet.statusPlacementDropdown}>
+                        {SESSION_STATUS_BAR_DISPLAY_MODES.map((mode) => (
+                            <StatusDisplayOption
+                                key={mode}
+                                mode={mode}
+                                selected={mode === sessionStatusBarDisplay}
+                                onPress={() => applySessionStatusDisplay(mode)}
+                            />
+                        ))}
+                    </View>
+                )}
+                <Item
+                    title={t('settingsAppearance.userMessageBubbleColor')}
+                    subtitle={t('settingsAppearance.userMessageBubbleColorDescription')}
+                    icon={<Ionicons name="chatbubble-ellipses-outline" size={29} color={displayBubblePalette.indicator} />}
+                    rightElement={
+                        <BubbleColorDropdownValue
+                            color={displayBubbleColor}
+                            label={displayBubbleColorLabel}
+                            expanded={bubbleColorDropdownOpen}
+                        />
+                    }
+                    onPress={() => {
+                        setStatusPlacementDropdownOpen(false);
+                        setBubbleColorDropdownOpen((open) => !open);
+                    }}
+                    showDivider={bubbleColorDropdownOpen}
+                />
+                {bubbleColorDropdownOpen && (
+                    <React.Fragment>
+                        <View style={stylesheet.bubbleColorDropdown}>
+                            {USER_MESSAGE_BUBBLE_COLORS.map((color) => (
+                                <BubbleColorOption
+                                    key={color}
+                                    color={color}
+                                    selected={color === displayBubbleColor}
+                                    onPress={() => {
+                                        setUserMessageBubbleColor(color);
+                                        setBubbleColorDropdownOpen(false);
+                                    }}
+                                />
+                            ))}
+                        </View>
+                    </React.Fragment>
+                )}
             </ItemGroup>
 
             {/* Text Settings */}
@@ -257,3 +505,77 @@ export default function AppearanceSettingsScreen() {
         </ItemList>
     );
 }
+
+const stylesheet = StyleSheet.create((theme) => ({
+    dropdownValue: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        maxWidth: 184,
+    },
+    dropdownValueText: {
+        color: theme.colors.textSecondary,
+        fontSize: 15,
+        flexShrink: 1,
+    },
+    bubbleColorDropdown: {
+        paddingVertical: 6,
+    },
+    statusPlacementDropdown: {
+        paddingVertical: 6,
+    },
+    statusPlacementOption: {
+        minHeight: 48,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: 16,
+    },
+    statusPlacementOptionSelected: {
+        backgroundColor: theme.colors.surfaceSelected,
+    },
+    statusPlacementOptionPressed: {
+        backgroundColor: theme.colors.surfacePressedOverlay,
+    },
+    statusPlacementOptionText: {
+        color: theme.colors.text,
+        fontSize: 16,
+        flex: 1,
+    },
+    bubbleColorOption: {
+        minHeight: 48,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: 16,
+    },
+    bubbleColorOptionSelected: {
+        backgroundColor: theme.colors.surfaceSelected,
+    },
+    bubbleColorOptionPressed: {
+        backgroundColor: theme.colors.surfacePressedOverlay,
+    },
+    bubbleColorOptionText: {
+        color: theme.colors.text,
+        fontSize: 16,
+        flex: 1,
+    },
+    bubbleColorOptionCheckPlaceholder: {
+        width: 20,
+        height: 20,
+    },
+    bubblePreview: {
+        width: 46,
+        height: 28,
+        borderRadius: 14,
+        borderWidth: 1,
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+        gap: 4,
+        paddingHorizontal: 9,
+    },
+    bubblePreviewLine: {
+        height: 3,
+        borderRadius: 999,
+    },
+}));
