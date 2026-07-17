@@ -46,6 +46,35 @@ describe('parseLocalCommandMessage', () => {
         });
     });
 
+    it.each(['pause', 'resume', 'clear', 'edit'] as const)(
+        'collapses exact raw /goal %s to a control-action chip',
+        (action) => {
+            expect(parseLocalCommandMessage(`  /goal ${action}  `)).toEqual({
+                kind: 'goal-action',
+                action,
+            });
+        },
+    );
+
+    it('collapses an exact /goal action wrapper to a control-action chip', () => {
+        const text =
+            '<command-message>goal</command-message>' +
+            '<command-name>/goal</command-name>' +
+            '<command-args>resume</command-args>';
+
+        expect(parseLocalCommandMessage(text)).toEqual({
+            kind: 'goal-action',
+            action: 'resume',
+        });
+    });
+
+    it('keeps a goal beginning with a reserved verb as goal text', () => {
+        expect(parseLocalCommandMessage('/goal resume the migration work')).toEqual({
+            kind: 'goal-run',
+            goal: 'resume the migration work',
+        });
+    });
+
     it('collapses a raw skill slash command to a command display with args', () => {
         expect(parseLocalCommandMessage('  /superpowers:brainstorming привет давай спланируем что-нибудь  ')).toEqual({
             kind: 'command-run',
@@ -122,6 +151,10 @@ describe('isUserSlashCommandEcho', () => {
 
     it('detects a /goal echo with a localId', () => {
         expect(isUserSlashCommandEcho('/goal проанализируй проект', true)).toBe(true);
+    });
+
+    it('detects an exact /goal control-action echo with a localId', () => {
+        expect(isUserSlashCommandEcho('/goal resume', true)).toBe(true);
     });
 
     it('ignores echoes without a localId (SDK-originated, not user-sent)', () => {

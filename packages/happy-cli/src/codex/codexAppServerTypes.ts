@@ -143,6 +143,14 @@ export type ThreadGoalSetResponse = {
     goal: ThreadGoal;
 };
 
+export type ThreadGoalGetParams = {
+    threadId: ThreadId;
+};
+
+export type ThreadGoalGetResponse = {
+    goal: ThreadGoal | null;
+};
+
 export type ThreadGoalClearParams = {
     threadId: ThreadId;
 };

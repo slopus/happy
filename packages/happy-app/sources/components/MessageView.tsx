@@ -136,6 +136,15 @@ function UserTextBlock(props: {
   if (parsed.kind === 'goal-confirmation') {
     return null;
   }
+  if (parsed.kind === 'goal-action') {
+    return (
+      <View style={styles.userMessageContainer}>
+        <View style={[styles.commandChip, bubbleStyle]}>
+          <Text style={styles.commandChipText}>/goal {parsed.action}</Text>
+        </View>
+      </View>
+    );
+  }
   if (parsed.kind === 'goal-run') {
     return (
       <View style={styles.userMessageContainer}>

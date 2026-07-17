@@ -1156,13 +1156,33 @@ describe('CodexAppServerClient sandbox integration', () => {
                             result: {
                                 goal: {
                                     threadId: 'thread-goal-1',
-                                    objective: msg.params?.objective,
-                                    status: 'active',
+                                    objective: msg.params?.objective ?? 'finish the task',
+                                    status: msg.params?.status ?? 'active',
                                     tokenBudget: null,
                                     tokensUsed: 0,
                                     timeUsedSeconds: 0,
                                     createdAt: 1781680000,
                                     updatedAt: 1781680001,
+                                },
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'thread/goal/get' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                goal: {
+                                    threadId: 'thread-goal-1',
+                                    objective: 'finish the task',
+                                    status: 'paused',
+                                    tokenBudget: null,
+                                    tokensUsed: 0,
+                                    timeUsedSeconds: 0,
+                                    createdAt: 1781680000,
+                                    updatedAt: 1781680002,
                                 },
                             },
                         });
@@ -1196,6 +1216,25 @@ describe('CodexAppServerClient sandbox integration', () => {
                 status: 'active',
             },
         });
+        await expect(client.setGoal({
+            threadId: 'thread-goal-1',
+            status: 'paused',
+        })).resolves.toMatchObject({
+            goal: {
+                threadId: 'thread-goal-1',
+                objective: 'finish the task',
+                status: 'paused',
+            },
+        });
+        await expect(client.getGoal({
+            threadId: 'thread-goal-1',
+        })).resolves.toMatchObject({
+            goal: {
+                threadId: 'thread-goal-1',
+                objective: 'finish the task',
+                status: 'paused',
+            },
+        });
         await expect(client.clearGoal({
             threadId: 'thread-goal-1',
         })).resolves.toEqual({ cleared: true });
@@ -1214,7 +1253,268 @@ describe('CodexAppServerClient sandbox integration', () => {
                     threadId: 'thread-goal-1',
                 },
             }),
+            expect.objectContaining({
+                method: 'thread/goal/set',
+                params: {
+                    threadId: 'thread-goal-1',
+                    status: 'paused',
+                },
+            }),
+            expect.objectContaining({
+                method: 'thread/goal/get',
+                params: {
+                    threadId: 'thread-goal-1',
+                },
+            }),
         ]));
+
+        await client.disconnect();
+    });
+
+    it('hydrates the persisted goal after resuming a thread', async () => {
+        mockExecSync.mockReturnValue('codex-cli 0.140.0');
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3005,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-goal-resume', path: '/tmp/thread-goal-resume' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+                if (msg.method === 'thread/goal/get' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                goal: {
+                                    threadId: 'thread-goal-resume',
+                                    objective: 'persist across reconnect',
+                                    status: 'paused',
+                                    tokenBudget: null,
+                                    tokensUsed: 10,
+                                    timeUsedSeconds: 5,
+                                    createdAt: 1781680000,
+                                    updatedAt: 1781680010,
+                                },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<{ type: string; [key: string]: unknown }> = [];
+        client.setEventHandler((event) => events.push(event));
+
+        await client.connect();
+        await client.resumeThread({ threadId: 'thread-goal-resume' });
+
+        expect(requests.map((request) => request.method)).toEqual(expect.arrayContaining([
+            'thread/resume',
+            'thread/goal/get',
+        ]));
+        expect(events).toContainEqual(expect.objectContaining({
+            type: 'thread_goal_updated',
+            threadId: 'thread-goal-resume',
+            goal: expect.objectContaining({
+                objective: 'persist across reconnect',
+                status: 'paused',
+            }),
+        }));
+
+        await client.disconnect();
+    });
+
+    it('publishes a cleared goal snapshot when a resumed thread has no goal', async () => {
+        mockExecSync.mockReturnValue('codex-cli 0.140.0');
+        const proc = createMockProcess({
+            pid: 3006,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-without-goal', path: '/tmp/thread-without-goal' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+                if (msg.method === 'thread/goal/get' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: { goal: null },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<{ type: string; [key: string]: unknown }> = [];
+        client.setEventHandler((event) => events.push(event));
+
+        await client.connect();
+        await client.resumeThread({ threadId: 'thread-without-goal' });
+
+        expect(events).toContainEqual(expect.objectContaining({
+            type: 'thread_goal_cleared',
+            threadId: 'thread-without-goal',
+        }));
+
+        await client.disconnect();
+    });
+
+    it('rehydrates goal state after reconnecting and resuming the active thread', async () => {
+        mockExecSync.mockReturnValue('codex-cli 0.140.0');
+        const firstRequests: MockRpcMessage[] = [];
+        const secondRequests: MockRpcMessage[] = [];
+        const firstProcess = createMockProcess({
+            pid: 3007,
+            onRequest: (msg, stdout) => {
+                firstRequests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-reconnect-goal', path: '/tmp/thread-reconnect-goal' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        const secondProcess = createMockProcess({
+            pid: 3008,
+            onRequest: (msg, stdout) => {
+                secondRequests.push(msg);
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-reconnect-goal', path: '/tmp/thread-reconnect-goal' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+                if (msg.method === 'thread/goal/get' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: { goal: null },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn
+            .mockImplementationOnce(() => firstProcess)
+            .mockImplementationOnce(() => secondProcess);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<{ type: string; [key: string]: unknown }> = [];
+        client.setEventHandler((event) => events.push(event));
+
+        await client.connect();
+        await client.startThread({ model: 'gpt-test' });
+        await expect(client.reconnectAndResumeThread()).resolves.toBe(true);
+
+        expect(firstRequests.some((request) => request.method === 'thread/start')).toBe(true);
+        const resumedAt = secondRequests.findIndex((request) => request.method === 'thread/resume');
+        const hydratedAt = secondRequests.findIndex((request) => request.method === 'thread/goal/get');
+        expect(resumedAt).toBeGreaterThanOrEqual(0);
+        expect(hydratedAt).toBeGreaterThan(resumedAt);
+        expect(events).toContainEqual(expect.objectContaining({
+            type: 'thread_goal_cleared',
+            threadId: 'thread-reconnect-goal',
+        }));
+
+        await client.disconnect();
+    });
+
+    it('does not fail thread resume when goal hydration is unavailable', async () => {
+        mockExecSync.mockReturnValue('codex-cli 0.140.0');
+        const proc = createMockProcess({
+            pid: 3009,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-goal-get-error', path: '/tmp/thread-goal-get-error' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+                if (msg.method === 'thread/goal/get' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            error: { code: -32601, message: 'method not found' },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await expect(client.resumeThread({
+            threadId: 'thread-goal-get-error',
+        })).resolves.toEqual({
+            threadId: 'thread-goal-get-error',
+            model: 'gpt-test',
+        });
 
         await client.disconnect();
     });

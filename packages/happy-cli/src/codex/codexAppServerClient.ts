@@ -33,6 +33,8 @@ import type {
     InjectItemsResponse,
     ThreadGoalSetParams,
     ThreadGoalSetResponse,
+    ThreadGoalGetParams,
+    ThreadGoalGetResponse,
     ThreadGoalClearParams,
     ThreadGoalClearResponse,
     Thread,
@@ -857,6 +859,7 @@ export class CodexAppServerClient {
             mcpServers: opts?.mcpServers ?? defaults.mcpServers,
         });
         logger.debug('[CodexAppServer] Thread resumed:', this._threadId);
+        await this.hydrateGoalAfterResume(this._threadId);
         return { threadId: result.thread.id, model: result.model };
     }
 
@@ -932,17 +935,54 @@ export class CodexAppServerClient {
 
     async setGoal(opts: {
         threadId: string;
-        objective: string;
+        objective?: string;
         status?: ThreadGoalSetParams['status'];
         tokenBudget?: number | null;
     }): Promise<ThreadGoalSetResponse> {
         const params: ThreadGoalSetParams = {
             threadId: opts.threadId,
-            objective: opts.objective,
+            ...(opts.objective !== undefined ? { objective: opts.objective } : {}),
             ...(opts.status !== undefined ? { status: opts.status } : {}),
             ...(opts.tokenBudget !== undefined ? { tokenBudget: opts.tokenBudget } : {}),
         };
         return await this.request('thread/goal/set', params) as ThreadGoalSetResponse;
+    }
+
+    async getGoal(opts: {
+        threadId: string;
+    }): Promise<ThreadGoalGetResponse> {
+        const params: ThreadGoalGetParams = {
+            threadId: opts.threadId,
+        };
+        return await this.request('thread/goal/get', params) as ThreadGoalGetResponse;
+    }
+
+    private async hydrateGoalAfterResume(threadId: string): Promise<void> {
+        if (!this.supportsGoalActions()) {
+            return;
+        }
+
+        try {
+            const result = await this.getGoal({ threadId });
+            if (result.goal) {
+                this.eventHandler?.({
+                    type: 'thread_goal_updated',
+                    thread_id: threadId,
+                    threadId,
+                    goal: result.goal,
+                });
+            } else {
+                this.eventHandler?.({
+                    type: 'thread_goal_cleared',
+                    thread_id: threadId,
+                    threadId,
+                });
+            }
+        } catch (error) {
+            // Resuming the coding session remains useful even if an older or
+            // partially compatible app-server cannot return its goal snapshot.
+            logger.warn('[CodexAppServer] Failed to hydrate goal after resume', error);
+        }
     }
 
     async clearGoal(opts: {

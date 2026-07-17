@@ -18,10 +18,13 @@
  * display them as the user's actual prompt.
  */
 
+export type GoalControlAction = 'pause' | 'resume' | 'clear' | 'edit';
+
 export type LocalCommandMessage =
     | { kind: 'caveat' }
     | { kind: 'command-run'; commandName: string; args?: string }
     | { kind: 'goal-run'; goal: string }
+    | { kind: 'goal-action'; action: GoalControlAction }
     | { kind: 'goal-confirmation'; goal: string }
     | { kind: 'text'; text: string };
 
@@ -35,6 +38,13 @@ const COMMAND_ARGS_TAG_RE = /<command-args>[\s\S]*?<\/command-args>/g;
 const RAW_SLASH_COMMAND_RE = /^\s*\/([a-zA-Z][\w:-]*)(?:\s+([\s\S]*?))?\s*$/;
 const RAW_SLASH_COMMAND_TOKEN_RE = /(^|\s)\/([a-zA-Z][\w:-]*)(?=$|\s)/;
 const GOAL_STDOUT_RE = /^Goal set:\s*([\s\S]*?)\s*$/i;
+
+function goalControlAction(args: string): GoalControlAction | undefined {
+    const action = args.trim().toLowerCase();
+    return action === 'pause' || action === 'resume' || action === 'clear' || action === 'edit'
+        ? action
+        : undefined;
+}
 
 function rawSlashCommand(text: string): { commandName: string; args?: string } | undefined {
     const match = text.match(RAW_SLASH_COMMAND_RE);
@@ -86,6 +96,10 @@ export function parseLocalCommandMessage(text: string): LocalCommandMessage {
     const rawCommand = rawSlashCommand(text);
     if (rawCommand) {
         if (rawCommand.commandName.toLowerCase() === 'goal' && rawCommand.args) {
+            const action = goalControlAction(rawCommand.args);
+            if (action) {
+                return { kind: 'goal-action', action };
+            }
             return { kind: 'goal-run', goal: rawCommand.args };
         }
         return {
@@ -112,6 +126,10 @@ export function parseLocalCommandMessage(text: string): LocalCommandMessage {
             .trim();
         if (stripped.length === 0) {
             if (commandName.toLowerCase() === 'goal' && args && args.length > 0) {
+                const action = goalControlAction(args);
+                if (action) {
+                    return { kind: 'goal-action', action };
+                }
                 return {
                     kind: 'goal-run',
                     goal: args,
@@ -155,5 +173,5 @@ export function isUserSlashCommandEcho(text: string, hasLocalId: boolean): boole
     // Guard: a real wrapper message also contains <command-name>; never
     // treat that as a raw echo.
     const parsed = parseLocalCommandMessage(trimmed);
-    return parsed.kind === 'command-run' || parsed.kind === 'goal-run';
+    return parsed.kind === 'command-run' || parsed.kind === 'goal-run' || parsed.kind === 'goal-action';
 }

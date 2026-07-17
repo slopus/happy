@@ -49,11 +49,24 @@ import {
 import { discoverCodexSkillCommands } from './codexSkills';
 import {
     codexGoalActionCapabilities,
+    createCodexGoalInvalidationProjection,
+    getCodexGoalEventThreadId,
     mapCodexGoalEventToAgentGoalStatus,
-    parseCodexGoalActionParams,
+    mapCodexGoalEventToAgentGoalStatusV2,
     parseCodexGoalCommand,
+    parseCodexGoalActionParams,
+    reduceCodexGoalProjection,
+    shouldApplyCodexGoalStatusV2,
+    type CodexGoalProjection,
     type CodexGoalCommand,
 } from './codexGoalStatus';
+import {
+    codexGoalCommandRequiresExistingThread,
+    consumeCodexGoalCommandText,
+    createCodexGoalMutationQueue,
+    executeCodexGoalCommand,
+} from './codexGoalCommandHandler';
+import { syncCodexSessionAfterSwap } from './codexGoalSessionSwap';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -202,6 +215,10 @@ export async function runCodex(opts: {
     let client!: CodexAppServerClient;
     let reasoningProcessor!: ReasoningProcessor;
     let abortInProgress: Promise<void> | null = null;
+    let latestCodexGoalProjection: CodexGoalProjection | undefined;
+    let trackedCodexThreadId: string | null = null;
+    let codexThreadEpoch = 0;
+    let goalActionRpcHandler: ((params: Record<string, unknown>) => Promise<{ ok: true }>) | undefined;
     const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
         api,
         sessionTag,
@@ -210,6 +227,12 @@ export async function runCodex(opts: {
         response,
         onSessionSwap: (newSession) => {
             session = newSession;
+            syncCodexSessionAfterSwap({
+                session: newSession,
+                projection: latestCodexGoalProjection,
+                goalActionRpcHandler,
+                threadId: client?.threadId ?? null,
+            });
             // Update permission handler with new session to avoid stale reference
             if (permissionHandler) {
                 permissionHandler.updateSession(newSession);
@@ -217,6 +240,42 @@ export async function runCodex(opts: {
         }
     });
     session = initialSession;
+
+    const clearCodexThreadMetadata = () => {
+        session.updateMetadata((currentMetadata) => {
+            const nextMetadata = { ...currentMetadata };
+            delete nextMetadata.codexThreadId;
+            return nextMetadata;
+        });
+    };
+
+    const replaceCodexThreadGoalState = (opts: {
+        nextThreadId: string | null;
+        sourceSessionId?: string;
+        state: Parameters<typeof createCodexGoalInvalidationProjection>[0]['state'];
+        clearMetadata?: boolean;
+    }) => {
+        codexThreadEpoch += 1;
+        trackedCodexThreadId = opts.nextThreadId;
+        const projection = createCodexGoalInvalidationProjection({
+            sourceSessionId: opts.sourceSessionId,
+            state: opts.state,
+        });
+        latestCodexGoalProjection = projection;
+        session.updateAgentState((currentState) => ({
+            ...currentState,
+            agentGoalStatus: projection.legacy,
+            agentGoalStatusV2: projection.detailed,
+        }));
+        if (opts.clearMetadata) {
+            clearCodexThreadMetadata();
+        }
+    };
+
+    const advanceCodexThreadEpoch = (threadId: string) => {
+        codexThreadEpoch += 1;
+        trackedCodexThreadId = threadId;
+    };
 
     // On reconnect, un-archive the session and skip replaying old messages.
     if (reconnectSessionId) {
@@ -471,11 +530,24 @@ export async function runCodex(opts: {
                 // Request interruption, then force-restart Codex app-server if
                 // it doesn't settle quickly (long-running shell commands).
                 if (client) {
+                    const threadIdBeforeAbort = client.threadId ?? trackedCodexThreadId ?? undefined;
                     const abortResult = await client.abortTurnWithFallback({
                         gracePeriodMs: 3000,
                         forceRestartOnTimeout: true,
                     });
                     if (abortResult.forcedRestart) {
+                        if (abortResult.resumedThread && client.threadId) {
+                            // Invalidate goal mutations captured against the old
+                            // app-server process while preserving its hydrated goal.
+                            advanceCodexThreadEpoch(client.threadId);
+                        } else {
+                            replaceCodexThreadGoalState({
+                                nextThreadId: null,
+                                sourceSessionId: threadIdBeforeAbort,
+                                state: { status: 'unavailable', reason: 'error' },
+                                clearMetadata: true,
+                            });
+                        }
                         logger.warn('[Codex] Forced app-server restart after interrupt timeout');
                         session.sendSessionEvent({
                             type: 'message',
@@ -612,54 +684,100 @@ export async function runCodex(opts: {
         }
     });
     const updateCodexGoalState = (message: Record<string, unknown>) => {
-        const capabilities = codexGoalActionCapabilities(client.supportsGoalActions());
-        const goalStatus = mapCodexGoalEventToAgentGoalStatus(
-            message,
-            client.threadId,
-            capabilities ? { capabilities } : undefined,
-        );
-        if (!goalStatus) {
+        const activeThreadId = client.threadId;
+        const eventThreadId = getCodexGoalEventThreadId(message);
+        if (
+            !activeThreadId
+            || trackedCodexThreadId !== activeThreadId
+            || eventThreadId !== activeThreadId
+        ) {
+            logger.debug('[Codex] Ignoring stale or unscoped goal event', {
+                activeThreadId,
+                trackedCodexThreadId,
+                eventThreadId,
+            });
             return;
         }
-        session.updateAgentState((currentState) => ({
-            ...currentState,
-            agentGoalStatus: goalStatus,
-        }));
+
+        const actionsSupported = client.supportsGoalActions();
+        const capabilities = codexGoalActionCapabilities(actionsSupported);
+        const goalStatus = mapCodexGoalEventToAgentGoalStatus(
+            message,
+            activeThreadId,
+            capabilities ? { capabilities } : undefined,
+        );
+        const goalStatusV2 = mapCodexGoalEventToAgentGoalStatusV2(
+            message,
+            activeThreadId,
+            { actionsSupported },
+        );
+        if (!goalStatus || !goalStatusV2) {
+            return;
+        }
+        const candidate: CodexGoalProjection = { legacy: goalStatus, detailed: goalStatusV2 };
+        const reduced = reduceCodexGoalProjection(latestCodexGoalProjection, candidate, 'event');
+        if (reduced !== candidate) {
+            return;
+        }
+        latestCodexGoalProjection = candidate;
+        session.updateAgentState((currentState) => {
+            if (
+                trackedCodexThreadId !== activeThreadId
+                || client.threadId !== activeThreadId
+                || latestCodexGoalProjection?.detailed !== goalStatusV2
+            ) {
+                return currentState;
+            }
+            if (!shouldApplyCodexGoalStatusV2(currentState.agentGoalStatusV2, goalStatusV2)) {
+                if (currentState.agentGoalStatus && currentState.agentGoalStatusV2) {
+                    const persistedProjection: CodexGoalProjection = {
+                        legacy: currentState.agentGoalStatus ?? goalStatus,
+                        detailed: currentState.agentGoalStatusV2,
+                    };
+                    latestCodexGoalProjection = reduceCodexGoalProjection(
+                        latestCodexGoalProjection,
+                        persistedProjection,
+                        'persisted',
+                    );
+                }
+                return currentState;
+            }
+            return {
+                ...currentState,
+                // V1 remains intentionally flattened for old strict clients.
+                agentGoalStatus: goalStatus,
+                agentGoalStatusV2: goalStatusV2,
+            };
+        });
     };
-    const handleCodexGoalCommand = async (
+    const enqueueCodexGoalMutation = createCodexGoalMutationQueue(() => ({
+        threadId: trackedCodexThreadId === client.threadId ? client.threadId : null,
+        threadEpoch: codexThreadEpoch,
+    }));
+    const handleCodexGoalCommand = (
         command: CodexGoalCommand,
         threadId: string,
-    ): Promise<boolean> => {
-        try {
-            if (command.type === 'clear') {
-                const result = await client.clearGoal({ threadId });
-                if (result.cleared !== false) {
-                    updateCodexGoalState({
-                        type: 'thread_goal_cleared',
-                        threadId,
-                    });
-                }
-                messageBuffer.addMessage('Goal cleared', 'status');
-                return true;
-            }
-
-            const result = await client.setGoal({
-                threadId,
-                objective: command.objective,
-            });
-            updateCodexGoalState({
-                type: 'thread_goal_updated',
-                threadId,
-                goal: result.goal,
-            });
-            messageBuffer.addMessage('Goal updated', 'status');
-            return true;
-        } catch (error) {
-            logger.debug('[Codex] Goal command API failed; falling back to normal turn:', error);
-            return false;
-        }
+    ): Promise<void> => {
+        const context = { threadId, threadEpoch: codexThreadEpoch };
+        return enqueueCodexGoalMutation(context, (assertCurrent) => executeCodexGoalCommand({
+            client,
+            command,
+            threadId,
+            publishEvent: updateCodexGoalState,
+            reportStatus: (message) => messageBuffer.addMessage(message, 'status'),
+            assertCurrent,
+        }));
     };
-    session.rpcHandlerManager.registerHandler('goal-action', async (params: Record<string, unknown>) => {
+    const reportCodexGoalCommandError = (error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        logger.debug('[Codex] Goal command API failed:', error);
+        messageBuffer.addMessage(`Goal command failed: ${reason}`, 'status');
+        session.sendSessionEvent({
+            type: 'message',
+            message: `Codex goal command failed: ${reason}`,
+        });
+    };
+    goalActionRpcHandler = async (params: Record<string, unknown>) => {
         const command = parseCodexGoalActionParams(params);
         if (!command) {
             throw new Error('Unsupported Codex goal action');
@@ -670,13 +788,11 @@ export async function runCodex(opts: {
             throw new Error('No active Codex thread');
         }
 
-        const handled = await handleCodexGoalCommand(command, threadId);
-        if (!handled) {
-            throw new Error('Codex goal actions are not supported by this runtime');
-        }
+        await handleCodexGoalCommand(command, threadId);
 
         return { ok: true };
-    });
+    };
+    session.rpcHandlerManager.registerHandler('goal-action', goalActionRpcHandler);
 
     // Approval handler: routes server → client approval requests to our permission handler
     client.setApprovalHandler(async (params) => {
@@ -866,14 +982,30 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect done');
 
         if (opts.resumeThreadId) {
-            await resumeExistingThread({
-                client,
-                session,
-                messageBuffer,
-                threadId: opts.resumeThreadId,
-                cwd: process.cwd(),
-                mcpServers,
+            replaceCodexThreadGoalState({
+                nextThreadId: opts.resumeThreadId,
+                sourceSessionId: opts.resumeThreadId,
+                state: { status: 'unavailable', reason: 'not_loaded' },
             });
+            try {
+                await resumeExistingThread({
+                    client,
+                    session,
+                    messageBuffer,
+                    threadId: opts.resumeThreadId,
+                    cwd: process.cwd(),
+                    mcpServers,
+                });
+            } catch (error) {
+                client.clearThreadState();
+                replaceCodexThreadGoalState({
+                    nextThreadId: null,
+                    sourceSessionId: opts.resumeThreadId,
+                    state: { status: 'unavailable', reason: 'error' },
+                    clearMetadata: true,
+                });
+                throw error;
+            }
             first = false;
             appendSystemPromptInjected = true;
         }
@@ -933,7 +1065,14 @@ export async function runCodex(opts: {
 
             if (isCodexClearText(message.message)) {
                 logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
+                const clearedThreadId = client.threadId ?? trackedCodexThreadId ?? undefined;
                 client.clearThreadState();
+                replaceCodexThreadGoalState({
+                    nextThreadId: null,
+                    sourceSessionId: clearedThreadId,
+                    state: { status: 'inactive', reason: 'cleared' },
+                    clearMetadata: true,
+                });
                 currentTurnId = null;
                 codexStartedSubagents = new Set<string>();
                 codexActiveSubagents = new Set<string>();
@@ -949,11 +1088,6 @@ export async function runCodex(opts: {
                 session.keepAlive(thinking, 'remote');
                 messageBuffer.addMessage('Context was reset', 'status');
                 session.sendSessionEvent({ type: 'message', message: 'Context was reset' });
-                session.updateMetadata((currentMetadata) => {
-                    const nextMetadata = { ...currentMetadata };
-                    delete nextMetadata.codexThreadId;
-                    return nextMetadata;
-                });
                 emitReadyIfIdle({
                     pending,
                     queueSize: () => messageQueue.size(),
@@ -978,8 +1112,22 @@ export async function runCodex(opts: {
                 );
                 activeTurnPermissionMode = message.mode.permissionMode;
 
-                // Start thread on first turn (thread persists across mode changes)
+                // Goal lifecycle controls require an existing thread. Parse
+                // them before thread creation so pause/resume/edit/clear can
+                // never manufacture an empty Codex thread.
+                const parsedGoalCommand = parseCodexGoalCommand(message.message);
                 let activeThreadId = client.threadId;
+                if (
+                    parsedGoalCommand
+                    && codexGoalCommandRequiresExistingThread(parsedGoalCommand)
+                    && (!client.hasActiveThread() || !activeThreadId)
+                ) {
+                    reportCodexGoalCommandError(new Error('No active Codex thread'));
+                    continue;
+                }
+
+                // Start thread on the first ordinary turn or when setting a
+                // brand-new objective. The new thread begins with no goal.
                 if (!client.hasActiveThread() || !activeThreadId) {
                     const startedThread = await client.startThread({
                         model: message.mode.model,
@@ -989,14 +1137,23 @@ export async function runCodex(opts: {
                         mcpServers,
                     });
                     activeThreadId = startedThread.threadId;
+                    replaceCodexThreadGoalState({
+                        nextThreadId: startedThread.threadId,
+                        sourceSessionId: startedThread.threadId,
+                        state: { status: 'inactive', reason: 'none' },
+                    });
                     session.updateMetadata((currentMetadata) => ({
                         ...currentMetadata,
                         codexThreadId: startedThread.threadId,
                     }));
                 }
 
-                const goalCommand = parseCodexGoalCommand(message.message);
-                if (goalCommand && await handleCodexGoalCommand(goalCommand, activeThreadId)) {
+                const consumedGoalCommand = await consumeCodexGoalCommandText({
+                    text: message.message,
+                    execute: (command) => handleCodexGoalCommand(command, activeThreadId),
+                    onError: reportCodexGoalCommandError,
+                });
+                if (consumedGoalCommand) {
                     continue;
                 }
 

@@ -30,8 +30,13 @@ interface SessionModeChangeRequest {
 }
 
 interface SessionGoalActionRequest {
-    action: 'clear' | 'stop' | 'edit';
+    action: 'clear' | 'pause' | 'resume' | 'edit';
     objective?: string;
+}
+
+interface SessionGoalActionResponse {
+    ok?: boolean;
+    error?: string;
 }
 
 // Bash operation types
@@ -727,10 +732,22 @@ export async function sessionGoalAction(
     action: SessionGoalActionRequest['action'],
     objective?: string,
 ): Promise<void> {
-    await apiSocket.sessionRPC(sessionId, 'goal-action', {
+    const request = {
         action,
         ...(objective !== undefined ? { objective } : {}),
-    } satisfies SessionGoalActionRequest);
+    } satisfies SessionGoalActionRequest;
+    const response = await apiSocket.sessionRPC<SessionGoalActionResponse, SessionGoalActionRequest>(
+        sessionId,
+        'goal-action',
+        request,
+    );
+
+    const responseError = typeof response?.error === 'string' && response.error.trim().length > 0
+        ? response.error
+        : null;
+    if (responseError || response?.ok !== true) {
+        throw new Error(responseError ?? 'Goal action failed');
+    }
 }
 
 /**

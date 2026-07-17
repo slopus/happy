@@ -17,10 +17,6 @@ export async function performAgentGoalAction({
     setInFlight,
     onError,
 }: PerformAgentGoalActionOptions): Promise<void> {
-    if (action === 'stop') {
-        return;
-    }
-
     let objective: string | undefined;
     if (action === 'edit') {
         const nextGoal = await promptEditGoal(currentGoalText);

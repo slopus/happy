@@ -121,6 +121,58 @@ export const AgentGoalStatusSchema = z.discriminatedUnion('status', [
 
 export type AgentGoalStatus = z.infer<typeof AgentGoalStatusSchema>;
 
+/**
+ * Versioned goal projection for provider lifecycle states that V1 cannot
+ * represent without breaking older apps' strict nested schemas. Keep V1
+ * untouched: older clients ignore this sibling field and continue parsing
+ * `agentGoalStatus` safely.
+ */
+export const AgentGoalProviderStatusSchema = z.enum([
+    'active',
+    'paused',
+    'blocked',
+    'usageLimited',
+    'budgetLimited',
+]);
+
+export type AgentGoalProviderStatus = z.infer<typeof AgentGoalProviderStatusSchema>;
+
+export const AgentGoalCapabilitiesV2Schema = z.object({
+    clear: z.boolean().optional(),
+    edit: z.boolean().optional(),
+    pause: z.boolean().optional(),
+    resume: z.boolean().optional(),
+}).strict();
+
+const AgentGoalStatusV2BaseSchema = z.object({
+    version: z.literal(2),
+    source: AgentGoalSourceSchema,
+    observedAt: z.number().int().nonnegative(),
+    sourceSessionId: z.string().trim().min(1).optional(),
+    sourceRevision: z.union([z.string().trim().min(1), z.number()]).optional(),
+});
+
+export const AgentGoalStatusV2Schema = z.discriminatedUnion('status', [
+    AgentGoalStatusV2BaseSchema.extend({
+        status: z.literal('unavailable'),
+        reason: z.enum(['unsupported', 'not_loaded', 'stale', 'malformed', 'error', 'unknown']).optional(),
+    }).strict(),
+    AgentGoalStatusV2BaseSchema.extend({
+        status: z.literal('inactive'),
+        reason: z.enum(['none', 'cleared', 'completed', 'unknown']).optional(),
+    }).strict(),
+    AgentGoalStatusV2BaseSchema.extend({
+        status: z.literal('active'),
+        sourceSessionId: z.string().trim().min(1),
+        providerStatus: AgentGoalProviderStatusSchema,
+        text: z.string().trim().min(1),
+        capabilities: AgentGoalCapabilitiesV2Schema.optional(),
+        progress: AgentGoalProgressSchema.optional(),
+    }).strict(),
+]);
+
+export type AgentGoalStatusV2 = z.infer<typeof AgentGoalStatusV2Schema>;
+
 export const AgentStateSchema = z.object({
     controlledByUser: z.boolean().nullish(),
     requests: z.record(z.string(), z.object({
@@ -145,6 +197,9 @@ export const AgentStateSchema = z.object({
         toolUseId: z.string().nullish()
     })).nullish(),
     agentGoalStatus: AgentGoalStatusSchema.optional(),
+    // Treat malformed/future V2 payloads as absent so the unchanged V1
+    // projection can still be used instead of discarding all agent state.
+    agentGoalStatusV2: AgentGoalStatusV2Schema.optional().catch(undefined),
 });
 
 export type AgentState = z.infer<typeof AgentStateSchema>;

@@ -603,6 +603,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         resolveVisibleAgentGoalStatus(session)
     ), [
         session.agentState?.agentGoalStatus,
+        session.agentState?.agentGoalStatusV2,
         session.presence,
         session.metadata?.claudeSessionId,
         session.metadata?.codexThreadId,
@@ -620,7 +621,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }),
             dispatchGoalAction: (nextAction, objective) => sessionGoalAction(sessionId, nextAction, objective),
             setInFlight: setGoalActionInFlight,
-            onError: (error) => console.error('Failed to perform goal action', error),
+            onError: (error) => {
+                console.error('Failed to perform goal action', error);
+                Modal.alert(
+                    t('common.error'),
+                    error instanceof Error && error.message.trim().length > 0
+                        ? error.message
+                        : t('errors.unknownError'),
+                );
+            },
         });
     }, [sessionId, visibleAgentGoal?.text]);
 
