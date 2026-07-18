@@ -240,6 +240,8 @@ export const ca: TranslationStructure = {
         analyticsEnabled: 'Analítica anònima d\'ús activa',
         imageUpload: 'Pujada d\'imatges',
         imageUploadSubtitle: 'Adjunta imatges als missatges perquè els agents compatibles les analitzin',
+        imageZoom: 'Toca per ampliar imatges',
+        imageZoomSubtitle: 'Obre imatges a pantalla completa amb zoom de pessigada en tocar',
     },
 
     errors: {

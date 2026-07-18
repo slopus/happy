@@ -8,7 +8,7 @@ import { Text } from '../StyledText';
 import { Typography } from '@/constants/Typography';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 import { Modal } from '@/modal';
-import { useLocalSetting } from '@/sync/storage';
+import { useLocalSetting, useSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
@@ -209,22 +209,31 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
 }
 
 function RenderImageBlock(props: { url: string, alt: string, first: boolean, last: boolean }) {
+    const expImageZoom = useSetting('expImageZoom');
     const accessibleLabel = props.alt || 'Markdown image';
 
     const openViewer = React.useCallback(() => {
         Modal.show({ component: ImageViewer, props: { uri: props.url } } as any);
     }, [props.url]);
 
+    const image = (
+        <Image
+            source={{ uri: props.url }}
+            style={style.image}
+            accessibilityLabel={accessibleLabel}
+            resizeMode="contain"
+        />
+    );
+
     return (
         <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
-            <Pressable onPress={openViewer} accessibilityRole="imagebutton">
-                <Image
-                    source={{ uri: props.url }}
-                    style={style.image}
-                    accessibilityLabel={accessibleLabel}
-                    resizeMode="contain"
-                />
-            </Pressable>
+            {expImageZoom ? (
+                <Pressable onPress={openViewer} accessibilityRole="imagebutton">
+                    {image}
+                </Pressable>
+            ) : (
+                image
+            )}
             {props.alt ? (
                 <Text style={style.imageCaption}>{props.alt}</Text>
             ) : null}

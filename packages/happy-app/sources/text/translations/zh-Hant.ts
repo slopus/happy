@@ -240,6 +240,8 @@ export const zhHant: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
         imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
+        imageZoom: '點按縮放圖片',
+        imageZoomSubtitle: '點按將圖片全螢幕開啟並支援雙指縮放',
     },
 
     errors: {

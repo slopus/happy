@@ -241,6 +241,8 @@ export const ja: TranslationStructure = {
         analyticsEnabled: '匿名の使用状況分析がアクティブ',
         imageUpload: '画像アップロード',
         imageUploadSubtitle: '対応エージェントに分析させるため、メッセージに画像を添付する',
+        imageZoom: 'タップで画像をズーム',
+        imageZoomSubtitle: 'タップで画像をフルスクリーン表示し、ピンチでズーム',
     },
 
     errors: {

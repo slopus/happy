@@ -18,6 +18,7 @@ import { useAttachmentImage } from '@/hooks/useAttachmentImage';
 import { thumbhashToDataUri } from '@/utils/thumbhash';
 import { Modal } from '@/modal';
 import { ImageViewer } from '@/components/ImageViewer';
+import { useSetting } from '@/sync/storage';
 
 const fileInputSchema = z.object({
     ref: z.string(),
@@ -37,6 +38,7 @@ const DEFAULT_ASPECT = 4 / 3; // when wire-format omits image{} dimensions
 
 export const FileView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
     const { theme } = useUnistyles();
+    const expImageZoom = useSetting('expImageZoom');
     const parsed = fileInputSchema.safeParse(tool.input);
     if (!parsed.success) return null;
 
@@ -71,26 +73,38 @@ export const FileView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
         Modal.show({ component: ImageViewer, props: { uri } } as any);
     }, [uri]);
 
+    const inner = (
+        <>
+            <Image
+                source={uri ? { uri } : undefined}
+                placeholder={placeholder}
+                style={[{ width: displayW, height: displayH }, styles.inlineImage]}
+                contentFit="cover"
+                transition={150}
+            />
+            {error && !uri && (
+                <View style={[styles.errorOverlay, { backgroundColor: theme.colors.surfaceHigh }]}>
+                    <Ionicons name="alert-circle-outline" size={20} color={theme.colors.textSecondary} />
+                </View>
+            )}
+        </>
+    );
+
     return (
         <View style={styles.inlineContainer}>
-            <Pressable
-                onPress={openViewer}
-                disabled={!uri}
-                style={[styles.inlineWrapper, { borderColor: theme.colors.divider }]}
-            >
-                <Image
-                    source={uri ? { uri } : undefined}
-                    placeholder={placeholder}
-                    style={[{ width: displayW, height: displayH }, styles.inlineImage]}
-                    contentFit="cover"
-                    transition={150}
-                />
-                {error && !uri && (
-                    <View style={[styles.errorOverlay, { backgroundColor: theme.colors.surfaceHigh }]}>
-                        <Ionicons name="alert-circle-outline" size={20} color={theme.colors.textSecondary} />
-                    </View>
-                )}
-            </Pressable>
+            {expImageZoom ? (
+                <Pressable
+                    onPress={openViewer}
+                    disabled={!uri}
+                    style={[styles.inlineWrapper, { borderColor: theme.colors.divider }]}
+                >
+                    {inner}
+                </Pressable>
+            ) : (
+                <View style={[styles.inlineWrapper, { borderColor: theme.colors.divider }]}>
+                    {inner}
+                </View>
+            )}
             <Text style={[styles.filename, { color: theme.colors.textSecondary }]} numberOfLines={1}>{name}</Text>
         </View>
     );

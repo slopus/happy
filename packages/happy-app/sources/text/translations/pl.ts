@@ -257,6 +257,8 @@ export const pl: TranslationStructure = {
         analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
         imageUpload: 'Przesyłanie obrazów',
         imageUploadSubtitle: 'Dołączaj obrazy do wiadomości, aby obsługiwani agenci mogli je analizować',
+        imageZoom: 'Dotknij, aby powiększyć obrazy',
+        imageZoomSubtitle: 'Otwieraj obrazy na pełnym ekranie z powiększaniem gestem szczypania po dotknięciu',
     },
 
     errors: {
