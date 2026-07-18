@@ -8,7 +8,7 @@ import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLast
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSessionGitStatus } from '@/sync/storage';
+import { useAllMachines, useSessionGitStatus, useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -169,12 +169,14 @@ const MachineSeparator = React.memo(({ machineName, machineId }: { machineName: 
 export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
     const machines = useAllMachines();
+    const expForkNesting = useSetting('expForkNesting');
 
     const machineGroups = React.useMemo(() => buildActiveSessionDisplayGroups(
         sessions,
         machines,
         t('status.unknown'),
-    ), [machines, sessions]);
+        expForkNesting,
+    ), [machines, sessions, expForkNesting]);
     const hasMultipleMachines = machineGroups.length > 1;
 
     return (

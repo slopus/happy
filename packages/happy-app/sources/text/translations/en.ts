@@ -255,6 +255,8 @@ export const en: TranslationStructure = {
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
         imageUploadSubtitle: 'Attach images to messages for supported agents to analyze',
+        forkNesting: 'Nest Forked Sessions',
+        forkNestingSubtitle: 'Indent forked sessions under the session they branched from',
     },
 
     errors: {

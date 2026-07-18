@@ -227,6 +227,8 @@ export const ru: TranslationStructure = {
         analyticsEnabled: 'Анонимная аналитика использования активна',
         imageUpload: 'Загрузка изображений',
         imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа поддерживаемыми агентами',
+        forkNesting: 'Вложенные ответвлённые сессии',
+        forkNestingSubtitle: 'Смещать ответвлённые сессии под сессию, от которой они отделились',
     },
 
     errors: {

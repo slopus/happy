@@ -241,6 +241,8 @@ export const es: TranslationStructure = {
         analyticsEnabled: 'Analítica anónima de uso activa',
         imageUpload: 'Subida de imágenes',
         imageUploadSubtitle: 'Adjunta imágenes a los mensajes para que los agentes compatibles las analicen',
+        forkNesting: 'Anidar sesiones bifurcadas',
+        forkNestingSubtitle: 'Sangra las sesiones bifurcadas bajo la sesión de la que se ramificaron',
     },
 
     errors: {

@@ -39,6 +39,7 @@ export function buildActiveSessionDisplayGroups(
     sessions: readonly SessionRowData[],
     machines: readonly SessionDisplayMachine[],
     unknownText: string,
+    nestForkLineage: boolean = false,
 ): ActiveSessionDisplayMachineGroup[] {
     const machinesMap = new Map(machines.map((machine) => [machine.id, machine]));
     const byMachine = new Map<string, ActiveSessionDisplayMachineGroup>();
@@ -71,8 +72,11 @@ export function buildActiveSessionDisplayGroups(
     byMachine.forEach((machineGroup) => {
         machineGroup.projects.forEach((projectGroup) => {
             projectGroup.sessions.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-            // Nest forked children under their parent within this project group.
-            projectGroup.sessions = orderSessionRowsByForkLineage(projectGroup.sessions);
+            // Nest forked children under their parent within this project group
+            // (experimental — gated behind expForkNesting).
+            if (nestForkLineage) {
+                projectGroup.sessions = orderSessionRowsByForkLineage(projectGroup.sessions);
+            }
         });
     });
 
@@ -85,6 +89,7 @@ export function getSessionShortcutIdsInDisplayOrder(
     data: readonly SessionListViewItem[] | null,
     machines: readonly SessionDisplayMachine[],
     unknownText: string,
+    nestForkLineage: boolean = false,
 ): string[] {
     if (!data) {
         return [];
@@ -93,7 +98,7 @@ export function getSessionShortcutIdsInDisplayOrder(
     const sessionIds: string[] = [];
     data.forEach((item) => {
         if (item.type === 'active-sessions') {
-            const machineGroups = buildActiveSessionDisplayGroups(item.sessions, machines, unknownText);
+            const machineGroups = buildActiveSessionDisplayGroups(item.sessions, machines, unknownText, nestForkLineage);
             machineGroups.forEach((machineGroup) => {
                 Array.from(machineGroup.projects.values())
                     .sort((a, b) => a.displayPath.localeCompare(b.displayPath))

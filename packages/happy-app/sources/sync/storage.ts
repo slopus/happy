@@ -169,9 +169,15 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
     };
 }
 
-/** Build display rows for a section's sessions and nest forks within it. */
-function buildOrderedSessionRows(sessions: Session[], unreadSessionIds?: Set<string>): SessionRowData[] {
-    return orderSessionRowsByForkLineage(sessions.map(s => buildSessionRowData(s, unreadSessionIds)));
+/**
+ * Build display rows for a section's sessions. When `orderForks` is on
+ * (the experimental `expForkNesting` setting), forked children are nested
+ * under their parent and stamped with a fork depth; otherwise rows keep their
+ * original order and stay at depth 0 so the renderer shows no indentation.
+ */
+function buildOrderedSessionRows(sessions: Session[], unreadSessionIds: Set<string> | undefined, orderForks: boolean): SessionRowData[] {
+    const rows = sessions.map(s => buildSessionRowData(s, unreadSessionIds));
+    return orderForks ? orderSessionRowsByForkLineage(rows) : rows;
 }
 
 
@@ -279,12 +285,18 @@ interface StorageState {
     setCurrentViewingSession: (sessionId: string | null) => void;
 }
 
-// Helper function to build unified list view data from sessions and machines
+// Helper function to build unified list view data from sessions and machines.
+// `orderForks` gates the experimental fork-nesting layout; it defaults to the
+// current `expForkNesting` setting so callers that don't care can omit it. The
+// default reads the store lazily at call time — the builder is never invoked
+// during store construction (sessionListViewData starts null), so `storage` is
+// always initialized by the time this runs.
 function buildSessionListViewData(
     sessions: Record<string, Session>,
     // Required on purpose: an omitted set silently rebuilds the list with
     // hasUnread=false everywhere — exactly the bug this parameter caused twice.
     unreadSessionIds: Set<string>,
+    orderForks: boolean = storage.getState().settings.expForkNesting,
 ): SessionListViewItem[] {
     // Separate active and inactive sessions. Rig sessions are pulled out
     // entirely — they live in the projects section instead of the flat list.
@@ -373,7 +385,7 @@ function buildSessionListViewData(
                 }
 
                 listData.push({ type: 'header', title: headerTitle });
-                buildOrderedSessionRows(currentDateGroup, unreadSessionIds).forEach(row => {
+                buildOrderedSessionRows(currentDateGroup, unreadSessionIds, orderForks).forEach(row => {
                     listData.push({ type: 'session', session: row });
                 });
             }
@@ -403,7 +415,7 @@ function buildSessionListViewData(
         }
 
         listData.push({ type: 'header', title: headerTitle });
-        buildOrderedSessionRows(currentDateGroup, unreadSessionIds).forEach(row => {
+        buildOrderedSessionRows(currentDateGroup, unreadSessionIds, orderForks).forEach(row => {
             listData.push({ type: 'session', session: row });
         });
     }
@@ -911,10 +923,14 @@ export const storage = create<StorageState>()((set, get) => {
             };
         }),
         applySettingsLocal: (settings: Partial<Settings>) => set((state) => {
-            saveSettings(applySettings(state.settings, settings), state.settingsVersion ?? 0);
+            const nextSettings = applySettings(state.settings, settings);
+            saveSettings(nextSettings, state.settingsVersion ?? 0);
             return {
                 ...state,
-                settings: applySettings(state.settings, settings)
+                settings: nextSettings,
+                // Rebuild the list so the experimental fork-nesting toggle takes
+                // effect immediately instead of waiting for the next session update.
+                sessionListViewData: buildSessionListViewData(state.sessions, state.unreadSessionIds, nextSettings.expForkNesting),
             };
         }),
         applySettings: (settings: Settings, version: number) => set((state) => {
@@ -923,7 +939,9 @@ export const storage = create<StorageState>()((set, get) => {
                 return {
                     ...state,
                     settings,
-                    settingsVersion: version
+                    settingsVersion: version,
+                    // Keep the list in sync with a remotely-synced settings change.
+                    sessionListViewData: buildSessionListViewData(state.sessions, state.unreadSessionIds, settings.expForkNesting),
                 };
             } else {
                 return state;
