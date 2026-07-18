@@ -157,3 +157,24 @@ describe('parseMarkdown — display math edge cases', () => {
         expect(allText).toContain('and more');
     });
 });
+
+describe('parseMarkdown — math gated off (enableMath = false)', () => {
+    it('does not produce a display-math block; keeps the delimiters as literal text', () => {
+        const blocks = parseMarkdown('$$ E = mc^2 $$', false);
+        expect(blocks.every(b => b.type !== 'math')).toBe(true);
+        const allText = blocks.filter(b => b.type === 'text').map(b => (b as any).content.map((s: any) => s.text).join('')).join('');
+        expect(allText).toContain('$$ E = mc^2 $$');
+    });
+
+    it('does not mark inline $…$ / \\(…\\) spans as math', () => {
+        const spans = parseMarkdownSpans('an equation $x^2$ and \\(y\\) here', false, false);
+        expect(spans.every(s => !s.math)).toBe(true);
+        expect(spans.map(s => s.text).join('')).toContain('$x^2$');
+    });
+
+    it('still parses non-math markdown normally when math is off', () => {
+        const spans = parseMarkdownSpans('some **bold** and `code`', false, false);
+        expect(spans.find(s => s.styles.includes('bold'))?.text).toBe('bold');
+        expect(spans.find(s => s.styles.includes('code'))?.text).toBe('code');
+    });
+});

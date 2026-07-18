@@ -49,6 +49,6 @@ export type MarkdownSpan = {
     math?: boolean
 }
 
-export function parseMarkdown(markdown: string) {
-    return parseMarkdownBlock(markdown);
+export function parseMarkdown(markdown: string, enableMath: boolean = true) {
+    return parseMarkdownBlock(markdown, enableMath);
 }

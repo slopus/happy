@@ -220,6 +220,8 @@ export const zhHant: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
         imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
+        mathRendering: '數學公式渲染',
+        mathRenderingSubtitle: '在訊息中渲染 LaTeX 數學公式（$…$、$$…$$）',
     },
 
     errors: {

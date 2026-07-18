@@ -68,13 +68,20 @@ function isCurrencyLike(markdown: string, match: RegExpExecArray): boolean {
     );
 }
 
-export function parseMarkdownSpans(markdown: string, header: boolean): MarkdownSpan[] {
+export function parseMarkdownSpans(markdown: string, header: boolean, enableMath: boolean = true): MarkdownSpan[] {
     const spans: MarkdownSpan[] = [];
     let lastIndex = 0;
     let match: RegExpExecArray | null;
     pattern.lastIndex = 0;
 
     while ((match = pattern.exec(markdown)) !== null) {
+        // Math rendering disabled: leave `$$…$$` / `\[…\]` / `\(…\)` / `$…$`
+        // as literal text by skipping the match without advancing lastIndex, so
+        // the delimiters fold into the surrounding plain text (upstream behavior).
+        if (!enableMath && (match[1] !== undefined || match[3] !== undefined || match[5] !== undefined || match[7] !== undefined)) {
+            continue;
+        }
+
         // Reject a `$…$` currency/escape candidate and rewind one char past its
         // opening `$`, so the candidate's CLOSING `$` can still open a following
         // real equation ("You owe $5 but $x$" → text "$5" + math "x").

@@ -10,7 +10,7 @@ function splitTableRow(line: string): string[] {
     return cells;
 }
 
-function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock | null; nextIndex: number } {
+function parseTable(lines: string[], startIndex: number, enableMath: boolean): { table: MarkdownBlock | null; nextIndex: number } {
     let index = startIndex;
     const tableLines: string[] = [];
 
@@ -40,7 +40,7 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
     }
 
     const headers = splitTableRow(tableLines[0])
-        .map(cell => parseMarkdownSpans(cell, false));
+        .map(cell => parseMarkdownSpans(cell, false, enableMath));
 
     if (headers.length === 0) {
         return { table: null, nextIndex: startIndex };
@@ -50,7 +50,7 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
     const rows: MarkdownSpan[][][] = [];
     for (let i = 2; i < tableLines.length; i++) {
         const rowCells = splitTableRow(tableLines[i])
-            .map(cell => parseMarkdownSpans(cell, false));
+            .map(cell => parseMarkdownSpans(cell, false, enableMath));
         if (rowCells.length > 0) {
             rows.push(rowCells);
         }
@@ -111,7 +111,7 @@ function tryParseMathBlock(lines: string[], openIndex: number): { content: strin
     return null; // unclosed → let the caller treat the opening line as text
 }
 
-export function parseMarkdownBlock(markdown: string) {
+export function parseMarkdownBlock(markdown: string, enableMath: boolean = true) {
     const blocks: MarkdownBlock[] = [];
     const lines = markdown.split('\n');
     let index = 0;
@@ -122,7 +122,7 @@ export function parseMarkdownBlock(markdown: string) {
         // Headers
         for (let i = 1; i <= 6; i++) {
             if (line.startsWith(`${'#'.repeat(i)} `)) {
-                blocks.push({ type: 'header', level: i as 1 | 2 | 3 | 4 | 5 | 6, content: parseMarkdownSpans(line.slice(i + 1).trim(), true) });
+                blocks.push({ type: 'header', level: i as 1 | 2 | 3 | 4 | 5 | 6, content: parseMarkdownSpans(line.slice(i + 1).trim(), true, enableMath) });
                 continue outer;
             }
         }
@@ -156,7 +156,9 @@ export function parseMarkdownBlock(markdown: string) {
 
         // Display (block) math: `$$ ... $$` or `\[ ... \]`. A stray/unclosed
         // opener returns null and falls through to normal text handling.
-        if (trimmed.startsWith('$$') || trimmed.startsWith('\\[')) {
+        // Gated behind the experimental math setting — when off, the delimiters
+        // are left to normal text parsing (shown literally).
+        if (enableMath && (trimmed.startsWith('$$') || trimmed.startsWith('\\['))) {
             const math = tryParseMathBlock(lines, index - 1);
             if (math) {
                 blocks.push({ type: 'math', content: math.content });
@@ -215,7 +217,7 @@ export function parseMarkdownBlock(markdown: string) {
                 index++;
             }
             const baseIndent = allLines[0].indent;
-            blocks.push({ type: 'numbered-list', items: allLines.map((l) => ({ number: l.number, depth: Math.floor((l.indent - baseIndent) / 2), spans: parseMarkdownSpans(l.content, false) })) });
+            blocks.push({ type: 'numbered-list', items: allLines.map((l) => ({ number: l.number, depth: Math.floor((l.indent - baseIndent) / 2), spans: parseMarkdownSpans(l.content, false, enableMath) })) });
             continue;
         }
 
@@ -234,13 +236,13 @@ export function parseMarkdownBlock(markdown: string) {
                 index++;
             }
             const baseIndent = allLines[0].indent;
-            blocks.push({ type: 'list', items: allLines.map((l) => ({ depth: Math.floor((l.indent - baseIndent) / 2), spans: parseMarkdownSpans(l.content, false) })) });
+            blocks.push({ type: 'list', items: allLines.map((l) => ({ depth: Math.floor((l.indent - baseIndent) / 2), spans: parseMarkdownSpans(l.content, false, enableMath) })) });
             continue;
         }
 
         // Check for table
         if (trimmed.includes('|') && !trimmed.startsWith('```')) {
-            const { table, nextIndex } = parseTable(lines, index - 1);
+            const { table, nextIndex } = parseTable(lines, index - 1, enableMath);
             if (table) {
                 blocks.push(table);
                 index = nextIndex;
@@ -250,7 +252,7 @@ export function parseMarkdownBlock(markdown: string) {
 
         // Fallback
         if (trimmed.length > 0) {
-            blocks.push({ type: 'text', content: parseMarkdownSpans(trimmed, false) });
+            blocks.push({ type: 'text', content: parseMarkdownSpans(trimmed, false, enableMath) });
         }
     }
     return blocks;

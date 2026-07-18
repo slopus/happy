@@ -8,7 +8,7 @@ import { Text } from '../StyledText';
 import { Typography } from '@/constants/Typography';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 import { Modal } from '@/modal';
-import { useLocalSetting } from '@/sync/storage';
+import { useLocalSetting, useSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
@@ -29,7 +29,10 @@ export const MarkdownView = React.memo((props: {
     onOptionPress?: (option: Option) => void;
     sessionId?: string;
 }) => {
-    const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
+    // Experimental: render `$…$` / `$$…$$` LaTeX as math (KaTeX). Off by default,
+    // so the delimiters otherwise show as literal text (upstream behavior).
+    const enableMath = useSetting('expMathRendering');
+    const blocks = React.useMemo(() => parseMarkdown(props.markdown, enableMath), [props.markdown, enableMath]);
     
     // Backwards compatibility: The original version just returned the view, wrapping the list of blocks.
     // It made each of the individual text elements selectable. When we enable the markdownCopyV2 feature,
