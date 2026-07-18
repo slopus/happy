@@ -240,6 +240,8 @@ export const zhHant: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
         imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
+        copySessionIds: '複製工作階段 ID',
+        copySessionIdsSubtitle: '在長按選單中新增複製工作階段 ID 的操作',
     },
 
     errors: {

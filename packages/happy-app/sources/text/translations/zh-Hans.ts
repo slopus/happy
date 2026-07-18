@@ -241,6 +241,8 @@ export const zhHans: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
         imageUploadSubtitle: '将图片附加到消息中，以便受支持的代理进行分析',
+        copySessionIds: '复制会话 ID',
+        copySessionIdsSubtitle: '在长按菜单中添加复制会话 ID 的操作',
     },
 
     errors: {

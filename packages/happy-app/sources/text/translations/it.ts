@@ -238,6 +238,8 @@ export const it: TranslationStructure = {
         analyticsEnabled: 'Analisi anonime di utilizzo attive',
         imageUpload: 'Caricamento immagini',
         imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare dagli agenti supportati',
+        copySessionIds: 'Copia ID sessione',
+        copySessionIdsSubtitle: 'Aggiungi azioni per copiare l\'ID sessione al menu di pressione prolungata',
     },
 
     errors: {

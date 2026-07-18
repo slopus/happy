@@ -19,6 +19,7 @@ export default function FeaturesSettingsScreen() {
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [expImageUpload, setExpImageUpload] = useSettingMutable('expImageUpload');
     const [sortSessionsByActivity, setSortSessionsByActivity] = useSettingMutable('sortSessionsByActivity');
+    const [expCopySessionId, setExpCopySessionId] = useSettingMutable('expCopySessionId');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -114,6 +115,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={expResumeSession}
                             onValueChange={setExpResumeSession}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.copySessionIds')}
+                    subtitle={t('settingsFeatures.copySessionIdsSubtitle')}
+                    icon={<Ionicons name="copy-outline" size={29} color="#34C759" />}
+                    rightElement={
+                        <Switch
+                            value={expCopySessionId}
+                            onValueChange={setExpCopySessionId}
                         />
                     }
                     showChevron={false}

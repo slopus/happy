@@ -257,6 +257,8 @@ export const pl: TranslationStructure = {
         analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
         imageUpload: 'Przesyłanie obrazów',
         imageUploadSubtitle: 'Dołączaj obrazy do wiadomości, aby obsługiwani agenci mogli je analizować',
+        copySessionIds: 'Kopiuj ID sesji',
+        copySessionIdsSubtitle: 'Dodaj akcje kopiowania ID sesji do menu długiego naciśnięcia',
     },
 
     errors: {

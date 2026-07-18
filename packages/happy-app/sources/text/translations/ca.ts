@@ -240,6 +240,8 @@ export const ca: TranslationStructure = {
         analyticsEnabled: 'Analítica anònima d\'ús activa',
         imageUpload: 'Pujada d\'imatges',
         imageUploadSubtitle: 'Adjunta imatges als missatges perquè els agents compatibles les analitzin',
+        copySessionIds: 'Copia els ID de sessió',
+        copySessionIdsSubtitle: 'Afegeix accions per copiar l\'ID de sessió al menú de pressió llarga',
     },
 
     errors: {
