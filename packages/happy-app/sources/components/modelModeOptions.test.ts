@@ -56,10 +56,16 @@ describe('modelModeOptions', () => {
         expect(models.map((model) => model.key)).toEqual([
             'default',
             'opus',
+            'opus[1m]',
             'fable',
             'sonnet',
             'haiku',
         ]);
+        expect(models.find((model) => model.key === 'opus[1m]')).toEqual({
+            key: 'opus[1m]',
+            name: 'opus 4.8 (1m)',
+            description: '1M-token context window',
+        });
         expect(models.find((model) => model.key === 'fable')).toEqual({
             key: 'fable',
             name: 'fable 5',
