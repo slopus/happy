@@ -239,6 +239,8 @@ export const it: TranslationStructure = {
         analyticsEnabled: 'Analisi anonime di utilizzo attive',
         imageUpload: 'Caricamento immagini',
         imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare dagli agenti supportati',
+        starConversations: 'Contrassegna conversazioni',
+        starConversationsSubtitle: 'Aggiungi le conversazioni ai preferiti e fissale in cima all\'elenco',
     },
 
     errors: {

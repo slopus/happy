@@ -197,6 +197,7 @@ describe('settings', () => {
                 fileDiffsSidebar: false,
                 groupToolCalls: false,
                 expImageUpload: false,
+                expStarConversations: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,

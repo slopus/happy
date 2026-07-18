@@ -239,6 +239,8 @@ export const en = {
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
         imageUploadSubtitle: 'Attach images to messages for supported agents to analyze',
+        starConversations: 'Star Conversations',
+        starConversationsSubtitle: 'Star/bookmark conversations and pin them to the top',
     },
 
     imageUpload: {

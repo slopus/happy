@@ -138,7 +138,10 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         state,
         ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
         hasDraft: !!session.draft,
-        starred: !!session.starred,
+        // Gated behind the experimental `expStarConversations` setting — when off,
+        // rows never report as starred so the indicator and the standalone-row
+        // handling in useVisibleSessionListViewData stay upstream.
+        starred: storage.getState().settings.expStarConversations && !!session.starred,
         active: session.active,
         machineId: session.metadata?.machineId ?? null,
         path: session.metadata?.path ?? null,
@@ -256,6 +259,9 @@ function buildSessionListViewData(
 ): SessionListViewItem[] {
     // Partition: starred sessions go to a dedicated "Starred" section regardless
     // of active/inactive status so users can find pinned conversations in one place.
+    // Gated behind the experimental `expStarConversations` setting — when off,
+    // starred state is ignored and sessions partition by active/inactive as upstream.
+    const expStar = storage.getState().settings.expStarConversations;
     const starredSessions: Session[] = [];
     const activeSessions: Session[] = [];
     const unstarredInactive: Session[] = [];
@@ -266,7 +272,7 @@ function buildSessionListViewData(
         if (session.metadata?.isSideChat) {
             return;
         }
-        if (session.starred) {
+        if (expStar && session.starred) {
             starredSessions.push(session);
         } else if (isSessionActive(session)) {
             activeSessions.push(session);

@@ -30,6 +30,11 @@ export type SessionActionShortcutId =
     | 'copy-metadata-and-logs'
     | 'archive';
 
+// Menu actions with no keyboard chord. SESSION_ACTION_SHORTCUTS stays keyed only
+// by the chord-bearing ids; use getSessionActionShortcut() to look one up from an
+// id of this wider type.
+export type SessionActionId = SessionActionShortcutId | 'star';
+
 export type SidebarPickerShortcutId = 'changes' | 'allFiles' | 'newSideChat';
 
 export interface ShortcutChord {
@@ -49,6 +54,10 @@ export const SESSION_ACTION_SHORTCUTS: Readonly<Record<SessionActionShortcutId, 
     'copy-metadata-and-logs': { key: 'm', code: 'KeyM', keyLabel: 'M', altKey: true, shiftKey: true },
     archive: { key: 'a', code: 'KeyA', keyLabel: 'A', shiftKey: true },
 };
+
+export function getSessionActionShortcut(id: SessionActionId): ShortcutChord | undefined {
+    return (SESSION_ACTION_SHORTCUTS as Partial<Record<SessionActionId, ShortcutChord>>)[id];
+}
 
 export const SIDEBAR_PICKER_SHORTCUTS: Readonly<Record<SidebarPickerShortcutId, ShortcutChord>> = {
     changes: { key: 'c', code: 'KeyC', keyLabel: 'C', altKey: true },
@@ -146,7 +155,10 @@ export function formatShortcut(
     return `${modifierLabel}${browserSafe ? '+Alt' : ''}+${keyLabel}`;
 }
 
-export function formatShortcutChord(modifier: ShortcutModifier, chord: ShortcutChord): string {
+export function formatShortcutChord(modifier: ShortcutModifier, chord: ShortcutChord | undefined): string {
+    if (!chord) {
+        return '';
+    }
     if (modifier === 'meta') {
         return `${chord.altKey ? '⌥' : ''}${chord.shiftKey ? '⇧' : ''}⌘${chord.keyLabel}`;
     }
@@ -162,8 +174,11 @@ export function formatShortcutChord(modifier: ShortcutModifier, chord: ShortcutC
 export function matchesShortcutChord(
     event: KeyboardShortcutEvent,
     modifier: ShortcutModifier,
-    chord: ShortcutChord,
+    chord: ShortcutChord | undefined,
 ): boolean {
+    if (!chord) {
+        return false;
+    }
     if (event.isComposing || event.repeat || event.getModifierState?.('AltGraph')) {
         return false;
     }

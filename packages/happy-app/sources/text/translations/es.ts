@@ -241,6 +241,8 @@ export const es: TranslationStructure = {
         analyticsEnabled: 'Analítica anónima de uso activa',
         imageUpload: 'Subida de imágenes',
         imageUploadSubtitle: 'Adjunta imágenes a los mensajes para que los agentes compatibles las analicen',
+        starConversations: 'Destacar conversaciones',
+        starConversationsSubtitle: 'Destaca o marca conversaciones y fíjalas en la parte superior de la lista',
     },
 
     errors: {

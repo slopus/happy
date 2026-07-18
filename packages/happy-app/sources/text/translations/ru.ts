@@ -227,6 +227,8 @@ export const ru: TranslationStructure = {
         analyticsEnabled: 'Анонимная аналитика использования активна',
         imageUpload: 'Загрузка изображений',
         imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа поддерживаемыми агентами',
+        starConversations: 'Отмечать беседы звёздочкой',
+        starConversationsSubtitle: 'Отмечайте беседы звёздочкой или закладкой и закрепляйте их вверху списка',
     },
 
     errors: {

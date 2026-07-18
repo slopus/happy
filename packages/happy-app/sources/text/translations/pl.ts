@@ -258,6 +258,8 @@ export const pl: TranslationStructure = {
         analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
         imageUpload: 'Przesyłanie obrazów',
         imageUploadSubtitle: 'Dołączaj obrazy do wiadomości, aby obsługiwani agenci mogli je analizować',
+        starConversations: 'Oznaczaj rozmowy gwiazdką',
+        starConversationsSubtitle: 'Oznaczaj rozmowy gwiazdką lub zakładką i przypinaj je na górze listy',
     },
 
     errors: {

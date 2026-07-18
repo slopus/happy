@@ -242,6 +242,8 @@ export const zhHans: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
         imageUploadSubtitle: '将图片附加到消息中，以便受支持的代理进行分析',
+        starConversations: '收藏对话',
+        starConversationsSubtitle: '为对话加星标或收藏，并将其置顶',
     },
 
     errors: {

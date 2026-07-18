@@ -242,6 +242,8 @@ export const ja: TranslationStructure = {
         analyticsEnabled: '匿名の使用状況分析がアクティブ',
         imageUpload: '画像アップロード',
         imageUploadSubtitle: '対応エージェントに分析させるため、メッセージに画像を添付する',
+        starConversations: '会話にスターを付ける',
+        starConversationsSubtitle: '会話にスターやブックマークを付けて、リストの上部に固定する',
     },
 
     errors: {
