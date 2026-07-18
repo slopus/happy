@@ -238,6 +238,8 @@ export const en = {
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
         imageUploadSubtitle: 'Attach images to messages for supported agents to analyze',
+        mermaidZoom: 'Tap to Zoom Diagrams',
+        mermaidZoomSubtitle: 'Open Mermaid diagrams fullscreen with pinch-to-zoom',
     },
 
     imageUpload: {

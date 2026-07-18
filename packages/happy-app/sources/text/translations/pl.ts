@@ -257,6 +257,8 @@ export const pl: TranslationStructure = {
         analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
         imageUpload: 'Przesyłanie obrazów',
         imageUploadSubtitle: 'Dołączaj obrazy do wiadomości, aby obsługiwani agenci mogli je analizować',
+        mermaidZoom: 'Dotknij, aby powiększyć diagramy',
+        mermaidZoomSubtitle: 'Otwórz diagramy Mermaid na pełnym ekranie z powiększaniem gestem',
     },
 
     errors: {

@@ -240,6 +240,8 @@ export const ca: TranslationStructure = {
         analyticsEnabled: 'Analítica anònima d\'ús activa',
         imageUpload: 'Pujada d\'imatges',
         imageUploadSubtitle: 'Adjunta imatges als missatges perquè els agents compatibles les analitzin',
+        mermaidZoom: 'Toca per ampliar diagrames',
+        mermaidZoomSubtitle: 'Obre diagrames Mermaid a pantalla completa amb zoom de pessigada',
     },
 
     errors: {

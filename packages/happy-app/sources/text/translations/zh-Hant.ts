@@ -240,6 +240,8 @@ export const zhHant: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
         imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
+        mermaidZoom: '點按縮放圖表',
+        mermaidZoomSubtitle: '全螢幕開啟 Mermaid 圖表並支援雙指縮放',
     },
 
     errors: {

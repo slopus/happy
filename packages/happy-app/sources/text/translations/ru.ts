@@ -226,6 +226,8 @@ export const ru: TranslationStructure = {
         analyticsEnabled: 'Анонимная аналитика использования активна',
         imageUpload: 'Загрузка изображений',
         imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа поддерживаемыми агентами',
+        mermaidZoom: 'Нажмите для увеличения диаграмм',
+        mermaidZoomSubtitle: 'Открывайте диаграммы Mermaid на весь экран с масштабированием щипком',
     },
 
     errors: {
