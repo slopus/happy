@@ -242,6 +242,8 @@ export const zhHans: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
         imageUploadSubtitle: '将图片附加到消息中，以便受支持的代理进行分析',
+        unreadBoldTitle: '未读标题加粗',
+        unreadBoldTitleSubtitle: '将未读会话显示为加粗标题而非蓝色圆点',
     },
 
     errors: {

@@ -19,7 +19,7 @@ import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
-import { useSettingMutable } from '@/sync/storage';
+import { useSettingMutable, useSetting } from '@/sync/storage';
 import { t } from '@/text';
 import { SessionShortcutHintBadge } from './ShortcutHints';
 import { ProviderIcon } from './ProviderIcon';
@@ -121,6 +121,16 @@ const stylesheet = StyleSheet.create((theme) => ({
     sessionTitle: {
         fontSize: 15,
         flex: 1,
+    },
+    // Default title weight (upstream look) — used when the experimental
+    // bold-unread-title layout is off.
+    sessionTitleWeightDefault: {
+        fontWeight: '500',
+        ...Typography.default('semiBold'),
+    },
+    // Lighter title weight for the experimental layout's read (non-unread) rows,
+    // so unread rows stand out by contrast.
+    sessionTitleWeightRegular: {
         ...Typography.default('regular'),
     },
     sessionShortcutBadge: {
@@ -435,25 +445,33 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const styles = stylesheet;
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
-    // Status dot reflects true liveness only, never reusing the blue
-    // "thinking/running" color for unread.
-    const status = STATUS_CONFIG[session.state];
-    // Unread is shown as a bold title, but only once the agent has stopped —
-    // never while it's still running (thinking), so a re-activated session
-    // doesn't read as unread mid-turn.
-    const showUnreadTitle = session.hasUnread && session.state !== 'thinking';
+    // Experimental: show unread as a bold title instead of the blue status dot.
+    const expUnreadBoldTitle = useSetting('expUnreadBoldTitle');
+    const baseStatus = STATUS_CONFIG[session.state];
+    // With the experimental layout off, keep the upstream behavior: reuse the
+    // blue "thinking/running" color for the unread status dot. With it on, the
+    // dot reflects true liveness only.
+    const status = (!expUnreadBoldTitle && session.hasUnread)
+        ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
+        : baseStatus;
+    // Bold-title unread (experimental) is shown only once the agent has
+    // stopped — never while it's still running (thinking), so a re-activated
+    // session doesn't read as unread mid-turn.
+    const showUnreadTitle = expUnreadBoldTitle && session.hasUnread && session.state !== 'thinking';
 
     const vibingMessage = React.useMemo(() => {
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
     }, [session.state]);
 
-    const statusText = session.state === 'thinking'
-        ? vibingMessage
-        : session.state === 'disconnected'
-            ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
-            : session.state === 'permission_required'
-                ? t('status.permissionRequired')
-                : t('status.online');
+    const statusText = (!expUnreadBoldTitle && session.hasUnread)
+        ? t('status.unread')
+        : session.state === 'thinking'
+            ? vibingMessage
+            : session.state === 'disconnected'
+                ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
+                : session.state === 'permission_required'
+                    ? t('status.permissionRequired')
+                    : t('status.online');
 
     const handlePress = React.useCallback(() => {
         navigateToSession(session.id);
@@ -511,7 +529,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     <Text style={[
                         styles.sessionTitle,
                         status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected,
-                        showUnreadTitle && styles.sessionTitleUnread
+                        expUnreadBoldTitle
+                            ? (showUnreadTitle ? styles.sessionTitleUnread : styles.sessionTitleWeightRegular)
+                            : styles.sessionTitleWeightDefault,
                     ]} numberOfLines={1}>
                         {session.name}
                     </Text>

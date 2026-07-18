@@ -8,7 +8,7 @@ import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLast
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSessionGitStatus } from '@/sync/storage';
+import { useAllMachines, useSessionGitStatus, useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -225,13 +225,19 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: SessionRowData; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    // Status dot reflects true liveness only, never reusing the blue
-    // "thinking/running" color for unread.
-    const status = STATUS_CONFIG[session.state];
-    // Unread is shown as a bold title, but only once the agent has stopped —
-    // never while it's still running (thinking), so a re-activated session
-    // doesn't read as unread mid-turn.
-    const showUnreadTitle = session.hasUnread && session.state !== 'thinking';
+    // Experimental: show unread as a bold title instead of the blue status dot.
+    const expUnreadBoldTitle = useSetting('expUnreadBoldTitle');
+    const baseStatus = STATUS_CONFIG[session.state];
+    // With the experimental layout off, keep the upstream behavior: reuse the
+    // blue "thinking/running" color for the unread status dot. With it on, the
+    // dot reflects true liveness only.
+    const status = (!expUnreadBoldTitle && session.hasUnread)
+        ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
+        : baseStatus;
+    // Bold-title unread (experimental) is shown only once the agent has
+    // stopped — never while it's still running (thinking), so a re-activated
+    // session doesn't read as unread mid-turn.
+    const showUnreadTitle = expUnreadBoldTitle && session.hasUnread && session.state !== 'thinking';
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
@@ -273,7 +279,11 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const renderLeadingIndicator = () => {
         let indicator: React.ReactNode = null;
 
-        if (session.state === 'waiting' && session.hasDraft) {
+        if (!expUnreadBoldTitle && session.hasUnread) {
+            // Upstream behavior when the experimental layout is off: unread is a
+            // solid blue dot.
+            indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
+        } else if (session.state === 'waiting' && session.hasDraft) {
             indicator = (
                 <Ionicons
                     name="create-outline"

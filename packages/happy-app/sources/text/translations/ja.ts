@@ -242,6 +242,8 @@ export const ja: TranslationStructure = {
         analyticsEnabled: '匿名の使用状況分析がアクティブ',
         imageUpload: '画像アップロード',
         imageUploadSubtitle: '対応エージェントに分析させるため、メッセージに画像を添付する',
+        unreadBoldTitle: '未読タイトルを太字に',
+        unreadBoldTitleSubtitle: '未読セッションを青いドットではなく太字のタイトルで表示',
     },
 
     errors: {
