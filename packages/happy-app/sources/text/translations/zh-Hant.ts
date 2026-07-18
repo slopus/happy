@@ -241,6 +241,8 @@ export const zhHant: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
         imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
+        unreadBoldTitle: '未讀標題加粗',
+        unreadBoldTitleSubtitle: '將未讀工作階段顯示為加粗標題而非藍色圓點',
     },
 
     errors: {

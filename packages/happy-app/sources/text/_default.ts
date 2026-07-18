@@ -239,6 +239,8 @@ export const en = {
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
         imageUploadSubtitle: 'Attach images to messages for supported agents to analyze',
+        unreadBoldTitle: 'Bold Unread Titles',
+        unreadBoldTitleSubtitle: 'Show unread sessions as a bold title instead of a blue dot',
     },
 
     imageUpload: {

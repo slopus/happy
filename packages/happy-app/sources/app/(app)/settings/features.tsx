@@ -19,6 +19,7 @@ export default function FeaturesSettingsScreen() {
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [expImageUpload, setExpImageUpload] = useSettingMutable('expImageUpload');
     const [sortSessionsByActivity, setSortSessionsByActivity] = useSettingMutable('sortSessionsByActivity');
+    const [expUnreadBoldTitle, setExpUnreadBoldTitle] = useSettingMutable('expUnreadBoldTitle');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -126,6 +127,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={expImageUpload}
                             onValueChange={setExpImageUpload}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.unreadBoldTitle')}
+                    subtitle={t('settingsFeatures.unreadBoldTitleSubtitle')}
+                    icon={<Ionicons name="ellipse-outline" size={29} color="#007AFF" />}
+                    rightElement={
+                        <Switch
+                            value={expUnreadBoldTitle}
+                            onValueChange={setExpUnreadBoldTitle}
                         />
                     }
                     showChevron={false}

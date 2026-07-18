@@ -240,6 +240,8 @@ export const pt: TranslationStructure = {
         analyticsEnabled: 'Análises anônimas de uso ativas',
         imageUpload: 'Upload de imagens',
         imageUploadSubtitle: 'Anexe imagens às mensagens para que agentes compatíveis as analisem',
+        unreadBoldTitle: 'Títulos em negrito para não lidas',
+        unreadBoldTitleSubtitle: 'Mostra as sessões não lidas com um título em negrito em vez de um ponto azul',
     },
 
     errors: {
