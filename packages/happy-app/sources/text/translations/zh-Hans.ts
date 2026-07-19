@@ -244,6 +244,8 @@ export const zhHans: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
         imageUploadSubtitle: '将图片附加到消息中，以便受支持的代理进行分析',
+        archiveSortByLastSeen: '按最近活跃排序归档会话',
+        archiveSortByLastSeenSubtitle: '显示一个开关，可按最近活动而非创建日期对归档会话进行排序',
     },
 
     errors: {

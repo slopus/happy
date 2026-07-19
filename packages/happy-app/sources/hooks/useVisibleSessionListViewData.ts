@@ -53,6 +53,7 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
     const data = useSessionListViewData();
     const hideInactiveSessions = useSetting('hideInactiveSessions');
     const archivedSortBy = useSetting('archivedSessionsSortBy');
+    const expArchiveSort = useSetting('expArchiveSortByLastSeen');
 
     return React.useMemo(() => {
         if (!data) {
@@ -84,11 +85,11 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
 
         // If not hiding, add all remaining items (headers, project groups, inactive sessions)
         if (!hideInactiveSessions) {
-            if (inactiveSessions.length > 0) {
+            if (expArchiveSort && inactiveSessions.length > 0) {
                 result.push({ type: 'archive-sort', current: archivedSortBy });
             }
 
-            if (archivedSortBy === 'lastSeenAt') {
+            if (expArchiveSort && archivedSortBy === 'lastSeenAt') {
                 // Ordering by activity spans every createdAt bucket, so the date
                 // headers are rebuilt from activeAt. The machine/path
                 // `project-group` rows ride along with the createdAt ordering and
@@ -130,5 +131,5 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
         }
 
         return result;
-    }, [data, hideInactiveSessions, archivedSortBy]);
+    }, [data, hideInactiveSessions, archivedSortBy, expArchiveSort]);
 }

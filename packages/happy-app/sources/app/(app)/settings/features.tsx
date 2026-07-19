@@ -18,6 +18,7 @@ export default function FeaturesSettingsScreen() {
     const [fileDiffsSidebar, setFileDiffsSidebar] = useSettingMutable('fileDiffsSidebar');
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [expImageUpload, setExpImageUpload] = useSettingMutable('expImageUpload');
+    const [expArchiveSort, setExpArchiveSort] = useSettingMutable('expArchiveSortByLastSeen');
     const [sortSessionsByActivity, setSortSessionsByActivity] = useSettingMutable('sortSessionsByActivity');
 
     return (
@@ -126,6 +127,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={expImageUpload}
                             onValueChange={setExpImageUpload}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.archiveSortByLastSeen')}
+                    subtitle={t('settingsFeatures.archiveSortByLastSeenSubtitle')}
+                    icon={<Ionicons name="swap-vertical-outline" size={29} color="#5AC8FA" />}
+                    rightElement={
+                        <Switch
+                            value={expArchiveSort}
+                            onValueChange={setExpArchiveSort}
                         />
                     }
                     showChevron={false}

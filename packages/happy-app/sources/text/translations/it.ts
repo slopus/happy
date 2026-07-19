@@ -241,6 +241,8 @@ export const it: TranslationStructure = {
         analyticsEnabled: 'Analisi anonime di utilizzo attive',
         imageUpload: 'Caricamento immagini',
         imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare dagli agenti supportati',
+        archiveSortByLastSeen: 'Ordina archiviate per ultima attività',
+        archiveSortByLastSeenSubtitle: 'Mostra un interruttore per ordinare le sessioni archiviate per ultima attività invece che per data di creazione',
     },
 
     errors: {

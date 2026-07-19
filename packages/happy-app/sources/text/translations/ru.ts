@@ -229,6 +229,8 @@ export const ru: TranslationStructure = {
         analyticsEnabled: 'Анонимная аналитика использования активна',
         imageUpload: 'Загрузка изображений',
         imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа поддерживаемыми агентами',
+        archiveSortByLastSeen: 'Сортировать архивные по последней активности',
+        archiveSortByLastSeenSubtitle: 'Показывать переключатель для сортировки архивных сессий по последней активности вместо даты создания',
     },
 
     errors: {

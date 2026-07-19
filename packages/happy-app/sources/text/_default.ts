@@ -241,6 +241,8 @@ export const en = {
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
         imageUploadSubtitle: 'Attach images to messages for supported agents to analyze',
+        archiveSortByLastSeen: 'Sort archived by last seen',
+        archiveSortByLastSeenSubtitle: 'Show a toggle to sort archived sessions by last activity instead of creation date',
     },
 
     imageUpload: {

@@ -243,6 +243,8 @@ export const zhHant: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
         imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
+        archiveSortByLastSeen: '依最近活躍排序封存工作階段',
+        archiveSortByLastSeenSubtitle: '顯示一個開關，可依最近活動而非建立日期排序封存的工作階段',
     },
 
     errors: {

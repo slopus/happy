@@ -260,6 +260,8 @@ export const pl: TranslationStructure = {
         analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
         imageUpload: 'Przesyłanie obrazów',
         imageUploadSubtitle: 'Dołączaj obrazy do wiadomości, aby obsługiwani agenci mogli je analizować',
+        archiveSortByLastSeen: 'Sortuj zarchiwizowane według ostatniej aktywności',
+        archiveSortByLastSeenSubtitle: 'Pokaż przełącznik do sortowania zarchiwizowanych sesji według ostatniej aktywności zamiast daty utworzenia',
     },
 
     errors: {
