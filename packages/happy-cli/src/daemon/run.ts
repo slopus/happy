@@ -81,20 +81,36 @@ export async function startDaemon(): Promise<void> {
   //
   // In case the setup malfunctions - our signal handlers will not properly
   // shut down. We will force exit the process with code 1.
+  // Force-exit fuse: armed when shutdown is requested, cancelled by
+  // cleanupAndShutdown once the graceful chain completes. Without the
+  // cancellation the fuse always wins on macOS: the graceful chain contains
+  // a 100ms metadata flush plus stopCaffeinate's SIGTERM grace sleep, so it
+  // can never finish within 1s and every `happy daemon stop` used to exit 1.
+  let shutdownFuseTimer: ReturnType<typeof setTimeout> | null = null;
+
   let requestShutdown: (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => void;
   let resolvesWhenShutdownRequested = new Promise<({ source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string })>((resolve) => {
     requestShutdown = (source, errorMessage) => {
+      // A second signal (e.g. SIGTERM while the SIGINT shutdown is already
+      // running) must not arm a second fuse: resolve() is idempotent but
+      // setTimeout is not, and a fresh timer would race the clearTimeout
+      // in cleanupAndShutdown.
+      if (shutdownFuseTimer !== null) {
+        logger.debug(`[DAEMON RUN] Duplicate shutdown request ignored (source: ${source})`);
+        return;
+      }
+
       logger.debug(`[DAEMON RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
 
-      // Fallback - in case startup malfunctions - we will force exit the process with code 1
-      setTimeout(async () => {
-        logger.debug('[DAEMON RUN] Startup malfunctioned, forcing exit with code 1');
+      // Fallback - if the graceful shutdown chain stalls, force exit with code 1
+      shutdownFuseTimer = setTimeout(async () => {
+        logger.debug('[DAEMON RUN] Graceful shutdown did not complete in time, forcing exit with code 1');
 
         // Give time for logs to be flushed
         await new Promise(resolve => setTimeout(resolve, 100))
 
         process.exit(1);
-      }, 1_000);
+      }, 5_000);
 
       // Start graceful shutdown
       resolve({ source, errorMessage });
@@ -1000,6 +1016,12 @@ export async function startDaemon(): Promise<void> {
       await cleanupDaemonState();
       await stopCaffeinate();
       await releaseDaemonLock(daemonLockHandle);
+
+      // Graceful chain completed - disarm the force-exit fuse so we exit 0
+      if (shutdownFuseTimer !== null) {
+        clearTimeout(shutdownFuseTimer);
+        shutdownFuseTimer = null;
+      }
 
       logger.debug('[DAEMON RUN] Cleanup completed, exiting process');
       process.exit(0);
