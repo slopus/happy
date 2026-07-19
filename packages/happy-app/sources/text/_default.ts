@@ -456,6 +456,10 @@ export const en = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Context ${used} of ${total} tokens, ${percent}%`,
+            limitFiveHour: '5-hour limit',
+            limitSevenDay: '7-day limit',
+            limitResets: ({ time }: { time: string }) => `resets ${time}`,
+            limitAsOf: ({ age }: { age: string }) => `as of ${age} ago`,
         },
     },
 

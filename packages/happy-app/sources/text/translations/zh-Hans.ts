@@ -443,6 +443,10 @@ export const zhHans: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `上下文 ${used}/${total} 个令牌，${percent}%`,
+            limitFiveHour: '5 小时额度',
+            limitSevenDay: '7 天额度',
+            limitResets: ({ time }: { time: string }) => `${time} 重置`,
+            limitAsOf: ({ age }: { age: string }) => `数据为 ${age} 前`,
         },
     },
 

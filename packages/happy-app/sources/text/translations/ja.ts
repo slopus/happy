@@ -443,6 +443,10 @@ export const ja: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `コンテキスト ${total}トークン中${used}、${percent}%`,
+            limitFiveHour: '5時間の上限',
+            limitSevenDay: '7日間の上限',
+            limitResets: ({ time }: { time: string }) => `${time} リセット`,
+            limitAsOf: ({ age }: { age: string }) => `${age}前のデータ`,
         },
     },
 

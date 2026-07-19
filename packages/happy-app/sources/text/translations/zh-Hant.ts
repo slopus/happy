@@ -442,6 +442,10 @@ export const zhHant: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `上下文 ${used}/${total} 個權杖，${percent}%`,
+            limitFiveHour: '5 小時額度',
+            limitSevenDay: '7 天額度',
+            limitResets: ({ time }: { time: string }) => `${time} 重置`,
+            limitAsOf: ({ age }: { age: string }) => `數據為 ${age} 前`,
         },
     },
 

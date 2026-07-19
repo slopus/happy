@@ -440,6 +440,10 @@ export const it: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Contesto ${used} di ${total} token, ${percent}%`,
+            limitFiveHour: 'Limite di 5 ore',
+            limitSevenDay: 'Limite di 7 giorni',
+            limitResets: ({ time }: { time: string }) => `si azzera ${time}`,
+            limitAsOf: ({ age }: { age: string }) => `${age} fa`,
         },
     },
 
