@@ -18,6 +18,35 @@ import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
 import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
 
+/**
+ * Error message prefix emitted by the Claude Code SDK when the run completes
+ * with is_error=true (e.g. rate-limit hits, tool failures, API errors).
+ * Defined here as a local constant because the SDK does not export it as a
+ * named symbol.  The single-test T6 in claudeRemoteLauncher.test.ts pins this
+ * value, so a SDK upgrade that changes the prefix will turn CI red immediately.
+ */
+export const ERR_RESULT_PREFIX = 'Claude Code returned an error result: ';
+
+/**
+ * Classify an error caught in the claudeRemoteLauncher inner try/catch and
+ * return the string that should be sent to the app via sendSessionEvent.
+ *
+ * Rules:
+ * - e instanceof Error && e.message.startsWith(ERR_RESULT_PREFIX)
+ *   → SDK returned an is_error=true result (rate-limit / tool error / API error)
+ *   → return the SDK error text with the prefix stripped (user sees real reason)
+ * - anything else (real crash / non-Error throw / throw string / undefined)
+ *   → return 'Process exited unexpectedly' (safe default, unchanged behaviour)
+ *
+ * This is a pure function with no side-effects and no throws.
+ */
+export function classifyLaunchError(e: unknown): string {
+    if (e instanceof Error && e.message.startsWith(ERR_RESULT_PREFIX)) {
+        return e.message.slice(ERR_RESULT_PREFIX.length);
+    }
+    return 'Process exited unexpectedly';
+}
+
 interface PermissionsField {
     date: number;
     result: 'approved' | 'denied';
@@ -445,7 +474,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 logger.debug('[remote]: launch error', e);
                 if (!exitReason) {
                     session.client.closeClaudeSessionTurn('failed');
-                    session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    session.client.sendSessionEvent({ type: 'message', message: classifyLaunchError(e) });
                     continue;
                 }
             } finally {
