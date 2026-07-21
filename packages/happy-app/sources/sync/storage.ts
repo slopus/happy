@@ -1173,14 +1173,19 @@ export const storage = create<StorageState>()((set, get) => {
             
             const { [sessionId]: _fileCache, ...remainingFileCache } = state.sessionFileCache;
 
-            // Clear drafts from persistent storage (permission / model / effort
+            // Clear local session data from persistent storage (permission / model / effort
             // picks live in synced session metadata, #1492)
             const drafts = loadSessionDrafts();
             delete drafts[sessionId];
             saveSessionDrafts(drafts);
-            
-            // Rebuild sessionListViewData without the deleted session
-            const sessionListViewData = buildSessionListViewData(remainingSessions);
+
+            const lastMessageSentAt = loadSessionLastMessageSentAt();
+            delete lastMessageSentAt[sessionId];
+            saveSessionLastMessageSentAt(lastMessageSentAt);
+
+            // Rebuild sessionListViewData without the deleted session.
+            // Pass unreadSessionIds so the remaining sessions keep their unread badges.
+            const sessionListViewData = buildSessionListViewData(remainingSessions, state.unreadSessionIds);
             
             return {
                 ...state,
