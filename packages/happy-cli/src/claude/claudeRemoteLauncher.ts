@@ -5,6 +5,7 @@ import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import React from "react";
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
+import { resolveInitialClaudePermissionMode } from "./utils/permissionMode";
 import { Future } from "@/utils/future";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
@@ -99,8 +100,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When switch clicked
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
-    // Create permission handler
-    const permissionHandler = new PermissionHandler(session);
+    // Create permission handler, restoring the initial permission mode from session
+    // args (e.g. --yolo / --permission-mode bypassPermissions) so that the phone UI
+    // reflects the correct mode immediately when entering remote mode, without waiting
+    // for the first message to arrive.
+    const initialPermissionMode = resolveInitialClaudePermissionMode(undefined, session.claudeArgs) ?? 'default';
+    const permissionHandler = new PermissionHandler(session, initialPermissionMode);
 
     // Drop any permission requests left over in agent state from a
     // previous CLI process that died while a tool prompt was open. The
