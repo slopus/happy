@@ -96,6 +96,7 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
+        { key: 'claude-fable-5', name: 'fable 5', description: null },
         { key: 'opus', name: 'opus 4.8', description: null },
         { key: 'fable', name: 'fable 5', description: null },
         { key: 'sonnet', name: 'sonnet 4.6', description: null },
