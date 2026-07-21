@@ -9,13 +9,28 @@ export const MetadataSchema = z.object({
         code: z.string(),
         value: z.string(),
         description: z.string().nullish(),
-    })).optional(),
+        id: z.string().optional(),
+        name: z.string().optional(),
+        providerId: z.string().optional(),
+        providerKind: z.string().optional(),
+        providerName: z.string().optional(),
+        provider: z.object({
+            id: z.string(),
+            kind: z.string(),
+            name: z.string(),
+        }).passthrough().optional(),
+        contextWindow: z.number().optional(),
+        serviceTiers: z.array(z.string()).optional(),
+        thinkingLevels: z.array(z.string()).optional(),
+        defaultThinkingLevel: z.string().optional(),
+    }).passthrough()).optional(),
     currentModelCode: z.string().optional(),
     operatingModes: z.array(z.object({
         code: z.string(),
         value: z.string(),
         description: z.string().nullish(),
-    })).optional(),
+        kind: z.string().optional(),
+    }).passthrough()).optional(),
     currentOperatingModeCode: z.string().optional(),
     thoughtLevels: z.array(z.object({
         code: z.string(),
@@ -23,6 +38,76 @@ export const MetadataSchema = z.object({
         description: z.string().nullish(),
     })).optional(),
     currentThoughtLevelCode: z.string().optional(),
+    rigMetadataVersion: z.number().int().positive().optional(),
+    client: z.object({
+        id: z.string(),
+        name: z.string(),
+        version: z.string(),
+    }).passthrough().optional(),
+    provider: z.object({
+        id: z.string(),
+        kind: z.string(),
+        name: z.string(),
+    }).passthrough().optional(),
+    providers: z.array(z.object({
+        id: z.string(),
+        kind: z.string(),
+        name: z.string(),
+    }).passthrough()).optional(),
+    model: z.object({
+        providerId: z.string(),
+        id: z.string(),
+    }).passthrough().optional(),
+    currentModelProviderId: z.string().optional(),
+    reasoning: z.object({
+        current: z.string().nullable(),
+        levels: z.array(z.string()),
+    }).passthrough().optional(),
+    session: z.object({
+        status: z.string(),
+        permissionMode: z.string(),
+        modelLocked: z.boolean(),
+        serviceTier: z.string().optional(),
+    }).passthrough().optional(),
+    capabilities: z.object({
+        abort: z.boolean(),
+        attachments: z.object({
+            enabled: z.boolean(),
+            maxBytes: z.number(),
+            mediaTypes: z.array(z.string()),
+        }).passthrough(),
+        files: z.object({
+            browse: z.boolean(),
+            read: z.boolean(),
+            search: z.boolean(),
+            write: z.boolean(),
+        }).passthrough(),
+        modelSelection: z.boolean(),
+        reasoningSelection: z.boolean(),
+        permissionModeSelection: z.boolean(),
+        resume: z.boolean(),
+        rpcMethods: z.array(z.string()),
+        shell: z.boolean(),
+        steering: z.boolean(),
+    }).passthrough().optional(),
+    activity: z.object({
+        subagents: z.object({
+            running: z.number(),
+            queued: z.number(),
+            total: z.number(),
+        }).passthrough(),
+        workflows: z.object({
+            running: z.number(),
+            total: z.number(),
+        }).passthrough(),
+        processes: z.object({ running: z.number() }).passthrough(),
+        tasks: z.object({
+            pending: z.number(),
+            inProgress: z.number(),
+            completed: z.number(),
+            total: z.number(),
+        }).passthrough(),
+    }).passthrough().optional(),
     path: z.string(),
     host: z.string(),
     version: z.string().optional(),
@@ -60,7 +145,18 @@ export const MetadataSchema = z.object({
      */
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),
-});
+    /**
+     * Per-session permission / model / effort picks made in any client.
+     * Synced through session metadata so every device shows the same
+     * selection (#1492). Explicit null means "reset to default"; absent
+     * means "never picked".
+     */
+    permissionMode: z.string().nullish(),
+    modelMode: z.string().nullish(),
+    effortLevel: z.string().nullish(),
+    // Passthrough so read-modify-write metadata updates from this app never
+    // drop fields written by newer CLI or app versions.
+}).passthrough();
 
 export type Metadata = z.infer<typeof MetadataSchema>;
 
@@ -115,7 +211,11 @@ export const AgentStateSchema = z.object({
     requests: z.record(z.string(), z.object({
         tool: z.string(),
         arguments: z.any(),
-        createdAt: z.number().nullish()
+        createdAt: z.number().nullish(),
+        // Raw provider tool-use id when the request id is scoped (e.g. claude
+        // subagent ids are `agentID:toolUseID`); used to join the permission
+        // to its tool call, while the request id stays the response key.
+        toolUseId: z.string().nullish()
     })).nullish(),
     completedRequests: z.record(z.string(), z.object({
         tool: z.string(),
@@ -126,7 +226,8 @@ export const AgentStateSchema = z.object({
         reason: z.string().nullish(),
         mode: z.string().nullish(),
         allowedTools: z.array(z.string()).nullish(),
-        decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).nullish()
+        decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).nullish(),
+        toolUseId: z.string().nullish()
     })).nullish(),
     agentGoalStatus: AgentGoalStatusSchema.optional(),
 });
@@ -144,6 +245,16 @@ export const TodoItemsSchema = z.array(TodoItemSchema);
 
 export type TodoItem = z.infer<typeof TodoItemSchema>;
 
+/**
+ * Per-session agent mode picks that sync across devices via session metadata (#1492).
+ * null clears a pick back to defaults, undefined leaves the field untouched.
+ */
+export interface SessionAgentModesPatch {
+    permissionMode?: string | null;
+    modelMode?: string | null;
+    effortLevel?: string | null;
+}
+
 export interface Session {
     id: string,
     seq: number,
@@ -160,9 +271,9 @@ export interface Session {
     presence: "online" | number, // "online" when active, timestamp when last seen
     todos?: TodoItem[];
     draft?: string | null; // Local draft message, not synced to server
-    permissionMode?: string | null; // Local permission mode key, not synced to server
-    modelMode?: string | null; // Local model key, not synced to server
-    effortLevel?: string | null; // Local effort level key, not synced to server
+    permissionMode?: string | null; // Permission pick; local mirror of synced metadata.permissionMode (#1492)
+    modelMode?: string | null; // Model pick; local mirror of synced metadata.modelMode (#1492)
+    effortLevel?: string | null; // Effort pick; local mirror of synced metadata.effortLevel (#1492)
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
     // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.
@@ -172,6 +283,7 @@ export interface Session {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        contextWindow?: number;
         timestamp: number;
     } | null;
 }
@@ -208,6 +320,7 @@ export const MachineMetadataSchema = z.object({
         codex: z.boolean(),
         gemini: z.boolean(),
         openclaw: z.boolean(),
+        agy: z.boolean().optional(), // optional: older CLIs don't report agy
         detectedAt: z.number(),
     }).optional(),
     resumeSupport: z.object({

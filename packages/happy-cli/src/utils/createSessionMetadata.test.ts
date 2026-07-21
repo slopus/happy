@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { execSync } from 'node:child_process';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SandboxConfig } from '@/persistence';
 import { createSessionMetadata } from './createSessionMetadata';
+
+vi.mock('node:child_process', () => ({
+    execSync: vi.fn(),
+}));
+
+const mockedExecSync = vi.mocked(execSync);
 
 function createSandboxConfig(overrides: Partial<SandboxConfig> = {}): SandboxConfig {
     return {
@@ -20,6 +27,11 @@ function createSandboxConfig(overrides: Partial<SandboxConfig> = {}): SandboxCon
 }
 
 describe('createSessionMetadata', () => {
+    beforeEach(() => {
+        mockedExecSync.mockReset();
+        mockedExecSync.mockReturnValue('main\n');
+    });
+
     it('sets metadata.sandbox to the config when enabled', () => {
         const sandbox = createSandboxConfig();
         const { metadata } = createSessionMetadata({
@@ -82,5 +94,41 @@ describe('createSessionMetadata', () => {
 
         expect(metadata.parentSessionId).toBe('happy-source');
         expect(metadata.forkedFromMessageId).toBe('message-2');
+    });
+
+    it('sets metadata.gitBranch when a git branch is detected', () => {
+        mockedExecSync.mockReturnValue('fix/session-status\n');
+
+        const { metadata } = createSessionMetadata({
+            flavor: 'codex',
+            machineId: 'machine-7',
+        });
+
+        expect(metadata.gitBranch).toBe('fix/session-status');
+        expect(mockedExecSync).toHaveBeenCalledWith('git rev-parse --abbrev-ref HEAD', expect.objectContaining({
+            cwd: process.cwd(),
+        }));
+    });
+
+    it('omits metadata.gitBranch when git is unavailable or detached', () => {
+        mockedExecSync.mockReturnValue('HEAD\n');
+
+        const detached = createSessionMetadata({
+            flavor: 'codex',
+            machineId: 'machine-8',
+        });
+
+        expect(detached.metadata.gitBranch).toBeUndefined();
+
+        mockedExecSync.mockImplementation(() => {
+            throw new Error('not a git repository');
+        });
+
+        const unavailable = createSessionMetadata({
+            flavor: 'codex',
+            machineId: 'machine-9',
+        });
+
+        expect(unavailable.metadata.gitBranch).toBeUndefined();
     });
 });

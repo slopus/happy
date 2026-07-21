@@ -5,7 +5,20 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
-import type { MachineMetadata } from './storageTypes';
+import { storage } from './storage';
+import type { MachineMetadata, SessionAgentModesPatch } from './storageTypes';
+import { markAgentModePushPending, clearAgentModePushPending, type AgentModeField } from './agentModesPending';
+import {
+    isRigMetadata,
+    rigCanAbort,
+    rigCanReadFiles,
+    rigCanSearchFiles,
+    rigCanUseShell,
+    rigCanWriteFiles,
+    rigHasRpcMethod,
+} from './rig';
+
+export type { SessionAgentModesPatch };
 
 // Strict type definitions for all operations
 
@@ -144,7 +157,10 @@ export interface SpawnSessionOptions {
     directory: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw';
+    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'agy';
+    permissionMode?: string;
+    modelMode?: string;
+    effortLevel?: string;
     /**
      * If set, the daemon spawns the agent with `--resume <id>` so the new
      * Happy session attaches to a pre-existing on-disk Claude conversation
@@ -219,7 +235,7 @@ export interface ResumeSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, permissionMode, modelMode, effortLevel, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -227,7 +243,10 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             directory: string
             approvedNewDirectoryCreation?: boolean,
             token?: string,
-            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw',
+            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'agy',
+            permissionMode?: string,
+            modelMode?: string,
+            effortLevel?: string,
             resumeClaudeSessionId?: string,
             resumeCodexThreadId?: string,
             parentSessionId?: string,
@@ -235,7 +254,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, permissionMode, modelMode, effortLevel, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId }
         );
         return result;
     } catch (error) {
@@ -554,10 +573,132 @@ export async function machineUpdateMetadata(
 }
 
 /**
+ * Persist per-session mode picks into synced session metadata with optimistic
+ * concurrency and automatic retry. On version conflict the latest metadata is
+ * taken from the server via the schema-free raw decrypt, so fields this app
+ * version doesn't know about survive the read-modify-write.
+ */
+async function sessionUpdateAgentModesMetadata(
+    sessionId: string,
+    patch: SessionAgentModesPatch,
+    maxRetries: number = 3
+): Promise<void> {
+    const encryption = sync.encryption.getSessionEncryption(sessionId);
+    const session = storage.getState().sessions[sessionId];
+    if (!encryption || !session?.metadata) {
+        throw new Error(`Session ${sessionId} is not ready for metadata updates`);
+    }
+
+    // Defensive copy: retries drop fields from the patch (see below)
+    let pendingPatch: SessionAgentModesPatch = { ...patch };
+    let currentVersion = session.metadataVersion;
+    let currentMetadata: Record<string, unknown> = { ...session.metadata, ...pendingPatch };
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const encrypted = await encryption.encryptRaw(currentMetadata);
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+        }>('update-metadata', {
+            sid: sessionId,
+            metadata: encrypted,
+            expectedVersion: currentVersion
+        });
+
+        if (result.result === 'success') {
+            return;
+        }
+        if (result.result === 'version-mismatch') {
+            currentVersion = result.version!;
+            const latest = await encryption.decryptRaw(result.metadata!);
+            if (!latest) {
+                throw new Error('Failed to decrypt latest session metadata');
+            }
+            // A newer local action (another pick, an abort clearing modes) may
+            // have changed the mirror since this push started — that action
+            // owns the field now, and blindly replaying the original patch
+            // would resurrect a pick the user already cleared.
+            const liveSession = storage.getState().sessions[sessionId];
+            for (const field of Object.keys(pendingPatch) as (keyof SessionAgentModesPatch)[]) {
+                if ((liveSession?.[field] ?? null) !== (pendingPatch[field] ?? null)) {
+                    delete pendingPatch[field];
+                }
+            }
+            if (Object.keys(pendingPatch).length === 0) {
+                return;
+            }
+            currentMetadata = { ...latest, ...pendingPatch };
+            continue;
+        }
+        throw new Error('Failed to update session metadata');
+    }
+
+    throw new Error(`Failed to update session metadata after ${maxRetries} retries due to version conflicts`);
+}
+
+/**
+ * Apply a per-session model / effort pick: updates local state immediately for
+ * a snappy UI and pushes the pick into synced session metadata so other
+ * devices receive it through the update-session broadcast. Never throws — a
+ * failed push leaves the optimistic local value, and the next inbound
+ * metadata update reconciles the UI.
+ */
+export function sessionSetAgentModes(sessionId: string, patch: SessionAgentModesPatch): void {
+    const state = storage.getState();
+    const session = state.sessions[sessionId];
+
+    // Only touch fields that actually change — clearing modes on a session
+    // with no picks (e.g. every abort) must not cost a metadata round-trip.
+    // A pick counts as changed when it differs from the local mirror OR from
+    // synced metadata: a local-only value (e.g. the EnterPlanMode auto-switch
+    // writes the mirror without metadata) must still be pushed when the user
+    // picks it explicitly, or other devices never see it.
+    const isChanged = (value: string | null, field: keyof SessionAgentModesPatch): boolean => {
+        const mirror = session?.[field] ?? null;
+        const metaRaw = session?.metadata?.[field];
+        const meta = metaRaw === undefined ? null : (metaRaw ?? null);
+        return value !== mirror || value !== meta;
+    };
+    const changed: SessionAgentModesPatch = {};
+    if (patch.permissionMode !== undefined && isChanged(patch.permissionMode, 'permissionMode')) {
+        changed.permissionMode = patch.permissionMode;
+    }
+    if (patch.modelMode !== undefined && isChanged(patch.modelMode, 'modelMode')) {
+        changed.modelMode = patch.modelMode;
+    }
+    if (patch.effortLevel !== undefined && isChanged(patch.effortLevel, 'effortLevel')) {
+        changed.effortLevel = patch.effortLevel;
+    }
+    if (Object.keys(changed).length === 0) {
+        return;
+    }
+
+    state.updateSessionAgentModes(sessionId, changed);
+
+    // While the push is in flight, inbound updates still carry the OLD
+    // metadata; mark the fields pending so applySessions keeps the fresher
+    // local mirror instead of bouncing the pick back.
+    const changedFields = Object.keys(changed) as AgentModeField[];
+    markAgentModePushPending(sessionId, changedFields);
+    sessionUpdateAgentModesMetadata(sessionId, changed)
+        .catch((error) => {
+            console.error(`Failed to sync agent modes for session ${sessionId}`, error);
+        })
+        .finally(() => {
+            clearAgentModePushPending(sessionId, changedFields);
+        });
+}
+
+/**
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {
-    await apiSocket.sessionRPC(sessionId, 'abort', {
+    const metadata = storage.getState().sessions[sessionId]?.metadata;
+    if (!rigCanAbort(metadata)) {
+        throw new Error('Abort is not available for this session');
+    }
+    await apiSocket.sessionRPC(sessionId, 'abort', isRigMetadata(metadata) ? {} : {
         reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`
     });
 }
@@ -610,6 +751,10 @@ export async function sessionGoalAction(
  */
 export async function sessionBash(sessionId: string, request: SessionBashRequest): Promise<SessionBashResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (!rigCanUseShell(metadata)) {
+            throw new Error('Shell access is not available for this session');
+        }
         const response = await apiSocket.sessionRPC<SessionBashResponse, SessionBashRequest>(
             sessionId,
             'bash',
@@ -632,6 +777,10 @@ export async function sessionBash(sessionId: string, request: SessionBashRequest
  */
 export async function sessionReadFile(sessionId: string, path: string): Promise<SessionReadFileResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (!rigCanReadFiles(metadata)) {
+            throw new Error('File reading is not available for this session');
+        }
         const request: SessionReadFileRequest = { path };
         const response = await apiSocket.sessionRPC<SessionReadFileResponse, SessionReadFileRequest>(
             sessionId,
@@ -657,6 +806,10 @@ export async function sessionWriteFile(
     expectedHash?: string | null
 ): Promise<SessionWriteFileResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (!rigCanWriteFiles(metadata)) {
+            throw new Error('File writing is not available for this session');
+        }
         const request: SessionWriteFileRequest = { path, content, expectedHash };
         const response = await apiSocket.sessionRPC<SessionWriteFileResponse, SessionWriteFileRequest>(
             sessionId,
@@ -677,6 +830,10 @@ export async function sessionWriteFile(
  */
 export async function sessionListDirectory(sessionId: string, path: string): Promise<SessionListDirectoryResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (isRigMetadata(metadata) && !rigHasRpcMethod(metadata, 'listDirectory')) {
+            throw new Error('Directory listing is not advertised by this Rig session');
+        }
         const request: SessionListDirectoryRequest = { path };
         const response = await apiSocket.sessionRPC<SessionListDirectoryResponse, SessionListDirectoryRequest>(
             sessionId,
@@ -701,6 +858,10 @@ export async function sessionGetDirectoryTree(
     maxDepth: number
 ): Promise<SessionGetDirectoryTreeResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (isRigMetadata(metadata) && !rigHasRpcMethod(metadata, 'getDirectoryTree')) {
+            throw new Error('Directory tree is not advertised by this Rig session');
+        }
         const request: SessionGetDirectoryTreeRequest = { path, maxDepth };
         const response = await apiSocket.sessionRPC<SessionGetDirectoryTreeResponse, SessionGetDirectoryTreeRequest>(
             sessionId,
@@ -725,6 +886,10 @@ export async function sessionRipgrep(
     cwd?: string
 ): Promise<SessionRipgrepResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (!rigCanSearchFiles(metadata)) {
+            throw new Error('File search is not available for this session');
+        }
         const request: SessionRipgrepRequest = { args, cwd };
         const response = await apiSocket.sessionRPC<SessionRipgrepResponse, SessionRipgrepRequest>(
             sessionId,

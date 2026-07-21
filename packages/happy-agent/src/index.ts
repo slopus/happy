@@ -16,7 +16,7 @@ import { formatMachineTable, formatSessionTable, formatSessionStatus, formatMess
 
 // --- Helpers ---
 
-const SUPPORTED_AGENTS: SupportedAgent[] = ['claude', 'codex', 'gemini', 'openclaw'];
+const SUPPORTED_AGENTS: SupportedAgent[] = ['claude', 'codex', 'gemini', 'openclaw', 'agy'];
 
 function resolveByPrefix<T extends { id: string }>(items: T[], value: string, label: string): T {
     if (!value || value.trim().length === 0) {

@@ -297,6 +297,12 @@ export default function DevScreen() {
                     icon={<Ionicons name="add-circle-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/session-composer' as any)}
                 />
+                <Item
+                    title="Rig Preview"
+                    subtitle="Rig identity, selectors, and activity metadata"
+                    icon={<Ionicons name="terminal-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/rig-preview' as any)}
+                />
             </ItemGroup>
 
             {/* Test Features */}

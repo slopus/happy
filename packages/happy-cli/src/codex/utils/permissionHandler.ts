@@ -50,8 +50,14 @@ export class CodexPermissionHandler extends BasePermissionHandler {
             return true;
         }
 
+        const toolCallIdSegments = toolCallId.split(':');
+
         for (const prefix of CodexPermissionHandler.ALWAYS_AUTO_APPROVE_ID_PREFIXES) {
-            if (toolCallId === prefix || toolCallId.startsWith(`${prefix}-`)) {
+            if (
+                toolCallIdSegments.some((segment) => (
+                    segment === prefix || segment.startsWith(`${prefix}-`)
+                ))
+            ) {
                 return true;
             }
         }

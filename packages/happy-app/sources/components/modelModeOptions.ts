@@ -1,15 +1,34 @@
 import type { Metadata } from '@/sync/storageTypes';
 import { hackModes } from '@/sync/modeHacks';
 import { getCodeAgentDefaults } from '@/sync/agentDefaults';
+import {
+    getRigCurrentModel,
+    getRigModels,
+    getRigReasoningLevels,
+    getRigSelectedModelKey,
+    isRigMetadataV1,
+} from '@/sync/rig';
 
 export type ModeOption = {
     key: string;
     name: string;
     description?: string | null;
+    semanticKind?: string | null;
+    disabled?: boolean;
 };
 
 export type PermissionMode = ModeOption;
-export type ModelMode = ModeOption;
+export type ModelMode = ModeOption & {
+    modelId?: string;
+    providerId?: string;
+    providerName?: string;
+    providerKind?: string;
+    contextWindow?: number;
+    serviceTiers?: string[];
+    thinkingLevels?: string[];
+    defaultThinkingLevel?: string | null;
+    unavailable?: boolean;
+};
 
 export type EffortLevel = ModeOption;
 export type PermissionModeKey = string;
@@ -58,10 +77,10 @@ export function getClaudePermissionModes(translate: Translate): PermissionMode[]
 
 export function getCodexPermissionModes(translate: Translate): PermissionMode[] {
     return [
-        { key: 'default', name: translate('agentInput.codexPermissionMode.default'), description: null },
-        { key: 'read-only', name: translate('agentInput.codexPermissionMode.readOnly'), description: null },
-        { key: 'safe-yolo', name: translate('agentInput.codexPermissionMode.safeYolo'), description: null },
-        { key: 'yolo', name: translate('agentInput.codexPermissionMode.yolo'), description: null },
+        { key: 'default', name: translate('agentInput.codexPermissionMode.default'), description: translate('agentInput.codexPermissionMode.defaultDescription') },
+        { key: 'read-only', name: translate('agentInput.codexPermissionMode.readOnly'), description: translate('agentInput.codexPermissionMode.readOnlyDescription') },
+        { key: 'safe-yolo', name: translate('agentInput.codexPermissionMode.safeYolo'), description: translate('agentInput.codexPermissionMode.safeYoloDescription') },
+        { key: 'yolo', name: translate('agentInput.codexPermissionMode.yolo'), description: translate('agentInput.codexPermissionMode.yoloDescription') },
     ];
 }
 
@@ -78,6 +97,7 @@ export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
         { key: 'opus', name: 'opus 4.8', description: null },
+        { key: 'fable', name: 'fable 5', description: null },
         { key: 'sonnet', name: 'sonnet 4.6', description: null },
         { key: 'haiku', name: 'haiku 4.5', description: null },
     ];
@@ -86,6 +106,9 @@ export function getClaudeModelModes(): ModelMode[] {
 export function getCodexModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
+        { key: 'gpt-5.6-sol', name: 'gpt-5.6 sol', description: null },
+        { key: 'gpt-5.6-terra', name: 'gpt-5.6 terra', description: null },
+        { key: 'gpt-5.6-luna', name: 'gpt-5.6 luna', description: null },
         { key: 'gpt-5.5', name: 'gpt-5.5', description: null },
         { key: 'gpt-5.4', name: 'gpt-5.4', description: null },
         { key: 'gpt-5.3-codex', name: 'gpt-5.3-codex', description: null },
@@ -107,6 +130,15 @@ export function getOpenClawPermissionModes(translate: Translate): PermissionMode
     ];
 }
 
+// agy --print only distinguishes --sandbox (default) from --dangerously-skip-permissions,
+// so only these two modes are offered.
+export function getAgyPermissionModes(translate: Translate): PermissionMode[] {
+    return [
+        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
+        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
+    ];
+}
+
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
@@ -117,12 +149,29 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     if (flavor === 'openclaw') {
         return getOpenClawPermissionModes(translate);
     }
+    if (flavor === 'agy') {
+        return getAgyPermissionModes(translate);
+    }
     return getClaudePermissionModes(translate);
 }
 
 export function getOpenClawModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
+    ];
+}
+
+// Keys are the exact display names `agy --model` accepts (as printed by `agy models`).
+export function getAgyModelModes(): ModelMode[] {
+    return [
+        { key: 'Gemini 3.1 Pro (High)', name: 'gemini 3.1 pro (high)', description: null },
+        { key: 'Gemini 3.1 Pro (Low)', name: 'gemini 3.1 pro (low)', description: null },
+        { key: 'Gemini 3.5 Flash (High)', name: 'gemini 3.5 flash (high)', description: null },
+        { key: 'Gemini 3.5 Flash (Medium)', name: 'gemini 3.5 flash (medium)', description: null },
+        { key: 'Gemini 3.5 Flash (Low)', name: 'gemini 3.5 flash (low)', description: null },
+        { key: 'Claude Opus 4.6 (Thinking)', name: 'claude opus 4.6 (thinking)', description: null },
+        { key: 'Claude Sonnet 4.6 (Thinking)', name: 'claude sonnet 4.6 (thinking)', description: null },
+        { key: 'GPT-OSS 120B (Medium)', name: 'gpt-oss 120b (medium)', description: null },
     ];
 }
 
@@ -136,6 +185,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     if (flavor === 'openclaw') {
         return getOpenClawModelModes();
     }
+    if (flavor === 'agy') {
+        return getAgyModelModes();
+    }
     return getClaudeModelModes();
 }
 
@@ -143,7 +195,57 @@ export function getAvailableModels(
     flavor: AgentFlavor,
     metadata: Metadata | null | undefined,
     translate: Translate,
+    selectedKey?: string | null,
 ): ModelMode[] {
+    if (isRigMetadataV1(metadata)) {
+        const models: ModelMode[] = getRigModels(metadata).map((model) => ({
+            key: model.key,
+            name: model.name,
+            description: model.providerName,
+            modelId: model.id,
+            providerId: model.providerId,
+            providerName: model.providerName,
+            providerKind: model.providerKind,
+            contextWindow: model.contextWindow,
+            serviceTiers: model.serviceTiers,
+            thinkingLevels: model.thinkingLevels,
+            defaultThinkingLevel: model.defaultThinkingLevel,
+        }));
+        const current = getRigCurrentModel(metadata);
+        if (current?.unavailable && !models.some((model) => model.key === current.key)) {
+            models.unshift({
+                key: current.key,
+                name: current.name,
+                description: `${current.providerName} · unavailable`,
+                modelId: current.id,
+                providerId: current.providerId,
+                providerName: current.providerName,
+                providerKind: current.providerKind,
+                thinkingLevels: [],
+                serviceTiers: [],
+                unavailable: true,
+                disabled: true,
+            });
+        }
+        const locallySelectedKey = selectedKey ?? metadata?.modelMode;
+        if (locallySelectedKey && locallySelectedKey.includes(':') && !models.some((model) => model.key === locallySelectedKey)) {
+            const separator = locallySelectedKey.indexOf(':');
+            const providerId = locallySelectedKey.slice(0, separator);
+            const modelId = locallySelectedKey.slice(separator + 1);
+            models.unshift({
+                key: locallySelectedKey,
+                name: modelId,
+                description: `${providerId} · unavailable`,
+                modelId,
+                providerId,
+                providerName: providerId,
+                providerKind: 'custom',
+                unavailable: true,
+                disabled: true,
+            });
+        }
+        return models;
+    }
     const metadataModels = mapMetadataOptions(metadata?.models);
     if (metadataModels.length > 0) {
         if (flavor === 'codex' && !metadataModels.some((model) => model.key === 'default')) {
@@ -158,8 +260,31 @@ export function getAvailablePermissionModes(
     flavor: AgentFlavor,
     metadata: Metadata | null | undefined,
     translate: Translate,
+    selectedKey?: string | null,
 ): PermissionMode[] {
-    if (flavor === 'claude' || flavor === 'codex' || flavor === 'openclaw') {
+    if (isRigMetadataV1(metadata)) {
+        const modes: PermissionMode[] = (metadata?.operatingModes ?? []).map((mode) => ({
+            key: mode.code,
+            name: mode.value,
+            description: mode.description ?? null,
+            semanticKind: mode.kind ?? null,
+        }));
+        const current = selectedKey
+            ?? metadata?.currentOperatingModeCode
+            ?? metadata?.permissionMode
+            ?? metadata?.session?.permissionMode;
+        if (current && !modes.some((mode) => mode.key === current)) {
+            modes.unshift({
+                key: current,
+                name: current,
+                description: 'Unavailable in the current Rig mode catalog',
+                semanticKind: null,
+                disabled: true,
+            });
+        }
+        return modes;
+    }
+    if (flavor === 'claude' || flavor === 'codex' || flavor === 'openclaw' || flavor === 'agy') {
         return hackModes(getHardcodedPermissionModes(flavor, translate));
     }
 
@@ -231,7 +356,17 @@ export function getDefaultEffortKey(flavor: AgentFlavor): string | null {
 }
 
 // Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
-export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string): EffortLevel[] {
+export function getEffortLevelsForModel(
+    flavor: AgentFlavor,
+    modelKey: string,
+    metadata?: Metadata | null,
+): EffortLevel[] {
+    if (isRigMetadataV1(metadata)) {
+        return getRigReasoningLevels(metadata, modelKey).map((level) => ({
+            key: level,
+            name: level,
+        }));
+    }
     // Claude and Codex expose effort/thought levels regardless of which
     // specific model is picked — the same low/medium/high/max scale applies
     // to the whole flavor (mirrors how Codex already worked, which the user
@@ -243,6 +378,10 @@ export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string):
         return getCodexEffortLevels();
     }
     return [];
+}
+
+export function getRigCurrentModelOptionKey(metadata: Metadata | null | undefined): string | null {
+    return getRigSelectedModelKey(metadata);
 }
 
 // Default effort for a model — highest the model allows

@@ -11,6 +11,8 @@ interface ChatHeaderViewProps {
     title: string;
     /** Project folder name (last path segment) */
     folderName?: string;
+    /** Optional client/provider/model identity shown below the session title. */
+    identityLine?: string;
     /** Extra path segment appended to the title with a separator (used for the file-view overlay). */
     extraPathSegment?: string;
     /** Optional content rendered at the right edge of the header (used by file-view / diff overlays). */
@@ -25,6 +27,7 @@ interface ChatHeaderViewProps {
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     title,
     folderName,
+    identityLine,
     extraPathSegment,
     rightSlot,
     onTitlePress,
@@ -102,6 +105,15 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                                 {title}
                             </Text>
                         )}
+                        {identityLine ? (
+                            <Text
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                                style={[styles.identityLine, { color: theme.colors.textSecondary, ...Typography.default() }]}
+                            >
+                                {identityLine}
+                            </Text>
+                        ) : null}
                     </Pressable>
                     {rightSlot ? (
                         <View style={styles.rightSlot}>
@@ -135,6 +147,11 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'flex-start',
         minWidth: 0,
+    },
+    identityLine: {
+        fontSize: 11,
+        lineHeight: 14,
+        maxWidth: '100%',
     },
     titleRow: {
         flexDirection: 'row',
