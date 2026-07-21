@@ -34,6 +34,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
 import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
 import { handleCodexCommand } from './commands/codexCommand'
+import { handleImportCommand } from './commands/importCommand'
 
 
 (async () => {
@@ -127,6 +128,17 @@ Conversation history is preserved on the server, but in-flight tool calls are in
   } else if (subcommand === 'resume') {
     try {
       await handleResumeCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'import') {
+    try {
+      await handleImportCommand(args.slice(1));
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
