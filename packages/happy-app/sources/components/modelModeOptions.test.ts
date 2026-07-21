@@ -66,6 +66,12 @@ describe('modelModeOptions', () => {
             name: 'fable 5',
             description: null,
         });
+        // Bare `sonnet` resolves to the latest Sonnet (Sonnet 5) — label must match.
+        expect(models.find((model) => model.key === 'sonnet')).toEqual({
+            key: 'sonnet',
+            name: 'sonnet 5',
+            description: null,
+        });
     });
 
     it('uses code defaults for agent defaults', () => {

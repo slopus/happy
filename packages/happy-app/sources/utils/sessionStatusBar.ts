@@ -1,3 +1,5 @@
+import { maxContextSizeForModel } from './contextWindow';
+
 export const SESSION_STATUS_CONTEXT_MAX = 190000;
 
 export type ContextUsageLevel = 'normal' | 'warning' | 'critical';
@@ -40,4 +42,19 @@ export function getContextUsageLevel(value: number | null | undefined, maxValue 
         return 'warning';
     }
     return 'normal';
+}
+
+// Size the context window for the usage circle. Prefer the API-reported window,
+// but when it's absent (the API echoes only the base model id, so 1M-token
+// models don't report their real window) fall back to the selected model key.
+// SessionStatusBar previously hardcoded the 190K default here, which reclamped
+// [1m] models to ~100% used on a fresh session (regression of #910).
+export function resolveContextMaxValue(
+    contextWindow: number | null | undefined,
+    modelKey?: string | null,
+): number {
+    if (typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0) {
+        return Math.trunc(contextWindow);
+    }
+    return maxContextSizeForModel(modelKey ?? undefined);
 }
