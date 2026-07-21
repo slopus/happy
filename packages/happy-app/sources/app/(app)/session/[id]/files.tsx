@@ -13,6 +13,7 @@ import { useSessionGitStatus } from '@/sync/storage';
 import { useGitStatusFiles } from '@/hooks/useGitStatusFiles';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
+import { encodeFilePath } from '@/utils/pathUtils';
 import { FileIcon } from '@/components/FileIcon';
 import { Shaker, ShakeInstance } from '@/components/Shaker';
 import { usePrefetchFileContents } from '@/hooks/usePrefetchFileContents';
@@ -69,7 +70,7 @@ export default React.memo(function FilesScreen() {
             shakerRefs.current.get(file.fullPath)?.shake();
             return;
         }
-        const encodedPath = btoa(file.fullPath);
+        const encodedPath = encodeFilePath(file.fullPath);
         router.push(`/session/${sessionId}/file?path=${encodedPath}`);
     }, [router, sessionId]);
 

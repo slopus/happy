@@ -15,6 +15,7 @@ import { FileIcon } from '@/components/FileIcon';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { encodeFilePath } from '@/utils/pathUtils';
 
 export type SidebarMode = 'changes' | 'allFiles';
 
@@ -179,7 +180,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
             onFilePress(file);
             return;
         }
-        const encodedPath = btoa(file.fullPath);
+        const encodedPath = encodeFilePath(file.fullPath);
         router.push(`/session/${sessionId}/file?path=${encodedPath}`);
     }, [router, sessionId, onFilePress]);
 
