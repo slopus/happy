@@ -157,6 +157,8 @@ export const ru: TranslationStructure = {
             above: 'Над полем ввода',
             below: 'Под полем ввода',
         },
+        usageLimitShowRemaining: 'Показывать остаток',
+        usageLimitShowRemainingDescription: 'Индикаторы лимита отсчитывают остаток, а не использование',
         userMessageBubbleColor: 'Цвет ваших сообщений',
         userMessageBubbleColorDescription: 'Сделайте ваши сообщения заметнее в длинных чатах',
         userMessageBubbleColorOptions: {
@@ -401,6 +403,7 @@ export const ru: TranslationStructure = {
             limitSevenDay: 'Лимит 7 дней',
             limitResets: ({ time }: { time: string }) => `сброс ${time}`,
             limitAsOf: ({ age }: { age: string }) => `данные ${age} назад`,
+            limitRemaining: ({ percent }: { percent: number }) => `осталось ${percent}%`,
         },
     },
 

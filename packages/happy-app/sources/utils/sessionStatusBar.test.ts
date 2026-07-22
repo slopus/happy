@@ -5,6 +5,7 @@ import {
     getContextUsageLevel,
     getContextUsagePercentage,
     getUsageLimitChips,
+    getUsageLimitDisplayPercentage,
     getUsageLimitRows,
     getUsageLimitStatus,
     resolveStatusBarGitBranch,
@@ -81,6 +82,15 @@ describe('usage limit helpers', () => {
         expect(getUsageLimitStatus({ id: 'x', status: 'future_status', utilization: 95 })).toBe('allowed_warning');
         expect(getUsageLimitStatus({ id: 'x', utilization: 100 })).toBe('rejected');
         expect(getUsageLimitStatus({ id: 'x' })).toBe('allowed');
+    });
+
+    it('flips utilization for the remaining view without touching status', () => {
+        expect(getUsageLimitDisplayPercentage(42, false)).toBe(42);
+        expect(getUsageLimitDisplayPercentage(42, true)).toBe(58);
+        expect(getUsageLimitDisplayPercentage(100, true)).toBe(0);
+        // The collapsed chip still picks the window closest to its limit,
+        // which is the one with the least remaining.
+        expect(getUsageLimitChips(limits, true)[0].id).toBe('seven_day');
     });
 
     it('formats snapshot age compactly', () => {

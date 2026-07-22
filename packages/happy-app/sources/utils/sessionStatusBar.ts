@@ -146,6 +146,15 @@ export function getUsageLimitRows(limits: UsageLimitsLike): UsageLimitRow[] {
     }));
 }
 
+/**
+ * `utilization` is always "percent used" — the wire format and the color
+ * thresholds both depend on that, so the remaining view is a display-time
+ * flip only.
+ */
+export function getUsageLimitDisplayPercentage(utilization: number, showRemaining: boolean): number {
+    return showRemaining ? 100 - utilization : utilization;
+}
+
 /** Compact age like "3m" / "2h" for the "as of" footer. */
 export function formatUsageLimitAge(capturedAt: number, now: number): string {
     const deltaMin = Math.max(0, Math.floor((now - capturedAt) / 60000));

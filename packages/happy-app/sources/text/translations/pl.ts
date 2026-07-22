@@ -188,6 +188,8 @@ export const pl: TranslationStructure = {
             above: 'Nad polem wprowadzania',
             below: 'Pod polem wprowadzania',
         },
+        usageLimitShowRemaining: 'Pokaż pozostały limit',
+        usageLimitShowRemainingDescription: 'Wskaźniki limitu odliczają w dół zamiast w górę',
         userMessageBubbleColor: 'Kolor Twoich wiadomości',
         userMessageBubbleColorDescription: 'Ułatw znajdowanie swoich wiadomości w długich czatach',
         userMessageBubbleColorOptions: {
@@ -462,6 +464,7 @@ export const pl: TranslationStructure = {
             limitSevenDay: 'Limit 7-dniowy',
             limitResets: ({ time }: { time: string }) => `reset ${time}`,
             limitAsOf: ({ age }: { age: string }) => `sprzed ${age}`,
+            limitRemaining: ({ percent }: { percent: number }) => `pozostało ${percent}%`,
         },
     },
 

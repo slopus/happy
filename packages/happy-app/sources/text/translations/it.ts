@@ -169,6 +169,8 @@ export const it: TranslationStructure = {
             above: 'Sopra il compositore',
             below: 'Sotto il compositore',
         },
+        usageLimitShowRemaining: 'Mostra la quota rimanente',
+        usageLimitShowRemainingDescription: 'Gli indicatori di limite contano alla rovescia invece che in avanti',
         userMessageBubbleColor: 'Colore dei tuoi messaggi',
         userMessageBubbleColorDescription: 'Rendi i tuoi messaggi più facili da trovare nelle chat lunghe',
         userMessageBubbleColorOptions: {
@@ -444,6 +446,7 @@ export const it: TranslationStructure = {
             limitSevenDay: 'Limite di 7 giorni',
             limitResets: ({ time }: { time: string }) => `si azzera ${time}`,
             limitAsOf: ({ age }: { age: string }) => `${age} fa`,
+            limitRemaining: ({ percent }: { percent: number }) => `${percent}% rimanente`,
         },
     },
 

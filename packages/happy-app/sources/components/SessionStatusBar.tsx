@@ -12,11 +12,13 @@ import {
     getContextUsageLevel,
     getContextUsagePercentage,
     getUsageLimitChips,
+    getUsageLimitDisplayPercentage,
     getUsageLimitRows,
     SESSION_STATUS_CONTEXT_MAX,
     type UsageLimitsLike,
     type UsageLimitStatus,
 } from '@/utils/sessionStatusBar';
+import { useSetting } from '@/sync/storage';
 
 type StatusIconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -62,6 +64,7 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
             ? theme.colors.warning
             : theme.colors.status.connecting;
     const { width: windowWidth } = useWindowDimensions();
+    const showRemaining = useSetting('usageLimitShowRemaining');
     const limitChips = getUsageLimitChips(props.usageLimits, windowWidth < LIMIT_CHIP_COLLAPSE_WIDTH);
     const limitStatusColor = (status: UsageLimitStatus): string | undefined => {
         if (status === 'rejected') return theme.colors.warningCritical;
@@ -94,7 +97,7 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
                 />
             ) : null}
             {openMenu === 'limits' ? (
-                <UsageLimitMenu usageLimits={props.usageLimits} statusColor={limitStatusColor} />
+                <UsageLimitMenu usageLimits={props.usageLimits} statusColor={limitStatusColor} showRemaining={showRemaining} />
             ) : null}
             <View style={styles.container}>
                 <View style={styles.leftCluster}>
@@ -123,7 +126,7 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
                         <StatusChip
                             key={chip.id}
                             icon="speedometer-outline"
-                            text={`${chip.shortLabel} ${chip.utilization}%`}
+                            text={`${chip.shortLabel} ${getUsageLimitDisplayPercentage(chip.utilization, showRemaining)}%`}
                             tint={limitStatusColor(chip.status)}
                             active={openMenu === 'limits'}
                             onPress={() => setOpenMenu((current) => current === 'limits' ? null : 'limits')}
@@ -208,6 +211,7 @@ function formatResetTime(ms: number): string {
 function UsageLimitMenu(props: {
     usageLimits: UsageLimitsLike;
     statusColor: (status: UsageLimitStatus) => string | undefined;
+    showRemaining: boolean;
 }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -232,7 +236,15 @@ function UsageLimitMenu(props: {
                             {knownLabels[row.id] ?? row.label}
                         </Text>
                         <Text style={styles.limitRowValue}>
-                            {row.utilization !== null ? `${row.utilization}%` : '—'}
+                            {row.utilization === null
+                                ? '—'
+                                : props.showRemaining
+                                    // The bare chip percentage is ambiguous once it can mean
+                                    // either direction, so the popover spells this one out.
+                                    ? t('components.sessionStatusBar.limitRemaining', {
+                                        percent: getUsageLimitDisplayPercentage(row.utilization, true),
+                                    })
+                                    : `${row.utilization}%`}
                         </Text>
                         {row.resetsAt !== null ? (
                             <Text style={styles.limitRowReset} numberOfLines={1}>

@@ -169,6 +169,8 @@ export const en = {
             above: 'Above composer',
             below: 'Below composer',
         },
+        usageLimitShowRemaining: 'Show Quota Remaining',
+        usageLimitShowRemainingDescription: 'Count plan limits down from full instead of up from empty',
         userMessageBubbleColor: 'User Bubble Color',
         userMessageBubbleColorDescription: 'Make your messages easier to spot in long chats',
         userMessageBubbleColorOptions: {
@@ -460,6 +462,7 @@ export const en = {
             limitSevenDay: '7-day limit',
             limitResets: ({ time }: { time: string }) => `resets ${time}`,
             limitAsOf: ({ age }: { age: string }) => `as of ${age} ago`,
+            limitRemaining: ({ percent }: { percent: number }) => `${percent}% left`,
         },
     },
 
