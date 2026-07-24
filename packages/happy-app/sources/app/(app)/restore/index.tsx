@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { Platform, View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
@@ -12,11 +12,12 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { QRCode } from '@/components/qr/QRCode';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 
 const stylesheet = StyleSheet.create((theme) => ({
     scrollView: {
         flex: 1,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
     },
     container: {
         flex: 1,
@@ -50,7 +51,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         ...Typography.default(),
     },
     textInput: {
-        backgroundColor: theme.colors.input.background,
+        backgroundColor: Platform.select({ web: theme.colors.input.background, default: theme.colors.glass.backgroundSubtle }),
         padding: 16,
         borderRadius: 8,
         marginBottom: 24,
@@ -144,9 +145,9 @@ export default function Restore() {
                     </Text>
                 </View>
                 {!authReady && (
-                    <View style={{ width: 200, height: 200, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center' }}>
+                    <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={68} style={{ width: 200, height: 200, backgroundColor: Platform.select({ web: theme.colors.surface, android: theme.colors.glass.backgroundStrong, default: 'transparent' }), alignItems: 'center', justifyContent: 'center', borderRadius: Platform.select({ web: 0, default: 24 }), overflow: 'hidden', borderWidth: Platform.OS === 'web' ? 0 : 0.5, borderColor: theme.colors.glass.border }}>
                         <ActivityIndicator size="small" color={theme.colors.text} />
-                    </View>
+                    </MobileGlassSurface>
                 )}
                 {authReady && (
                     <QRCode

@@ -4,6 +4,7 @@ import {
     getNextUserMessageBubbleColor,
     normalizeUserMessageBubbleColor,
     resolveUserMessageBubbleColor,
+    resolveUserMessageBubbleGlassColor,
     USER_MESSAGE_BUBBLE_COLORS,
 } from './userMessageBubbleColor';
 
@@ -30,5 +31,19 @@ describe('user message bubble color', () => {
             border: '#2F6EA8',
             indicator: '#64B5FF',
         });
+    });
+
+    it('resolves translucent glass colors for every preset', () => {
+        expect(resolveUserMessageBubbleGlassColor('green', true)).toEqual({
+            background: 'rgba(23, 58, 39, 0.46)',
+            border: 'rgba(61, 139, 88, 0.56)',
+            tint: 'rgba(101, 211, 133, 0.18)',
+        });
+        expect(resolveUserMessageBubbleGlassColor('blue', false)).toEqual({
+            background: 'rgba(232, 242, 255, 0.54)',
+            border: 'rgba(156, 201, 255, 0.7)',
+            tint: 'rgba(10, 132, 255, 0.14)',
+        });
+        expect(resolveUserMessageBubbleGlassColor('gray', true).border).toBe('rgba(255, 255, 255, 0.18)');
     });
 });

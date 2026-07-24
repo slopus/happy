@@ -325,7 +325,31 @@ export type Metadata = {
   /** Lineage for sessions created via the fork / duplicate flow. */
   parentSessionId?: string
   forkedFromMessageId?: string
+  /**
+   * Marks a session as a hidden "side chat" forked from `parentSessionId`.
+   * Side chats never appear in the top-level session list; they render only
+   * inside the parent session's sidebar panel.
+   */
+  isSideChat?: boolean
 };
+
+export type UsageLimitWindowStatus = 'allowed' | 'allowed_warning' | 'rejected'
+
+export type UsageLimitWindow = {
+  /** Stable machine key, e.g. 'five_hour' / 'seven_day'. */
+  id: string,
+  label?: string,
+  status?: UsageLimitWindowStatus,
+  /** Percent of the window used, 0-100. */
+  utilization?: number | null,
+  /** Epoch milliseconds when the window resets. */
+  resetsAt?: number | null,
+}
+
+export type UsageLimits = {
+  capturedAt: number,
+  windows: UsageLimitWindow[],
+}
 
 export type AgentGoalStatus = {
   source: 'claude' | 'codex',
@@ -363,6 +387,11 @@ export type AgentGoalStatus = {
 
 export type AgentState = {
   controlledByUser?: boolean | null | undefined
+  /**
+   * Ephemeral plan rate-limit windows reported by the agent backend.
+   * Apps must tolerate window ids they don't recognize.
+   */
+  usageLimits?: UsageLimits
   requests?: {
     [id: string]: {
       tool: string,

@@ -167,10 +167,11 @@ export const ca: TranslationStructure = {
         sessionStatusBarDescription: 'Tria on es mostren la branca, el model, l\'esforç i el context',
         sessionStatusDisplayOptions: {
             hidden: 'Ocult',
-            hiddenOnMobile: 'Ocult al mòbil',
             above: 'Sobre el compositor',
             below: 'Sota el compositor',
         },
+        usageLimitShowRemaining: 'Mostra la quota restant',
+        usageLimitShowRemainingDescription: 'Els indicadors de límit compten enrere en lloc d\'endavant',
         userMessageBubbleColor: 'Color dels teus missatges',
         userMessageBubbleColorDescription: 'Fes que els teus missatges siguin més fàcils de trobar en xats llargs',
         userMessageBubbleColorOptions: {
@@ -442,6 +443,11 @@ export const ca: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Context ${used} de ${total} tokens, ${percent}%`,
+            limitFiveHour: 'Límit de 5 hores',
+            limitSevenDay: 'Límit de 7 dies',
+            limitResets: ({ time }: { time: string }) => `es restableix ${time}`,
+            limitAsOf: ({ age }: { age: string }) => `fa ${age}`,
+            limitRemaining: ({ percent }: { percent: number }) => `${percent}% restant`,
         },
     },
 
@@ -643,6 +649,8 @@ export const ca: TranslationStructure = {
         deleted: 'Eliminat',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'fitxer modificat' : 'fitxers modificats'}`,
         allFiles: 'Tots els fitxers',
+        addPanel: 'Afegeix un panell',
+        closePanel: 'Tanca el panell',
         editFile: 'Editar',
         saveFile: 'Desar',
         failedToRead: 'No s\'ha pogut llegir el fitxer',
@@ -651,6 +659,19 @@ export const ca: TranslationStructure = {
         fileConflictDescription: 'Aquest fitxer s\'ha modificat al dispositiu mentre l\'editaves. Recarrega per veure la darrera versió.',
         reload: 'Recarregar',
         overwrite: 'Sobreescriure',
+    },
+    sideChat: {
+        panelTitle: 'Xat lateral',
+        emptyTitle: 'Inicia un xat lateral',
+        emptySubtitle: 'Pregunta alguna cosa a l’agent a part. Hereta el context d’aquest xat però es manté aïllat — res d’aquí no afecta la conversa principal.',
+        startButton: 'Inicia el xat lateral',
+        creating: 'Iniciant el xat lateral…',
+        unavailable: 'Aquesta sessió encara no pot iniciar un xat lateral — espera que l’agent estigui en línia.',
+        composerPlaceholder: 'Missatge al xat lateral…',
+        expand: 'Obre a pantalla completa',
+        tabLabel: ({ index }: { index: number }) => `Xat lateral ${index}`,
+        newChat: 'Nou xat lateral',
+        close: 'Tanca el xat lateral',
     },
 
     settingsVoice: {

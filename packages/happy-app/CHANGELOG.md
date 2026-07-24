@@ -1,3 +1,14 @@
+# July 24 — Liquid glass, Opus 5
+
+A full mobile refresh and a new top model.
+
+- Liquid-glass mobile UI — glass surfaces across navigation, headers, modals, and session lists.
+- Opus 5 in the Claude model picker.
+- Side chats — fork a parallel conversation right next to your session.
+- Redesigned new-session screen — prompt, attachments, voice, model, effort, and permissions in one place. Drafts are preserved.
+- Pick your own sidebar panels, with keyboard shortcuts.
+- Session launch and resume are more reliable.
+
 # July 11 — GPT-5.6, Antigravity, bugfixes
 
 New models, a new agent, and live subagent rendering.

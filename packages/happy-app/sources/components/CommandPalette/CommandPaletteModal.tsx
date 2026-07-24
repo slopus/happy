@@ -8,6 +8,7 @@ import {
     KeyboardAvoidingView,
     Platform
 } from 'react-native';
+import { LocalBlurHalo } from '@/components/AnimatedOverlay';
 
 interface CommandPaletteModalProps {
     visible: boolean;
@@ -89,7 +90,7 @@ export function CommandPaletteModal({
                 <TouchableWithoutFeedback onPress={handleBackdropPress}>
                     <Animated.View 
                         style={[
-                            styles.backdrop,
+                            Platform.OS === 'web' ? styles.backdrop : styles.nativeBackdrop,
                             {
                                 opacity: fadeAnim.interpolate({
                                     inputRange: [0, 1],
@@ -97,7 +98,9 @@ export function CommandPaletteModal({
                                 })
                             }
                         ]}
-                    />
+                    >
+                        {Platform.OS !== 'web' && <View pointerEvents="none" style={styles.backdropScrim} />}
+                    </Animated.View>
                 </TouchableWithoutFeedback>
                 
                 <Animated.View
@@ -109,6 +112,7 @@ export function CommandPaletteModal({
                         }
                     ]}
                 >
+                    {Platform.OS !== 'web' && <LocalBlurHalo borderRadius={24} expansion={18} blurIntensity={38} />}
                     {children}
                 </Animated.View>
             </KeyboardAvoidingView>
@@ -131,14 +135,13 @@ const styles = StyleSheet.create({
     backdrop: {
         ...StyleSheet.absoluteFillObject,
         backgroundColor: 'rgba(15, 15, 15, 0.75)',
-        // Remove blur for better performance - use darker overlay instead
-        // Blur can be re-enabled if needed but with optimizations
-        ...(Platform.OS === 'web' ? {
-            // backdropFilter: 'blur(2px)',
-            // WebkitBackdropFilter: 'blur(2px)',
-            // willChange: 'backdrop-filter',
-            // transform: 'translateZ(0)', // Force GPU acceleration
-        } as any : {})
+    },
+    nativeBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+    },
+    backdropScrim: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0, 0, 0, 0.14)',
     },
     content: {
         zIndex: 1,

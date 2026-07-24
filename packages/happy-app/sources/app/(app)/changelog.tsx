@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ScrollView, View, Text } from 'react-native';
+import { Platform, ScrollView, View, Text } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
@@ -7,6 +7,7 @@ import { getChangelogEntries, getLatestTitle, setLastViewedTitle } from '@/chang
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 
 export default function ChangelogScreen() {
     const insets = useSafeAreaInsets();
@@ -57,9 +58,9 @@ export default function ChangelogScreen() {
                             </Text>
                         ) : null}
                         {entry.markdown ? (
-                            <View style={styles.card}>
+                            <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={64} style={styles.card}>
                                 <MarkdownView markdown={entry.markdown} />
-                            </View>
+                            </MobileGlassSurface>
                         ) : null}
                     </View>
                 ))}
@@ -71,7 +72,7 @@ export default function ChangelogScreen() {
 const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
     },
     content: {
         paddingHorizontal: 16,
@@ -95,9 +96,16 @@ const styles = StyleSheet.create((theme) => ({
         marginBottom: 16,
     },
     card: {
-        backgroundColor: theme.colors.surfaceHigh,
-        borderRadius: 12,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceHigh, android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
+        borderRadius: Platform.select({ web: 12, default: 20 }),
         padding: 16,
+        overflow: 'hidden',
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.glass.border,
+        shadowColor: theme.colors.glass.shadow,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: Platform.select({ web: 0, default: 1 }),
+        shadowRadius: 20,
     },
     emptyState: {
         flex: 1,

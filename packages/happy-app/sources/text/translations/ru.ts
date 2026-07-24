@@ -153,10 +153,11 @@ export const ru: TranslationStructure = {
         sessionStatusBarDescription: 'Выберите, где показывать ветку, модель, усилия и контекст',
         sessionStatusDisplayOptions: {
             hidden: 'Скрыто',
-            hiddenOnMobile: 'Скрыто на телефоне',
             above: 'Над полем ввода',
             below: 'Под полем ввода',
         },
+        usageLimitShowRemaining: 'Показывать остаток',
+        usageLimitShowRemainingDescription: 'Индикаторы лимита отсчитывают остаток, а не использование',
         userMessageBubbleColor: 'Цвет ваших сообщений',
         userMessageBubbleColorDescription: 'Сделайте ваши сообщения заметнее в длинных чатах',
         userMessageBubbleColorOptions: {
@@ -397,6 +398,11 @@ export const ru: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Контекст ${used} из ${total} токенов, ${percent}%`,
+            limitFiveHour: 'Лимит 5 часов',
+            limitSevenDay: 'Лимит 7 дней',
+            limitResets: ({ time }: { time: string }) => `сброс ${time}`,
+            limitAsOf: ({ age }: { age: string }) => `данные ${age} назад`,
+            limitRemaining: ({ percent }: { percent: number }) => `осталось ${percent}%`,
         },
     },
 
@@ -659,6 +665,8 @@ export const ru: TranslationStructure = {
         deleted: 'Удалён',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'изменённый файл' : count < 5 ? 'изменённых файла' : 'изменённых файлов'}`,
         allFiles: 'Все файлы',
+        addPanel: 'Добавить панель',
+        closePanel: 'Закрыть панель',
         editFile: 'Редактировать',
         saveFile: 'Сохранить',
         failedToRead: 'Не удалось прочитать файл',
@@ -667,6 +675,19 @@ export const ru: TranslationStructure = {
         fileConflictDescription: 'Файл был изменён на устройстве пока вы его редактировали. Перезагрузите чтобы увидеть актуальную версию.',
         reload: 'Перезагрузить',
         overwrite: 'Перезаписать',
+    },
+    sideChat: {
+        panelTitle: 'Боковой чат',
+        emptyTitle: 'Начните боковой чат',
+        emptySubtitle: 'Спросите агента что-нибудь в стороне. Он наследует контекст этого чата, но остаётся изолированным — ничто здесь не затрагивает основной разговор.',
+        startButton: 'Начать боковой чат',
+        creating: 'Запуск бокового чата…',
+        unavailable: 'Эта сессия пока не может начать боковой чат — дождитесь, когда агент выйдет в сеть.',
+        composerPlaceholder: 'Написать в боковой чат…',
+        expand: 'Открыть на весь экран',
+        tabLabel: ({ index }: { index: number }) => `Боковой чат ${index}`,
+        newChat: 'Новый боковой чат',
+        close: 'Закрыть боковой чат',
     },
 
     settingsVoice: {

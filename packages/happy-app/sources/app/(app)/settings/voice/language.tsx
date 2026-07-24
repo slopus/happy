@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, TextInput, FlatList } from 'react-native';
+import { Platform, View, TextInput, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Item } from '@/components/Item';
@@ -9,6 +9,7 @@ import { useSettingMutable } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
 import { LANGUAGES, getLanguageDisplayName, type Language } from '@/constants/Languages';
 import { t } from '@/text';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 
 export default function LanguageSelectionScreen() {
     const { theme } = useUnistyles();
@@ -39,19 +40,22 @@ export default function LanguageSelectionScreen() {
         <ItemList style={{ paddingTop: 0 }}>
             {/* Search Header */}
             <View style={{
-                backgroundColor: theme.colors.surface,
+                backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
                 paddingHorizontal: 16,
                 paddingVertical: 12,
-                borderBottomWidth: 1,
-                borderBottomColor: theme.colors.divider
+                borderBottomWidth: Platform.select({ web: 1, default: 0 }),
+                borderBottomColor: theme.colors.divider,
             }}>
-                <View style={{
+                <MobileGlassSurface enabled={Platform.OS !== 'web'} interactive intensity={70} style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    backgroundColor: theme.colors.input.background,
-                    borderRadius: 10,
+                    backgroundColor: Platform.select({ web: theme.colors.input.background, android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
+                    borderRadius: 16,
                     paddingHorizontal: 12,
                     paddingVertical: 8,
+                    overflow: 'hidden',
+                    borderWidth: Platform.OS === 'web' ? 0 : 0.5,
+                    borderColor: theme.colors.glass.border,
                 }}>
                     <Ionicons 
                         name="search-outline" 
@@ -81,7 +85,7 @@ export default function LanguageSelectionScreen() {
                             style={{ marginLeft: 8 }}
                         />
                     )}
-                </View>
+                </MobileGlassSurface>
             </View>
 
             {/* Language List */}

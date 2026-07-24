@@ -12,6 +12,7 @@ import { View } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { StyleSheet } from 'react-native-unistyles';
 import { Platform } from 'react-native';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 
 export default function ClaudeOAuth() {
     // const router = useRouter();
@@ -76,12 +77,12 @@ const OAuthViewUnsupported = React.memo((props: {
             <Text style={styles.unsupportedText}>
                 Run the following command in your terminal:
             </Text>
-            <View style={styles.terminalContainer}>
+            <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={72} style={styles.terminalContainer}>
                 <Text style={styles.terminalCommand}>
                     <Text style={styles.terminalPrompt}>$ </Text>
                     {command}
                 </Text>
-            </View>
+            </MobileGlassSurface>
         </View>
     );
 });
@@ -89,7 +90,7 @@ const OAuthViewUnsupported = React.memo((props: {
 const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
     },
     webview: {
         flex: 1,
@@ -100,11 +101,11 @@ const styles = StyleSheet.create((theme) => ({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
     },
     loadingOverlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.glass.overlay }),
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 1000,
@@ -119,7 +120,7 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
     },
     errorText: {
         fontSize: 16,
@@ -143,7 +144,7 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
     },
     unsupportedTitle: {
         fontSize: 18,
@@ -158,12 +159,17 @@ const styles = StyleSheet.create((theme) => ({
         marginBottom: 24,
     },
     terminalContainer: {
-        backgroundColor: '#1e1e1e',
-        borderRadius: 8,
+        backgroundColor: Platform.select({ web: '#1e1e1e', android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
+        borderRadius: Platform.select({ web: 8, default: 18 }),
         padding: 16,
         minWidth: 280,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderWidth: Platform.select({ web: 1, default: StyleSheet.hairlineWidth }),
+        borderColor: Platform.select({ web: 'rgba(255, 255, 255, 0.1)', default: theme.colors.glass.border }),
+        overflow: 'hidden',
+        shadowColor: theme.colors.glass.shadow,
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: Platform.select({ web: 0, default: 1 }),
+        shadowRadius: 24,
     },
     terminalPrompt: {
         fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',

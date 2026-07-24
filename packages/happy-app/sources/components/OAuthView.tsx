@@ -15,7 +15,7 @@ import { Modal } from '@/modal';
 const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.groupped.background }),
     },
     webview: {
         flex: 1,
@@ -26,11 +26,11 @@ const styles = StyleSheet.create((theme) => ({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.groupped.background }),
     },
     loadingOverlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.groupped.background }),
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 1000,
@@ -45,7 +45,7 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.groupped.background }),
     },
     errorText: {
         fontSize: 16,
@@ -69,7 +69,7 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.groupped.background }),
     },
     unsupportedTitle: {
         fontSize: 18,

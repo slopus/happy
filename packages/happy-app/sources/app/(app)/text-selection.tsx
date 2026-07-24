@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TextInput, Pressable } from 'react-native';
+import { Platform, View, Text, ScrollView, TextInput, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import { t } from '@/text';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { Ionicons } from '@expo/vector-icons';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 
 export default function TextSelectionScreen() {
     const router = useRouter();
@@ -86,7 +87,8 @@ export default function TextSelectionScreen() {
     }
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+        <View style={styles.container}>
+            <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={58} style={styles.textGlass}>
             <ScrollView 
                 style={styles.textContainer} 
                 showsVerticalScrollIndicator={true}
@@ -107,6 +109,7 @@ export default function TextSelectionScreen() {
                     scrollEnabled={false}
                 />
             </ScrollView>
+            </MobileGlassSurface>
         </View>
     );
 }
@@ -114,7 +117,7 @@ export default function TextSelectionScreen() {
 const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
     },
     loadingText: {
         ...Typography.default(),
@@ -125,6 +128,15 @@ const styles = StyleSheet.create((theme) => ({
     textContainer: {
         flex: 1,
         padding: 16,
+    },
+    textGlass: {
+        flex: 1,
+        margin: Platform.select({ web: 0, default: 16 }),
+        borderRadius: Platform.select({ web: 0, default: 22 }),
+        overflow: 'hidden',
+        backgroundColor: Platform.select({ web: theme.colors.surface, android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.glass.border,
     },
     scrollContent: {
         flexGrow: 1,

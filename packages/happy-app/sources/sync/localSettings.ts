@@ -15,6 +15,10 @@ export const LocalSettingsSchema = z.object({
     consoleLoggingEnabled: z.boolean().describe('Enable console output in production builds'),
     verboseLogging: z.boolean().describe('Log all network requests and responses'),
     zenMode: z.boolean().describe('Hide all sidebars and non-essential UI for focused work'),
+    // Right file sidebar: which panels the user has opened and which is active.
+    // Persisted so the layout survives reloads and long absences.
+    sidebarPanelsOpen: z.array(z.enum(['changes', 'allFiles', 'sideChat'])).describe('Open right-sidebar panels, in tab order'),
+    sidebarPanelActive: z.enum(['changes', 'allFiles', 'sideChat']).nullable().describe('Currently active right-sidebar panel (null shows the picker)'),
     // CLI version acknowledgments - keyed by machineId
     acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
 });
@@ -42,6 +46,8 @@ export const localSettingsDefaults: LocalSettings = {
     consoleLoggingEnabled: false,
     verboseLogging: false,
     zenMode: false,
+    sidebarPanelsOpen: [],
+    sidebarPanelActive: null,
     acknowledgedCliVersions: {},
 };
 Object.freeze(localSettingsDefaults);

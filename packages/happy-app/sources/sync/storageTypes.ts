@@ -146,6 +146,12 @@ export const MetadataSchema = z.object({
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),
     /**
+     * Marks this session as a hidden "side chat" forked from `parentSessionId`.
+     * Side chats never appear in the top-level session list — they render only
+     * inside the parent session's sidebar panel (see `useSideChatSession`).
+     */
+    isSideChat: z.boolean().optional(),
+    /**
      * Per-session permission / model / effort picks made in any client.
      * Synced through session metadata so every device shows the same
      * selection (#1492). Explicit null means "reset to default"; absent
@@ -206,8 +212,23 @@ export const AgentGoalStatusSchema = z.discriminatedUnion('status', [
 
 export type AgentGoalStatus = z.infer<typeof AgentGoalStatusSchema>;
 
+const UsageLimitsSchema = z.object({
+    capturedAt: z.number(),
+    windows: z.array(z.object({
+        id: z.string(),
+        label: z.string().optional(),
+        // Plain string so statuses introduced by newer CLIs degrade safely.
+        status: z.string().optional(),
+        utilization: z.number().nullish(),
+        resetsAt: z.number().nullish(),
+    }).passthrough()),
+}).passthrough().optional().catch(undefined);
+
 export const AgentStateSchema = z.object({
     controlledByUser: z.boolean().nullish(),
+    // Ephemeral runtime state. A malformed snapshot must not invalidate
+    // permission requests or the rest of the agent state.
+    usageLimits: UsageLimitsSchema,
     requests: z.record(z.string(), z.object({
         tool: z.string(),
         arguments: z.any(),
@@ -274,6 +295,7 @@ export interface Session {
     permissionMode?: string | null; // Permission pick; local mirror of synced metadata.permissionMode (#1492)
     modelMode?: string | null; // Model pick; local mirror of synced metadata.modelMode (#1492)
     effortLevel?: string | null; // Effort pick; local mirror of synced metadata.effortLevel (#1492)
+    lastMessageSentAt?: number; // Local timestamp of last user-sent message, not synced to server; used for activity-based sort
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
     // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.

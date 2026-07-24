@@ -240,6 +240,7 @@ function RenderOptionsBlock(props: {
                         <Pressable 
                             key={index} 
                             style={({ pressed }) => [
+                                style.optionPressable,
                                 style.optionItem,
                                 pressed && style.optionItemPressed
                             ]}
@@ -593,17 +594,21 @@ const style = StyleSheet.create((theme) => ({
         gap: 8,
         marginVertical: 8,
     },
+    optionPressable: {
+        borderRadius: Platform.select({ web: 8, default: 18 }),
+    },
     optionItem: {
-        backgroundColor: theme.colors.surfaceHighest,
-        borderRadius: 8,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceHighest, default: theme.colors.surface }),
+        borderRadius: Platform.select({ web: 8, default: 18 }),
         paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderWidth: 1,
+        paddingVertical: Platform.select({ web: 12, default: 14 }),
+        borderWidth: Platform.select({ web: 1, default: StyleSheet.hairlineWidth }),
         borderColor: theme.colors.divider,
+        overflow: 'hidden',
     },
     optionItemPressed: {
-        opacity: 0.7,
-        backgroundColor: theme.colors.surfaceHigh,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceHigh, default: theme.colors.surfacePressed }),
+        opacity: Platform.select({ web: 0.7, default: 1 }),
     },
     optionText: {
         ...Typography.default(),

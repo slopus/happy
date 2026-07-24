@@ -12,6 +12,7 @@ import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { FileIcon } from '@/components/FileIcon';
 import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 
 interface FileContent {
     content: string;
@@ -315,7 +316,7 @@ export default React.memo(function FileScreen() {
         return (
             <View style={{
                 flex: 1,
-                backgroundColor: theme.colors.surface,
+                backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
                 justifyContent: 'center',
                 alignItems: 'center'
             }}>
@@ -336,7 +337,7 @@ export default React.memo(function FileScreen() {
         return (
             <View style={{
                 flex: 1,
-                backgroundColor: theme.colors.surface,
+                backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
                 justifyContent: 'center',
                 alignItems: 'center',
                 padding: 20
@@ -366,7 +367,7 @@ export default React.memo(function FileScreen() {
         return (
             <View style={{
                 flex: 1,
-                backgroundColor: theme.colors.surface,
+                backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
                 justifyContent: 'center',
                 alignItems: 'center',
                 padding: 20
@@ -402,14 +403,14 @@ export default React.memo(function FileScreen() {
     }
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+        <View style={styles.container}>
 
             {/* File path header */}
-            <View style={{
+            <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={62} style={{
                 padding: 16,
-                borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
-                borderBottomColor: theme.colors.divider,
-                backgroundColor: theme.colors.surfaceHigh,
+                borderBottomWidth: Platform.select({ web: 1, default: 0.5 }),
+                borderBottomColor: Platform.select({ web: theme.colors.divider, default: theme.colors.glass.border }),
+                backgroundColor: Platform.select({ web: theme.colors.surfaceHigh, android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
                 flexDirection: 'row',
                 alignItems: 'center'
             }}>
@@ -425,17 +426,17 @@ export default React.memo(function FileScreen() {
                         ? `${filePath}:${requestedLine}${requestedColumn !== null && requestedColumn > 0 ? `:${requestedColumn}` : ''}`
                         : filePath}
                 </Text>
-            </View>
+            </MobileGlassSurface>
 
             {/* Toggle buttons for File/Diff view */}
             {diffContent && (
-                <View style={{
+                <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={56} style={{
                     flexDirection: 'row',
                     paddingHorizontal: 16,
                     paddingVertical: 12,
-                    borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
-                    borderBottomColor: theme.colors.divider,
-                    backgroundColor: theme.colors.surface
+                    borderBottomWidth: Platform.select({ web: 1, default: 0.5 }),
+                    borderBottomColor: Platform.select({ web: theme.colors.divider, default: theme.colors.glass.border }),
+                    backgroundColor: Platform.select({ web: theme.colors.surface, android: theme.colors.glass.backgroundStrong, default: 'transparent' })
                 }}>
                     <Pressable
                         onPress={() => setDisplayMode('diff')}
@@ -443,7 +444,9 @@ export default React.memo(function FileScreen() {
                             paddingHorizontal: 16,
                             paddingVertical: 8,
                             borderRadius: 8,
-                            backgroundColor: displayMode === 'diff' ? theme.colors.textLink : theme.colors.input.background,
+                            backgroundColor: displayMode === 'diff'
+                                ? Platform.select({ web: theme.colors.textLink, default: `${theme.colors.textLink}66` })
+                                : Platform.select({ web: theme.colors.input.background, default: theme.colors.glass.backgroundSubtle }),
                             marginRight: 8
                         }}
                     >
@@ -463,7 +466,9 @@ export default React.memo(function FileScreen() {
                             paddingHorizontal: 16,
                             paddingVertical: 8,
                             borderRadius: 8,
-                            backgroundColor: displayMode === 'file' ? theme.colors.textLink : theme.colors.input.background
+                            backgroundColor: displayMode === 'file'
+                                ? Platform.select({ web: theme.colors.textLink, default: `${theme.colors.textLink}66` })
+                                : Platform.select({ web: theme.colors.input.background, default: theme.colors.glass.backgroundSubtle })
                         }}
                     >
                         <Text style={{
@@ -475,7 +480,7 @@ export default React.memo(function FileScreen() {
                             {t('files.file')}
                         </Text>
                     </Pressable>
-                </View>
+                </MobileGlassSurface>
             )}
 
             {/* Content display */}
@@ -523,5 +528,6 @@ const styles = StyleSheet.create((theme) => ({
         // the code/diff body is bounded by layout.maxWidth on the ScrollView's
         // contentContainerStyle so it lines up with the chat / changes views.
         flex: 1,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
     }
 }));

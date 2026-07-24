@@ -168,10 +168,11 @@ export const zhHans: TranslationStructure = {
         sessionStatusBarDescription: '选择分支、模型、工作量和上下文的显示位置',
         sessionStatusDisplayOptions: {
             hidden: '隐藏',
-            hiddenOnMobile: '在手机上隐藏',
             above: '输入框上方',
             below: '输入框下方',
         },
+        usageLimitShowRemaining: '显示剩余额度',
+        usageLimitShowRemainingDescription: '额度指示器显示剩余量，而不是已用量',
         userMessageBubbleColor: '用户气泡颜色',
         userMessageBubbleColorDescription: '让您的消息在长聊天中更容易找到',
         userMessageBubbleColorOptions: {
@@ -443,6 +444,11 @@ export const zhHans: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `上下文 ${used}/${total} 个令牌，${percent}%`,
+            limitFiveHour: '5 小时额度',
+            limitSevenDay: '7 天额度',
+            limitResets: ({ time }: { time: string }) => `${time} 重置`,
+            limitAsOf: ({ age }: { age: string }) => `数据为 ${age} 前`,
+            limitRemaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
         },
     },
 
@@ -644,6 +650,8 @@ export const zhHans: TranslationStructure = {
         deleted: '已删除',
         changedFiles: ({ count }: { count: number }) => `${count} 个已更改的文件`,
         allFiles: '所有文件',
+        addPanel: '添加面板',
+        closePanel: '关闭面板',
         editFile: '编辑',
         saveFile: '保存',
         failedToRead: '读取文件失败',
@@ -652,6 +660,19 @@ export const zhHans: TranslationStructure = {
         fileConflictDescription: '编辑期间文件已在设备上被修改。重新加载以查看最新版本。',
         reload: '重新加载',
         overwrite: '覆盖',
+    },
+    sideChat: {
+        panelTitle: '侧边聊天',
+        emptyTitle: '开始侧边聊天',
+        emptySubtitle: '在一旁向智能体提问。它会继承此聊天的上下文，但保持独立——这里的任何操作都不会影响主对话。',
+        startButton: '开始侧边聊天',
+        creating: '正在开始侧边聊天…',
+        unavailable: '此会话暂时无法开始侧边聊天——请等待智能体上线。',
+        composerPlaceholder: '给侧边聊天发消息…',
+        expand: '全屏打开',
+        tabLabel: ({ index }: { index: number }) => `侧边聊天 ${index}`,
+        newChat: '新建侧边聊天',
+        close: '关闭侧边聊天',
     },
 
     settingsVoice: {

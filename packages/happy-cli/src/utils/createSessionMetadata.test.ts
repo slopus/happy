@@ -96,6 +96,27 @@ describe('createSessionMetadata', () => {
         expect(metadata.forkedFromMessageId).toBe('message-2');
     });
 
+    it('sets metadata.isSideChat when the session is a side chat', () => {
+        const { metadata } = createSessionMetadata({
+            flavor: 'claude',
+            machineId: 'machine-side',
+            parentSessionId: 'happy-parent',
+            isSideChat: true,
+        });
+
+        expect(metadata.isSideChat).toBe(true);
+        expect(metadata.parentSessionId).toBe('happy-parent');
+    });
+
+    it('omits metadata.isSideChat for a normal session', () => {
+        const { metadata } = createSessionMetadata({
+            flavor: 'claude',
+            machineId: 'machine-normal',
+        });
+
+        expect(metadata.isSideChat).toBeUndefined();
+    });
+
     it('sets metadata.gitBranch when a git branch is detected', () => {
         mockedExecSync.mockReturnValue('fix/session-status\n');
 

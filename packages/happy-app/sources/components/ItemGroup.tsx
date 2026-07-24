@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 
 interface ItemChildProps {
     showDivider?: boolean;
@@ -57,13 +57,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     contentContainer: {
         backgroundColor: theme.colors.surface,
         marginHorizontal: Platform.select({ ios: 16, default: 12 }),
-        borderRadius: Platform.select({ ios: 10, default: 16 }),
+        borderRadius: Platform.select({ web: 16, default: 14 }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.divider,
         overflow: 'hidden',
-        shadowColor: theme.colors.shadow.color,
+        shadowColor: Platform.select({ web: theme.colors.shadow.color, default: 'transparent' }),
         shadowOffset: { width: 0, height: 0.33 },
-        shadowOpacity: theme.colors.shadow.opacity,
+        shadowOpacity: Platform.select({ web: theme.colors.shadow.opacity, default: 0 }),
         shadowRadius: 0,
-        elevation: 1
+        elevation: Platform.select({ web: 1, default: 0 }),
     },
     footer: {
         paddingTop: Platform.select({ ios: 6, default: 8 }),
@@ -80,7 +82,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 }));
 
 export const ItemGroup = React.memo<ItemGroupProps>((props) => {
-    const { theme } = useUnistyles();
     const styles = stylesheet;
 
     const {

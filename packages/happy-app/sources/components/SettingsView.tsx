@@ -1,4 +1,4 @@
-import { View, ScrollView, Pressable, Platform } from 'react-native';
+import { NativeScrollEvent, NativeSyntheticEvent, View, ScrollView, Pressable, Platform } from 'react-native';
 import { openExternalUrl } from '@/utils/openExternalUrl';
 import { Image } from 'expo-image';
 import * as React from 'react';
@@ -71,7 +71,15 @@ function formatBuildSubtitle(buildConfig: BuildConfig): string | undefined {
     ].filter(Boolean).join(' / ');
 }
 
-export const SettingsView = React.memo(function SettingsView() {
+export const SettingsView = React.memo(function SettingsView({
+    topContentInset = 0,
+    bottomContentInset = 0,
+    onScroll,
+}: {
+    topContentInset?: number;
+    bottomContentInset?: number;
+    onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+}) {
     const { theme } = useUnistyles();
     const router = useRouter();
     const appVersion = Constants.expoConfig?.version || '1.0.0';
@@ -182,10 +190,25 @@ export const SettingsView = React.memo(function SettingsView() {
 
     return (
 
-        <ItemList style={{ paddingTop: 0 }}>
+        <ItemList
+            style={{ paddingTop: 0 }}
+            containerStyle={{ paddingTop: topContentInset, paddingBottom: bottomContentInset }}
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+        >
             {/* App Info Header */}
             <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
-                <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.surface, marginTop: 16, borderRadius: 12, marginHorizontal: 16 }}>
+                <View
+                    style={{
+                    alignItems: 'center',
+                    paddingVertical: 24,
+                    backgroundColor: theme.colors.surface,
+                    marginTop: 16,
+                    borderRadius: Platform.select({ web: 12, default: 16 }),
+                    marginHorizontal: 16,
+                    borderWidth: Platform.OS === 'web' ? 0 : 0.5,
+                    borderColor: theme.colors.divider,
+                }}>
                     {profile.firstName ? (
                         // Profile view: Avatar + name + version
                         <>

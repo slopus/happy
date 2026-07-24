@@ -166,10 +166,11 @@ export const pt: TranslationStructure = {
         sessionStatusBarDescription: 'Escolha onde a branch, o modelo, o esforço e o contexto aparecem',
         sessionStatusDisplayOptions: {
             hidden: 'Oculto',
-            hiddenOnMobile: 'Oculto no celular',
             above: 'Acima do compositor',
             below: 'Abaixo do compositor',
         },
+        usageLimitShowRemaining: 'Mostrar cota restante',
+        usageLimitShowRemainingDescription: 'Os indicadores de limite contam para baixo em vez de para cima',
         userMessageBubbleColor: 'Cor das suas mensagens',
         userMessageBubbleColorDescription: 'Torne suas mensagens mais fáceis de encontrar em chats longos',
         userMessageBubbleColorOptions: {
@@ -441,6 +442,11 @@ export const pt: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Contexto ${used} de ${total} tokens, ${percent}%`,
+            limitFiveHour: 'Limite de 5 horas',
+            limitSevenDay: 'Limite de 7 dias',
+            limitResets: ({ time }: { time: string }) => `redefine ${time}`,
+            limitAsOf: ({ age }: { age: string }) => `há ${age}`,
+            limitRemaining: ({ percent }: { percent: number }) => `${percent}% restante`,
         },
     },
 
@@ -642,6 +648,8 @@ export const pt: TranslationStructure = {
         deleted: 'Excluído',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'arquivo modificado' : 'arquivos modificados'}`,
         allFiles: 'Todos os arquivos',
+        addPanel: 'Adicionar painel',
+        closePanel: 'Fechar painel',
         editFile: 'Editar',
         saveFile: 'Salvar',
         failedToRead: 'Falha ao ler arquivo',
@@ -650,6 +658,19 @@ export const pt: TranslationStructure = {
         fileConflictDescription: 'Este arquivo foi modificado no dispositivo enquanto você o editava. Recarregue para ver a versão mais recente.',
         reload: 'Recarregar',
         overwrite: 'Sobrescrever',
+    },
+    sideChat: {
+        panelTitle: 'Chat lateral',
+        emptyTitle: 'Inicie um chat lateral',
+        emptySubtitle: 'Pergunte algo ao agente à parte. Ele herda o contexto deste chat, mas permanece isolado — nada aqui afeta a conversa principal.',
+        startButton: 'Iniciar chat lateral',
+        creating: 'Iniciando chat lateral…',
+        unavailable: 'Esta sessão ainda não pode iniciar um chat lateral — aguarde o agente ficar online.',
+        composerPlaceholder: 'Mensagem no chat lateral…',
+        expand: 'Abrir em tela cheia',
+        tabLabel: ({ index }: { index: number }) => `Chat lateral ${index}`,
+        newChat: 'Novo chat lateral',
+        close: 'Fechar chat lateral',
     },
 
     settingsVoice: {

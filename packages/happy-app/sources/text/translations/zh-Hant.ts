@@ -167,10 +167,11 @@ export const zhHant: TranslationStructure = {
         sessionStatusBarDescription: '選擇分支、模型、工作量和上下文的顯示位置',
         sessionStatusDisplayOptions: {
             hidden: '隱藏',
-            hiddenOnMobile: '在手機上隱藏',
             above: '輸入框上方',
             below: '輸入框下方',
         },
+        usageLimitShowRemaining: '顯示剩餘額度',
+        usageLimitShowRemainingDescription: '額度指示器顯示剩餘量，而非已用量',
         userMessageBubbleColor: '使用者氣泡顏色',
         userMessageBubbleColorDescription: '讓您的訊息在長聊天中更容易找到',
         userMessageBubbleColorOptions: {
@@ -442,6 +443,11 @@ export const zhHant: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `上下文 ${used}/${total} 個權杖，${percent}%`,
+            limitFiveHour: '5 小時額度',
+            limitSevenDay: '7 天額度',
+            limitResets: ({ time }: { time: string }) => `${time} 重置`,
+            limitAsOf: ({ age }: { age: string }) => `數據為 ${age} 前`,
+            limitRemaining: ({ percent }: { percent: number }) => `剩餘 ${percent}%`,
         },
     },
 
@@ -643,6 +649,8 @@ export const zhHant: TranslationStructure = {
         deleted: '已刪除',
         changedFiles: ({ count }: { count: number }) => `${count} 個已變更的檔案`,
         allFiles: '所有檔案',
+        addPanel: '新增面板',
+        closePanel: '關閉面板',
         editFile: '編輯',
         saveFile: '儲存',
         failedToRead: '讀取檔案失敗',
@@ -651,6 +659,19 @@ export const zhHant: TranslationStructure = {
         fileConflictDescription: '編輯期間檔案已在裝置上被修改。重新載入以查看最新版本。',
         reload: '重新載入',
         overwrite: '覆蓋',
+    },
+    sideChat: {
+        panelTitle: '側邊聊天',
+        emptyTitle: '開始側邊聊天',
+        emptySubtitle: '在一旁向智能體提問。它會繼承此聊天的上下文，但保持獨立——這裡的任何操作都不會影響主對話。',
+        startButton: '開始側邊聊天',
+        creating: '正在開始側邊聊天…',
+        unavailable: '此工作階段暫時無法開始側邊聊天——請等待智能體上線。',
+        composerPlaceholder: '傳送訊息到側邊聊天…',
+        expand: '全螢幕開啟',
+        tabLabel: ({ index }: { index: number }) => `側邊聊天 ${index}`,
+        newChat: '新增側邊聊天',
+        close: '關閉側邊聊天',
     },
 
     settingsVoice: {

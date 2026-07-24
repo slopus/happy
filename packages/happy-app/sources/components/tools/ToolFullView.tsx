@@ -124,7 +124,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
 const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
         paddingTop: 12,
     },
     contentWrapper: {

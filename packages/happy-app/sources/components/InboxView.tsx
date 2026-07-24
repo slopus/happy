@@ -1,5 +1,14 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import {
+    View,
+    Text,
+    ScrollView,
+    Pressable,
+    ActivityIndicator,
+    NativeScrollEvent,
+    NativeSyntheticEvent,
+    Platform,
+} from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAcceptedFriends, useFriendRequests, useRequestedFriends, useFeedItems, useFeedLoaded, useFriendsLoaded, useRealtimeStatus } from '@/sync/storage';
 import { UserCard } from '@/components/UserCard';
@@ -57,6 +66,9 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 interface InboxViewProps {
+    topContentInset?: number;
+    bottomContentInset?: number;
+    onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }
 
 // Header components for tablet mode only (phone mode header is in MainView)
@@ -96,7 +108,7 @@ function HeaderRightTablet() {
     );
 }
 
-export const InboxView = React.memo(({}: InboxViewProps) => {
+export const InboxView = React.memo(({ topContentInset = 0, bottomContentInset = 0, onScroll }: InboxViewProps) => {
     const router = useRouter();
     const friends = useAcceptedFriends();
     const friendRequests = useFriendRequests();
@@ -115,7 +127,7 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
         return (
             <View style={styles.container}>
                 {isTablet && (
-                    <View style={{ backgroundColor: theme.colors.groupped.background }}>
+                    <View style={{ backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }) }}>
                         <Header
                             title={<HeaderTitleTablet />}
                             headerRight={() => <HeaderRightTablet />}
@@ -128,6 +140,7 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                         )}
                     </View>
                 )}
+                {topContentInset > 0 && <View style={{ height: topContentInset }} />}
                 <UpdateBanner />
                 <View style={styles.emptyContainer}>
                     <ActivityIndicator size="large" color={theme.colors.textSecondary} />
@@ -140,7 +153,7 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
         return (
             <View style={styles.container}>
                 {isTablet && (
-                    <View style={{ backgroundColor: theme.colors.groupped.background }}>
+                    <View style={{ backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }) }}>
                         <Header
                             title={<HeaderTitleTablet />}
                             headerRight={() => <HeaderRightTablet />}
@@ -153,6 +166,7 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                         )}
                     </View>
                 )}
+                {topContentInset > 0 && <View style={{ height: topContentInset }} />}
                 <UpdateBanner />
                 <View style={styles.emptyContainer}>
                     <Image
@@ -171,7 +185,7 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
     return (
         <View style={styles.container}>
             {isTablet && (
-                <View style={{ backgroundColor: theme.colors.groupped.background }}>
+                <View style={{ backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }) }}>
                     <Header
                         title={<HeaderTitleTablet />}
                         headerRight={() => <HeaderRightTablet />}
@@ -184,11 +198,17 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                     )}
                 </View>
             )}
-            <ScrollView contentContainerStyle={{
-                maxWidth: layout.maxWidth,
-                alignSelf: 'center',
-                width: '100%'
-            }}>
+            <ScrollView
+                contentContainerStyle={{
+                    maxWidth: layout.maxWidth,
+                    alignSelf: 'center',
+                    width: '100%',
+                    paddingTop: topContentInset,
+                    paddingBottom: bottomContentInset,
+                }}
+                onScroll={onScroll}
+                scrollEventThrottle={16}
+            >
                 <UpdateBanner />
                 
                 {feedItems.length > 0 && (

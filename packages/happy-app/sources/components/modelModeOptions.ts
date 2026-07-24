@@ -96,6 +96,10 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
+        // Full model ID, not the `opus-5` short alias: the alias is not in the
+        // CLI's alias table yet (`claude --model opus-5` errors on 2.1.199),
+        // while the full ID passes straight through to the API.
+        { key: 'claude-opus-5', name: 'opus 5', description: null },
         { key: 'opus', name: 'opus 4.8', description: null },
         { key: 'fable', name: 'fable 5', description: null },
         { key: 'sonnet', name: 'sonnet 4.6', description: null },
