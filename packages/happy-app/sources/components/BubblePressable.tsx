@@ -89,7 +89,7 @@ export const BubblePressable = React.memo(({
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
             style={[
-                typeof style === 'function' ? style({ pressed, hovered: false }) : style,
+                typeof style === 'function' ? style({ pressed } as PressableStateCallbackType) : style,
                 pressed && pressedStyle,
                 animatedStyle,
             ]}
