@@ -117,7 +117,15 @@ export function mergeUsageLimits(current: UsageLimits | null | undefined, patch:
     for (const incoming of patch.windows) {
         const index = windows.findIndex(w => w.id === incoming.id);
         if (index >= 0) {
-            windows[index] = incoming;
+            // Allowed rate_limit_events carry no utilization, so a full
+            // replace would wipe the percentage seeded by get_usage and the
+            // window would render as just a reset time. Keep the last known
+            // value; the status and reset time still come from the event.
+            windows[index] = {
+                ...incoming,
+                utilization: incoming.utilization ?? windows[index].utilization,
+                resetsAt: incoming.resetsAt ?? windows[index].resetsAt,
+            };
         } else {
             windows.push(incoming);
         }
