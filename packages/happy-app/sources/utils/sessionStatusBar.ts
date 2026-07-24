@@ -60,6 +60,9 @@ export type UsageLimitStatus = 'allowed' | 'allowed_warning' | 'rejected';
 const CHIP_WINDOW_LABELS: Record<string, string> = {
     five_hour: '5h',
     seven_day: '7d',
+    // agy (Antigravity) sessions report a single headline window; per-model
+    // windows (agy:<modelId>) stay popover-only like other unknown ids.
+    agy: 'agy',
 };
 
 /**

@@ -33,6 +33,8 @@ import type { AgentMessage } from '@/agent/core';
 import type { PermissionMode } from '@/api/types';
 import { AgyBackend } from './AgyBackend';
 import { DEFAULT_AGY_MODEL } from './constants';
+import { createAgyUsageCollector } from './agyUsageCollector';
+import { mergeUsageLimits } from '@/claude/utils/usageLimits';
 
 export interface RunAgyOptions {
   credentials: Credentials;
@@ -198,6 +200,19 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     session.keepAlive(thinking, 'remote');
   }, 2000);
 
+  // agy reports no quota over its own stream, so usage is pulled from a separate
+  // endpoint at turn boundaries and merged into agent state the same way the
+  // Claude path does.
+  const usageCollector = createAgyUsageCollector({
+    log,
+    onPatch: (patch) => {
+      session.updateAgentState((currentAgentState) => ({
+        ...currentAgentState,
+        usageLimits: mergeUsageLimits(currentAgentState.usageLimits, patch),
+      }));
+    },
+  });
+
   async function handleAbort() {
     log('Abort requested');
     try {
@@ -221,6 +236,7 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
   try {
     await backend.startSession();
     log('Backend ready');
+    usageCollector.refresh();
 
     while (!shouldExit) {
       const waitSignal = abortController.signal;
@@ -241,12 +257,15 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
         log(`Turn ended: ${msg}`);
         sendEnvelopes(sessionManager.endTurn('failed'));
       }
+      // Also after a failed turn: a quota rejection is exactly when the chip matters.
+      usageCollector.refresh();
       thinking = false;
       session.keepAlive(false, 'remote');
       session.sendSessionEvent({ type: 'ready' });
     }
   } finally {
     clearInterval(keepAliveInterval);
+    usageCollector.stop();
     reconnectionHandle?.cancel();
 
     backend.offMessage(onBackendMessage);
