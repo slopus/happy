@@ -7,6 +7,7 @@ import { query as sdkQuery, type Options, type Query } from '@anthropic-ai/claud
 import type { QueryOptions, QueryPrompt, SDKMessage } from './types'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ensureLocalProxyBypass } from '../utils/proxyBypass'
+import { resolveClaudeExecutableOverride } from './claudeExecutable'
 import { resolveHappyEntrypoint } from './happyEntrypoint'
 
 /**
@@ -44,6 +45,9 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         strictMcpConfig: opts?.strictMcpConfig,
         sessionId: undefined,
         effort: opts?.effort,
+        // HAPPY_CLAUDE_PATH override — same env var the local launcher honors
+        // (undefined keeps the SDK's bundled executable).
+        pathToClaudeCodeExecutable: resolveClaudeExecutableOverride(),
     }
 
     // Map abort signal -> AbortController
