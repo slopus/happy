@@ -24,6 +24,7 @@ import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts } from "./persistence";
 import { isAgentModePushPending } from "./agentModesPending";
+import { loadSessionLastMessageSentAt, saveSessionLastMessageSentAt } from "./persistence";
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -218,6 +219,7 @@ interface StorageState {
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionAgentModes: (sessionId: string, patch: SessionAgentModesPatch) => void;
+    markSessionMessageSent: (sessionId: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -262,8 +264,11 @@ function buildSessionListViewData(
     });
 
     // Sort by last activity or creation date (newest first), per user setting — matches applySessions behavior
+    // Activity sort keys off the last user-sent message, not updatedAt: updatedAt
+    // bumps on every background agent update, which would make the list jump while
+    // several sessions stream at once. lastMessageSentAt only moves when the user acts.
     const sortKey = storage.getState().settings.sortSessionsByActivity
-        ? (s: Session) => s.updatedAt
+        ? (s: Session) => s.lastMessageSentAt ?? s.createdAt
         : (s: Session) => s.createdAt;
     activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
     inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
@@ -350,6 +355,7 @@ export const storage = create<StorageState>()((set, get) => {
     let purchases = loadPurchases();
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
+    let sessionLastMessageSentAt = loadSessionLastMessageSentAt();
     return {
         settings,
         settingsVersion: version,
@@ -407,6 +413,7 @@ export const storage = create<StorageState>()((set, get) => {
             // Load drafts if sessions are empty (initial load)
             const isInitialLoad = Object.keys(state.sessions).length === 0;
             const savedDrafts = isInitialLoad ? sessionDrafts : {};
+            const savedLastMessageSentAt = isInitialLoad ? sessionLastMessageSentAt : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = indexSessionsById(Object.values(state.sessions));
@@ -440,6 +447,9 @@ export const storage = create<StorageState>()((set, get) => {
                 const resolvedModelMode = resolveModePick('modelMode');
                 const resolvedEffortLevel = resolveModePick('effortLevel');
 
+                // Local activity timestamp — preserve in-memory value, else restore from MMKV.
+                const resolvedLastMessageSentAt = state.sessions[session.id]?.lastMessageSentAt ?? savedLastMessageSentAt[session.id];
+
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
@@ -447,6 +457,7 @@ export const storage = create<StorageState>()((set, get) => {
                     permissionMode: resolvedPermissionMode,
                     modelMode: resolvedModelMode,
                     effortLevel: resolvedEffortLevel,
+                    lastMessageSentAt: resolvedLastMessageSentAt,
                 };
             });
 
@@ -473,7 +484,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Sort both arrays by last activity or creation date (newest first), per user setting
             const sortKey = get().settings.sortSessionsByActivity
-                ? (s: Session) => s.updatedAt
+                ? (s: Session) => s.lastMessageSentAt ?? s.createdAt
                 : (s: Session) => s.createdAt;
             activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
             inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
@@ -1034,6 +1045,36 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
         }),
+        markSessionMessageSent: (sessionId: string) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    lastMessageSentAt: Date.now()
+                }
+            };
+
+            // Persist so activity ordering survives app restart.
+            const allTimestamps: Record<string, number> = {};
+            Object.entries(updatedSessions).forEach(([id, sess]) => {
+                if (sess.lastMessageSentAt) {
+                    allTimestamps[id] = sess.lastMessageSentAt;
+                }
+            });
+            saveSessionLastMessageSentAt(allTimestamps);
+
+            // Rebuild list view data — this timestamp drives activity-based sort.
+            // Pass unreadSessionIds so other sessions keep their unread badges
+            // (omitting it drops every badge until the next rebuild).
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds)
+            };
+        }),
         getSessionPathKey: (sessionId: string): string | null => {
             const session = get().sessions[sessionId];
             if (!session?.metadata?.machineId || !session?.metadata?.path) return null;
@@ -1132,14 +1173,19 @@ export const storage = create<StorageState>()((set, get) => {
             
             const { [sessionId]: _fileCache, ...remainingFileCache } = state.sessionFileCache;
 
-            // Clear drafts from persistent storage (permission / model / effort
+            // Clear local session data from persistent storage (permission / model / effort
             // picks live in synced session metadata, #1492)
             const drafts = loadSessionDrafts();
             delete drafts[sessionId];
             saveSessionDrafts(drafts);
-            
-            // Rebuild sessionListViewData without the deleted session
-            const sessionListViewData = buildSessionListViewData(remainingSessions);
+
+            const lastMessageSentAt = loadSessionLastMessageSentAt();
+            delete lastMessageSentAt[sessionId];
+            saveSessionLastMessageSentAt(lastMessageSentAt);
+
+            // Rebuild sessionListViewData without the deleted session.
+            // Pass unreadSessionIds so the remaining sessions keep their unread badges.
+            const sessionListViewData = buildSessionListViewData(remainingSessions, state.unreadSessionIds);
             
             return {
                 ...state,
