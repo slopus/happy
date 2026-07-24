@@ -17,11 +17,13 @@ describe('windowsFromGetUsage', () => {
         expect(sevenDay.status).toBe('allowed_warning');
     });
 
-    it('carries unknown window ids through and skips null / non-window entries', () => {
+    it('carries unknown window ids through and explicitly excludes extra_usage', () => {
         const windows = windowsFromGetUsage({
             seven_day_opus: { utilization: 10, resets_at: null },
             seven_day_oauth_apps: null,
-            extra_usage: { spent_cents: 120 },
+            // The real SDK shape can include utilization, so shape detection
+            // alone is not enough to distinguish this billing entry.
+            extra_usage: { utilization: 55, resets_at: '2026-07-17T20:00:00Z' },
         });
         expect(windows.map(w => w.id)).toEqual(['seven_day_opus']);
     });
@@ -107,7 +109,7 @@ describe('mergeUsageLimits', () => {
         expect(merged.windows).toEqual([{ id: 'plan', status: 'rejected', utilization: 100, resetsAt: null }]);
     });
 
-    it('tolerates malformed current metadata (windows not an array)', () => {
+    it('tolerates malformed current agent state (windows not an array)', () => {
         const merged = mergeUsageLimits({ capturedAt: 1, windows: 'garbage' as any }, {
             capturedAt: 2000,
             windows: [{ id: 'five_hour', utilization: 10, resetsAt: null }],

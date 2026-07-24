@@ -45,7 +45,7 @@ export async function claudeRemote(opts: {
     onCompletionEvent?: (message: string) => void,
     onSessionReset?: () => void,
     onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[] }) => void,
-    /** Per-turn plan rate-limit delta; the launcher merges it into session metadata. */
+    /** Per-turn plan rate-limit delta; the launcher merges it into agent state. */
     onUsageLimits?: (patch: UsageLimitsPatch) => void
 }) {
 
@@ -178,7 +178,7 @@ export async function claudeRemote(opts: {
     }
 
     // Plan rate-limit accumulation: events are buffered and flushed once per
-    // result (coalescing metadata writes to at most one per turn). The seed
+    // result (coalescing agent-state writes to at most one per turn). The seed
     // runs on the first result of this invocation — the Query object does not
     // exist before the first user message, so there is no session-start hook.
     const pendingUsageWindows = new Map<string, UsageLimitWindow>();

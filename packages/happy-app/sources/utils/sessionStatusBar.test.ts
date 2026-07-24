@@ -65,6 +65,21 @@ describe('usage limit helpers', () => {
         expect(getUsageLimitChips({ capturedAt: 1, windows: 'garbage' as any }, false)).toEqual([]);
     });
 
+    it('shows a critical fallback chip for an id-less rejected event', () => {
+        expect(getUsageLimitChips({
+            capturedAt: 1,
+            windows: [
+                { id: 'future_window', status: 'allowed_warning', utilization: 95 },
+                { id: 'plan', status: 'rejected', utilization: null },
+            ],
+        }, false)).toEqual([{
+            id: 'plan',
+            shortLabel: 'Plan',
+            utilization: 100,
+            status: 'rejected',
+        }]);
+    });
+
     it('lists all windows in the popover rows, well-known ids first', () => {
         const rows = getUsageLimitRows({
             capturedAt: 1,

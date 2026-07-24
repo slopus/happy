@@ -42,7 +42,7 @@ export function getContextUsageLevel(value: number | null | undefined, maxValue 
     return 'normal';
 }
 
-// --- Plan rate-limit windows (metadata.usageLimits) ---
+// --- Plan rate-limit windows (agentState.usageLimits) ---
 
 export type UsageLimitWindowLike = {
     id: string;
@@ -89,9 +89,10 @@ export type UsageLimitChip = {
 };
 
 /**
- * Chips show only the well-known windows (5h/7d) with a numeric utilization;
- * everything else (opus/sonnet/overage/unknown ids) is popover-only. When
- * `collapsed` (narrow bar), only the window closest to its limit survives.
+ * Chips normally show only the well-known windows (5h/7d) with a numeric
+ * utilization. If none exist, surface one critical unknown/unbound window so
+ * a rejected or warning state can never disappear entirely. When `collapsed`
+ * (narrow bar), only the window closest to its limit survives.
  */
 export function getUsageLimitChips(limits: UsageLimitsLike, collapsed: boolean): UsageLimitChip[] {
     if (!limits || !Array.isArray(limits.windows)) {
@@ -109,6 +110,25 @@ export function getUsageLimitChips(limits: UsageLimitsLike, collapsed: boolean):
             utilization: Math.round(Math.min(100, Math.max(0, u))),
             status: getUsageLimitStatus(window),
         });
+    }
+    if (chips.length === 0) {
+        const fallbackCandidates = limits.windows
+            .map(window => ({ window, status: getUsageLimitStatus(window) }));
+        const fallback = fallbackCandidates.find(({ status }) => status === 'rejected')
+            ?? fallbackCandidates.find(({ status }) => status === 'allowed_warning');
+        if (fallback) {
+            const u = fallback.window.utilization;
+            const utilization = typeof u === 'number' && Number.isFinite(u)
+                ? Math.round(Math.min(100, Math.max(0, u)))
+                : fallback.status === 'rejected' ? 100 : 90;
+            chips.push({
+                id: fallback.window.id,
+                shortLabel: fallback.window.label?.trim()
+                    || (fallback.window.id === 'plan' ? 'Plan' : fallback.window.id.replace(/_/g, ' ')),
+                utilization,
+                status: fallback.status,
+            });
+        }
     }
     if (collapsed && chips.length > 1) {
         return [chips.reduce((a, b) => (b.utilization > a.utilization ? b : a))];

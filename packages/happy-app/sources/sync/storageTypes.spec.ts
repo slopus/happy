@@ -169,4 +169,22 @@ describe('AgentGoalStatusSchema', () => {
 
         expect(state.agentGoalStatus?.status).toBe('active');
     });
+
+    it('preserves usage limits in agent state and degrades malformed snapshots', () => {
+        const state = AgentStateSchema.parse({
+            controlledByUser: true,
+            usageLimits: {
+                capturedAt: 1710000000000,
+                windows: [{ id: 'five_hour', status: 'allowed', utilization: 42, resetsAt: null }],
+            },
+        });
+        expect(state.usageLimits?.windows[0].id).toBe('five_hour');
+
+        const malformed = AgentStateSchema.parse({
+            controlledByUser: true,
+            usageLimits: { capturedAt: 'bad', windows: [] },
+        });
+        expect(malformed.controlledByUser).toBe(true);
+        expect(malformed.usageLimits).toBeUndefined();
+    });
 });

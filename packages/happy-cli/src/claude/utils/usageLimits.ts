@@ -1,6 +1,6 @@
 /**
  * Normalizes plan rate-limit data from the two Claude SDK sources into the
- * backend-neutral UsageLimits shape carried in session metadata:
+ * backend-neutral UsageLimits shape carried in session agent state:
  *
  * - `rate_limit_event` (push): one window per event — whichever limit
  *   currently binds. `rateLimitType` may be absent, utilization is a 0-1
@@ -17,7 +17,7 @@ export type UnboundRateLimit = {
     resetsAt?: number | null,
 }
 
-/** A per-turn delta emitted by claudeRemote, merged into metadata by the launcher. */
+/** A per-turn delta emitted by claudeRemote, merged into agent state by the launcher. */
 export type UsageLimitsPatch = {
     capturedAt: number,
     windows: UsageLimitWindow[],
@@ -47,7 +47,7 @@ function normalizeEventUtilization(u: number | undefined): number | undefined {
     return Math.min(100, Math.max(0, Math.round(percent * 10) / 10));
 }
 
-// Event resetsAt is unix seconds; metadata carries epoch ms.
+// Event resetsAt is unix seconds; agent state carries epoch ms.
 function normalizeEventResetsAt(n: number | undefined): number | undefined {
     if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return undefined;
     return n < 1e12 ? Math.round(n * 1000) : Math.round(n);
@@ -64,8 +64,10 @@ type GetUsageWindow = { utilization: number | null, resets_at: string | null } |
 export function windowsFromGetUsage(rateLimits: Record<string, unknown>): UsageLimitWindow[] {
     const windows: UsageLimitWindow[] = [];
     for (const [id, value] of Object.entries(rateLimits)) {
+        // Extra usage is billing/overage state, not a plan rate-limit window.
+        if (id === 'extra_usage') continue;
         if (!value || typeof value !== 'object') continue;
-        // Only entries with the window shape; skips e.g. extra_usage variants.
+        // Only entries with the rate-limit window shape.
         if (!('utilization' in value) && !('resets_at' in value)) continue;
         const w = value as Exclude<GetUsageWindow, null | undefined>;
         const utilization = typeof w.utilization === 'number' && Number.isFinite(w.utilization)
@@ -105,8 +107,8 @@ export function fromRateLimitEvent(info: RateLimitEventInfo): { window?: UsageLi
 }
 
 /**
- * Merges a patch into the current metadata value. Runs inside the launcher's
- * updateMetadata read-modify-write callback, so `current` is always the
+ * Merges a patch into the current agent-state value. Runs inside the launcher's
+ * updateAgentState read-modify-write callback, so `current` is always the
  * latest persisted value — this is what re-hydrates window state across
  * claudeRemote re-entries (mode switches, /clear, stream end).
  */
