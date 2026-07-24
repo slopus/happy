@@ -442,7 +442,7 @@ export default React.memo(() => {
                     <ItemGroup>
                         <Pressable onPress={handleCopySecret}>
                             <View style={{
-                                backgroundColor: theme.colors.surface,
+                                backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
                                 paddingHorizontal: 16,
                                 paddingVertical: 14,
                                 width: '100%',

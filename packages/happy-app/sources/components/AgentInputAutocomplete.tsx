@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { MobileGlassSurface } from './MobileGlass';
+import { AnimatedPopup, LocalBlurHalo } from './AnimatedOverlay';
 
 const MAX_HEIGHT = 320;
 
@@ -51,46 +53,74 @@ export const AgentInputAutocomplete = React.memo((props: AgentInputAutocompleteP
         return null;
     }
 
+    const suggestionsList = (
+        <ScrollView
+            ref={scrollRef}
+            style={{ maxHeight: MAX_HEIGHT }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={true}
+        >
+            {suggestions.map((suggestion, index) => (
+                <Pressable
+                    key={index}
+                    onPress={() => onSelect(index)}
+                    style={({ pressed }) => ({
+                        height: itemHeight,
+                        backgroundColor: pressed
+                            ? theme.colors.surfacePressed
+                            : selectedIndex === index
+                                ? theme.colors.surfaceSelected
+                                : 'transparent',
+                    })}
+                >
+                    {suggestion}
+                </Pressable>
+            ))}
+        </ScrollView>
+    );
+
+    // The desktop dropdown deliberately remains the old static popover.
+    if (Platform.OS === 'web') {
+        return (
+            <View style={[styles.container, { maxHeight: MAX_HEIGHT }]}>
+                {suggestionsList}
+            </View>
+        );
+    }
+
     return (
-        <View style={[styles.container, { maxHeight: MAX_HEIGHT }]}>
-            <ScrollView
-                ref={scrollRef}
-                style={{ maxHeight: MAX_HEIGHT }}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={true}
+        <AnimatedPopup style={{ maxHeight: MAX_HEIGHT }}>
+            <LocalBlurHalo borderRadius={24} />
+            <MobileGlassSurface
+                enabled
+                nativeEffect
+                intensity={88}
+                glassEffectStyle="regular"
+                tintColor={theme.colors.glass.overlayTint}
+                style={[styles.container, { maxHeight: MAX_HEIGHT }]}
             >
-                {suggestions.map((suggestion, index) => (
-                    <Pressable
-                        key={index}
-                        onPress={() => onSelect(index)}
-                        style={({ pressed }) => ({
-                            height: itemHeight,
-                            backgroundColor: pressed
-                                ? theme.colors.surfacePressed
-                                : selectedIndex === index
-                                    ? theme.colors.surfaceSelected
-                                    : 'transparent',
-                        })}
-                    >
-                        {suggestion}
-                    </Pressable>
-                ))}
-            </ScrollView>
-        </View>
+                {suggestionsList}
+            </MobileGlassSurface>
+        </AnimatedPopup>
     );
 });
 
 const styles = StyleSheet.create((theme) => ({
     container: {
-        borderRadius: 12,
+        borderRadius: Platform.select({ web: 12, default: 24 }),
         overflow: 'hidden',
-        backgroundColor: theme.colors.surface,
-        borderWidth: Platform.OS === 'web' ? 0 : 0.5,
-        borderColor: theme.colors.modal.border,
-        shadowColor: theme.colors.shadow.color,
-        shadowOffset: { width: 0, height: 2 },
-        shadowRadius: 3.84,
-        shadowOpacity: theme.colors.shadow.opacity,
-        elevation: 5,
+        backgroundColor: Platform.select({
+            web: theme.colors.surface,
+            ios: theme.colors.glass.overlay,
+            android: theme.colors.glass.backgroundStrong,
+            default: theme.colors.surface,
+        }),
+        borderWidth: Platform.OS === 'web' ? 0 : StyleSheet.hairlineWidth,
+        borderColor: Platform.select({ web: theme.colors.modal.border, default: theme.colors.glass.border }),
+        shadowColor: Platform.select({ web: theme.colors.shadow.color, default: theme.colors.glass.shadow }),
+        shadowOffset: { width: 0, height: Platform.select({ web: 2, default: 16 }) },
+        shadowRadius: Platform.select({ web: 3.84, default: 36 }),
+        shadowOpacity: Platform.select({ web: theme.colors.shadow.opacity, default: 1 }),
+        elevation: 14,
     },
 }));

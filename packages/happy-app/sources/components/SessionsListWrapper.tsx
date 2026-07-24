@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { SessionsList } from './SessionsList';
 import { EmptyMainScreen } from './EmptyMainScreen';
@@ -35,7 +35,17 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export const SessionsListWrapper = React.memo(() => {
+export const SessionsListWrapper = React.memo(({
+    topContentInset = 0,
+    bottomContentInset = 128,
+    onScroll,
+    searchQuery = '',
+}: {
+    topContentInset?: number;
+    bottomContentInset?: number;
+    onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+    searchQuery?: string;
+}) => {
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
     const styles = stylesheet;
@@ -43,7 +53,7 @@ export const SessionsListWrapper = React.memo(() => {
     if (sessionListViewData === null) {
         return (
             <View style={styles.container}>
-                <View style={styles.loadingContainerWrapper}>
+                <View style={[styles.loadingContainerWrapper, { paddingTop: topContentInset }]}>
                     <View style={styles.loadingContainer}>
                         <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     </View>
@@ -56,7 +66,7 @@ export const SessionsListWrapper = React.memo(() => {
         return (
             <View style={styles.container}>
                 <View style={styles.emptyStateContainer}>
-                    <View style={styles.emptyStateContentContainer}>
+                    <View style={[styles.emptyStateContentContainer, { paddingTop: topContentInset }]}>
                         <EmptyMainScreen />
                     </View>
                 </View>
@@ -66,7 +76,12 @@ export const SessionsListWrapper = React.memo(() => {
 
     return (
         <View style={styles.container}>
-            <SessionsList />
+            <SessionsList
+                topContentInset={topContentInset}
+                bottomContentInset={bottomContentInset}
+                onScroll={onScroll}
+                searchQuery={searchQuery}
+            />
         </View>
     );
 });

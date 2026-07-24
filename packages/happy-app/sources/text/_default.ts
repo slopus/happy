@@ -664,6 +664,8 @@ export const en = {
         deleted: 'Deleted',
         changedFiles: ({ count }: { count: number }) => `${count} changed ${count === 1 ? 'file' : 'files'}`,
         allFiles: 'All Files',
+        addPanel: 'Add panel',
+        closePanel: 'Close panel',
         editFile: 'Edit',
         saveFile: 'Save',
         failedToRead: 'Failed to read file',
@@ -672,6 +674,19 @@ export const en = {
         fileConflictDescription: 'This file was modified on the device while you were editing. Reload to see the latest version.',
         reload: 'Reload',
         overwrite: 'Overwrite',
+    },
+    sideChat: {
+        panelTitle: 'Side chat',
+        emptyTitle: 'Start a side chat',
+        emptySubtitle: 'Ask the agent something on the side. It inherits this chat’s context but stays isolated — nothing here touches the main conversation.',
+        startButton: 'Start side chat',
+        creating: 'Starting side chat…',
+        unavailable: 'This session can’t start a side chat yet — wait for the agent to come online.',
+        composerPlaceholder: 'Message side chat…',
+        expand: 'Open full screen',
+        tabLabel: ({ index }: { index: number }) => `Side chat ${index}`,
+        newChat: 'New side chat',
+        close: 'Close side chat',
     },
 
     settingsVoice: {

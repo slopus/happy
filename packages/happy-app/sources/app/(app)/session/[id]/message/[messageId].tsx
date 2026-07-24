@@ -85,9 +85,6 @@ export default React.memo(() => {
                     options={{
                         headerTitle: () => <ToolHeader tool={message.tool} />,
                         headerRight: () => <ToolStatusIndicator tool={message.tool} />,
-                        headerStyle: {
-                            backgroundColor: theme.colors.header.background,
-                        },
                         headerTintColor: theme.colors.header.tint,
                         headerShadowVisible: false,
                     }}

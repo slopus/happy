@@ -146,6 +146,12 @@ export const MetadataSchema = z.object({
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),
     /**
+     * Marks this session as a hidden "side chat" forked from `parentSessionId`.
+     * Side chats never appear in the top-level session list — they render only
+     * inside the parent session's sidebar panel (see `useSideChatSession`).
+     */
+    isSideChat: z.boolean().optional(),
+    /**
      * Per-session permission / model / effort picks made in any client.
      * Synced through session metadata so every device shows the same
      * selection (#1492). Explicit null means "reset to default"; absent

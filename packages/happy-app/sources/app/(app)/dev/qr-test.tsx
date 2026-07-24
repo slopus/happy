@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, ScrollView } from 'react-native';
+import { Platform, View, Text, TextInput, ScrollView } from 'react-native';
 import { QRCode } from '@/components/qr';
 import { RoundButton } from '@/components/RoundButton';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -8,7 +8,7 @@ import { Typography } from '@/constants/Typography';
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.groupped.background }),
         padding: 20,
     },
     section: {

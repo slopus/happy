@@ -7,21 +7,23 @@ import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
 import { AgentWorkGroupView, ToolGroupView } from './ToolGroupView';
-import { DuplicateSheet } from './DuplicateSheet';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
 import { DisplayItem, ToolGroupItem, useGroupedMessages } from '@/hooks/useGroupedMessages';
 import { Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Modal } from '@/modal';
-import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { resolveControlMode } from '@/sync/controlHandoff';
 import { usesControlledSessionUi } from '@/sync/rig';
 
 const SCROLL_THRESHOLD = 300;
 
-export const ChatList = React.memo((props: { session: Session }) => {
+export const ChatList = React.memo((props: {
+    session: Session;
+    topContentInset?: number;
+    headerOverlayHeight?: number;
+    onHeaderBackdropVisibilityChange?: (visible: boolean) => void;
+}) => {
     const { messages, hasMoreOlder, isLoadingOlder } = useSessionMessages(props.session.id);
     return (
         <ChatListInternal
@@ -30,11 +32,14 @@ export const ChatList = React.memo((props: { session: Session }) => {
             messages={messages}
             hasMoreOlder={hasMoreOlder}
             isLoadingOlder={isLoadingOlder}
+            topContentInset={props.topContentInset}
+            headerOverlayHeight={props.headerOverlayHeight}
+            onHeaderBackdropVisibilityChange={props.onHeaderBackdropVisibilityChange}
         />
     )
 });
 
-const ListHeader = React.memo((props: { isLoadingOlder: boolean }) => {
+const ListHeader = React.memo((props: { isLoadingOlder: boolean; topContentInset?: number }) => {
     const headerHeight = useHeaderHeight();
     const safeArea = useSafeAreaInsets();
     // ListFooterComponent on an inverted FlatList renders at the visual top
@@ -48,7 +53,13 @@ const ListHeader = React.memo((props: { isLoadingOlder: boolean }) => {
                     <ActivityIndicator size="small" />
                 </View>
             )}
-            <View style={{ flexDirection: 'row', alignItems: 'center', height: headerHeight + safeArea.top + 32 }} />
+            <View
+                style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    height: props.topContentInset ?? headerHeight + safeArea.top + 32,
+                }}
+            />
         </View>
     );
 });
@@ -66,6 +77,9 @@ const ChatListInternal = React.memo((props: {
     messages: Message[],
     hasMoreOlder: boolean,
     isLoadingOlder: boolean,
+    topContentInset?: number,
+    headerOverlayHeight?: number,
+    onHeaderBackdropVisibilityChange?: (visible: boolean) => void,
 }) => {
     const { theme } = useUnistyles();
     const flatListRef = React.useRef<FlatList>(null);
@@ -76,6 +90,12 @@ const ChatListInternal = React.memo((props: {
     // on every scroll frame (60Hz). Without this guard, the entire list
     // parent re-renders on every wheel tick.
     const showScrollButtonRef = React.useRef(false);
+    const headerBackdropVisibleRef = React.useRef(false);
+    const scrollMetricsRef = React.useRef({
+        offsetY: 0,
+        contentHeight: 0,
+        viewportHeight: 0,
+    });
     const session = useSession(props.sessionId);
     const controlMode = resolveControlMode(usesControlledSessionUi(session?.metadata) ? session?.agentState?.controlledByUser : false);
     const previousControlModeRef = React.useRef(controlMode);
@@ -225,24 +245,27 @@ const ChatListInternal = React.memo((props: {
 
     const keyExtractor = useCallback((item: DisplayItem) => item.id, []);
 
-    // Long-press → fork-from-this-message. Uses the same canFork gate as
-    // the rest of the fork affordances: ridden by the expResumeSession
-    // experiments toggle, requires a Claude session with claudeSessionId
-    // and a machine that's online. Active OR inactive — fork works either
-    // way (the on-disk JSONL exists in both cases).
-    const { canFork } = useSessionQuickActions(session!, {});
+    const updateHeaderBackdropVisibility = useCallback(() => {
+        if (!props.onHeaderBackdropVisibilityChange || !props.headerOverlayHeight) {
+            return;
+        }
+        const { offsetY, contentHeight, viewportHeight } = scrollMetricsRef.current;
+        const topSpacerHeight = props.topContentInset ?? 0;
+        const nonSpacerContentHeight = Math.max(0, contentHeight - topSpacerHeight);
+        const nextVisible = viewportHeight > 0
+            && nonSpacerContentHeight > offsetY + viewportHeight - props.headerOverlayHeight;
+        if (nextVisible === headerBackdropVisibleRef.current) {
+            return;
+        }
+        headerBackdropVisibleRef.current = nextVisible;
+        props.onHeaderBackdropVisibilityChange(nextVisible);
+    }, [props.headerOverlayHeight, props.onHeaderBackdropVisibilityChange, props.topContentInset]);
 
-    const handleForkFromMessage = useCallback((messageId: string, rewindPointId: string | undefined, messageText: string) => {
-        Modal.show({
-            component: DuplicateSheet,
-            props: {
-                sessionId: props.sessionId,
-                initialRewindPointId: rewindPointId,
-                initialMessageText: messageText,
-                initialForkedFromMessageId: messageId,
-            },
-        } as any);
-    }, [props.sessionId]);
+    React.useEffect(() => () => {
+        if (headerBackdropVisibleRef.current) {
+            props.onHeaderBackdropVisibilityChange?.(false);
+        }
+    }, [props.onHeaderBackdropVisibilityChange]);
 
     const renderItem = useCallback(({ item }: { item: DisplayItem }) => {
         if (item.type === 'tool-group') {
@@ -272,10 +295,9 @@ const ChatListInternal = React.memo((props: {
                 message={item.message}
                 metadata={props.metadata}
                 sessionId={props.sessionId}
-                onForkFromUserMessage={canFork ? handleForkFromMessage : undefined}
             />
         );
-    }, [props.metadata, props.sessionId, canFork, handleForkFromMessage, collapsedGroups, handleToggleGroup]);
+    }, [props.metadata, props.sessionId, collapsedGroups, handleToggleGroup]);
 
     // In inverted FlatList, offset 0 = latest messages (visual bottom).
     // Offset increases as user scrolls up to see older messages.
@@ -285,12 +307,14 @@ const ChatListInternal = React.memo((props: {
     // the user's viewport when reading older messages mid-stream).
     const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
         const offsetY = e.nativeEvent.contentOffset.y;
+        scrollMetricsRef.current.offsetY = offsetY;
+        updateHeaderBackdropVisibility();
         const next = offsetY > SCROLL_THRESHOLD;
         if (next !== showScrollButtonRef.current) {
             showScrollButtonRef.current = next;
             setShowScrollButton(next);
         }
-    }, []);
+    }, [updateHeaderBackdropVisibility]);
 
     const scrollToBottom = useCallback(() => {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -353,8 +377,21 @@ const ChatListInternal = React.memo((props: {
                 renderItem={renderItem}
                 onScroll={handleScroll}
                 scrollEventThrottle={16}
+                onLayout={(event) => {
+                    scrollMetricsRef.current.viewportHeight = event.nativeEvent.layout.height;
+                    updateHeaderBackdropVisibility();
+                }}
+                onContentSizeChange={(_width, height) => {
+                    scrollMetricsRef.current.contentHeight = height;
+                    updateHeaderBackdropVisibility();
+                }}
                 ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
-                ListFooterComponent={<ListHeader isLoadingOlder={props.isLoadingOlder} />}
+                ListFooterComponent={(
+                    <ListHeader
+                        isLoadingOlder={props.isLoadingOlder}
+                        topContentInset={props.topContentInset}
+                    />
+                )}
                 onEndReached={handleLoadOlder}
                 onEndReachedThreshold={0.5}
             />

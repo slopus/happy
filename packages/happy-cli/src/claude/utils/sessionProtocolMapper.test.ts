@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createId, isCuid } from '@paralleldrive/cuid2';
+import { RawJSONLinesSchema } from '../types';
 import {
     closeClaudeTurnWithStatus,
     mapClaudeLogMessageToSessionEnvelopes,
@@ -101,6 +102,33 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(result.envelopes[0]).not.toHaveProperty('usage');
         expect(result.envelopes[1]).not.toHaveProperty('usage');
         expect(result.envelopes[2]).toMatchObject({ usage });
+    });
+
+    it('normalizes a synthetic API error null service tier before emitting an envelope', () => {
+        const message = RawJSONLinesSchema.parse({
+            type: 'assistant',
+            uuid: 'a-api-error-1',
+            message: {
+                model: '<synthetic>',
+                content: [{ type: 'text', text: "You've hit your limit" }],
+                usage: {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    service_tier: null,
+                },
+            },
+            isApiErrorMessage: true,
+            apiErrorStatus: 429,
+        });
+
+        const result = mapClaudeLogMessageToSessionEnvelopes(message, { currentTurnId: null });
+        const textEnvelope = result.envelopes.find((envelope) => envelope.ev.t === 'text');
+
+        expect(textEnvelope).toMatchObject({
+            ev: { t: 'text', text: "You've hit your limit" },
+            usage: { input_tokens: 0, output_tokens: 0 },
+        });
+        expect(textEnvelope?.usage?.service_tier).toBeUndefined();
     });
 
     it('maps tool use and tool result blocks to tool-call lifecycle', () => {

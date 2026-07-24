@@ -10,6 +10,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
+import { ShortcutHintBadge, useShortcutHints } from './ShortcutHints';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -36,6 +37,9 @@ const stylesheet = StyleSheet.create((theme) => ({
     newSessionButtonPressed: {
         backgroundColor: theme.colors.surfacePressed,
     },
+    shortcutTargetActive: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
     newSessionText: {
         fontSize: 14,
         fontWeight: '500',
@@ -57,6 +61,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         ...Typography.default(),
     },
+    shortcutBadgeInline: {
+        marginLeft: 'auto',
+    },
 }));
 
 export const SidebarView = React.memo(() => {
@@ -65,6 +72,7 @@ export const SidebarView = React.memo(() => {
     const router = useRouter();
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
+    const { visible: shortcutHintsVisible } = useShortcutHints();
 
     const handleNewSession = React.useCallback(() => {
         router.navigate('/new');
@@ -77,11 +85,13 @@ export const SidebarView = React.memo(() => {
                 onPress={handleNewSession}
                 style={({ pressed }) => [
                     styles.newSessionButton,
+                    shortcutHintsVisible && styles.shortcutTargetActive,
                     pressed && styles.newSessionButtonPressed,
                 ]}
             >
                 <Ionicons name="create-outline" size={16} color={stylesheet.newSessionText.color} />
                 <Text style={styles.newSessionText}>{t('sidebar.newSession')}</Text>
+                <ShortcutHintBadge shortcutKey="N" style={styles.shortcutBadgeInline} />
             </Pressable>
 
             {realtimeStatus !== 'disconnected' && (
@@ -94,10 +104,14 @@ export const SidebarView = React.memo(() => {
             {/* Settings at bottom */}
             <Pressable
                 onPress={() => router.push('/settings')}
-                style={styles.settingsRow}
+                style={[
+                    styles.settingsRow,
+                    shortcutHintsVisible && styles.shortcutTargetActive,
+                ]}
             >
                 <Ionicons name="settings-outline" size={18} color={stylesheet.settingsText.color} />
                 <Text style={styles.settingsText}>{t('settings.title')}</Text>
+                <ShortcutHintBadge shortcutKey="," style={styles.shortcutBadgeInline} />
             </Pressable>
         </View>
     );

@@ -648,6 +648,8 @@ export const it: TranslationStructure = {
         deleted: 'Eliminato',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'file modificato' : 'file modificati'}`,
         allFiles: 'Tutti i file',
+        addPanel: 'Aggiungi pannello',
+        closePanel: 'Chiudi pannello',
         editFile: 'Modifica',
         saveFile: 'Salva',
         failedToRead: 'Impossibile leggere il file',
@@ -656,6 +658,19 @@ export const it: TranslationStructure = {
         fileConflictDescription: 'Questo file è stato modificato sul dispositivo mentre lo stavi modificando. Ricarica per vedere l\'ultima versione.',
         reload: 'Ricarica',
         overwrite: 'Sovrascrivi',
+    },
+    sideChat: {
+        panelTitle: 'Chat laterale',
+        emptyTitle: 'Avvia una chat laterale',
+        emptySubtitle: 'Chiedi qualcosa all’agente a parte. Eredita il contesto di questa chat ma rimane isolata — nulla qui tocca la conversazione principale.',
+        startButton: 'Avvia chat laterale',
+        creating: 'Avvio della chat laterale…',
+        unavailable: 'Questa sessione non può ancora avviare una chat laterale — attendi che l’agente sia online.',
+        composerPlaceholder: 'Messaggio alla chat laterale…',
+        expand: 'Apri a schermo intero',
+        tabLabel: ({ index }: { index: number }) => `Chat laterale ${index}`,
+        newChat: 'Nuova chat laterale',
+        close: 'Chiudi chat laterale',
     },
 
     settingsVoice: {

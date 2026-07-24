@@ -651,6 +651,8 @@ export const ja: TranslationStructure = {
         deleted: '削除済み',
         changedFiles: ({ count }: { count: number }) => `${count}件の変更ファイル`,
         allFiles: 'すべてのファイル',
+        addPanel: 'パネルを追加',
+        closePanel: 'パネルを閉じる',
         editFile: '編集',
         saveFile: '保存',
         failedToRead: 'ファイルの読み取りに失敗しました',
@@ -659,6 +661,19 @@ export const ja: TranslationStructure = {
         fileConflictDescription: '編集中にデバイス上でファイルが変更されました。最新版を表示するには再読み込みしてください。',
         reload: '再読み込み',
         overwrite: '上書き',
+    },
+    sideChat: {
+        panelTitle: 'サイドチャット',
+        emptyTitle: 'サイドチャットを始める',
+        emptySubtitle: 'エージェントに脇で質問しましょう。このチャットのコンテキストを引き継ぎますが独立しており — ここでの操作はメインの会話に影響しません。',
+        startButton: 'サイドチャットを開始',
+        creating: 'サイドチャットを開始しています…',
+        unavailable: 'このセッションではまだサイドチャットを開始できません — エージェントがオンラインになるまでお待ちください。',
+        composerPlaceholder: 'サイドチャットにメッセージ…',
+        expand: '全画面で開く',
+        tabLabel: ({ index }: { index: number }) => `サイドチャット ${index}`,
+        newChat: '新しいサイドチャット',
+        close: 'サイドチャットを閉じる',
     },
 
     settingsVoice: {

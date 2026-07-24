@@ -31,7 +31,10 @@ const styles = StyleSheet.create((theme) => ({
     pathInput: {
         flex: 1,
         borderRadius: 8,
-        backgroundColor: theme.colors.input?.background ?? theme.colors.groupped.background,
+        backgroundColor: Platform.select({
+            web: theme.colors.input?.background ?? theme.colors.groupped.background,
+            default: theme.colors.glass.backgroundSubtle,
+        }),
         borderWidth: 1,
         borderColor: theme.colors.divider,
         minHeight: 44,
@@ -427,7 +430,12 @@ export default function MachineDetailScreen() {
                                         disabled={!isMachineOnline(machine)}
                                         selected={isSelected}
                                         showChevron={false}
-                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                        pressableStyle={isSelected ? {
+                                            backgroundColor: Platform.select({
+                                                web: theme.colors.surfaceSelected,
+                                                default: theme.colors.glass.backgroundSubtle,
+                                            }),
+                                        } : undefined}
                                         showDivider={!hideDivider}
                                     />
                                 );

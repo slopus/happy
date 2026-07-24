@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Platform, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolViewProps } from './_all';
 import { ToolSectionView } from '../ToolSectionView';
@@ -61,14 +61,14 @@ const styles = StyleSheet.create((theme) => ({
         paddingVertical: 12,
         paddingHorizontal: 12,
         borderRadius: 8,
-        backgroundColor: 'transparent',
+        backgroundColor: Platform.select({ web: 'transparent', default: theme.colors.surface }),
         borderWidth: 1,
         borderColor: theme.colors.divider,
         gap: 10,
         minHeight: 44, // Minimum touch target for mobile
     },
     optionButtonSelected: {
-        backgroundColor: theme.colors.surfaceHigh,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceHigh, default: theme.colors.surfaceHighest }),
         borderColor: theme.colors.radio.active,
     },
     optionButtonDisabled: {
@@ -127,7 +127,9 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'flex-end',
     },
     submitButton: {
-        backgroundColor: theme.colors.button.primary.background,
+        backgroundColor: Platform.select({ web: theme.colors.button.primary.background, default: theme.colors.surfaceHighest }),
+        borderWidth: Platform.select({ web: 0, default: 1 }),
+        borderColor: theme.colors.divider,
         paddingHorizontal: 20,
         paddingVertical: 12,
         borderRadius: 8,

@@ -2,8 +2,15 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createId } from '@paralleldrive/cuid2';
 import type { ReasoningOutput } from './reasoningProcessor';
 import type { DiffToolCall, DiffToolResult } from './diffProcessor';
-import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope, type SessionUsage } from '@slopus/happy-wire';
+import {
+    createEnvelope,
+    stripLeadingTaskNotificationWrappers,
+    type CreateEnvelopeOptions,
+    type SessionEnvelope,
+    type SessionUsage,
+} from '@slopus/happy-wire';
 import type { Thread, ThreadItem, ThreadTurn } from '../codexAppServerTypes';
+import { stripHappySystemBlocks } from '../codexPrompt';
 
 export type CodexTurnState = {
     currentTurnId: string | null;
@@ -533,6 +540,18 @@ function textFromInputItems(items: unknown): string | null {
     return text.length > 0 ? text : null;
 }
 
+function visibleCodexMessageText(text: string): string | null {
+    // Imported/background-agent completions can appear in Codex thread images
+    // as synthetic text items even though their output is already represented
+    // by structured subagent envelopes. Keep only any real text after them.
+    // Also strip Happy's own injected scaffolding (option-chips system prompt +
+    // change-title instruction), which is baked into the Codex turn text and
+    // would otherwise leak into the chat when a thread is reconstructed from a
+    // fork / duplicate / side-chat backfill.
+    const visibleText = stripLeadingTaskNotificationWrappers(stripHappySystemBlocks(text));
+    return visibleText.trim().length > 0 ? visibleText : null;
+}
+
 function reasoningText(item: ThreadItem): string | null {
     const summary = (item as { summary?: unknown }).summary;
     const content = (item as { content?: unknown }).content;
@@ -630,8 +649,9 @@ export function mapCodexThreadItemToSessionEnvelopes(
     switch (item.type) {
         case 'userMessage': {
             const text = textFromInputItems(item.content);
-            return text
-                ? [createEnvelope('user', { t: 'text', text }, {
+            const visibleText = text ? visibleCodexMessageText(text) : null;
+            return visibleText
+                ? [createEnvelope('user', { t: 'text', text: visibleText }, {
                     id: item.id,
                     time: startedAt,
                     codexItemId: item.id,
@@ -640,7 +660,8 @@ export function mapCodexThreadItemToSessionEnvelopes(
         }
         case 'agentMessage': {
             const text = typeof item.text === 'string' ? item.text.trim() : '';
-            if (text.length === 0) {
+            const visibleText = visibleCodexMessageText(text);
+            if (!visibleText) {
                 return [];
             }
 
@@ -654,7 +675,7 @@ export function mapCodexThreadItemToSessionEnvelopes(
             } satisfies CreateEnvelopeOptions;
             const envelopes: SessionEnvelope[] = [];
             maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, subagentTitles, envelopes);
-            envelopes.push(createEnvelope('agent', { t: 'text', text }, opts));
+            envelopes.push(createEnvelope('agent', { t: 'text', text: visibleText }, opts));
             return envelopes;
         }
         case 'reasoning': {
@@ -1120,9 +1141,23 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             };
         }
 
+        const visibleText = visibleCodexMessageText(message.message);
+        if (!visibleText) {
+            return {
+                currentTurnId: state.currentTurnId,
+                startedSubagents,
+                activeSubagents,
+                providerSubagentToSessionSubagent,
+                subagentTitles,
+                collabReceiverThreadIdsByCall,
+                collabToolByCall,
+                envelopes: [],
+            };
+        }
+
         const envelopes: SessionEnvelope[] = [];
         maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, subagentTitles, envelopes);
-        envelopes.push(createEnvelope('agent', { t: 'text', text: message.message }, opts));
+        envelopes.push(createEnvelope('agent', { t: 'text', text: visibleText }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,

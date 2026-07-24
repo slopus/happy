@@ -666,6 +666,8 @@ export const ru: TranslationStructure = {
         deleted: 'Удалён',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'изменённый файл' : count < 5 ? 'изменённых файла' : 'изменённых файлов'}`,
         allFiles: 'Все файлы',
+        addPanel: 'Добавить панель',
+        closePanel: 'Закрыть панель',
         editFile: 'Редактировать',
         saveFile: 'Сохранить',
         failedToRead: 'Не удалось прочитать файл',
@@ -674,6 +676,19 @@ export const ru: TranslationStructure = {
         fileConflictDescription: 'Файл был изменён на устройстве пока вы его редактировали. Перезагрузите чтобы увидеть актуальную версию.',
         reload: 'Перезагрузить',
         overwrite: 'Перезаписать',
+    },
+    sideChat: {
+        panelTitle: 'Боковой чат',
+        emptyTitle: 'Начните боковой чат',
+        emptySubtitle: 'Спросите агента что-нибудь в стороне. Он наследует контекст этого чата, но остаётся изолированным — ничто здесь не затрагивает основной разговор.',
+        startButton: 'Начать боковой чат',
+        creating: 'Запуск бокового чата…',
+        unavailable: 'Эта сессия пока не может начать боковой чат — дождитесь, когда агент выйдет в сеть.',
+        composerPlaceholder: 'Написать в боковой чат…',
+        expand: 'Открыть на весь экран',
+        tabLabel: ({ index }: { index: number }) => `Боковой чат ${index}`,
+        newChat: 'Новый боковой чат',
+        close: 'Закрыть боковой чат',
     },
 
     settingsVoice: {

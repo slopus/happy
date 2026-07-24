@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { Platform, View, Text, Pressable } from 'react-native';
 import { BaseModal } from './BaseModal';
 import { AlertModalConfig, ConfirmModalConfig } from '../types';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 
 interface WebAlertModalProps {
     config: AlertModalConfig | ConfirmModalConfig;
@@ -34,10 +35,17 @@ export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps
 
     const styles = StyleSheet.create({
         container: {
-            backgroundColor: theme.colors.surface,
+            backgroundColor: Platform.select({
+                web: theme.colors.surface,
+                ios: theme.colors.glass.overlay,
+                android: theme.colors.glass.backgroundStrong,
+                default: theme.colors.surface,
+            }),
             borderRadius: 14,
             width: 270,
             overflow: 'hidden',
+            borderWidth: Platform.OS === 'web' ? 0 : StyleSheet.hairlineWidth,
+            borderColor: theme.colors.glass.border,
             shadowColor: theme.colors.shadow.color,
             shadowOffset: {
                 width: 0,
@@ -98,7 +106,14 @@ export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps
 
     return (
         <BaseModal visible={true} onClose={onClose} closeOnBackdrop={false}>
-            <View style={styles.container}>
+            <MobileGlassSurface
+                enabled={Platform.OS !== 'web'}
+                nativeEffect
+                glassEffectStyle="regular"
+                intensity={88}
+                tintColor={theme.colors.glass.overlayTint}
+                style={styles.container}
+            >
                 <View style={styles.content}>
                     <Text style={[styles.title, Typography.default('semiBold')]}>
                         {config.title}
@@ -133,7 +148,7 @@ export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps
                         </React.Fragment>
                     ))}
                 </View>
-            </View>
+            </MobileGlassSurface>
         </BaseModal>
     );
 }

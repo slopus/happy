@@ -650,6 +650,8 @@ export const ca: TranslationStructure = {
         deleted: 'Eliminat',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'fitxer modificat' : 'fitxers modificats'}`,
         allFiles: 'Tots els fitxers',
+        addPanel: 'Afegeix un panell',
+        closePanel: 'Tanca el panell',
         editFile: 'Editar',
         saveFile: 'Desar',
         failedToRead: 'No s\'ha pogut llegir el fitxer',
@@ -658,6 +660,19 @@ export const ca: TranslationStructure = {
         fileConflictDescription: 'Aquest fitxer s\'ha modificat al dispositiu mentre l\'editaves. Recarrega per veure la darrera versió.',
         reload: 'Recarregar',
         overwrite: 'Sobreescriure',
+    },
+    sideChat: {
+        panelTitle: 'Xat lateral',
+        emptyTitle: 'Inicia un xat lateral',
+        emptySubtitle: 'Pregunta alguna cosa a l’agent a part. Hereta el context d’aquest xat però es manté aïllat — res d’aquí no afecta la conversa principal.',
+        startButton: 'Inicia el xat lateral',
+        creating: 'Iniciant el xat lateral…',
+        unavailable: 'Aquesta sessió encara no pot iniciar un xat lateral — espera que l’agent estigui en línia.',
+        composerPlaceholder: 'Missatge al xat lateral…',
+        expand: 'Obre a pantalla completa',
+        tabLabel: ({ index }: { index: number }) => `Xat lateral ${index}`,
+        newChat: 'Nou xat lateral',
+        close: 'Tanca el xat lateral',
     },
 
     settingsVoice: {

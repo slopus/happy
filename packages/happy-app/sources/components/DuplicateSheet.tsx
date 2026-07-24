@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View, Text, ScrollView, Pressable, Platform, ActivityIndicator, useWindowDimensions } from 'react-native';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useRouter } from 'expo-router';
 import { Modal } from '@/modal';
 import { t } from '@/text';
@@ -14,6 +14,7 @@ import {
     type ForkSource,
 } from '@/sync/ops';
 import { getSessionForkSource } from '@/utils/sessionFork';
+import { MobileGlassSurface } from './MobileGlass';
 
 export interface DuplicateSheetProps {
     sessionId: string;
@@ -45,6 +46,7 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
     const { sessionId, initialClaudeUuid, initialRewindPointId, initialMessageText, initialForkedFromMessageId, onClose } = props;
     const session = useSession(sessionId);
     const router = useRouter();
+    const { theme } = useUnistyles();
     const windowSize = useWindowDimensions();
     const sheetFrame = React.useMemo(
         () => getDuplicateSheetFrame(windowSize),
@@ -161,7 +163,14 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
     });
 
     return (
-        <View style={[styles.sheet, sheetFrame]}>
+        <MobileGlassSurface
+            enabled={Platform.OS !== 'web'}
+            nativeEffect
+            glassEffectStyle="regular"
+            intensity={88}
+            tintColor={theme.colors.glass.overlayTint}
+            style={[styles.sheet, sheetFrame]}
+        >
             <View style={styles.header}>
                 <Text style={styles.title}>{t('session.duplicateSheetTitle')}</Text>
                 <Text style={styles.subtitle}>{t('session.duplicateSheetSubtitle')}</Text>
@@ -226,7 +235,7 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
                     </Text>
                 </Pressable>
             </View>
-        </View>
+        </MobileGlassSurface>
     );
 });
 
@@ -259,9 +268,16 @@ function formatRelativeTime(timestampMs: number): string {
 
 const styles = StyleSheet.create((theme) => ({
     sheet: {
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({
+            web: theme.colors.surface,
+            ios: theme.colors.glass.overlay,
+            android: theme.colors.glass.backgroundStrong,
+            default: theme.colors.surface,
+        }),
         borderRadius: 16,
         overflow: 'hidden',
+        borderWidth: Platform.OS === 'web' ? 0 : StyleSheet.hairlineWidth,
+        borderColor: theme.colors.glass.border,
         alignSelf: 'center',
         minWidth: 0,
     },

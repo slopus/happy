@@ -1,5 +1,16 @@
 import * as React from 'react';
-import { View, ActivityIndicator, Text, Pressable } from 'react-native';
+import {
+    View,
+    ActivityIndicator,
+    Text,
+    Pressable,
+    Platform,
+    Keyboard,
+    TextInput,
+    NativeScrollEvent,
+    NativeSyntheticEvent,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useFriendRequests, useSocketStatus, useRealtimeStatus } from '@/sync/storage';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
@@ -7,9 +18,9 @@ import { useIsTablet } from '@/utils/responsive';
 import { useRouter } from 'expo-router';
 import { EmptySessionsTablet } from './EmptySessionsTablet';
 import { SessionsList } from './SessionsList';
-import { FABWide } from './FABWide';
 import { TabBar, TabType } from './TabBar';
 import { InboxView } from './InboxView';
+import { HomeDock, MOBILE_HOME_DOCK_CONTENT_INSET } from './HomeDock';
 import { SettingsViewWrapper } from './SettingsViewWrapper';
 import { SessionsListWrapper } from './SessionsListWrapper';
 import { Header } from './navigation/Header';
@@ -21,6 +32,10 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackFriendsSearch } from '@/track';
+import { MOBILE_GLASS_HEADER_HEIGHT } from './navigation/headerMetrics';
+import { MobileGlassSurface } from './MobileGlass';
+import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
+import { useStartSessionFromDraft } from '@/hooks/useStartSessionFromDraft';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
@@ -32,6 +47,34 @@ const styles = StyleSheet.create((theme) => ({
     },
     phoneContainer: {
         flex: 1,
+        backgroundColor: Platform.OS === 'web' ? 'transparent' : theme.colors.groupped.background,
+    },
+    phoneSceneStack: {
+        flex: 1,
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundColor: theme.colors.groupped.background,
+    },
+    phoneRoot: {
+        flex: 1,
+        backgroundColor: Platform.OS === 'web' ? 'transparent' : theme.colors.groupped.background,
+    },
+    phoneHeader: {
+        zIndex: 10,
+        backgroundColor: Platform.OS === 'web' ? theme.colors.groupped.background : 'transparent',
+    },
+    phoneHeaderOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+    },
+    phoneBottomDockOverlay: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 30,
     },
     sidebarContentContainer: {
         flex: 1,
@@ -71,10 +114,11 @@ const styles = StyleSheet.create((theme) => ({
     },
     titleContainer: {
         flex: 1,
-        alignItems: 'center',
+        alignItems: Platform.OS === 'web' ? 'center' : 'flex-start',
+        justifyContent: Platform.OS === 'web' ? 'flex-start' : 'center',
     },
     titleText: {
-        fontSize: 17,
+        fontSize: Platform.OS === 'web' ? 17 : 16,
         color: theme.colors.header.tint,
         fontWeight: '600',
         ...Typography.default('semiBold'),
@@ -85,7 +129,7 @@ const styles = StyleSheet.create((theme) => ({
         marginTop: -2,
     },
     statusText: {
-        fontSize: 12,
+        fontSize: Platform.OS === 'web' ? 12 : 11,
         fontWeight: '500',
         lineHeight: 16,
         ...Typography.default(),
@@ -93,8 +137,44 @@ const styles = StyleSheet.create((theme) => ({
     headerButton: {
         width: 32,
         height: 32,
+        borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: 'transparent',
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    headerActionGlass: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        overflow: 'hidden',
+    },
+    headerActionButton: {
+        width: '100%',
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    headerSearch: {
+        width: '100%',
+        height: 40,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 4,
+    },
+    headerSearchInput: {
+        flex: 1,
+        minWidth: 0,
+        height: 40,
+        paddingVertical: 0,
+        color: theme.colors.text,
+        fontSize: 16,
+        ...Typography.default(),
     },
 }));
 
@@ -106,7 +186,7 @@ const TAB_TITLES = {
 } as const;
 
 // Active tabs
-type ActiveTabType = 'sessions' | 'inbox' | 'settings';
+type ActiveTabType = TabType;
 
 // Header title component with connection status
 const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
@@ -171,13 +251,76 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     );
 });
 
+const HeaderSearch = React.memo(({
+    value,
+    onChangeText,
+}: {
+    value: string;
+    onChangeText: (value: string) => void;
+}) => {
+    const { theme } = useUnistyles();
+
+    return (
+        <View style={styles.headerSearch}>
+            <Ionicons name="search" size={18} color={theme.colors.textSecondary} />
+            <TextInput
+                autoFocus
+                value={value}
+                onChangeText={onChangeText}
+                placeholder={t('tools.names.search')}
+                placeholderTextColor={theme.colors.textSecondary}
+                selectionColor={theme.colors.text}
+                returnKeyType="search"
+                autoCorrect={false}
+                style={styles.headerSearchInput}
+            />
+        </View>
+    );
+});
+
 // Header right button - varies by tab
-const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
+const HeaderRight = React.memo(({
+    activeTab,
+    searchActive,
+    onSearchPress,
+}: {
+    activeTab: ActiveTabType;
+    searchActive: boolean;
+    onSearchPress: () => void;
+}) => {
     const router = useRouter();
     const { theme } = useUnistyles();
     const isCustomServer = isUsingCustomServer();
 
     if (activeTab === 'sessions') {
+        if (Platform.OS !== 'web') {
+            return (
+                <View style={styles.headerActions}>
+                    <MobileGlassSurface nativeEffect interactive style={styles.headerActionGlass}>
+                        <Pressable
+                            onPress={onSearchPress}
+                            style={styles.headerActionButton}
+                            hitSlop={8}
+                        >
+                            <Ionicons
+                                name={searchActive ? 'close' : 'search'}
+                                size={searchActive ? 24 : 21}
+                                color={theme.colors.header.tint}
+                            />
+                        </Pressable>
+                    </MobileGlassSurface>
+                    <MobileGlassSurface nativeEffect interactive style={styles.headerActionGlass}>
+                        <Pressable
+                            onPress={() => router.push('/settings')}
+                            style={styles.headerActionButton}
+                            hitSlop={8}
+                        >
+                            <Ionicons name="settings-outline" size={21} color={theme.colors.header.tint} />
+                        </Pressable>
+                    </MobileGlassSurface>
+                </View>
+            );
+        }
         return (
             <Pressable
                 onPress={() => router.navigate('/new')}
@@ -206,8 +349,7 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
 
     if (activeTab === 'settings') {
         if (!isCustomServer) {
-            // Empty view to maintain header centering
-            return <View style={styles.headerButton} />;
+            return Platform.OS === 'web' ? <View style={styles.headerButton} /> : null;
         }
         return (
             <Pressable
@@ -230,31 +372,80 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const router = useRouter();
     const friendRequests = useFriendRequests();
     const realtimeStatus = useRealtimeStatus();
+    const safeArea = useSafeAreaInsets();
+    const { isStarting: isStartingHomeSession, startSession: startHomeSession } = useStartSessionFromDraft();
 
     // Tab state management
     // NOTE: Zen tab removed - the feature never got to a useful state
-    const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
+    const [activeTab, setActiveTab] = React.useState<ActiveTabType>('sessions');
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [searchActive, setSearchActive] = React.useState(false);
+    const [homePrompt, setHomePrompt] = React.useState('');
+    const [headerBackdropVisible, setHeaderBackdropVisible] = React.useState(false);
+    const headerBackdropVisibleRef = React.useRef(false);
+    const showHeaderRight = activeTab !== 'settings' || isUsingCustomServer();
+    const topContentInset = Platform.OS === 'web'
+        ? 0
+        : safeArea.top
+            + MOBILE_GLASS_HEADER_HEIGHT
+            + (realtimeStatus !== 'disconnected' ? 32 : 0)
+            + 12;
+    const bottomContentInset = Platform.OS === 'web'
+        ? 0
+        : searchActive ? 16 : MOBILE_HOME_DOCK_CONTENT_INSET;
 
-    const handleNewSession = React.useCallback(() => {
-        router.navigate('/new');
-    }, [router]);
+    const handleHomePromptSubmit = React.useCallback(async (): Promise<boolean> => {
+        const prompt = homePrompt.trim();
+        const attachments = useNewSessionDraft.getState().attachments;
+        if (!prompt && attachments.length === 0) {
+            return false;
+        }
+        useNewSessionDraft.getState().setInput(prompt);
+        Keyboard.dismiss();
+        const started = await startHomeSession();
+        if (started) setHomePrompt('');
+        return started;
+    }, [homePrompt, startHomeSession]);
 
-    const handleTabPress = React.useCallback((tab: TabType) => {
-        setActiveTab(tab);
+    const handleSearchPress = React.useCallback(() => {
+        setSearchActive((currentValue) => {
+            if (currentValue) {
+                setSearchQuery('');
+                Keyboard.dismiss();
+            }
+            return !currentValue;
+        });
     }, []);
 
-    // Regular phone mode with tabs - define this before any conditional returns
-    const renderTabContent = React.useCallback(() => {
+    const handleTabPress = React.useCallback((tab: ActiveTabType) => {
+        // This callback is intentionally independent of activeTab. Gesture
+        // worklets can outlive the render that created them, so comparing with a
+        // captured tab here can discard a newer tap or drag commit.
+        headerBackdropVisibleRef.current = false;
+        setHeaderBackdropVisible(false);
+        setActiveTab((currentTab) => currentTab === tab ? currentTab : tab);
+    }, []);
+
+    const handleContentScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const nextVisible = event.nativeEvent.contentOffset.y > 12;
+        if (nextVisible === headerBackdropVisibleRef.current) {
+            return;
+        }
+        headerBackdropVisibleRef.current = nextVisible;
+        setHeaderBackdropVisible(nextVisible);
+    }, []);
+
+    const renderWebTabContent = () => {
         switch (activeTab) {
             case 'inbox':
                 return <InboxView />;
             case 'settings':
-                return <SettingsViewWrapper />;
+                return <SettingsViewWrapper topContentInset={topContentInset} bottomContentInset={bottomContentInset} onScroll={handleContentScroll} />;
             case 'sessions':
             default:
-                return <SessionsListWrapper />;
+                return <SessionsListWrapper topContentInset={topContentInset} onScroll={handleContentScroll} />;
         }
-    }, [activeTab]);
+    };
 
     // Sidebar variant
     if (variant === 'sidebar') {
@@ -297,28 +488,66 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     }
 
     // Regular phone mode with tabs
-    return (
-        <>
-            <View style={styles.phoneContainer}>
-                <View style={{ backgroundColor: theme.colors.groupped.background }}>
-                    <Header
-                        title={<HeaderTitle activeTab={activeTab as ActiveTabType} />}
-                        headerRight={() => <HeaderRight activeTab={activeTab as ActiveTabType} />}
-                        headerLeft={() => <HeaderLogo />}
-                        headerShadowVisible={false}
-                        headerTransparent={true}
+    const phoneHeader = (
+        <View style={[styles.phoneHeader, Platform.OS !== 'web' && styles.phoneHeaderOverlay]}>
+            <Header
+                title={searchActive && Platform.OS !== 'web'
+                    ? <HeaderSearch value={searchQuery} onChangeText={setSearchQuery} />
+                    : <HeaderTitle activeTab={activeTab} />}
+                headerRight={showHeaderRight ? () => (
+                    <HeaderRight
+                        activeTab={activeTab}
+                        searchActive={searchActive}
+                        onSearchPress={handleSearchPress}
                     />
-                    {realtimeStatus !== 'disconnected' && (
-                        <VoiceAssistantStatusBar variant="full" />
+                ) : undefined}
+                headerRightGlass={false}
+                headerLeft={() => <HeaderLogo />}
+                headerLeftGlass={Platform.OS !== 'web'}
+                headerBackdropVisible={headerBackdropVisible}
+                headerShadowVisible={false}
+                headerTransparent={true}
+            />
+            {realtimeStatus !== 'disconnected' && (
+                <VoiceAssistantStatusBar variant="full" />
+            )}
+        </View>
+    );
+
+    return (
+        <View style={styles.phoneRoot}>
+            <View style={styles.phoneContainer}>
+                {Platform.OS === 'web' && phoneHeader}
+                {Platform.OS === 'web' ? renderWebTabContent() : (
+                    <View style={styles.phoneSceneStack}>
+                        <SessionsListWrapper
+                            topContentInset={topContentInset}
+                            bottomContentInset={bottomContentInset}
+                            onScroll={handleContentScroll}
+                            searchQuery={searchQuery}
+                        />
+                    </View>
+                )}
+                {Platform.OS !== 'web' && phoneHeader}
+            </View>
+            {Platform.OS === 'web' ? (
+                <TabBar
+                    activeTab={activeTab}
+                    onTabPress={handleTabPress}
+                    inboxBadgeCount={friendRequests.length}
+                />
+            ) : (
+                <View pointerEvents="box-none" style={styles.phoneBottomDockOverlay}>
+                    {!searchActive && (
+                        <HomeDock
+                            prompt={homePrompt}
+                            onPromptChange={setHomePrompt}
+                            onSubmit={handleHomePromptSubmit}
+                            isSubmitting={isStartingHomeSession}
+                        />
                     )}
                 </View>
-                {renderTabContent()}
-            </View>
-            <TabBar
-                activeTab={activeTab}
-                onTabPress={handleTabPress}
-                inboxBadgeCount={friendRequests.length}
-            />
-        </>
+            )}
+        </View>
     );
 });

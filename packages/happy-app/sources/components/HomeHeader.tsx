@@ -10,6 +10,7 @@ import { getServerInfo } from '@/sync/serverConfig';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { ShortcutHintBadge, useShortcutHints } from './ShortcutHints';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     headerButton: {
@@ -18,6 +19,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         height: 32,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    headerButtonShortcutActive: {
+        borderRadius: 8,
+        backgroundColor: theme.colors.surfaceSelected,
+    },
+    headerShortcutBadge: {
+        position: 'absolute',
+        top: -8,
+        right: -12,
     },
     iconButton: {
         color: theme.colors.header.tint,
@@ -85,18 +95,20 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 
 export const HomeHeader = React.memo(() => {
     const { theme } = useUnistyles();
+    const header = (
+        <Header
+            title={<HeaderTitleWithSubtitle />}
+            headerRight={() => <HeaderRight />}
+            headerLeft={() => <HeaderLeft />}
+            headerLeftGlass={Platform.OS !== 'web'}
+            headerShadowVisible={false}
+            headerTransparent={true}
+        />
+    );
 
-    return (
-        <View style={{ backgroundColor: theme.colors.groupped.background }}>
-            <Header
-                title={<HeaderTitleWithSubtitle />}
-                headerRight={() => <HeaderRight />}
-                headerLeft={() => <HeaderLeft />}
-                headerShadowVisible={false}
-                headerTransparent={true}
-            />
-        </View>
-    )
+    return Platform.OS === 'web'
+        ? <View style={{ backgroundColor: theme.colors.groupped.background }}>{header}</View>
+        : header;
 })
 
 export const HomeHeaderNotAuth = React.memo(() => {
@@ -108,6 +120,7 @@ export const HomeHeaderNotAuth = React.memo(() => {
             title={<HeaderTitleWithSubtitle subtitle={serverInfo.isCustom ? serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '') : undefined} />}
             headerRight={() => <HeaderRightNotAuth />}
             headerLeft={() => <HeaderLeft />}
+            headerLeftGlass={Platform.OS !== 'web'}
             headerShadowVisible={false}
             headerBackgroundColor={theme.colors.groupped.background}
         />
@@ -118,14 +131,19 @@ function HeaderRight() {
     const router = useRouter();
     const styles = stylesheet;
     const { theme } = useUnistyles();
+    const { visible: shortcutHintsVisible } = useShortcutHints();
 
     return (
         <Pressable
             onPress={() => router.navigate('/new')}
             hitSlop={15}
-            style={styles.headerButton}
+            style={[
+                styles.headerButton,
+                shortcutHintsVisible && styles.headerButtonShortcutActive,
+            ]}
         >
             <Ionicons name="add-outline" size={28} color={theme.colors.header.tint} />
+            <ShortcutHintBadge shortcutKey="N" style={styles.headerShortcutBadge} />
         </Pressable>
     );
 }

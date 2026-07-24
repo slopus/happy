@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SESSION_SCOPED_ENV_KEYS } from '@/daemon/sessionEnvironment';
 
 const mocks = vi.hoisted(() => ({
     mockExistsSync: vi.fn(),
@@ -99,6 +100,10 @@ beforeEach(() => {
     mocks.mockHasLocalHappyAgentAuth.mockReturnValue(false);
 });
 
+afterEach(() => {
+    vi.unstubAllEnvs();
+});
+
 describe('parseResumeCommandArgs', () => {
     it('parses the happy session id', () => {
         expect(parseResumeCommandArgs(['cmmij8olq00dp5jcxr3wtbpau'])).toEqual({
@@ -189,6 +194,9 @@ describe('handleResumeCommand', () => {
     it('resumes from local persisted encryption data without legacy agent.key auth', async () => {
         const session = createReconnectableSession();
         mocks.mockResolveLocalReconnectableSession.mockResolvedValue(session);
+        for (const key of SESSION_SCOPED_ENV_KEYS) {
+            vi.stubEnv(key, `stale-${key}`);
+        }
 
         await handleResumeCommand(['session-1']);
 
@@ -206,6 +214,9 @@ describe('handleResumeCommand', () => {
                 HAPPY_RECONNECT_AGENT_STATE_VERSION: '9',
             }),
         });
+        const spawnedEnv = mocks.mockSpawnHappyCLI.mock.calls[0][1].env;
+        expect(spawnedEnv).not.toHaveProperty('HAPPY_FORK_CODEX_THREAD_ID');
+        expect(spawnedEnv).not.toHaveProperty('CODEX_THREAD_ID');
     });
 
     it('does not suggest happy-agent auth login when no local resume data or agent.key exists', async () => {
@@ -245,14 +256,21 @@ describe('handleResumeCommand', () => {
                 happyToolsDir: '/tmp/happy/tools',
             },
         });
+        for (const key of SESSION_SCOPED_ENV_KEYS) {
+            vi.stubEnv(key, `stale-${key}`);
+        }
 
         await handleResumeCommand(['legacy-session']);
 
         expect(mocks.mockResolveHappySession).toHaveBeenCalledWith('legacy-session');
-        expect(spawnHappyCLI).toHaveBeenCalledWith(['claude', '--resume', '93a9705e-bc6a-406d-8dce-8acc014dedbd'], {
+        expect(spawnHappyCLI).toHaveBeenCalledWith(['claude', '--resume', '93a9705e-bc6a-406d-8dce-8acc014dedbd'], expect.objectContaining({
             cwd: '/tmp/repo',
-            env: process.env,
+            env: expect.any(Object),
             stdio: 'inherit',
-        });
+        }));
+        const spawnedEnv = mocks.mockSpawnHappyCLI.mock.calls[0][1].env;
+        for (const key of SESSION_SCOPED_ENV_KEYS) {
+            expect(spawnedEnv).not.toHaveProperty(key);
+        }
     });
 });

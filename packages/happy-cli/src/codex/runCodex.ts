@@ -152,6 +152,7 @@ export async function runCodex(opts: {
     // Lineage from the daemon's spawn RPC (set by app-side fork / duplicate).
     const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
     const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
+    const isSideChat = process.env.HAPPY_SIDE_CHAT === '1';
 
     const { state, metadata } = createSessionMetadata({
         flavor: 'codex',
@@ -161,6 +162,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
+        ...(isSideChat ? { isSideChat: true } : {}),
     });
 
     const skillCommands = await discoverCodexSkillCommands();
@@ -873,6 +875,8 @@ export async function runCodex(opts: {
                 threadId: opts.resumeThreadId,
                 cwd: process.cwd(),
                 mcpServers,
+                // Side chats start empty — keep the resume notice out of the UI.
+                announce: !isSideChat,
             });
             first = false;
             appendSystemPromptInjected = true;
@@ -880,28 +884,34 @@ export async function runCodex(opts: {
 
         const forkCodexThreadId = process.env.HAPPY_FORK_CODEX_THREAD_ID;
         if (!reconnectSessionId && forkCodexThreadId) {
-            try {
-                const { thread } = await client.readThread({
-                    threadId: forkCodexThreadId,
-                    includeTurns: true,
-                });
-                const envelopes = await buildCodexThreadBackfillEnvelopes({
-                    thread,
-                    uploadLocalImage: (attachment, imageOpts) => (
-                        session.uploadLocalImageAttachmentEnvelope(attachment, imageOpts)
-                    ),
-                });
-                for (const envelope of envelopes) {
-                    session.sendSessionProtocolMessage(envelope);
+            // Side chats inherit the forked thread's context inside the model
+            // (thread/fork copies it), but we deliberately do NOT replay the
+            // pre-fork history into the UI: a side chat starts empty from the
+            // moment it was opened, so the user only sees the aside they began.
+            if (!isSideChat) {
+                try {
+                    const { thread } = await client.readThread({
+                        threadId: forkCodexThreadId,
+                        includeTurns: true,
+                    });
+                    const envelopes = await buildCodexThreadBackfillEnvelopes({
+                        thread,
+                        uploadLocalImage: (attachment, imageOpts) => (
+                            session.uploadLocalImageAttachmentEnvelope(attachment, imageOpts)
+                        ),
+                    });
+                    for (const envelope of envelopes) {
+                        session.sendSessionProtocolMessage(envelope);
+                    }
+                    logger.debug(`[CODEX FORK BACKFILL] Replayed ${envelopes.length} historical envelopes from thread ${forkCodexThreadId}`);
+                } catch (error) {
+                    logger.debug(`[CODEX FORK BACKFILL] Failed to read thread ${forkCodexThreadId}:`, error);
                 }
-                session.updateMetadata((currentMetadata) => ({
-                    ...currentMetadata,
-                    codexThreadId: forkCodexThreadId,
-                }));
-                logger.debug(`[CODEX FORK BACKFILL] Replayed ${envelopes.length} historical envelopes from thread ${forkCodexThreadId}`);
-            } catch (error) {
-                logger.debug(`[CODEX FORK BACKFILL] Failed to read thread ${forkCodexThreadId}:`, error);
             }
+            session.updateMetadata((currentMetadata) => ({
+                ...currentMetadata,
+                codexThreadId: forkCodexThreadId,
+            }));
         }
 
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = null;
