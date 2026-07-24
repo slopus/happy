@@ -331,6 +331,11 @@ const ChatListInternal = React.memo((props: {
                 data={displayItems}
                 inverted={true}
                 keyExtractor={keyExtractor}
+                // Restored after the initial perf fix: the tight virtualization props
+                // below cap the mount-time measurement cost that made this expensive
+                // on large chats, so it no longer blocks the JS thread. Without
+                // maintainVisibleContentPosition, users scrolled up to read history
+                // see the viewport jump when new messages prepend at data[0].
                 maintainVisibleContentPosition={{
                     // Anchor on the second-newest message (index 1), not the
                     // newest. The newest slot (index 0) gets a brand-new item
@@ -345,6 +350,10 @@ const ChatListInternal = React.memo((props: {
                     minIndexForVisible: 1,
                     autoscrollToTopThreshold: 50,
                 }}
+                initialNumToRender={8}
+                maxToRenderPerBatch={4}
+                windowSize={5}
+                removeClippedSubviews={true}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
                 // Inverted list: paddingTop renders at the visual bottom,
@@ -352,7 +361,7 @@ const ChatListInternal = React.memo((props: {
                 contentContainerStyle={{ paddingTop: 8 }}
                 renderItem={renderItem}
                 onScroll={handleScroll}
-                scrollEventThrottle={16}
+                scrollEventThrottle={32}
                 ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
                 ListFooterComponent={<ListHeader isLoadingOlder={props.isLoadingOlder} />}
                 onEndReached={handleLoadOlder}
