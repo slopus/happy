@@ -169,6 +169,8 @@ export const en = {
             above: 'Above composer',
             below: 'Below composer',
         },
+        usageLimitShowRemaining: 'Show Quota Remaining',
+        usageLimitShowRemainingDescription: 'Count plan limits down from full instead of up from empty',
         userMessageBubbleColor: 'User Bubble Color',
         userMessageBubbleColorDescription: 'Make your messages easier to spot in long chats',
         userMessageBubbleColorOptions: {
@@ -456,6 +458,11 @@ export const en = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Context ${used} of ${total} tokens, ${percent}%`,
+            limitFiveHour: '5-hour limit',
+            limitSevenDay: '7-day limit',
+            limitResets: ({ time }: { time: string }) => `resets ${time}`,
+            limitAsOf: ({ age }: { age: string }) => `as of ${age} ago`,
+            limitRemaining: ({ percent }: { percent: number }) => `${percent}% left`,
         },
     },
 

@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { buildResumeCommand, buildResumeCommandBlock } from './resumeCommand';
 
 describe('buildResumeCommand', () => {
+    it('never offers a native CLI resume command for Rig sessions', () => {
+        expect(buildResumeCommand({
+            path: '/tmp/project',
+            flavor: 'codex',
+            codexThreadId: 'thread-1',
+            client: { id: 'rig' },
+            capabilities: { resume: false },
+        })).toBeNull();
+    });
     it('builds a Claude resume command that enters the session directory first', () => {
         expect(buildResumeCommand({
             path: '/tmp/project',

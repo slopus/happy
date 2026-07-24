@@ -84,7 +84,6 @@ const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'claude', label: 'claude code' },
     { key: 'codex', label: 'codex' },
     { key: 'openclaw', label: 'openclaw' },
-    { key: 'gemini', label: 'gemini (deprecated)' },
     { key: 'agy', label: 'agy' },
 ];
 

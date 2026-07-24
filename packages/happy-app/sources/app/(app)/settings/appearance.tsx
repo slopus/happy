@@ -220,6 +220,7 @@ export default function AppearanceSettingsScreen() {
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
     const [userMessageBubbleColor, setUserMessageBubbleColor] = useSettingMutable('userMessageBubbleColor');
     const [sessionStatusBarDisplay, setSessionStatusBarDisplay] = useSettingMutable('sessionStatusBarDisplay');
+    const [usageLimitShowRemaining, setUsageLimitShowRemaining] = useSettingMutable('usageLimitShowRemaining');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
     const [statusPlacementDropdownOpen, setStatusPlacementDropdownOpen] = React.useState(false);
@@ -326,6 +327,17 @@ export default function AppearanceSettingsScreen() {
                         ))}
                     </AnimatedCollapsible>
                 )}
+                <Item
+                    title={t('settingsAppearance.usageLimitShowRemaining')}
+                    subtitle={t('settingsAppearance.usageLimitShowRemainingDescription')}
+                    icon={<Ionicons name="speedometer-outline" size={29} color={theme.colors.status.connecting} />}
+                    rightElement={
+                        <Switch
+                            value={usageLimitShowRemaining}
+                            onValueChange={setUsageLimitShowRemaining}
+                        />
+                    }
+                />
                 <Item
                     title={t('settingsAppearance.userMessageBubbleColor')}
                     subtitle={t('settingsAppearance.userMessageBubbleColorDescription')}

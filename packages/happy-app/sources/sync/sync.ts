@@ -8,7 +8,7 @@ import { storage } from './storage';
 // Circular at module level (ops.ts imports sync) but safe: both sides only
 // touch each other's exports at runtime, never during module initialization.
 import { sessionSetAgentModes } from './ops';
-import { getImageAttachmentSendPlan } from './attachmentSupport';
+import { getImageAttachmentSendPlan, isAttachmentAllowedByPolicy } from './attachmentSupport';
 import {
     errorMessageFromUnknown,
     formatAttachmentDiagnosticForLog,
@@ -66,6 +66,7 @@ import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { isRigMetadataV1, rigCanUseAttachments, usesControlledSessionUi } from './rig';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -598,20 +599,32 @@ class Sync {
         const { displayText, source = 'chat', attachments } = options ?? {};
 
         const flavor = session.metadata?.flavor;
+        const rigAttachmentPolicy = isRigMetadataV1(session.metadata)
+            ? session.metadata?.capabilities?.attachments
+            : null;
         const attachmentPlan = getImageAttachmentSendPlan({
             flavor,
             text,
             attachmentCount: attachments?.length ?? 0,
+            supportsAttachments: isRigMetadataV1(session.metadata)
+                ? rigCanUseAttachments(session.metadata)
+                : undefined,
         });
-        const effectiveAttachments = attachmentPlan.shouldUseAttachments ? attachments : undefined;
+        const effectiveAttachments = attachmentPlan.shouldUseAttachments
+            ? (rigAttachmentPolicy
+                ? attachments?.filter((attachment) => isAttachmentAllowedByPolicy(attachment, rigAttachmentPolicy))
+                : attachments)
+            : undefined;
+        const rejectedByRigPolicy = isRigMetadataV1(session.metadata)
+            && (attachments?.length ?? 0) > (effectiveAttachments?.length ?? 0);
 
-        if (attachmentPlan.shouldShowUnsupportedAlert) {
+        if (attachmentPlan.shouldShowUnsupportedAlert || rejectedByRigPolicy) {
             Modal.alert(
                 t('imageUpload.notSupportedTitle'),
                 t('imageUpload.notSupportedMessage'),
                 [{ text: t('common.ok'), style: 'cancel' }],
             );
-            if (!attachmentPlan.shouldSendText) {
+            if (!attachmentPlan.shouldSendText || (!text.trim() && (effectiveAttachments?.length ?? 0) === 0)) {
                 return;
             }
         }
@@ -711,6 +724,7 @@ class Sync {
                 appendSystemPrompt: systemPrompt,
                 ...(modeMeta.permissionMode !== undefined ? { permissionMode: modeMeta.permissionMode } : {}),
                 ...(modeMeta.model !== undefined ? { model: modeMeta.model } : {}),
+                ...(modeMeta.modelProviderId !== undefined ? { modelProviderId: modeMeta.modelProviderId } : {}),
                 ...(modeMeta.effort !== undefined ? { effort: modeMeta.effort } : {}),
                 ...(displayText && { displayText }) // Add displayText if provided
             }
@@ -734,6 +748,10 @@ class Sync {
             content: encryptedRawRecord
         });
         trackMessageSent(source, session.metadata);
+
+        // Stamp local activity time so the (opt-in) activity sort bubbles this session
+        // up on user action only — not on background agent output.
+        storage.getState().markSessionMessageSent(sessionId);
 
         this.getSendSync(sessionId).invalidate();
         this.maybeStartBackgroundSendWatchdog();
@@ -2319,7 +2337,9 @@ class Sync {
                     // side catches up on messages exchanged while it was passive.
                     const wasControlledByUser = session.agentState?.controlledByUser;
                     const isNowControlledByUser = agentState?.controlledByUser;
-                    const handoffDirection = resolveControlHandoffDirection(wasControlledByUser, isNowControlledByUser);
+                    const handoffDirection = usesControlledSessionUi(metadata)
+                        ? resolveControlHandoffDirection(wasControlledByUser, isNowControlledByUser)
+                        : null;
                     if (handoffDirection) {
                         const target = handoffDirection === 'desktop-to-mobile' ? 'mobile' : 'desktop';
                         log.log(`🔄 Control returned to ${target} for session ${updateData.body.id}, re-fetching messages`);

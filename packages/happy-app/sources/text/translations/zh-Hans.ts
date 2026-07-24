@@ -172,6 +172,8 @@ export const zhHans: TranslationStructure = {
             above: '输入框上方',
             below: '输入框下方',
         },
+        usageLimitShowRemaining: '显示剩余额度',
+        usageLimitShowRemainingDescription: '额度指示器显示剩余量，而不是已用量',
         userMessageBubbleColor: '用户气泡颜色',
         userMessageBubbleColorDescription: '让您的消息在长聊天中更容易找到',
         userMessageBubbleColorOptions: {
@@ -443,6 +445,11 @@ export const zhHans: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `上下文 ${used}/${total} 个令牌，${percent}%`,
+            limitFiveHour: '5 小时额度',
+            limitSevenDay: '7 天额度',
+            limitResets: ({ time }: { time: string }) => `${time} 重置`,
+            limitAsOf: ({ age }: { age: string }) => `数据为 ${age} 前`,
+            limitRemaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
         },
     },
 

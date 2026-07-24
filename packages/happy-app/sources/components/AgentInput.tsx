@@ -33,6 +33,8 @@ import { AnimatedClickAwayBackdrop } from './AnimatedOverlay';
 import { BubblePressable } from './BubblePressable';
 import { resolveAgentInputPrimaryAction } from './agentInputPrimaryAction';
 import { NativeSettingsMenu, type NativeSettingsMenuGroup } from './NativeSettingsMenu';
+import { ProviderIcon } from './ProviderIcon';
+import { isRigMetadata } from '@/sync/rig';
 
 interface AgentInputProps {
     // `initialValue` seeds the uncontrolled textarea once; keystrokes never
@@ -106,6 +108,13 @@ interface AgentInputProps {
 }
 
 const MAX_CONTEXT_SIZE = 190000;
+
+function permissionKindIcon(kind: string | null | undefined): React.ComponentProps<typeof Ionicons>['name'] {
+    if (kind === 'read-only') return 'lock-closed-outline';
+    if (kind === 'safe-yolo') return 'shield-checkmark-outline';
+    if (kind === 'yolo') return 'warning-outline';
+    return 'folder-open-outline';
+}
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -452,6 +461,7 @@ type StatusRowProps = {
     contextWarning: { text: string; color: string } | null;
     displayPermissionMode: ReturnType<typeof hackMode> | null;
     permissionModeKey: string;
+    permissionSemanticKind?: string | null;
     isSandboxedYoloMode: boolean;
     permissionLabel: string | null;
     zenMode?: boolean;
@@ -560,16 +570,17 @@ const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRow
                 )}
             </View>
             {showPermissionBadge && (() => {
+                const presentationKind = p.permissionSemanticKind ?? p.permissionModeKey;
                 const permColor = p.isSandboxedYoloMode ? '#4169E1' :
-                    p.permissionModeKey === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-                        p.permissionModeKey === 'bypassPermissions' ? theme.colors.permission.bypass :
-                            p.permissionModeKey === 'plan' ? theme.colors.permission.plan :
-                                p.permissionModeKey === 'read-only' ? theme.colors.permission.readOnly :
-                                    p.permissionModeKey === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                                        p.permissionModeKey === 'yolo' ? theme.colors.permission.yolo :
+                    presentationKind === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+                        presentationKind === 'bypassPermissions' ? theme.colors.permission.bypass :
+                            presentationKind === 'plan' ? theme.colors.permission.plan :
+                                presentationKind === 'read-only' ? theme.colors.permission.readOnly :
+                                    presentationKind === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                                        presentationKind === 'yolo' ? theme.colors.permission.yolo :
                                             theme.colors.textSecondary;
                 const permIcon: 'play-forward' | 'pause' =
-                    p.permissionModeKey === 'plan' || p.permissionModeKey === 'read-only'
+                    presentationKind === 'plan' || presentationKind === 'read-only'
                         ? 'pause' : 'play-forward';
                 return (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -692,7 +703,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Check if this is a Codex, Gemini, or OpenClaw session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
-    const isCodex = props.metadata?.flavor === 'codex' || props.agentType === 'codex';
+    const isRig = isRigMetadata(props.metadata);
+    const isCodex = !isRig && (props.metadata?.flavor === 'codex' || props.agentType === 'codex');
     const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
     const isOpenClaw = props.metadata?.flavor === 'openclaw' || props.agentType === 'openclaw';
     const displayPermissionMode = React.useMemo(() => (
@@ -1607,6 +1619,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             return (
                                                 <BubblePressable
                                                     key={mode.key}
+                                                    disabled={!props.onPermissionModeChange || mode.disabled}
                                                     onPress={() => handleSettingsSelect(mode)}
                                                     style={({ pressed }) => ({
                                                         flexDirection: 'row',
@@ -1620,6 +1633,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                             : isSelected
                                                                 ? theme.colors.glass.backgroundSubtle
                                                                 : 'transparent',
+                                                        opacity: (!props.onPermissionModeChange || mode.disabled) ? 0.55 : 1,
                                                     })}
                                                 >
                                                     <View style={{
@@ -1641,13 +1655,22 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                         }} />}
                                                     </View>
                                                     <View style={{ flex: 1 }}>
-                                                        <Text style={{
-                                                            fontSize: 14,
-                                                            color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                            ...Typography.default(),
-                                                        }}>
-                                                            {withSandboxSuffix(mode.name, mode.key)}
-                                                        </Text>
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                                            {mode.semanticKind && (
+                                                                <Ionicons
+                                                                    name={permissionKindIcon(mode.semanticKind)}
+                                                                    size={13}
+                                                                    color={isSelected ? theme.colors.radio.active : theme.colors.textSecondary}
+                                                                />
+                                                            )}
+                                                            <Text style={{
+                                                                fontSize: 14,
+                                                                color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                                ...Typography.default(),
+                                                            }}>
+                                                                {withSandboxSuffix(mode.name, mode.key)}
+                                                            </Text>
+                                                        </View>
                                                         {!!mode.description && (
                                                             <Text style={{
                                                                 fontSize: 11,
@@ -1674,6 +1697,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 return (
                                                     <BubblePressable
                                                         key={model.key}
+                                                        disabled={!props.onModelModeChange || model.disabled}
                                                         onPress={() => {
                                                             hapticsLight();
                                                             props.onModelModeChange?.(model);
@@ -1691,6 +1715,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                                 : isSelected
                                                                     ? theme.colors.glass.backgroundSubtle
                                                                     : 'transparent',
+                                                            opacity: (!props.onModelModeChange || model.disabled) ? 0.55 : 1,
                                                         })}
                                                     >
                                                         <View style={{
@@ -1712,13 +1737,26 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                             }} />}
                                                         </View>
                                                         <View style={{ flex: 1 }}>
-                                                            <Text style={{
-                                                                fontSize: 14,
-                                                                color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                                ...Typography.default(),
-                                                            }}>
-                                                                {model.name}
-                                                            </Text>
+                                                            {model.providerName ? (
+                                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                                                    <ProviderIcon kind={model.providerKind} size={12} />
+                                                                    <Text style={{
+                                                                        fontSize: 14,
+                                                                        color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                                        ...Typography.default(),
+                                                                    }}>
+                                                                        {model.name}
+                                                                    </Text>
+                                                                </View>
+                                                            ) : (
+                                                                <Text style={{
+                                                                    fontSize: 14,
+                                                                    color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                                    ...Typography.default(),
+                                                                }}>
+                                                                    {model.name}
+                                                                </Text>
+                                                            )}
                                                             {!!model.description && (
                                                                 <Text style={{
                                                                     fontSize: 11,
@@ -1826,6 +1864,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     contextWarning={contextWarning}
                     displayPermissionMode={displayPermissionMode}
                     permissionModeKey={permissionModeKey}
+                    permissionSemanticKind={displayPermissionMode?.semanticKind}
                     isSandboxedYoloMode={isSandboxedYoloMode}
                     permissionLabel={displayPermissionMode ? withSandboxSuffix(displayPermissionMode.name, permissionModeKey) : null}
                     zenMode={props.zenMode}

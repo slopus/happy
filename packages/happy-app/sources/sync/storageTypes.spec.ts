@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AgentGoalStatusSchema, AgentStateSchema, MetadataSchema } from './storageTypes';
+import { rigMetadataFixture } from './__testdata__/rigMetadata';
 
 describe('MetadataSchema', () => {
     it('preserves archive lifecycle metadata', () => {
@@ -20,6 +21,18 @@ describe('MetadataSchema', () => {
         expect(metadata.lifecycleStateSince).toBe(123);
         expect(metadata.archivedBy).toBe('cli');
         expect(metadata.archiveReason).toBe('User terminated');
+    });
+
+    it('parses the additive Rig v1 extension and tolerates future fields', () => {
+        const metadata = MetadataSchema.parse({
+            ...rigMetadataFixture,
+            rigMetadataVersion: 2,
+            futureCapability: { supported: true },
+        });
+        expect(metadata.client?.id).toBe('rig');
+        expect(metadata.models).toHaveLength(2);
+        expect(metadata.activity?.subagents.queued).toBe(2);
+        expect((metadata as any).futureCapability).toEqual({ supported: true });
     });
 });
 
@@ -155,5 +168,23 @@ describe('AgentGoalStatusSchema', () => {
         });
 
         expect(state.agentGoalStatus?.status).toBe('active');
+    });
+
+    it('preserves usage limits in agent state and degrades malformed snapshots', () => {
+        const state = AgentStateSchema.parse({
+            controlledByUser: true,
+            usageLimits: {
+                capturedAt: 1710000000000,
+                windows: [{ id: 'five_hour', status: 'allowed', utilization: 42, resetsAt: null }],
+            },
+        });
+        expect(state.usageLimits?.windows[0].id).toBe('five_hour');
+
+        const malformed = AgentStateSchema.parse({
+            controlledByUser: true,
+            usageLimits: { capturedAt: 'bad', windows: [] },
+        });
+        expect(malformed.controlledByUser).toBe(true);
+        expect(malformed.usageLimits).toBeUndefined();
     });
 });

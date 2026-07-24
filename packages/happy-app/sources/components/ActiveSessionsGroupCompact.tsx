@@ -22,6 +22,7 @@ import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
 import { SessionShortcutHintBadge } from './ShortcutHints';
 import { buildActiveSessionDisplayGroups } from '@/utils/sessionDisplayOrder';
+import { ProviderIcon } from './ProviderIcon';
 
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
     disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
@@ -321,6 +322,14 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                         style={styles.sessionShortcutBadge}
                     />
                 </View>
+                {session.identityLine && (
+                    <View style={styles.sessionIdentityRow}>
+                        <ProviderIcon kind={session.providerKind} size={11} />
+                        <Text style={styles.sessionIdentity} numberOfLines={1}>
+                            {session.identityLine}{session.modelName ? ` · ${session.modelName}` : ''}{session.activitySummary ? ` · ${session.activitySummary}` : ''}
+                        </Text>
+                    </View>
+                )}
             </View>
         </Pressable>
     );
@@ -502,6 +511,19 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     sessionTitleDisconnected: {
         color: theme.colors.textSecondary,
+    },
+    sessionIdentity: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
+        flexShrink: 1,
+    },
+    sessionIdentityRow: {
+        marginLeft: 24,
+        marginTop: 2,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
     },
     leadingIndicatorSlot: {
         alignItems: 'center',

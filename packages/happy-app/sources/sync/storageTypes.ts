@@ -9,13 +9,28 @@ export const MetadataSchema = z.object({
         code: z.string(),
         value: z.string(),
         description: z.string().nullish(),
-    })).optional(),
+        id: z.string().optional(),
+        name: z.string().optional(),
+        providerId: z.string().optional(),
+        providerKind: z.string().optional(),
+        providerName: z.string().optional(),
+        provider: z.object({
+            id: z.string(),
+            kind: z.string(),
+            name: z.string(),
+        }).passthrough().optional(),
+        contextWindow: z.number().optional(),
+        serviceTiers: z.array(z.string()).optional(),
+        thinkingLevels: z.array(z.string()).optional(),
+        defaultThinkingLevel: z.string().optional(),
+    }).passthrough()).optional(),
     currentModelCode: z.string().optional(),
     operatingModes: z.array(z.object({
         code: z.string(),
         value: z.string(),
         description: z.string().nullish(),
-    })).optional(),
+        kind: z.string().optional(),
+    }).passthrough()).optional(),
     currentOperatingModeCode: z.string().optional(),
     thoughtLevels: z.array(z.object({
         code: z.string(),
@@ -23,6 +38,76 @@ export const MetadataSchema = z.object({
         description: z.string().nullish(),
     })).optional(),
     currentThoughtLevelCode: z.string().optional(),
+    rigMetadataVersion: z.number().int().positive().optional(),
+    client: z.object({
+        id: z.string(),
+        name: z.string(),
+        version: z.string(),
+    }).passthrough().optional(),
+    provider: z.object({
+        id: z.string(),
+        kind: z.string(),
+        name: z.string(),
+    }).passthrough().optional(),
+    providers: z.array(z.object({
+        id: z.string(),
+        kind: z.string(),
+        name: z.string(),
+    }).passthrough()).optional(),
+    model: z.object({
+        providerId: z.string(),
+        id: z.string(),
+    }).passthrough().optional(),
+    currentModelProviderId: z.string().optional(),
+    reasoning: z.object({
+        current: z.string().nullable(),
+        levels: z.array(z.string()),
+    }).passthrough().optional(),
+    session: z.object({
+        status: z.string(),
+        permissionMode: z.string(),
+        modelLocked: z.boolean(),
+        serviceTier: z.string().optional(),
+    }).passthrough().optional(),
+    capabilities: z.object({
+        abort: z.boolean(),
+        attachments: z.object({
+            enabled: z.boolean(),
+            maxBytes: z.number(),
+            mediaTypes: z.array(z.string()),
+        }).passthrough(),
+        files: z.object({
+            browse: z.boolean(),
+            read: z.boolean(),
+            search: z.boolean(),
+            write: z.boolean(),
+        }).passthrough(),
+        modelSelection: z.boolean(),
+        reasoningSelection: z.boolean(),
+        permissionModeSelection: z.boolean(),
+        resume: z.boolean(),
+        rpcMethods: z.array(z.string()),
+        shell: z.boolean(),
+        steering: z.boolean(),
+    }).passthrough().optional(),
+    activity: z.object({
+        subagents: z.object({
+            running: z.number(),
+            queued: z.number(),
+            total: z.number(),
+        }).passthrough(),
+        workflows: z.object({
+            running: z.number(),
+            total: z.number(),
+        }).passthrough(),
+        processes: z.object({ running: z.number() }).passthrough(),
+        tasks: z.object({
+            pending: z.number(),
+            inProgress: z.number(),
+            completed: z.number(),
+            total: z.number(),
+        }).passthrough(),
+    }).passthrough().optional(),
     path: z.string(),
     host: z.string(),
     version: z.string().optional(),
@@ -127,8 +212,23 @@ export const AgentGoalStatusSchema = z.discriminatedUnion('status', [
 
 export type AgentGoalStatus = z.infer<typeof AgentGoalStatusSchema>;
 
+const UsageLimitsSchema = z.object({
+    capturedAt: z.number(),
+    windows: z.array(z.object({
+        id: z.string(),
+        label: z.string().optional(),
+        // Plain string so statuses introduced by newer CLIs degrade safely.
+        status: z.string().optional(),
+        utilization: z.number().nullish(),
+        resetsAt: z.number().nullish(),
+    }).passthrough()),
+}).passthrough().optional().catch(undefined);
+
 export const AgentStateSchema = z.object({
     controlledByUser: z.boolean().nullish(),
+    // Ephemeral runtime state. A malformed snapshot must not invalidate
+    // permission requests or the rest of the agent state.
+    usageLimits: UsageLimitsSchema,
     requests: z.record(z.string(), z.object({
         tool: z.string(),
         arguments: z.any(),
@@ -195,6 +295,7 @@ export interface Session {
     permissionMode?: string | null; // Permission pick; local mirror of synced metadata.permissionMode (#1492)
     modelMode?: string | null; // Model pick; local mirror of synced metadata.modelMode (#1492)
     effortLevel?: string | null; // Effort pick; local mirror of synced metadata.effortLevel (#1492)
+    lastMessageSentAt?: number; // Local timestamp of last user-sent message, not synced to server; used for activity-based sort
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
     // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.

@@ -9,6 +9,7 @@ import {
     getAvailableModels,
     getAvailablePermissionModes,
     getEffortLevelsForModel,
+    getRigCurrentModelOptionKey,
     resolveCurrentOption,
     EffortLevel,
 } from '@/components/modelModeOptions';
@@ -62,6 +63,20 @@ import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelec
 import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { performAgentGoalAction } from './agentGoalActionHandler';
 import { MOBILE_GLASS_HEADER_HEIGHT } from '@/components/navigation/headerMetrics';
+import {
+    getRigIdentity,
+    getRigReasoningSelection,
+    isRigMetadata,
+    isRigModelSelectionEnabled,
+    isRigPermissionSelectionEnabled,
+    isRigReasoningSelectionEnabled,
+    rigCanAbort,
+    rigCanBrowseFiles,
+    rigCanReadFiles,
+    rigCanUseAttachments,
+    rigCanUseShell,
+} from '@/sync/rig';
+import { RigActivityBar } from '@/components/RigActivityBar';
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -94,6 +109,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     const canShowSidebar = fileDiffsSidebarEnabled
         && (isRunningOnMac() || Platform.OS === 'web')
         && windowWidth >= SIDEBAR_MIN_WINDOW_WIDTH
+        && (!session || (rigCanBrowseFiles(session.metadata) && rigCanUseShell(session.metadata)))
         && isDataReady && !!session;
 
     const showSidebar = canShowSidebar && !zenMode;
@@ -324,19 +340,23 @@ export const SessionView = React.memo((props: { id: string }) => {
     // Compute header props based on session state
     const headerProps = useMemo(() => {
         if (!isDataReady) {
-            return { title: '', folderName: undefined, isConnected: false };
+            return { title: '', folderName: undefined, isConnected: false, identityLine: undefined };
         }
         if (!session) {
-            return { title: t('errors.sessionDeleted'), folderName: undefined, isConnected: false };
+            return { title: t('errors.sessionDeleted'), folderName: undefined, isConnected: false, identityLine: undefined };
         }
         const isConnected = session.presence === 'online';
         const pathSegments = session.metadata?.path?.split(/[/\\]/).filter(Boolean);
         const folderName = pathSegments?.[pathSegments.length - 1];
         const sessionName = getSessionName(session);
+        const rigIdentity = getRigIdentity(session.metadata);
         return {
             title: sessionName,
             folderName,
             isConnected,
+            identityLine: rigIdentity
+                ? `${rigIdentity.clientName} · ${rigIdentity.providerName}${rigIdentity.modelName ? ` — ${rigIdentity.modelName}` : ''}`
+                : undefined,
         };
     }, [session, isDataReady]);
     const headerRight = session && deviceType === 'phone' && Platform.OS !== 'web'
@@ -350,6 +370,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                     size={28}
                     monochrome={!headerProps.isConnected}
                     flavor={session.metadata?.flavor}
+                    clientId={session.metadata?.client?.id}
                 />
             </Pressable>
         )
@@ -426,6 +447,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         folderName={headerProps.folderName}
                         isConnected={headerProps.isConnected}
                         backdropVisible={headerBackdropVisible}
+                        identityLine={headerProps.identityLine}
                         extraPathSegment={fileViewPath ?? undefined}
                         rightSlot={(diffViewOpen || !!fileViewPath) ? headerRightSlot : headerRight}
                         onTitlePress={session ? () => router.push(`/session/${sessionId}/info`) : undefined}
@@ -634,12 +656,13 @@ export function SessionViewLoaded({
     const isAcknowledged = machineId && acknowledgedCliVersions[machineId] === cliVersion;
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
     const flavor = session.metadata?.flavor;
+    const isRig = isRigMetadata(session.metadata);
     const availableModels = React.useMemo(() => (
-        getAvailableModels(flavor, session.metadata, t)
-    ), [flavor, session.metadata]);
+        getAvailableModels(flavor, session.metadata, t, session.modelMode)
+    ), [flavor, session.metadata, session.modelMode]);
     const availableModes = React.useMemo(() => (
-        getAvailablePermissionModes(flavor, session.metadata, t)
-    ), [flavor, session.metadata]);
+        getAvailablePermissionModes(flavor, session.metadata, t, session.permissionMode)
+    ), [flavor, session.metadata, session.permissionMode]);
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const effectiveAgentDefaults = React.useMemo(() => (
         resolveAgentDefaultConfig(agentDefaultOverrides, flavor)
@@ -648,30 +671,36 @@ export function SessionViewLoaded({
     const permissionMode = React.useMemo<PermissionMode | null>(() => (
         resolveCurrentOption(availableModes, [
             session.permissionMode,
-            effectiveAgentDefaults.permissionMode,
-            session.metadata?.currentOperatingModeCode,
+            ...(isRig ? [
+                session.metadata?.currentOperatingModeCode,
+                session.metadata?.permissionMode,
+                session.metadata?.session?.permissionMode,
+            ] : [
+                effectiveAgentDefaults.permissionMode,
+                session.metadata?.currentOperatingModeCode,
+            ]),
         ])
-    ), [availableModes, session.permissionMode, effectiveAgentDefaults.permissionMode, session.metadata?.currentOperatingModeCode]);
+    ), [availableModes, session.permissionMode, effectiveAgentDefaults.permissionMode, session.metadata?.currentOperatingModeCode, session.metadata?.permissionMode, session.metadata?.session?.permissionMode, isRig]);
 
     const modelMode = React.useMemo<ModelMode | null>(() => (
         resolveCurrentOption(availableModels, [
             session.modelMode,
-            effectiveAgentDefaults.modelMode,
-            session.metadata?.currentModelCode,
+            isRig ? getRigCurrentModelOptionKey(session.metadata) : effectiveAgentDefaults.modelMode,
+            isRig ? undefined : session.metadata?.currentModelCode,
         ])
-    ), [availableModels, session.modelMode, effectiveAgentDefaults.modelMode, session.metadata?.currentModelCode]);
+    ), [availableModels, session.modelMode, effectiveAgentDefaults.modelMode, session.metadata, isRig]);
 
     // Effort level state
     const modelKey = modelMode?.key ?? 'default';
     const availableEffortLevels = React.useMemo<EffortLevel[]>(() => (
-        getEffortLevelsForModel(flavor, modelKey)
-    ), [flavor, modelKey]);
+        getEffortLevelsForModel(flavor, modelKey, session.metadata)
+    ), [flavor, modelKey, session.metadata]);
     const effortLevel = React.useMemo<EffortLevel | null>(() => (
         resolveCurrentOption(availableEffortLevels, [
             session.effortLevel,
-            effectiveAgentDefaults.effortLevel,
+            isRig ? getRigReasoningSelection(session.metadata, modelKey) : effectiveAgentDefaults.effortLevel,
         ])
-    ), [availableEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel]);
+    ), [availableEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel, session.metadata, modelKey, isRig]);
 
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
@@ -687,6 +716,12 @@ export function SessionViewLoaded({
     // Image attachment state (expImageUpload feature flag)
     const expImageUpload = useSetting('expImageUpload');
     const { selectedImages, pickImages, removeImage, clearImages, addImages } = useImagePicker();
+    const canUseAttachments = rigCanUseAttachments(session.metadata);
+    React.useEffect(() => {
+        if (!canUseAttachments && selectedImages.length > 0) {
+            clearImages();
+        }
+    }, [canUseAttachments, selectedImages.length, clearImages]);
 
     // ChatComposer owns the message state + useDraft subscription. We only
     // hold an imperative handle so handleSend can read the live text and
@@ -712,8 +747,15 @@ export function SessionViewLoaded({
     }, [sessionId]);
 
     const updateModelMode = React.useCallback((mode: ModelMode) => {
-        sessionSetAgentModes(sessionId, { modelMode: mode.key });
-    }, [sessionId]);
+        const nextEffortLevels = getEffortLevelsForModel(flavor, mode.key, session.metadata);
+        const currentEffortSupported = session.effortLevel
+            ? nextEffortLevels.some((level) => level.key === session.effortLevel)
+            : true;
+        sessionSetAgentModes(sessionId, {
+            modelMode: mode.key,
+            ...(!currentEffortSupported ? { effortLevel: mode.defaultThinkingLevel ?? null } : {}),
+        });
+    }, [sessionId, flavor, session.metadata, session.effortLevel]);
 
     const updateEffortLevel = React.useCallback((level: EffortLevel) => {
         sessionSetAgentModes(sessionId, { effortLevel: level.key });
@@ -744,9 +786,11 @@ export function SessionViewLoaded({
     const handleAbort = React.useCallback(() => {
         // Mode picks live in synced metadata — clear them there, otherwise the
         // next inbound metadata update resurrects them (#1492)
-        sessionSetAgentModes(sessionId, { permissionMode: null, modelMode: null, effortLevel: null });
+        if (!isRig) {
+            sessionSetAgentModes(sessionId, { permissionMode: null, modelMode: null, effortLevel: null });
+        }
         sessionAbort(sessionId);
-    }, [sessionId]);
+    }, [sessionId, isRig]);
 
     const handleFileViewerPress = React.useCallback(() => {
         router.push(`/session/${sessionId}/files`);
@@ -917,29 +961,29 @@ export function SessionViewLoaded({
             placeholder={t('session.inputPlaceholder')}
             sessionId={sessionId}
             permissionMode={permissionMode}
-            onPermissionModeChange={updatePermissionMode}
+            onPermissionModeChange={isRigPermissionSelectionEnabled(session.metadata) ? updatePermissionMode : undefined}
             availableModes={availableModes}
             modelMode={modelMode}
             availableModels={availableModels}
-            onModelModeChange={updateModelMode}
+            onModelModeChange={isRigModelSelectionEnabled(session.metadata) ? updateModelMode : undefined}
             effortLevel={effortLevel}
             availableEffortLevels={availableEffortLevels}
-            onEffortLevelChange={updateEffortLevel}
+            onEffortLevelChange={isRigReasoningSelectionEnabled(session.metadata) ? updateEffortLevel : undefined}
             metadata={session.metadata}
             connectionStatus={connectionStatus}
-            blockSend={false}
+            blockSend={isRig && session.thinking && session.metadata?.capabilities?.steering !== true}
             onSend={handleSend}
             onMicPress={(embedded || isDisconnected) ? undefined : micButtonState.onMicPress}
             isMicActive={(embedded || isDisconnected) ? false : micButtonState.isMicActive}
-            onAbort={isDisconnected ? undefined : handleAbort}
-            showAbortButton={Platform.OS === 'web'
+            onAbort={isDisconnected || !rigCanAbort(session.metadata) ? undefined : handleAbort}
+            showAbortButton={rigCanAbort(session.metadata) && (Platform.OS === 'web'
                 ? sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'
-                : sessionStatus.state === 'thinking'}
-            onFileViewerPress={experiments && !isTablet ? handleFileViewerPress : undefined}
-            selectedImages={expImageUpload ? selectedImages : undefined}
-            onPickImages={expImageUpload ? pickImages : undefined}
-            onRemoveImage={expImageUpload ? removeImage : undefined}
-            onAddImages={expImageUpload ? addImages : undefined}
+                : sessionStatus.state === 'thinking')}
+            onFileViewerPress={experiments && !isTablet && rigCanBrowseFiles(session.metadata) && rigCanReadFiles(session.metadata) ? handleFileViewerPress : undefined}
+            selectedImages={expImageUpload && canUseAttachments ? selectedImages : undefined}
+            onPickImages={expImageUpload && canUseAttachments ? pickImages : undefined}
+            onRemoveImage={expImageUpload && canUseAttachments ? removeImage : undefined}
+            onAddImages={expImageUpload && canUseAttachments ? addImages : undefined}
             autocompletePrefixes={AGENT_INPUT_AUTOCOMPLETE_PREFIXES}
             autocompleteSuggestions={handleAutocompleteSuggestions}
             usageData={usageData}
@@ -959,7 +1003,7 @@ export function SessionViewLoaded({
     // Resume button when canResume is true, falls back to the
     // copy-this-command hint when the experiments toggle is off or the
     // machine isn't reachable.
-    const inactiveHint = isDisconnected ? (
+    const inactiveHint = isDisconnected && !isRig ? (
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
             <InactiveArchivedHint
                 resumeCommandBlock={expResumeSession ? resumeCommandBlock : null}
@@ -983,13 +1027,14 @@ export function SessionViewLoaded({
                 modelLabel={statusBarModelLabel}
                 modelMode={modelMode}
                 availableModels={availableModels}
-                onModelModeChange={updateModelMode}
+                onModelModeChange={isRigModelSelectionEnabled(session.metadata) ? updateModelMode : undefined}
                 effortLabel={statusBarEffortLabel}
                 effortLevel={effortLevel}
                 availableEffortLevels={availableEffortLevels}
-                onEffortLevelChange={updateEffortLevel}
+                onEffortLevelChange={isRigReasoningSelectionEnabled(session.metadata) ? updateEffortLevel : undefined}
                 contextSize={usageData?.contextSize}
                 contextWindow={usageData?.contextWindow}
+                usageLimits={session.agentState?.usageLimits}
             />
         </CenteredInputWidth>
     ) : null;
@@ -1007,6 +1052,7 @@ export function SessionViewLoaded({
                 </CenteredInputWidth>
             )}
             {sessionStatusBarPosition === 'above' ? sessionStatusBar : null}
+            <RigActivityBar metadata={session.metadata} />
             {composer}
             {sessionStatusBarPosition === 'below' ? sessionStatusBar : null}
         </>

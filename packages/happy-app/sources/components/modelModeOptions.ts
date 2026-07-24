@@ -1,15 +1,34 @@
 import type { Metadata } from '@/sync/storageTypes';
 import { hackModes } from '@/sync/modeHacks';
 import { getCodeAgentDefaults } from '@/sync/agentDefaults';
+import {
+    getRigCurrentModel,
+    getRigModels,
+    getRigReasoningLevels,
+    getRigSelectedModelKey,
+    isRigMetadataV1,
+} from '@/sync/rig';
 
 export type ModeOption = {
     key: string;
     name: string;
     description?: string | null;
+    semanticKind?: string | null;
+    disabled?: boolean;
 };
 
 export type PermissionMode = ModeOption;
-export type ModelMode = ModeOption;
+export type ModelMode = ModeOption & {
+    modelId?: string;
+    providerId?: string;
+    providerName?: string;
+    providerKind?: string;
+    contextWindow?: number;
+    serviceTiers?: string[];
+    thinkingLevels?: string[];
+    defaultThinkingLevel?: string | null;
+    unavailable?: boolean;
+};
 
 export type EffortLevel = ModeOption;
 export type PermissionModeKey = string;
@@ -176,7 +195,57 @@ export function getAvailableModels(
     flavor: AgentFlavor,
     metadata: Metadata | null | undefined,
     translate: Translate,
+    selectedKey?: string | null,
 ): ModelMode[] {
+    if (isRigMetadataV1(metadata)) {
+        const models: ModelMode[] = getRigModels(metadata).map((model) => ({
+            key: model.key,
+            name: model.name,
+            description: model.providerName,
+            modelId: model.id,
+            providerId: model.providerId,
+            providerName: model.providerName,
+            providerKind: model.providerKind,
+            contextWindow: model.contextWindow,
+            serviceTiers: model.serviceTiers,
+            thinkingLevels: model.thinkingLevels,
+            defaultThinkingLevel: model.defaultThinkingLevel,
+        }));
+        const current = getRigCurrentModel(metadata);
+        if (current?.unavailable && !models.some((model) => model.key === current.key)) {
+            models.unshift({
+                key: current.key,
+                name: current.name,
+                description: `${current.providerName} · unavailable`,
+                modelId: current.id,
+                providerId: current.providerId,
+                providerName: current.providerName,
+                providerKind: current.providerKind,
+                thinkingLevels: [],
+                serviceTiers: [],
+                unavailable: true,
+                disabled: true,
+            });
+        }
+        const locallySelectedKey = selectedKey ?? metadata?.modelMode;
+        if (locallySelectedKey && locallySelectedKey.includes(':') && !models.some((model) => model.key === locallySelectedKey)) {
+            const separator = locallySelectedKey.indexOf(':');
+            const providerId = locallySelectedKey.slice(0, separator);
+            const modelId = locallySelectedKey.slice(separator + 1);
+            models.unshift({
+                key: locallySelectedKey,
+                name: modelId,
+                description: `${providerId} · unavailable`,
+                modelId,
+                providerId,
+                providerName: providerId,
+                providerKind: 'custom',
+                unavailable: true,
+                disabled: true,
+            });
+        }
+        return models;
+    }
     const metadataModels = mapMetadataOptions(metadata?.models);
     if (metadataModels.length > 0) {
         if (flavor === 'codex' && !metadataModels.some((model) => model.key === 'default')) {
@@ -191,7 +260,30 @@ export function getAvailablePermissionModes(
     flavor: AgentFlavor,
     metadata: Metadata | null | undefined,
     translate: Translate,
+    selectedKey?: string | null,
 ): PermissionMode[] {
+    if (isRigMetadataV1(metadata)) {
+        const modes: PermissionMode[] = (metadata?.operatingModes ?? []).map((mode) => ({
+            key: mode.code,
+            name: mode.value,
+            description: mode.description ?? null,
+            semanticKind: mode.kind ?? null,
+        }));
+        const current = selectedKey
+            ?? metadata?.currentOperatingModeCode
+            ?? metadata?.permissionMode
+            ?? metadata?.session?.permissionMode;
+        if (current && !modes.some((mode) => mode.key === current)) {
+            modes.unshift({
+                key: current,
+                name: current,
+                description: 'Unavailable in the current Rig mode catalog',
+                semanticKind: null,
+                disabled: true,
+            });
+        }
+        return modes;
+    }
     if (flavor === 'claude' || flavor === 'codex' || flavor === 'openclaw' || flavor === 'agy') {
         return hackModes(getHardcodedPermissionModes(flavor, translate));
     }
@@ -264,7 +356,17 @@ export function getDefaultEffortKey(flavor: AgentFlavor): string | null {
 }
 
 // Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
-export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string): EffortLevel[] {
+export function getEffortLevelsForModel(
+    flavor: AgentFlavor,
+    modelKey: string,
+    metadata?: Metadata | null,
+): EffortLevel[] {
+    if (isRigMetadataV1(metadata)) {
+        return getRigReasoningLevels(metadata, modelKey).map((level) => ({
+            key: level,
+            name: level,
+        }));
+    }
     // Claude and Codex expose effort/thought levels regardless of which
     // specific model is picked — the same low/medium/high/max scale applies
     // to the whole flavor (mirrors how Codex already worked, which the user
@@ -276,6 +378,10 @@ export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string):
         return getCodexEffortLevels();
     }
     return [];
+}
+
+export function getRigCurrentModelOptionKey(metadata: Metadata | null | undefined): string | null {
+    return getRigSelectedModelKey(metadata);
 }
 
 // Default effort for a model — highest the model allows

@@ -22,6 +22,7 @@ import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
 import { SessionShortcutHintBadge } from './ShortcutHints';
+import { ProviderIcon } from './ProviderIcon';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -488,7 +489,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             {...menuProps}
         >
             <View style={styles.avatarContainer}>
-                <Avatar id={session.avatarId} size={48} monochrome={!status.isConnected} flavor={session.flavor} />
+                <Avatar id={session.avatarId} size={48} monochrome={!status.isConnected} flavor={session.flavor} clientId={session.clientId} />
                 {session.hasDraft && (
                     <View style={styles.draftIconContainer}>
                         <Ionicons
@@ -513,7 +514,14 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     />
                 </View>
 
-                {session.path ? (
+                {session.identityLine ? (
+                    <View style={styles.sessionSubtitleRow}>
+                        <ProviderIcon kind={session.providerKind} size={13} />
+                        <Text style={styles.sessionSubtitle} numberOfLines={1}>
+                            {session.identityLine}
+                        </Text>
+                    </View>
+                ) : session.path ? (
                     <View style={styles.sessionSubtitleRow}>
                         <Text style={styles.sessionSubtitle} numberOfLines={1}>
                             {session.path.split(/[/\\]/).filter(Boolean).pop()}
@@ -533,7 +541,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                         styles.statusText,
                         { color: status.color }
                     ]}>
-                        {statusText}
+                        {session.modelName ? `${session.modelName} · ` : ''}{statusText}{session.activitySummary ? ` · ${session.activitySummary}` : ''}
                     </Text>
                 </View>
             </View>

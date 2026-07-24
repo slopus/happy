@@ -171,6 +171,8 @@ export const ca: TranslationStructure = {
             above: 'Sobre el compositor',
             below: 'Sota el compositor',
         },
+        usageLimitShowRemaining: 'Mostra la quota restant',
+        usageLimitShowRemainingDescription: 'Els indicadors de límit compten enrere en lloc d\'endavant',
         userMessageBubbleColor: 'Color dels teus missatges',
         userMessageBubbleColorDescription: 'Fes que els teus missatges siguin més fàcils de trobar en xats llargs',
         userMessageBubbleColorOptions: {
@@ -442,6 +444,11 @@ export const ca: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Context ${used} de ${total} tokens, ${percent}%`,
+            limitFiveHour: 'Límit de 5 hores',
+            limitSevenDay: 'Límit de 7 dies',
+            limitResets: ({ time }: { time: string }) => `es restableix ${time}`,
+            limitAsOf: ({ age }: { age: string }) => `fa ${age}`,
+            limitRemaining: ({ percent }: { percent: number }) => `${percent}% restant`,
         },
     },
 

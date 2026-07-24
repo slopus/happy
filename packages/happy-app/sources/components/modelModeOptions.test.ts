@@ -12,6 +12,7 @@ import {
     mapMetadataOptions,
     resolveCurrentOption,
 } from './modelModeOptions';
+import { rigMetadataFixture } from '@/sync/__testdata__/rigMetadata';
 
 const translate = (key: string) => `tr:${key}`;
 
@@ -147,5 +148,52 @@ describe('modelModeOptions', () => {
 
         expect(resolveCurrentOption(options, ['missing', 'b', 'a'])).toEqual({ key: 'b', name: 'B' });
         expect(resolveCurrentOption(options, ['missing'])).toBeNull();
+    });
+
+    it('builds the Rig catalog dynamically with provider-qualified keys', () => {
+        const models = getAvailableModels('codex', rigMetadataFixture, translate);
+        expect(models.map((model) => [model.key, model.name, model.providerName])).toEqual([
+            ['codex:shared-model', 'GPT Shared', 'OpenAI Codex'],
+            ['claude:shared-model', 'Claude Shared', 'Anthropic Claude'],
+        ]);
+        expect(models.some((model) => model.key === 'default')).toBe(false);
+    });
+
+    it('renders all native Rig permission codes and semantic kinds without flavor fallbacks', () => {
+        const modes = getAvailablePermissionModes('codex', rigMetadataFixture, translate);
+        expect(modes.map((mode) => [mode.key, mode.name, mode.semanticKind])).toEqual([
+            ['auto', 'Auto', 'safe-yolo'],
+            ['workspace_write', 'Workspace write', 'default'],
+            ['read_only', 'Read only', 'read-only'],
+            ['full_access', 'Full access', 'yolo'],
+        ]);
+    });
+
+    it('shows a missing current Rig model as unavailable instead of selecting another model', () => {
+        const metadata = {
+            ...rigMetadataFixture,
+            currentModelProviderId: 'custom-provider',
+            currentModelCode: 'temporarily-missing',
+        };
+        const models = getAvailableModels('codex', metadata, translate);
+        expect(models[0]).toMatchObject({
+            key: 'custom-provider:temporarily-missing',
+            unavailable: true,
+            disabled: true,
+        });
+    });
+
+    it('retains flavor-based catalogs before the Rig metadata extension', () => {
+        const metadata = {
+            path: '/tmp/rig',
+            host: 'host',
+            flavor: 'codex',
+            client: { id: 'rig', name: 'Rig', version: '0.9.0' },
+        } as any;
+
+        expect(getAvailableModels('codex', metadata, translate)).toEqual(getCodexModelModes());
+        expect(getAvailablePermissionModes('codex', metadata, translate).map((mode) => mode.key)).toEqual([
+            'default', 'read-only', 'safe-yolo', 'yolo',
+        ]);
     });
 });

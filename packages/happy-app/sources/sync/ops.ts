@@ -8,6 +8,15 @@ import { sync } from './sync';
 import { storage } from './storage';
 import type { MachineMetadata, SessionAgentModesPatch } from './storageTypes';
 import { markAgentModePushPending, clearAgentModePushPending, type AgentModeField } from './agentModesPending';
+import {
+    isRigMetadata,
+    rigCanAbort,
+    rigCanReadFiles,
+    rigCanSearchFiles,
+    rigCanUseShell,
+    rigCanWriteFiles,
+    rigHasRpcMethod,
+} from './rig';
 
 export type { SessionAgentModesPatch };
 
@@ -688,7 +697,11 @@ export function sessionSetAgentModes(sessionId: string, patch: SessionAgentModes
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {
-    await apiSocket.sessionRPC(sessionId, 'abort', {
+    const metadata = storage.getState().sessions[sessionId]?.metadata;
+    if (!rigCanAbort(metadata)) {
+        throw new Error('Abort is not available for this session');
+    }
+    await apiSocket.sessionRPC(sessionId, 'abort', isRigMetadata(metadata) ? {} : {
         reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`
     });
 }
@@ -741,6 +754,10 @@ export async function sessionGoalAction(
  */
 export async function sessionBash(sessionId: string, request: SessionBashRequest): Promise<SessionBashResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (!rigCanUseShell(metadata)) {
+            throw new Error('Shell access is not available for this session');
+        }
         const response = await apiSocket.sessionRPC<SessionBashResponse, SessionBashRequest>(
             sessionId,
             'bash',
@@ -763,6 +780,10 @@ export async function sessionBash(sessionId: string, request: SessionBashRequest
  */
 export async function sessionReadFile(sessionId: string, path: string): Promise<SessionReadFileResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (!rigCanReadFiles(metadata)) {
+            throw new Error('File reading is not available for this session');
+        }
         const request: SessionReadFileRequest = { path };
         const response = await apiSocket.sessionRPC<SessionReadFileResponse, SessionReadFileRequest>(
             sessionId,
@@ -788,6 +809,10 @@ export async function sessionWriteFile(
     expectedHash?: string | null
 ): Promise<SessionWriteFileResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (!rigCanWriteFiles(metadata)) {
+            throw new Error('File writing is not available for this session');
+        }
         const request: SessionWriteFileRequest = { path, content, expectedHash };
         const response = await apiSocket.sessionRPC<SessionWriteFileResponse, SessionWriteFileRequest>(
             sessionId,
@@ -808,6 +833,10 @@ export async function sessionWriteFile(
  */
 export async function sessionListDirectory(sessionId: string, path: string): Promise<SessionListDirectoryResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (isRigMetadata(metadata) && !rigHasRpcMethod(metadata, 'listDirectory')) {
+            throw new Error('Directory listing is not advertised by this Rig session');
+        }
         const request: SessionListDirectoryRequest = { path };
         const response = await apiSocket.sessionRPC<SessionListDirectoryResponse, SessionListDirectoryRequest>(
             sessionId,
@@ -832,6 +861,10 @@ export async function sessionGetDirectoryTree(
     maxDepth: number
 ): Promise<SessionGetDirectoryTreeResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (isRigMetadata(metadata) && !rigHasRpcMethod(metadata, 'getDirectoryTree')) {
+            throw new Error('Directory tree is not advertised by this Rig session');
+        }
         const request: SessionGetDirectoryTreeRequest = { path, maxDepth };
         const response = await apiSocket.sessionRPC<SessionGetDirectoryTreeResponse, SessionGetDirectoryTreeRequest>(
             sessionId,
@@ -856,6 +889,10 @@ export async function sessionRipgrep(
     cwd?: string
 ): Promise<SessionRipgrepResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (!rigCanSearchFiles(metadata)) {
+            throw new Error('File search is not available for this session');
+        }
         const request: SessionRipgrepRequest = { args, cwd };
         const response = await apiSocket.sessionRPC<SessionRipgrepResponse, SessionRipgrepRequest>(
             sessionId,
