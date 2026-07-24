@@ -101,8 +101,6 @@ interface AgentInputProps {
     onAddImages?: (images: AttachmentPreview[]) => void;
 }
 
-const MAX_CONTEXT_SIZE = 190000;
-
 function permissionKindIcon(kind: string | null | undefined): React.ComponentProps<typeof Ionicons>['name'] {
     if (kind === 'read-only') return 'lock-closed-outline';
     if (kind === 'safe-yolo') return 'shield-checkmark-outline';
@@ -320,8 +318,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
 }));
 
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme, contextWindow: number = MAX_CONTEXT_SIZE) => {
-    const maxContextSize = Number.isFinite(contextWindow) && contextWindow > 0 ? contextWindow : MAX_CONTEXT_SIZE;
+const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme, contextWindow?: number) => {
+    // Until the session reports its window there is no honest denominator, so
+    // nothing is shown rather than dividing by a guess — a percentage that
+    // later corrects itself upward reads as the context refilling.
+    if (typeof contextWindow !== 'number' || !Number.isFinite(contextWindow) || contextWindow <= 0) {
+        return null;
+    }
+    const maxContextSize = contextWindow;
     const percentageUsed = (contextSize / maxContextSize) * 100;
     const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
 

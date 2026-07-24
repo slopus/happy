@@ -1,5 +1,3 @@
-export const SESSION_STATUS_CONTEXT_MAX = 190000;
-
 export type ContextUsageLevel = 'normal' | 'warning' | 'critical';
 
 export function resolveStatusBarGitBranch(
@@ -15,7 +13,7 @@ export function resolveStatusBarGitBranch(
     return metadataBranch || null;
 }
 
-export function clampContextSize(value: number | null | undefined, maxValue = SESSION_STATUS_CONTEXT_MAX): number {
+export function clampContextSize(value: number | null | undefined, maxValue: number): number {
     if (!Number.isFinite(value) || !Number.isFinite(maxValue) || maxValue <= 0) {
         return 0;
     }
@@ -23,7 +21,7 @@ export function clampContextSize(value: number | null | undefined, maxValue = SE
     return Math.min(Math.max(0, value ?? 0), maxValue);
 }
 
-export function getContextUsagePercentage(value: number | null | undefined, maxValue = SESSION_STATUS_CONTEXT_MAX): number {
+export function getContextUsagePercentage(value: number | null | undefined, maxValue: number): number {
     if (!Number.isFinite(maxValue) || maxValue <= 0) {
         return 0;
     }
@@ -31,7 +29,7 @@ export function getContextUsagePercentage(value: number | null | undefined, maxV
     return (clampContextSize(value, maxValue) / maxValue) * 100;
 }
 
-export function getContextUsageLevel(value: number | null | undefined, maxValue = SESSION_STATUS_CONTEXT_MAX): ContextUsageLevel {
+export function getContextUsageLevel(value: number | null | undefined, maxValue: number): ContextUsageLevel {
     const percentage = getContextUsagePercentage(value, maxValue);
     if (percentage >= 95) {
         return 'critical';
