@@ -56,7 +56,7 @@ describe('modelModeOptions', () => {
         const models = getClaudeModelModes();
         expect(models.map((model) => model.key)).toEqual([
             'default',
-            'opus-5',
+            'claude-opus-5',
             'opus',
             'fable',
             'sonnet',
