@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import * as Localization from 'expo-localization';
 import { StyleSheet, useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
-import { Appearance, Pressable, Text, View } from 'react-native';
+import { Appearance, Platform, Pressable, Text, View } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { darkTheme, lightTheme } from '@/theme';
 import { SESSION_STATUS_BAR_DISPLAY_MODES, type SessionStatusBarDisplay } from '@/sync/settings';
@@ -15,10 +15,13 @@ import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
 import {
     normalizeUserMessageBubbleColor,
     resolveUserMessageBubbleColor,
+    resolveUserMessageBubbleGlassColor,
     USER_MESSAGE_BUBBLE_COLORS,
     type UserMessageBubbleColor,
 } from '@/utils/userMessageBubbleColor';
 import * as React from 'react';
+import { MobileGlassSurface } from '@/components/MobileGlass';
+import { AnimatedCollapsible } from '@/components/AnimatedOverlay';
 
 // Define known avatar styles for this version of the app
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
@@ -74,12 +77,24 @@ function BubbleColorPreview({ color }: { color: UserMessageBubbleColor }) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const palette = resolveUserMessageBubbleColor(color, theme.dark);
+    const glassPalette = resolveUserMessageBubbleGlassColor(color, theme.dark);
+    const glassEnabled = Platform.OS !== 'web';
 
     return (
-        <View style={[styles.bubblePreview, { backgroundColor: palette.background, borderColor: palette.border }]}>
+        <MobileGlassSurface
+            enabled={glassEnabled}
+            tintColor={glassEnabled ? glassPalette.tint : undefined}
+            style={[
+                styles.bubblePreview,
+                {
+                    backgroundColor: glassEnabled ? glassPalette.background : palette.background,
+                    borderColor: glassEnabled ? glassPalette.border : palette.border,
+                },
+            ]}
+        >
             <View style={[styles.bubblePreviewLine, { backgroundColor: palette.indicator, width: 18 }]} />
             <View style={[styles.bubblePreviewLine, { backgroundColor: palette.indicator, width: 26 }]} />
-        </View>
+        </MobileGlassSurface>
     );
 }
 
@@ -300,7 +315,7 @@ export default function AppearanceSettingsScreen() {
                     showDivider={statusPlacementDropdownOpen}
                 />
                 {statusPlacementDropdownOpen && (
-                    <View style={stylesheet.statusPlacementDropdown}>
+                    <AnimatedCollapsible style={stylesheet.statusPlacementDropdown}>
                         {SESSION_STATUS_BAR_DISPLAY_MODES.map((mode) => (
                             <StatusDisplayOption
                                 key={mode}
@@ -309,7 +324,7 @@ export default function AppearanceSettingsScreen() {
                                 onPress={() => applySessionStatusDisplay(mode)}
                             />
                         ))}
-                    </View>
+                    </AnimatedCollapsible>
                 )}
                 <Item
                     title={t('settingsAppearance.userMessageBubbleColor')}
@@ -329,21 +344,19 @@ export default function AppearanceSettingsScreen() {
                     showDivider={bubbleColorDropdownOpen}
                 />
                 {bubbleColorDropdownOpen && (
-                    <React.Fragment>
-                        <View style={stylesheet.bubbleColorDropdown}>
-                            {USER_MESSAGE_BUBBLE_COLORS.map((color) => (
-                                <BubbleColorOption
-                                    key={color}
-                                    color={color}
-                                    selected={color === displayBubbleColor}
-                                    onPress={() => {
-                                        setUserMessageBubbleColor(color);
-                                        setBubbleColorDropdownOpen(false);
-                                    }}
-                                />
-                            ))}
-                        </View>
-                    </React.Fragment>
+                    <AnimatedCollapsible style={stylesheet.bubbleColorDropdown}>
+                        {USER_MESSAGE_BUBBLE_COLORS.map((color) => (
+                            <BubbleColorOption
+                                key={color}
+                                color={color}
+                                selected={color === displayBubbleColor}
+                                onPress={() => {
+                                    setUserMessageBubbleColor(color);
+                                    setBubbleColorDropdownOpen(false);
+                                }}
+                            />
+                        ))}
+                    </AnimatedCollapsible>
                 )}
             </ItemGroup>
 
@@ -532,10 +545,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 16,
     },
     statusPlacementOptionSelected: {
-        backgroundColor: theme.colors.surfaceSelected,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceSelected, default: theme.colors.glass.backgroundSubtle }),
     },
     statusPlacementOptionPressed: {
-        backgroundColor: theme.colors.surfacePressedOverlay,
+        backgroundColor: Platform.select({ web: theme.colors.surfacePressedOverlay, default: theme.colors.glass.backgroundStrong }),
     },
     statusPlacementOptionText: {
         color: theme.colors.text,
@@ -550,10 +563,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 16,
     },
     bubbleColorOptionSelected: {
-        backgroundColor: theme.colors.surfaceSelected,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceSelected, default: theme.colors.glass.backgroundSubtle }),
     },
     bubbleColorOptionPressed: {
-        backgroundColor: theme.colors.surfacePressedOverlay,
+        backgroundColor: Platform.select({ web: theme.colors.surfacePressedOverlay, default: theme.colors.glass.backgroundStrong }),
     },
     bubbleColorOptionText: {
         color: theme.colors.text,
@@ -573,6 +586,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         gap: 4,
         paddingHorizontal: 9,
+        overflow: 'hidden',
     },
     bubblePreviewLine: {
         height: 3,

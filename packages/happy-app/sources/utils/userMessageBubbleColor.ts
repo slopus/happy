@@ -8,6 +8,12 @@ export type UserMessageBubblePalette = {
     indicator: string;
 };
 
+export type UserMessageBubbleGlassPalette = {
+    background: string;
+    border: string;
+    tint: string;
+};
+
 // gray matches the pre-picker bubble (theme userMessageBackground #2C2C2E dark)
 export const DEFAULT_USER_MESSAGE_BUBBLE_COLOR: UserMessageBubbleColor = 'gray';
 
@@ -96,4 +102,39 @@ export function getNextUserMessageBubbleColor(value: unknown): UserMessageBubble
 export function resolveUserMessageBubbleColor(value: unknown, isDark: boolean): UserMessageBubblePalette {
     const color = normalizeUserMessageBubbleColor(value);
     return (isDark ? darkPalettes : lightPalettes)[color];
+}
+
+function withAlpha(hex: string, alpha: number): string {
+    const normalized = hex.replace('#', '');
+    if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+        return hex;
+    }
+
+    const red = Number.parseInt(normalized.slice(0, 2), 16);
+    const green = Number.parseInt(normalized.slice(2, 4), 16);
+    const blue = Number.parseInt(normalized.slice(4, 6), 16);
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+/**
+ * Keeps the selected preset recognizable while turning it into a tint for a
+ * translucent native glass surface instead of an opaque replacement fill.
+ */
+export function resolveUserMessageBubbleGlassColor(value: unknown, isDark: boolean): UserMessageBubbleGlassPalette {
+    const color = normalizeUserMessageBubbleColor(value);
+    const palette = resolveUserMessageBubbleColor(color, isDark);
+
+    if (color === 'gray') {
+        return {
+            background: withAlpha(palette.background, isDark ? 0.34 : 0.48),
+            border: isDark ? 'rgba(255, 255, 255, 0.18)' : 'rgba(255, 255, 255, 0.76)',
+            tint: withAlpha(palette.indicator, isDark ? 0.08 : 0.10),
+        };
+    }
+
+    return {
+        background: withAlpha(palette.background, isDark ? 0.46 : 0.54),
+        border: withAlpha(palette.border, isDark ? 0.56 : 0.70),
+        tint: withAlpha(palette.indicator, isDark ? 0.18 : 0.14),
+    };
 }

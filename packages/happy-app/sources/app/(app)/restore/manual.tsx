@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { Platform, View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
@@ -14,11 +14,12 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { QRCode } from '@/components/qr/QRCode';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 
 const stylesheet = StyleSheet.create((theme) => ({
     scrollView: {
         flex: 1,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
     },
     container: {
         flex: 1,
@@ -52,15 +53,22 @@ const stylesheet = StyleSheet.create((theme) => ({
         ...Typography.default(),
     },
     textInput: {
-        backgroundColor: theme.colors.input.background,
+        backgroundColor: Platform.select({ web: theme.colors.input.background, default: 'transparent' }),
         padding: 16,
         borderRadius: 8,
-        marginBottom: 24,
         fontFamily: 'IBMPlexMono-Regular',
         fontSize: 14,
         minHeight: 120,
         textAlignVertical: 'top',
         color: theme.colors.input.text,
+    },
+    inputGlass: {
+        borderRadius: 16,
+        overflow: 'hidden',
+        backgroundColor: Platform.select({ web: 'transparent', android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.glass.border,
+        marginBottom: 24,
     },
 }));
 
@@ -115,6 +123,7 @@ export default function Restore() {
                         Enter your secret key to restore access to your account.
                     </Text>
 
+                    <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={68} style={styles.inputGlass}>
                     <TextInput
                         style={styles.textInput}
                         placeholder="XXXXX-XXXXX-XXXXX..."
@@ -126,6 +135,7 @@ export default function Restore() {
                         multiline={true}
                         numberOfLines={4}
                     />
+                    </MobileGlassSurface>
 
                     <RoundButton
                         title={t('connect.restoreAccount')}

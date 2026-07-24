@@ -389,7 +389,11 @@ export default function RootLayout() {
     let providers = (
         <SafeAreaProvider initialMetrics={initialWindowMetrics}>
             <KeyboardProvider preload={false}>
-                <GestureHandlerRootView style={{ flex: 1 }}>
+                <GestureHandlerRootView
+                    style={Platform.OS === 'web'
+                        ? { flex: 1 }
+                        : { flex: 1, backgroundColor: theme.colors.groupped.background }}
+                >
                     <AuthProvider initialCredentials={initState.credentials}>
                         <ThemeProvider value={navigationTheme}>
                             <StatusBarProvider />

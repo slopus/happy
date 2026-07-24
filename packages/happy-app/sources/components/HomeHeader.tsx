@@ -95,18 +95,20 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 
 export const HomeHeader = React.memo(() => {
     const { theme } = useUnistyles();
+    const header = (
+        <Header
+            title={<HeaderTitleWithSubtitle />}
+            headerRight={() => <HeaderRight />}
+            headerLeft={() => <HeaderLeft />}
+            headerLeftGlass={Platform.OS !== 'web'}
+            headerShadowVisible={false}
+            headerTransparent={true}
+        />
+    );
 
-    return (
-        <View style={{ backgroundColor: theme.colors.groupped.background }}>
-            <Header
-                title={<HeaderTitleWithSubtitle />}
-                headerRight={() => <HeaderRight />}
-                headerLeft={() => <HeaderLeft />}
-                headerShadowVisible={false}
-                headerTransparent={true}
-            />
-        </View>
-    )
+    return Platform.OS === 'web'
+        ? <View style={{ backgroundColor: theme.colors.groupped.background }}>{header}</View>
+        : header;
 })
 
 export const HomeHeaderNotAuth = React.memo(() => {
@@ -118,6 +120,7 @@ export const HomeHeaderNotAuth = React.memo(() => {
             title={<HeaderTitleWithSubtitle subtitle={serverInfo.isCustom ? serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '') : undefined} />}
             headerRight={() => <HeaderRightNotAuth />}
             headerLeft={() => <HeaderLeft />}
+            headerLeftGlass={Platform.OS !== 'web'}
             headerShadowVisible={false}
             headerBackgroundColor={theme.colors.groupped.background}
         />

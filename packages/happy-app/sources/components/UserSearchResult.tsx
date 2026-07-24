@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, Pressable } from 'react-native';
+import { Platform, View, Text, TouchableOpacity, ActivityIndicator, Pressable } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { UserProfile, getDisplayName } from '@/sync/friendTypes';
 import { Avatar } from '@/components/Avatar';
 import { t } from '@/text';
 import { useRouter } from 'expo-router';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 
 interface UserSearchResultProps {
     user: UserProfile;
@@ -42,10 +43,11 @@ export function UserSearchResult({
     const isDisabled = isProcessing || user.status === 'friend' || user.status === 'pending' || user.status === 'requested';
 
     return (
-        <Pressable 
+        <Pressable
             style={styles.container}
             onPress={() => router.push(`/user/${user.id}`)}
         >
+            <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={64} style={styles.glassCard}>
             <View style={styles.content}>
                 <Avatar
                     id={user.id}
@@ -70,21 +72,30 @@ export function UserSearchResult({
                     {getButtonContent()}
                 </TouchableOpacity>
             </View>
+            </MobileGlassSurface>
         </Pressable>
     );
 }
 
 const styles = StyleSheet.create((theme) => ({
     container: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 12,
         marginHorizontal: 16,
         marginVertical: 4,
-        shadowColor: '#000',
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
+        borderRadius: Platform.select({ web: 12, default: 18 }),
+        overflow: Platform.select({ web: 'visible', default: 'hidden' }),
+        shadowColor: Platform.select({ web: '#000', default: 'transparent' }),
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
+        shadowOpacity: Platform.select({ web: 0.05, default: 0 }),
+        shadowRadius: Platform.select({ web: 2, default: 0 }),
+        elevation: Platform.select({ web: 2, default: 0 }),
+    },
+    glassCard: {
+        borderRadius: Platform.select({ web: 0, default: 18 }),
+        overflow: Platform.select({ web: 'visible', default: 'hidden' }),
+        backgroundColor: Platform.select({ web: 'transparent', android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.glass.border,
     },
     content: {
         flexDirection: 'row',
@@ -106,18 +117,20 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
     },
     button: {
-        backgroundColor: theme.colors.button.primary.background,
+        backgroundColor: Platform.select({ web: theme.colors.button.primary.background, default: theme.colors.glass.backgroundSubtle }),
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderRadius: 8,
         minWidth: 100,
         alignItems: 'center',
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: Platform.select({ web: 'transparent', default: theme.colors.glass.border }),
     },
     buttonDisabled: {
         backgroundColor: theme.colors.divider,
     },
     buttonText: {
-        color: theme.colors.button.primary.tint,
+        color: Platform.select({ web: theme.colors.button.primary.tint, default: theme.colors.textLink }),
         fontSize: 14,
         fontWeight: '600',
     },

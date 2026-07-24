@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, Switch, Dimensions } from 'react-native';
+import { Platform, View, Text, ScrollView, Pressable, Switch, Dimensions } from 'react-native';
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -8,7 +8,7 @@ const { width: screenWidth } = Dimensions.get('window');
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.groupped.background }),
     },
     scrollContent: {
         padding: 16,

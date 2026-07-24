@@ -90,9 +90,9 @@ function UserTextBlock(props: {
   const userMessageBubbleColor = useSetting('userMessageBubbleColor');
   const { theme } = useUnistyles();
   const bubblePalette = resolveUserMessageBubbleColor(userMessageBubbleColor, theme.dark);
-  // No border — matches the pre-picker bubble; color presets only tint the background
   const bubbleStyle = {
     backgroundColor: bubblePalette.background,
+    borderColor: bubblePalette.border,
   };
   // Claude Agent SDK emits synthetic user messages wrapped in tags like
   // <local-command-caveat>…</local-command-caveat> and
@@ -121,7 +121,7 @@ function UserTextBlock(props: {
   if (parsed.kind === 'goal-run') {
     return (
       <View style={styles.userMessageContainer}>
-        <View style={[styles.userMessageBubble, bubbleStyle, styles.goalMessageBubble]}>
+        <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.goalMessageBubble]}>
           <MarkdownView markdown={parsed.goal} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
         </View>
         <View style={styles.goalSentRow}>
@@ -135,11 +135,11 @@ function UserTextBlock(props: {
     return (
       <View style={styles.userMessageContainer}>
         {parsed.args ? (
-          <View style={[styles.userMessageBubble, bubbleStyle, styles.commandMessageBubble]}>
+          <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.commandMessageBubble]}>
             <MarkdownView markdown={parsed.args} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
           </View>
         ) : null}
-        <View style={[styles.commandChip, bubbleStyle]}>
+        <View style={[styles.commandChip, styles.userMessageBubbleSolid, bubbleStyle]}>
           <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
         </View>
       </View>
@@ -150,7 +150,7 @@ function UserTextBlock(props: {
     <View style={styles.userMessageContainer}>
       {/* Text owns long-press so native selection / Markdown Copy v2 can work
           without also opening the rewind picker. Rewind remains in session actions. */}
-      <View style={[styles.userMessageBubble, bubbleStyle]}>
+      <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle]}>
         <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
       </View>
     </View>
@@ -269,6 +269,10 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 12,
     marginBottom: 12,
     maxWidth: '100%',
+  },
+  userMessageBubbleSolid: {
+    borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+    overflow: 'hidden',
   },
   goalMessageBubble: {
     marginBottom: 6,

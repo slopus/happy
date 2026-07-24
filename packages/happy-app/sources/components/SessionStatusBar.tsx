@@ -6,6 +6,8 @@ import Svg, { Circle } from 'react-native-svg';
 import { hapticsLight } from './haptics';
 import { t } from '@/text';
 import type { EffortLevel, ModelMode, ModeOption } from './modelModeOptions';
+import { AnimatedPopup, LocalBlurHalo } from './AnimatedOverlay';
+import { MobileGlassSurface } from './MobileGlass';
 import {
     clampContextSize,
     getContextUsageLevel,
@@ -118,9 +120,8 @@ function StatusOptionMenu<TOption extends ModeOption>(props: {
     const styles = stylesheet;
     const { theme } = useUnistyles();
 
-    return (
-        <View style={styles.menu}>
-            <ScrollView style={styles.menuScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    const options = (
+        <ScrollView style={styles.menuScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                 {props.options.map((option) => {
                     const isSelected = option.key === props.selectedKey;
 
@@ -161,8 +162,20 @@ function StatusOptionMenu<TOption extends ModeOption>(props: {
                         </Pressable>
                     );
                 })}
-            </ScrollView>
-        </View>
+        </ScrollView>
+    );
+
+    if (Platform.OS === 'web') {
+        return <View style={styles.webMenu}>{options}</View>;
+    }
+
+    return (
+        <AnimatedPopup style={styles.menu}>
+            <LocalBlurHalo borderRadius={18} expansion={12} />
+            <MobileGlassSurface enabled nativeEffect intensity={84} glassEffectStyle="regular" style={styles.menuGlass}>
+                {options}
+            </MobileGlassSurface>
+        </AnimatedPopup>
     );
 }
 
@@ -329,11 +342,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         maxWidth: '72%',
         maxHeight: 280,
         zIndex: 30,
-        overflow: 'hidden',
+        overflow: 'visible',
         borderRadius: 12,
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: 'transparent',
         ...Platform.select({
             web: {
                 boxShadow: '0 4px 20px rgba(0, 0, 0, 0.18)',
@@ -347,6 +358,29 @@ const stylesheet = StyleSheet.create((theme) => ({
             },
         }),
     },
+    webMenu: {
+        position: 'absolute',
+        right: 8,
+        bottom: 36,
+        width: 236,
+        maxWidth: '72%',
+        maxHeight: 280,
+        zIndex: 30,
+        overflow: 'hidden',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surface,
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.18)',
+    },
+    menuGlass: {
+        maxHeight: 280,
+        overflow: 'hidden',
+        borderRadius: 18,
+        borderWidth: Platform.select({ web: 1, default: StyleSheet.hairlineWidth }),
+        borderColor: Platform.select({ web: theme.colors.divider, default: theme.colors.glass.border }),
+        backgroundColor: Platform.select({ web: theme.colors.surface, android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
+    },
     menuScroll: {
         maxHeight: 280,
     },
@@ -359,7 +393,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingVertical: 9,
     },
     menuItemPressed: {
-        backgroundColor: theme.colors.surfacePressed,
+        backgroundColor: Platform.select({ web: theme.colors.surfacePressed, default: theme.colors.glass.backgroundSubtle }),
     },
     menuRadio: {
         width: 14,

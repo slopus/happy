@@ -1,4 +1,5 @@
 import { AgentContentView } from '@/components/AgentContentView';
+import { MobileGlassBackdrop } from '@/components/MobileGlass';
 import { AgentGoalBar, type AgentGoalAction } from '@/components/AgentGoalBar';
 import { AgentInput } from '@/components/AgentInput';
 import { resolveVisibleAgentGoalStatus } from '@/components/agentGoalStatus';
@@ -56,10 +57,11 @@ import { useMemo } from 'react';
 import { ActivityIndicator, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
 import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { performAgentGoalAction } from './agentGoalActionHandler';
+import { MOBILE_GLASS_HEADER_HEIGHT } from '@/components/navigation/headerMetrics';
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -71,11 +73,22 @@ export const SessionView = React.memo((props: { id: string }) => {
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const headerHeight = useHeaderHeight();
+    const mobileHeaderHeight = deviceType === 'phone' && Platform.OS !== 'web'
+        ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT)
+        : headerHeight;
+    const contentRunsUnderHeader = deviceType === 'phone'
+        && Platform.OS !== 'web'
+        && !isLandscape;
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
     const { width: windowWidth } = useWindowDimensions();
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
+    const [headerBackdropVisible, setHeaderBackdropVisible] = React.useState(false);
+
+    React.useEffect(() => {
+        setHeaderBackdropVisible(false);
+    }, [sessionId]);
 
     // Base condition: can we show the diff sidebar at all?
     const canShowSidebar = fileDiffsSidebarEnabled
@@ -344,6 +357,7 @@ export const SessionView = React.memo((props: { id: string }) => {
 
     const mainContent = (
         <>
+            <MobileGlassBackdrop enabled={deviceType === 'phone' && Platform.OS !== 'web'} />
             {/* Status bar shadow for landscape mode */}
             {isLandscape && deviceType === 'phone' && (
                 <View style={{
@@ -365,7 +379,40 @@ export const SessionView = React.memo((props: { id: string }) => {
                 }} />
             )}
 
-            {/* Header - always shown on desktop/Mac, hidden in landscape mode only on actual phones */}
+            {/* Content based on state */}
+            <View
+                style={{
+                    flex: 1,
+                    paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web')
+                        ? contentRunsUnderHeader
+                            ? 0
+                            : safeArea.top + mobileHeaderHeight + (!isTablet && realtimeStatus !== 'disconnected' ? 32 : 0)
+                        : 0,
+                }}
+            >
+                {!isDataReady ? (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    </View>
+                ) : !session ? (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        <Ionicons name="trash-outline" size={48} color={theme.colors.textSecondary} />
+                        <Text style={{ color: theme.colors.text, fontSize: 20, marginTop: 16, fontWeight: '600' }}>{t('errors.sessionDeleted')}</Text>
+                        <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
+                    </View>
+                ) : (
+                    <SessionViewLoaded
+                        key={sessionId}
+                        sessionId={sessionId}
+                        session={session}
+                        onHeaderBackdropVisibilityChange={contentRunsUnderHeader
+                            ? setHeaderBackdropVisible
+                            : undefined}
+                    />
+                )}
+            </View>
+
+            {/* Render the overlay header after the dynamic list so native blur samples its content. */}
             {!(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') && (
                 <View style={{
                     position: 'absolute',
@@ -378,6 +425,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         title={headerProps.title}
                         folderName={headerProps.folderName}
                         isConnected={headerProps.isConnected}
+                        backdropVisible={headerBackdropVisible}
                         extraPathSegment={fileViewPath ?? undefined}
                         rightSlot={(diffViewOpen || !!fileViewPath) ? headerRightSlot : headerRight}
                         onTitlePress={session ? () => router.push(`/session/${sessionId}/info`) : undefined}
@@ -389,23 +437,6 @@ export const SessionView = React.memo((props: { id: string }) => {
                     )}
                 </View>
             )}
-
-            {/* Content based on state */}
-            <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') ? safeArea.top + headerHeight + (!isTablet && realtimeStatus !== 'disconnected' ? 32 : 0) : 0 }}>
-                {!isDataReady ? (
-                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                    </View>
-                ) : !session ? (
-                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                        <Ionicons name="trash-outline" size={48} color={theme.colors.textSecondary} />
-                        <Text style={{ color: theme.colors.text, fontSize: 20, marginTop: 16, fontWeight: '600' }}>{t('errors.sessionDeleted')}</Text>
-                        <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
-                    </View>
-                ) : (
-                    <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
-                )}
-            </View>
         </>
     );
 
@@ -435,7 +466,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         pointerEvents="box-none"
                         style={{
                             position: 'absolute',
-                            top: safeArea.top + headerHeight,
+                            top: safeArea.top + mobileHeaderHeight,
                             left: 0,
                             right: 0,
                             bottom: 0,
@@ -454,7 +485,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         pointerEvents="box-none"
                         style={{
                             position: 'absolute',
-                            top: safeArea.top + headerHeight,
+                            top: safeArea.top + mobileHeaderHeight,
                             left: 0,
                             right: 0,
                             bottom: 0,
@@ -565,7 +596,17 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
     );
 });
 
-export function SessionViewLoaded({ sessionId, session, embedded = false }: { sessionId: string, session: Session, embedded?: boolean }) {
+export function SessionViewLoaded({
+    sessionId,
+    session,
+    embedded = false,
+    onHeaderBackdropVisibilityChange,
+}: {
+    sessionId: string;
+    session: Session;
+    embedded?: boolean;
+    onHeaderBackdropVisibilityChange?: (visible: boolean) => void;
+}) {
     const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
@@ -577,6 +618,14 @@ export function SessionViewLoaded({ sessionId, session, embedded = false }: { se
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
     const zenMode = useLocalSetting('zenMode');
     const sessionInputHorizontalPadding = Platform.OS === 'web' || isRunningOnMac() || isTablet ? 12 : 8;
+    const chatListTopContentInset = embedded || (isLandscape && deviceType === 'phone')
+        ? 12
+        : deviceType === 'phone' && Platform.OS !== 'web'
+            ? safeArea.top
+                + MOBILE_GLASS_HEADER_HEIGHT
+                + (realtimeStatus !== 'disconnected' ? 32 : 0)
+                + 12
+            : undefined;
 
     // Check if CLI version is outdated and not already acknowledged
     const cliVersion = session.metadata?.version;
@@ -842,7 +891,12 @@ export function SessionViewLoaded({ sessionId, session, embedded = false }: { se
         <>
             <Deferred>
                 {messages.length > 0 && (
-                    <ChatList session={session} />
+                    <ChatList
+                        session={session}
+                        topContentInset={chatListTopContentInset}
+                        headerOverlayHeight={safeArea.top + MOBILE_GLASS_HEADER_HEIGHT}
+                        onHeaderBackdropVisibilityChange={onHeaderBackdropVisibilityChange}
+                    />
                 )}
             </Deferred>
         </>
@@ -878,7 +932,9 @@ export function SessionViewLoaded({ sessionId, session, embedded = false }: { se
             onMicPress={(embedded || isDisconnected) ? undefined : micButtonState.onMicPress}
             isMicActive={(embedded || isDisconnected) ? false : micButtonState.isMicActive}
             onAbort={isDisconnected ? undefined : handleAbort}
-            showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
+            showAbortButton={Platform.OS === 'web'
+                ? sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'
+                : sessionStatus.state === 'thinking'}
             onFileViewerPress={experiments && !isTablet ? handleFileViewerPress : undefined}
             selectedImages={expImageUpload ? selectedImages : undefined}
             onPickImages={expImageUpload ? pickImages : undefined}
@@ -1079,19 +1135,24 @@ function InactiveArchivedHint(props: {
                     onPress={props.onResume}
                     disabled={props.resuming}
                     style={({ pressed }) => ({
-                        height: 40,
-                        borderRadius: 10,
-                        backgroundColor: theme.colors.button.primary.background,
-                        opacity: props.resuming ? 0.6 : pressed ? 0.8 : 1,
+                        height: Platform.select({ web: 40, default: 44 }),
+                        borderRadius: Platform.select({ web: 10, default: 18 }),
+                        backgroundColor: Platform.select({
+                            web: theme.colors.button.primary.background,
+                            default: pressed ? theme.colors.surfacePressed : theme.colors.surfaceHigh,
+                        }),
+                        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+                        borderColor: theme.colors.divider,
                         alignItems: 'center',
                         justifyContent: 'center',
+                        opacity: props.resuming ? 0.6 : Platform.OS === 'web' && pressed ? 0.8 : 1,
                         marginHorizontal: 8,
                     })}
                 >
                     {props.resuming ? (
-                        <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
+                        <ActivityIndicator size="small" color={Platform.select({ web: theme.colors.button.primary.tint, default: theme.colors.text })} />
                     ) : (
-                        <Text style={{ color: theme.colors.button.primary.tint, fontSize: 15, fontWeight: '600' }}>
+                        <Text style={{ color: Platform.select({ web: theme.colors.button.primary.tint, default: theme.colors.text }), fontSize: 15, fontWeight: '600' }}>
                             {t('sessionInfo.resumeSession')}
                         </Text>
                     )}
@@ -1116,16 +1177,21 @@ function ResumeCommandCopyBlock({ resumeCommandBlock }: {
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
             }}
-            style={{
+            style={({ pressed }) => ({
                 minHeight: 48,
-                borderRadius: 14,
-                backgroundColor: theme.colors.surfaceHigh,
+                borderRadius: Platform.select({ web: 14, default: 18 }),
+                backgroundColor: Platform.select({
+                    web: theme.colors.surfaceHigh,
+                    default: pressed ? theme.colors.surfacePressed : theme.colors.surface,
+                }),
+                borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+                borderColor: theme.colors.divider,
                 flexDirection: 'row',
                 gap: 8,
                 paddingHorizontal: 16,
                 paddingVertical: 12,
                 alignItems: 'flex-start',
-            }}
+            })}
         >
             <View style={{ flex: 1 }}>
                 {resumeCommandBlock.lines.map((line, index) => (

@@ -11,7 +11,9 @@ export const UsageSchema = z.object({
   cache_creation_input_tokens: z.number().int().nonnegative().optional(),
   cache_read_input_tokens: z.number().int().nonnegative().optional(),
   output_tokens: z.number().int().nonnegative(),
-  service_tier: z.string().optional(),
+  // Synthetic messages (model: "<synthetic>", emitted for API errors) send
+  // `service_tier: null` rather than omitting it.
+  service_tier: z.string().nullish(),
 }).passthrough();
 
 // Main schema with minimal validation for only the fields we use
@@ -36,7 +38,10 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
     uuid: z.string(),
     type: z.literal("assistant"),
     message: z.object({
-      usage: UsageSchema.optional(), // Used in apiSession.ts
+      // Used in apiSession.ts. `.catch` so a malformed usage block degrades to
+      // undefined instead of failing the whole message: usage is stats-only,
+      // and dropping the message loses the conversation turn itself.
+      usage: UsageSchema.optional().catch(undefined),
       model: z.string().optional(), // Used for cost calculation
     }).passthrough().optional()
   }).passthrough(),

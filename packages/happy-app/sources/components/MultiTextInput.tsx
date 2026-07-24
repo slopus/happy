@@ -48,6 +48,10 @@ interface MultiTextInputProps {
     paddingBottom?: number;
     paddingLeft?: number;
     paddingRight?: number;
+    multiline?: boolean;
+    returnKeyType?: React.ComponentProps<typeof TextInput>['returnKeyType'];
+    submitBehavior?: React.ComponentProps<typeof TextInput>['submitBehavior'];
+    onSubmitEditing?: () => void;
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
@@ -62,6 +66,10 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
         editable = true,
         maxHeight = 120,
         lineHeight = MULTI_TEXT_INPUT_LINE_HEIGHT,
+        multiline = true,
+        returnKeyType = 'default',
+        submitBehavior = multiline ? 'newline' : 'blurAndSubmit',
+        onSubmitEditing,
         onKeyPress,
         onSelectionChange,
         onStateChange
@@ -101,7 +109,7 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
         lineHeight,
         maxHeight,
         color: theme.colors.input.text,
-        textAlignVertical: 'top' as const,
+        textAlignVertical: multiline ? 'top' as const : 'center' as const,
         padding: 0,
         paddingTop: props.paddingTop,
         paddingBottom: props.paddingBottom,
@@ -255,14 +263,15 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
                     onChangeText={handleTextChange}
                     onKeyPress={handleKeyPress}
                     onSelectionChange={handleSelectionChange}
-                    multiline={true}
+                    multiline={multiline}
                     autoCapitalize="sentences"
                     autoCorrect={true}
                     keyboardType="default"
-                    returnKeyType="default"
+                    returnKeyType={returnKeyType}
                     autoComplete="off"
                     textContentType="none"
-                    submitBehavior="newline"
+                    submitBehavior={submitBehavior}
+                    onSubmitEditing={onSubmitEditing}
                 />
             ) : (
                 <View pointerEvents="none">

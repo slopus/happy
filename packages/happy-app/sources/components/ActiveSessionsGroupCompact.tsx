@@ -366,7 +366,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
         paddingTop: 8,
     },
     // Section header styles
@@ -455,13 +455,15 @@ const stylesheet = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.surface,
         marginBottom: 8,
         marginHorizontal: Platform.select({ ios: 16, default: 12 }),
-        borderRadius: Platform.select({ ios: 10, default: 16 }),
+        borderRadius: Platform.select({ web: 16, default: 18 }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.divider,
         overflow: 'hidden',
-        shadowColor: theme.colors.shadow.color,
+        shadowColor: Platform.select({ web: theme.colors.shadow.color, default: 'transparent' }),
         shadowOffset: { width: 0, height: 0.33 },
-        shadowOpacity: theme.colors.shadow.opacity,
+        shadowOpacity: Platform.select({ web: theme.colors.shadow.opacity, default: 0 }),
         shadowRadius: 0,
-        elevation: 1,
+        elevation: Platform.select({ web: 1, default: 0 }),
     },
     // Session row styles
     sessionRow: {
@@ -469,7 +471,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: 'transparent',
     },
     sessionRowWithBorder: {
         borderBottomWidth: StyleSheet.hairlineWidth,

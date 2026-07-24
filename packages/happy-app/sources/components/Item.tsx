@@ -2,7 +2,6 @@ import * as React from 'react';
 import { 
     View, 
     Text, 
-    Pressable, 
     StyleProp, 
     ViewStyle, 
     TextStyle,
@@ -15,6 +14,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { BubblePressable } from './BubblePressable';
 
 export interface ItemProps {
     title: string;
@@ -101,7 +101,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     divider: {
         height: Platform.select({ ios: 0.33, default: 0 }),
-        backgroundColor: theme.colors.divider,
+        backgroundColor: Platform.select({ web: theme.colors.divider, default: theme.colors.glass.divider }),
     },
     pressablePressed: {
         backgroundColor: theme.colors.surfacePressedOverlay,
@@ -287,19 +287,21 @@ export const Item = React.memo<ItemProps>((props) => {
 
     if (isInteractive) {
         return (
-            <Pressable
+            <BubblePressable
                 onPress={handlePress}
                 onLongPress={onLongPress}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
                 disabled={disabled || loading}
-                style={({ pressed }) => [
+                bubbleScale={1.012}
+                style={[
                     {
-                        backgroundColor: pressed && isIOS && !isWeb ? theme.colors.surfacePressedOverlay : 'transparent',
+                        backgroundColor: 'transparent',
                         opacity: disabled ? 0.5 : 1
                     },
                     pressableStyle
                 ]}
+                pressedStyle={isIOS && !isWeb ? styles.pressablePressed : undefined}
                 android_ripple={(isAndroid || isWeb) ? {
                     color: theme.colors.surfaceRipple,
                     borderless: false,
@@ -307,7 +309,7 @@ export const Item = React.memo<ItemProps>((props) => {
                 } : undefined}
             >
                 {content}
-            </Pressable>
+            </BubblePressable>
         );
     }
 

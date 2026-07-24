@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList, Platform, View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { MessageView } from '@/components/MessageView';
 import { debugMessages } from './messages-demo-data';
@@ -40,6 +40,6 @@ export default React.memo(function MessagesDemoScreen() {
 const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.groupped.background }),
     },
 }));

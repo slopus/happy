@@ -79,4 +79,22 @@ describe('useNewSessionDraft', () => {
         expect(useNewSessionDraft.getState().effortLevel).toBe('high');
         expect(mockPersistence.saved.at(-1)).toMatchObject({ effortLevel: 'high' });
     });
+
+    it('keeps temporary image attachments in memory without persisting their file URIs', async () => {
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+        const attachment = {
+            id: 'photo-1',
+            uri: 'file:///temporary/photo.jpg',
+            width: 100,
+            height: 100,
+            mimeType: 'image/jpeg',
+            size: 1024,
+            name: 'photo.jpg',
+        };
+
+        useNewSessionDraft.getState().setAttachments([attachment]);
+
+        expect(useNewSessionDraft.getState().attachments).toEqual([attachment]);
+        expect(mockPersistence.saved).toHaveLength(0);
+    });
 });

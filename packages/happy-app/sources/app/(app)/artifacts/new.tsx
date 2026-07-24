@@ -10,11 +10,12 @@ import { sync } from '@/sync/sync';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
     },
     scrollView: {
         flex: 1,
@@ -35,7 +36,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         letterSpacing: 0.5,
     },
     input: {
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 14,
@@ -52,6 +53,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         textAlignVertical: 'top',
         paddingTop: 14,
         lineHeight: 22,
+    },
+    inputGlass: {
+        borderRadius: 14,
+        overflow: 'hidden',
+        backgroundColor: Platform.select({ web: 'transparent', android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
     },
     headerButton: {
         paddingHorizontal: 16,
@@ -162,6 +168,7 @@ export default function NewArtifactScreen() {
                     >
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>{t('artifacts.titleLabel')}</Text>
+                            <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={68} style={styles.inputGlass}>
                             <TextInput
                                 style={[
                                     styles.input,
@@ -183,10 +190,12 @@ export default function NewArtifactScreen() {
                                 returnKeyType="next"
                                 autoCapitalize="sentences"
                             />
+                            </MobileGlassSurface>
                         </View>
                         
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>{t('artifacts.bodyLabel')}</Text>
+                            <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={68} style={styles.inputGlass}>
                             <TextInput
                                 style={[
                                     styles.input,
@@ -210,6 +219,7 @@ export default function NewArtifactScreen() {
                                 numberOfLines={10}
                                 autoCapitalize="sentences"
                             />
+                            </MobileGlassSurface>
                         </View>
                     </ScrollView>
                 </KeyboardWrapper>

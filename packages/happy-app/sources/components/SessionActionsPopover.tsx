@@ -12,6 +12,8 @@ import {
     matchesShortcutChord,
     SESSION_ACTION_SHORTCUTS,
 } from '@/keyboard/shortcuts';
+import { MobileGlassSurface } from './MobileGlass';
+import { AnimatedPopup, LocalBlurHalo } from './AnimatedOverlay';
 
 export type SessionActionsAnchor =
     | {
@@ -48,12 +50,26 @@ const stylesheet = StyleSheet.create((theme) => ({
         left: 0,
         right: 0,
         bottom: 0,
+        overflow: 'hidden',
+    },
+    backdropScrim: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0, 0, 0, 0.10)',
+    },
+    webBackdrop: {
         backgroundColor: 'rgba(0, 0, 0, 0.12)',
     },
     card: {
-        backgroundColor: theme.colors.surface,
         borderRadius: 16,
         overflow: 'hidden',
+        backgroundColor: Platform.select({
+            web: theme.colors.surface,
+            ios: theme.colors.glass.overlay,
+            android: theme.colors.glass.backgroundStrong,
+            default: theme.colors.surface,
+        }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.glass.border,
         shadowColor: theme.colors.shadow.color,
         shadowOpacity: theme.colors.shadow.opacity,
         shadowRadius: 18,
@@ -194,45 +210,57 @@ export function SessionActionsPopover({
         return null;
     }
 
-    const content = (
-        <View style={[styles.card, { backgroundColor: theme.colors.header.background }]}>
-            {Platform.OS !== 'web' && (
-                <View style={[styles.handle, { backgroundColor: theme.colors.textSecondary }]} />
-            )}
-            {actions.map((action, index) => {
-                const isLast = index === actions.length - 1;
-                const color = action.destructive ? theme.colors.status.error : theme.colors.text;
-                const shortcutLabel = formatShortcutChord(
-                    preferredModifier,
-                    SESSION_ACTION_SHORTCUTS[action.id],
-                );
+    const actionItems = actions.map((action, index) => {
+        const isLast = index === actions.length - 1;
+        const color = action.destructive ? theme.colors.status.error : theme.colors.text;
+        const shortcutLabel = formatShortcutChord(
+            preferredModifier,
+            SESSION_ACTION_SHORTCUTS[action.id],
+        );
 
-                return (
-                    <Pressable
-                        key={action.id}
-                        accessibilityRole="button"
-                        onPress={() => handleActionPress(action)}
-                        style={({ pressed }) => [
-                            styles.menuItem,
-                            !isLast && styles.menuItemDivider,
-                            pressed && styles.menuItemPressed,
-                        ]}
-                    >
-                        <Ionicons
-                            color={color}
-                            name={action.icon as keyof typeof Ionicons.glyphMap}
-                            size={18}
-                        />
-                        <Text numberOfLines={1} style={[styles.menuItemLabel, { color }]}>
-                            {action.label}
-                        </Text>
-                        {Platform.OS === 'web' && (
-                            <Text style={styles.menuItemShortcut}>{shortcutLabel}</Text>
-                        )}
-                    </Pressable>
-                );
-            })}
-        </View>
+        return (
+            <Pressable
+                key={action.id}
+                accessibilityRole="button"
+                onPress={() => handleActionPress(action)}
+                style={({ pressed }) => [
+                    styles.menuItem,
+                    !isLast && styles.menuItemDivider,
+                    pressed && styles.menuItemPressed,
+                ]}
+            >
+                <Ionicons
+                    color={color}
+                    name={action.icon as keyof typeof Ionicons.glyphMap}
+                    size={18}
+                />
+                <Text numberOfLines={1} style={[styles.menuItemLabel, { color }]}>
+                    {action.label}
+                </Text>
+                {Platform.OS === 'web' && (
+                    <Text style={styles.menuItemShortcut}>{shortcutLabel}</Text>
+                )}
+            </Pressable>
+        );
+    });
+
+    const nativeContent = (
+        <>
+            <LocalBlurHalo borderRadius={18} expansion={14} />
+            <MobileGlassSurface
+                enabled
+                nativeEffect
+                glassEffectStyle="regular"
+                intensity={88}
+                tintColor={theme.colors.glass.overlayTint}
+                style={styles.card}
+            >
+                {Platform.OS !== 'web' && (
+                    <View style={[styles.handle, { backgroundColor: theme.colors.textSecondary }]} />
+                )}
+                {actionItems}
+            </MobileGlassSurface>
+        </>
     );
 
     if (Platform.OS === 'web' && position) {
@@ -244,7 +272,7 @@ export function SessionActionsPopover({
                 visible={visible}
             >
                 <View style={styles.webContainer}>
-                    <Pressable onPress={onClose} style={styles.backdrop} />
+                    <Pressable onPress={onClose} style={[styles.backdrop, styles.webBackdrop]} />
                     <View
                         style={[
                             styles.webMenu,
@@ -254,7 +282,9 @@ export function SessionActionsPopover({
                             },
                         ]}
                     >
-                        {content}
+                        <View style={[styles.card, { backgroundColor: theme.colors.header.background }]}>
+                            {actionItems}
+                        </View>
                     </View>
                 </View>
             </RNModal>
@@ -269,18 +299,19 @@ export function SessionActionsPopover({
             visible={visible}
         >
             <View style={styles.nativeContainer}>
-                <Pressable onPress={onClose} style={styles.backdrop} />
-                <View
+                <Pressable onPress={onClose} style={styles.backdrop}>
+                    <View pointerEvents="none" style={styles.backdropScrim} />
+                </Pressable>
+                <AnimatedPopup
                     style={[
                         styles.nativeSheet,
                         {
-                            backgroundColor: theme.colors.header.background,
                             paddingBottom: Math.max(16, safeArea.bottom),
                         },
                     ]}
                 >
-                    {content}
-                </View>
+                    {nativeContent}
+                </AnimatedPopup>
             </View>
         </RNModal>
     );

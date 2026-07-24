@@ -12,9 +12,11 @@ import {
     type NewSessionSessionType,
 } from '@/sync/persistence';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
+import type { AttachmentPreview } from '@/sync/attachmentTypes';
 
 interface NewSessionDraftState {
     input: string;
+    attachments: AttachmentPreview[];
     selectedMachineId: string | null;
     selectedPath: string | null;
     agentType: NewSessionAgentType;
@@ -25,6 +27,7 @@ interface NewSessionDraftState {
     worktreeKey: string | null;
 
     setInput: (input: string) => void;
+    setAttachments: (attachments: AttachmentPreview[]) => void;
     setMachineId: (id: string | null) => void;
     setPath: (path: string | null) => void;
     setAgentType: (agent: NewSessionAgentType) => void;
@@ -54,6 +57,9 @@ const initial = loadNewSessionDraft();
 
 export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => ({
     input: initial?.input ?? '',
+    // Image picker URIs are temporary, so attachments intentionally stay out
+    // of MMKV persistence and only bridge Home -> New session in memory.
+    attachments: [],
     selectedMachineId: initial?.selectedMachineId ?? null,
     selectedPath: initial?.selectedPath ?? null,
     agentType: initial?.agentType ?? 'claude',
@@ -64,6 +70,7 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     worktreeKey: initial?.worktreeKey ?? null,
 
     setInput: (input) => { set({ input }); persist(get()); },
+    setAttachments: (attachments) => { set({ attachments }); },
     setMachineId: (id) => { set({ selectedMachineId: id, selectedPath: null, worktreeKey: null }); persist(get()); },
     setPath: (path) => { set({ selectedPath: path, worktreeKey: null }); persist(get()); },
     setAgentType: (agent) => { set({ agentType: agent }); persist(get()); },

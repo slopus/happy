@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, FlatList, Platform } from 'react-native';
+import { View, Pressable, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem, SessionRowData } from '@/sync/storage';
@@ -51,7 +51,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     projectGroup: {
         paddingHorizontal: 16,
         paddingVertical: 10,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.surfaceHigh }),
     },
     projectGroupTitle: {
         fontSize: 13,
@@ -70,12 +70,15 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: 'transparent',
     },
     sessionItemContainer: {
         marginHorizontal: 16,
         marginBottom: 1,
         overflow: 'hidden',
+        backgroundColor: theme.colors.surface,
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.divider,
     },
     sessionItemFirst: {
         borderTopLeftRadius: 12,
@@ -179,7 +182,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     artifactsSection: {
         paddingHorizontal: 16,
         paddingBottom: 12,
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
     },
     archiveToggle: {
         flexDirection: 'row',
@@ -201,10 +204,20 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export function SessionsList() {
+export function SessionsList({
+    topContentInset = 0,
+    bottomContentInset = 128,
+    onScroll,
+    searchQuery = '',
+}: {
+    topContentInset?: number;
+    bottomContentInset?: number;
+    onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+    searchQuery?: string;
+} = {}) {
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
-    const data = useVisibleSessionListViewData();
+    const sourceData = useVisibleSessionListViewData();
     const pathname = usePathname();
     const isTablet = useIsTablet();
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
@@ -223,10 +236,57 @@ export function SessionsList() {
 
     // Request review
     React.useEffect(() => {
-        if (data && data.length > 0) {
+        if (sourceData && sourceData.length > 0) {
             requestReview();
         }
-    }, [data && data.length > 0]);
+    }, [sourceData && sourceData.length > 0]);
+
+    const data = React.useMemo(() => {
+        const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+        if (!sourceData || !normalizedQuery) {
+            return sourceData;
+        }
+
+        const matches = (session: SessionRowData) => [
+            session.name,
+            session.subtitle,
+            session.path,
+            session.machineId,
+            session.flavor,
+        ].some((value) => value?.toLocaleLowerCase().includes(normalizedQuery));
+
+        const keepIndices = new Set<number>();
+        let currentHeaderIndex: number | null = null;
+        let currentProjectIndex: number | null = null;
+
+        sourceData.forEach((item, index) => {
+            if (item.type === 'header') {
+                currentHeaderIndex = index;
+                currentProjectIndex = null;
+                return;
+            }
+            if (item.type === 'project-group') {
+                currentProjectIndex = index;
+                return;
+            }
+            if (item.type === 'session' && matches(item.session)) {
+                keepIndices.add(index);
+                if (currentHeaderIndex !== null) keepIndices.add(currentHeaderIndex);
+                if (currentProjectIndex !== null) keepIndices.add(currentProjectIndex);
+            }
+        });
+
+        const result: SessionListViewItem[] = [];
+        sourceData.forEach((item, index) => {
+            if (item.type === 'active-sessions') {
+                const sessions = item.sessions.filter(matches);
+                if (sessions.length > 0) result.push({ ...item, sessions });
+                return;
+            }
+            if (keepIndices.has(index)) result.push(item);
+        });
+        return result;
+    }, [searchQuery, sourceData]);
 
     // Early return if no data yet
     if (!data) {
@@ -329,11 +389,22 @@ export function SessionsList() {
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
                     extraData={selectedSessionId}
-                    contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
+                    contentContainerStyle={{
+                        paddingTop: topContentInset,
+                        paddingBottom: safeArea.bottom + bottomContentInset,
+                        maxWidth: layout.maxWidth,
+                    }}
                     ListHeaderComponent={HeaderComponent}
+                    ListEmptyComponent={searchQuery.trim() ? (
+                        <View style={{ paddingTop: 48, alignItems: 'center' }}>
+                            <Text style={styles.headerText}>{t('sessionHistory.empty')}</Text>
+                        </View>
+                    ) : null}
                     windowSize={5}
                     maxToRenderPerBatch={8}
                     initialNumToRender={12}
+                    onScroll={onScroll}
+                    scrollEventThrottle={16}
                 />
             </View>
         </View>

@@ -25,6 +25,12 @@ import {
     SIDEBAR_PICKER_SHORTCUTS,
     type SidebarPickerShortcutId,
 } from '@/keyboard/shortcuts';
+import {
+    AnimatedClickAwayBackdrop,
+    AnimatedPopup,
+    LocalBlurHalo,
+} from './AnimatedOverlay';
+import { MobileGlassSurface } from './MobileGlass';
 
 export type SidebarMode = 'changes' | 'allFiles' | 'sideChat';
 type PickableSidebarMode = Exclude<SidebarMode, 'sideChat'>;
@@ -363,6 +369,47 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
         );
     }
 
+    const addMenuContent = (
+        <>
+            {availablePanels.map((p) => (
+                <Pressable
+                    key={p.key}
+                    onPress={() => {
+                        setAddMenuOpen(false);
+                        onOpenPanel(p.key);
+                    }}
+                    style={({ pressed, hovered }: any) => [styles.menuAddRow, (pressed || hovered) && { backgroundColor: theme.colors.surfaceSelected }]}
+                >
+                    <Octicons name={p.icon} size={13} color={theme.colors.textSecondary} />
+                    <Text style={styles.menuRowText} numberOfLines={1}>{panelLabel(p.key)}</Text>
+                    <Text style={styles.menuShortcut}>
+                        {formatShortcutChord(preferredModifier, SIDEBAR_PICKER_SHORTCUTS[p.key])}
+                    </Text>
+                </Pressable>
+            ))}
+            <Pressable
+                disabled={creatingSideChat || !canCreateSideChat}
+                onPress={() => {
+                    setAddMenuOpen(false);
+                    onCreateSideChat();
+                }}
+                style={({ pressed, hovered }: any) => [
+                    styles.menuAddRow,
+                    (pressed || hovered) && { backgroundColor: theme.colors.surfaceSelected },
+                    (creatingSideChat || !canCreateSideChat) && { opacity: 0.5 },
+                ]}
+            >
+                {creatingSideChat
+                    ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    : <Octicons name={SIDE_CHAT_ICON} size={13} color={theme.colors.textSecondary} />}
+                <Text style={styles.menuRowText} numberOfLines={1}>{t('sideChat.newChat')}</Text>
+                <Text style={styles.menuShortcut}>
+                    {formatShortcutChord(preferredModifier, SIDEBAR_PICKER_SHORTCUTS.newSideChat)}
+                </Text>
+            </Pressable>
+        </>
+    );
+
     return (
         <View style={styles.container}>
             {/* Open panels as chips + add-panel button */}
@@ -448,47 +495,32 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
             )}
 
             {addMenuOpen && (
-                <>
-                    <Pressable style={styles.menuBackdrop} onPress={() => setAddMenuOpen(false)} />
-                    <View style={styles.menuCard}>
-                        {availablePanels.map((p) => (
-                            <Pressable
-                                key={p.key}
-                                onPress={() => {
-                                    setAddMenuOpen(false);
-                                    onOpenPanel(p.key);
-                                }}
-                                style={({ pressed, hovered }: any) => [styles.menuAddRow, (pressed || hovered) && { backgroundColor: theme.colors.surfaceSelected }]}
+                Platform.OS === 'web' ? (
+                    <>
+                        <Pressable style={styles.menuBackdrop} onPress={() => setAddMenuOpen(false)} />
+                        <View style={[styles.menuCard, styles.webMenuCard]}>{addMenuContent}</View>
+                    </>
+                ) : (
+                    <>
+                        <AnimatedClickAwayBackdrop
+                            onPress={() => setAddMenuOpen(false)}
+                            style={styles.menuBackdrop}
+                        />
+                        <AnimatedPopup style={styles.menuCard}>
+                            <LocalBlurHalo borderRadius={14} expansion={12} />
+                            <MobileGlassSurface
+                                enabled
+                                nativeEffect
+                                intensity={82}
+                                glassEffectStyle="regular"
+                                tintColor={theme.colors.glass.overlayTint}
+                                style={styles.menuSurface}
                             >
-                                <Octicons name={p.icon} size={13} color={theme.colors.textSecondary} />
-                                <Text style={styles.menuRowText} numberOfLines={1}>{panelLabel(p.key)}</Text>
-                                <Text style={styles.menuShortcut}>
-                                    {formatShortcutChord(preferredModifier, SIDEBAR_PICKER_SHORTCUTS[p.key])}
-                                </Text>
-                            </Pressable>
-                        ))}
-                        <Pressable
-                            disabled={creatingSideChat || !canCreateSideChat}
-                            onPress={() => {
-                                setAddMenuOpen(false);
-                                onCreateSideChat();
-                            }}
-                            style={({ pressed, hovered }: any) => [
-                                styles.menuAddRow,
-                                (pressed || hovered) && { backgroundColor: theme.colors.surfaceSelected },
-                                (creatingSideChat || !canCreateSideChat) && { opacity: 0.5 },
-                            ]}
-                        >
-                            {creatingSideChat
-                                ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                                : <Octicons name={SIDE_CHAT_ICON} size={13} color={theme.colors.textSecondary} />}
-                            <Text style={styles.menuRowText} numberOfLines={1}>{t('sideChat.newChat')}</Text>
-                            <Text style={styles.menuShortcut}>
-                                {formatShortcutChord(preferredModifier, SIDEBAR_PICKER_SHORTCUTS.newSideChat)}
-                            </Text>
-                        </Pressable>
-                    </View>
-                </>
+                                {addMenuContent}
+                            </MobileGlassSurface>
+                        </AnimatedPopup>
+                    </>
+                )
             )}
         </View>
     );
@@ -943,6 +975,27 @@ const styles = StyleSheet.create((theme) => ({
         right: 12,
         minWidth: 220,
         maxWidth: '90%',
+        zIndex: 4,
+    },
+    menuSurface: {
+        padding: 4,
+        borderRadius: 10,
+        overflow: 'hidden',
+        backgroundColor: Platform.select({
+            web: theme.colors.surface,
+            ios: theme.colors.glass.overlay,
+            android: theme.colors.glass.backgroundStrong,
+            default: theme.colors.surface,
+        }),
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.glass.border,
+        shadowColor: theme.colors.shadow.color,
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 8,
+    },
+    webMenuCard: {
         padding: 4,
         borderRadius: 10,
         backgroundColor: theme.colors.surface,
@@ -953,7 +1006,6 @@ const styles = StyleSheet.create((theme) => ({
         shadowRadius: 12,
         shadowOffset: { width: 0, height: 6 },
         elevation: 8,
-        zIndex: 4,
     },
     menuRowText: {
         flex: 1,

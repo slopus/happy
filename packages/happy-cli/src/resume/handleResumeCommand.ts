@@ -4,6 +4,7 @@ import type { Metadata } from '@/api/types';
 import { encodeBase64 } from '@/api/encryption';
 import { hasLocalHappyAgentAuth } from '@/resume/localHappyAgentAuth';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
+import { buildSessionChildEnvironment, sanitizeSessionEnvironment } from '@/daemon/sessionEnvironment';
 
 import { LocalResumeSessionError, resolveLocalReconnectableSession } from './localResumeStore';
 import { resolveHappySession, type ReconnectableHappySession, type ResumableHappySession } from './resolveHappySession';
@@ -105,18 +106,17 @@ export function formatResumeHelp(): string {
 }
 
 function buildReconnectEnv(session: ReconnectableHappySession): NodeJS.ProcessEnv {
-    return {
-        ...process.env,
+    return buildSessionChildEnvironment(process.env, {
         HAPPY_RECONNECT_SESSION_ID: session.id,
         HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(session.encryptionKey),
         HAPPY_RECONNECT_ENCRYPTION_VARIANT: session.encryptionVariant,
         HAPPY_RECONNECT_SEQ: String(session.seq),
         HAPPY_RECONNECT_METADATA_VERSION: String(session.metadataVersion),
         HAPPY_RECONNECT_AGENT_STATE_VERSION: String(session.agentStateVersion),
-    };
+    });
 }
 
-function spawnResumeChild(launch: ResumeLaunch, env: NodeJS.ProcessEnv = process.env): Promise<number | null> {
+function spawnResumeChild(launch: ResumeLaunch, env: NodeJS.ProcessEnv = sanitizeSessionEnvironment(process.env)): Promise<number | null> {
     return new Promise((resolve, reject) => {
         const child = spawnHappyCLI(launch.args, {
             cwd: launch.cwd,
