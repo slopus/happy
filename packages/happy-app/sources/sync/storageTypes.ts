@@ -206,8 +206,23 @@ export const AgentGoalStatusSchema = z.discriminatedUnion('status', [
 
 export type AgentGoalStatus = z.infer<typeof AgentGoalStatusSchema>;
 
+const UsageLimitsSchema = z.object({
+    capturedAt: z.number(),
+    windows: z.array(z.object({
+        id: z.string(),
+        label: z.string().optional(),
+        // Plain string so statuses introduced by newer CLIs degrade safely.
+        status: z.string().optional(),
+        utilization: z.number().nullish(),
+        resetsAt: z.number().nullish(),
+    }).passthrough()),
+}).passthrough().optional().catch(undefined);
+
 export const AgentStateSchema = z.object({
     controlledByUser: z.boolean().nullish(),
+    // Ephemeral runtime state. A malformed snapshot must not invalidate
+    // permission requests or the rest of the agent state.
+    usageLimits: UsageLimitsSchema,
     requests: z.record(z.string(), z.object({
         tool: z.string(),
         arguments: z.any(),

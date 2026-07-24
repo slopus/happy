@@ -171,6 +171,8 @@ export const zhHant: TranslationStructure = {
             above: '輸入框上方',
             below: '輸入框下方',
         },
+        usageLimitShowRemaining: '顯示剩餘額度',
+        usageLimitShowRemainingDescription: '額度指示器顯示剩餘量，而非已用量',
         userMessageBubbleColor: '使用者氣泡顏色',
         userMessageBubbleColorDescription: '讓您的訊息在長聊天中更容易找到',
         userMessageBubbleColorOptions: {
@@ -442,6 +444,11 @@ export const zhHant: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `上下文 ${used}/${total} 個權杖，${percent}%`,
+            limitFiveHour: '5 小時額度',
+            limitSevenDay: '7 天額度',
+            limitResets: ({ time }: { time: string }) => `${time} 重置`,
+            limitAsOf: ({ age }: { age: string }) => `數據為 ${age} 前`,
+            limitRemaining: ({ percent }: { percent: number }) => `剩餘 ${percent}%`,
         },
     },
 

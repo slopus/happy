@@ -171,6 +171,8 @@ export const es: TranslationStructure = {
             above: 'Sobre el compositor',
             below: 'Bajo el compositor',
         },
+        usageLimitShowRemaining: 'Mostrar cuota restante',
+        usageLimitShowRemainingDescription: 'Los indicadores de límite cuentan hacia atrás en vez de hacia adelante',
         userMessageBubbleColor: 'Color de tus mensajes',
         userMessageBubbleColorDescription: 'Haz que tus mensajes sean más fáciles de encontrar en chats largos',
         userMessageBubbleColorOptions: {
@@ -442,6 +444,11 @@ export const es: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Contexto ${used} de ${total} tokens, ${percent}%`,
+            limitFiveHour: 'Límite de 5 horas',
+            limitSevenDay: 'Límite de 7 días',
+            limitResets: ({ time }: { time: string }) => `se restablece ${time}`,
+            limitAsOf: ({ age }: { age: string }) => `hace ${age}`,
+            limitRemaining: ({ percent }: { percent: number }) => `${percent}% restante`,
         },
     },
 

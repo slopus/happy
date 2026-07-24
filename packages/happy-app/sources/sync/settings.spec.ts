@@ -190,6 +190,7 @@ describe('settings', () => {
                 showFlavorIcons: false,
                 userMessageBubbleColor: 'gray',
                 sessionStatusBarDisplay: 'hidden',
+                usageLimitShowRemaining: false,
                 hideInactiveSessions: false,
                 sortSessionsByActivity: false,
                 expResumeSession: false,

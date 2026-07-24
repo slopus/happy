@@ -834,6 +834,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 onEffortLevelChange={isRigReasoningSelectionEnabled(session.metadata) ? updateEffortLevel : undefined}
                 contextSize={usageData?.contextSize}
                 contextWindow={usageData?.contextWindow}
+                usageLimits={session.agentState?.usageLimits}
             />
         </CenteredInputWidth>
     ) : null;

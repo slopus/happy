@@ -172,6 +172,8 @@ export const ja: TranslationStructure = {
             above: '入力欄の上',
             below: '入力欄の下',
         },
+        usageLimitShowRemaining: '残量を表示',
+        usageLimitShowRemainingDescription: '上限を使用量ではなく残量で表示します',
         userMessageBubbleColor: 'ユーザーバブルの色',
         userMessageBubbleColorDescription: '長いチャットで自分のメッセージを見つけやすくします',
         userMessageBubbleColorOptions: {
@@ -443,6 +445,11 @@ export const ja: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `コンテキスト ${total}トークン中${used}、${percent}%`,
+            limitFiveHour: '5時間の上限',
+            limitSevenDay: '7日間の上限',
+            limitResets: ({ time }: { time: string }) => `${time} リセット`,
+            limitAsOf: ({ age }: { age: string }) => `${age}前のデータ`,
+            limitRemaining: ({ percent }: { percent: number }) => `残り ${percent}%`,
         },
     },
 
