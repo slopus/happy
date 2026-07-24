@@ -89,6 +89,30 @@ describe('mergeUsageLimits', () => {
         expect(merged.windows.find(w => w.id === 'seven_day')!.utilization).toBe(70);
     });
 
+    it('keeps the last known utilization when an event window arrives without one', () => {
+        // Allowed rate_limit_events report only status + resetsAt; a full
+        // replace here would strip the percentage seeded by get_usage.
+        const merged = mergeUsageLimits(base, {
+            capturedAt: 2000,
+            windows: [{ id: 'five_hour', status: 'allowed', utilization: null, resetsAt: 5 }],
+        });
+        const fiveHour = merged.windows.find(w => w.id === 'five_hour')!;
+        expect(fiveHour.utilization).toBe(40);
+        expect(fiveHour.resetsAt).toBe(5);
+        expect(fiveHour.status).toBe('allowed');
+    });
+
+    it('keeps the last known resetsAt when an event window arrives without one', () => {
+        const merged = mergeUsageLimits(base, {
+            capturedAt: 2000,
+            windows: [{ id: 'seven_day', status: 'allowed_warning', utilization: 91, resetsAt: null }],
+        });
+        const sevenDay = merged.windows.find(w => w.id === 'seven_day')!;
+        expect(sevenDay.utilization).toBe(91);
+        expect(sevenDay.resetsAt).toBe(2);
+        expect(sevenDay.status).toBe('allowed_warning');
+    });
+
     it('applies an unbound event to the max-utilization window', () => {
         const merged = mergeUsageLimits(base, {
             capturedAt: 2000,

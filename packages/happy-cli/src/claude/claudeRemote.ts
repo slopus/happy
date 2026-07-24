@@ -201,9 +201,19 @@ export async function claudeRemote(opts: {
                     const usage = await usageFn.call(response);
                     if (usage?.rate_limits_available && usage.rate_limits) {
                         for (const w of windowsFromGetUsage(usage.rate_limits)) {
-                            // Events are fresher than the seed for the same window
-                            if (!pendingUsageWindows.has(w.id)) {
+                            // Events are fresher than the seed for the same
+                            // window, but allowed events carry no utilization —
+                            // backfill the snapshot's percentage so it isn't
+                            // dropped on the floor.
+                            const pending = pendingUsageWindows.get(w.id);
+                            if (!pending) {
                                 pendingUsageWindows.set(w.id, w);
+                            } else if (pending.utilization === null || pending.utilization === undefined) {
+                                pendingUsageWindows.set(w.id, {
+                                    ...pending,
+                                    utilization: w.utilization,
+                                    resetsAt: pending.resetsAt ?? w.resetsAt,
+                                });
                             }
                         }
                         seededThisFlush = true;
