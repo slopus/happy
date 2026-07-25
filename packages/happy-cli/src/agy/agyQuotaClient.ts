@@ -15,7 +15,7 @@
 import os from 'node:os';
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
-import { execSync, spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { resolveAgyBin } from './constants';
 import type { AgyQuotaResponse } from './agyUsageAdapter';
 
@@ -49,7 +49,9 @@ export interface AgyQuotaClient {
 
 export function createAgyQuotaClient(deps: AgyQuotaClientDeps = {}): AgyQuotaClient {
   const readTextFile = deps.readTextFile ?? ((p) => readFile(p, 'utf8'));
-  const writeTextFile = deps.writeTextFile ?? ((p, d) => writeFile(p, d, 'utf8'));
+  // 0600: the cache holds the OAuth client secret, and agy's own token file
+  // next to it is 0600 — don't be the loosest file in the directory.
+  const writeTextFile = deps.writeTextFile ?? ((p, d) => writeFile(p, d, { encoding: 'utf8', mode: 0o600 }));
   const dumpBinaryStrings = deps.dumpBinaryStrings ?? defaultDumpBinaryStrings;
   const doFetch = deps.fetch ?? fetch;
   const resolveBin = deps.resolveBin ?? resolveAgyBin;
@@ -109,6 +111,7 @@ export function createAgyQuotaClient(deps: AgyQuotaClientDeps = {}): AgyQuotaCli
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       throw new Error(`token exchange failed: ${res.status}`);
@@ -134,16 +137,23 @@ export function createAgyQuotaClient(deps: AgyQuotaClientDeps = {}): AgyQuotaCli
       }
     }
     for (const client of await extractClients()) {
+      let token: { accessToken: string; expiresIn: number };
       try {
-        const token = await exchange(refreshToken, client);
+        token = await exchange(refreshToken, client);
+      } catch {
+        continue; // try the next candidate pair
+      }
+      // Best-effort: a failed cache write must not discard the minted token —
+      // it only costs a binary rescan on the next pull.
+      try {
         await writeTextFile(
           CREDS_CACHE_FILE,
           JSON.stringify({ clientId: client.clientId, clientSecret: client.clientSecret }),
         );
-        return token;
-      } catch {
-        // try the next candidate pair
+      } catch (e) {
+        log(`could not cache agy OAuth client: ${errMsg(e)}`);
       }
+      return token;
     }
     throw new Error('no working OAuth client found in agy binary');
   }
@@ -166,6 +176,7 @@ export function createAgyQuotaClient(deps: AgyQuotaClientDeps = {}): AgyQuotaCli
         'User-Agent': USER_AGENT,
       },
       body: '{}',
+      signal: AbortSignal.timeout(10_000),
     });
   }
 
@@ -195,8 +206,11 @@ function errMsg(e: unknown): string {
  * spawn, since the OS resolves it, but `strings` needs a file it can open.
  */
 function toOpenablePath(bin: string): string {
-  if (bin.includes('/')) return bin;
-  return execSync(`command -v ${bin}`, { encoding: 'utf8' }).trim();
+  if (bin.includes('/') || bin.includes('\\')) return bin;
+  // execFile (no shell) with the platform's own lookup, mirroring
+  // resolveAgyBin's probe; `where` may print several matches — take the first.
+  const cmd = process.platform === 'win32' ? 'where' : 'which';
+  return execFileSync(cmd, [bin], { encoding: 'utf8' }).trim().split(/\r?\n/)[0];
 }
 
 function defaultDumpBinaryStrings(binPath: string): Promise<string> {

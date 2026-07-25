@@ -64,6 +64,23 @@ describe('createAgyQuotaClient', () => {
     expect(calls.filter((u) => u.includes('oauth2'))).toHaveLength(1);
   });
 
+  it('still returns the minted token when the creds-cache write fails', async () => {
+    const { fn, calls } = makeFetch({
+      'oauth2.googleapis.com': [ok({ access_token: 'AT', expires_in: 3600 })],
+      retrieveUserQuota: [ok({ buckets: [] })],
+    });
+    const writeTextFile = vi.fn(async () => {
+      throw new Error('EACCES');
+    });
+    const client = createAgyQuotaClient(makeDeps({ fetch: fn, writeTextFile }));
+
+    // A failed cache write must not discard a successful exchange (or fall
+    // through to bogus candidate pairs / a misleading "no working client").
+    await expect(client.fetchQuota()).resolves.toEqual({ buckets: [] });
+    expect(writeTextFile).toHaveBeenCalledOnce();
+    expect(calls.filter((u) => u.includes('oauth2'))).toHaveLength(1);
+  });
+
   it('uses a cached OAuth client without scanning the binary', async () => {
     const dumpBinaryStrings = vi.fn(async () => GOOD_DUMP);
     const { fn } = makeFetch({
