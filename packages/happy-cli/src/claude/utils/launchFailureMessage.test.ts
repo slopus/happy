@@ -31,6 +31,21 @@ describe('launchFailureMessage', () => {
                 'Process exited unexpectedly: first line second line'
             );
         });
+
+        it('strips ANSI colors and control characters from child-process output', () => {
+            const error = new Error(
+                '\u001b[31mError:\u001b[0m spawn failed\u0007\nsee \u001b[1mlogs\u001b[22m'
+            );
+            expect(launchFailureMessage(error)).toBe(
+                'Process exited unexpectedly: Error: spawn failed see logs'
+            );
+        });
+
+        it('falls back to the bare notice when the message is only ANSI noise', () => {
+            expect(launchFailureMessage(new Error('\u001b[2J\u001b[H'))).toBe(
+                'Process exited unexpectedly'
+            );
+        });
     });
 
     describe('long messages are truncated', () => {

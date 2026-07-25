@@ -13,9 +13,15 @@ export function launchFailureMessage(error: unknown): string {
     if (!(error instanceof Error)) {
         return BASE_MESSAGE;
     }
-    // Collapse whitespace: multi-line messages would otherwise break the
-    // single-line status rendering on the client.
-    const detail = error.message.replace(/\s+/g, ' ').trim();
+    // Strip ANSI escape sequences and stray control characters first — child
+    // process errors can carry colored output, and the message is rendered
+    // verbatim in the app. Then collapse whitespace: multi-line messages
+    // would otherwise break the single-line status rendering on the client.
+    const detail = error.message
+        .replace(/\u001b\[[0-9;]*[A-Za-z]/g, '')
+        .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
     if (!detail) {
         return BASE_MESSAGE;
     }
