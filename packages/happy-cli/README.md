@@ -41,6 +41,15 @@ happy acp opencode
 happy acp -- custom-agent --flag
 ```
 
+> **Note on agy permissions:** the agy backend runs `agy --print`, which is
+> one-shot and has no interactive approval surface — tool calls proceed
+> automatically without ever prompting you. The permission mode you pick in
+> Happy only chooses which flag is passed to agy: the default modes use
+> `--sandbox`, and the bypass/yolo-style modes (including `acceptEdits`) use
+> `--dangerously-skip-permissions`. Neither adds a per-tool approval gate
+> inside Happy, so selecting "default" for an agy session does **not** give
+> you an approval prompt the way it does for Claude Code.
+
 ## Daemon
 
 The daemon is a background service that stays running on your machine. It lets you spawn and manage coding sessions remotely — from your phone or the web app — without needing an open terminal.
