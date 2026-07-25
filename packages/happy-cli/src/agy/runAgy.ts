@@ -30,9 +30,12 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { AgyDisplay } from '@/ui/ink/AgyDisplay';
 import type { AgentMessage } from '@/agent/core';
-import type { PermissionMode } from '@/api/types';
+import type { PermissionMode, UserMessage } from '@/api/types';
+import { downloadCodexFileEventAttachment } from '@/codex/utils/attachmentEvents';
+import { createSerialAsyncHandler } from '@/codex/utils/serialAsyncHandler';
 import { AgyBackend } from './AgyBackend';
 import { DEFAULT_AGY_MODEL } from './constants';
+import { buildAgyImagePrompt, cleanupAgyImageCache, prepareAgyImageFiles } from './imageInput';
 
 export interface RunAgyOptions {
   credentials: Credentials;
@@ -175,8 +178,18 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     process.stdin.setEncoding('utf8');
   }
 
-  session.onUserMessage((message) => {
-    if (!message.content.text) return;
+  // Decode image attachments as they arrive; the next user message claims them.
+  session.onFileEvent((fileEvent) => {
+    session.trackAttachmentDownload(downloadCodexFileEventAttachment(session, fileEvent));
+  });
+
+  // Serialized so a slow attachment drain can't reorder rapid messages.
+  session.onUserMessage(createSerialAsyncHandler<UserMessage>(async (message) => {
+    // Claim attachments before the text guard: image-only messages arrive with
+    // empty text, and an early return would leak their files into the next turn.
+    const attachments = await session.drainAttachmentsForUserMessage();
+    const text = message.content.text ?? '';
+    if (!text && attachments.length === 0) return;
 
     if (message.meta?.permissionMode) {
       backend.setPermissionMode(message.meta.permissionMode as PermissionMode);
@@ -189,9 +202,13 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       }
     }
 
-    messageBuffer.addMessage(message.content.text, 'user');
-    messageQueue.push(message.content.text, {});
-  });
+    if (text) {
+      messageBuffer.addMessage(text, 'user');
+    }
+    messageQueue.push(text, {}, attachments.length > 0 ? attachments : undefined);
+  }, (error) => {
+    logger.debug('[agy] User message handling failed:', error);
+  }));
   session.keepAlive(thinking, 'remote');
 
   const keepAliveInterval = setInterval(() => {
@@ -231,10 +248,27 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
         break;
       }
 
+      // Decode this batch's images into the session cache dir (local disk,
+      // never a shared path) and reference them from the prompt; the dir is
+      // exposed to agy via --add-dir for the turn.
+      const images = await prepareAgyImageFiles(batch.attachments, { sessionId: session.sessionId });
+      if ((batch.attachments?.length ?? 0) > 0) {
+        log(`Prepared ${images.paths.length} image file(s) for turn (skipped ${images.skipped})`);
+      }
+      if ((batch.attachments?.length ?? 0) > 0 && images.paths.length === 0 && batch.message.trim().length === 0) {
+        session.sendSessionEvent({ type: 'message', message: 'No supported images were available to send to agy.' });
+        session.sendSessionEvent({ type: 'ready' });
+        continue;
+      }
+
       log(`Incoming prompt: ${batch.message.slice(0, 200)}`);
       sendEnvelopes(sessionManager.startTurn());
       try {
-        await backend.sendPrompt(process.cwd(), batch.message);
+        await backend.sendPrompt(
+          process.cwd(),
+          buildAgyImagePrompt(batch.message, images.paths),
+          images.cacheDir ? { extraAddDirs: [images.cacheDir] } : undefined,
+        );
         sendEnvelopes(sessionManager.endTurn('completed'));
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -252,6 +286,9 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     backend.offMessage(onBackendMessage);
     await backend.dispose();
     inkInstance?.unmount();
+
+    // Image attachments are user content: drop the session's decoded files.
+    await cleanupAgyImageCache({ sessionId: session.sessionId });
 
     try {
       session.updateMetadata((currentMetadata) => ({

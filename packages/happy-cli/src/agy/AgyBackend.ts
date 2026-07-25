@@ -98,13 +98,20 @@ export class AgyBackend implements AgentBackend {
     return { sessionId: this.cwd };
   }
 
-  async sendPrompt(_sessionId: SessionId, prompt: string): Promise<void> {
+  async sendPrompt(
+    _sessionId: SessionId,
+    prompt: string,
+    opts?: {
+      /** Extra dirs exposed for this turn only (e.g. the session's image cache). */
+      extraAddDirs?: string[];
+    },
+  ): Promise<void> {
     const args = buildAgyArgs({
       prompt,
       model: this.model,
       conversationId: this.conversationId,
       permissionMode: this.permissionMode,
-      addDirs: [this.cwd],
+      addDirs: [this.cwd, ...(opts?.extraAddDirs ?? [])],
       printTimeout: this.printTimeout,
     });
 

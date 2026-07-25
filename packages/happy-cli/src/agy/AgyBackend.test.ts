@@ -61,6 +61,27 @@ describe('AgyBackend', () => {
     expect(messages.at(-1)).toMatchObject({ type: 'status', status: 'idle' });
   });
 
+  it('passes per-turn extra add-dirs through to the agy argv', async () => {
+    const { child } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => null,
+    });
+
+    await backend.startSession();
+    const turn = backend.sendPrompt('/work', 'hi', { extraAddDirs: ['/cache/session-1'] });
+    child.emit('close', 0);
+    await turn;
+
+    const args = (spawnFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as string[];
+    const addDirs = args.flatMap((a, i) => (a === '--add-dir' ? [args[i + 1]] : []));
+    expect(addDirs).toEqual(['/work', '/cache/session-1']);
+  });
+
   it('emits an error status and rejects on non-zero exit', async () => {
     const { child } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;

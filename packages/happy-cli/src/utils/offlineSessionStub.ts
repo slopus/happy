@@ -47,6 +47,9 @@ export function createOfflineSessionStub(sessionTag: string): ApiSessionClient {
         updateMetadata: () => {},
         updateAgentState: () => {},
         onUserMessage: () => {},
+        onFileEvent: () => {},
+        trackAttachmentDownload: () => {},
+        drainAttachmentsForUserMessage: async () => [],
         rpcHandlerManager: {
             registerHandler: () => {}
         }
