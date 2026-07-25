@@ -42,7 +42,11 @@ interface NewSessionDraftState {
     setEffortLevel: (level: string) => void;
     setSessionType: (type: NewSessionSessionType) => void;
     setWorktreeKey: (key: string | null) => void;
+    clearAgentMode: (agent: NewSessionAgentType, field: AgentModeField) => void;
+    clearAllAgentModes: () => void;
 }
+
+type AgentModeField = 'permissionMode' | 'modelMode' | 'effortLevel';
 
 function persist(state: NewSessionDraftState) {
     saveNewSessionDraft({
@@ -113,4 +117,29 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     setEffortLevel: (level) => { set(updateAgentMode(get(), { effortLevel: level })); persist(get()); },
     setSessionType: (type) => { set({ sessionType: type }); persist(get()); },
     setWorktreeKey: (key) => { set({ worktreeKey: key }); persist(get()); },
+    // Drop a remembered selection so a newly configured agent default isn't
+    // shadowed by it (the draft always wins over defaults when resolving).
+    clearAgentMode: (agent, field) => {
+        const state = get();
+        const current = state.agentModes[agent];
+        if (!current) {
+            return;
+        }
+        const nextEntry = { ...current, [field]: null };
+        const agentModes = { ...state.agentModes };
+        if (nextEntry.permissionMode === null && nextEntry.modelMode === null && nextEntry.effortLevel === null) {
+            delete agentModes[agent];
+        } else {
+            agentModes[agent] = nextEntry;
+        }
+        set({
+            agentModes,
+            ...(state.agentType === agent ? { [field]: null } : {}),
+        });
+        persist(get());
+    },
+    clearAllAgentModes: () => {
+        set({ agentModes: {}, permissionMode: null, modelMode: null, effortLevel: null });
+        persist(get());
+    },
 }));

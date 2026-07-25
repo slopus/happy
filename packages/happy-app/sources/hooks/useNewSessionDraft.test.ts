@@ -109,6 +109,49 @@ describe('useNewSessionDraft', () => {
         });
     });
 
+    it('clears a remembered selection so a new default can take effect', async () => {
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+
+        useNewSessionDraft.getState().setModelMode('opus');
+        useNewSessionDraft.getState().setEffortLevel('high');
+
+        useNewSessionDraft.getState().clearAgentMode('claude', 'modelMode');
+
+        expect(useNewSessionDraft.getState().modelMode).toBeNull();
+        expect(useNewSessionDraft.getState().effortLevel).toBe('high');
+        expect(mockPersistence.saved.at(-1)?.agentModes).toEqual({
+            claude: { permissionMode: null, modelMode: null, effortLevel: 'high' },
+        });
+    });
+
+    it('only clears the flat view when the cleared agent is selected', async () => {
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+
+        useNewSessionDraft.getState().setModelMode('opus');
+        useNewSessionDraft.getState().setAgentType('codex');
+        useNewSessionDraft.getState().setModelMode('gpt-5.5');
+
+        useNewSessionDraft.getState().clearAgentMode('claude', 'modelMode');
+
+        expect(useNewSessionDraft.getState().modelMode).toBe('gpt-5.5');
+        expect(mockPersistence.saved.at(-1)?.agentModes).toEqual({
+            codex: { permissionMode: null, modelMode: 'gpt-5.5', effortLevel: null },
+        });
+    });
+
+    it('clears every remembered selection when overrides are reset', async () => {
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+
+        useNewSessionDraft.getState().setModelMode('opus');
+        useNewSessionDraft.getState().setAgentType('codex');
+        useNewSessionDraft.getState().setModelMode('gpt-5.5');
+
+        useNewSessionDraft.getState().clearAllAgentModes();
+
+        expect(useNewSessionDraft.getState().modelMode).toBeNull();
+        expect(mockPersistence.saved.at(-1)?.agentModes).toEqual({});
+    });
+
     it('keeps temporary image attachments in memory without persisting their file URIs', async () => {
         const { useNewSessionDraft } = await import('./useNewSessionDraft');
         const attachment = {

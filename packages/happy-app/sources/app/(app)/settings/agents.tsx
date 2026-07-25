@@ -11,6 +11,7 @@ import {
     type ModeOption,
 } from '@/components/modelModeOptions';
 import { useSettingMutable } from '@/sync/storage';
+import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import {
     agentKeys,
     getCodeAgentDefaults,
@@ -60,6 +61,10 @@ export default function AgentDefaultsSettingsScreen() {
         value: string | null,
     ) => {
         setAgentDefaultOverrides(setAgentDefaultOverride(agentDefaultOverrides, agent, field, value));
+        // The new-session draft remembers the last manual selection and wins
+        // over defaults, so drop it — otherwise the default configured here
+        // would never take effect.
+        useNewSessionDraft.getState().clearAgentMode(agent, field);
     }, [agentDefaultOverrides, setAgentDefaultOverrides]);
 
     const renderOption = (
@@ -134,7 +139,10 @@ export default function AgentDefaultsSettingsScreen() {
                     title="Clear Overrides"
                     subtitle="Return every agent to code defaults"
                     icon={<Ionicons name="refresh-outline" size={29} color="#FF9500" />}
-                    onPress={() => setAgentDefaultOverrides({})}
+                    onPress={() => {
+                        setAgentDefaultOverrides({});
+                        useNewSessionDraft.getState().clearAllAgentModes();
+                    }}
                     disabled={Object.keys(agentDefaultOverrides).length === 0}
                     showChevron={false}
                 />
