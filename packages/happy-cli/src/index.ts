@@ -450,6 +450,8 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
       let verbose = false;
       let resumeConversationId: string | undefined = undefined;
+      let model: string | undefined = undefined;
+      let permissionMode: string | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
@@ -461,6 +463,12 @@ Conversation history is preserved on the server, but in-flight tool calls are in
             throw new Error('--resume requires a conversation ID');
           }
           resumeConversationId = value;
+        } else if (args[i] === '--model') {
+          // Appended by the daemon's resume path; dropping it would silently
+          // ignore the model picked in the app.
+          model = args[++i];
+        } else if (args[i] === '--permission-mode') {
+          permissionMode = args[++i];
         }
       }
 
@@ -472,6 +480,8 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         startedBy,
         verbose,
         resumeConversationId,
+        model,
+        permissionMode,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')

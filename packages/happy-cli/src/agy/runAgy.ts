@@ -40,6 +40,10 @@ export interface RunAgyOptions {
   verbose?: boolean;
   /** agy conversation id to resume (from `happy agy --resume <id>`). */
   resumeConversationId?: string;
+  /** Initial model (from `--model`, forwarded by the daemon's resume path). */
+  model?: string;
+  /** Initial permission mode (from `--permission-mode`, same source). */
+  permissionMode?: string;
 }
 
 export async function runAgy(opts: RunAgyOptions): Promise<void> {
@@ -108,7 +112,7 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
   let abortController = new AbortController();
   let thinking = false;
 
-  let displayedModel = DEFAULT_AGY_MODEL;
+  let displayedModel = opts.model ?? DEFAULT_AGY_MODEL;
 
   // Resume the prior agy conversation: prefer the id passed on the command line
   // (`happy agy --resume <id>`, emitted by buildResumeLaunch from persisted
@@ -128,8 +132,8 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
 
   const backend = new AgyBackend({
     cwd: process.cwd(),
-    permissionMode: 'default',
-    model: DEFAULT_AGY_MODEL,
+    permissionMode: (opts.permissionMode as PermissionMode | undefined) ?? 'default',
+    model: opts.model ?? DEFAULT_AGY_MODEL,
     log,
     initialConversationId: resumeConversationId,
     // Persist the pinned conversation so a later resume continues it.

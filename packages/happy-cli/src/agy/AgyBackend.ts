@@ -125,11 +125,11 @@ export class AgyBackend implements AgentBackend {
 
     this.emit({ type: 'status', status: 'running' });
 
-    // Until we have pinned our own conversation, snapshot the cwd cache so we can
-    // tell after the turn whether the entry is ours (changed → our turn wrote it)
-    // or a leftover from another session (unchanged → not ours to adopt).
-    const preTurnCacheId =
-      this.conversationId === null ? this.resolveConversationId(this.cwd) : null;
+    // Snapshot the cwd cache so we can tell after the turn whether the entry
+    // is ours (changed → our turn wrote it) or a leftover from another session
+    // (unchanged → not ours to adopt). Used both to pin a fresh conversation
+    // and to detect that a pinned id was silently not resumed.
+    const preTurnCacheId = this.resolveConversationId(this.cwd);
 
     await new Promise<void>((resolve, reject) => {
       const child = this.spawnFn(resolveAgyBin(), args, {
@@ -203,6 +203,22 @@ export class AgyBackend implements AgentBackend {
             this.onConversationId?.(cid);
           } else {
             this.log('agy conversation cache unchanged after turn; not adopting (will retry next turn)');
+          }
+        } else {
+          // agy never validates a pinned id: `--conversation <dead-id>` exits 0
+          // and silently starts a fresh conversation instead. It does write the
+          // id it actually used back to the per-cwd cache after the turn, so a
+          // cache id that changed during our turn to something other than the
+          // pin means the pinned conversation wasn't resumed — adopt the
+          // replacement so the persisted metadata self-heals instead of
+          // pointing at a dead id forever. The changed-during-turn guard keeps
+          // the cross-resume caveat above intact: an unchanged foreign entry
+          // is a leftover, not ours to adopt.
+          const cid = this.resolveConversationId(this.cwd);
+          if (cid && cid !== this.conversationId && cid !== preTurnCacheId) {
+            this.log(`pinned agy conversation ${this.conversationId} was not resumed; adopting ${cid}`);
+            this.conversationId = cid;
+            this.onConversationId?.(cid);
           }
         }
 

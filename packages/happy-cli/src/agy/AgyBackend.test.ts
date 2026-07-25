@@ -202,6 +202,50 @@ describe('AgyBackend', () => {
     expect(pinned).toEqual([]);
   });
 
+  it('adopts the replacement id when a stale seeded conversation was not resumed (self-heal)', async () => {
+    const spawnCalls: string[][] = [];
+    let current = makeFakeChild();
+    const spawnFn = vi.fn((_bin: string, args: string[]) => {
+      spawnCalls.push(args);
+      return current.child;
+    }) as unknown as SpawnFn;
+
+    // The persisted seed points at a conversation agy no longer knows:
+    // `--conversation <dead-id>` exits 0, silently creates a fresh
+    // conversation, and writes the fresh id to the cwd cache after the turn.
+    // Without adoption the dead id would be re-persisted forever and every
+    // resumed turn would start amnesiac.
+    const pinned: string[] = [];
+    let recorded: string | null = null;
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => recorded,
+      initialConversationId: 'dead-cid',
+      onConversationId: (id) => pinned.push(id),
+    });
+
+    await backend.startSession();
+
+    const t1 = backend.sendPrompt('/work', 'first');
+    recorded = 'fresh-cid'; // agy's post-turn cache write
+    current.child.emit('close', 0);
+    await t1;
+
+    expect(pinned).toEqual(['fresh-cid']);
+
+    // The next turn resumes the adopted conversation, not the dead seed.
+    current = makeFakeChild();
+    const t2 = backend.sendPrompt('/work', 'second');
+    current.child.emit('close', 0);
+    await t2;
+
+    const idx = spawnCalls[1].indexOf('--conversation');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(spawnCalls[1][idx + 1]).toBe('fresh-cid');
+  });
+
   it('starts fresh instead of resuming a pre-existing cwd conversation (cross-resume guard)', async () => {
     const spawnCalls: string[][] = [];
     let current = makeFakeChild();
