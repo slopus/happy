@@ -54,25 +54,40 @@ export function resolveAgyBin(): string {
 }
 
 /**
- * Model display names accepted by `agy --model`, as printed by `agy models`.
- * agy expects the full display string, not a slug.
+ * Stable model slugs accepted by `agy --model` (agy 1.1.5+), as printed by
+ * `agy models` minus the per-effort suffix for models with variants (the
+ * variant is chosen with `--effort`; see AGY_MODEL_EFFORT_LEVELS). agy still
+ * accepts the full variant slugs and the pre-1.1.5 display names (e.g.
+ * "Gemini 3.1 Pro (High)"), so previously stored selections keep working.
  */
 export const AGY_MODELS = [
-  'Gemini 3.5 Flash (Medium)',
-  'Gemini 3.5 Flash (High)',
-  'Gemini 3.5 Flash (Low)',
-  'Gemini 3.1 Pro (Low)',
-  'Gemini 3.1 Pro (High)',
-  'Claude Sonnet 4.6 (Thinking)',
-  'Claude Opus 4.6 (Thinking)',
-  'GPT-OSS 120B (Medium)',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.1-pro',
+  'claude-sonnet-4-6',
+  'claude-opus-4-6-thinking',
+  'gpt-oss-120b-medium',
 ] as const;
+
+/**
+ * Effort variants per base model slug. agy REQUIRES `--effort` for these models
+ * (`--model gemini-3.1-pro` alone errors) and REJECTS it for models not listed
+ * here, so the arg builder consults this map before emitting the flag.
+ */
+export const AGY_MODEL_EFFORT_LEVELS: Record<string, readonly string[]> = {
+  'gemini-3.6-flash': ['low', 'medium', 'high'],
+  'gemini-3.5-flash': ['low', 'medium', 'high'],
+  'gemini-3.1-pro': ['low', 'high'],
+};
 
 /**
  * Default agy model. A Gemini model on purpose: this backend exists as a fallback
  * for when Claude Code is rate-limited, so we should not default onto a Claude model.
  */
-export const DEFAULT_AGY_MODEL = 'Gemini 3.1 Pro (High)';
+export const DEFAULT_AGY_MODEL = 'gemini-3.1-pro';
+
+/** Effort used when a variant model is selected without an explicit effort. */
+export const DEFAULT_AGY_EFFORT = 'high';
 
 /** Timeout passed to `agy --print-timeout` for a single print turn. */
 export const AGY_PRINT_TIMEOUT = '10m';

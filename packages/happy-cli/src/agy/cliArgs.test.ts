@@ -26,6 +26,25 @@ describe('buildAgyArgs', () => {
     expect(args[idx + 1]).toBe('Gemini 3.1 Pro (High)');
   });
 
+  it('appends --effort for base models with variants, defaulting to high', () => {
+    const chosen = buildAgyArgs({ prompt: 'p', permissionMode: 'default', model: 'gemini-3.1-pro', effort: 'low' });
+    expect(chosen[chosen.indexOf('--effort') + 1]).toBe('low');
+
+    const defaulted = buildAgyArgs({ prompt: 'p', permissionMode: 'default', model: 'gemini-3.1-pro' });
+    expect(defaulted[defaulted.indexOf('--effort') + 1]).toBe('high');
+  });
+
+  it('replaces an effort level the model does not offer with the default', () => {
+    // 3.1 pro has no medium variant; passing it through would error the turn
+    const args = buildAgyArgs({ prompt: 'p', permissionMode: 'default', model: 'gemini-3.1-pro', effort: 'medium' });
+    expect(args[args.indexOf('--effort') + 1]).toBe('high');
+  });
+
+  it('omits --effort for fixed-variant models and legacy display names', () => {
+    expect(buildAgyArgs({ prompt: 'p', permissionMode: 'default', model: 'claude-sonnet-4-6', effort: 'high' })).not.toContain('--effort');
+    expect(buildAgyArgs({ prompt: 'p', permissionMode: 'default', model: 'Gemini 3.1 Pro (High)', effort: 'high' })).not.toContain('--effort');
+  });
+
   it('resumes a conversation via --conversation when an id is given', () => {
     const args = buildAgyArgs({ prompt: 'p', permissionMode: 'default', conversationId: 'cid-123' });
     const idx = args.indexOf('--conversation');

@@ -61,6 +61,30 @@ describe('AgyBackend', () => {
     expect(messages.at(-1)).toMatchObject({ type: 'status', status: 'idle' });
   });
 
+  it('passes model and effort through to the agy argv after setModel/setEffort', async () => {
+    const { child } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => null,
+    });
+
+    backend.setModel('gemini-3.1-pro');
+    backend.setEffort('low');
+
+    await backend.startSession();
+    const turn = backend.sendPrompt('/work', 'hi');
+    child.emit('close', 0);
+    await turn;
+
+    const args = (spawnFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as string[];
+    expect(args[args.indexOf('--model') + 1]).toBe('gemini-3.1-pro');
+    expect(args[args.indexOf('--effort') + 1]).toBe('low');
+  });
+
   it('emits an error status and rejects on non-zero exit', async () => {
     const { child } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;

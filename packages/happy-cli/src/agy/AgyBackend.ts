@@ -36,8 +36,10 @@ export interface AgyBackendOptions {
   cwd: string;
   /** Initial permission mode; updated per turn from message meta. */
   permissionMode: PermissionMode;
-  /** Initial model display name; updated per turn from message meta. */
+  /** Initial model key; updated per turn from message meta. */
   model?: string;
+  /** Initial effort level for models with variants; updated per turn from message meta. */
+  effort?: string | null;
   /** Value for `--print-timeout`. Defaults to AGY_PRINT_TIMEOUT. */
   printTimeout?: string;
   /** Optional logger. */
@@ -66,6 +68,7 @@ export class AgyBackend implements AgentBackend {
 
   private permissionMode: PermissionMode;
   private model?: string;
+  private effort: string | null;
   private conversationId: string | null = null;
   private child: ChildProcess | null = null;
 
@@ -73,6 +76,7 @@ export class AgyBackend implements AgentBackend {
     this.cwd = opts.cwd;
     this.permissionMode = opts.permissionMode;
     this.model = opts.model;
+    this.effort = opts.effort ?? null;
     this.printTimeout = opts.printTimeout ?? AGY_PRINT_TIMEOUT;
     this.log = opts.log ?? (() => {});
     this.spawnFn = opts.spawnFn ?? spawn;
@@ -89,6 +93,11 @@ export class AgyBackend implements AgentBackend {
     this.model = model;
   }
 
+  /** Update the effort level applied to subsequent turns. */
+  setEffort(effort: string | null): void {
+    this.effort = effort;
+  }
+
   async startSession(): Promise<StartSessionResult> {
     // agy spawns lazily per prompt; there is nothing long-lived to start.
     // Deliberately do NOT seed from the cwd conversation cache: it holds whatever
@@ -102,6 +111,7 @@ export class AgyBackend implements AgentBackend {
     const args = buildAgyArgs({
       prompt,
       model: this.model,
+      effort: this.effort,
       conversationId: this.conversationId,
       permissionMode: this.permissionMode,
       addDirs: [this.cwd],

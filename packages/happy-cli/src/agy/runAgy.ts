@@ -188,6 +188,10 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
         messageBuffer.addMessage(`[MODEL:${displayedModel}]`, 'system');
       }
     }
+    if (message.meta?.hasOwnProperty('effort')) {
+      const effort = (message.meta as Record<string, unknown>).effort;
+      backend.setEffort(typeof effort === 'string' && effort ? effort : null);
+    }
 
     messageBuffer.addMessage(message.content.text, 'user');
     messageQueue.push(message.content.text, {});

@@ -9,6 +9,7 @@ import {
     getDefaultEffortKey,
     getDefaultModelKey,
     getDefaultPermissionModeKey,
+    getEffortLevelsForModel,
     mapMetadataOptions,
     resolveCurrentOption,
 } from './modelModeOptions';
@@ -132,13 +133,22 @@ describe('modelModeOptions', () => {
         expect(models).toEqual(getAgyModelModes());
         const keys = models.map((m) => m.key);
         // the agentDefaults agy default must be selectable
-        expect(keys).toContain('Gemini 3.1 Pro (High)');
-        expect(getDefaultModelKey('agy')).toBe('Gemini 3.1 Pro (High)');
+        expect(keys).toContain('gemini-3.1-pro');
+        expect(getDefaultModelKey('agy')).toBe('gemini-3.1-pro');
         // no 'default' entry — agy would receive the literal string "default" as --model
         expect(keys).not.toContain('default');
         // not the claude list
         expect(keys).not.toContain('opus');
         expect(keys).not.toContain('sonnet');
+    });
+
+    it('exposes per-model effort levels for agy variant models only', () => {
+        // variant models list their own level sets (3.1 pro has no medium)
+        expect(getEffortLevelsForModel('agy', 'gemini-3.6-flash').map((l) => l.key)).toEqual(['low', 'medium', 'high']);
+        expect(getEffortLevelsForModel('agy', 'gemini-3.1-pro').map((l) => l.key)).toEqual(['low', 'high']);
+        // fixed-variant models and legacy display-name keys have no effort control
+        expect(getEffortLevelsForModel('agy', 'claude-sonnet-4-6')).toEqual([]);
+        expect(getEffortLevelsForModel('agy', 'Gemini 3.1 Pro (High)')).toEqual([]);
     });
 
     it('resolves the first matching preferred key', () => {

@@ -6,6 +6,7 @@
  */
 
 import type { PermissionMode } from '@/api/types';
+import { AGY_MODEL_EFFORT_LEVELS, DEFAULT_AGY_EFFORT } from './constants';
 
 /**
  * Happy permission modes that map to agy's `--dangerously-skip-permissions`
@@ -24,8 +25,10 @@ const SKIP_PERMISSION_MODES: ReadonlySet<PermissionMode> = new Set<PermissionMod
 export interface BuildAgyArgsOptions {
   /** The user prompt for this turn. */
   prompt: string;
-  /** Model display name passed to `--model` (e.g. "Gemini 3.1 Pro (High)"). */
+  /** Model passed to `--model` — a stable slug (e.g. "gemini-3.1-pro") or a legacy display name. */
   model?: string;
+  /** Effort level for models with `--effort` variants; ignored for models without them. */
+  effort?: string | null;
   /** Conversation id to resume via `--conversation`; omit/null for a fresh conversation. */
   conversationId?: string | null;
   /** Happy permission mode for this turn. */
@@ -48,6 +51,14 @@ export function buildAgyArgs(opts: BuildAgyArgsOptions): string[] {
   }
   if (opts.model) {
     args.push('--model', opts.model);
+    // agy requires --effort for base slugs with variants ("--model gemini-3.1-pro"
+    // alone is an error) and rejects it for everything else (fixed-variant slugs,
+    // legacy display names), so gate the flag on the variant map.
+    const levels = AGY_MODEL_EFFORT_LEVELS[opts.model];
+    if (levels) {
+      const effort = opts.effort && levels.includes(opts.effort) ? opts.effort : DEFAULT_AGY_EFFORT;
+      args.push('--effort', effort);
+    }
   }
   if (SKIP_PERMISSION_MODES.has(opts.permissionMode)) {
     args.push('--dangerously-skip-permissions');

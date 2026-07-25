@@ -135,7 +135,9 @@ export function getOpenClawPermissionModes(translate: Translate): PermissionMode
 }
 
 // agy --print only distinguishes --sandbox (default) from --dangerously-skip-permissions,
-// so only these two modes are offered.
+// so only these two modes are offered. (agy 1.1.7 also has `--mode accept-edits|plan`,
+// but in print mode it is accepted and NOT enforced — plan mode still edits files —
+// so offering those modes here would be a false promise.)
 export function getAgyPermissionModes(translate: Translate): PermissionMode[] {
     return [
         { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
@@ -165,19 +167,29 @@ export function getOpenClawModelModes(): ModelMode[] {
     ];
 }
 
-// Keys are the exact display names `agy --model` accepts (as printed by `agy models`).
+// Keys are the stable model slugs `agy --model` accepts (agy 1.1.5+, as printed
+// by `agy models` minus the effort suffix). Effort variants are picked via the
+// Effort control (--effort), not baked into the model key. Pre-1.1.5 display-name
+// keys (e.g. "Gemini 3.1 Pro (High)") stored in old drafts/overrides are still
+// accepted by agy, so they keep working without migration.
 export function getAgyModelModes(): ModelMode[] {
     return [
-        { key: 'Gemini 3.1 Pro (High)', name: 'gemini 3.1 pro (high)', description: null },
-        { key: 'Gemini 3.1 Pro (Low)', name: 'gemini 3.1 pro (low)', description: null },
-        { key: 'Gemini 3.5 Flash (High)', name: 'gemini 3.5 flash (high)', description: null },
-        { key: 'Gemini 3.5 Flash (Medium)', name: 'gemini 3.5 flash (medium)', description: null },
-        { key: 'Gemini 3.5 Flash (Low)', name: 'gemini 3.5 flash (low)', description: null },
-        { key: 'Claude Opus 4.6 (Thinking)', name: 'claude opus 4.6 (thinking)', description: null },
-        { key: 'Claude Sonnet 4.6 (Thinking)', name: 'claude sonnet 4.6 (thinking)', description: null },
-        { key: 'GPT-OSS 120B (Medium)', name: 'gpt-oss 120b (medium)', description: null },
+        { key: 'gemini-3.6-flash', name: 'gemini 3.6 flash', description: null },
+        { key: 'gemini-3.5-flash', name: 'gemini 3.5 flash', description: null },
+        { key: 'gemini-3.1-pro', name: 'gemini 3.1 pro', description: null },
+        { key: 'claude-sonnet-4-6', name: 'claude sonnet 4.6', description: null },
+        { key: 'claude-opus-4-6-thinking', name: 'claude opus 4.6 (thinking)', description: null },
+        { key: 'gpt-oss-120b-medium', name: 'gpt-oss 120b', description: null },
     ];
 }
+
+// Effort variants per agy base model, mirroring `agy models` (e.g.
+// gemini-3.1-pro-low/-high). Models absent here have no --effort support.
+const AGY_MODEL_EFFORT_LEVELS: Record<string, string[]> = {
+    'gemini-3.6-flash': ['low', 'medium', 'high'],
+    'gemini-3.5-flash': ['low', 'medium', 'high'],
+    'gemini-3.1-pro': ['low', 'high'],
+};
 
 export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translate): ModelMode[] {
     if (flavor === 'codex') {
@@ -380,6 +392,14 @@ export function getEffortLevelsForModel(
     }
     if (flavor === 'codex') {
         return getCodexEffortLevels();
+    }
+    // agy effort is per model: only some base models have --effort variants,
+    // and their level sets differ (3.1 pro has no medium).
+    if (flavor === 'agy') {
+        return (AGY_MODEL_EFFORT_LEVELS[modelKey] ?? []).map((level) => ({
+            key: level,
+            name: level,
+        }));
     }
     return [];
 }

@@ -34,7 +34,7 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     codex: { permissionMode: 'yolo', modelMode: 'gpt-5.5', effortLevel: 'medium' },
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
-    agy: { permissionMode: 'default', modelMode: 'Gemini 3.1 Pro (High)', effortLevel: null },
+    agy: { permissionMode: 'default', modelMode: 'gemini-3.1-pro', effortLevel: 'high' },
 };
 
 export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {

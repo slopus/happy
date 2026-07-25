@@ -562,6 +562,19 @@ export default function MachineDetailScreen() {
                                 </Text>
                             }
                         />
+                        {/* agy is optional in the metadata schema (older CLIs don't
+                            report it) — undefined means unknown, not missing. */}
+                        {metadata.cliAvailability.agy !== undefined && (
+                            <Item
+                                title="Agy"
+                                showChevron={false}
+                                rightElement={
+                                    <Text style={{ color: metadata.cliAvailability.agy ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>
+                                        {metadata.cliAvailability.agy ? t('machine.cliInstalled') : t('machine.cliNotFound')}
+                                    </Text>
+                                }
+                            />
+                        )}
                         <Item
                             title={t('machine.lastDetected')}
                             subtitle={new Date(metadata.cliAvailability.detectedAt).toLocaleString()}
