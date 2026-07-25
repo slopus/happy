@@ -150,6 +150,11 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     }
     return;
   } else if (subcommand === 'gemini') {
+    // The standalone gemini CLI is EOL; agy (Antigravity CLI) is its successor.
+    // Warn once at the branch top so every entry point — the agent itself and
+    // the model/project config subcommands — carries the deprecation signal.
+    console.warn(chalk.yellow('⚠ The gemini backend is deprecated and may be removed in a future release. Use `happy agy` (Antigravity CLI) instead.'));
+
     // Handle gemini subcommands
     const geminiSubcommand = args[1];
     
@@ -331,9 +336,6 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     
     // Handle gemini command (ACP-based agent)
     try {
-      // The standalone gemini CLI is EOL; agy (Antigravity CLI) is its successor.
-      console.warn(chalk.yellow('⚠ The gemini backend is deprecated and may be removed in a future release. Use `happy agy` (Antigravity CLI) instead.'));
-
       const { runGemini } = await import('@/gemini/runGemini');
 
       // Parse startedBy argument

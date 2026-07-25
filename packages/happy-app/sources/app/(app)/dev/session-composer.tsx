@@ -48,7 +48,7 @@ const AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'claude', label: 'claude code' },
     { key: 'codex', label: 'codex' },
     { key: 'openclaw', label: 'openclaw' },
-    { key: 'gemini', label: 'gemini' },
+    { key: 'gemini', label: 'gemini (deprecated)' },
 ];
 
 // Sample data for pickers
