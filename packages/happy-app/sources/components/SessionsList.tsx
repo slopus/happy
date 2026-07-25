@@ -430,8 +430,11 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
-    const status = session.hasUnread
+    // Override to solid blue when session has unread results. Only while the
+    // session is settled — if it started working again (or waits on a
+    // permission), the live state takes precedence over unread.
+    const showUnread = session.hasUnread && session.state !== 'thinking' && session.state !== 'permission_required';
+    const status = showUnread
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
 
@@ -439,7 +442,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
     }, [session.state]);
 
-    const statusText = session.hasUnread
+    const statusText = showUnread
         ? t('status.unread')
         : session.state === 'thinking'
             ? vibingMessage

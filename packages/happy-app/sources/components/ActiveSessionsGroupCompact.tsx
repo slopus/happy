@@ -226,8 +226,11 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
-    const status = session.hasUnread
+    // Override to solid blue when session has unread results. Only while the
+    // session is settled — if it started working again (or waits on a
+    // permission), the live state takes precedence over unread.
+    const showUnread = session.hasUnread && session.state !== 'thinking' && session.state !== 'permission_required';
+    const status = showUnread
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
     const navigateToSession = useNavigateToSession();
@@ -271,7 +274,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const renderLeadingIndicator = () => {
         let indicator: React.ReactNode = null;
 
-        if (session.hasUnread) {
+        if (showUnread) {
             indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
         } else if (session.state === 'waiting' && session.hasDraft) {
             indicator = (
