@@ -38,6 +38,8 @@ export interface RunAgyOptions {
   credentials: Credentials;
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
+  /** agy conversation id to resume (from `happy agy --resume <id>`). */
+  resumeConversationId?: string;
 }
 
 export async function runAgy(opts: RunAgyOptions): Promise<void> {
@@ -108,11 +110,35 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
 
   let displayedModel = DEFAULT_AGY_MODEL;
 
+  // Resume the prior agy conversation: prefer the id passed on the command line
+  // (`happy agy --resume <id>`, emitted by buildResumeLaunch from persisted
+  // metadata), falling back to whatever the session already carries.
+  const resumeConversationId =
+    opts.resumeConversationId ?? session.getMetadata()?.agyConversationId ?? null;
+
+  // A resumed run is a fresh Happy session and onConversationId does not fire
+  // for seeded ids, so persist the seed now — otherwise the id is dropped
+  // after one hop and the resumed session is itself unresumable.
+  if (resumeConversationId) {
+    session.updateMetadata((currentMetadata) => ({
+      ...currentMetadata,
+      agyConversationId: resumeConversationId,
+    }));
+  }
+
   const backend = new AgyBackend({
     cwd: process.cwd(),
     permissionMode: 'default',
     model: DEFAULT_AGY_MODEL,
     log,
+    initialConversationId: resumeConversationId,
+    // Persist the pinned conversation so a later resume continues it.
+    onConversationId: (conversationId) => {
+      session.updateMetadata((currentMetadata) => ({
+        ...currentMetadata,
+        agyConversationId: conversationId,
+      }));
+    },
   });
 
   // Terminal UI (only with a real TTY; the daemon runs headless).

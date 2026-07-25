@@ -303,6 +303,7 @@ export type Metadata = {
   gitBranch?: string,
   claudeSessionId?: string, // Claude Code session ID
   codexThreadId?: string, // Codex app-server thread ID
+  agyConversationId?: string, // agy (Antigravity CLI) conversation ID
   tools?: string[],
   slashCommands?: string[],
   mcpServers?: Array<{ name: string; status: string }>,

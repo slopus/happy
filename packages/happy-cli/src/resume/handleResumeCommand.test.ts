@@ -167,6 +167,26 @@ describe('buildResumeLaunch', () => {
         });
     });
 
+    it('builds an agy resume command', () => {
+        expect(buildResumeLaunch({
+            id: 'session-agy',
+            active: false,
+            metadata: {
+                path: '/tmp/agy-repo',
+                flavor: 'agy',
+                agyConversationId: 'conv-abc-123',
+                host: 'localhost',
+                homeDir: '/tmp',
+                happyHomeDir: '/tmp/.happy',
+                happyLibDir: '/tmp/happy',
+                happyToolsDir: '/tmp/happy/tools',
+            },
+        })).toEqual({
+            cwd: '/tmp/agy-repo',
+            args: ['agy', '--resume', 'conv-abc-123'],
+        });
+    });
+
     it('rejects unsupported flavors', () => {
         expect(() => buildResumeLaunch({
             id: 'session-3',

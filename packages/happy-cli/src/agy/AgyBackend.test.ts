@@ -120,6 +120,88 @@ describe('AgyBackend', () => {
     expect(spawnCalls[1][idx + 1]).toBe('cid-xyz');
   });
 
+  it('resumes a seeded conversation id from the first turn (cross-restart resume)', async () => {
+    const spawnCalls: string[][] = [];
+    let current = makeFakeChild();
+    const spawnFn = vi.fn((_bin: string, args: string[]) => {
+      spawnCalls.push(args);
+      return current.child;
+    }) as unknown as SpawnFn;
+
+    // The cwd cache holds a foreign conversation, but the persisted metadata
+    // seed identifies our own — that seed wins and is never overwritten.
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => 'someone-elses-conversation',
+      initialConversationId: 'persisted-cid',
+    });
+
+    await backend.startSession();
+
+    const t1 = backend.sendPrompt('/work', 'first');
+    current.child.emit('close', 0);
+    await t1;
+
+    const idx = spawnCalls[0].indexOf('--conversation');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(spawnCalls[0][idx + 1]).toBe('persisted-cid');
+  });
+
+  it('reports the pinned conversation id via onConversationId (for persistence)', async () => {
+    let current = makeFakeChild();
+    const spawnFn = vi.fn(() => current.child) as unknown as SpawnFn;
+
+    const pinned: string[] = [];
+    let recorded: string | null = null;
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => recorded,
+      onConversationId: (id) => pinned.push(id),
+    });
+
+    await backend.startSession();
+
+    // First turn creates a conversation; the callback fires exactly once.
+    const t1 = backend.sendPrompt('/work', 'first');
+    recorded = 'new-cid';
+    current.child.emit('close', 0);
+    await t1;
+
+    // A second turn resumes the already-pinned id and must not re-fire.
+    current = makeFakeChild();
+    const t2 = backend.sendPrompt('/work', 'second');
+    current.child.emit('close', 0);
+    await t2;
+
+    expect(pinned).toEqual(['new-cid']);
+  });
+
+  it('does not report onConversationId for a seeded conversation (already persisted)', async () => {
+    let current = makeFakeChild();
+    const spawnFn = vi.fn(() => current.child) as unknown as SpawnFn;
+
+    const pinned: string[] = [];
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => 'ignored',
+      initialConversationId: 'persisted-cid',
+      onConversationId: (id) => pinned.push(id),
+    });
+
+    await backend.startSession();
+    const t1 = backend.sendPrompt('/work', 'first');
+    current.child.emit('close', 0);
+    await t1;
+
+    expect(pinned).toEqual([]);
+  });
+
   it('starts fresh instead of resuming a pre-existing cwd conversation (cross-resume guard)', async () => {
     const spawnCalls: string[][] = [];
     let current = makeFakeChild();

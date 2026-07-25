@@ -46,6 +46,14 @@ export interface AgyBackendOptions {
   spawnFn?: SpawnFn;
   /** Optional override for resolving the resume conversation id (tests). */
   resolveConversationId?: (cwd: string) => string | null;
+  /**
+   * Conversation id to resume from a prior run (recovered from persisted session
+   * metadata). When set, the backend is already pinned and never adopts a cwd
+   * cache entry — it resumes this exact conversation across happy-cli restarts.
+   */
+  initialConversationId?: string | null;
+  /** Called with the conversation id once the backend pins one (for persistence). */
+  onConversationId?: (conversationId: string) => void;
 }
 
 /** Parse an agy duration string ("10m", "30s", "1h") to milliseconds; defaults to 10m. */
@@ -63,6 +71,7 @@ export class AgyBackend implements AgentBackend {
   private readonly log: (msg: string) => void;
   private readonly spawnFn: SpawnFn;
   private readonly resolveConversationId: (cwd: string) => string | null;
+  private readonly onConversationId?: (conversationId: string) => void;
 
   private permissionMode: PermissionMode;
   private model?: string;
@@ -77,6 +86,11 @@ export class AgyBackend implements AgentBackend {
     this.log = opts.log ?? (() => {});
     this.spawnFn = opts.spawnFn ?? spawn;
     this.resolveConversationId = opts.resolveConversationId ?? readAgyConversationId;
+    this.onConversationId = opts.onConversationId;
+    // Seed from persisted metadata so a resumed session continues its own
+    // conversation. Unlike the cwd cache (which may belong to another session),
+    // this id is scoped to this Happy session, so adopting it can't cross-resume.
+    this.conversationId = opts.initialConversationId ?? null;
   }
 
   /** Update the permission mode applied to subsequent turns. */
@@ -94,7 +108,8 @@ export class AgyBackend implements AgentBackend {
     // Deliberately do NOT seed from the cwd conversation cache: it holds whatever
     // conversation last ran in this cwd — possibly another live session's — so
     // seeding would cross-resume it. A fresh session starts a fresh conversation;
-    // resuming a specific one across restarts needs explicit id plumbing (follow-up).
+    // resuming a specific one across restarts is done via initialConversationId,
+    // which is scoped to this Happy session's own persisted metadata.
     return { sessionId: this.cwd };
   }
 
@@ -185,6 +200,7 @@ export class AgyBackend implements AgentBackend {
           if (cid && cid !== preTurnCacheId) {
             this.conversationId = cid;
             this.log(`pinned agy conversation ${cid}`);
+            this.onConversationId?.(cid);
           } else {
             this.log('agy conversation cache unchanged after turn; not adopting (will retry next turn)');
           }

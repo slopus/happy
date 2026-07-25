@@ -449,11 +449,18 @@ Conversation history is preserved on the server, but in-flight tool calls are in
 
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
       let verbose = false;
+      let resumeConversationId: string | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
         } else if (args[i] === '--verbose') {
           verbose = true;
+        } else if (args[i] === '--resume') {
+          const value = args[++i];
+          if (!value || value.startsWith('-')) {
+            throw new Error('--resume requires a conversation ID');
+          }
+          resumeConversationId = value;
         }
       }
 
@@ -464,6 +471,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         credentials,
         startedBy,
         verbose,
+        resumeConversationId,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')

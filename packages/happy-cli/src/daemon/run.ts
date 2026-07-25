@@ -712,11 +712,12 @@ export async function startDaemon(): Promise<void> {
           return { type: 'error', errorMessage: `Session ${happySessionId} has no stored encryption data. It was likely started before this feature was available. Restart the daemon and start a new session to enable resume.` };
         }
 
-        // Webhook metadata may be stale (missing claudeSessionId/codexThreadId set after startup).
+        // Webhook metadata may be stale (missing claudeSessionId/codexThreadId/agyConversationId set after startup).
         // Fetch fresh metadata from server if needed.
         let metadata = tracked.happySessionMetadataFromLocalWebhook;
         const needsFetch = (!metadata.claudeSessionId && (!metadata.flavor || metadata.flavor === 'claude'))
-          || (!metadata.codexThreadId && metadata.flavor === 'codex');
+          || (!metadata.codexThreadId && metadata.flavor === 'codex')
+          || (!metadata.agyConversationId && metadata.flavor === 'agy');
         if (needsFetch) {
           logger.debug(`[DAEMON RUN] Session ${happySessionId} missing agent session ID in webhook metadata, fetching from server`);
           const serverMetadata = await fetchServerSessionMetadata(happySessionId, tracked.encryption.encryptionKey, tracked.encryption.encryptionVariant);
