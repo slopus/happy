@@ -15,14 +15,22 @@ const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy';
 export type NewSessionSessionType = 'simple' | 'worktree';
 
+const NEW_SESSION_AGENT_TYPES: NewSessionAgentType[] = ['claude', 'codex', 'gemini', 'openclaw', 'agy'];
+
+export interface NewSessionAgentModes {
+    permissionMode: PermissionModeKey | null;
+    modelMode: string | null;
+    effortLevel: string | null;
+}
+
 export interface NewSessionDraft {
     input: string;
     selectedMachineId: string | null;
     selectedPath: string | null;
     agentType: NewSessionAgentType;
-    permissionMode: PermissionModeKey | null;
-    modelMode: string | null;
-    effortLevel: string | null;
+    // Mode selections are stored per agent so switching agents doesn't
+    // overwrite the selections made for another one.
+    agentModes: Partial<Record<NewSessionAgentType, NewSessionAgentModes>>;
     sessionType: NewSessionSessionType;
     worktreeKey: string | null;
     updatedAt: number;
@@ -132,44 +140,74 @@ export function saveSessionDrafts(drafts: Record<string, string>) {
     mmkv.set('session-drafts', JSON.stringify(drafts));
 }
 
+function parseNewSessionAgentModes(value: unknown): NewSessionAgentModes | null {
+    if (!value || typeof value !== 'object') {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const permissionMode: PermissionModeKey | null = typeof record.permissionMode === 'string'
+        ? record.permissionMode
+        : null;
+    const modelMode: string | null = typeof record.modelMode === 'string' ? record.modelMode : null;
+    const effortLevel: string | null = typeof record.effortLevel === 'string' ? record.effortLevel : null;
+    if (permissionMode === null && modelMode === null && effortLevel === null) {
+        return null;
+    }
+    return { permissionMode, modelMode, effortLevel };
+}
+
+export function parseNewSessionDraft(parsed: unknown): NewSessionDraft | null {
+    if (!parsed || typeof parsed !== 'object') {
+        return null;
+    }
+    const record = parsed as Record<string, unknown>;
+
+    const input = typeof record.input === 'string' ? record.input : '';
+    const selectedMachineId = typeof record.selectedMachineId === 'string' ? record.selectedMachineId : null;
+    const selectedPath = typeof record.selectedPath === 'string' ? record.selectedPath : null;
+    const agentType: NewSessionAgentType = record.agentType === 'codex' || record.agentType === 'gemini' || record.agentType === 'openclaw' || record.agentType === 'agy'
+        ? record.agentType
+        : 'claude';
+    const agentModes: NewSessionDraft['agentModes'] = {};
+    if (record.agentModes && typeof record.agentModes === 'object') {
+        const rawModes = record.agentModes as Record<string, unknown>;
+        for (const agent of NEW_SESSION_AGENT_TYPES) {
+            const modes = parseNewSessionAgentModes(rawModes[agent]);
+            if (modes) {
+                agentModes[agent] = modes;
+            }
+        }
+    } else {
+        // Migrate legacy drafts that stored a single shared mode selection:
+        // attribute it to the draft's agent.
+        const legacyModes = parseNewSessionAgentModes(record);
+        if (legacyModes) {
+            agentModes[agentType] = legacyModes;
+        }
+    }
+    const sessionType: NewSessionSessionType = record.sessionType === 'worktree' ? 'worktree' : 'simple';
+    const worktreeKey = typeof record.worktreeKey === 'string' ? record.worktreeKey : null;
+    const updatedAt = typeof record.updatedAt === 'number' ? record.updatedAt : Date.now();
+
+    return {
+        input,
+        selectedMachineId,
+        selectedPath,
+        agentType,
+        agentModes,
+        sessionType,
+        worktreeKey,
+        updatedAt,
+    };
+}
+
 export function loadNewSessionDraft(): NewSessionDraft | null {
     const raw = mmkv.getString(NEW_SESSION_DRAFT_KEY);
     if (!raw) {
         return null;
     }
     try {
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') {
-            return null;
-        }
-
-        const input = typeof parsed.input === 'string' ? parsed.input : '';
-        const selectedMachineId = typeof parsed.selectedMachineId === 'string' ? parsed.selectedMachineId : null;
-        const selectedPath = typeof parsed.selectedPath === 'string' ? parsed.selectedPath : null;
-        const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini' || parsed.agentType === 'openclaw' || parsed.agentType === 'agy'
-            ? parsed.agentType
-            : 'claude';
-        const permissionMode: PermissionModeKey | null = typeof parsed.permissionMode === 'string'
-            ? parsed.permissionMode
-            : null;
-        const modelMode: string | null = typeof parsed.modelMode === 'string' ? parsed.modelMode : null;
-        const effortLevel: string | null = typeof parsed.effortLevel === 'string' ? parsed.effortLevel : null;
-        const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
-        const worktreeKey = typeof parsed.worktreeKey === 'string' ? parsed.worktreeKey : null;
-        const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
-
-        return {
-            input,
-            selectedMachineId,
-            selectedPath,
-            agentType,
-            permissionMode,
-            modelMode,
-            effortLevel,
-            sessionType,
-            worktreeKey,
-            updatedAt,
-        };
+        return parseNewSessionDraft(JSON.parse(raw));
     } catch (e) {
         console.error('Failed to parse new session draft', e);
         return null;

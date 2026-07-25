@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type AgentModes = {
+    permissionMode: string | null;
+    modelMode: string | null;
+    effortLevel: string | null;
+};
+
 type Draft = {
     input: string;
     selectedMachineId: string | null;
     selectedPath: string | null;
-    agentType: 'claude' | 'codex' | 'gemini' | 'openclaw';
-    permissionMode: string | null;
-    modelMode: string | null;
-    effortLevel: string | null;
+    agentType: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy';
+    agentModes: Partial<Record<Draft['agentType'], AgentModes>>;
     sessionType: 'simple' | 'worktree';
     worktreeKey: string | null;
     updatedAt: number;
@@ -32,9 +36,7 @@ function persistedDraft(overrides: Partial<Draft> = {}): Draft {
         selectedMachineId: null,
         selectedPath: null,
         agentType: 'claude',
-        permissionMode: null,
-        modelMode: null,
-        effortLevel: null,
+        agentModes: {},
         sessionType: 'simple',
         worktreeKey: null,
         updatedAt: 1,
@@ -57,11 +59,11 @@ describe('useNewSessionDraft', () => {
         expect(useNewSessionDraft.getState().effortLevel).toBeNull();
     });
 
-    it('loads persisted permission, model, and effort defaults', async () => {
+    it('loads persisted permission, model, and effort defaults for the draft agent', async () => {
         mockPersistence.draft = persistedDraft({
-            permissionMode: 'yolo',
-            modelMode: 'opus',
-            effortLevel: 'xhigh',
+            agentModes: {
+                claude: { permissionMode: 'yolo', modelMode: 'opus', effortLevel: 'xhigh' },
+            },
         });
 
         const { useNewSessionDraft } = await import('./useNewSessionDraft');
@@ -77,7 +79,34 @@ describe('useNewSessionDraft', () => {
         useNewSessionDraft.getState().setEffortLevel('high');
 
         expect(useNewSessionDraft.getState().effortLevel).toBe('high');
-        expect(mockPersistence.saved.at(-1)).toMatchObject({ effortLevel: 'high' });
+        expect(mockPersistence.saved.at(-1)).toMatchObject({
+            agentModes: { claude: { effortLevel: 'high' } },
+        });
+    });
+
+    it('keeps mode selections per agent when switching agents', async () => {
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+
+        useNewSessionDraft.getState().setModelMode('claude-opus-5');
+        useNewSessionDraft.getState().setPermissionMode('bypassPermissions');
+
+        useNewSessionDraft.getState().setAgentType('codex');
+        expect(useNewSessionDraft.getState().modelMode).toBeNull();
+        expect(useNewSessionDraft.getState().permissionMode).toBeNull();
+
+        useNewSessionDraft.getState().setModelMode('gpt-5.5');
+
+        useNewSessionDraft.getState().setAgentType('claude');
+        expect(useNewSessionDraft.getState().modelMode).toBe('claude-opus-5');
+        expect(useNewSessionDraft.getState().permissionMode).toBe('bypassPermissions');
+
+        useNewSessionDraft.getState().setAgentType('codex');
+        expect(useNewSessionDraft.getState().modelMode).toBe('gpt-5.5');
+
+        expect(mockPersistence.saved.at(-1)?.agentModes).toEqual({
+            claude: { permissionMode: 'bypassPermissions', modelMode: 'claude-opus-5', effortLevel: null },
+            codex: { permissionMode: null, modelMode: 'gpt-5.5', effortLevel: null },
+        });
     });
 
     it('keeps temporary image attachments in memory without persisting their file URIs', async () => {

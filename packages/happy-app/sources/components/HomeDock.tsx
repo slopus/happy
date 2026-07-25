@@ -760,12 +760,11 @@ export const HomeDock = React.memo(({
     }, [finishCloseFocusMode, focusPresentation]);
 
     const selectAgent = React.useCallback((agent: NewSessionAgentType) => {
-        const nextDefaults = resolveAgentDefaultConfig(defaultOverrides, agent);
+        // Mode selections live per agent in the draft, so switching agents
+        // restores the target agent's saved modes (or falls back to its
+        // defaults) instead of overwriting them.
         setAgentType(agent);
-        setPermissionMode(nextDefaults.permissionMode);
-        setModelMode(nextDefaults.modelMode);
-        if (nextDefaults.effortLevel) setEffortLevel(nextDefaults.effortLevel);
-    }, [defaultOverrides, setAgentType, setEffortLevel, setModelMode, setPermissionMode]);
+    }, [setAgentType]);
 
     React.useEffect(() => {
         if (availableAgents.length > 0 && !availableAgents.some((agent) => agent.key === agentType)) {
