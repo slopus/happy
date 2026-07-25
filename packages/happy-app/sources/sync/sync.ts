@@ -1000,11 +1000,18 @@ class Sync {
             // Decrypt agent state using session-specific encryption
             let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
 
-            // Put it all together
+            // Put it all together. Thinking state exists only in activity
+            // ephemerals — the server session record has no such field, so
+            // preserve whatever we already know. Hardcoding false here wipes
+            // the live state of every running session on any full refetch
+            // (notably the one `new-session` triggers), which both freezes the
+            // pulsing dot and trips the "agent just finished" unread detector
+            // in applySessions.
+            const known = storage.getState().sessions[session.id];
             const processedSession = {
                 ...session,
-                thinking: false,
-                thinkingAt: 0,
+                thinking: known?.thinking ?? false,
+                thinkingAt: known?.thinkingAt ?? 0,
                 metadata,
                 agentState
             };
