@@ -35,7 +35,7 @@ import { downloadCodexFileEventAttachment } from '@/codex/utils/attachmentEvents
 import { createSerialAsyncHandler } from '@/codex/utils/serialAsyncHandler';
 import { AgyBackend } from './AgyBackend';
 import { DEFAULT_AGY_MODEL } from './constants';
-import { buildAgyImagePrompt, cleanupAgyImageCache, prepareAgyImageFiles } from './imageInput';
+import { buildAgyImagePrompt, cleanupAgyImageCache, prepareAgyImageFiles, sweepStaleAgyImageCache } from './imageInput';
 
 export interface RunAgyOptions {
   credentials: Credentials;
@@ -103,11 +103,23 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     }
   }
 
+  // The daemon stops sessions with a bare SIGTERM, which would skip the
+  // `finally` below and leak this session's image cache dir — nothing ever
+  // revisits it (keyed by hashed session id). Clean up on the way out, and
+  // sweep dirs older sessions left behind the same way.
+  void sweepStaleAgyImageCache();
+  const cleanupOnSignal = () => {
+    void cleanupAgyImageCache({ sessionId: session.sessionId }).finally(() => process.exit(0));
+  };
+  process.on('SIGTERM', cleanupOnSignal);
+  process.on('SIGINT', cleanupOnSignal);
+
   const sessionManager = new AcpSessionManager();
   const messageQueue = new MessageQueue2<Record<string, never>>(() => '');
   let shouldExit = false;
   let abortController = new AbortController();
   let thinking = false;
+  let imageCacheDir: string | null = null;
 
   let displayedModel = DEFAULT_AGY_MODEL;
 
@@ -250,8 +262,11 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
 
       // Decode this batch's images into the session cache dir (local disk,
       // never a shared path) and reference them from the prompt; the dir is
-      // exposed to agy via --add-dir for the turn.
+      // exposed to agy via --add-dir.
       const images = await prepareAgyImageFiles(batch.attachments, { sessionId: session.sessionId });
+      if (images.cacheDir) {
+        imageCacheDir = images.cacheDir;
+      }
       if ((batch.attachments?.length ?? 0) > 0) {
         log(`Prepared ${images.paths.length} image file(s) for turn (skipped ${images.skipped})`);
       }
@@ -264,10 +279,15 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       log(`Incoming prompt: ${batch.message.slice(0, 200)}`);
       sendEnvelopes(sessionManager.startTurn());
       try {
+        // Latched, not per-turn: agy is spawned fresh per --print invocation,
+        // and earlier turns' image paths stay referenced by the conversation —
+        // a later text-only turn ("look at that screenshot again") still needs
+        // the sandbox grant. The files live until session end regardless, so
+        // this widens nothing.
         await backend.sendPrompt(
           process.cwd(),
           buildAgyImagePrompt(batch.message, images.paths),
-          images.cacheDir ? { extraAddDirs: [images.cacheDir] } : undefined,
+          imageCacheDir ? { extraAddDirs: [imageCacheDir] } : undefined,
         );
         sendEnvelopes(sessionManager.endTurn('completed'));
       } catch (error) {
@@ -280,6 +300,8 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       session.sendSessionEvent({ type: 'ready' });
     }
   } finally {
+    process.off('SIGTERM', cleanupOnSignal);
+    process.off('SIGINT', cleanupOnSignal);
     clearInterval(keepAliveInterval);
     reconnectionHandle?.cancel();
 

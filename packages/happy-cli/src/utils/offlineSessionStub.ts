@@ -48,6 +48,9 @@ export function createOfflineSessionStub(sessionTag: string): ApiSessionClient {
         updateAgentState: () => {},
         onUserMessage: () => {},
         onFileEvent: () => {},
+        // Reached via sendEnvelopes on every turn; "unreachable offline" is
+        // exactly how the missing onFileEvent stub above slipped through.
+        sendSessionProtocolMessage: () => {},
         trackAttachmentDownload: () => {},
         drainAttachmentsForUserMessage: async () => [],
         rpcHandlerManager: {

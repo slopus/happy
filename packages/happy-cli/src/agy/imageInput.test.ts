@@ -12,7 +12,7 @@ vi.mock('@/configuration', () => ({
     configuration: { happyHomeDir: '/home/test/.happy' },
 }));
 
-import { buildAgyImagePrompt, cleanupAgyImageCache, prepareAgyImageFiles } from './imageInput';
+import { buildAgyImagePrompt, cleanupAgyImageCache, prepareAgyImageFiles, sweepStaleAgyImageCache } from './imageInput';
 
 const PNG_MAGIC = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -107,6 +107,38 @@ describe('cleanupAgyImageCache', () => {
     it('is a no-op for a session that never wrote images', async () => {
         const cacheRootDir = await makeTempDir();
         await expect(cleanupAgyImageCache({ sessionId: 'never-there', cacheRootDir })).resolves.toBeUndefined();
+    });
+});
+
+describe('sweepStaleAgyImageCache', () => {
+    it('removes only dirs older than the age gate', async () => {
+        const cacheRootDir = await makeTempDir();
+        const stale = await prepareAgyImageFiles(
+            [{ data: PNG_MAGIC, mimeType: 'image/png', name: 'a.png' }],
+            { sessionId: 'stale-session', cacheRootDir },
+        );
+        const fresh = await prepareAgyImageFiles(
+            [{ data: PNG_MAGIC, mimeType: 'image/png', name: 'b.png' }],
+            { sessionId: 'fresh-session', cacheRootDir },
+        );
+
+        // Both dirs were just written; a clock far in the future ages out both,
+        // so gate "stale" by age and protect "fresh" via maxAgeMs instead:
+        // sweep with now = real now → nothing old enough → both survive.
+        await sweepStaleAgyImageCache({ cacheRootDir });
+        expect(await readdir(stale.cacheDir!)).toHaveLength(1);
+
+        // now pushed past the gate → everything qualifies as stale.
+        const weekAndABit = 8 * 24 * 60 * 60 * 1000;
+        await sweepStaleAgyImageCache({ cacheRootDir, now: () => Date.now() + weekAndABit });
+        await expect(stat(stale.cacheDir!)).rejects.toMatchObject({ code: 'ENOENT' });
+        await expect(stat(fresh.cacheDir!)).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
+    it('is a no-op when the cache root does not exist', async () => {
+        await expect(
+            sweepStaleAgyImageCache({ cacheRootDir: join(tmpdir(), 'happy-agy-no-such-root') }),
+        ).resolves.toBeUndefined();
     });
 });
 

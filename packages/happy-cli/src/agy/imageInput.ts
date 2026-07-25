@@ -14,7 +14,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { rm } from 'node:fs/promises';
+import { readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { configuration } from '@/configuration';
@@ -86,6 +86,44 @@ export async function cleanupAgyImageCache(opts: {
         logger.debug('[agy] Failed to clean image cache', {
             errorName: error instanceof Error ? error.name : typeof error,
         });
+    }
+}
+
+const STALE_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Best-effort sweep of session dirs left behind by hard exits: a bare SIGTERM
+ * (the daemon's stop signal) can skip the session-end cleanup, and dirs are
+ * keyed by hashed session id, so nothing else ever revisits them. Age-gated so
+ * a concurrent live session's fresh dir is never touched.
+ */
+export async function sweepStaleAgyImageCache(opts: {
+    cacheRootDir?: string;
+    maxAgeMs?: number;
+    now?: () => number;
+} = {}): Promise<void> {
+    const root = agyImageCacheRoot(opts.cacheRootDir);
+    const maxAgeMs = opts.maxAgeMs ?? STALE_CACHE_MAX_AGE_MS;
+    const now = opts.now ?? Date.now;
+    let entries;
+    try {
+        entries = await readdir(root, { withFileTypes: true });
+    } catch {
+        return; // no cache root yet — nothing to sweep
+    }
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const dir = join(root, entry.name);
+        try {
+            const info = await stat(dir);
+            if (now() - info.mtimeMs > maxAgeMs) {
+                await rm(dir, { recursive: true, force: true });
+            }
+        } catch (error) {
+            logger.debug('[agy] Failed to sweep stale image cache dir', {
+                errorName: error instanceof Error ? error.name : typeof error,
+            });
+        }
     }
 }
 
