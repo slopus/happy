@@ -211,6 +211,8 @@ export const zhHant: TranslationStructure = {
         },
         showFlavorIcons: '顯示 AI 提供者圖示',
         showFlavorIconsDescription: '在工作階段頭像上顯示 AI 提供者圖示',
+        unreadIndicatorPurple: '紫色未讀指示點',
+        unreadIndicatorPurpleDescription: '已完成工作階段的未讀點以紫色而非藍色顯示',
     },
 
     settingsFeatures: {

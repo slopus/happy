@@ -19,7 +19,7 @@ import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
-import { useSettingMutable } from '@/sync/storage';
+import { useSetting, useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
 import { SessionShortcutHintBadge } from './ShortcutHints';
 import { ProviderIcon } from './ProviderIcon';
@@ -430,12 +430,15 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results. Only while the
-    // session is settled — if it started working again (or waits on a
-    // permission), the live state takes precedence over unread.
+    // Override to a solid color when session has unread results — blue, or
+    // purple when enabled in appearance settings. Only while the session is
+    // settled — if it started working again (or waits on a permission), the
+    // live state takes precedence over unread.
+    const unreadIndicatorPurple = useSetting('unreadIndicatorPurple');
+    const unreadColor = unreadIndicatorPurple ? '#AF52DE' : '#007AFF';
     const showUnread = session.hasUnread && session.state !== 'thinking' && session.state !== 'permission_required';
     const status = showUnread
-        ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
+        ? { ...baseStatus, color: unreadColor, dotColor: unreadColor, isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
 
     const vibingMessage = React.useMemo(() => {

@@ -214,6 +214,7 @@ export default function AppearanceSettingsScreen() {
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
+    const [unreadIndicatorPurple, setUnreadIndicatorPurple] = useSettingMutable('unreadIndicatorPurple');
     const [userMessageBubbleColor, setUserMessageBubbleColor] = useSettingMutable('userMessageBubbleColor');
     const [sessionStatusBarDisplay, setSessionStatusBarDisplay] = useSettingMutable('sessionStatusBarDisplay');
     const [usageLimitShowRemaining, setUsageLimitShowRemaining] = useSettingMutable('usageLimitShowRemaining');
@@ -483,6 +484,17 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={showFlavorIcons}
                             onValueChange={setShowFlavorIcons}
+                        />
+                    }
+                />
+                <Item
+                    title={t('settingsAppearance.unreadIndicatorPurple')}
+                    subtitle={t('settingsAppearance.unreadIndicatorPurpleDescription')}
+                    icon={<Ionicons name="ellipse" size={29} color="#AF52DE" />}
+                    rightElement={
+                        <Switch
+                            value={unreadIndicatorPurple}
+                            onValueChange={setUnreadIndicatorPurple}
                         />
                     }
                 />

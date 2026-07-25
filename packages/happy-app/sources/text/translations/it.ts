@@ -209,6 +209,8 @@ export const it: TranslationStructure = {
         },
         showFlavorIcons: 'Mostra icone provider IA',
         showFlavorIconsDescription: 'Mostra le icone del provider IA sugli avatar di sessione',
+        unreadIndicatorPurple: 'Indicatore non letti viola',
+        unreadIndicatorPurpleDescription: 'Mostra il punto non letti delle sessioni completate in viola invece che in blu',
     },
 
     settingsFeatures: {

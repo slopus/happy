@@ -212,6 +212,8 @@ export const zhHans: TranslationStructure = {
         },
         showFlavorIcons: '显示 AI 提供商图标',
         showFlavorIconsDescription: '在会话头像上显示 AI 提供商图标',
+        unreadIndicatorPurple: '紫色未读指示点',
+        unreadIndicatorPurpleDescription: '已完成会话的未读点显示为紫色而非蓝色',
     },
 
     settingsFeatures: {

@@ -210,6 +210,8 @@ export const pt: TranslationStructure = {
         },
         showFlavorIcons: 'Mostrar ícones de provedores de IA',
         showFlavorIconsDescription: 'Exibir ícones do provedor de IA nos avatares de sessão',
+        unreadIndicatorPurple: 'Indicador de não lidos em roxo',
+        unreadIndicatorPurpleDescription: 'Exibir o ponto de não lidos das sessões concluídas em roxo em vez de azul',
     },
 
     settingsFeatures: {

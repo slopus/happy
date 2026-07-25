@@ -211,6 +211,8 @@ export const es: TranslationStructure = {
         },
         showFlavorIcons: 'Mostrar íconos de proveedor de IA',
         showFlavorIconsDescription: 'Mostrar íconos del proveedor de IA en los avatares de sesión',
+        unreadIndicatorPurple: 'Indicador de no leídos en morado',
+        unreadIndicatorPurpleDescription: 'Mostrar el punto de no leídos de las sesiones terminadas en morado en lugar de azul',
     },
 
     settingsFeatures: {

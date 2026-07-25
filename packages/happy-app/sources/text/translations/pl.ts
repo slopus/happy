@@ -228,6 +228,8 @@ export const pl: TranslationStructure = {
         },
         showFlavorIcons: 'Pokaż ikony dostawcy AI',
         showFlavorIconsDescription: 'Wyświetlaj ikony dostawcy AI na awatarach sesji',
+        unreadIndicatorPurple: 'Fioletowy wskaźnik nieprzeczytanych',
+        unreadIndicatorPurpleDescription: 'Pokazuj kropkę nieprzeczytanych w ukończonych sesjach na fioletowo zamiast na niebiesko',
     },
 
     settingsFeatures: {

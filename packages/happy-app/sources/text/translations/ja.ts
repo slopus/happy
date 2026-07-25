@@ -212,6 +212,8 @@ export const ja: TranslationStructure = {
         },
         showFlavorIcons: 'AIプロバイダーアイコンを表示',
         showFlavorIconsDescription: 'セッションアバターにAIプロバイダーアイコンを表示',
+        unreadIndicatorPurple: '未読インジケーターを紫色に',
+        unreadIndicatorPurpleDescription: '完了したセッションの未読ドットを青ではなく紫色で表示',
     },
 
     settingsFeatures: {

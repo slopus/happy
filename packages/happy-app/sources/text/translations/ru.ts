@@ -197,6 +197,8 @@ export const ru: TranslationStructure = {
         },
         showFlavorIcons: 'Показывать иконки провайдеров ИИ',
         showFlavorIconsDescription: 'Отображать иконки провайдеров ИИ на аватарах сессий',
+        unreadIndicatorPurple: 'Фиолетовый индикатор непрочитанного',
+        unreadIndicatorPurpleDescription: 'Показывать точку непрочитанного у завершённых сессий фиолетовым вместо синего',
     },
 
     settingsFeatures: {

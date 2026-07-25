@@ -211,6 +211,8 @@ export const ca: TranslationStructure = {
         },
         showFlavorIcons: "Mostrar icones de proveïdors d'IA",
         showFlavorIconsDescription: "Mostrar icones del proveïdor d'IA als avatars de sessió",
+        unreadIndicatorPurple: 'Indicador de no llegits en lila',
+        unreadIndicatorPurpleDescription: 'Mostra el punt de no llegits de les sessions acabades en lila en lloc de blau',
     },
 
     settingsFeatures: {

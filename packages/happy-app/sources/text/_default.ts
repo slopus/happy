@@ -209,6 +209,8 @@ export const en = {
         },
         showFlavorIcons: 'Show AI Provider Icons',
         showFlavorIconsDescription: 'Display AI provider icons on session avatars',
+        unreadIndicatorPurple: 'Purple Unread Indicator',
+        unreadIndicatorPurpleDescription: 'Show the unread dot on finished sessions in purple instead of blue',
     },
 
     settingsFeatures: {

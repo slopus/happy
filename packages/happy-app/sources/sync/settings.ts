@@ -31,6 +31,7 @@ export const SettingsSchema = z.object({
     agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
     avatarStyle: z.string().describe('Avatar display style'),
     showFlavorIcons: z.boolean().describe('Whether to show AI provider icons in avatars'),
+    unreadIndicatorPurple: z.boolean().describe('Show the unread session indicator in purple instead of blue'),
     userMessageBubbleColor: z.string().describe('User message bubble color preset'),
     sessionStatusBarDisplay: z.enum(SESSION_STATUS_BAR_DISPLAY_MODES).describe('Whether/where to show the branch, model, effort, and context status bar'),
     usageLimitShowRemaining: z.boolean().describe('Show plan rate limits as quota remaining instead of quota used'),
@@ -106,6 +107,7 @@ export const settingsDefaults: Settings = {
     agentInputEnterToSend: true,
     avatarStyle: 'brutalist',
     showFlavorIcons: false,
+    unreadIndicatorPurple: false,
     userMessageBubbleColor: DEFAULT_USER_MESSAGE_BUBBLE_COLOR,
     // Hidden everywhere by default — the context usage indicator is still too
     // raw to roll out; users can opt back in from appearance settings.
