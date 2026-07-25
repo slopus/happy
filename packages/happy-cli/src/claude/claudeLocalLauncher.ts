@@ -3,6 +3,7 @@ import { claudeLocal, ExitCodeError } from "./claudeLocal";
 import { Session } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
+import { launchFailureMessage } from "./utils/launchFailureMessage";
 
 export type LauncherResult = { type: 'switch' } | { type: 'exit', code: number };
 
@@ -152,7 +153,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                     break;
                 }
                 if (!exitReason) {
-                    session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    session.client.sendSessionEvent({ type: 'message', message: launchFailureMessage(e) });
                     continue;
                 } else {
                     break;
