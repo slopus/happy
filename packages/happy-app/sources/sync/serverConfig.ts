@@ -5,12 +5,14 @@ const serverConfigStorage = new MMKV({ id: 'server-config' });
 
 const SERVER_KEY = 'custom-server-url';
 const LOG_SERVER_KEY = 'log-server-url';
-const DEFAULT_SERVER_URL = 'http://47.115.228.20:3005';
-const LEGACY_DEFAULT_SERVER_URL = 'https://47.115.228.20:8443';
+const DEFAULT_SERVER_URL = 'https://47.115.228.20:8443';
+const LEGACY_DEFAULT_SERVER_URL = 'http://47.115.228.20:3005';
 
 export function getServerUrl(): string {
     const storedUrl = serverConfigStorage.getString(SERVER_KEY);
-    // 清理旧版本默认地址，让已有设备自动切换到新的 API 端口。
+    // 3005 was briefly shipped as the default even though Android release builds
+    // reject its cleartext HTTP traffic. Migrate that value without touching
+    // deliberate custom server configuration.
     if (storedUrl === LEGACY_DEFAULT_SERVER_URL) {
         serverConfigStorage.delete(SERVER_KEY);
     }

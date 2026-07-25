@@ -8,12 +8,17 @@ describe('服务器地址配置', () => {
         setServerUrl(null);
     });
 
-    it('默认使用自托管 API 的 3005 地址', () => {
-        expect(getServerUrl()).toBe('http://47.115.228.20:3005');
+    it('默认使用自托管 API 的 HTTPS 地址', () => {
+        expect(getServerUrl()).toBe('https://47.115.228.20:8443');
     });
 
-    it('自动迁移旧版本缓存的 8443 默认地址', () => {
-        setServerUrl('https://47.115.228.20:8443');
-        expect(getServerUrl()).toBe('http://47.115.228.20:3005');
+    it('自动迁移短暂发布过的 HTTP 默认地址', () => {
+        setServerUrl('http://47.115.228.20:3005');
+        expect(getServerUrl()).toBe('https://47.115.228.20:8443');
+    });
+
+    it('保留用户手动配置的服务器地址', () => {
+        setServerUrl('https://example.com:8443');
+        expect(getServerUrl()).toBe('https://example.com:8443');
     });
 });
