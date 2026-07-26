@@ -3,12 +3,16 @@
  */
 
 import { machineBash } from '@/sync/ops';
+import { WORKTREE_DIR, WORKTREE_PATH_MARKER } from '@/utils/projectPath';
 
-/** Relative path prefix where worktrees are stored inside a repo */
-export const WORKTREE_DIR = '.dev/worktree';
-
-/** Absolute path marker used to detect worktree paths */
-export const WORKTREE_PATH_MARKER = `/${WORKTREE_DIR}/`;
+// Pure path logic lives in utils/projectPath (no RN/RPC deps, so it is unit
+// testable); re-exported here so existing import sites are unaffected.
+export {
+    WORKTREE_DIR,
+    WORKTREE_PATH_MARKER,
+    isWorktreePath,
+    getRepoPath,
+} from '@/utils/projectPath';
 
 // --- Name generation ---
 
@@ -170,18 +174,6 @@ export async function removeWorktree(
         success: result.success,
         error: result.success ? undefined : (result.stderr || 'Failed to remove worktree'),
     };
-}
-
-/** Check if a path is inside a worktree */
-export function isWorktreePath(path: string): boolean {
-    return path.includes(WORKTREE_PATH_MARKER);
-}
-
-/** Extract the main repository checkout path from a possibly-worktree path */
-export function getRepoPath(path: string): string {
-    const idx = path.indexOf(WORKTREE_PATH_MARKER);
-    if (idx === -1) return path;
-    return path.slice(0, idx);
 }
 
 /** Extract the worktree name from a worktree path, or null if not a worktree */

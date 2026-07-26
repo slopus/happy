@@ -41,6 +41,8 @@ export const ru: TranslationStructure = {
     },
 
     common: {
+        star: 'Добавить в избранное',
+        unstar: 'Убрать из избранного',
         // Simple string constants
         cancel: 'Отмена',
         authenticate: 'Авторизация',
@@ -229,6 +231,8 @@ export const ru: TranslationStructure = {
         analyticsEnabled: 'Анонимная аналитика использования активна',
         imageUpload: 'Загрузка изображений',
         imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа поддерживаемыми агентами',
+        starProjects: 'Избранные проекты',
+        starProjectsSubtitle: 'Закреплять избранные проекты в начале списка сессий',
     },
 
     errors: {

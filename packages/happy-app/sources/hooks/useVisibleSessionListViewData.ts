@@ -1,6 +1,8 @@
 import * as React from 'react';
-import { SessionListViewItem, useSessionListViewData, useSetting } from '@/sync/storage';
-import { filterProjectGroupSessions } from '@/sync/projectGroups';
+import { SessionListViewItem, useSessionListViewData, useSetting, useStarredProjects } from '@/sync/storage';
+import { filterProjectGroupSessions, projectGroupStarKey } from '@/sync/projectGroups';
+
+const EMPTY_STARRED: ReadonlySet<string> = new Set();
 
 /**
  * Applies the archive-visibility control to the session list.
@@ -20,6 +22,13 @@ import { filterProjectGroupSessions } from '@/sync/projectGroups';
 export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
     const data = useSessionListViewData();
     const hideArchivedSessions = useSetting('hideInactiveSessions');
+    // Star ordering belongs here rather than in buildSessionListViewData:
+    // starring writes a synced setting, which does not rebuild the cached list
+    // data, so ordering there would not move a card until something unrelated
+    // happened to rebuild it. A hook re-runs the moment the setting changes.
+    const starProjectsEnabled = useSetting('expStarProjects');
+    const starredProjects = useStarredProjects();
+    const starred = starProjectsEnabled ? starredProjects : EMPTY_STARRED;
 
     return React.useMemo(() => {
         if (!data) {
@@ -40,18 +49,42 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
         });
 
         const result: SessionListViewItem[] = [];
+        // Cards buffer until their section ends so starred ones can rise within
+        // it. Array.sort is stable, so everything else keeps the order the list
+        // data arrived in.
+        let section: SessionListViewItem[] = [];
+        const flushSection = () => {
+            if (section.length === 0) return;
+            if (starred.size > 0) {
+                section.sort((a, b) => {
+                    const keyA = a.type === 'project' ? projectGroupStarKey(a.project) : null;
+                    const keyB = b.type === 'project' ? projectGroupStarKey(b.project) : null;
+                    const starredA = !!keyA && starred.has(keyA);
+                    const starredB = !!keyB && starred.has(keyB);
+                    if (starredA === starredB) return 0;
+                    return starredA ? -1 : 1;
+                });
+            }
+            result.push(...section);
+            section = [];
+        };
         data.forEach((item, index) => {
             if (item.type === 'projects-header') {
+                flushSection();
                 if (visibleProjectSources.has(item.source)) result.push(item);
                 return;
             }
             if (item.type === 'project') {
                 const project = visibleProjects.get(index);
-                if (project) result.push(project);
+                if (project) section.push(project);
                 return;
             }
-            if (item.type === 'active-sessions') result.push(item);
+            if (item.type === 'active-sessions') {
+                flushSection();
+                result.push(item);
+            }
         });
+        flushSection();
 
         // Flat, date-grouped rows trail the project cards. A date header is
         // held back until a row underneath it survives the filter, so hiding
@@ -72,7 +105,7 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
         }
 
         return result;
-    }, [data, hideArchivedSessions]);
+    }, [data, hideArchivedSessions, starred]);
 }
 
 /**

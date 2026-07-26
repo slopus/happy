@@ -198,6 +198,8 @@ describe('settings', () => {
                 groupToolCalls: false,
                 compactToolCalls: true,
                 expImageUpload: false,
+                expStarProjects: false,
+                starredProjects: [],
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,

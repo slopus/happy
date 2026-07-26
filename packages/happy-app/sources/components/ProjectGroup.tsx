@@ -4,7 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
-import { ProjectGroupData, ProjectWorkspaceGroup, useAllMachines, useLocalSettingMutable } from '@/sync/storage';
+import { ProjectGroupData, ProjectWorkspaceGroup, useAllMachines, useLocalSettingMutable, useIsProjectStarred, useSetting, storage } from '@/sync/storage';
+import { t } from '@/text';
+import { getRepoPath } from '@/utils/projectPath';
 import { CompactSessionRow } from './ActiveSessionsGroupCompact';
 
 interface ProjectGroupProps {
@@ -36,6 +38,19 @@ export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectG
     // Worktrees only need naming when the project actually has more than one
     const showWorkspaceLabels = project.workspaces.length > 1;
 
+    // Only path-grouped cards are starrable: the star key is machine-and-path,
+    // and Rig projects have a durable id instead of one working directory.
+    const starProjectsEnabled = useSetting('expStarProjects');
+    // Star the repo, not the worktree: every worktree of a repo shares its star,
+    // and the store keys stars on the path it is handed verbatim.
+    const starPath = project.path ? getRepoPath(project.path) : null;
+    const canStar = starProjectsEnabled && !!project.machineId && !!starPath;
+    const isStarred = useIsProjectStarred(project.machineId, starPath);
+    const handleToggleStar = React.useCallback(() => {
+        if (!project.machineId || !starPath) return;
+        storage.getState().toggleProjectStarred(project.machineId, starPath);
+    }, [project.machineId, starPath]);
+
     return (
         <View style={styles.container}>
             <Pressable style={styles.header} onPress={toggleCollapsed} hitSlop={8}>
@@ -55,6 +70,23 @@ export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectG
                         </Text>
                     )}
                 </View>
+                {canStar && (
+                    <Pressable
+                        onPress={handleToggleStar}
+                        hitSlop={{ top: 15, bottom: 15, left: 8, right: 8 }}
+                        style={styles.starButton}
+                        accessibilityRole="button"
+                        accessibilityLabel={isStarred ? t('common.unstar') : t('common.star')}
+                    >
+                        <Ionicons
+                            name={isStarred ? 'star' : 'star-outline'}
+                            size={14}
+                            // Not theme.colors.warning — that is #8E8E93 (grey), which
+                            // makes a starred project indistinguishable by colour.
+                            color={isStarred ? '#f5a623' : theme.colors.textSecondary}
+                        />
+                    </Pressable>
+                )}
                 <Text style={styles.count}>
                     {project.activeCount > 0 ? `${project.activeCount}/${project.sessionCount}` : project.sessionCount}
                 </Text>
@@ -138,6 +170,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         marginTop: 1,
         ...Typography.default(),
+    },
+    starButton: {
+        padding: 4,
     },
     count: {
         fontSize: 12,

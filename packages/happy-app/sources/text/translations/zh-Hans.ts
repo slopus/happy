@@ -32,6 +32,8 @@ export const zhHans: TranslationStructure = {
     },
 
     common: {
+        star: '加星标',
+        unstar: '取消星标',
         // Simple string constants
         cancel: '取消',
         authenticate: '认证',
@@ -244,6 +246,8 @@ export const zhHans: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
         imageUploadSubtitle: '将图片附加到消息中，以便受支持的代理进行分析',
+        starProjects: '星标项目',
+        starProjectsSubtitle: '将星标项目固定在会话列表顶部',
     },
 
     errors: {
