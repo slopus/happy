@@ -18,6 +18,7 @@ export default function FeaturesSettingsScreen() {
     const [fileDiffsSidebar, setFileDiffsSidebar] = useSettingMutable('fileDiffsSidebar');
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [expImageUpload, setExpImageUpload] = useSettingMutable('expImageUpload');
+    const [expDirAutocomplete, setExpDirAutocomplete] = useSettingMutable('expDirAutocomplete');
     const [sortSessionsByActivity, setSortSessionsByActivity] = useSettingMutable('sortSessionsByActivity');
 
     return (
@@ -126,6 +127,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={expImageUpload}
                             onValueChange={setExpImageUpload}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.dirAutocomplete')}
+                    subtitle={t('settingsFeatures.dirAutocompleteSubtitle')}
+                    icon={<Ionicons name="folder-outline" size={29} color="#5AC8FA" />}
+                    rightElement={
+                        <Switch
+                            value={expDirAutocomplete}
+                            onValueChange={setExpDirAutocomplete}
                         />
                     }
                     showChevron={false}

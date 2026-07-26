@@ -243,6 +243,8 @@ export const zhHant: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
         imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
+        dirAutocomplete: '路徑自動完成',
+        dirAutocompleteSubtitle: '在輸入新工作階段路徑時建議目錄',
     },
 
     errors: {

@@ -499,7 +499,11 @@ function PathPickerContent({
     const currentValue = value ?? '';
     const [selection, setSelection] = React.useState<{ start: number; end: number } | undefined>(undefined);
 
-    const dirSuggestions = useDirSuggestions(machineId, currentValue, homeDir);
+    // Directory autocomplete is experimental — gated behind expDirAutocomplete.
+    // Passing a null machineId when off disables the hook entirely (no bash
+    // calls, no suggestions rendered), so the picker matches upstream.
+    const expDirAutocomplete = useSetting('expDirAutocomplete');
+    const dirSuggestions = useDirSuggestions(expDirAutocomplete ? machineId : null, currentValue, homeDir);
 
     React.useEffect(() => {
         // Embedded mobile pickers are positioned next to their trigger. Opening
@@ -1589,6 +1593,7 @@ function NewSessionScreen() {
             items={pathItems}
             value={selectedPath}
             homeDir={selectedHomeDir}
+            machineId={selectedMachineId}
             onChangeValue={setSelectedPath}
             onDone={closePicker}
             embedded
