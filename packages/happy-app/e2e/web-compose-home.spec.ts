@@ -293,7 +293,9 @@ test('桌面问候语与输入框内容列对齐且代表性中文标题保持�
 
 test('桌面图片效果使用有边界的居中弹窗且支持 Escape 关闭', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(new URL('/new?mode=image-styles', authenticatedWebUrl).toString());
+    const imageModeUrl = new URL(authenticatedRoute('/new'));
+    imageModeUrl.searchParams.set('mode', 'image-styles');
+    await page.goto(imageModeUrl.toString());
 
     const imagePanel = page.getByTestId('compose-home-image-agent-panel');
     await expect(imagePanel).toBeVisible();
@@ -376,7 +378,7 @@ for (const width of [800, 1280]) {
 for (const width of [1024, 1280, 1440]) {
     test(`宽度 ${width}px 的模型选择器使用有边界的 PC 弹窗`, async ({ page }) => {
         await page.setViewportSize({ width, height: 720 });
-        await page.goto(new URL('/new', authenticatedWebUrl).toString());
+        await page.goto(authenticatedRoute('/new'));
         await expect(page.getByRole('textbox')).toBeVisible();
 
         await page.locator('[data-testid="compose-home-model-chip"]:visible').click();
@@ -417,7 +419,7 @@ for (const width of [1024, 1280, 1440]) {
 for (const width of [1024, 1280, 1440]) {
     test(`宽度 ${width}px 的禅模式导航与会话目标不重叠`, async ({ page }) => {
         await page.setViewportSize({ width, height: 720 });
-        await page.goto(new URL('/new', authenticatedWebUrl).toString());
+        await page.goto(authenticatedRoute('/new'));
         await expect(page.getByRole('textbox')).toBeVisible();
 
         const zenButton = page.getByTestId('desktop-navigation-zen-button');
