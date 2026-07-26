@@ -7,6 +7,8 @@ Internal package names and compatibility identifiers still use `happy-*` in many
 ## Index
 - `getting-started.md`: English onboarding for users, self-hosters, and contributors.
 - `getting-started.zh-CN.md`: Chinese onboarding for users, self-hosters, and contributors.
+- `selfhost-web-deploy.md`: English manual for building, securing, deploying, updating, and rolling back the Web App.
+- `selfhost-web-deploy.zh-CN.md`: Chinese manual for building, securing, deploying, updating, and rolling back the Web App.
 - `CONTRIBUTING.md`: Paws repository workflow, worktrees, checks, and pull requests.
 - `roadmap.md`: Current shipped foundations and prioritized work.
 - protocol.md: Wire protocol (WebSocket), payload formats, sequencing, and concurrency rules.
@@ -15,6 +17,7 @@ Internal package names and compatibility identifiers still use `happy-*` in many
 - encryption.md: Encryption boundaries and on-wire encoding.
 - backend-architecture.md: Internal backend structure, data flow, and key subsystems.
 - deployment.md: How to deploy the backend and required infrastructure.
+- selfhost-intranet-deploy.md: Self-hosting the server and clients on an intranet.
 - cli-architecture.md: CLI and daemon architecture and how they interact with the server.
 - multi-process.md: Deeper multi-replica Socket.IO + Redis streams behavior, failure modes, and integration-test history.
 - dev-environments.md: Local `environments/data/` workflow, lab-rat project provisioning, `env:cli` passthrough behavior, and daemon usage.

@@ -56,13 +56,11 @@ class Configuration {
     this.daemonLockFile = join(this.happyHomeDir, 'daemon.state.json.lock')
     this.sessionsFile = join(this.happyHomeDir, 'sessions.json')
 
-    // URL precedence (both): HAPPY_*_URL env > settings.<key> > default.
-    // Settings are read sync here (avoid circular import with persistence.ts).
-    // webappUrl must follow the same chain as serverUrl, otherwise `happy server`
-    // self-host points the API at localhost but auth still opens the prod webapp.
-    // serverUrl defaults to the relay's plain-HTTP port: the 8443 endpoint is a
-    // self-signed cert, which Node rejects (DEPTH_ZERO_SELF_SIGNED_CERT) — a bare
-    // CLI run would fail. Messages stay end-to-end encrypted either way.
+    // 两类 URL 的优先级：HAPPY_*_URL 环境变量 > settings.<key> > 默认值。
+    // 此处同步读取设置，避免与 persistence.ts 形成循环依赖。
+    // webappUrl 必须与 serverUrl 使用相同的覆盖链，否则 `happy server`
+    // 将 API 指向本机后，认证流程仍可能打开默认网页。
+    // API 默认保留现有的 3005 直连入口；网页入口使用独立的 HTTPS 地址。
     this.serverUrl =
       process.env.HAPPY_SERVER_URL ||
       readSettingsStringSync(this.settingsFile, 'serverUrl') ||

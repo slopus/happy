@@ -15,7 +15,7 @@
 [![Android APK](https://img.shields.io/github/v/release/wangjs-jacky/happy?label=Android%20APK&color=34d399)](https://github.com/wangjs-jacky/happy/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[🌐 **Website**](https://paws-landing-eo4.pages.dev) • [🖥️ **Web App**](https://47.115.228.20:8443/) • [📱 **Android APK**](https://github.com/wangjs-jacky/happy/releases) • [📦 **CLI on npm**](https://www.npmjs.com/package/@wangjs-jacky/paws) • [📚 **Getting Started**](docs/getting-started.md) • [🇨🇳 **中文**](README_CN.md)
+[🌐 **Website**](https://paws-landing-eo4.pages.dev) • [🖥️ **Web App**](https://47.115.228.20:8443/) • [🚀 **Deploy Web**](docs/selfhost-web-deploy.md) • [📱 **Android APK**](https://github.com/wangjs-jacky/happy/releases) • [📦 **CLI on npm**](https://www.npmjs.com/package/@wangjs-jacky/paws) • [📚 **Getting Started**](docs/getting-started.md) • [🇨🇳 **中文**](README_CN.md)
 
 </div>
 
@@ -130,8 +130,11 @@ export HAPPY_SERVER_URL=http://your-server:3005
 paws claude
 ```
 
-See the [Getting Started guide](docs/getting-started.md) and the
+See the [Getting Started guide](docs/getting-started.md), the
+[Web self-hosting manual](docs/selfhost-web-deploy.md), and the
 [intranet deployment manual](docs/selfhost-intranet-deploy.md) for full instructions.
+The Web manual covers domain certificates, Let's Encrypt public-IP certificates,
+manual updates, the deployment helper, and rollback.
 
 ## 🙏 Acknowledgements
 

@@ -15,7 +15,7 @@
 [![Android APK](https://img.shields.io/github/v/release/wangjs-jacky/happy?label=Android%20APK&color=34d399)](https://github.com/wangjs-jacky/happy/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[🌐 **官网**](https://paws-landing-eo4.pages.dev) • [🖥️ **Web App**](https://47.115.228.20:8443/) • [📱 **Android APK**](https://github.com/wangjs-jacky/happy/releases) • [📦 **npm CLI**](https://www.npmjs.com/package/@wangjs-jacky/paws) • [📚 **从零上手**](docs/getting-started.zh-CN.md) • [🇬🇧 **English**](README.md)
+[🌐 **官网**](https://paws-landing-eo4.pages.dev) • [🖥️ **Web App**](https://47.115.228.20:8443/) • [🚀 **Web 自部署**](docs/selfhost-web-deploy.zh-CN.md) • [📱 **Android APK**](https://github.com/wangjs-jacky/happy/releases) • [📦 **npm CLI**](https://www.npmjs.com/package/@wangjs-jacky/paws) • [📚 **从零上手**](docs/getting-started.zh-CN.md) • [🇬🇧 **English**](README.md)
 
 </div>
 
@@ -128,8 +128,10 @@ export HAPPY_SERVER_URL=http://your-server:3005
 paws claude
 ```
 
-完整步骤见[从零上手指南](docs/getting-started.zh-CN.md)与
-[内网部署手册](docs/selfhost-intranet-deploy.md)。
+完整步骤见[从零上手指南](docs/getting-started.zh-CN.md)、
+[Web 自部署手册](docs/selfhost-web-deploy.zh-CN.md)与
+[内网部署手册](docs/selfhost-intranet-deploy.md)。Web 手册同时覆盖域名证书、
+Let’s Encrypt 公网 IP 证书、手工更新、自动部署脚本和回滚。
 
 ## 🙏 致谢
 

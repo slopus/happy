@@ -3,21 +3,24 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Make the Android app trust the self-hosted Happy server's self-signed TLS cert.
+ * 让 Android App 额外信任自托管 Paws Server 的自签名 TLS 证书。
  *
- * Why: 自部署 Happy 服务器（Caddy）对着公网 IP 没有域名，只能签自签证书
- * （CN/SAN = 47.115.228.20）。Android 默认只信任系统 CA，会拒绝自签证书，
- * 导致「连接服务器失败」。这跟 cleartext 无关——服务器本身是 HTTPS。
+ * 适用场景：部署者明确选择了自签名证书。Android 默认只信任系统 CA，
+ * 因而会拒绝自签名证书并显示「连接服务器失败」。这与 cleartext 无关，
+ * 因为服务器本身仍然使用 HTTPS。
+ *
+ * 正式公网服务应优先使用系统已信任的域名证书或 Let's Encrypt 公网 IP
+ * 证书；这些证书不需要通过本插件增加信任。
  *
  * 做法：把服务器证书作为额外信任锚写进 network_security_config（base-config）。
- * 该证书是叶子证书（无 CA:TRUE），只能验证它自己 SAN 内的主机（这个 IP），
+ * 该证书是叶子证书（无 CA:TRUE），只能验证它自己 SAN 内的主机，
  * **不能为其它域名签发/MITM**，所以不削弱对其它网站的安全。系统 CA 仍照常生效。
  *
  * 局限：若 Caddy 重新生成了不同的自签证书（如清空数据目录），需更新此 pem 并重打包。
  */
 
 const CERT_FILE = path.join(__dirname, 'certs', 'selfhosted_server.pem');
-const RAW_NAME = 'selfhosted_server.pem'; // res/raw/，引用名 @raw/selfhosted_server
+const RAW_NAME = 'selfhosted_server.pem'; // 放入 res/raw/，引用名为 @raw/selfhosted_server
 
 function withNetworkSecurityManifest(config) {
     return withAndroidManifest(config, (cfg) => {
