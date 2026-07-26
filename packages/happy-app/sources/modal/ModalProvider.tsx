@@ -111,6 +111,7 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
                     )}
                     {currentModal.type === 'custom' && (
                         <CustomModal
+                            key={currentModal.id}
                             config={currentModal}
                             onClose={() => hideModal(currentModal.id)}
                         />
