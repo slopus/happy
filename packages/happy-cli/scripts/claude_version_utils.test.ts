@@ -6,6 +6,7 @@ import {
   resolveClaudeEntrypoint,
   findGlobalClaudeCliPath,
   findClaudeInPath,
+  isNativeBinaryFile,
   detectSourceFromPath,
   findNpmGlobalCliPath,
   findBunGlobalCliPath,
@@ -318,6 +319,53 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
         process.env.PATH = originalPath;
         fs.rmSync(root, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe('isNativeBinaryFile', () => {
+    let binaryDir: string;
+
+    beforeEach(() => {
+      binaryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'happy-claude-native-binary-'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(binaryDir, { recursive: true, force: true });
+    });
+
+    it('detects Mach-O-like leading bytes as a native binary', () => {
+      const filePath = path.join(binaryDir, 'claude');
+      fs.writeFileSync(filePath, Buffer.from([0xcf, 0xfa, 0xed, 0xfe]));
+
+      expect(isNativeBinaryFile(filePath)).toBe(true);
+    });
+
+    it('detects ELF leading bytes as a native binary', () => {
+      const filePath = path.join(binaryDir, 'claude');
+      fs.writeFileSync(filePath, Buffer.from([0x7f, 0x45, 0x4c, 0x46]));
+
+      expect(isNativeBinaryFile(filePath)).toBe(true);
+    });
+
+    it('does not treat a shebang script as a native binary', () => {
+      const filePath = path.join(binaryDir, 'claude');
+      fs.writeFileSync(filePath, '#!/bin/sh\necho "not a binary"\n');
+
+      expect(isNativeBinaryFile(filePath)).toBe(false);
+    });
+
+    it('does not treat plain text as a native binary', () => {
+      const filePath = path.join(binaryDir, 'claude');
+      fs.writeFileSync(filePath, 'echo "npm shim script"\n');
+
+      expect(isNativeBinaryFile(filePath)).toBe(false);
+    });
+
+    it('does not treat an empty file as a native binary', () => {
+      const filePath = path.join(binaryDir, 'claude');
+      fs.writeFileSync(filePath, '');
+
+      expect(isNativeBinaryFile(filePath)).toBe(false);
     });
   });
 
