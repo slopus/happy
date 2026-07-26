@@ -55,7 +55,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -930,6 +930,21 @@ export function SessionViewLoaded({
             }
         };
     }, [sessionId, realtimeStatus, embedded]);
+
+    // Messages are fetched when the session becomes visible, which for an
+    // already-open chat only happens on mount. Returning from the background
+    // therefore leaves it showing whatever it had before — the app-state
+    // handler in Sync refreshes the session list and friends, but nothing
+    // re-reads the open conversation, so the user has to leave the chat and
+    // come back to see what the agent did meanwhile.
+    React.useEffect(() => {
+        const subscription = AppState.addEventListener('change', (nextAppState) => {
+            if (nextAppState === 'active') {
+                sync.onSessionVisible(sessionId);
+            }
+        });
+        return () => subscription.remove();
+    }, [sessionId]);
 
     let content = (
         <>
