@@ -23,7 +23,12 @@ interface SessionHeaderChipProps {
 export const SessionHeaderChip = React.memo(({ agentLabel, machineName, online, open, onPress }: SessionHeaderChipProps) => {
     const { theme } = useUnistyles();
     return (
-        <Pressable onPress={onPress} hitSlop={8} style={styles.chip}>
+        <Pressable
+            onPress={onPress}
+            hitSlop={8}
+            style={styles.chip}
+            testID="session-header-chip"
+        >
             <Text style={styles.agent} numberOfLines={1}>{agentLabel}</Text>
             <View style={[styles.dot, { backgroundColor: online ? theme.colors.status.connected : theme.colors.status.disconnected }]} />
             {machineName ? (

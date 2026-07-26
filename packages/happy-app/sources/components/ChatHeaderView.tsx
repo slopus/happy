@@ -30,6 +30,8 @@ interface ChatHeaderViewProps {
     backgroundColor?: string;
     tintColor?: string;
     isConnected?: boolean;
+    /** Keeps the title clear of the desktop Zen/back/forward overlay. */
+    headerContentLeftInset?: number;
 }
 
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
@@ -45,6 +47,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     backgroundColor,
     tintColor,
     isConnected = true,
+    headerContentLeftInset = 0,
 }) => {
     const { theme } = useUnistyles();
     // 「空间皮肤」会话顶栏时，由调用方传入 accent 底色 + 白色 tint；缺省回退到主题默认。
@@ -62,7 +65,15 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     return (
         <View style={[styles.container, { paddingTop: insets.top, backgroundColor: headerBg }]}>
             <View style={styles.contentWrapper}>
-                <View style={[styles.content, { height: headerHeight }]}>
+                <View
+                    style={[
+                        styles.content,
+                        {
+                            height: headerHeight,
+                            paddingLeft: (Platform.OS === 'ios' ? 8 : 16) + headerContentLeftInset,
+                        },
+                    ]}
+                >
                     {leftSlot ? leftSlot : (
                         <>
                             {showListButton && (

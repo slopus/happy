@@ -26,6 +26,8 @@ import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
+import { getPersistentHeaderContentInset, TAURI_HEADER_CONTROL_LEFT } from '@/utils/desktopNavigationLayout';
+import { isTauri } from '@/utils/isTauri';
 import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
 import { AllFilesDiffView } from '@/components/AllFilesDiffView';
 import { FileViewPanel } from '@/components/FileViewPanel';
@@ -73,7 +75,10 @@ export const SessionView = React.memo((props: { id: string }) => {
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const headerHeight = useHeaderHeight();
+    const isTablet = useIsTablet();
     const { width: windowWidth } = useWindowDimensions();
+    const inTauri = isTauri();
+    const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
     const sessionComposerHandleRef = React.useRef<ChatComposerHandle | null>(null);
@@ -274,6 +279,16 @@ export const SessionView = React.memo((props: { id: string }) => {
             <MaterialCommunityIcons name="message-plus-outline" size={23} color={theme.colors.header.tint} />
         </Pressable>
     );
+    const persistentHeaderContentInset = isTablet
+        ? getPersistentHeaderContentInset({
+            windowWidth,
+            headerMaxWidth: layout.headerMaxWidth,
+            headerHorizontalPadding: Platform.OS === 'ios' ? 8 : 16,
+            controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 0,
+            buttonCount: Platform.OS === 'web' ? 3 : 2,
+            targetHitSlop: 8,
+        })
+        : 0;
 
     const mainContent = (
         <>
@@ -314,6 +329,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         extraPathSegment={fileViewPath ?? undefined}
                         backgroundColor={spaceAgent ? spaceAgent.color : undefined}
                         tintColor={spaceAgent ? spaceTint : undefined}
+                        headerContentLeftInset={persistentHeaderContentInset}
                         leftSlot={enterSpaceButton}
                         titleSlot={spaceAgent ? spaceTitleSlot : headerTitleSlot}
                         rightSlot={(diffViewOpen || !!fileViewPath) ? headerRightSlot : (spaceAgent ? exitSpaceButton : newSessionButton)}

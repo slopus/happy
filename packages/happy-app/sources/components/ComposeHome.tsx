@@ -926,7 +926,13 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         </View>
                     )}
                     {composeExperience.showCreationRail && (
-                        <View style={styles.creationRail}>
+                        <View
+                            style={[
+                                styles.creationRail,
+                                windowWidth <= 700 && styles.creationRailCompact,
+                            ]}
+                            testID="compose-home-creation-rail"
+                        >
                             <Pressable
                                 onPress={openImageStyleMode}
                                 style={({ pressed }) => [
@@ -1369,9 +1375,14 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.text,
     },
     creationRail: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
         flexDirection: 'row',
-        paddingHorizontal: 4,
         paddingBottom: 10,
+    },
+    creationRailCompact: {
+        paddingHorizontal: 8,
     },
     creationAction: {
         minHeight: 46,
