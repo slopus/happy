@@ -45,4 +45,15 @@ describe('desktopNavigationLayout', () => {
             targetHitSlop: 8,
         })).toBe(expected);
     });
+
+    it('calculates the header inset against the full viewport in Zen mode', () => {
+        expect(getPersistentHeaderContentInset({
+            windowWidth: 1280,
+            headerMaxWidth: Number.POSITIVE_INFINITY,
+            headerHorizontalPadding: 16,
+            sidebarVisible: false,
+            buttonCount: 3,
+            targetHitSlop: 8,
+        })).toBe(114);
+    });
 });

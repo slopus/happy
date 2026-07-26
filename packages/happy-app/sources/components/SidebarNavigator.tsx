@@ -195,7 +195,7 @@ const PersistentHeader = React.memo(() => {
 
     const canGoBackEffective = canGoBack || overlayCanBack;
     const canGoForwardEffective = canGoForward || overlayCanForward;
-    const sidebarWidth = getDesktopSidebarWidth(windowWidth);
+    const sidebarWidth = zenMode ? 0 : getDesktopSidebarWidth(windowWidth);
 
     return (
         <View
@@ -232,6 +232,9 @@ const PersistentHeader = React.memo(() => {
                     hitSlop={10}
                     style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
                     accessibilityLabel={t('zen.toggle')}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: zenMode }}
+                    testID="desktop-navigation-zen-button"
                 >
                     <Image
                         source={require('@/assets/images/zen-icon.png')}

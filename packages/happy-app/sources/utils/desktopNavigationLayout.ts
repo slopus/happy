@@ -33,6 +33,7 @@ export function getPersistentHeaderContentInset({
     windowWidth,
     headerMaxWidth,
     headerHorizontalPadding,
+    sidebarVisible = true,
     controlStartPadding = 0,
     buttonCount,
     targetHitSlop = 0,
@@ -40,11 +41,12 @@ export function getPersistentHeaderContentInset({
     windowWidth: number;
     headerMaxWidth: number;
     headerHorizontalPadding: number;
+    sidebarVisible?: boolean;
     controlStartPadding?: number;
     buttonCount: number;
     targetHitSlop?: number;
 }): number {
-    const sidebarWidth = getDesktopSidebarWidth(windowWidth);
+    const sidebarWidth = sidebarVisible ? getDesktopSidebarWidth(windowWidth) : 0;
     const mainWidth = Math.max(0, windowWidth - sidebarWidth);
     const renderedHeaderWidth = Math.min(mainWidth, headerMaxWidth);
     const centeredHeaderInset = Math.max(0, (mainWidth - renderedHeaderWidth) / 2);

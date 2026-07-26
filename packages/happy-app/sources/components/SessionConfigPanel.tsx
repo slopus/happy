@@ -11,6 +11,8 @@ import {
     NativeSyntheticEvent,
     Image as RNImage,
     ActivityIndicator,
+    Modal,
+    useWindowDimensions,
 } from 'react-native';
 import { GlassView } from 'expo-glass-effect';
 import { Ionicons, Octicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -174,6 +176,10 @@ function PickerContent({
         return (
             <Pressable
                 key={item.key}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: isSelected, disabled: item.dimmed }}
+                aria-checked={isSelected}
+                accessibilityLabel={item.subtitle ? `${item.label}, ${item.subtitle}` : item.label}
                 style={(p) => [
                     pickerStyles.option,
                     embedded && pickerStyles.embeddedOption,
@@ -222,6 +228,8 @@ function PickerContent({
                         style={[pickerStyles.searchInput, { color: theme.colors.text }]}
                         autoCapitalize="none"
                         autoCorrect={false}
+                        autoFocus={!embedded && Platform.OS === 'web'}
+                        accessibilityLabel={searchPlaceholder ?? 'search...'}
                     />
                 </View>
             )}
@@ -676,8 +684,8 @@ export interface SessionConfigPanelHandle {
 
 export interface SessionConfigPanelProps {
     /**
-     * 'inline' — phone/narrow: full-width config box, native pickers in a bottom
-     * sheet, web pickers as inline popovers with a self-managed click-away layer.
+     * 'inline' — phone/narrow: full-width config box; native pickers expand
+     * inline, while regular desktop Web pickers open in a bounded modal.
      * 'sidebar' — desktop: config box with embedded popovers; the host owns the
      * shell-level click-away backdrop (see onPickerOpenChange/closePickers).
      */
@@ -703,6 +711,7 @@ export interface SessionConfigPanelProps {
 export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, SessionConfigPanelProps>(
     function SessionConfigPanel({ layout = 'inline', collapsible = true, onPickerOpenChange }, ref) {
         const { theme } = useUnistyles();
+        const viewport = useWindowDimensions();
         const isSidebar = layout === 'sidebar';
 
         // Real data sources
@@ -1004,6 +1013,18 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             setActivePicker(null);
         }, []);
 
+        React.useEffect(() => {
+            if (Platform.OS !== 'web' || isSidebar || !activePicker || typeof window === 'undefined') return;
+            const handleKeyDown = (event: KeyboardEvent) => {
+                if (event.key !== 'Escape') return;
+                event.preventDefault();
+                event.stopPropagation();
+                dismissPicker();
+            };
+            window.addEventListener('keydown', handleKeyDown, true);
+            return () => window.removeEventListener('keydown', handleKeyDown, true);
+        }, [activePicker, dismissPicker, isSidebar]);
+
         const isOffline = selectedMachine ? !isMachineOnline(selectedMachine) : false;
         const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS.find(a => a.key === selectedAgent) ?? availableAgents[0] ?? ALL_AGENTS[0];
         const currentPermission = permissionModes[permissionIndex] ?? permissionModes[0];
@@ -1120,13 +1141,44 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             closePickers: dismissPicker,
         }), [currentPermission?.key, currentModelKey, draft.effortLevel, resolvedModeSelection.effortLevel, worktreeKey, dismissPicker]);
 
-        // Render the active picker inline directly under its row. Web (non-sidebar)
-        // shows it as a dropdown popover; sidebar and native render it embedded as a
-        // flush accordion. Native previously opened a bottom-sheet modal — it now
-        // expands in place, matching the running-session SessionInfoDropdown.
+        // Native and sidebar pickers remain embedded. The regular desktop Web
+        // layout uses a bounded modal below so long model lists cannot stretch the
+        // configuration panel beyond the viewport.
         const isWeb = Platform.OS === 'web';
+        const renderPickerContent = React.useCallback((type: PickerType, embedded: boolean) => (
+            type === 'path' ? (
+                <PathPickerContent
+                    title="Project"
+                    items={pathItems}
+                    value={selectedPath}
+                    homeDir={selectedHomeDir}
+                    machineId={selectedMachineId}
+                    machineOnline={selectedMachine ? isMachineOnline(selectedMachine) : false}
+                    onChangeValue={setSelectedPath}
+                    onDone={dismissPicker}
+                    embedded={embedded}
+                />
+            ) : pickerData ? (
+                <PickerContent
+                    {...pickerData}
+                    onSelect={handlePickerSelect}
+                    embedded={embedded}
+                />
+            ) : null
+        ), [
+            dismissPicker,
+            handlePickerSelect,
+            pathItems,
+            pickerData,
+            selectedHomeDir,
+            selectedMachine,
+            selectedMachineId,
+            selectedPath,
+            setSelectedPath,
+        ]);
+
         const renderActivePickerPopover = React.useCallback((type: PickerType) => {
-            if (activePicker !== type) {
+            if (activePicker !== type || (isWeb && !isSidebar)) {
                 return null;
             }
 
@@ -1140,40 +1192,14 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                             ? { backgroundColor: theme.colors.header.background }
                             : styles.inlinePopover,
                 ]}>
-                    {type === 'path' ? (
-                        <PathPickerContent
-                            title="Project"
-                            items={pathItems}
-                            value={selectedPath}
-                            homeDir={selectedHomeDir}
-                            machineId={selectedMachineId}
-                            machineOnline={selectedMachine ? isMachineOnline(selectedMachine) : false}
-                            onChangeValue={setSelectedPath}
-                            onDone={dismissPicker}
-                            embedded={embedded}
-                        />
-                    ) : pickerData ? (
-                        <PickerContent
-                            {...pickerData}
-                            onSelect={handlePickerSelect}
-                            embedded={embedded}
-                        />
-                    ) : null}
+                    {renderPickerContent(type, embedded)}
                 </View>
             );
         }, [
             activePicker,
-            dismissPicker,
-            handlePickerSelect,
             isSidebar,
             isWeb,
-            pathItems,
-            pickerData,
-            selectedHomeDir,
-            selectedMachineId,
-            selectedMachine,
-            selectedPath,
-            setSelectedPath,
+            renderPickerContent,
             theme.colors.header.background,
         ]);
 
@@ -1268,7 +1294,14 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                             {showModel && (
                                                 <>
                                                     <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
-                                                    <Pressable onPress={() => togglePicker('model')} style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}>
+                                                    <Pressable
+                                                        onPress={() => togglePicker('model')}
+                                                        accessibilityRole="button"
+                                                        accessibilityLabel={currentModel.name}
+                                                        accessibilityState={{ expanded: activePicker === 'model' }}
+                                                        testID="session-config-model-trigger"
+                                                        style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}
+                                                    >
                                                         <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
                                                             {currentModel.name}
                                                         </Text>
@@ -1382,6 +1415,10 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                 {showModel && (
                                     <Pressable
                                         onPress={() => togglePicker('model')}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={currentModel.name}
+                                        accessibilityState={{ expanded: activePicker === 'model' }}
+                                        testID="session-config-model-trigger"
                                         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                                         style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
                                     >
@@ -1448,15 +1485,46 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                     )}
                 </View>
 
-                {/* Web inline: click-away layer behind the popover (inline layout only;
-                    the sidebar layout's backdrop is owned by the host shell). Native
-                    pickers expand inline under their row — no bottom sheet, no backdrop;
-                    re-tapping the row or picking an option collapses them. */}
-                {Platform.OS === 'web' && !isSidebar && activePicker && (
-                    <Pressable
-                        style={styles.clickAwayBackdropBehind}
-                        onPress={dismissPicker}
-                    />
+                {isWeb && !isSidebar && activePicker && (
+                    <Modal
+                        visible
+                        transparent
+                        animationType="fade"
+                        onRequestClose={dismissPicker}
+                    >
+                        <View style={styles.webPickerModalRoot}>
+                            <Pressable
+                                style={styles.webPickerScrim}
+                                onPress={dismissPicker}
+                                accessibilityRole="button"
+                                accessibilityLabel={t('devTools.close')}
+                            />
+                            <View
+                                role="dialog"
+                                testID={`session-config-picker-${activePicker}`}
+                                style={[
+                                    styles.webPickerDialog,
+                                    {
+                                        width: Math.min(520, Math.max(0, viewport.width - 64)),
+                                        maxHeight: Math.min(560, Math.max(0, viewport.height - 64)),
+                                    },
+                                ]}
+                            >
+                                <Pressable
+                                    onPress={dismissPicker}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={t('devTools.close')}
+                                    style={({ pressed }) => [
+                                        styles.webPickerClose,
+                                        pressed && styles.configRowPressed,
+                                    ]}
+                                >
+                                    <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
+                                </Pressable>
+                                {renderPickerContent(activePicker, false)}
+                            </View>
+                        </View>
+                    </Modal>
                 )}
             </>
         );
@@ -1464,13 +1532,44 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
 );
 
 const styles = StyleSheet.create((theme) => ({
-    clickAwayBackdropBehind: {
+    webPickerModalRoot: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 32,
+    },
+    webPickerScrim: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        zIndex: -1,
+        backgroundColor: 'rgba(0, 0, 0, 0.46)',
+    },
+    webPickerDialog: {
+        borderRadius: 16,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.header.background,
+        overflow: 'hidden',
+        ...Platform.select({
+            web: {
+                boxShadow: '0 24px 70px rgba(0, 0, 0, 0.32)',
+            },
+            default: {},
+        }),
+    },
+    webPickerClose: {
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        zIndex: 2,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.surface,
     },
     configBox: {
         backgroundColor: theme.colors.input.background,
@@ -1652,7 +1751,7 @@ const pickerStyles = {
         paddingBottom: 2,
     } as const,
     title: {
-        fontSize: 18,
+        fontSize: Platform.OS === 'web' ? 16 : 18,
         paddingVertical: 12,
         paddingHorizontal: 4,
         ...Typography.default('semiBold'),
@@ -1699,7 +1798,7 @@ const pickerStyles = {
     searchInput: {
         flex: 1,
         minWidth: 0,
-        fontSize: 15,
+        fontSize: Platform.OS === 'web' ? 14 : 15,
         padding: 0,
         ...Typography.default(),
         ...Platform.select({ web: { outlineStyle: 'none' } as any, default: {} }),
@@ -1761,7 +1860,7 @@ const pickerStyles = {
         alignItems: 'center' as const,
         gap: 12,
         paddingHorizontal: 12,
-        paddingVertical: 12,
+        paddingVertical: Platform.OS === 'web' ? 9 : 12,
         borderRadius: 12,
     },
     embeddedOption: {
@@ -1778,7 +1877,7 @@ const pickerStyles = {
     optionText: {
         minWidth: 0,
         flexShrink: 1,
-        fontSize: 15,
+        fontSize: Platform.OS === 'web' ? 14 : 15,
         ...Typography.default(),
         ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
     } as const,
@@ -1790,6 +1889,7 @@ const pickerStyles = {
     optionList: {
         flexGrow: 0,
         flexShrink: 1,
+        maxHeight: Platform.OS === 'web' ? 360 : undefined,
     } as const,
     embeddedOptionList: {
         width: '100%',

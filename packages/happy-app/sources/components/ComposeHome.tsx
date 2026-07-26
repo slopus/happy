@@ -121,6 +121,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const profile = useProfile();
     const machines = useAllMachines();
     const askApi = useLocalSetting('askApi');
+    const zenMode = useLocalSetting('zenMode');
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const { sending, spawn } = useSpawnSession();
     const [text, setText] = React.useState('');
@@ -692,6 +693,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             windowWidth,
             headerMaxWidth: layout.headerMaxWidth,
             headerHorizontalPadding: Platform.select({ ios: 8, default: 16 }) ?? 16,
+            sidebarVisible: !zenMode,
             controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 0,
             buttonCount: Platform.OS === 'web' ? 3 : 2,
             targetHitSlop: 8,
@@ -1005,7 +1007,9 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         onPress={closePanel}
                     />
                     <View style={[styles.panelDropdown, { top: insets.top + headerHeight }]}>
-                        <SessionConfigPanel ref={configPanelRef} layout="inline" collapsible={false} />
+                        <View style={styles.panelDropdownContent} testID="compose-home-config-panel">
+                            <SessionConfigPanel ref={configPanelRef} layout="inline" collapsible={false} />
+                        </View>
                     </View>
                 </>
             )}
@@ -1050,9 +1054,14 @@ const styles = StyleSheet.create((theme) => ({
         position: 'absolute',
         left: 0,
         right: 0,
+        alignItems: 'center',
         paddingHorizontal: 12,
         paddingTop: 8,
         zIndex: 11,
+    },
+    panelDropdownContent: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
     },
     modelChip: {
         flexDirection: 'row',
