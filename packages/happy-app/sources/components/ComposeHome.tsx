@@ -807,7 +807,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
 
                 <View style={[styles.composer, { paddingBottom: insets.bottom + 12 }]}>
                     {activeImageAgent && (
-                        <View style={styles.imageAgentPanel}>
+                        <View style={styles.imageAgentPanel} testID="compose-home-image-agent-panel">
                             <View style={styles.imageAgentHeader}>
                                 <Ionicons
                                     name={sending ? 'lock-closed-outline' : 'sparkles-outline'}
@@ -848,6 +848,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                             )}
                             <Pressable
                                 onPress={openImageStyleGallery}
+                                testID="compose-home-image-effect-action"
                                 style={({ pressed }) => [
                                     styles.imageEffectAction,
                                     pressed && styles.imageEffectActionPressed,
@@ -1135,6 +1136,9 @@ const styles = StyleSheet.create((theme) => ({
         paddingTop: 8,
     },
     imageAgentPanel: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
         backgroundColor: theme.colors.surface,
         borderRadius: 14,
         borderWidth: StyleSheet.hairlineWidth,

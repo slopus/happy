@@ -291,6 +291,37 @@ test('桌面问候语与输入框内容列对齐且代表性中文标题保持�
     expect(representativeGreetingFitsOneLine).toBe(true);
 });
 
+test('桌面图片效果使用有边界的居中弹窗且支持 Escape 关闭', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(new URL('/new?mode=image-styles', authenticatedWebUrl).toString());
+
+    const imagePanel = page.getByTestId('compose-home-image-agent-panel');
+    await expect(imagePanel).toBeVisible();
+    const imagePanelBox = await imagePanel.boundingBox();
+    expect(imagePanelBox).not.toBeNull();
+    expect(imagePanelBox!.width).toBeLessThanOrEqual(800);
+
+    await page.getByTestId('compose-home-image-effect-action').click();
+    const dialog = page.getByTestId('image-style-gallery-dialog');
+    await expect(dialog).toBeVisible();
+
+    const dialogBox = await dialog.boundingBox();
+    expect(dialogBox).not.toBeNull();
+    expect(dialogBox!.width).toBeLessThanOrEqual(1040);
+    expect(dialogBox!.height).toBeLessThanOrEqual(760);
+    expect(dialogBox!.x).toBeGreaterThanOrEqual(32);
+    expect(dialogBox!.y).toBeGreaterThanOrEqual(32);
+
+    const categoriesFit = await page.getByTestId('image-style-gallery-categories').evaluate((element) => ({
+        horizontal: element.scrollWidth <= element.clientWidth,
+        vertical: element.scrollHeight <= element.clientHeight,
+    }));
+    expect(categoriesFit).toEqual({ horizontal: true, vertical: true });
+
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+});
+
 test('手机首页保留菜单按钮并能打开抽屉', async ({ page }) => {
     await page.setViewportSize({ width: 799, height: 900 });
     await page.goto(authenticatedWebUrl);

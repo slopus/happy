@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Image, Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Modal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet } from 'react-native-unistyles';
@@ -11,6 +11,8 @@ import { getImageStylePreviewAsset } from './imageStylePreviewAssets';
 import {
     IMAGE_STYLE_GALLERY_COLUMN_GAP,
     createImageStyleGalleryColumns,
+    getImageStyleGalleryColumnCount,
+    getImageStyleGalleryDesktopSize,
     getImageStyleGallerySheetHeight,
     getImageStylePreviewHeight,
 } from './imageStyleGalleryLayout';
@@ -115,14 +117,24 @@ export const ImageStyleGallerySheet = React.memo(function ImageStyleGallerySheet
     const [categoryId, setCategoryId] = React.useState(ALL_CATEGORY_ID);
     const [promptPreviewStyle, setPromptPreviewStyle] = React.useState<ImageAgentStylePreset | null>(null);
     const [now, setNow] = React.useState(Date.now());
-    const cardWidth = React.useMemo(() => Math.max(
-        140,
-        Math.floor((windowDimensions.width - SHEET_HORIZONTAL_PADDING - IMAGE_STYLE_GALLERY_COLUMN_GAP) / 2),
-    ), [windowDimensions.width]);
-    const sheetHeight = React.useMemo(
-        () => getImageStyleGallerySheetHeight(windowDimensions.height),
-        [windowDimensions.height],
+    const isDesktopWeb = Platform.OS === 'web' && windowDimensions.width >= 900;
+    const desktopSize = React.useMemo(
+        () => getImageStyleGalleryDesktopSize(windowDimensions.width, windowDimensions.height),
+        [windowDimensions.height, windowDimensions.width],
     );
+    const columnCount = getImageStyleGalleryColumnCount(windowDimensions.width);
+    const galleryWidth = isDesktopWeb ? desktopSize.width : windowDimensions.width;
+    const cardWidth = Math.max(
+        140,
+        Math.floor((
+            galleryWidth
+            - SHEET_HORIZONTAL_PADDING
+            - IMAGE_STYLE_GALLERY_COLUMN_GAP * (columnCount - 1)
+        ) / columnCount),
+    );
+    const sheetHeight = isDesktopWeb
+        ? desktopSize.height
+        : getImageStyleGallerySheetHeight(windowDimensions.height);
     const visibleCategoryIds = React.useMemo(() => new Set(props.styles.map((style) => style.categoryId)), [props.styles]);
     const selectedStyleIds = React.useMemo(() => new Set(props.selectedStyleIds), [props.selectedStyleIds]);
     const categoryOptions = React.useMemo(
@@ -140,8 +152,9 @@ export const ImageStyleGallerySheet = React.memo(function ImageStyleGallerySheet
             filteredStyles,
             cardWidth,
             (style) => IMAGE_STYLE_PREVIEW_MANIFEST[style.id],
+            columnCount,
         ),
-        [cardWidth, filteredStyles],
+        [cardWidth, columnCount, filteredStyles],
     );
 
     React.useEffect(() => {
@@ -155,6 +168,17 @@ export const ImageStyleGallerySheet = React.memo(function ImageStyleGallerySheet
         const timer = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(timer);
     }, [props.visible, props.styles]);
+
+    React.useEffect(() => {
+        if (!props.visible || !isDesktopWeb || typeof window === 'undefined') return;
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            props.onClose();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isDesktopWeb, props.onClose, props.visible]);
 
     const onPressPinAction = React.useCallback(() => {
         if (props.canCreateCustomStyle) {
@@ -172,6 +196,9 @@ export const ImageStyleGallerySheet = React.memo(function ImageStyleGallerySheet
             <View key={style.id} style={styles.cell}>
                 <Pressable
                     onPress={() => props.onToggle(style)}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={getImageAgentStyleLabel(style)}
+                    accessibilityState={{ checked: selected }}
                     style={({ pressed }) => [
                         styles.card,
                         selected && styles.cardSelected,
@@ -280,27 +307,110 @@ export const ImageStyleGallerySheet = React.memo(function ImageStyleGallerySheet
         );
     }, [cardWidth, now, props, selectedStyleIds, styles]);
 
+    const categoryChips = (
+        <>
+            <Pressable
+                onPress={() => setCategoryId(ALL_CATEGORY_ID)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: categoryId === ALL_CATEGORY_ID }}
+                style={({ pressed }) => [
+                    styles.categoryChip,
+                    categoryId === ALL_CATEGORY_ID && styles.categoryChipSelected,
+                    pressed && styles.pressed,
+                ]}
+            >
+                <Text
+                    style={[
+                        styles.categoryLabel,
+                        categoryId === ALL_CATEGORY_ID && styles.categoryLabelSelected,
+                    ]}
+                    numberOfLines={1}
+                >
+                    {t('agents.imageEffectAll')}
+                </Text>
+            </Pressable>
+            {categoryOptions.map((category) => {
+                const selected = categoryId === category.id;
+                return (
+                    <Pressable
+                        key={category.id}
+                        onPress={() => setCategoryId(category.id)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        style={({ pressed }) => [
+                            styles.categoryChip,
+                            selected && styles.categoryChipSelected,
+                            pressed && styles.pressed,
+                        ]}
+                    >
+                        <View style={[styles.categoryDot, { backgroundColor: category.accent }]} />
+                        <Text
+                            style={[
+                                styles.categoryLabel,
+                                selected && styles.categoryLabelSelected,
+                            ]}
+                            numberOfLines={1}
+                        >
+                            {category.label}
+                        </Text>
+                        <Text style={styles.categoryCount} numberOfLines={1}>{category.count}</Text>
+                    </Pressable>
+                );
+            })}
+        </>
+    );
+
     return (
-        <Modal visible={props.visible} transparent animationType="slide" onRequestClose={props.onClose}>
-            <View style={[styles.modalRoot, { width: windowDimensions.width, height: windowDimensions.height }]}>
+        <Modal visible={props.visible} transparent animationType={isDesktopWeb ? 'fade' : 'slide'} onRequestClose={props.onClose}>
+            <View
+                style={[
+                    styles.modalRoot,
+                    isDesktopWeb && styles.desktopModalRoot,
+                    { width: windowDimensions.width, height: windowDimensions.height },
+                ]}
+            >
                 <Pressable style={styles.scrim} onPress={props.onClose} />
-                <View style={[styles.sheet, { height: sheetHeight, paddingBottom: safeArea.bottom + 12 }]}>
-                    <View style={styles.handle} />
+                <View
+                    testID="image-style-gallery-dialog"
+                    role="dialog"
+                    style={[
+                        styles.sheet,
+                        isDesktopWeb && styles.desktopDialog,
+                        {
+                            width: isDesktopWeb ? desktopSize.width : undefined,
+                            height: sheetHeight,
+                            paddingBottom: safeArea.bottom + 12,
+                        },
+                    ]}
+                >
+                    {!isDesktopWeb && <View style={styles.handle} />}
                     <View style={styles.header}>
                         <View style={styles.headerCopy}>
                             <Text style={styles.title} numberOfLines={1}>{t('agents.imageEffectGalleryTitle')}</Text>
                             <Text style={styles.subtitle} numberOfLines={1}>{t('agents.imageEffectGallerySubtitle')}</Text>
                         </View>
-                        <Pressable onPress={props.onClose} hitSlop={8} style={({ pressed }) => [styles.doneButton, pressed && styles.pressed]}>
+                        <Pressable
+                            onPress={props.onClose}
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            style={({ pressed }) => [styles.doneButton, pressed && styles.pressed]}
+                        >
                             <Text style={styles.doneText}>{t('common.ok')}</Text>
                         </Pressable>
-                        <Pressable onPress={props.onClose} hitSlop={8} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
+                        <Pressable
+                            onPress={props.onClose}
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('devTools.close')}
+                            style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+                        >
                             <Ionicons name="close" size={18} color={styles.closeIcon.color} />
                         </Pressable>
                     </View>
 
                     <Pressable
                         onPress={onPressPinAction}
+                        accessibilityRole="button"
                         style={({ pressed }) => [
                             styles.pinAction,
                             !props.canCreateCustomStyle && styles.pinActionDisabled,
@@ -325,57 +435,23 @@ export const ImageStyleGallerySheet = React.memo(function ImageStyleGallerySheet
                         <Ionicons name="chevron-forward" size={17} color={styles.pinChevron.color} />
                     </Pressable>
 
-                    <ScrollView
-                        horizontal
-                        style={styles.categoryScroller}
-                        contentContainerStyle={styles.categoryContent}
-                        showsHorizontalScrollIndicator={false}
-                    >
-                        <Pressable
-                            onPress={() => setCategoryId(ALL_CATEGORY_ID)}
-                            style={({ pressed }) => [
-                                styles.categoryChip,
-                                categoryId === ALL_CATEGORY_ID && styles.categoryChipSelected,
-                                pressed && styles.pressed,
-                            ]}
+                    {isDesktopWeb ? (
+                        <View
+                            testID="image-style-gallery-categories"
+                            style={[styles.categoryScroller, styles.categoryContent, styles.desktopCategoryContent]}
                         >
-                            <Text
-                                style={[
-                                    styles.categoryLabel,
-                                    categoryId === ALL_CATEGORY_ID && styles.categoryLabelSelected,
-                                ]}
-                                numberOfLines={1}
-                            >
-                                {t('agents.imageEffectAll')}
-                            </Text>
-                        </Pressable>
-                        {categoryOptions.map((category) => {
-                            const selected = categoryId === category.id;
-                            return (
-                                <Pressable
-                                    key={category.id}
-                                    onPress={() => setCategoryId(category.id)}
-                                    style={({ pressed }) => [
-                                        styles.categoryChip,
-                                        selected && styles.categoryChipSelected,
-                                        pressed && styles.pressed,
-                                    ]}
-                                >
-                                    <View style={[styles.categoryDot, { backgroundColor: category.accent }]} />
-                                    <Text
-                                        style={[
-                                            styles.categoryLabel,
-                                            selected && styles.categoryLabelSelected,
-                                        ]}
-                                        numberOfLines={1}
-                                    >
-                                        {category.label}
-                                    </Text>
-                                    <Text style={styles.categoryCount} numberOfLines={1}>{category.count}</Text>
-                                </Pressable>
-                            );
-                        })}
-                    </ScrollView>
+                            {categoryChips}
+                        </View>
+                    ) : (
+                        <ScrollView
+                            horizontal
+                            style={styles.categoryScroller}
+                            contentContainerStyle={styles.categoryContent}
+                            showsHorizontalScrollIndicator
+                        >
+                            {categoryChips}
+                        </ScrollView>
+                    )}
 
                     <ScrollView
                         style={styles.list}
@@ -458,6 +534,10 @@ const galleryStyles = StyleSheet.create((theme) => ({
         flex: 1,
         justifyContent: 'flex-end',
     },
+    desktopModalRoot: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     scrim: {
         position: 'absolute',
         top: 0,
@@ -474,6 +554,17 @@ const galleryStyles = StyleSheet.create((theme) => ({
         borderColor: theme.colors.divider,
         paddingTop: 8,
         paddingHorizontal: 14,
+    },
+    desktopDialog: {
+        borderRadius: 18,
+        borderWidth: StyleSheet.hairlineWidth,
+        overflow: 'hidden',
+        ...Platform.select({
+            web: {
+                boxShadow: '0 24px 70px rgba(0, 0, 0, 0.34)',
+            },
+            default: {},
+        }),
     },
     handle: {
         alignSelf: 'center',
@@ -593,9 +684,16 @@ const galleryStyles = StyleSheet.create((theme) => ({
         marginBottom: 12,
     },
     categoryContent: {
+        flexDirection: 'row',
         gap: 8,
         paddingRight: 24,
         paddingVertical: 2,
+    },
+    desktopCategoryContent: {
+        flexWrap: 'wrap',
+        paddingRight: 0,
+        maxHeight: 140,
+        overflow: 'hidden',
     },
     categoryChip: {
         minHeight: 38,

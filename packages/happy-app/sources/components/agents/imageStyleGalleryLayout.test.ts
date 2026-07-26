@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
     createImageStyleGalleryColumns,
+    getImageStyleGalleryColumnCount,
+    getImageStyleGalleryDesktopSize,
     getImageStyleGalleryItemType,
     getImageStyleGallerySheetHeight,
     getImageStylePreviewHeight,
@@ -42,5 +44,12 @@ describe('imageStyleGalleryLayout', () => {
     it('uses an explicit sheet height so Android modals do not collapse to header content', () => {
         expect(getImageStyleGallerySheetHeight(900)).toBe(738);
         expect(getImageStyleGallerySheetHeight(420)).toBeLessThan(420);
+    });
+
+    it('uses a bounded three-column dialog on desktop viewports', () => {
+        expect(getImageStyleGalleryColumnCount(899)).toBe(2);
+        expect(getImageStyleGalleryColumnCount(900)).toBe(3);
+        expect(getImageStyleGalleryDesktopSize(1440, 900)).toEqual({ width: 1040, height: 760 });
+        expect(getImageStyleGalleryDesktopSize(1024, 720)).toEqual({ width: 960, height: 656 });
     });
 });
