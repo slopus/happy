@@ -373,6 +373,71 @@ for (const width of [800, 1280]) {
     });
 }
 
+for (const width of [1024, 1280, 1440]) {
+    test(`宽度 ${width}px 的模型选择器使用有边界的 PC 弹窗`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 720 });
+        await page.goto(new URL('/new', authenticatedWebUrl).toString());
+        await expect(page.getByRole('textbox')).toBeVisible();
+
+        await page.locator('[data-testid="compose-home-model-chip"]:visible').click();
+        const configPanel = page.getByTestId('compose-home-config-panel');
+        await expect(configPanel).toBeVisible();
+        const configBox = await configPanel.boundingBox();
+        expect(configBox).not.toBeNull();
+        expect(configBox!.width).toBeLessThanOrEqual(800);
+
+        await page.getByTestId('session-config-model-trigger').click();
+        const dialog = page.getByTestId('session-config-picker-model');
+        await expect(dialog).toBeVisible();
+
+        const dialogBox = await dialog.boundingBox();
+        expect(dialogBox).not.toBeNull();
+        expect(dialogBox!.width).toBeLessThanOrEqual(520);
+        expect(dialogBox!.x).toBeGreaterThanOrEqual(32);
+        expect(dialogBox!.y).toBeGreaterThanOrEqual(32);
+        expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(width - 32);
+        expect(dialogBox!.y + dialogBox!.height).toBeLessThanOrEqual(720 - 32);
+
+        const searchInput = dialog.getByRole('textbox');
+        await expect(searchInput).toBeFocused();
+        const fontSize = await searchInput.evaluate((element) => Number.parseFloat(
+            window.getComputedStyle(element).fontSize,
+        ));
+        expect(fontSize).toBeLessThanOrEqual(14);
+
+        const options = dialog.getByRole('radio');
+        expect(await options.count()).toBeGreaterThan(1);
+        await expect(dialog.getByRole('radio', { checked: true })).toHaveCount(1);
+
+        await page.keyboard.press('Escape');
+        await expect(dialog).toHaveCount(0);
+    });
+}
+
+for (const width of [1024, 1280, 1440]) {
+    test(`宽度 ${width}px 的禅模式导航与会话目标不重叠`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 720 });
+        await page.goto(new URL('/new', authenticatedWebUrl).toString());
+        await expect(page.getByRole('textbox')).toBeVisible();
+
+        const zenButton = page.getByTestId('desktop-navigation-zen-button');
+        const selected = await zenButton.getAttribute('aria-selected');
+        if (selected === 'true') {
+            await zenButton.click();
+        }
+        await zenButton.click();
+
+        const controlsBox = await page.getByTestId('desktop-navigation-controls').boundingBox();
+        const targetBox = await page.locator('[data-testid="compose-home-model-chip"]:visible').boundingBox();
+        expect(controlsBox).not.toBeNull();
+        expect(targetBox).not.toBeNull();
+        expect(controlsBox!.x).toBeLessThanOrEqual(32);
+        expect(targetBox!.x - 8).toBeGreaterThanOrEqual(controlsBox!.x + controlsBox!.width + 10);
+
+        await zenButton.click();
+    });
+}
+
 test.describe('中文 Web 语音设置', () => {
     test.use({ locale: 'zh-CN' });
 
