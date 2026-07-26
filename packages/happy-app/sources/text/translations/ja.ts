@@ -403,6 +403,7 @@ export const ja: TranslationStructure = {
         operatingSystem: 'オペレーティングシステム',
         processId: 'プロセスID',
         happyHome: 'Happy Home',
+        markAsUnread: '未読にする',
         copyMetadata: 'メタデータをコピー',
         agentState: 'エージェント状態',
         controlledByUser: 'ユーザーによる制御',

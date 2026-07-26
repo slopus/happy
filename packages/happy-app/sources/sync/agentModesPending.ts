@@ -11,7 +11,11 @@ import type { SessionAgentModesPatch } from './storageTypes';
  * use it without an import cycle. Counters (not booleans) so overlapping
  * pushes for the same field don't clear each other's pending state.
  */
-export type AgentModeField = keyof SessionAgentModesPatch;
+// Covers the synced agent-mode picks plus the other per-session metadata field
+// that uses the same optimistic-push + inbound-reconcile mechanism (the read
+// position). The counters/functions below are field-agnostic; this union just
+// keeps callers type-safe.
+export type AgentModeField = keyof SessionAgentModesPatch | 'lastReadSeq';
 
 const pendingBySession = new Map<string, Map<AgentModeField, number>>();
 

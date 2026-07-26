@@ -28,7 +28,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort, sessionGoalAction, sessionSetAgentModes, spawnSideChat, sessionKill, sessionArchive } from '@/sync/ops';
+import { sessionAbort, sessionGoalAction, sessionSetAgentModes, spawnSideChat, sessionKill, sessionArchive, sessionMarkRead } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionUsage, useSetting, useSideChatSessions } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { getSessionForkSource } from '@/utils/sessionFork';
@@ -961,11 +961,13 @@ export function SessionViewLoaded({
         // Trigger session sync
         sync.onSessionVisible(sessionId);
 
-        // Mark session as currently being viewed (clears unread). Skipped when
+        // Mark session as currently being viewed (excluded from unread) and
+        // advance the synced read position to the latest message. Skipped when
         // embedded (e.g. the side-chat panel) so a second mounted chat body
         // doesn't steal "currently viewing" from the primary session.
         if (!embedded) {
             storage.getState().setCurrentViewingSession(sessionId);
+            sessionMarkRead(sessionId);
         }
 
         // Initialize git status sync for this session
@@ -975,11 +977,13 @@ export function SessionViewLoaded({
             if (embedded) {
                 return;
             }
-            // Clear viewing session on unmount
+            // Clear viewing session on unmount and catch the read position up to
+            // any messages that arrived while it was open.
             const current = storage.getState().currentViewingSessionId;
             if (current === sessionId) {
                 storage.getState().setCurrentViewingSession(null);
             }
+            sessionMarkRead(sessionId);
         };
     }, [sessionId, realtimeStatus, embedded]);
 

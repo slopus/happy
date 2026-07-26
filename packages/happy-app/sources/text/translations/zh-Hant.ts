@@ -402,6 +402,7 @@ export const zhHant: TranslationStructure = {
         operatingSystem: '作業系統',
         processId: '處理程序 ID',
         happyHome: 'Happy 主目錄',
+        markAsUnread: '標記為未讀',
         copyMetadata: '複製中繼資料',
         agentState: 'Agent 狀態',
         controlledByUser: '使用者控制',

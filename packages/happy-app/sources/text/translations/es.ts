@@ -402,6 +402,7 @@ export const es: TranslationStructure = {
         operatingSystem: 'Sistema operativo',
         processId: 'ID del proceso',
         happyHome: 'Directorio de Happy',
+        markAsUnread: 'Marcar como no leída',
         copyMetadata: 'Copiar metadatos',
         agentState: 'Estado del agente',
         controlledByUser: 'Controlado por el usuario',

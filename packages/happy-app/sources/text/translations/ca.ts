@@ -402,6 +402,7 @@ export const ca: TranslationStructure = {
         operatingSystem: 'Sistema operatiu',
         processId: 'ID del procés',
         happyHome: 'Directori de Happy',
+        markAsUnread: 'Marca com a no llegida',
         copyMetadata: 'Copia les metadades',
         agentState: 'Estat de l\'agent',
         controlledByUser: 'Controlat per l\'usuari',

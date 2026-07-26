@@ -416,6 +416,7 @@ export const en = {
         operatingSystem: 'Operating System',
         processId: 'Process ID',
         happyHome: 'Happy Home',
+        markAsUnread: 'Mark as unread',
         copyMetadata: 'Copy session metadata',
         agentState: 'Agent State',
         controlledByUser: 'Controlled by User',

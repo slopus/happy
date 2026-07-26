@@ -358,6 +358,7 @@ export const ru: TranslationStructure = {
         operatingSystem: 'Операционная система',
         processId: 'ID процесса',
         happyHome: 'Домашний каталог Happy',
+        markAsUnread: 'Отметить как непрочитанное',
         copyMetadata: 'Копировать метаданные',
         agentState: 'Состояние агента',
         controlledByUser: 'Управляется пользователем',

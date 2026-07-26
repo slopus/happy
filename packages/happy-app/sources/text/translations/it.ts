@@ -400,6 +400,7 @@ export const it: TranslationStructure = {
         operatingSystem: 'Sistema operativo',
         processId: 'ID processo',
         happyHome: 'Happy Home',
+        markAsUnread: 'Segna come non letta',
         copyMetadata: 'Copia metadati',
         agentState: 'Stato agente',
         controlledByUser: 'Controllato dall\'utente',

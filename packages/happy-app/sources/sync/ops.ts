@@ -707,6 +707,123 @@ export function sessionSetAgentModes(sessionId: string, patch: SessionAgentModes
 }
 
 /**
+ * Generic optimistic-concurrency metadata patch — the field-agnostic sibling of
+ * sessionUpdateAgentModesMetadata, used for the star + read-position fields. On
+ * version conflict it re-reads the latest server metadata (schema-free, so
+ * passthrough fields survive) and re-applies the caller's patch (last-write-wins
+ * for these fields — that's the user's latest intent).
+ */
+async function sessionPatchMetadata(
+    sessionId: string,
+    patch: Record<string, unknown>,
+    maxRetries: number = 3
+): Promise<void> {
+    const encryption = sync.encryption.getSessionEncryption(sessionId);
+    const session = storage.getState().sessions[sessionId];
+    if (!encryption || !session?.metadata) {
+        throw new Error(`Session ${sessionId} is not ready for metadata updates`);
+    }
+
+    let currentVersion = session.metadataVersion;
+    let currentMetadata: Record<string, unknown> = { ...session.metadata, ...patch };
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const encrypted = await encryption.encryptRaw(currentMetadata);
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+        }>('update-metadata', {
+            sid: sessionId,
+            metadata: encrypted,
+            expectedVersion: currentVersion
+        });
+
+        if (result.result === 'success') {
+            return;
+        }
+        if (result.result === 'version-mismatch') {
+            currentVersion = result.version!;
+            const latest = await encryption.decryptRaw(result.metadata!);
+            if (!latest) {
+                throw new Error('Failed to decrypt latest session metadata');
+            }
+            currentMetadata = { ...latest, ...patch };
+            continue;
+        }
+        throw new Error('Failed to update session metadata');
+    }
+
+    throw new Error(`Failed to update session metadata after ${maxRetries} retries due to version conflicts`);
+}
+
+/**
+ * Set a session's read position (highest read message seq). Optimistic local
+ * update + synced metadata push, so reading on one device clears the unread
+ * flag everywhere. `seq` must be monotonic per session.
+ */
+export function sessionSetLastReadSeq(sessionId: string, seq: number): void {
+    const state = storage.getState();
+    const session = state.sessions[sessionId];
+    if (!session) {
+        return;
+    }
+    if ((session.metadata?.lastReadSeq ?? -1) >= seq) {
+        return;
+    }
+    state.setSessionLastReadSeqOptimistic(sessionId, seq);
+    markAgentModePushPending(sessionId, ['lastReadSeq']);
+    sessionPatchMetadata(sessionId, { lastReadSeq: seq })
+        .catch((error) => {
+            console.error(`Failed to sync read position for session ${sessionId}`, error);
+        })
+        .finally(() => {
+            clearAgentModePushPending(sessionId, ['lastReadSeq']);
+        });
+}
+
+/**
+ * Mark a session as read up to its latest message (called when the user opens /
+ * leaves a session).
+ */
+export function sessionMarkRead(sessionId: string): void {
+    const session = storage.getState().sessions[sessionId];
+    if (!session) {
+        return;
+    }
+    const latest = session.lastMessageSeq ?? 0;
+    sessionSetLastReadSeq(sessionId, latest);
+}
+
+/**
+ * Explicitly mark a session unread (long-press "Mark as unread"): drop the read
+ * position just below the latest message so the unread indicator reappears and
+ * syncs to other devices. Message seqs are consecutive per session.
+ */
+export function sessionMarkUnread(sessionId: string): void {
+    const state = storage.getState();
+    const session = state.sessions[sessionId];
+    if (!session) {
+        return;
+    }
+    const latest = session.lastMessageSeq ?? 0;
+    if (latest <= 0) {
+        return;
+    }
+    // Force below latest even if a higher lastReadSeq is already synced (the
+    // sessionSetLastReadSeq monotonic guard would otherwise reject a decrease).
+    state.setSessionLastReadSeqOptimistic(sessionId, latest - 1);
+    markAgentModePushPending(sessionId, ['lastReadSeq']);
+    sessionPatchMetadata(sessionId, { lastReadSeq: latest - 1 })
+        .catch((error) => {
+            console.error(`Failed to sync unread for session ${sessionId}`, error);
+        })
+        .finally(() => {
+            clearAgentModePushPending(sessionId, ['lastReadSeq']);
+        });
+}
+
+/**
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {

@@ -403,6 +403,7 @@ export const zhHans: TranslationStructure = {
         operatingSystem: '操作系统',
         processId: '进程 ID',
         happyHome: 'Happy 主目录',
+        markAsUnread: '标记为未读',
         copyMetadata: '复制元数据',
         agentState: 'Agent 状态',
         controlledByUser: '用户控制',

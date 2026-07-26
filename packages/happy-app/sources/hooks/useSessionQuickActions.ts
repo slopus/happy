@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionKill, sessionSetAgentModes, forkAndSpawn, type ForkSource } from '@/sync/ops';
+import { machineResumeSession, sessionArchive, sessionKill, sessionSetAgentModes, sessionMarkUnread, forkAndSpawn, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -17,11 +17,11 @@ import { getSessionForkSource } from '@/utils/sessionFork';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/sync/storage';
 import { DuplicateSheet } from '@/components/DuplicateSheet';
-import type { SessionActionShortcutId } from '@/keyboard/shortcuts';
+import type { SessionActionId } from '@/keyboard/shortcuts';
 import { isRigMetadata } from '@/sync/rig';
 
 export interface SessionActionItem {
-    id: SessionActionShortcutId;
+    id: SessionActionId;
     label: string;
     icon: string;
     onPress: () => void;
@@ -259,9 +259,16 @@ export function useSessionQuickActions(
 
     const canCopySessionMetadata = __DEV__ || devModeEnabled;
 
+    // Push the read position back so the row shows as unread again — synced, so
+    // it reappears unread on the user's other devices too.
+    const markUnread = React.useCallback(() => {
+        sessionMarkUnread(session.id);
+    }, [session.id]);
+
     const actionItems = React.useMemo<SessionActionItem[]>(() => {
         const items: SessionActionItem[] = [
             { id: 'details', icon: 'information-circle-outline', label: t('profile.details'), onPress: openDetails },
+            { id: 'mark-unread', icon: 'mail-unread-outline', label: t('sessionInfo.markAsUnread'), onPress: markUnread },
         ];
 
         if (resumeAvailability.canShowResume) {
@@ -289,6 +296,7 @@ export function useSessionQuickActions(
         copySessionMetadataAndLogs,
         forkSource,
         forkSession,
+        markUnread,
         openDetails,
         openDuplicateSheet,
         resumeAvailability.canShowResume,

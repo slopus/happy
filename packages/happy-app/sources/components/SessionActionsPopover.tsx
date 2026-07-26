@@ -10,7 +10,7 @@ import {
     formatShortcutChord,
     getPreferredShortcutModifier,
     matchesShortcutChord,
-    SESSION_ACTION_SHORTCUTS,
+    getSessionActionShortcut,
 } from '@/keyboard/shortcuts';
 import { MobileGlassSurface } from './MobileGlass';
 import { AnimatedPopup, LocalBlurHalo } from './AnimatedOverlay';
@@ -191,7 +191,7 @@ export function SessionActionsPopover({
             const action = actions.find((candidate) => matchesShortcutChord(
                 event,
                 preferredModifier,
-                SESSION_ACTION_SHORTCUTS[candidate.id],
+                getSessionActionShortcut(candidate.id),
             ));
             if (!action) {
                 return;
@@ -215,7 +215,7 @@ export function SessionActionsPopover({
         const color = action.destructive ? theme.colors.status.error : theme.colors.text;
         const shortcutLabel = formatShortcutChord(
             preferredModifier,
-            SESSION_ACTION_SHORTCUTS[action.id],
+            getSessionActionShortcut(action.id),
         );
 
         return (
