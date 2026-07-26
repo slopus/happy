@@ -15,7 +15,7 @@
 [![Android APK](https://img.shields.io/github/v/release/wangjs-jacky/happy?label=Android%20APK&color=34d399)](https://github.com/wangjs-jacky/happy/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[🌐 **官网**](https://paws-landing-eo4.pages.dev) • [📱 **Android APK**](https://github.com/wangjs-jacky/happy/releases) • [📦 **npm CLI**](https://www.npmjs.com/package/@wangjs-jacky/paws) • [📚 **从零上手**](docs/getting-started.zh-CN.md) • [🇬🇧 **English**](README.md)
+[🌐 **官网**](https://paws-landing-eo4.pages.dev) • [🖥️ **Web App**](https://47.115.228.20:8443/) • [📱 **Android APK**](https://github.com/wangjs-jacky/happy/releases) • [📦 **npm CLI**](https://www.npmjs.com/package/@wangjs-jacky/paws) • [📚 **从零上手**](docs/getting-started.zh-CN.md) • [🇬🇧 **English**](README.md)
 
 </div>
 
@@ -35,10 +35,11 @@ npm install -g @wangjs-jacky/paws
 
 安装后提供 `paws` 与 `happy` 两个命令（另有 `paws-mcp` / `happy-mcp` 用于 MCP 集成）。
 
-**2. 在手机上安装 App**
+**2. 打开 Web App 或安装手机 App**
 
-从 [GitHub Releases](https://github.com/wangjs-jacky/happy/releases) 下载最新 **Android APK**
-（arm64，直接 sideload 安装）。自托管 server 内也自带网页版 App。
+在现代浏览器中打开已部署的 [**Paws Web App**](https://47.115.228.20:8443/)，
+或者从 [GitHub Releases](https://github.com/wangjs-jacky/happy/releases) 下载最新
+**Android APK**（arm64，直接 sideload 安装）。
 
 **3. 包裹你的 Agent 并配对**
 

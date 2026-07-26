@@ -15,7 +15,7 @@
 [![Android APK](https://img.shields.io/github/v/release/wangjs-jacky/happy?label=Android%20APK&color=34d399)](https://github.com/wangjs-jacky/happy/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[🌐 **Website**](https://paws-landing-eo4.pages.dev) • [📱 **Android APK**](https://github.com/wangjs-jacky/happy/releases) • [📦 **CLI on npm**](https://www.npmjs.com/package/@wangjs-jacky/paws) • [📚 **Getting Started**](docs/getting-started.md) • [🇨🇳 **中文**](README_CN.md)
+[🌐 **Website**](https://paws-landing-eo4.pages.dev) • [🖥️ **Web App**](https://47.115.228.20:8443/) • [📱 **Android APK**](https://github.com/wangjs-jacky/happy/releases) • [📦 **CLI on npm**](https://www.npmjs.com/package/@wangjs-jacky/paws) • [📚 **Getting Started**](docs/getting-started.md) • [🇨🇳 **中文**](README_CN.md)
 
 </div>
 
@@ -36,10 +36,11 @@ npm install -g @wangjs-jacky/paws
 
 This provides the `paws` and `happy` commands (plus `paws-mcp` / `happy-mcp` for MCP integration).
 
-**2. Get the app on your phone**
+**2. Open the Web App or install the mobile app**
 
-Download the latest **Android APK** from [GitHub Releases](https://github.com/wangjs-jacky/happy/releases)
-(arm64, sideload install). A web app is also bundled with the self-hosted server.
+Open the hosted [**Paws Web App**](https://47.115.228.20:8443/) in a modern browser, or download
+the latest **Android APK** from [GitHub Releases](https://github.com/wangjs-jacky/happy/releases)
+(arm64, sideload install).
 
 **3. Wrap your agent and pair**
 
