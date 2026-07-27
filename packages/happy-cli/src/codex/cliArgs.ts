@@ -42,3 +42,18 @@ export function extractCodexResumeFlag(args: string[]): { resumeThreadId: string
         args: remainingArgs,
     };
 }
+
+export function extractCodexPassthroughArgs(args: string[]): { happyArgs: string[]; codexArgs: string[] } {
+    const delimiterIndex = args.indexOf('--');
+    if (delimiterIndex === -1) {
+        return {
+            happyArgs: args,
+            codexArgs: [],
+        };
+    }
+
+    return {
+        happyArgs: args.slice(0, delimiterIndex),
+        codexArgs: args.slice(delimiterIndex + 1),
+    };
+}

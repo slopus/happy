@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   mockAuthAndSetupMachineIfNeeded: vi.fn(),
   mockRunCodex: vi.fn(),
   mockExtractCodexResumeFlag: vi.fn(),
+  mockExtractCodexPassthroughArgs: vi.fn(),
   mockExtractNoSandboxFlag: vi.fn(),
   mockEnsureDaemonRunning: vi.fn(),
 }))
@@ -18,6 +19,7 @@ vi.mock('@/codex/runCodex', () => ({
 
 vi.mock('@/codex/cliArgs', () => ({
   extractCodexResumeFlag: mocks.mockExtractCodexResumeFlag,
+  extractCodexPassthroughArgs: mocks.mockExtractCodexPassthroughArgs,
 }))
 
 vi.mock('@/utils/sandboxFlags', () => ({
@@ -40,6 +42,10 @@ describe('handleCodexCommand', () => {
       noSandbox: false,
       args,
     }))
+    mocks.mockExtractCodexPassthroughArgs.mockImplementation((args: string[]) => ({
+      happyArgs: args,
+      codexArgs: [],
+    }))
     mocks.mockExtractCodexResumeFlag.mockImplementation((args: string[]) => ({
       resumeThreadId: null,
       args,
@@ -60,6 +66,7 @@ describe('handleCodexCommand', () => {
       permissionMode: undefined,
       model: undefined,
       effort: undefined,
+      codexCliArgs: [],
     })
     expect(
       mocks.mockEnsureDaemonRunning.mock.invocationCallOrder[0],
@@ -86,6 +93,35 @@ describe('handleCodexCommand', () => {
       permissionMode: undefined,
       model: undefined,
       effort: undefined,
+      codexCliArgs: [],
+    })
+  })
+
+  it('passes only delimiter-separated args through to the Codex CLI', async () => {
+    mocks.mockExtractCodexPassthroughArgs.mockReturnValue({
+      happyArgs: ['--started-by', 'terminal'],
+      codexArgs: ['--dangerously-bypass-approvals-and-sandbox', '--config', 'model="gpt-5.5"'],
+    })
+
+    await handleCodexCommand([
+      '--started-by',
+      'terminal',
+      '--',
+      '--dangerously-bypass-approvals-and-sandbox',
+      '--config',
+      'model="gpt-5.5"',
+    ])
+
+    expect(mocks.mockExtractNoSandboxFlag).toHaveBeenCalledWith(['--started-by', 'terminal'])
+    expect(mocks.mockRunCodex).toHaveBeenCalledWith({
+      credentials: { token: 'token' },
+      startedBy: 'terminal',
+      noSandbox: false,
+      resumeThreadId: undefined,
+      permissionMode: undefined,
+      model: undefined,
+      effort: undefined,
+      codexCliArgs: ['--dangerously-bypass-approvals-and-sandbox', '--config', 'model="gpt-5.5"'],
     })
   })
 
@@ -100,6 +136,7 @@ describe('handleCodexCommand', () => {
       permissionMode: 'yolo',
       model: undefined,
       effort: undefined,
+      codexCliArgs: [],
     })
   })
 
@@ -114,6 +151,7 @@ describe('handleCodexCommand', () => {
       permissionMode: 'yolo',
       model: undefined,
       effort: undefined,
+      codexCliArgs: [],
     })
   })
 
@@ -128,6 +166,7 @@ describe('handleCodexCommand', () => {
       permissionMode: undefined,
       model: 'gpt-5.4',
       effort: 'xhigh',
+      codexCliArgs: [],
     })
   })
 })

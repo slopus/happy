@@ -162,6 +162,60 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('forwards Codex CLI args before the app-server subcommand', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, [
+            '--dangerously-bypass-approvals-and-sandbox',
+            '--config',
+            'model="gpt-5.5"',
+        ]);
+
+        await client.connect();
+
+        expect(mockWrapForMcpTransport).not.toHaveBeenCalled();
+        expect(mockSpawn).toHaveBeenCalledWith(
+            'codex',
+            [
+                '--dangerously-bypass-approvals-and-sandbox',
+                '--config',
+                'model="gpt-5.5"',
+                'app-server',
+                '--listen',
+                'stdio://',
+            ],
+            expect.objectContaining({
+                env: expect.objectContaining({
+                    RUST_LOG: expect.stringContaining('codex_core::rollout::list=off'),
+                }),
+            }),
+        );
+
+        await client.disconnect();
+    });
+
+    it('passes forwarded Codex CLI args into the sandbox wrapper', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(sandboxConfig, [
+            '--dangerously-bypass-approvals-and-sandbox',
+        ]);
+
+        await client.connect();
+
+        expect(mockWrapForMcpTransport).toHaveBeenCalledWith('codex', [
+            '--dangerously-bypass-approvals-and-sandbox',
+            'app-server',
+            '--listen',
+            'stdio://',
+        ]);
+        expect(mockSpawn).toHaveBeenCalledWith(
+            'sh',
+            ['-c', 'wrapped codex app-server'],
+            expect.anything(),
+        );
+
+        await client.disconnect();
+    });
+
     it('falls back to non-sandbox transport when sandbox initialization fails', async () => {
         mockInitializeSandbox.mockRejectedValue(new Error('sandbox init failed'));
         const { CodexAppServerClient } = await import('./codexAppServerClient');

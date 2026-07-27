@@ -41,6 +41,14 @@ happy acp opencode
 happy acp -- custom-agent --flag
 ```
 
+Codex-only CLI flags can be forwarded after `--`:
+
+```bash
+happy codex -- --dangerously-bypass-approvals-and-sandbox
+```
+
+Arguments after `--` are passed to the Codex CLI before Happy starts Codex's app-server. They apply only to `happy codex`; other agents keep their existing argument handling.
+
 ## Daemon
 
 The daemon is a background service that stays running on your machine. It lets you spawn and manage coding sessions remotely — from your phone or the web app — without needing an open terminal.

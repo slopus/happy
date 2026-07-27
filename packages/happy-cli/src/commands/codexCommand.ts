@@ -1,6 +1,6 @@
 import { authAndSetupMachineIfNeeded } from '@/ui/auth'
 import { runCodex } from '@/codex/runCodex'
-import { extractCodexResumeFlag } from '@/codex/cliArgs'
+import { extractCodexPassthroughArgs, extractCodexResumeFlag } from '@/codex/cliArgs'
 import { extractNoSandboxFlag } from '@/utils/sandboxFlags'
 import { ensureDaemonRunning } from '@/daemon/ensureDaemonRunning'
 import type { PermissionMode } from '@/api/types'
@@ -11,7 +11,8 @@ export async function handleCodexCommand(args: string[]): Promise<void> {
   let permissionMode: PermissionMode | undefined = undefined
   let model: string | undefined = undefined
   let effort: ReasoningEffort | undefined = undefined
-  const sandboxArgs = extractNoSandboxFlag(args)
+  const passthroughArgs = extractCodexPassthroughArgs(args)
+  const sandboxArgs = extractNoSandboxFlag(passthroughArgs.happyArgs)
   const codexArgs = extractCodexResumeFlag(sandboxArgs.args)
 
   for (let i = 0; i < codexArgs.args.length; i++) {
@@ -39,5 +40,6 @@ export async function handleCodexCommand(args: string[]): Promise<void> {
     permissionMode,
     model,
     effort,
+    codexCliArgs: passthroughArgs.codexArgs,
   })
 }
