@@ -285,6 +285,7 @@ export const SessionView = React.memo((props: { id: string }) => {
             headerMaxWidth: layout.headerMaxWidth,
             headerHorizontalPadding: Platform.OS === 'ios' ? 8 : 16,
             sidebarVisible: !zenMode,
+            rightPanelWidth: showSidebar ? sidebarWidth : 0,
             controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 0,
             buttonCount: Platform.OS === 'web' ? 3 : 2,
             targetHitSlop: 8,
