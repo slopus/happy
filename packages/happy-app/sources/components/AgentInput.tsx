@@ -696,8 +696,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // existing composer affordances rather than inheriting it.
     const runningOnMac = isRunningOnMac();
     const compactMobileComposer = Platform.OS !== 'web' && !runningOnMac && screenWidth <= 700;
-    const useNativeSettingsMenus = compactMobileComposer
-        || shouldUseExpoNativeSettingsMenu(Platform.OS, runningOnMac);
+    // iOS only. On Android the settings/model/effort triggers are React Native
+    // subtrees hosted inside a Jetpack Compose DropdownMenu, and expo-modules-core
+    // pins such a child to `Modifier.size(view.width, view.height)` sampled once at
+    // composition with no layout listener (ExpoComposeAndroidView) — composed before
+    // React Native measures it, the trigger stays 0x0 and the control is invisible
+    // while still occupying its slot. The composer's own popup pickers below render
+    // identically and work, so Android uses those instead of the native menu.
+    const useNativeSettingsMenus = shouldUseExpoNativeSettingsMenu(Platform.OS, runningOnMac);
     const activeSendIconColor = compactMobileComposer ? theme.colors.text : theme.colors.button.primary.tint;
     const isSendBlocked = props.blockSend ?? false;
 

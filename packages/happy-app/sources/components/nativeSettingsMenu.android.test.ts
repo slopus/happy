@@ -17,7 +17,11 @@ vi.mock('@expo/ui/jetpack-compose', async () => {
     DropdownMenu.Trigger = component('ExpoDropdownMenuTrigger');
     const DropdownMenuItem = component('ExpoDropdownMenuItem') as any;
     DropdownMenuItem.Text = component('ExpoDropdownMenuItemText');
-    return { DropdownMenu, DropdownMenuItem };
+    // DropdownMenuItem.Text is a native slot, so the label travels as a real
+    // Compose Text node rather than a bare string child. The mock has to export
+    // Text for that to render here.
+    const Text = component('ExpoText');
+    return { DropdownMenu, DropdownMenuItem, Text };
 });
 
 import { NativeSettingsMenu } from './NativeSettingsMenu.android';
