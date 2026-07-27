@@ -252,7 +252,11 @@ const styles = StyleSheet.create((theme) => ({
         bottom: 0,
     },
     focusBackdrop: {
-        backgroundColor: 'rgba(0, 0, 0, 0.88)',
+        // Was a hard-coded near-opaque black, which only works in the dark
+        // theme: everything drawn on top of it (pickers, the back chevron)
+        // uses theme.colors.text, so in the light theme it was dark-on-black
+        // and effectively invisible.
+        backgroundColor: theme.colors.scrim,
     },
     focusBackPosition: {
         position: 'absolute',
