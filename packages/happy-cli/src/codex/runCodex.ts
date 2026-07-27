@@ -277,14 +277,16 @@ export async function runCodex(opts: {
     let currentAppendSystemPrompt: string | undefined = undefined;
 
     const resetCurrentModeDefaults = () => {
-        // Reset to the mode the session was launched with. Note this is NOT
+        // Reset permission mode and prompts to what the session was launched
+        // with. Note this is NOT
         // a safety guarantee by itself — for plain `happy codex` the launch
         // mode IS yolo; the post-abort grace window is protected by the
         // approval handler only trusting explicitly-picked modes.
+        // Model and effort are deliberately NOT reset here. The app sends them
+        // only when the user changes the picker, so resetting them on abort
+        // silently desyncs the picker from what the next turn actually runs.
         currentPermissionMode = initialPermissionMode;
         currentPermissionModeExplicitlySet = false;
-        currentModel = opts.model ?? DEFAULT_CODEX_MODEL;
-        currentEffort = opts.effort ?? DEFAULT_CODEX_EFFORT;
         currentAppendSystemPrompt = undefined;
         logger.debug('[Codex] Reset current mode defaults after abort');
     };
