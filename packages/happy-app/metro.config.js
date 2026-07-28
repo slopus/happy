@@ -1,10 +1,39 @@
 const { getDefaultConfig } = require("expo/metro-config");
+const fs = require("fs");
 const path = require("path");
 
 const config = getDefaultConfig(__dirname, {
   // Enable CSS support for web
   isCSSEnabled: true,
 });
+
+// Metro's global transform cache otherwise lets concurrently running sibling
+// worktrees reuse an expo-router context compiled for a different checkout.
+config.cacheVersion = `happy-app:${__dirname}`;
+
+// Sibling worktrees reuse the main checkout's root node_modules through a
+// symlink. Metro does not reliably follow that symlink during hierarchical
+// lookup, so include its resolved ARM-native dependency directory explicitly.
+const workspaceNodeModules = path.resolve(__dirname, "../../node_modules");
+const monorepoRoot = path.resolve(__dirname, "../..");
+const resolvedWorkspaceNodeModules = fs.realpathSync(workspaceNodeModules);
+const sharedAppNodeModules = path.join(
+  path.dirname(resolvedWorkspaceNodeModules),
+  "packages/happy-app/node_modules"
+);
+config.resolver.nodeModulesPaths = [
+  path.resolve(__dirname, "node_modules"),
+  sharedAppNodeModules,
+  resolvedWorkspaceNodeModules,
+];
+config.watchFolders = Array.from(new Set([
+  ...(config.watchFolders || []),
+  monorepoRoot,
+]));
+config.resolver.extraNodeModules = {
+  ...(config.resolver.extraNodeModules || {}),
+  "@slopus/happy-wire": path.join(monorepoRoot, "packages/happy-wire"),
+};
 
 // Add support for .wasm files (required by Skia for all platforms)
 // Source: https://shopify.github.io/react-native-skia/docs/getting-started/installation/

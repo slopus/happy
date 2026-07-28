@@ -16,6 +16,7 @@ export default defineConfig({
         ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ],
     timeout: 60_000,
+    repeatEach: Number.parseInt(process.env.HAPPY_E2E_REPEAT_EACH ?? '1', 10),
     use: {
         channel: process.env.HAPPY_E2E_BROWSER_CHANNEL ?? 'chrome',
         headless: process.env.HAPPY_E2E_HEADED !== '1',
