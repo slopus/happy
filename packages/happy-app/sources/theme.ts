@@ -51,6 +51,10 @@ export const lightTheme = {
         surfacePressed: '#f0f0f2',
         surfaceSelected: Platform.select({ ios: '#C6C6C8', default: '#eaeaea' }),
         surfacePressedOverlay: Platform.select({ ios: '#D1D1D6', default: 'transparent' }),
+        // Dim behind a full-screen overlay. Light enough that theme-coloured
+        // content stays legible on top — a near-opaque black works only when
+        // the content above it is light, which it is not in this theme.
+        scrim: 'rgba(0, 0, 0, 0.32)',
         surfaceHigh: '#F8F8F8',
         surfaceHighest: '#f0f0f0',
         divider: Platform.select({ ios: '#eaeaea', default: '#eaeaea' }),
@@ -277,6 +281,7 @@ export const darkTheme = {
         surfacePressed: Platform.select({ web: '#2C2C2E', default: '#242424' }),
         surfaceSelected: Platform.select({ web: '#2C2C2E', default: '#242424' }),
         surfacePressedOverlay: Platform.select({ web: 'transparent', default: '#242424' }),
+        scrim: 'rgba(0, 0, 0, 0.72)',
         surfaceHigh: Platform.select({ web: '#171717', default: '#1E1E1E' }),
         surfaceHighest: Platform.select({ web: '#292929', default: '#282828' }),
         divider: Platform.select({ web: '#292929', default: '#2A2A2A' }),

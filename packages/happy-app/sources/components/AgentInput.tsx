@@ -392,7 +392,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         marginLeft: 1,
     },
     mobilePrimaryButtonActive: {
-        backgroundColor: theme.colors.surfaceHighest,
+        // Filled like the desktop send button. surfaceHighest is nearly white
+        // in the light theme, so on the (white) composer the control had no
+        // visible edge at all.
+        backgroundColor: theme.colors.button.primary.background,
     },
     mobileStopButton: {
         backgroundColor: theme.dark ? '#F5F5F5' : theme.colors.button.primary.background,
@@ -697,7 +700,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const compactMobileComposer = Platform.OS !== 'web' && !isRunningOnMac() && screenWidth <= 700;
     const glassEnabled = compactMobileComposer;
     const useNativeSettingsMenus = compactMobileComposer;
-    const activeSendIconColor = glassEnabled ? theme.colors.text : theme.colors.button.primary.tint;
     const isSendBlocked = props.blockSend ?? false;
 
     // `hasText` drives only the send-button appearance/enabled state. It's
@@ -773,6 +775,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     });
     const shouldShowStopButton = primaryAction === 'stop';
     const canSendMessage = primaryAction === 'send';
+    // On the filled (send-ready) button the icon must read against the primary
+    // background; the glass variant only appears while idle, over the composer.
+    const activeSendIconColor = glassEnabled && !canSendMessage
+        ? theme.colors.text
+        : theme.colors.button.primary.tint;
     const mobileCanPressSendButton = !isAborting && primaryAction !== 'idle';
     const desktopCanPressSendButton = !props.isSending
         && !props.isSendDisabled
@@ -2063,7 +2070,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                         <Shaker ref={shakerRef}>
                             <MobileGlassSurface
-                                enabled={glassEnabled && !shouldShowStopButton}
+                                // Off once there is something to send: the glass layer keeps its
+                                // own shape and tint, which showed through the filled button as a
+                                // grey square corner behind the circle.
+                                enabled={glassEnabled && !shouldShowStopButton && !canSendMessage}
                                 interactive={canPressSendButton}
                                 style={[
                                     styles.sendButton,
@@ -2072,7 +2082,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         : shouldShowStopButton ? styles.mobileStopButton
                                             : canSendMessage ? styles.mobilePrimaryButtonActive
                                                 : styles.sendButtonInactive,
-                                    glassEnabled && !shouldShowStopButton && styles.sendButtonGlass,
+                                    // Glass only while there is nothing to send: the transparent
+                                    // iOS background would otherwise hide the primary action.
+                                    glassEnabled && !shouldShowStopButton && !canSendMessage && styles.sendButtonGlass,
                                     glassEnabled && !canPressSendButton && styles.sendButtonInactiveGlass,
                                 ]}
                             >
