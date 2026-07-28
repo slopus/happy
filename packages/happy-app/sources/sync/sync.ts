@@ -1000,7 +1000,8 @@ class Sync {
             // Decrypt agent state using session-specific encryption
             let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
 
-            // Put it all together
+            // Put it all together. Thinking placeholders are overwritten just
+            // before applySessions below.
             const processedSession = {
                 ...session,
                 thinking: false,
@@ -1011,8 +1012,24 @@ class Sync {
             decryptedSessions.push(processedSession);
         }
 
-        // Apply to storage
-        this.applySessions(decryptedSessions);
+        // Thinking state exists only in activity ephemerals — the server
+        // session record has no such field, so preserve whatever we already
+        // know. Hardcoding false wipes the live state of every running session
+        // on any full refetch (notably the one `new-session` triggers), which
+        // both freezes the pulsing dot and trips the "agent just finished"
+        // unread detector in applySessions. Two deliberate details:
+        // - Resolved here, synchronously with the apply, rather than inside
+        //   the decrypt loop above: the loop awaits per session, so a snapshot
+        //   taken there can be overtaken by an activity ephemeral clearing
+        //   thinking in the meantime.
+        // - Gated on `active`: a dead session can never send the clearing
+        //   ephemeral, so a preserved `true` would otherwise be immortal.
+        const current = storage.getState().sessions;
+        this.applySessions(decryptedSessions.map(s => ({
+            ...s,
+            thinking: s.active ? (current[s.id]?.thinking ?? false) : false,
+            thinkingAt: s.active ? (current[s.id]?.thinkingAt ?? 0) : 0,
+        })));
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
 
     }
