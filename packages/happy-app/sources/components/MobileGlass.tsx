@@ -13,11 +13,14 @@ import Animated, {
     withTiming,
 } from 'react-native-reanimated';
 
+type MobileGlassMaterial = 'liquid' | 'static' | 'frosted';
+
 type MobileGlassSurfaceProps = ViewProps & {
     enabled?: boolean;
     intensity?: number;
     interactive?: boolean;
     nativeEffect?: boolean;
+    material?: MobileGlassMaterial;
     glassEffectStyle?: GlassStyle;
     tintColor?: string;
     style?: StyleProp<ViewStyle>;
@@ -28,8 +31,11 @@ const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
 /**
  * Performance-aware material surface. Interactive controls and explicit
- * `nativeEffect` surfaces use Liquid Glass/material blur; content surfaces are
- * opaque system surfaces so glass remains a distinct functional layer.
+ * `nativeEffect` surfaces use Liquid Glass/material blur; `material="static"`
+ * opts into a calm, non-refractive blur without the Liquid Glass highlight.
+ * `material="frosted"` adds a denser tint and blur for writing surfaces where
+ * background content must not compete with the foreground text.
+ * Content surfaces remain opaque so glass stays a distinct functional layer.
  */
 export function MobileGlassSurface(props: MobileGlassSurfaceProps) {
     if (props.interactive && Platform.OS !== 'web' && !isRunningOnMac()) {
@@ -91,6 +97,7 @@ function MobileGlassSurfaceBase({
     intensity = 72,
     interactive = false,
     nativeEffect = interactive,
+    material = 'liquid',
     glassEffectStyle = 'clear',
     tintColor,
     style,
@@ -99,6 +106,8 @@ function MobileGlassSurfaceBase({
     ...props
 }: MobileGlassSurfaceProps & { animated?: boolean }) {
     const { theme } = useUnistyles();
+    const usesStaticMaterial = nativeEffect && material !== 'liquid';
+    const usesFrostedMaterial = nativeEffect && material === 'frosted';
 
     if (!enabled || Platform.OS === 'web' || isRunningOnMac()) {
         return animated ? (
@@ -130,7 +139,19 @@ function MobileGlassSurfaceBase({
         );
     }
 
-    const highlight = (
+    const surfaceOverlay = usesStaticMaterial ? (
+        <View
+            pointerEvents="none"
+            style={[
+                RNStyleSheet.absoluteFill,
+                {
+                    backgroundColor: theme.dark
+                        ? usesFrostedMaterial ? 'rgba(20, 20, 22, 0.82)' : 'rgba(44, 44, 47, 0.62)'
+                        : usesFrostedMaterial ? 'rgba(255, 255, 255, 0.82)' : 'rgba(255, 255, 255, 0.66)',
+                },
+            ]}
+        />
+    ) : (
         <LinearGradient
             pointerEvents="none"
             colors={theme.dark
@@ -143,7 +164,7 @@ function MobileGlassSurfaceBase({
         />
     );
 
-    if (Platform.OS === 'ios' && isGlassEffectAPIAvailable()) {
+    if (Platform.OS === 'ios' && isGlassEffectAPIAvailable() && !usesStaticMaterial) {
         return animated ? (
             <AnimatedGlassView
                 {...props}
@@ -153,7 +174,7 @@ function MobileGlassSurfaceBase({
                 isInteractive={interactive}
                 style={style}
             >
-                {highlight}
+                {surfaceOverlay}
                 {children}
             </AnimatedGlassView>
         ) : (
@@ -165,7 +186,7 @@ function MobileGlassSurfaceBase({
                 isInteractive={interactive}
                 style={style}
             >
-                {highlight}
+                {surfaceOverlay}
                 {children}
             </GlassView>
         );
@@ -175,21 +196,21 @@ function MobileGlassSurfaceBase({
         return animated ? (
             <AnimatedBlurView
                 {...props}
-                intensity={Math.min(intensity, 36)}
+                intensity={Math.min(intensity, usesFrostedMaterial ? 42 : usesStaticMaterial ? 18 : 36)}
                 tint={theme.dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
                 style={style}
             >
-                {highlight}
+                {surfaceOverlay}
                 {children}
             </AnimatedBlurView>
         ) : (
             <BlurView
                 {...props}
-                intensity={Math.min(intensity, 36)}
+                intensity={Math.min(intensity, usesFrostedMaterial ? 42 : usesStaticMaterial ? 18 : 36)}
                 tint={theme.dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
                 style={style}
             >
-                {highlight}
+                {surfaceOverlay}
                 {children}
             </BlurView>
         );
@@ -200,7 +221,7 @@ function MobileGlassSurfaceBase({
             {...props}
             style={[{ backgroundColor: theme.colors.glass.background }, style]}
         >
-            {highlight}
+            {surfaceOverlay}
             {children}
         </Animated.View>
     ) : (
@@ -208,7 +229,7 @@ function MobileGlassSurfaceBase({
             {...props}
             style={[{ backgroundColor: theme.colors.glass.background }, style]}
         >
-            {highlight}
+            {surfaceOverlay}
             {children}
         </View>
     );

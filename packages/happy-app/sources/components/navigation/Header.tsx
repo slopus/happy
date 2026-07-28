@@ -3,13 +3,18 @@ import { Animated, View, Text, Platform, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { layout } from '../layout';
 import { isRunningOnMac } from '@/utils/platform';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import { Typography } from '@/constants/Typography';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 import { MobileGlassSurface } from '../MobileGlass';
+import {
+    MobileHeaderScrim,
+    MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
+    MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY,
+    type MobileHeaderScrimVariant,
+} from './MobileHeaderScrim';
 import {
     MOBILE_GLASS_CONTROL_RADIUS,
     MOBILE_GLASS_CONTROL_SIZE,
@@ -31,12 +36,14 @@ interface HeaderProps {
     headerShadowVisible?: boolean;
     headerTransparent?: boolean;
     headerBackdropVisible?: boolean;
+    headerBackdropAlwaysVisible?: boolean;
+    headerBackdropVariant?: MobileHeaderScrimVariant;
+    mobileTitleSurface?: 'glass' | 'plain';
     safeAreaEnabled?: boolean;
 }
 
 export const Header = React.memo((props: HeaderProps) => {
     const styles = stylesheet;
-    const { theme } = useUnistyles();
 
     const {
         title,
@@ -53,6 +60,9 @@ export const Header = React.memo((props: HeaderProps) => {
         headerShadowVisible = true,
         headerTransparent = false,
         headerBackdropVisible = false,
+        headerBackdropAlwaysVisible = false,
+        headerBackdropVariant = 'subtle',
+        mobileTitleSurface = 'glass',
         safeAreaEnabled = true,
     } = props;
 
@@ -65,23 +75,36 @@ export const Header = React.memo((props: HeaderProps) => {
     const headerLeftUsesGlass = headerLeftGlass && !isDesktop;
     const headerRightUsesGlass = headerRightGlass && !isDesktop;
     const contentHeight = floatingControlsEnabled ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT) : headerHeight;
-    const backdropOpacity = React.useRef(new Animated.Value(headerBackdropVisible ? 1 : 0)).current;
-    const [backdropMounted, setBackdropMounted] = React.useState(headerBackdropVisible);
+    const strongBackdrop = headerBackdropVariant === 'strong';
+    const backdropRestingOpacity = headerBackdropAlwaysVisible
+        ? strongBackdrop ? MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY : 1
+        : 0;
+    const backdropTargetOpacity = headerBackdropVisible
+        ? strongBackdrop ? MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY : 1
+        : backdropRestingOpacity;
+    const backdropShouldBeVisible = floatingControlsEnabled && backdropTargetOpacity > 0;
+    const backdropOpacity = React.useRef(new Animated.Value(backdropTargetOpacity)).current;
+    const [backdropMounted, setBackdropMounted] = React.useState(backdropShouldBeVisible);
 
     React.useEffect(() => {
-        if (headerBackdropVisible) {
+        if (!floatingControlsEnabled) {
+            setBackdropMounted(false);
+            return;
+        }
+
+        if (backdropShouldBeVisible) {
             setBackdropMounted(true);
         }
         Animated.timing(backdropOpacity, {
-            toValue: headerBackdropVisible ? 1 : 0,
-            duration: 160,
+            toValue: backdropTargetOpacity,
+            duration: 200,
             useNativeDriver: true,
         }).start(({ finished }) => {
-            if (finished && !headerBackdropVisible) {
+            if (finished && !backdropShouldBeVisible) {
                 setBackdropMounted(false);
             }
         });
-    }, [backdropOpacity, headerBackdropVisible]);
+    }, [backdropOpacity, backdropShouldBeVisible, backdropTargetOpacity, floatingControlsEnabled]);
 
     const containerStyle = [
         styles.container,
@@ -100,30 +123,39 @@ export const Header = React.memo((props: HeaderProps) => {
         isDesktop && styles.desktopSubtitle,
         headerSubtitleStyle,
     ];
+    const titleContent = (
+        <>
+            {title}
+            {subtitle && <Text style={subtitleStyle} numberOfLines={1}>{subtitle}</Text>}
+        </>
+    );
 
     return (
         <View style={containerStyle}>
             {floatingControlsEnabled && backdropMounted && (
                 <Animated.View
                     pointerEvents="none"
-                    style={[styles.headerBlur, { opacity: backdropOpacity }]}
+                    style={[
+                        styles.headerBackdrop,
+                        strongBackdrop && styles.headerBackdropStrong,
+                        { opacity: backdropOpacity },
+                    ]}
                 >
-                    <BlurView
-                        blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}
-                        blurReductionFactor={2}
-                        intensity={34}
-                        tint={theme.dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
-                        style={styles.headerBlurFill}
-                    />
+                    <MobileHeaderScrim variant={headerBackdropVariant} />
                 </Animated.View>
             )}
             <View style={styles.contentWrapper}>
-                <View style={[styles.content, isDesktop && styles.desktopContent, { height: contentHeight }]}>
+                <View style={[
+                    styles.content,
+                    isDesktop && styles.desktopContent,
+                    { height: contentHeight },
+                ]}>
                     <View style={styles.leftContainer}>
                         {headerLeft && headerLeftUsesGlass && (
                             <MobileGlassSurface
                                 enabled={floatingControlsEnabled}
                                 interactive
+                                material="static"
                                 intensity={76}
                                 style={styles.leftControlGlass}
                             >
@@ -136,15 +168,25 @@ export const Header = React.memo((props: HeaderProps) => {
                     </View>
 
                     <View style={[styles.centerContainer, isDesktop && styles.desktopCenterContainer]}>
-                        {title}
-                        {subtitle && <Text style={subtitleStyle} numberOfLines={1}>{subtitle}</Text>}
+                        {floatingControlsEnabled && mobileTitleSurface === 'glass' ? (
+                            <MobileGlassSurface
+                                enabled={floatingControlsEnabled}
+                                nativeEffect
+                                material="static"
+                                intensity={76}
+                                style={styles.mobileTitlePill}
+                            >
+                                {titleContent}
+                            </MobileGlassSurface>
+                        ) : titleContent}
                     </View>
 
                     <View style={styles.rightContainer}>
                         {headerRight && headerRightUsesGlass && (
                             <MobileGlassSurface
                                 enabled={floatingControlsEnabled}
-                                interactive
+                                nativeEffect
+                                material="static"
                                 intensity={76}
                                 style={styles.rightControlGlass}
                             >
@@ -186,6 +228,7 @@ const DefaultBackButton: React.FC<{ tintColor?: string; onPress: () => void }> =
         >
             <MobileGlassSurface
                 interactive
+                material="static"
                 intensity={76}
                 style={styles.backButtonGlass}
             >
@@ -296,11 +339,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     containerNormal: {
         backgroundColor: theme.colors.header.background,
     },
-    headerBlur: {
+    // The header stays transparent until content scrolls underneath it. Then
+    // a subtle scrim fades into the content; only the controls use glass.
+    headerBackdrop: {
         ...StyleSheet.absoluteFillObject,
     },
-    headerBlurFill: {
-        ...StyleSheet.absoluteFillObject,
+    headerBackdropStrong: {
+        bottom: -36,
     },
     contentWrapper: {
         width: '100%',
@@ -339,6 +384,17 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         justifyContent: Platform.OS === 'ios' ? 'center' : 'flex-start',
         paddingHorizontal: 12,
         minWidth: undefined,
+    },
+    mobileTitlePill: {
+        width: '100%',
+        height: '100%',
+        minWidth: 0,
+        justifyContent: 'center',
+        paddingHorizontal: 12,
+        borderRadius: MOBILE_GLASS_HEADER_HEIGHT / 2,
+        overflow: 'hidden',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.dark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(24, 23, 28, 0.09)',
     },
     rightContainer: {
         flexGrow: 0,
@@ -398,7 +454,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: Platform.select({ web: 0, default: 6 }),
+        paddingHorizontal: Platform.select({ web: 0, default: 4 }),
     },
     title: {
         fontSize: Platform.OS === 'web' ? 17 : 16,

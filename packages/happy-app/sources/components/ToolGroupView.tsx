@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, Pressable, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import {
@@ -16,9 +16,8 @@ import { layout } from './layout';
 import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { t } from '@/text';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
-import { getToolSummaryCategory, getToolSummaryDetail, ToolSummaryCategory } from '@/utils/toolDisplay';
+import { getToolActivityLabel, getToolSummaryCategory, ToolSummaryCategory } from '@/utils/toolDisplay';
 import { useRouter } from 'expo-router';
-import { formatMCPTitle } from './tools/views/MCPToolView';
 
 interface ToolGroupViewProps {
     group: ToolGroupItem;
@@ -316,8 +315,7 @@ function ToolSummaryRow(props: {
     const router = useRouter();
     const { tool } = props.message;
     const category = getToolSummaryCategory(tool.name);
-    const detail = getToolSummaryDetail(tool);
-    const title = getToolRowTitle(category, tool.name);
+    const label = getToolActivityLabel(tool);
     const filePath = isFileEditTool(tool.name) && typeof tool.input?.file_path === 'string'
         ? tool.input.file_path
         : null;
@@ -333,18 +331,16 @@ function ToolSummaryRow(props: {
     const content = (
         <>
             <View style={styles.toolSummaryIcon}>
-                <ToolSummaryIcon category={category} color={theme.colors.textSecondary} />
+                <ToolSummaryIcon
+                    category={category}
+                    color={theme.colors.textSecondary}
+                    size={18}
+                    toolName={tool.name}
+                />
             </View>
-            <Text style={styles.toolSummaryTitle} numberOfLines={1}>
-                {title}
+            <Text style={styles.toolSummaryLabel} numberOfLines={1}>
+                {label}
             </Text>
-            {detail ? (
-                <View style={styles.toolSummaryDetailPill}>
-                    <Text style={styles.toolSummaryDetailText} numberOfLines={1}>
-                        {detail}
-                    </Text>
-                </View>
-            ) : null}
         </>
     );
 
@@ -372,22 +368,28 @@ function ToolSummaryRow(props: {
 function ToolSummaryIcon(props: {
     category: ToolSummaryCategory;
     color: string;
+    size?: number;
+    toolName?: string;
 }) {
+    const size = props.size ?? 12;
+    if (props.toolName === 'WebSearch') {
+        return <Ionicons name="globe-outline" size={size + 1} color={props.color} />;
+    }
     switch (props.category) {
         case 'terminal':
-            return <Octicons name="terminal" size={12} color={props.color} />;
+            return <Octicons name="terminal" size={size} color={props.color} />;
         case 'edit':
-            return <Octicons name="file-diff" size={12} color={props.color} />;
+            return <Octicons name="file-diff" size={size} color={props.color} />;
         case 'read':
-            return <Octicons name="eye" size={12} color={props.color} />;
+            return <Octicons name="eye" size={size} color={props.color} />;
         case 'search':
-            return <Octicons name="search" size={12} color={props.color} />;
+            return <Octicons name="search" size={size} color={props.color} />;
         case 'web':
-            return <Ionicons name="globe-outline" size={13} color={props.color} />;
+            return <Ionicons name="globe-outline" size={size + 1} color={props.color} />;
         case 'task':
-            return <Octicons name="rocket" size={12} color={props.color} />;
+            return <Octicons name="rocket" size={size} color={props.color} />;
         default:
-            return <Ionicons name="construct-outline" size={13} color={props.color} />;
+            return <Ionicons name="construct-outline" size={size + 1} color={props.color} />;
     }
 }
 
@@ -402,29 +404,6 @@ function getGroupSummaryCategory(messages: Message[]): ToolSummaryCategory | nul
         return categories.values().next().value ?? null;
     }
     return categories.size > 1 ? 'other' : null;
-}
-
-function getToolRowTitle(category: ToolSummaryCategory, toolName: string): string {
-    if (toolName.startsWith('mcp__')) {
-        return formatMCPTitle(toolName);
-    }
-
-    switch (category) {
-        case 'terminal':
-            return t('tools.names.terminal');
-        case 'edit':
-            return t('toolGroup.editedFile');
-        case 'read':
-            return t('tools.names.readFile');
-        case 'search':
-            return t('tools.names.search');
-        case 'web':
-            return t('tools.names.fetchUrl');
-        case 'task':
-            return t('tools.names.task');
-        default:
-            return toolName;
-    }
 }
 
 function isFileEditTool(toolName: string): boolean {
@@ -485,10 +464,10 @@ const styles = StyleSheet.create((theme) => ({
     toolSummaryRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        minHeight: 28,
+        gap: 10,
+        minHeight: 32,
         marginHorizontal: 16,
-        paddingVertical: 4,
+        paddingVertical: 5,
         borderRadius: 4,
         overflow: 'hidden',
     },
@@ -496,31 +475,17 @@ const styles = StyleSheet.create((theme) => ({
         opacity: 0.65,
     },
     toolSummaryIcon: {
-        width: 14,
-        height: 18,
+        width: 20,
+        height: 22,
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
     },
-    toolSummaryTitle: {
-        flexShrink: 0,
-        fontSize: 13,
-        lineHeight: 18,
-        color: theme.colors.textSecondary,
-    },
-    toolSummaryDetailPill: {
-        flexShrink: 1,
+    toolSummaryLabel: {
+        flex: 1,
         minWidth: 0,
-        maxWidth: '100%',
-        borderRadius: 3,
-        paddingHorizontal: 4,
-        paddingVertical: 1,
-        backgroundColor: theme.colors.surfaceHighest,
-    },
-    toolSummaryDetailText: {
-        fontSize: 12,
-        lineHeight: 16,
+        fontSize: 15,
+        lineHeight: 22,
         color: theme.colors.textSecondary,
-        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
     },
 }));

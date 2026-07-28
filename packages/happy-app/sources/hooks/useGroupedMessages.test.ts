@@ -234,7 +234,7 @@ describe('useGroupedMessages', () => {
         ]);
     });
 
-    it('still groups adjacent current-turn tools while the agent is working', () => {
+    it('keeps adjacent current-turn tools separate while the agent is working', () => {
         const messages: Message[] = [
             {
                 kind: 'agent-text',
@@ -256,12 +256,13 @@ describe('useGroupedMessages', () => {
 
         const items = groupMessagesForDisplay(messages, true, { collapseCurrentTurn: false });
 
-        expect(items.map((item) => item.type)).toEqual(['message', 'tool-group', 'message']);
-        expect(items[1]).toMatchObject({
-            type: 'tool-group',
-            id: 'group-tool-earliest',
-            hasPendingPermission: false,
-        });
+        expect(items.map((item) => item.type)).toEqual(['message', 'message', 'message', 'message']);
+        expect(items.map((item) => item.id)).toEqual([
+            'agent-streaming',
+            'tool-latest',
+            'tool-earliest',
+            'user',
+        ]);
     });
 
     it('marks a tool group when it contains a pending permission', () => {

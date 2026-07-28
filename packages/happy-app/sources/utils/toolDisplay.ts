@@ -1,4 +1,5 @@
 import { ToolCall } from '@/sync/typesMessage';
+import { t } from '@/text';
 import { stringifyToolCommand } from './toolCommand';
 
 const TERMINAL_TOOL_NAMES = new Set([
@@ -43,6 +44,13 @@ const TASK_TOOL_NAMES = new Set([
 ]);
 
 export type ToolSummaryCategory = 'terminal' | 'edit' | 'read' | 'search' | 'web' | 'task' | 'other';
+
+/** Formats `mcp__linear__create_issue` as `MCP: Linear Create Issue`. */
+export function formatMCPTitle(toolName: string): string {
+    const parts = toolName.replace(/^mcp__/, '').split('__');
+    const formattedParts = parts.map(formatSnakeCaseTitle);
+    return `MCP: ${formattedParts.join(' ')}`;
+}
 
 export function isTerminalToolName(name: string): boolean {
     return TERMINAL_TOOL_NAMES.has(name);
@@ -111,6 +119,25 @@ export function getToolSummaryDetail(tool: Pick<ToolCall, 'name' | 'input' | 'de
     return tool.description?.trim() || null;
 }
 
+/**
+ * A concise, human-readable label for a tool activity row. Prefer a
+ * provider-supplied description when it adds information beyond the raw
+ * command/path, then fall back to a localized action and its detail.
+ */
+export function getToolActivityLabel(tool: Pick<ToolCall, 'name' | 'input' | 'description'>): string {
+    const detail = getToolSummaryDetail(tool);
+    const providerDescription = getProviderActivityDescription(tool, detail);
+    if (providerDescription) {
+        return providerDescription;
+    }
+
+    const action = getToolActivityAction(getToolSummaryCategory(tool.name), tool.name);
+    if (!detail || normalizeActivityText(detail) === normalizeActivityText(action)) {
+        return action;
+    }
+    return `${action}: ${detail}`;
+}
+
 export function getTerminalToolCommand(tool: Pick<ToolCall, 'name' | 'input'>): string | null {
     if (!isTerminalToolName(tool.name)) {
         return null;
@@ -140,6 +167,73 @@ export function getTerminalToolCommand(tool: Pick<ToolCall, 'name' | 'input'>): 
     }
 
     return null;
+}
+
+function getProviderActivityDescription(
+    tool: Pick<ToolCall, 'name' | 'description'>,
+    detail: string | null,
+): string | null {
+    const description = tool.description?.trim();
+    if (!description || normalizeActivityText(description) === normalizeActivityText(detail ?? '')) {
+        return null;
+    }
+
+    const normalizedDescription = normalizeActivityText(description);
+    const genericDescriptions = new Set([
+        normalizeActivityText(tool.name),
+        'terminal',
+        'bash',
+        'run command',
+        'running command',
+        'search',
+        'web search',
+        'read',
+        'read file',
+        'edit',
+        'edit file',
+        'write',
+        'write file',
+        'fetch url',
+        'task',
+    ]);
+    if (genericDescriptions.has(normalizedDescription)) {
+        return null;
+    }
+
+    return description;
+}
+
+function getToolActivityAction(category: ToolSummaryCategory, toolName: string): string {
+    switch (category) {
+        case 'terminal':
+            return t('toolGroup.ranCommands', { count: 1 });
+        case 'edit':
+            return t('toolGroup.editedFiles', { count: 1 });
+        case 'read':
+            return t('toolGroup.readFiles', { count: 1 });
+        case 'search':
+            return t('toolGroup.searched', { count: 1 });
+        case 'web':
+            return t('toolGroup.fetchedUrls', { count: 1 });
+        case 'task':
+            return t('toolGroup.ranTasks', { count: 1 });
+        default:
+            return toolName.startsWith('mcp__')
+                ? formatMCPTitle(toolName)
+                : toolName;
+    }
+}
+
+function normalizeActivityText(value: string): string {
+    return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function formatSnakeCaseTitle(value: string): string {
+    return value
+        .split('_')
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
 }
 
 function getPatchFiles(input: any): string[] {
