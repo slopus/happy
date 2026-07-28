@@ -85,6 +85,8 @@ interface AgentInputProps {
     };
     alwaysShowContextSize?: boolean;
     showSessionStatusInfoInSettings?: boolean;
+    /** Hide the auxiliary connection/mode row while reading older messages. */
+    showStatusDetails?: boolean;
     sessionStatusGitBranch?: string | null;
     sessionStatusModelLabel?: string | null;
     sessionStatusEffortLabel?: string | null;
@@ -1865,23 +1867,27 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     </>
                 )}
 
-                <AgentInputStatusRow
-                    connectionStatus={props.connectionStatus}
-                    contextWarning={contextWarning}
-                    displayPermissionMode={displayPermissionMode}
-                    permissionModeKey={permissionModeKey}
-                    permissionSemanticKind={displayPermissionMode?.semanticKind}
-                    isSandboxedYoloMode={isSandboxedYoloMode}
-                    permissionLabel={displayPermissionMode ? withSandboxSuffix(displayPermissionMode.name, permissionModeKey) : null}
-                    zenMode={props.zenMode}
-                />
+                {props.showStatusDetails !== false && (
+                    <>
+                        <AgentInputStatusRow
+                            connectionStatus={props.connectionStatus}
+                            contextWarning={contextWarning}
+                            displayPermissionMode={displayPermissionMode}
+                            permissionModeKey={permissionModeKey}
+                            permissionSemanticKind={displayPermissionMode?.semanticKind}
+                            isSandboxedYoloMode={isSandboxedYoloMode}
+                            permissionLabel={displayPermissionMode ? withSandboxSuffix(displayPermissionMode.name, permissionModeKey) : null}
+                            zenMode={props.zenMode}
+                        />
 
-                <AgentInputContextChips
-                    machineName={props.machineName}
-                    onMachineClick={props.onMachineClick}
-                    currentPath={props.currentPath}
-                    onPathClick={props.onPathClick}
-                />
+                        <AgentInputContextChips
+                            machineName={props.machineName}
+                            onMachineClick={props.onMachineClick}
+                            currentPath={props.currentPath}
+                            onPathClick={props.onPathClick}
+                        />
+                    </>
+                )}
 
                 {/* Box 2: Action Area (Input + Send) */}
                 <Shaker ref={sendBlockShakerRef}>

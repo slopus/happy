@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { Animated, View, Text, Platform, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { isRunningOnMac } from '@/utils/platform';
@@ -15,6 +14,7 @@ import {
     MOBILE_GLASS_CONTROL_SIZE,
     MOBILE_GLASS_HEADER_HEIGHT,
 } from './navigation/headerMetrics';
+import { MobileHeaderScrim } from './navigation/MobileHeaderScrim';
 
 interface ChatHeaderViewProps {
     title: string;
@@ -63,7 +63,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
         }
         Animated.timing(backdropOpacity, {
             toValue: backdropVisible ? 1 : 0,
-            duration: 160,
+            duration: 200,
             useNativeDriver: true,
         }).start(({ finished }) => {
             if (finished && !backdropVisible) {
@@ -167,15 +167,9 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
             {glassEnabled && backdropMounted && (
                 <Animated.View
                     pointerEvents="none"
-                    style={[styles.headerBlur, { opacity: backdropOpacity }]}
+                    style={[styles.headerBackdrop, { opacity: backdropOpacity }]}
                 >
-                    <BlurView
-                        blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}
-                        blurReductionFactor={2}
-                        intensity={34}
-                        tint={theme.dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
-                        style={styles.headerBlurFill}
-                    />
+                    <MobileHeaderScrim />
                 </Animated.View>
             )}
             <View style={styles.contentWrapper}>
@@ -189,6 +183,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             <MobileGlassSurface
                                 enabled={glassEnabled}
                                 interactive
+                                material="static"
                                 intensity={76}
                                 style={styles.backButtonGlass}
                             >
@@ -200,58 +195,67 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             </MobileGlassSurface>
                         </Pressable>
                     )}
-                    <BubblePressable
-                        style={styles.titleContainer}
-                        onPress={onTitlePress}
-                        disabled={!onTitlePress}
-                        bubbleScale={1.012}
+                    <MobileGlassSurface
+                        enabled={glassEnabled}
+                        nativeEffect
+                        material="static"
+                        intensity={76}
+                        style={glassEnabled ? styles.mobileTitlePill : styles.titlePillContainer}
                     >
-                        <Text
-                            numberOfLines={1}
-                            ellipsizeMode="tail"
-                            style={[styles.title, { color: theme.colors.header.tint, ...Typography.default('semiBold') }]}
+                        <BubblePressable
+                            style={styles.titleContainer}
+                            onPress={onTitlePress}
+                            disabled={!onTitlePress}
+                            bubbleScale={1.012}
                         >
-                            {title || folderName}
-                        </Text>
-                        {(showFolderSubtitle || hasExtra) && (
-                            <View style={styles.subtitleRow}>
-                                {showFolderSubtitle && (
-                                    <Text
-                                        numberOfLines={1}
-                                        ellipsizeMode="tail"
-                                        style={[styles.folderName, { color: theme.colors.textSecondary, ...Typography.default() }]}
-                                    >
-                                        {folderName}
-                                    </Text>
-                                )}
-                                {showFolderSubtitle && hasExtra && (
-                                    <Text style={[styles.separator, { color: theme.colors.textSecondary, ...Typography.default() }]}>•</Text>
-                                )}
-                                {hasExtra && (
-                                    <Text
-                                        numberOfLines={1}
-                                        ellipsizeMode="middle"
-                                        style={[styles.extraPath, { color: theme.colors.textSecondary, ...Typography.mono() }]}
-                                    >
-                                        {extraPathSegment}
-                                    </Text>
-                                )}
-                            </View>
-                        )}
-                        {identityLine ? (
                             <Text
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
-                                style={[styles.identityLine, { color: theme.colors.textSecondary, ...Typography.default() }]}
+                                style={[styles.title, { color: theme.colors.header.tint, ...Typography.default('semiBold') }]}
                             >
-                                {identityLine}
+                                {title || folderName}
                             </Text>
-                        ) : null}
-                    </BubblePressable>
+                            {(showFolderSubtitle || hasExtra) && (
+                                <View style={styles.subtitleRow}>
+                                    {showFolderSubtitle && (
+                                        <Text
+                                            numberOfLines={1}
+                                            ellipsizeMode="tail"
+                                            style={[styles.folderName, { color: theme.colors.textSecondary, ...Typography.default() }]}
+                                        >
+                                            {folderName}
+                                        </Text>
+                                    )}
+                                    {showFolderSubtitle && hasExtra && (
+                                        <Text style={[styles.separator, { color: theme.colors.textSecondary, ...Typography.default() }]}>•</Text>
+                                    )}
+                                    {hasExtra && (
+                                        <Text
+                                            numberOfLines={1}
+                                            ellipsizeMode="middle"
+                                            style={[styles.extraPath, { color: theme.colors.textSecondary, ...Typography.mono() }]}
+                                        >
+                                            {extraPathSegment}
+                                        </Text>
+                                    )}
+                                </View>
+                            )}
+                            {identityLine ? (
+                                <Text
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                    style={[styles.identityLine, { color: theme.colors.textSecondary, ...Typography.default() }]}
+                                >
+                                    {identityLine}
+                                </Text>
+                            ) : null}
+                        </BubblePressable>
+                    </MobileGlassSurface>
                     {rightSlot ? (
                         <MobileGlassSurface
                             enabled={glassEnabled}
-                            interactive
+                            nativeEffect
+                            material="static"
                             intensity={76}
                             style={styles.rightControlGlass}
                         >
@@ -271,10 +275,7 @@ const styles = StyleSheet.create((theme) => ({
         position: 'relative',
         zIndex: 100,
     },
-    headerBlur: {
-        ...StyleSheet.absoluteFillObject,
-    },
-    headerBlurFill: {
+    headerBackdrop: {
         ...StyleSheet.absoluteFillObject,
     },
     contentWrapper: {
@@ -301,6 +302,22 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         alignItems: 'flex-start',
         minWidth: 0,
+    },
+    titlePillContainer: {
+        flex: 1,
+        alignSelf: 'stretch',
+        minWidth: 0,
+    },
+    mobileTitlePill: {
+        flex: 1,
+        alignSelf: 'stretch',
+        minWidth: 0,
+        paddingHorizontal: 12,
+        borderRadius: MOBILE_GLASS_HEADER_HEIGHT / 2,
+        justifyContent: 'center',
+        overflow: 'hidden',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.dark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(24, 23, 28, 0.09)',
     },
     webTitleRow: {
         flexDirection: 'row',
