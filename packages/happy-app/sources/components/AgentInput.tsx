@@ -116,6 +116,15 @@ function permissionKindIcon(kind: string | null | undefined): React.ComponentPro
     return 'folder-open-outline';
 }
 
+// The composer text/caret must line up with the visible leading edge of the
+// add glyph, rather than the larger 42pt touch target around it. Keeping the
+// geometry in one place prevents the two rows from drifting apart.
+const MOBILE_COMPOSER_SHELL_INSET = 10;
+const MOBILE_COMPOSER_ACTION_SIZE = 42;
+const MOBILE_COMPOSER_ADD_ICON_SIZE = 26;
+const MOBILE_COMPOSER_TEXT_INSET = MOBILE_COMPOSER_SHELL_INSET
+    + (MOBILE_COMPOSER_ACTION_SIZE - MOBILE_COMPOSER_ADD_ICON_SIZE) / 2;
+
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         alignItems: 'center',
@@ -134,27 +143,26 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingBottom: 8,
         paddingHorizontal: 8,
     },
-    unifiedPanelGlass: {
+    unifiedPanelShadow: {
+        borderRadius: 24,
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.22,
+        shadowRadius: 16,
+        elevation: 4,
+    },
+    mobileUnifiedPanel: {
+        // The frosted material is supplied by MobileGlassSurface. The dense
+        // tint keeps the transcript illegible behind it without losing glass.
         backgroundColor: Platform.select({
             ios: 'transparent',
             android: theme.colors.glass.backgroundStrong,
             default: theme.colors.input.background,
         }),
-        borderRadius: 24,
+        borderRadius: 30,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.glass.border,
-    },
-    unifiedPanelShadow: {
-        borderRadius: 24,
-        shadowColor: theme.colors.glass.shadow,
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 1,
-        shadowRadius: 28,
-        elevation: 7,
-    },
-    mobileUnifiedPanel: {
-        borderRadius: 30,
-        paddingHorizontal: 10,
+        paddingHorizontal: MOBILE_COMPOSER_SHELL_INSET,
         paddingTop: 8,
         paddingBottom: 8,
     },
@@ -176,7 +184,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         // the shell and the action row. The previous 60pt slot left a full
         // blank line below an empty input on phones.
         minHeight: 44,
-        paddingHorizontal: 8,
+        // 18pt from the outer edge: 10pt shell inset plus the 8pt offset to
+        // the visible edge of the 26pt add glyph inside its 42pt target.
+        paddingHorizontal: MOBILE_COMPOSER_TEXT_INSET - MOBILE_COMPOSER_SHELL_INSET,
         paddingVertical: 4,
     },
 
@@ -308,15 +318,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: 0,
     },
     mobileActionButtonsContainer: {
-        height: 42,
+        height: MOBILE_COMPOSER_ACTION_SIZE,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 2,
     },
     mobileIconButton: {
-        width: 42,
-        height: 42,
-        borderRadius: 21,
+        width: MOBILE_COMPOSER_ACTION_SIZE,
+        height: MOBILE_COMPOSER_ACTION_SIZE,
+        borderRadius: MOBILE_COMPOSER_ACTION_SIZE / 2,
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
@@ -388,32 +398,22 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         marginLeft: 8,
     },
     mobilePrimaryButton: {
-        width: 42,
-        height: 42,
-        borderRadius: 21,
+        width: MOBILE_COMPOSER_ACTION_SIZE,
+        height: MOBILE_COMPOSER_ACTION_SIZE,
+        borderRadius: MOBILE_COMPOSER_ACTION_SIZE / 2,
         marginLeft: 1,
     },
     mobilePrimaryButtonActive: {
         backgroundColor: theme.colors.surfaceHighest,
+    },
+    mobilePrimaryButtonInactive: {
+        backgroundColor: theme.dark ? '#3A3A3C' : '#D1D1D6',
     },
     mobileStopButton: {
         backgroundColor: theme.dark ? '#F5F5F5' : theme.colors.button.primary.background,
     },
     sendButtonActive: {
         backgroundColor: theme.colors.button.primary.background,
-    },
-    sendButtonGlass: {
-        backgroundColor: Platform.select({
-            ios: 'transparent',
-            android: theme.colors.glass.backgroundStrong,
-            default: 'transparent',
-        }),
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.glass.highlight,
-        overflow: 'hidden',
-    },
-    sendButtonInactiveGlass: {
-        opacity: 0.56,
     },
     sendButtonInactive: {
         backgroundColor: theme.colors.button.primary.disabled,
@@ -693,13 +693,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const screenWidth = useWindowDimensions().width;
-    // The glass composer is deliberately limited to the narrow native layout.
-    // Desktop web, Mac Catalyst, and tablet-width canvases retain the existing
-    // composer affordances rather than inheriting the mobile action row.
+    // The compact action row is deliberately limited to the narrow native
+    // layout. Desktop web, Mac Catalyst, and tablet-width canvases retain the
+    // existing composer affordances rather than inheriting it.
     const compactMobileComposer = Platform.OS !== 'web' && !isRunningOnMac() && screenWidth <= 700;
-    const glassEnabled = compactMobileComposer;
     const useNativeSettingsMenus = compactMobileComposer;
-    const activeSendIconColor = glassEnabled ? theme.colors.text : theme.colors.button.primary.tint;
+    const activeSendIconColor = compactMobileComposer ? theme.colors.text : theme.colors.button.primary.tint;
     const isSendBlocked = props.blockSend ?? false;
 
     // `hasText` drives only the send-button appearance/enabled state. It's
@@ -1892,16 +1891,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 {/* Box 2: Action Area (Input + Send) */}
                 <Shaker ref={sendBlockShakerRef}>
                     <View style={[
-                        glassEnabled && styles.unifiedPanelShadow,
+                        compactMobileComposer && styles.unifiedPanelShadow,
                         compactMobileComposer && styles.mobileUnifiedPanelShadow,
                     ]}>
                         <MobileGlassSurface
-                            enabled={glassEnabled}
+                            enabled={compactMobileComposer}
                             nativeEffect
-                            intensity={86}
+                            material="frosted"
+                            intensity={92}
                             style={[
                                 styles.unifiedPanel,
-                                glassEnabled && styles.unifiedPanelGlass,
                                 compactMobileComposer && styles.mobileUnifiedPanel,
                             ]}
                         >
@@ -1948,7 +1947,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             >
                                 <Ionicons
                                     name="add"
-                                    size={26}
+                                    size={MOBILE_COMPOSER_ADD_ICON_SIZE}
                                     color={(props.selectedImages?.length ?? 0) > 0
                                         ? theme.colors.radio.active
                                         : theme.colors.text}
@@ -2068,18 +2067,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         )}
 
                         <Shaker ref={shakerRef}>
-                            <MobileGlassSurface
-                                enabled={glassEnabled && !shouldShowStopButton}
-                                interactive={canPressSendButton}
+                            <View
                                 style={[
                                     styles.sendButton,
                                     styles.mobilePrimaryButton,
                                     isSendBlocked ? styles.sendButtonLocked
                                         : shouldShowStopButton ? styles.mobileStopButton
                                             : canSendMessage ? styles.mobilePrimaryButtonActive
-                                                : styles.sendButtonInactive,
-                                    glassEnabled && !shouldShowStopButton && styles.sendButtonGlass,
-                                    glassEnabled && !canPressSendButton && styles.sendButtonInactiveGlass,
+                                                : styles.mobilePrimaryButtonInactive,
                                 ]}
                             >
                                 <BubblePressable
@@ -2117,7 +2112,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         <Octicons
                                             name="arrow-up"
                                             size={16}
-                                            color={activeSendIconColor}
+                                            color={canPressSendButton ? activeSendIconColor : theme.colors.textSecondary}
                                             style={[
                                                 styles.sendButtonIcon,
                                                 { marginTop: Platform.OS === 'web' ? 2 : 0 },
@@ -2125,7 +2120,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         />
                                     )}
                                 </BubblePressable>
-                            </MobileGlassSurface>
+                            </View>
                         </Shaker>
                     </View>
                     ) : desktopActionControls}

@@ -9,7 +9,12 @@ import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet } from 'react-native-unistyles';
 import { MobileGlassSurface } from '../MobileGlass';
-import { MobileHeaderScrim } from './MobileHeaderScrim';
+import {
+    MobileHeaderScrim,
+    MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
+    MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY,
+    type MobileHeaderScrimVariant,
+} from './MobileHeaderScrim';
 import {
     MOBILE_GLASS_CONTROL_RADIUS,
     MOBILE_GLASS_CONTROL_SIZE,
@@ -31,6 +36,9 @@ interface HeaderProps {
     headerShadowVisible?: boolean;
     headerTransparent?: boolean;
     headerBackdropVisible?: boolean;
+    headerBackdropAlwaysVisible?: boolean;
+    headerBackdropVariant?: MobileHeaderScrimVariant;
+    mobileTitleSurface?: 'glass' | 'plain';
     safeAreaEnabled?: boolean;
 }
 
@@ -52,6 +60,9 @@ export const Header = React.memo((props: HeaderProps) => {
         headerShadowVisible = true,
         headerTransparent = false,
         headerBackdropVisible = false,
+        headerBackdropAlwaysVisible = false,
+        headerBackdropVariant = 'subtle',
+        mobileTitleSurface = 'glass',
         safeAreaEnabled = true,
     } = props;
 
@@ -64,23 +75,36 @@ export const Header = React.memo((props: HeaderProps) => {
     const headerLeftUsesGlass = headerLeftGlass && !isDesktop;
     const headerRightUsesGlass = headerRightGlass && !isDesktop;
     const contentHeight = floatingControlsEnabled ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT) : headerHeight;
-    const backdropOpacity = React.useRef(new Animated.Value(headerBackdropVisible ? 1 : 0)).current;
-    const [backdropMounted, setBackdropMounted] = React.useState(headerBackdropVisible);
+    const strongBackdrop = headerBackdropVariant === 'strong';
+    const backdropRestingOpacity = headerBackdropAlwaysVisible
+        ? strongBackdrop ? MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY : 1
+        : 0;
+    const backdropTargetOpacity = headerBackdropVisible
+        ? strongBackdrop ? MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY : 1
+        : backdropRestingOpacity;
+    const backdropShouldBeVisible = floatingControlsEnabled && backdropTargetOpacity > 0;
+    const backdropOpacity = React.useRef(new Animated.Value(backdropTargetOpacity)).current;
+    const [backdropMounted, setBackdropMounted] = React.useState(backdropShouldBeVisible);
 
     React.useEffect(() => {
-        if (headerBackdropVisible) {
+        if (!floatingControlsEnabled) {
+            setBackdropMounted(false);
+            return;
+        }
+
+        if (backdropShouldBeVisible) {
             setBackdropMounted(true);
         }
         Animated.timing(backdropOpacity, {
-            toValue: headerBackdropVisible ? 1 : 0,
+            toValue: backdropTargetOpacity,
             duration: 200,
             useNativeDriver: true,
         }).start(({ finished }) => {
-            if (finished && !headerBackdropVisible) {
+            if (finished && !backdropShouldBeVisible) {
                 setBackdropMounted(false);
             }
         });
-    }, [backdropOpacity, headerBackdropVisible]);
+    }, [backdropOpacity, backdropShouldBeVisible, backdropTargetOpacity, floatingControlsEnabled]);
 
     const containerStyle = [
         styles.container,
@@ -111,9 +135,13 @@ export const Header = React.memo((props: HeaderProps) => {
             {floatingControlsEnabled && backdropMounted && (
                 <Animated.View
                     pointerEvents="none"
-                    style={[styles.headerBackdrop, { opacity: backdropOpacity }]}
+                    style={[
+                        styles.headerBackdrop,
+                        strongBackdrop && styles.headerBackdropStrong,
+                        { opacity: backdropOpacity },
+                    ]}
                 >
-                    <MobileHeaderScrim />
+                    <MobileHeaderScrim variant={headerBackdropVariant} />
                 </Animated.View>
             )}
             <View style={styles.contentWrapper}>
@@ -140,7 +168,7 @@ export const Header = React.memo((props: HeaderProps) => {
                     </View>
 
                     <View style={[styles.centerContainer, isDesktop && styles.desktopCenterContainer]}>
-                        {floatingControlsEnabled ? (
+                        {floatingControlsEnabled && mobileTitleSurface === 'glass' ? (
                             <MobileGlassSurface
                                 enabled={floatingControlsEnabled}
                                 nativeEffect
@@ -315,6 +343,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     // a subtle scrim fades into the content; only the controls use glass.
     headerBackdrop: {
         ...StyleSheet.absoluteFillObject,
+    },
+    headerBackdropStrong: {
+        bottom: -36,
     },
     contentWrapper: {
         width: '100%',

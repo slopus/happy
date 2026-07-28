@@ -73,6 +73,10 @@ export function groupMessagesForDisplay(
     }
 
     const visibleForToolGrouping = (msg: Message, index: number): boolean => {
+        // Keep every current-turn tool call visible while the agent is still
+        // working. Once the turn completes, its intermediate work is folded
+        // into one AgentWorkGroupItem above the final response.
+        if (!collapseCurrentTurn && turnOf[index] === 0) return false;
         if (hiddenWorkIndexes.has(index)) return false;
         if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
         return msg.kind === 'tool-call';

@@ -13,9 +13,8 @@ import { Metadata } from '@/sync/storageTypes';
 import { useRouter } from 'expo-router';
 import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
-import { formatMCPTitle } from './views/MCPToolView';
 import { t } from '@/text';
-import { getTerminalToolCommand, shouldRenderToolCardHeader } from '@/utils/toolDisplay';
+import { formatMCPTitle, getToolActivityLabel, getTerminalToolCommand, shouldRenderToolCardHeader } from '@/utils/toolDisplay';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -166,6 +165,8 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     const terminalCommand = getTerminalToolCommand(tool);
     const isCompactTerminalTool = terminalCommand !== null;
+    const isCompactActivityTool = minimal || isCompactTerminalTool;
+    const activityLabel = getToolActivityLabel(tool);
     const isInlineCodexPatch = Platform.OS === 'web' && tool.name === 'CodexPatch';
     const renderCardHeader = shouldRenderToolCardHeader(tool.name, Platform.OS);
     const renderPermissionFooter = () => (
@@ -175,16 +176,14 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     );
 
     const renderHeaderContent = () => {
-        if (isCompactTerminalTool) {
+        if (isCompactActivityTool) {
             return (
                 <View style={styles.compactHeaderLeft}>
                     <View style={styles.compactIconContainer}>
                         {icon}
                     </View>
-                    <Text style={styles.compactToolName} numberOfLines={1}>{toolTitle}</Text>
-                    {status ? <Text style={styles.compactStatus} numberOfLines={1}>{status}</Text> : null}
-                    <Text style={styles.compactCommandText} numberOfLines={1}>
-                        {terminalCommand}
+                    <Text style={styles.compactActivityText} numberOfLines={1}>
+                        {activityLabel}
                     </Text>
                     {tool.state === 'running' && (
                         <View style={styles.elapsedContainer}>
@@ -220,14 +219,14 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     };
 
     return (
-        <View style={isCompactTerminalTool ? styles.compactContainer : isInlineCodexPatch ? styles.inlineContainer : styles.container}>
+        <View style={isCompactActivityTool ? styles.compactContainer : isInlineCodexPatch ? styles.inlineContainer : styles.container}>
             {renderCardHeader ? (
                 isPressable ? (
-                    <TouchableOpacity style={isCompactTerminalTool ? styles.compactHeader : styles.header} onPress={handlePress} activeOpacity={0.8}>
+                    <TouchableOpacity style={isCompactActivityTool ? styles.compactHeader : styles.header} onPress={handlePress} activeOpacity={0.8}>
                         {renderHeaderContent()}
                     </TouchableOpacity>
                 ) : (
-                    <View style={isCompactTerminalTool ? styles.compactHeader : styles.header}>
+                    <View style={isCompactActivityTool ? styles.compactHeader : styles.header}>
                         {renderHeaderContent()}
                     </View>
                 )
@@ -236,7 +235,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             {/* Content area - either custom children or tool-specific view */}
             {(() => {
                 // Check if minimal first - minimal tools don't show content
-                if (minimal || isCompactTerminalTool) {
+                if (isCompactActivityTool) {
                     return null;
                 }
 
@@ -354,13 +353,13 @@ const styles = StyleSheet.create((theme) => ({
     compactHeaderLeft: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
+        gap: 10,
         flex: 1,
         minWidth: 0,
     },
     compactIconContainer: {
-        width: 18,
-        height: 18,
+        width: 20,
+        height: 20,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -380,27 +379,12 @@ const styles = StyleSheet.create((theme) => ({
         fontWeight: '500',
         color: theme.colors.text,
     },
-    compactToolName: {
-        fontSize: 13,
-        lineHeight: 18,
-        fontWeight: '500',
-        color: theme.colors.text,
-        flexShrink: 0,
-        maxWidth: 150,
-    },
-    compactStatus: {
-        fontSize: 12,
-        lineHeight: 18,
-        color: theme.colors.textSecondary,
-        flexShrink: 0,
-    },
-    compactCommandText: {
+    compactActivityText: {
         flex: 1,
         minWidth: 0,
-        fontSize: 13,
-        lineHeight: 18,
+        fontSize: 15,
+        lineHeight: 20,
         color: theme.colors.textSecondary,
-        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
     },
     status: {
         fontWeight: '400',

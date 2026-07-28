@@ -13,7 +13,7 @@ import Animated, {
     withTiming,
 } from 'react-native-reanimated';
 
-type MobileGlassMaterial = 'liquid' | 'static';
+type MobileGlassMaterial = 'liquid' | 'static' | 'frosted';
 
 type MobileGlassSurfaceProps = ViewProps & {
     enabled?: boolean;
@@ -33,6 +33,8 @@ const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
  * Performance-aware material surface. Interactive controls and explicit
  * `nativeEffect` surfaces use Liquid Glass/material blur; `material="static"`
  * opts into a calm, non-refractive blur without the Liquid Glass highlight.
+ * `material="frosted"` adds a denser tint and blur for writing surfaces where
+ * background content must not compete with the foreground text.
  * Content surfaces remain opaque so glass stays a distinct functional layer.
  */
 export function MobileGlassSurface(props: MobileGlassSurfaceProps) {
@@ -104,7 +106,8 @@ function MobileGlassSurfaceBase({
     ...props
 }: MobileGlassSurfaceProps & { animated?: boolean }) {
     const { theme } = useUnistyles();
-    const usesStaticMaterial = nativeEffect && material === 'static';
+    const usesStaticMaterial = nativeEffect && material !== 'liquid';
+    const usesFrostedMaterial = nativeEffect && material === 'frosted';
 
     if (!enabled || Platform.OS === 'web' || isRunningOnMac()) {
         return animated ? (
@@ -143,8 +146,8 @@ function MobileGlassSurfaceBase({
                 RNStyleSheet.absoluteFill,
                 {
                     backgroundColor: theme.dark
-                        ? 'rgba(44, 44, 47, 0.62)'
-                        : 'rgba(255, 255, 255, 0.66)',
+                        ? usesFrostedMaterial ? 'rgba(20, 20, 22, 0.82)' : 'rgba(44, 44, 47, 0.62)'
+                        : usesFrostedMaterial ? 'rgba(255, 255, 255, 0.82)' : 'rgba(255, 255, 255, 0.66)',
                 },
             ]}
         />
@@ -193,7 +196,7 @@ function MobileGlassSurfaceBase({
         return animated ? (
             <AnimatedBlurView
                 {...props}
-                intensity={Math.min(intensity, usesStaticMaterial ? 18 : 36)}
+                intensity={Math.min(intensity, usesFrostedMaterial ? 42 : usesStaticMaterial ? 18 : 36)}
                 tint={theme.dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
                 style={style}
             >
@@ -203,7 +206,7 @@ function MobileGlassSurfaceBase({
         ) : (
             <BlurView
                 {...props}
-                intensity={Math.min(intensity, usesStaticMaterial ? 18 : 36)}
+                intensity={Math.min(intensity, usesFrostedMaterial ? 42 : usesStaticMaterial ? 18 : 36)}
                 tint={theme.dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
                 style={style}
             >

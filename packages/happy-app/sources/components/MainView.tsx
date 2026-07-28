@@ -490,8 +490,11 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                 headerLeft={() => <HeaderLogo />}
                 headerLeftGlass={Platform.OS !== 'web'}
                 headerBackdropVisible={headerBackdropVisible}
+                headerBackdropAlwaysVisible={Platform.OS !== 'web'}
+                headerBackdropVariant="strong"
                 headerShadowVisible={false}
                 headerTransparent={true}
+                mobileTitleSurface="plain"
             />
             {realtimeStatus !== 'disconnected' && (
                 <VoiceAssistantStatusBar variant="full" />

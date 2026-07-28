@@ -1,12 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ToolCall } from '@/sync/typesMessage';
 import {
+    getToolActivityLabel,
     getTerminalToolCommand,
     getToolSummaryCategory,
     getToolSummaryDetail,
     isTerminalToolName,
     shouldRenderToolCardHeader,
 } from './toolDisplay';
+
+vi.mock('@/text', () => ({
+    t: (key: string, params?: { count?: number }) => `${key}:${params?.count ?? ''}`,
+}));
 
 function tool(name: string, input: unknown): ToolCall {
     return {
@@ -78,5 +83,25 @@ describe('terminal tool display helpers', () => {
         expect(getToolSummaryDetail(tool('MultiEdit', {
             file_path: '/repo/src/app.tsx',
         }))).toBe('/repo/src/app.tsx');
+    });
+
+    it('builds one human-readable label for compact activity rows', () => {
+        expect(getToolActivityLabel(tool('CodexBash', {
+            command: ['/usr/bin/zsh', '-lc', 'git status --short'],
+            parsed_cmd: [{ type: 'bash', cmd: 'git status --short' }],
+        }))).toBe('toolGroup.ranCommands:1: git status --short');
+
+        expect(getToolActivityLabel(tool('Read', {
+            file_path: '/repo/src/app.tsx',
+        }))).toBe('toolGroup.readFiles:1: /repo/src/app.tsx');
+
+        const describedTool = tool('CodexPatch', {
+            changes: { 'README.md': { kind: { type: 'update' } } },
+        });
+        describedTool.description = 'Updated the README';
+        expect(getToolActivityLabel(describedTool)).toBe('Updated the README');
+
+        expect(getToolActivityLabel(tool('mcp__linear__create_issue', {})))
+            .toBe('MCP: Linear Create Issue');
     });
 });

@@ -76,6 +76,8 @@ const styles = StyleSheet.create((theme) => ({
         overflow: 'hidden',
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.glass.border,
+        // Frosted glass is supplied by MobileGlassSurface on native. The dense
+        // material tint keeps backdrop detail from competing with this input.
         backgroundColor: Platform.select({
             ios: 'transparent',
             android: theme.colors.glass.backgroundStrong,
@@ -242,7 +244,7 @@ const styles = StyleSheet.create((theme) => ({
         marginLeft: 8,
     },
     sendButtonActive: {
-        backgroundColor: '#F5F5F5',
+        backgroundColor: theme.dark ? '#F5F5F5' : theme.colors.button.primary.background,
     },
     modalRoot: {
         flex: 1,
@@ -963,8 +965,8 @@ export const HomeDock = React.memo(({
     }) => (
         <MobileGlassSurface
             nativeEffect
-            intensity={78}
-            glassEffectStyle="regular"
+            material="frosted"
+            intensity={92}
             style={styles.composerSurface}
         >
             <View style={styles.composerContent}>
@@ -1006,7 +1008,9 @@ export const HomeDock = React.memo(({
                         <Ionicons
                             name="arrow-up"
                             size={16}
-                            color={canSubmit ? '#111111' : theme.colors.textSecondary}
+                            color={canSubmit
+                                ? theme.dark ? '#111111' : theme.colors.button.primary.tint
+                                : theme.colors.textSecondary}
                         />
                     )}
                 </BubblePressable>
@@ -1033,8 +1037,8 @@ export const HomeDock = React.memo(({
         <Animated.View style={[styles.focusedComposerAnimationShell, focusedComposerAnimationStyle]}>
             <MobileGlassSurface
                 nativeEffect
-                intensity={78}
-                glassEffectStyle="regular"
+                material="frosted"
+                intensity={92}
                 style={[
                     styles.focusedComposerSurface,
                     styles.focusedComposerAnchored,
@@ -1117,7 +1121,9 @@ export const HomeDock = React.memo(({
                             <Ionicons
                                 name="arrow-up"
                                 size={16}
-                                color={canSubmit ? '#111111' : theme.colors.textSecondary}
+                                color={canSubmit
+                                    ? theme.dark ? '#111111' : theme.colors.button.primary.tint
+                                    : theme.colors.textSecondary}
                             />
                         )}
                         </BubblePressable>
