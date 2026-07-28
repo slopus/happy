@@ -1,7 +1,7 @@
 {
   "entries": [
     {
-      "title": "July 24 — Liquid glass, Opus 5",
+      "title": "July 28 — Liquid glass, Opus 5",
       "summary": "A full mobile refresh and a new top model.",
       "markdown": "- Liquid-glass mobile UI — glass surfaces across navigation, headers, modals, and session lists.\n- Opus 5 in the Claude model picker.\n- Side chats — fork a parallel conversation right next to your session.\n- Redesigned new-session screen — prompt, attachments, voice, model, effort, and permissions in one place. Drafts are preserved.\n- Pick your own sidebar panels, with keyboard shortcuts.\n- Session launch and resume are more reliable."
     },
@@ -76,5 +76,5 @@
       "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],
-  "latestTitle": "July 24 — Liquid glass, Opus 5"
+  "latestTitle": "July 28 — Liquid glass, Opus 5"
 }

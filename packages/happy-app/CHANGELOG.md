@@ -1,4 +1,4 @@
-# July 24 — Liquid glass, Opus 5
+# July 28 — Liquid glass, Opus 5
 
 A full mobile refresh and a new top model.
 
