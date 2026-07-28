@@ -153,7 +153,7 @@ function UserTextBlock(props: {
   }
 
   return (
-    <View style={styles.userMessageContainer}>
+    <View testID={`message-user-${props.message.id}`} style={styles.userMessageContainer}>
       <Pressable
         onLongPress={canFork ? handleLongPress : undefined}
         delayLongPress={400}
@@ -193,7 +193,7 @@ function AgentTextBlock(props: {
   }
 
   return (
-    <View style={styles.agentMessageContainer}>
+    <View testID={`message-agent-${props.message.id}`} style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
     </View>
   );

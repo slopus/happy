@@ -286,7 +286,9 @@ export const SessionView = React.memo((props: { id: string }) => {
             headerHorizontalPadding: Platform.OS === 'ios' ? 8 : 16,
             sidebarVisible: !zenMode,
             rightPanelWidth: showSidebar ? sidebarWidth : 0,
-            controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 0,
+            // SidebarNavigator 同时存在 `left: sidebar + 16` 和非 Tauri 环境下的
+            // `paddingLeft: 16`，命中区域计算必须包含第二段偏移。
+            controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
             buttonCount: Platform.OS === 'web' ? 3 : 2,
             targetHitSlop: 8,
         })

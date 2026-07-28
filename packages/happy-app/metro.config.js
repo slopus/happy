@@ -7,13 +7,11 @@ const config = getDefaultConfig(__dirname, {
   isCSSEnabled: true,
 });
 
-// Metro's global transform cache otherwise lets concurrently running sibling
-// worktrees reuse an expo-router context compiled for a different checkout.
+// 隔离兄弟 worktree 的 Metro 转换缓存，避免复用其他检出的路由上下文。
 config.cacheVersion = `happy-app:${__dirname}`;
 
-// Sibling worktrees reuse the main checkout's root node_modules through a
-// symlink. Metro does not reliably follow that symlink during hierarchical
-// lookup, so include its resolved ARM-native dependency directory explicitly.
+// 兄弟 worktree 通过符号链接复用主检出的 node_modules。
+// Metro 的层级查找不会稳定跟随该链接，因此显式加入真实依赖目录。
 const workspaceNodeModules = path.resolve(__dirname, "../../node_modules");
 const monorepoRoot = path.resolve(__dirname, "../..");
 const resolvedWorkspaceNodeModules = fs.realpathSync(workspaceNodeModules);
@@ -34,6 +32,13 @@ config.resolver.extraNodeModules = {
   ...(config.resolver.extraNodeModules || {}),
   "@slopus/happy-wire": path.join(monorepoRoot, "packages/happy-wire"),
 };
+
+// 持久化浏览器回归不能依赖全局 Watchman 守护进程处于健康状态。
+// 如果 `watchman list-capabilities` 卡住，HTML 虽然可访问，
+// 但 JavaScript bundle 会一直无法完成。
+if (process.env.HAPPY_E2E_DISABLE_WATCHMAN === '1') {
+  config.resolver.useWatchman = false;
+}
 
 // Add support for .wasm files (required by Skia for all platforms)
 // Source: https://shopify.github.io/react-native-skia/docs/getting-started/installation/

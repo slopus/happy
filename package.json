@@ -22,6 +22,8 @@
         "env:android": "tsx environments/environments.ts run android",
         "test:e2e:web": "tsx scripts/run-web-e2e.ts",
         "test:e2e:production:restore": "tsx scripts/run-production-restore-e2e.ts",
+        "test:e2e:production-session": "HAPPY_E2E_PRODUCTION=1 tsx scripts/run-production-session-e2e.ts",
+        "test:e2e:production-session:headed": "HAPPY_E2E_HEADED=1 HAPPY_E2E_RECORD=1 pnpm test:e2e:production-session",
         "test:e2e:web:report": "HAPPY_E2E_HEADED=1 HAPPY_E2E_RECORD=1 pnpm test:e2e:web",
         "test:e2e:web:show-report": "pnpm --filter happy-app exec playwright show-report playwright-report",
         "env:cli": "tsx environments/environments.ts run cli",

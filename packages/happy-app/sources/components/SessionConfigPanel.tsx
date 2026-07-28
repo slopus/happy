@@ -1216,6 +1216,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                         <>
                             <View style={styles.configRowWithToggle}>
                                 <Pressable
+                                    testID="session-config-machine-trigger"
                                     style={(p) => [
                                         styles.configRow,
                                         { flex: 1 },
@@ -1277,6 +1278,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     <>
                                         <View style={styles.configRow}>
                                             <Pressable
+                                                testID="session-config-agent-trigger"
                                                 onPress={() => togglePicker('agent')}
                                                 style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}
                                             >

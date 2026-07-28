@@ -87,7 +87,14 @@ export function useSpawnSession() {
 
                 switch (result.type) {
                     case 'success': {
-                        await sync.refreshSessions();
+                        // 新会话的 socket 更新可能已经触发全量账户刷新。继续等待共享队列，
+                        // 会导致 /new 导航前重复解密全部历史记录，即使守护进程已经创建会话。
+                        // 因此先只补齐本次返回的会话；若旧服务端尚未返回该记录，
+                        // 或会话记录异常延迟，再回退到全量刷新以保证兼容性。
+                        const hydrated = await sync.refreshSession(result.sessionId);
+                        if (!hydrated) {
+                            await sync.refreshSessions();
+                        }
                         const sessionStorage = storage.getState();
                         if (permissionMode !== undefined) {
                             sessionStorage.updateSessionPermissionMode(result.sessionId, permissionMode);
