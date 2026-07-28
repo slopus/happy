@@ -43,6 +43,9 @@ import { Modal } from '@/modal';
 
 export const MOBILE_HOME_DOCK_CONTENT_INSET = 108;
 
+const FOCUSED_COMPOSER_HEIGHT = 110;
+const FOCUSED_COMPOSER_ATTACHMENT_EXTRA_HEIGHT = 80;
+
 type EnvironmentSetting = 'machine' | 'project' | 'worktree';
 type AgentSetting = 'agent' | 'model' | 'permission' | 'effort';
 
@@ -124,7 +127,7 @@ const styles = StyleSheet.create((theme) => ({
     focusedComposerSurface: {
         width: '100%',
         maxWidth: layout.maxWidth,
-        height: 126,
+        height: FOCUSED_COMPOSER_HEIGHT,
         alignSelf: 'center',
         borderRadius: 30,
         overflow: 'hidden',
@@ -137,7 +140,7 @@ const styles = StyleSheet.create((theme) => ({
         }),
     },
     focusedComposerSurfaceWithAttachments: {
-        height: 206,
+        height: FOCUSED_COMPOSER_HEIGHT + FOCUSED_COMPOSER_ATTACHMENT_EXTRA_HEIGHT,
     },
     focusedComposerAnimationShell: {
         width: '100%',
@@ -155,14 +158,14 @@ const styles = StyleSheet.create((theme) => ({
     focusedComposerContent: {
         flex: 1,
         paddingHorizontal: 10,
-        paddingTop: 10,
+        paddingTop: 8,
         paddingBottom: 8,
     },
     focusedInput: {
         flex: 1,
-        minHeight: 58,
+        minHeight: 44,
         paddingHorizontal: 8,
-        paddingTop: 4,
+        paddingTop: 8,
         paddingBottom: 4,
         color: theme.colors.text,
         fontSize: 18,
@@ -622,7 +625,9 @@ export const HomeDock = React.memo(({
     const canSubmit = !isSubmitting && (
         prompt.trim().length > 0 || (expImageUpload && selectedImages.length > 0)
     );
-    const focusedComposerHeight = selectedImages.length > 0 ? 206 : 126;
+    const focusedComposerHeight = selectedImages.length > 0
+        ? FOCUSED_COMPOSER_HEIGHT + FOCUSED_COMPOSER_ATTACHMENT_EXTRA_HEIGHT
+        : FOCUSED_COMPOSER_HEIGHT;
     const keyboardStyle = useAnimatedStyle(() => ({
         // Keyboard height includes the bottom safe area on iOS. The resting
         // dock keeps that inset, then gives it back while the keyboard opens

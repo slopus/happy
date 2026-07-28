@@ -169,11 +169,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         minHeight: 40,
     },
     mobileInputContainer: {
-        alignItems: 'flex-start',
-        minHeight: 60,
+        alignItems: 'center',
+        // Keep a one-line composer compact while centering its caret between
+        // the shell and the action row. The previous 60pt slot left a full
+        // blank line below an empty input on phones.
+        minHeight: 44,
         paddingHorizontal: 8,
-        paddingTop: 3,
-        paddingBottom: 7,
+        paddingVertical: 4,
     },
 
     // Overlay styles
