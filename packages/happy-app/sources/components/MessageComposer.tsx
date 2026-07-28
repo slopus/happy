@@ -868,6 +868,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                     {/* Input field */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
                         <MultiTextInput
+                            testID={isSession ? 'session-message-input' : 'new-session-message-input'}
                             ref={inputRef}
                             defaultValue={props.initialValue}
                             paddingTop={Platform.OS === 'web' ? 10 : 8}
@@ -1112,6 +1113,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     ]}
                                 >
                                     <Pressable
+                                        testID="message-composer-send-button"
                                         style={(p) => ({
                                             width: '100%',
                                             height: '100%',

@@ -205,12 +205,13 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
     }, []);
 
     return (
-        <View style={styles.container}>
+        <View testID="session-files-sidebar" style={styles.container}>
             {/* Tab selector */}
             <View style={styles.header}>
                 {onModeChange ? (
                     <View style={styles.tabRow}>
                         <Pressable
+                            testID="session-files-changes-tab"
                             onPress={() => onModeChange('changes')}
                             style={[
                                 styles.tab,
@@ -225,6 +226,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                             </Text>
                         </Pressable>
                         <Pressable
+                            testID="session-files-all-tab"
                             onPress={() => onModeChange('allFiles')}
                             style={[
                                 styles.tab,

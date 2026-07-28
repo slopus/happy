@@ -6,6 +6,13 @@ const config = getDefaultConfig(__dirname, {
   isCSSEnabled: true,
 });
 
+// 持久化浏览器回归不能依赖全局 Watchman 守护进程处于健康状态。
+// 如果 `watchman list-capabilities` 卡住，HTML 虽然可访问，
+// 但 JavaScript bundle 会一直无法完成。
+if (process.env.HAPPY_E2E_DISABLE_WATCHMAN === '1') {
+  config.resolver.useWatchman = false;
+}
+
 // Add support for .wasm files (required by Skia for all platforms)
 // Source: https://shopify.github.io/react-native-skia/docs/getting-started/installation/
 config.resolver.assetExts.push('wasm');
