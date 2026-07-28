@@ -171,7 +171,7 @@ export interface SpawnSessionOptions {
     directory: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'agy' | 'rig';
+    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'agy' | 'rig' | 'hermes' | 'crush';
     permissionMode?: string;
     modelMode?: string;
     effortLevel?: string;
@@ -268,7 +268,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             directory: string
             approvedNewDirectoryCreation?: boolean,
             token?: string,
-            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'agy' | 'rig',
+            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'agy' | 'rig' | 'hermes' | 'crush',
             permissionMode?: string,
             modelMode?: string,
             effortLevel?: string,

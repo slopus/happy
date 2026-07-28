@@ -429,6 +429,8 @@ export const MachineMetadataSchema = z.object({
         openclaw: z.boolean(),
         agy: z.boolean().optional(), // optional: older CLIs don't report agy
         rig: z.boolean().optional(), // Rig runs its own Happy-connected daemon
+        hermes: z.boolean().optional(), // optional: older CLIs don't report hermes
+        crush: z.boolean().optional(), // optional: older CLIs don't report crush
         detectedAt: z.number(),
     }).optional(),
     // Rig registers as its own machine instead of being launched by happy-cli.

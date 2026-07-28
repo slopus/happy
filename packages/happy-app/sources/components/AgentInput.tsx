@@ -99,7 +99,7 @@ interface AgentInputProps {
     sessionStatusModelLabel?: string | null;
     sessionStatusEffortLabel?: string | null;
     onFileViewerPress?: () => void;
-    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy';
+    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy' | 'hermes' | 'crush';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
@@ -1314,7 +1314,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             ? t('agentInput.agent.codex')
                                             : props.agentType === 'openclaw'
                                                 ? t('agentInput.agent.openclaw')
-                                                : t('agentInput.agent.gemini')}
+                                                : props.agentType === 'gemini'
+                                                    ? t('agentInput.agent.gemini')
+                                                    : props.agentType
+                                                        ? props.agentType.charAt(0).toUpperCase() + props.agentType.slice(1)
+                                                        : ''}
                                 </Text>
                             </Pressable>
                         )}

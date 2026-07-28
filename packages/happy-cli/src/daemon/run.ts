@@ -550,6 +550,12 @@ export async function startDaemon(): Promise<void> {
             case 'agy':
               agentCommand = 'agy';
               break;
+            case 'hermes':
+              agentCommand = 'acp';
+              break;
+            case 'crush':
+              agentCommand = 'crush';
+              break;
             default:
               return {
                 type: 'error',
@@ -561,6 +567,9 @@ export async function startDaemon(): Promise<void> {
             '--happy-starting-mode', 'remote',
             '--started-by', 'daemon'
           ];
+          if (options.agent === 'hermes') {
+            args.push('hermes');
+          }
           appendDaemonSpawnModeArgs(args, options, agentCommand);
 
           // Resume ids attach the new Happy session to a pre-existing provider
