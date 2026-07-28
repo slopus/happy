@@ -56,4 +56,15 @@ describe('desktopNavigationLayout', () => {
             targetHitSlop: 8,
         })).toBe(114);
     });
+
+    it('reserves navigation space when the desktop file panel narrows the session header', () => {
+        expect(getPersistentHeaderContentInset({
+            windowWidth: 1470,
+            headerMaxWidth: 800,
+            headerHorizontalPadding: 16,
+            rightPanelWidth: 360,
+            buttonCount: 3,
+            targetHitSlop: 8,
+        })).toBe(114);
+    });
 });

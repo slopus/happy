@@ -34,6 +34,7 @@ export function getPersistentHeaderContentInset({
     headerMaxWidth,
     headerHorizontalPadding,
     sidebarVisible = true,
+    rightPanelWidth = 0,
     controlStartPadding = 0,
     buttonCount,
     targetHitSlop = 0,
@@ -42,12 +43,14 @@ export function getPersistentHeaderContentInset({
     headerMaxWidth: number;
     headerHorizontalPadding: number;
     sidebarVisible?: boolean;
+    /** 主内容右侧被占用的宽度，例如桌面端文件面板。 */
+    rightPanelWidth?: number;
     controlStartPadding?: number;
     buttonCount: number;
     targetHitSlop?: number;
 }): number {
     const sidebarWidth = sidebarVisible ? getDesktopSidebarWidth(windowWidth) : 0;
-    const mainWidth = Math.max(0, windowWidth - sidebarWidth);
+    const mainWidth = Math.max(0, windowWidth - sidebarWidth - Math.max(0, rightPanelWidth));
     const renderedHeaderWidth = Math.min(mainWidth, headerMaxWidth);
     const centeredHeaderInset = Math.max(0, (mainWidth - renderedHeaderWidth) / 2);
     const headerTargetHitLeft = centeredHeaderInset + headerHorizontalPadding - targetHitSlop;

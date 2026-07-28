@@ -1,19 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, TextInput, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
 import { Typography } from '@/constants/Typography';
 import { normalizeSecretKey } from '@/auth/secretKeyBackup';
 import { authGetToken } from '@/auth/authGetToken';
-import { decodeBase64, encodeBase64 } from '@/encryption/base64';
-import { generateAuthKeyPair, authQRStart, QRAuthKeyPair } from '@/auth/authQRStart';
-import { authQRWait } from '@/auth/authQRWait';
+import { decodeBase64 } from '@/encryption/base64';
 import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { QRCode } from '@/components/qr/QRCode';
 
 const stylesheet = StyleSheet.create((theme) => ({
     scrollView: {
@@ -36,21 +33,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 20,
         ...Typography.default(),
     },
-    secondInstructionText: {
-        fontSize: 16,
-        color: theme.colors.textSecondary,
-        marginBottom: 20,
-        marginTop: 30,
-        ...Typography.default(),
-    },
-    qrInstructions: {
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-        marginBottom: 16,
-        lineHeight: 22,
-        textAlign: 'center',
-        ...Typography.default(),
-    },
     textInput: {
         backgroundColor: theme.colors.input.background,
         padding: 16,
@@ -58,7 +40,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 24,
         fontFamily: 'IBMPlexMono-Regular',
         fontSize: 14,
-        minHeight: 120,
+        minHeight: 56,
         textAlignVertical: 'top',
         color: theme.colors.input.text,
     },
@@ -70,8 +52,19 @@ export default function Restore() {
     const auth = useAuth();
     const router = useRouter();
     const [restoreKey, setRestoreKey] = useState('');
+    const restoreInFlightRef = useRef(false);
+
+    useEffect(() => {
+        if (auth.isAuthenticated) {
+            router.replace('/');
+        }
+    }, [auth.isAuthenticated, router]);
 
     const handleRestore = async () => {
+        if (restoreInFlightRef.current) {
+            return;
+        }
+
         const trimmedKey = restoreKey.trim();
 
         if (!trimmedKey) {
@@ -79,6 +72,7 @@ export default function Restore() {
             return;
         }
 
+        restoreInFlightRef.current = true;
         try {
             // Normalize the key (handles both base64url and formatted input)
             const normalizedKey = normalizeSecretKey(trimmedKey);
@@ -98,12 +92,15 @@ export default function Restore() {
             // Login with new credentials
             await auth.login(token, normalizedKey);
 
-            // Dismiss
-            router.back();
+            // 恢复页有两层历史记录，replace 能让成功态立即收口到应用首页；
+            // 两个恢复路由也会在已登录时自动重定向，覆盖浏览器返回与刷新。
+            router.replace('/');
 
         } catch (error) {
             console.error('Restore error:', error);
             Modal.alert(t('common.error'), t('connect.invalidSecretKey'));
+        } finally {
+            restoreInFlightRef.current = false;
         }
     };
 
@@ -123,8 +120,10 @@ export default function Restore() {
                         onChangeText={setRestoreKey}
                         autoCapitalize="characters"
                         autoCorrect={false}
-                        multiline={true}
-                        numberOfLines={4}
+                        secureTextEntry={true}
+                        multiline={false}
+                        accessibilityLabel={t('settingsAccount.secretKey')}
+                        testID="restore-secret-key-input"
                     />
 
                     <RoundButton

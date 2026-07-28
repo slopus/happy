@@ -694,7 +694,9 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             headerMaxWidth: layout.headerMaxWidth,
             headerHorizontalPadding: Platform.select({ ios: 8, default: 16 }) ?? 16,
             sidebarVisible: !zenMode,
-            controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 0,
+            // SidebarNavigator 同时存在 `left: sidebar + 16` 和非 Tauri 环境下的
+            // `paddingLeft: 16`，命中区域计算必须包含第二段偏移。
+            controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
             buttonCount: Platform.OS === 'web' ? 3 : 2,
             targetHitSlop: 8,
         })

@@ -69,6 +69,22 @@ type V3GetSessionMessagesResponse = {
     hasMore: boolean;
 };
 
+type ApiSessionSnapshot = {
+    id: string;
+    tag: string;
+    seq: number;
+    metadata: string;
+    metadataVersion: number;
+    agentState: string | null;
+    agentStateVersion: number;
+    dataEncryptionKey: string | null;
+    active: boolean;
+    activeAt: number;
+    createdAt: number;
+    updatedAt: number;
+    lastMessage: ApiMessage | null;
+};
+
 // Sentinel used as `before_seq` for the very first backward fetch of a
 // session. It must exceed any real `seq` value the server can produce.
 // `seq` is stored as Postgres int4 on the server, so the maximum is
@@ -947,21 +963,7 @@ class Sync {
         }
 
         const data = await response.json();
-        const sessions = data.sessions as Array<{
-            id: string;
-            tag: string;
-            seq: number;
-            metadata: string;
-            metadataVersion: number;
-            agentState: string | null;
-            agentStateVersion: number;
-            dataEncryptionKey: string | null;
-            active: boolean;
-            activeAt: number;
-            createdAt: number;
-            updatedAt: number;
-            lastMessage: ApiMessage | null;
-        }>;
+        const sessions = data.sessions as ApiSessionSnapshot[];
 
         // Initialize all session encryptions first
         const sessionKeys = new Map<string, Uint8Array | null>();
@@ -1018,6 +1020,63 @@ class Sync {
 
     public refreshSessions = async () => {
         return this.sessionsSync.invalidateAndAwait();
+    }
+
+    /**
+     * Hydrate one freshly spawned session without decrypting the account's
+     * complete history. The daemon only resolves a successful spawn after the
+     * session has reported to the server, so the row is available here.
+     *
+     * `/new` previously awaited refreshSessions(), which decrypts up to 150
+     * sessions and can be queued twice when the concurrent `new-session`
+     * broadcast also invalidates the same sync. The session and even its first
+     * reply could already exist while the compose page kept spinning.
+     */
+    public refreshSession = async (sessionId: string): Promise<boolean> => {
+        if (!this.credentials) return false;
+
+        const response = await fetch(`${getServerUrl()}/v1/sessions`, {
+            headers: {
+                'Authorization': `Bearer ${this.credentials.token}`,
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
+            }
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch session ${sessionId}: ${response.status}`);
+        }
+
+        const data = await response.json() as { sessions?: ApiSessionSnapshot[] };
+        const raw = data.sessions?.find((session) => session.id === sessionId);
+        if (!raw) return false;
+
+        let dataKey: Uint8Array | null = null;
+        if (raw.dataEncryptionKey) {
+            dataKey = await this.encryption.decryptEncryptionKey(raw.dataEncryptionKey);
+            if (!dataKey) {
+                throw new Error(`Failed to decrypt data encryption key for session ${sessionId}`);
+            }
+        }
+
+        await this.encryption.initializeSessions(new Map([[sessionId, dataKey]]));
+        const sessionEncryption = this.encryption.getSessionEncryption(sessionId);
+        if (!sessionEncryption) {
+            throw new Error(`Session encryption not found for ${sessionId}`);
+        }
+
+        const [metadata, agentState] = await Promise.all([
+            sessionEncryption.decryptMetadata(raw.metadataVersion, raw.metadata),
+            sessionEncryption.decryptAgentState(raw.agentStateVersion, raw.agentState),
+        ]);
+
+        this.applySessions([{
+            ...raw,
+            thinking: false,
+            thinkingAt: 0,
+            metadata,
+            agentState,
+        }]);
+        return true;
     }
 
     public getCredentials() {

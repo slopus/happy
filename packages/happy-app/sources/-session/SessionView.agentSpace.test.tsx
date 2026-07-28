@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
     fileDiffsSidebarEnabled: false,
     runningOnMac: false,
     windowWidth: 390,
+    isTablet: false,
+    platformOS: 'android',
     spaceAgent: null as AgentLauncher | null,
     useSpaceAgentForSession: vi.fn(),
     enterSpace: vi.fn(),
@@ -57,8 +59,10 @@ vi.mock('react-native', () => ({
     },
     ActivityIndicator: 'ActivityIndicator',
     Platform: {
-        OS: 'android',
-        select: (choices: Record<string, unknown>) => choices.android ?? choices.default,
+        get OS() {
+            return mocks.platformOS;
+        },
+        select: (choices: Record<string, unknown>) => choices[mocks.platformOS] ?? choices.default,
     },
     Pressable: 'Pressable',
     ScrollView: 'ScrollView',
@@ -131,13 +135,13 @@ vi.mock('@/text', () => ({
 
 vi.mock('@/components/AgentContentView', () => ({ AgentContentView: ({ input }: { input: React.ReactNode }) => input }));
 vi.mock('@/components/MessageComposer', () => ({ MessageComposer: 'MessageComposer' }));
-vi.mock('@/components/layout', () => ({ layout: {} }));
+vi.mock('@/components/layout', () => ({ layout: { headerMaxWidth: 800 } }));
 vi.mock('@/components/autocomplete/suggestions', () => ({ getSuggestions: () => [] }));
 vi.mock('@/components/ChatHeaderView', async () => {
     const ReactModule = await import('react');
     return {
-        ChatHeaderView: ({ leftSlot, titleSlot, rightSlot }: { leftSlot?: React.ReactNode; titleSlot?: React.ReactNode; rightSlot?: React.ReactNode }) => (
-            ReactModule.createElement('ChatHeaderView', null, leftSlot, titleSlot, rightSlot)
+        ChatHeaderView: ({ leftSlot, titleSlot, rightSlot, ...props }: { leftSlot?: React.ReactNode; titleSlot?: React.ReactNode; rightSlot?: React.ReactNode; headerContentLeftInset?: number }) => (
+            ReactModule.createElement('ChatHeaderView', props, leftSlot, titleSlot, rightSlot)
         ),
     };
 });
@@ -201,7 +205,7 @@ vi.mock('@/utils/responsive', () => ({
     useDeviceType: () => 'phone',
     useHeaderHeight: () => 52,
     useIsLandscape: () => false,
-    useIsTablet: () => false,
+    useIsTablet: () => mocks.isTablet,
 }));
 vi.mock('@/utils/sessionUtils', () => ({
     formatPathRelativeToHome: (path: string) => path,
@@ -256,6 +260,8 @@ describe('SessionView Agent-space boundary', () => {
         mocks.fileDiffsSidebarEnabled = false;
         mocks.runningOnMac = false;
         mocks.windowWidth = 390;
+        mocks.isTablet = false;
+        mocks.platformOS = 'android';
         mocks.spaceAgent = null;
         mocks.useSpaceAgentForSession.mockImplementation(() => mocks.spaceAgent);
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -329,6 +335,24 @@ describe('SessionView Agent-space boundary', () => {
 
         expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(1);
         expect(renderer.root.findAllByType('RightSwipePanelHost')).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the session header clear of navigation controls when the desktop file panel is open', () => {
+        mocks.isDataReady = true;
+        mocks.fileDiffsSidebarEnabled = true;
+        mocks.runningOnMac = true;
+        mocks.windowWidth = 1470;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        expect(renderer.root.findByType('ChatHeaderView').props.headerContentLeftInset).toBe(114);
 
         act(() => renderer.unmount());
     });

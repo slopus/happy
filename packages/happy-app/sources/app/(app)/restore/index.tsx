@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
@@ -7,11 +7,11 @@ import { Typography } from '@/constants/Typography';
 import { encodeBase64 } from '@/encryption/base64';
 import { generateAuthKeyPair, authQRStart } from '@/auth/authQRStart';
 import { authQRWait } from '@/auth/authQRWait';
-import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { QRCode } from '@/components/qr/QRCode';
+import { getRestoreLayout } from '@/utils/restoreLayout';
 
 const stylesheet = StyleSheet.create((theme) => ({
     scrollView: {
@@ -25,40 +25,73 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     contentWrapper: {
         width: '100%',
-        maxWidth: layout.maxWidth,
-        paddingVertical: 24,
+        maxWidth: 1040,
+        flexGrow: 1,
+        justifyContent: 'center',
+        paddingVertical: 40,
+    },
+    desktopContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 72,
+    },
+    instructionsPanel: {
+        width: '100%',
+        maxWidth: 380,
+    },
+    qrPanel: {
+        width: '100%',
+        maxWidth: 400,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 28,
+        paddingHorizontal: 24,
+        borderRadius: 24,
+        backgroundColor: theme.colors.surfaceHigh,
     },
     instructionText: {
-        fontSize: 20,
+        fontSize: 28,
         color: theme.colors.text,
-        marginBottom: 24,
-        ...Typography.default(),
+        marginBottom: 16,
+        ...Typography.default('semiBold'),
     },
     secondInstructionText: {
         fontSize: 16,
         color: theme.colors.textSecondary,
-        marginBottom: 20,
-        marginTop: 30,
+        marginBottom: 0,
+        lineHeight: 26,
         ...Typography.default(),
     },
-    qrInstructions: {
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-        marginBottom: 16,
-        lineHeight: 22,
-        textAlign: 'center',
-        ...Typography.default(),
+    qrFrame: {
+        width: 316,
+        height: 316,
+        maxWidth: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#ffffff',
+        borderRadius: 20,
+        overflow: 'hidden',
     },
-    textInput: {
-        backgroundColor: theme.colors.input.background,
-        padding: 16,
-        borderRadius: 8,
+    restoreAction: {
+        marginTop: 24,
+        minWidth: 280,
+        maxWidth: '100%',
+    },
+    compactContent: {
+        alignItems: 'center',
+        paddingVertical: 24,
+    },
+    compactInstructions: {
+        alignItems: 'center',
         marginBottom: 24,
-        fontFamily: 'IBMPlexMono-Regular',
-        fontSize: 14,
-        minHeight: 120,
-        textAlignVertical: 'top',
-        color: theme.colors.input.text,
+    },
+    compactTitle: {
+        textAlign: 'center',
+        fontSize: 22,
+    },
+    compactSteps: {
+        textAlign: 'left',
     },
 }));
 
@@ -67,26 +100,28 @@ export default function Restore() {
     const styles = stylesheet;
     const auth = useAuth();
     const router = useRouter();
-    const [restoreKey, setRestoreKey] = useState('');
-    const [isWaitingForAuth, setIsWaitingForAuth] = useState(false);
     const [authReady, setAuthReady] = useState(false);
-    const [waitingDots, setWaitingDots] = useState(0);
+    const [, setWaitingDots] = useState(0);
     const isCancelledRef = useRef(false);
+    const { width: viewportWidth } = useWindowDimensions();
+    const isDesktop = getRestoreLayout(viewportWidth) === 'desktop';
 
     // Memoize keypair generation to prevent re-creating on re-renders
     const keypair = React.useMemo(() => generateAuthKeyPair(), []);
 
     // Start QR authentication when component mounts
     useEffect(() => {
+        if (auth.isAuthenticated) {
+            router.replace('/');
+            return;
+        }
+
         const startQRAuth = async () => {
             try {
-                setIsWaitingForAuth(true);
-
                 // Send authentication request
                 const success = await authQRStart(keypair);
                 if (!success) {
                     Modal.alert(t('common.error'), t('errors.authenticationFailed'));
-                    setIsWaitingForAuth(false);
                     return;
                 }
 
@@ -104,7 +139,7 @@ export default function Restore() {
                     const secretString = encodeBase64(credentials.secret, 'base64url');
                     await auth.login(credentials.token, secretString);
                     if (!isCancelledRef.current) {
-                        router.back();
+                        router.replace('/');
                     }
                 } else if (!isCancelledRef.current) {
                     Modal.alert(t('common.error'), t('errors.authenticationFailed'));
@@ -117,7 +152,6 @@ export default function Restore() {
                 }
             } finally {
                 if (!isCancelledRef.current) {
-                    setIsWaitingForAuth(false);
                     setAuthReady(false);
                 }
             }
@@ -129,37 +163,61 @@ export default function Restore() {
         return () => {
             isCancelledRef.current = true;
         };
-    }, [keypair]);
+    }, [auth.isAuthenticated, keypair, router]);
 
     return (
         <ScrollView style={styles.scrollView} contentContainerStyle={{ flexGrow: 1 }}>
             <View style={styles.container}>
-
-                <View style={{justifyContent: 'flex-end' }}>
-                    <Text style={styles.secondInstructionText}>
-                        1. Open Paws on your mobile device{'\n'}
-                        2. Go to Settings → Account{'\n'}
-                        3. Tap "Link New Device"{'\n'}
-                        4. Scan this QR code
-                    </Text>
-                </View>
-                {!authReady && (
-                    <View style={{ width: 200, height: 200, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center' }}>
-                        <ActivityIndicator size="small" color={theme.colors.text} />
+                <View
+                    testID="restore-device-content"
+                    style={[
+                        styles.contentWrapper,
+                        isDesktop ? styles.desktopContent : styles.compactContent,
+                    ]}
+                >
+                    <View
+                        testID="restore-device-instructions"
+                        style={[
+                            styles.instructionsPanel,
+                            !isDesktop && styles.compactInstructions,
+                        ]}
+                    >
+                        <Text style={[styles.instructionText, !isDesktop && styles.compactTitle]}>
+                            {t('settingsAccount.linkNewDeviceSubtitle')}
+                        </Text>
+                        <Text style={[styles.secondInstructionText, !isDesktop && styles.compactSteps]}>
+                            1. Open Paws on your mobile device{'\n'}
+                            2. Go to Settings → Account{'\n'}
+                            3. Tap "Link New Device"{'\n'}
+                            4. Scan this QR code
+                        </Text>
                     </View>
-                )}
-                {authReady && (
-                    <QRCode
-                        data={'paws:///account?' + encodeBase64(keypair.publicKey, 'base64url')}
-                        size={300}
-                        foregroundColor={'black'}
-                        backgroundColor={'white'}
-                    />
-                )}
-                <View style={{ flexGrow: 4, paddingTop: 30 }}>
-                    <RoundButton title="Restore with Secret Key Instead" display='inverted' onPress={() => {
-                        router.push('/restore/manual');
-                    }} />
+                    <View testID="restore-device-qr-panel" style={styles.qrPanel}>
+                        <View style={styles.qrFrame}>
+                            {!authReady && (
+                                <ActivityIndicator size="small" color={theme.colors.text} />
+                            )}
+                            {authReady && (
+                                <View testID="restore-device-qr-code">
+                                    <QRCode
+                                        data={'paws:///account?' + encodeBase64(keypair.publicKey, 'base64url')}
+                                        size={280}
+                                        foregroundColor={'black'}
+                                        backgroundColor={'white'}
+                                    />
+                                </View>
+                            )}
+                        </View>
+                        <RoundButton
+                            title="Restore with Secret Key Instead"
+                            display="inverted"
+                            size="normal"
+                            style={styles.restoreAction}
+                            onPress={() => {
+                                router.push('/restore/manual');
+                            }}
+                        />
+                    </View>
                 </View>
             </View>
         </ScrollView>

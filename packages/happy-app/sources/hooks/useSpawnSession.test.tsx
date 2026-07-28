@@ -13,6 +13,7 @@ import TestRenderer from 'react-test-renderer';
 const mocks = vi.hoisted(() => ({
     spawnResult: { type: 'success', sessionId: 'session-1' } as SpawnSessionResult,
     machineSpawnNewSession: vi.fn(),
+    refreshSession: vi.fn(),
     refreshSessions: vi.fn(),
     sendMessage: vi.fn(),
     navigateToSession: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock('@/sync/ops', () => ({
 }));
 vi.mock('@/sync/sync', () => ({
     sync: {
+        refreshSession: mocks.refreshSession,
         refreshSessions: mocks.refreshSessions,
         sendMessage: mocks.sendMessage,
     },
@@ -118,6 +120,7 @@ describe('useSpawnSession', () => {
         vi.clearAllMocks();
         mocks.spawnResult = { type: 'success', sessionId: 'session-1' };
         mocks.machineSpawnNewSession.mockImplementation(async () => mocks.spawnResult);
+        mocks.refreshSession.mockResolvedValue(true);
         mocks.refreshSessions.mockResolvedValue(undefined);
         mocks.sendMessage.mockResolvedValue(undefined);
         mocks.confirm.mockResolvedValue(false);
@@ -146,7 +149,8 @@ describe('useSpawnSession', () => {
             agent: 'codex',
             environmentVariables: undefined,
         });
-        expect(mocks.refreshSessions).toHaveBeenCalledTimes(1);
+        expect(mocks.refreshSession).toHaveBeenCalledWith('session-1');
+        expect(mocks.refreshSessions).not.toHaveBeenCalled();
         expect(mocks.updatePermission).toHaveBeenCalledWith('session-1', 'yolo');
         expect(mocks.updateModel).toHaveBeenCalledWith('session-1', 'default');
         expect(mocks.updateEffort).toHaveBeenCalledWith('session-1', null);
@@ -172,6 +176,19 @@ describe('useSpawnSession', () => {
         });
         expect(mocks.navigateToSession).toHaveBeenCalledTimes(1);
         expect(mocks.navigateToSession).toHaveBeenCalledWith('session-1');
+        hook.unmount();
+    });
+
+    it('falls back to a full refresh when the spawned session is not yet visible', async () => {
+        mocks.refreshSession.mockResolvedValue(false);
+        const hook = renderHook();
+
+        await act(async () => {
+            await hook.current().spawnSession(args);
+        });
+
+        expect(mocks.refreshSession).toHaveBeenCalledWith('session-1');
+        expect(mocks.refreshSessions).toHaveBeenCalledTimes(1);
         hook.unmount();
     });
 
