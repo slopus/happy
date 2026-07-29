@@ -69,7 +69,16 @@ export const FAB = React.memo(({ onPress }: { onPress: () => void }) => {
                     <Ionicons name="add" size={24} color={theme.colors.fab.icon} />
                 ) : (
                     <MobileGlassSurface interactive intensity={76} style={styles.glass}>
-                        <Ionicons name="add" size={24} color={theme.colors.fab.icon} />
+                        {/*
+                          `fab.icon` is the inverse of `fab.background` (white on
+                          black in light, black on white in dark), so it only reads
+                          against that opaque fill — which is the web path. Native
+                          replaces the fill with a glass surface tinted like the page
+                          behind it, where the same token lands white-on-near-white
+                          in light and black-on-near-black in dark. Follow the text
+                          color there instead, as the glass composer already does.
+                        */}
+                        <Ionicons name="add" size={24} color={theme.colors.text} />
                     </MobileGlassSurface>
                 )}
             </Pressable>
