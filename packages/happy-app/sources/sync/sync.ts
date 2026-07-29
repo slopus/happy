@@ -25,7 +25,7 @@ import { syncCurrentPushToken } from './pushRegistration';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
-import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
+import { applySettings, Settings, settingsDefaults, settingsParseFromServer, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
 import {
@@ -1617,7 +1617,7 @@ class Sync {
                 if (data.error === 'version-mismatch') {
                     // Parse server settings
                     const serverSettings = data.currentSettings
-                        ? settingsParse(await this.encryption.decryptRaw(data.currentSettings))
+                        ? settingsParseFromServer(await this.encryption.decryptRaw(data.currentSettings))
                         : { ...settingsDefaults };
 
                     // Merge: server base + our pending changes (our changes win)
@@ -1669,7 +1669,7 @@ class Sync {
         // Parse response
         let parsedSettings: Settings;
         if (data.settings) {
-            parsedSettings = settingsParse(await this.encryption.decryptRaw(data.settings));
+            parsedSettings = settingsParseFromServer(await this.encryption.decryptRaw(data.settings));
         } else {
             parsedSettings = { ...settingsDefaults };
         }
@@ -2390,7 +2390,7 @@ class Sync {
             if (accountUpdate.settings?.value) {
                 try {
                     const decryptedSettings = await this.encryption.decryptRaw(accountUpdate.settings.value);
-                    const parsedSettings = settingsParse(decryptedSettings);
+                    const parsedSettings = settingsParseFromServer(decryptedSettings);
 
                     // Version compatibility check
                     const settingsSchemaVersion = parsedSettings.schemaVersion ?? 1;
