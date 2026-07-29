@@ -1816,10 +1816,16 @@ function NewSessionScreen() {
                         name="arrow-up"
                         size={isNativeMobile ? 18 : 16}
                         color={sendButtonIconColor}
-                        style={[
-                            styles.sendButtonIcon,
-                            { marginTop: Platform.OS === 'web' ? 2 : 0 },
-                        ]}
+                        // The color has to travel in `style`, not just the `color`
+                        // prop: @expo/vector-icons builds `[styleDefaults, style, ...]`
+                        // (create-icon-set.js), so a `style` entry always wins over
+                        // `color`. With styles.sendButtonIcon here — it hardcodes the
+                        // primary tint (white) — the computed color was discarded and
+                        // the arrow painted white on the near-white glass composer.
+                        style={{
+                            color: sendButtonIconColor,
+                            marginTop: Platform.OS === 'web' ? 2 : 0,
+                        }}
                     />
                 )}
             </Pressable>
@@ -2525,7 +2531,12 @@ const styles = StyleSheet.create((theme) => ({
         marginLeft: 0,
         backgroundColor: Platform.select({
             ios: 'transparent',
-            android: theme.colors.glass.backgroundStrong,
+            // mobileInputBox — the composer panel directly behind this button —
+            // is itself painted glass.backgroundStrong, so reusing that token
+            // here gave the button the exact same color as its parent and the
+            // send affordance vanished into the panel. iOS stays transparent
+            // because the real glass material renders there.
+            android: theme.colors.surfaceHighest,
             default: 'transparent',
         }),
         borderWidth: StyleSheet.hairlineWidth,
@@ -2546,9 +2557,6 @@ const styles = StyleSheet.create((theme) => ({
     },
     sendButtonInnerPressed: {
         opacity: 0.7,
-    },
-    sendButtonIcon: {
-        color: theme.colors.button.primary.tint,
     },
     offlineHelp: {
         flexDirection: 'row',
