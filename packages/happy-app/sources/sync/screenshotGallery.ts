@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Platform } from 'react-native';
 import { MMKV, useMMKVString } from 'react-native-mmkv';
 import {
     documentDirectory,
@@ -7,18 +8,22 @@ import {
     writeAsStringAsync,
     EncodingType,
 } from 'expo-file-system/legacy';
+import { decodeBase64 } from '@/encryption/base64';
 
 const mmkv = new MMKV();
 const KEY = 'screenshot-gallery-v1';
+const WEB_SCREENSHOT_URI_PREFIX = 'paws-screenshot://local/';
+const WEB_SCREENSHOT_DIRECTORY = 'screenshots';
+const resolvedWebScreenshotUris = new Map<string, string>();
 /** 每个会话「上次打开图库抽屉时见到的最新 createdAt」，用于红点判断。 */
 const LAST_SEEN_KEY = 'screenshot-gallery-last-seen-v1';
 
 /**
- * 单条截图记录。base64 PNG 落盘后只保留 file:// 本地路径，避免 MMKV 里堆大块 base64。
+ * 单条截图记录。base64 PNG 落盘后只保留持久化本地 URI，避免 MMKV/localStorage 堆大块 base64。
  */
 export interface ScreenshotEntry {
     id: string;
-    uri: string;                 // file:// 本地路径
+    uri: string;                 // 原生 file:// 或 Web paws-screenshot:// 持久化 URI
     source: 'manual' | 'ai';
     target: 'desktop' | 'browser';
     note?: string;
@@ -173,13 +178,71 @@ export function useHasNewScreenshots(sessionId: string): { hasNew: boolean; late
     }, [list, lastSeenRaw, sessionId]);
 }
 
-// ============ base64 落盘工具（IO，不进单测）============
+/**
+ * 将图库记录里的持久化 URI 恢复为 Image/fetch 可消费的运行时 URI。
+ * 原生 file:// 路径同步可用；Web OPFS 路径在 effect 中恢复为 blob: URL。
+ */
+export function useResolvedScreenshotUri(uri: string): string | null {
+    const isWebPersistentUri = Platform.OS === 'web' && uri.startsWith(WEB_SCREENSHOT_URI_PREFIX);
+    const [resolvedUri, setResolvedUri] = React.useState<string | null>(
+        isWebPersistentUri ? null : uri,
+    );
+
+    React.useEffect(() => {
+        let cancelled = false;
+        if (!isWebPersistentUri) {
+            setResolvedUri(uri);
+            return () => {
+                cancelled = true;
+            };
+        }
+
+        setResolvedUri(null);
+        void resolveScreenshotUri(uri)
+            .then((nextUri) => {
+                if (!cancelled) {
+                    setResolvedUri(nextUri);
+                }
+            })
+            .catch((error) => {
+                console.warn('[screenshotGallery] Failed to restore screenshot URI', error);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isWebPersistentUri, uri]);
+
+    return resolvedUri;
+}
+
+// ============ base64 落盘与持久化 URI 恢复 ============
 
 /**
- * 把 base64 PNG 写入 documentDirectory/screenshots/<id>.png，返回 file:// uri。
- * 目录不存在先建。用 expo-file-system/legacy（与仓库现有用法一致）。
+ * 把 base64 PNG 写入平台持久化目录：
+ * - PC/Web 使用浏览器 Origin Private File System，避免把大块 base64 塞进 localStorage。
+ * - 原生端继续使用 documentDirectory/screenshots。
  */
 export async function saveBase64Png(base64: string): Promise<string> {
+    const fileId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const fileName = `${fileId}.png`;
+
+    if (Platform.OS === 'web') {
+        const root = await navigator.storage.getDirectory();
+        const dir = await root.getDirectoryHandle(WEB_SCREENSHOT_DIRECTORY, { create: true });
+        const file = await dir.getFileHandle(fileName, { create: true });
+        const writable = await file.createWritable();
+        try {
+            const decoded = decodeBase64(base64);
+            const bytes = new ArrayBuffer(decoded.byteLength);
+            new Uint8Array(bytes).set(decoded);
+            await writable.write(bytes);
+        } finally {
+            await writable.close();
+        }
+        return `${WEB_SCREENSHOT_URI_PREFIX}${fileName}`;
+    }
+
     if (!documentDirectory) {
         throw new Error('documentDirectory 不可用，无法保存截图');
     }
@@ -188,8 +251,31 @@ export async function saveBase64Png(base64: string): Promise<string> {
     if (!info.exists) {
         await makeDirectoryAsync(dir, { intermediates: true });
     }
-    const fileId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    const uri = `${dir}${fileId}.png`;
+    const uri = `${dir}${fileName}`;
     await writeAsStringAsync(uri, base64, { encoding: EncodingType.Base64 });
     return uri;
+}
+
+/**
+ * 将持久化截图 URI 转为当前运行时可消费的 URI。
+ * Web 的 OPFS 文件需要恢复成 blob: URL；原生 file:// URI 原样返回。
+ */
+export async function resolveScreenshotUri(uri: string): Promise<string> {
+    if (Platform.OS !== 'web' || !uri.startsWith(WEB_SCREENSHOT_URI_PREFIX)) {
+        return uri;
+    }
+
+    const cached = resolvedWebScreenshotUris.get(uri);
+    if (cached) {
+        return cached;
+    }
+
+    const fileName = uri.slice(WEB_SCREENSHOT_URI_PREFIX.length);
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle(WEB_SCREENSHOT_DIRECTORY);
+    const fileHandle = await dir.getFileHandle(fileName);
+    const file = await fileHandle.getFile();
+    const objectUri = URL.createObjectURL(file);
+    resolvedWebScreenshotUris.set(uri, objectUri);
+    return objectUri;
 }

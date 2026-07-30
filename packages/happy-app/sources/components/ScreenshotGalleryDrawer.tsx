@@ -16,7 +16,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { imageViewer } from '@/sync/imageViewer';
-import { useGallery, setLastSeen, type ScreenshotEntry } from '@/sync/screenshotGallery';
+import {
+    useGallery,
+    setLastSeen,
+    useResolvedScreenshotUri,
+    type ScreenshotEntry,
+} from '@/sync/screenshotGallery';
 
 const THUMB_SIZE = 100;
 
@@ -126,8 +131,21 @@ const GalleryCell = React.memo(function GalleryCell({
     onAttach: (entry: ScreenshotEntry) => void;
 }) {
     const { theme } = useUnistyles();
-    const handleView = React.useCallback(() => onView(entry), [onView, entry]);
-    const handleAttach = React.useCallback(() => onAttach(entry), [onAttach, entry]);
+    const resolvedUri = useResolvedScreenshotUri(entry.uri);
+    const resolvedEntry = React.useMemo(
+        () => resolvedUri ? { ...entry, uri: resolvedUri } : null,
+        [entry, resolvedUri],
+    );
+    const handleView = React.useCallback(() => {
+        if (resolvedEntry) {
+            onView(resolvedEntry);
+        }
+    }, [onView, resolvedEntry]);
+    const handleAttach = React.useCallback(() => {
+        if (resolvedEntry) {
+            onAttach(resolvedEntry);
+        }
+    }, [onAttach, resolvedEntry]);
 
     const sourceLabel = entry.source === 'ai'
         ? t('components.screenshotGallery.sourceAi')
@@ -138,11 +156,12 @@ const GalleryCell = React.memo(function GalleryCell({
         <View style={styles.cell}>
             <Pressable
                 onPress={handleView}
+                disabled={!resolvedEntry}
                 style={(p) => [styles.thumbPressable, p.pressed && styles.cellPressed]}
             >
                 <Image
                     style={[{ width: THUMB_SIZE, height: THUMB_SIZE }, styles.thumb]}
-                    source={{ uri: entry.uri }}
+                    source={resolvedUri ? { uri: resolvedUri } : undefined}
                     contentFit="cover"
                 />
                 {/* 左上角来源徽标 */}
@@ -161,6 +180,7 @@ const GalleryCell = React.memo(function GalleryCell({
             <Pressable
                 accessibilityLabel={t('components.screenshotGallery.attach')}
                 onPress={handleAttach}
+                disabled={!resolvedEntry}
                 hitSlop={6}
                 style={(p) => [styles.attachButton, p.pressed && styles.attachButtonPressed]}
             >
