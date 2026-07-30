@@ -123,6 +123,7 @@ export const HomeHeaderNotAuth = React.memo(() => {
             headerLeftGlass={Platform.OS !== 'web'}
             headerShadowVisible={false}
             headerBackgroundColor={theme.colors.groupped.background}
+            mobileTitleSurface="plain"
         />
     )
 });

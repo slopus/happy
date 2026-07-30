@@ -12,6 +12,7 @@ import Animated, {
     withSpring,
     withTiming,
 } from 'react-native-reanimated';
+import { getNativeGlassInteractivity } from './glassInteractionPolicy';
 
 type MobileGlassMaterial = 'liquid' | 'static' | 'frosted';
 
@@ -171,7 +172,7 @@ function MobileGlassSurfaceBase({
                 glassEffectStyle={glassEffectStyle}
                 colorScheme={theme.dark ? 'dark' : 'light'}
                 tintColor={tintColor ?? theme.colors.glass.tint}
-                isInteractive={interactive}
+                isInteractive={getNativeGlassInteractivity(interactive)}
                 style={style}
             >
                 {surfaceOverlay}
@@ -183,7 +184,7 @@ function MobileGlassSurfaceBase({
                 glassEffectStyle={glassEffectStyle}
                 colorScheme={theme.dark ? 'dark' : 'light'}
                 tintColor={tintColor ?? theme.colors.glass.tint}
-                isInteractive={interactive}
+                isInteractive={getNativeGlassInteractivity(interactive)}
                 style={style}
             >
                 {surfaceOverlay}

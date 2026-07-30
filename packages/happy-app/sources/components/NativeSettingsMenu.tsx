@@ -4,6 +4,7 @@ import { Platform, type StyleProp, type ViewStyle } from 'react-native';
 export type NativeSettingsMenuOption = {
     key: string;
     label: string;
+    disabled?: boolean;
 };
 
 export type NativeSettingsMenuGroup = {
@@ -19,7 +20,8 @@ export type NativeSettingsMenuProps = {
     groups: NativeSettingsMenuGroup[];
     children: React.ReactNode;
     style?: StyleProp<ViewStyle>;
-    /** Render all options directly in the root menu instead of nesting by group. */
+    accessibilityLabel?: string;
+    /** Render all options directly in the root menu without native section headers. */
     flat?: boolean;
 };
 
