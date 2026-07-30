@@ -26,6 +26,7 @@ import { imageViewer } from '@/sync/imageViewer';
 import { HorizontalScrollView } from '@/components/HorizontalScrollView';
 import { computeAttachmentGalleryImageSize, formatPendingImageElapsed } from '@/utils/attachmentGalleryLayout';
 import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLayout';
+import { layout } from '@/components/layout';
 
 const THUMB_SIZE = 100;
 const FEATURED_MAX_WIDTH = 360;
@@ -123,51 +124,54 @@ export const AttachmentGalleryView = React.memo<{
 
     if (images.length === 0 && placeholderCount === 0) return null;
 
-    if (presentation === 'featured') {
-        return (
-            <View style={styles.featuredList}>
-                {images.map((img) => (
-                    <GalleryThumbnail
-                        key={img.id}
-                        image={img}
-                        sessionId={sessionId}
-                        presentation={presentation}
-                        onResolved={handleResolved}
-                        onOpen={handleOpen}
-                    />
-                ))}
-                {Array.from({ length: placeholderCount }, (_, index) => (
-                    <GalleryPlaceholder key={`pending-${index}`} presentation={presentation} elapsedLabel={pendingElapsedLabel} />
-                ))}
-            </View>
-        );
-    }
-
     return (
-        // HorizontalScrollView (not a plain ScrollView): on mobile the drawer's
-        // open gesture spans the full screen width and activates symmetrically,
-        // so it would swallow this strip's horizontal swipes. The arbiter Pan in
-        // HorizontalScrollView claims horizontal drags (and yields at the left
-        // edge so the drawer can still open). See HorizontalScrollView.tsx.
-        <HorizontalScrollView
-            showsHorizontalScrollIndicator={false}
-            style={styles.strip}
-            contentContainerStyle={styles.stripContent}
+        <View
+            style={styles.galleryFrame}
+            testID={`attachment-gallery-${presentation}`}
         >
-            {images.map((img) => (
-                <GalleryThumbnail
-                    key={img.id}
-                    image={img}
-                    sessionId={sessionId}
-                    presentation={presentation}
-                    onResolved={handleResolved}
-                    onOpen={handleOpen}
-                />
-            ))}
-            {Array.from({ length: placeholderCount }, (_, index) => (
-                <GalleryPlaceholder key={`pending-${index}`} presentation={presentation} elapsedLabel={pendingElapsedLabel} />
-            ))}
-        </HorizontalScrollView>
+            {presentation === 'featured' ? (
+                <View style={styles.featuredList}>
+                    {images.map((img) => (
+                        <GalleryThumbnail
+                            key={img.id}
+                            image={img}
+                            sessionId={sessionId}
+                            presentation={presentation}
+                            onResolved={handleResolved}
+                            onOpen={handleOpen}
+                        />
+                    ))}
+                    {Array.from({ length: placeholderCount }, (_, index) => (
+                        <GalleryPlaceholder key={`pending-${index}`} presentation={presentation} elapsedLabel={pendingElapsedLabel} />
+                    ))}
+                </View>
+            ) : (
+                // HorizontalScrollView (not a plain ScrollView): on mobile the drawer's
+                // open gesture spans the full screen width and activates symmetrically,
+                // so it would swallow this strip's horizontal swipes. The arbiter Pan in
+                // HorizontalScrollView claims horizontal drags (and yields at the left
+                // edge so the drawer can still open). See HorizontalScrollView.tsx.
+                <HorizontalScrollView
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.strip}
+                    contentContainerStyle={styles.stripContent}
+                >
+                    {images.map((img) => (
+                        <GalleryThumbnail
+                            key={img.id}
+                            image={img}
+                            sessionId={sessionId}
+                            presentation={presentation}
+                            onResolved={handleResolved}
+                            onOpen={handleOpen}
+                        />
+                    ))}
+                    {Array.from({ length: placeholderCount }, (_, index) => (
+                        <GalleryPlaceholder key={`pending-${index}`} presentation={presentation} elapsedLabel={pendingElapsedLabel} />
+                    ))}
+                </HorizontalScrollView>
+            )}
+        </View>
     );
 });
 
@@ -315,6 +319,11 @@ const GalleryPlaceholder = React.memo<{
 });
 
 const styles = StyleSheet.create(() => ({
+    galleryFrame: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+    },
     strip: {
         marginHorizontal: 8,
         marginVertical: 8,

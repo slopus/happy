@@ -32,6 +32,7 @@ function run(command: string, args: string[], env?: NodeJS.ProcessEnv): void {
 
 async function main(): Promise<void> {
     let environmentName: string | null = null;
+    const playwrightArgs = process.argv.slice(2).filter((arg) => arg !== '--');
 
     try {
         environmentName = await createEnvironment({ noSwitch: true });
@@ -62,7 +63,7 @@ async function main(): Promise<void> {
 
         run(
             'pnpm',
-            ['--filter', 'happy-app', 'exec', 'playwright', 'test'],
+            ['--filter', 'happy-app', 'exec', 'playwright', 'test', ...playwrightArgs],
             { HAPPY_E2E_WEB_URL: config.authenticatedWebUrl },
         );
     } catch (error) {

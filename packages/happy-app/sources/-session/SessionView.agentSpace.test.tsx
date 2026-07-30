@@ -352,7 +352,7 @@ describe('SessionView Agent-space boundary', () => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
 
-        expect(renderer.root.findByType('ChatHeaderView').props.headerContentLeftInset).toBe(114);
+        expect(renderer.root.findByType('ChatHeaderView').props.headerContentLeftInset).toBe(130);
 
         act(() => renderer.unmount());
     });
