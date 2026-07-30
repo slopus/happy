@@ -7,6 +7,7 @@ import {
     TextInput,
     ScrollView,
     LayoutAnimation,
+    type GestureResponderEvent,
     TextInputSelectionChangeEventData,
     NativeSyntheticEvent,
     Image as RNImage,
@@ -758,6 +759,10 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const [modelIndex, setModelIndex] = React.useState(0);
         const [effortIndex, setEffortIndex] = React.useState(0);
         const [activePicker, setActivePicker] = React.useState<PickerType | null>(null);
+        const activePickerRef = React.useRef<PickerType | null>(null);
+        const previousPickerRef = React.useRef<PickerType | null>(null);
+        const pickerTriggerRefs = React.useRef<Partial<Record<PickerType, HTMLElement>>>({});
+        activePickerRef.current = activePicker;
 
         // Config collapse — auto-collapses when typing, expands when empty
         const [isConfigExpanded, setIsConfigExpanded] = React.useState(true);
@@ -998,12 +1003,21 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
 
         // Expand/collapse a picker inline under its row. Animate on native so the
         // option list slides in/out (web inline popovers don't need LayoutAnimation).
-        const togglePicker = React.useCallback((type: PickerType) => {
+        const togglePicker = React.useCallback((type: PickerType, event?: GestureResponderEvent) => {
+            if (
+                Platform.OS === 'web'
+                && !isSidebar
+                && event
+                && typeof HTMLElement !== 'undefined'
+                && event.currentTarget instanceof HTMLElement
+            ) {
+                pickerTriggerRefs.current[type] = event.currentTarget;
+            }
             if (Platform.OS !== 'web') {
                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             }
             setActivePicker(v => v === type ? null : type);
-        }, []);
+        }, [isSidebar]);
 
         // Collapse the open picker (option picked / dismissed), animated on native.
         const dismissPicker = React.useCallback(() => {
@@ -1012,6 +1026,37 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             }
             setActivePicker(null);
         }, []);
+
+        React.useEffect(() => {
+            const previousPicker = previousPickerRef.current;
+            previousPickerRef.current = activePicker;
+
+            if (
+                Platform.OS !== 'web'
+                || isSidebar
+                || activePicker !== null
+                || previousPicker === null
+                || typeof window === 'undefined'
+            ) {
+                return;
+            }
+
+            const trigger = pickerTriggerRefs.current[previousPicker];
+            if (!trigger) {
+                return;
+            }
+
+            const frame = window.requestAnimationFrame(() => {
+                if (
+                    activePickerRef.current === null
+                    && trigger.isConnected
+                ) {
+                    trigger.focus();
+                }
+            });
+
+            return () => window.cancelAnimationFrame(frame);
+        }, [activePicker, isSidebar]);
 
         React.useEffect(() => {
             if (Platform.OS !== 'web' || isSidebar || !activePicker || typeof window === 'undefined') return;
@@ -1222,7 +1267,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                         { flex: 1 },
                                         p.pressed && styles.configRowPressed,
                                     ]}
-                                    onPress={() => togglePicker('machine')}
+                                    onPress={(event) => togglePicker('machine', event)}
                                 >
                                     <Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} />
                                     <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
@@ -1262,7 +1307,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     <>
                                         <Pressable
                                             style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                            onPress={() => togglePicker('path')}
+                                            onPress={(event) => togglePicker('path', event)}
                                         >
                                             <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
                                             <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
@@ -1279,7 +1324,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                         <View style={styles.configRow}>
                                             <Pressable
                                                 testID="session-config-agent-trigger"
-                                                onPress={() => togglePicker('agent')}
+                                                onPress={(event) => togglePicker('agent', event)}
                                                 style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}
                                             >
                                                 <RNImage
@@ -1297,7 +1342,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                                 <>
                                                     <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
                                                     <Pressable
-                                                        onPress={() => togglePicker('model')}
+                                                        onPress={(event) => togglePicker('model', event)}
                                                         accessibilityRole="button"
                                                         accessibilityLabel={currentModel.name}
                                                         accessibilityState={{ expanded: activePicker === 'model' }}
@@ -1315,7 +1360,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                             {showEffort && (
                                                 <>
                                                     <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
-                                                    <Pressable onPress={() => togglePicker('effort')} style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}>
+                                                    <Pressable onPress={(event) => togglePicker('effort', event)} style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}>
                                                         <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
                                                             {currentEffort?.name}
                                                         </Text>
@@ -1333,7 +1378,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                 {showPermission && (
                                     <Pressable
                                         style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                        onPress={() => togglePicker('permission')}
+                                        onPress={(event) => togglePicker('permission', event)}
                                     >
                                         <Ionicons
                                             name={permissionStyle?.icon ?? 'shield-outline'}
@@ -1352,7 +1397,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     <>
                                         <Pressable
                                             style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                            onPress={() => togglePicker('worktree')}
+                                            onPress={(event) => togglePicker('worktree', event)}
                                         >
                                             <MaterialCommunityIcons name="tree" size={15} color={theme.colors.textSecondary} />
                                             <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
@@ -1370,7 +1415,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                             <View style={styles.configRowWithToggle}>
                                 <Pressable
                                     style={(p) => [styles.collapsedRow, { flex: 1 }, p.pressed && styles.configRowPressed]}
-                                    onPress={() => togglePicker(configExperience.isAskMode ? 'machine' : 'path')}
+                                    onPress={(event) => togglePicker(configExperience.isAskMode ? 'machine' : 'path', event)}
                                 >
                                     <Ionicons
                                         name={configExperience.isAskMode ? 'desktop-outline' : 'folder-outline'}
@@ -1393,7 +1438,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
 
                             <View style={styles.collapsedIconsRow}>
                                 <Pressable
-                                    onPress={() => togglePicker('machine')}
+                                    onPress={(event) => togglePicker('machine', event)}
                                     hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                                     style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
                                 >
@@ -1402,7 +1447,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
 
                                 {!configExperience.isAskMode && (
                                     <Pressable
-                                        onPress={() => togglePicker('agent')}
+                                        onPress={(event) => togglePicker('agent', event)}
                                         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                                         style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
                                     >
@@ -1416,7 +1461,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
 
                                 {showModel && (
                                     <Pressable
-                                        onPress={() => togglePicker('model')}
+                                        onPress={(event) => togglePicker('model', event)}
                                         accessibilityRole="button"
                                         accessibilityLabel={currentModel.name}
                                         accessibilityState={{ expanded: activePicker === 'model' }}
@@ -1430,7 +1475,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
 
                                 {showEffort && (
                                     <Pressable
-                                        onPress={() => togglePicker('effort')}
+                                        onPress={(event) => togglePicker('effort', event)}
                                         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                                         style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
                                     >
@@ -1440,7 +1485,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
 
                                 {showPermission && (
                                     <Pressable
-                                        onPress={() => togglePicker('permission')}
+                                        onPress={(event) => togglePicker('permission', event)}
                                         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                                         style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
                                     >
@@ -1454,7 +1499,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
 
                                 {supportsWorktree && (
                                     <Pressable
-                                        onPress={() => togglePicker('worktree')}
+                                        onPress={(event) => togglePicker('worktree', event)}
                                         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                                         style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
                                     >
@@ -1496,6 +1541,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                     >
                         <View style={styles.webPickerModalRoot}>
                             <Pressable
+                                testID="session-config-picker-scrim"
                                 style={styles.webPickerScrim}
                                 onPress={dismissPicker}
                                 accessibilityRole="button"
