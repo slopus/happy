@@ -421,6 +421,7 @@ git tag cli-vX.Y.Z <发布时的 main tip> && git push origin cli-vX.Y.Z
 
 | 文件 | 主题 | 何时读取 |
 |------|------|----------|
+| pc-web-interaction-review-fix-loop.md | Paws PC Web 全站交互评审、独立选题/修复/验收与证据链 | 做 PC Web 交互评审、Picker 焦点修复或复用 Playwright 生产评审 Harness 时 |
 | foreground-push-notification.md | 让会话通知在 App 前台也弹 + 点通知跳转会话 | 改推送通知行为、排查「收不到通知」时 |
 | selfhost-server-deploy.md | 把服务端源码改动部署到阿里云 VPS（docker 离线叠层 + esbuild） | 部署/重建 happy-server、改服务端代码要上线时 |
 | selfhost-intranet-deploy.md | 内网自托管实操手册（Docker Standalone + PGlite + 三端客户端配置 + 验证） | 在公司内网/隔离环境部署 happy-server，让 CLI+App 连内网时 |

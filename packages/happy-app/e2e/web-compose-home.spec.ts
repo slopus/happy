@@ -416,6 +416,39 @@ for (const width of [1024, 1280, 1440]) {
     });
 }
 
+test('桌面 Machine Picker 各关闭入口重复退出后都把焦点返回触发器', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(authenticatedRoute('/new'));
+    await expect(page.getByRole('textbox')).toBeVisible();
+
+    const machineTrigger = page.getByTestId('session-config-machine-trigger');
+    if (!await machineTrigger.isVisible()) {
+        await page.locator('[data-testid="compose-home-model-chip"]:visible').click();
+    }
+    await expect(machineTrigger).toBeVisible();
+
+    const dialog = page.getByTestId('session-config-picker-machine');
+    for (const closeMethod of ['escape', 'close-button', 'scrim'] as const) {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            await machineTrigger.click();
+            await expect(dialog.getByRole('textbox')).toBeFocused();
+
+            if (closeMethod === 'escape') {
+                await page.keyboard.press('Escape');
+            } else if (closeMethod === 'close-button') {
+                await dialog.getByRole('button', { name: /^(Close|关闭)$/ }).click();
+            } else {
+                await page.getByTestId('session-config-picker-scrim').click({
+                    position: { x: 8, y: 8 },
+                });
+            }
+
+            await expect(dialog).toHaveCount(0);
+            await expect(machineTrigger).toBeFocused();
+        }
+    }
+});
+
 for (const width of [1024, 1280, 1440]) {
     test(`宽度 ${width}px 的禅模式导航与会话目标不重叠`, async ({ page }) => {
         await page.setViewportSize({ width, height: 720 });
