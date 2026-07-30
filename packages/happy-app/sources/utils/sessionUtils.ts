@@ -4,6 +4,7 @@ import { resolveSessionState } from '@/sync/sessionState';
 import type { SessionState } from '@/sync/sessionState';
 import { t } from '@/text';
 import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
+import { backgroundWorkCount, hasBackgroundActivity } from '@/sync/rig';
 
 export type { SessionState } from '@/sync/sessionState';
 
@@ -27,6 +28,7 @@ export function useSessionStatus(session: Session): SessionStatus {
         agentState: session.agentState,
         thinking: session.thinking,
         isOnline,
+        metadata: session.metadata,
     });
 
     const vibingMessage = React.useMemo(() => {
@@ -76,6 +78,21 @@ export function useSessionStatus(session: Session): SessionStatus {
             shouldShowStatus: true,
             statusColor: '#007AFF',
             statusDotColor: '#007AFF',
+            isPulsing: true
+        };
+    }
+
+    // Turn is over, but a background shell / subagent / workflow is still
+    // running — a lighter blue than `thinking` to read as "related activity,
+    // not the main thread".
+    if (hasBackgroundActivity(session.metadata)) {
+        return {
+            state: 'background',
+            isConnected: true,
+            statusText: t('status.backgroundWork', { count: backgroundWorkCount(session.metadata) }),
+            shouldShowStatus: true,
+            statusColor: '#5AC8FA',
+            statusDotColor: '#5AC8FA',
             isPulsing: true
         };
     }

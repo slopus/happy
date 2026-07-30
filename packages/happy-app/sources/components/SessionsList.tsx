@@ -581,6 +581,8 @@ export function SessionsList({
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
     disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
     thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
+    // Lighter blue than `thinking`: still working, but not on your turn.
+    background: { color: '#5AC8FA', dotColor: '#5AC8FA', isPulsing: true, isConnected: true },
     waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
     permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
     input_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
@@ -615,9 +617,11 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 ? t('status.unread')
                 : session.state === 'thinking'
                     ? vibingMessage
-                    : session.state === 'disconnected'
-                        ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
-                        : t('status.online');
+                    : session.state === 'background'
+                        ? t('status.backgroundWork', { count: session.backgroundCount })
+                        : session.state === 'disconnected'
+                            ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
+                            : t('status.online');
 
     const handlePress = React.useCallback(() => {
         navigateToSession(session.id);
