@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
+import { ProjectGroup } from './ProjectGroup';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
@@ -302,6 +303,8 @@ export function SessionsList({
             case 'active-sessions': return 'active-sessions';
             case 'archive-toggle': return 'archive-toggle';
             case 'project-group': return `project-group-${item.machine.id}-${item.displayPath}-${index}`;
+            case 'projects-header': return 'projects-header';
+            case 'project': return `project-${item.project.id}`;
             case 'session': return `session-${item.session.id}`;
         }
     }, []);
@@ -332,6 +335,23 @@ export function SessionsList({
                 return (
                     <ActiveSessionsGroupCompact
                         sessions={item.sessions}
+                        selectedSessionId={selectedSessionId}
+                    />
+                );
+
+            case 'projects-header':
+                return (
+                    <View style={styles.headerSection}>
+                        <Text style={styles.headerText}>
+                            {t('sidebar.projects')}
+                        </Text>
+                    </View>
+                );
+
+            case 'project':
+                return (
+                    <ProjectGroup
+                        project={item.project}
                         selectedSessionId={selectedSessionId}
                     />
                 );

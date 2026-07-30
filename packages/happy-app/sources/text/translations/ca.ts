@@ -527,11 +527,26 @@ export const ca: TranslationStructure = {
         offlineUnableToSpawn: 'No es pot crear una nova sessió, fora de línia',
     },
 
+    agentQuestion: {
+        title: "Pregunta",
+        submit: "Envia la resposta",
+        chooseMultiple: "Tria totes les que apliquin",
+        ownAnswer: "La teva pròpia resposta",
+        ownAnswerPlaceholder: "Escriu una resposta",
+        submitFailed: "No s'ha pogut enviar la resposta",
+        dismiss: "Descarta",
+        unsupportedTitle: "Sol·licitud no compatible",
+        unsupportedDescription: ({ kind }: { kind: string }) => `Aquesta versió de Happy no pot mostrar una sol·licitud «${kind}». Actualitza l'app per respondre.`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? "1 pregunta més" : `${count} preguntes més`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Mostra arxivades',
         hideArchived: 'Amaga arxivades',
         newSession: 'Nova sessió',
+        projects: "Projectes",
     },
 
     zen: {

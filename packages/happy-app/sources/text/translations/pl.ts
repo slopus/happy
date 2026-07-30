@@ -543,11 +543,26 @@ export const pl: TranslationStructure = {
         offlineUnableToSpawn: 'Nie można utworzyć nowej sesji, offline',
     },
 
+    agentQuestion: {
+        title: "Pytanie",
+        submit: "Wyślij odpowiedź",
+        chooseMultiple: "Wybierz wszystkie pasujące",
+        ownAnswer: "Własna odpowiedź",
+        ownAnswerPlaceholder: "Wpisz odpowiedź",
+        submitFailed: "Nie udało się wysłać odpowiedzi",
+        dismiss: "Odrzuć",
+        unsupportedTitle: "Nieobsługiwane żądanie",
+        unsupportedDescription: ({ kind }: { kind: string }) => `Ta wersja Happy nie może pokazać żądania «${kind}». Zaktualizuj aplikację, aby odpowiedzieć.`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? "jeszcze 1 pytanie" : `${count} pytań więcej`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Pokaż zarchiwizowane',
         hideArchived: 'Ukryj zarchiwizowane',
         newSession: 'Nowa sesja',
+        projects: "Projekty",
     },
 
     zen: {

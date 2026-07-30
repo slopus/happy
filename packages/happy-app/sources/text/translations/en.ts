@@ -541,11 +541,26 @@ export const en: TranslationStructure = {
         offlineUnableToSpawn: 'Unable to spawn new session, offline',
     },
 
+    agentQuestion: {
+        title: "Question",
+        submit: "Send answer",
+        chooseMultiple: "Choose as many as apply",
+        ownAnswer: "Your own answer",
+        ownAnswerPlaceholder: "Write an answer instead",
+        submitFailed: "Could not send your answer",
+        dismiss: "Dismiss",
+        unsupportedTitle: "Unsupported request",
+        unsupportedDescription: ({ kind }: { kind: string }) => `This version of Happy cannot show a «${kind}» request. Update the app to respond.`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? "1 more question" : `${count} more questions`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Show archived',
         hideArchived: 'Hide archived',
         newSession: 'New session',
+        projects: "Projects",
     },
 
     zen: {

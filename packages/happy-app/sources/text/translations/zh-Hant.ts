@@ -527,11 +527,26 @@ export const zhHant: TranslationStructure = {
         offlineUnableToSpawn: '無法生成新工作階段，已離線',
     },
 
+    agentQuestion: {
+        title: "問題",
+        submit: "傳送回答",
+        chooseMultiple: "選擇所有適用項",
+        ownAnswer: "自訂回答",
+        ownAnswerPlaceholder: "輸入你的回答",
+        submitFailed: "無法傳送你的回答",
+        dismiss: "忽略",
+        unsupportedTitle: "不支援的請求",
+        unsupportedDescription: ({ kind }: { kind: string }) => `此版本的 Happy 無法顯示「${kind}」請求。請更新應用程式後回覆。`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? "還有 1 個問題" : `${count} 個問題`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: '顯示已封存',
         hideArchived: '隱藏已封存',
         newSession: '新建對話',
+        projects: "專案",
     },
 
     zen: {

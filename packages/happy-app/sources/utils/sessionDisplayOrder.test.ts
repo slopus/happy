@@ -32,6 +32,10 @@ function session(
         completedTodosCount: 0,
         totalTodosCount: 0,
         hasUnread: false,
+        projectId: null,
+        projectName: null,
+        workspaceId: null,
+        workspaceName: null,
     };
 }
 

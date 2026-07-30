@@ -12,6 +12,8 @@ function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageS
 import { Session, Machine, GitStatus, SessionAgentModesPatch } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
+import { buildProjectGroups, isProjectSession, type ProjectGroupData } from "./projectGroups";
+import { selectPendingCommunications, type PendingAgentCommunication } from "./agentCommunications";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
@@ -102,6 +104,13 @@ export interface SessionRowData {
     completedTodosCount: number;
     totalTodosCount: number;
     hasUnread: boolean;
+    // Rig-only project identity. Sessions from the Happy CLI leave these null
+    // and keep the flat, date-grouped presentation.
+    projectId: string | null;
+    projectName: string | null;
+    // Names the git worktree this session runs in; null in the primary tree.
+    workspaceId: string | null;
+    workspaceName: string | null;
 }
 
 function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): SessionRowData {
@@ -144,8 +153,13 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         completedTodosCount: session.todos?.filter(todo => todo.status === 'completed').length ?? 0,
         totalTodosCount: session.todos?.length ?? 0,
         hasUnread: unreadSessionIds?.has(session.id) ?? false,
+        projectId: session.metadata?.project?.id ?? null,
+        projectName: session.metadata?.project?.name ?? null,
+        workspaceId: session.metadata?.workspace?.id ?? null,
+        workspaceName: session.metadata?.workspace?.name ?? null,
     };
 }
+
 
 // Unified list item type for SessionsList component
 export type SessionListViewItem =
@@ -153,7 +167,12 @@ export type SessionListViewItem =
     | { type: 'active-sessions'; sessions: SessionRowData[] }
     | { type: 'archive-toggle'; hidden: boolean }
     | { type: 'project-group'; displayPath: string; machine: Machine }
+    | { type: 'projects-header' }
+    | { type: 'project'; project: ProjectGroupData }
     | { type: 'session'; session: SessionRowData };
+
+export type { ProjectGroupData, ProjectWorkspaceGroup } from './projectGroups';
+
 
 // Legacy type for backward compatibility - to be removed
 export type SessionListItem = string | Session;
@@ -253,7 +272,9 @@ function buildSessionListViewData(
     // hasUnread=false everywhere — exactly the bug this parameter caused twice.
     unreadSessionIds: Set<string>,
 ): SessionListViewItem[] {
-    // Separate active and inactive sessions
+    // Separate active and inactive sessions. Rig sessions are pulled out
+    // entirely — they live in the projects section instead of the flat list.
+    const projectSessions: Session[] = [];
     const activeSessions: Session[] = [];
     const inactiveSessions: Session[] = [];
 
@@ -263,7 +284,9 @@ function buildSessionListViewData(
         if (session.metadata?.isSideChat) {
             return;
         }
-        if (isSessionActive(session)) {
+        if (isProjectSession(session)) {
+            projectSessions.push(session);
+        } else if (isSessionActive(session)) {
             activeSessions.push(session);
         } else {
             inactiveSessions.push(session);
@@ -279,9 +302,27 @@ function buildSessionListViewData(
         : (s: Session) => s.createdAt;
     activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
     inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
+    // Active first so a project surfaces its live work, newest-first within each.
+    projectSessions.sort((a, b) => {
+        const activeDelta = Number(isSessionActive(b)) - Number(isSessionActive(a));
+        return activeDelta !== 0 ? activeDelta : sortKey(b) - sortKey(a);
+    });
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
+
+    // Projects sit above everything else and never mix with plain sessions
+    const projects = buildProjectGroups(
+        projectSessions,
+        s => buildSessionRowData(s, unreadSessionIds),
+        isSessionActive,
+    );
+    if (projects.length > 0) {
+        listData.push({ type: 'projects-header' });
+        for (const project of projects) {
+            listData.push({ type: 'project', project });
+        }
+    }
 
     // Add active sessions as a single item at the top (if any)
     if (activeSessions.length > 0) {
@@ -1566,6 +1607,12 @@ export function useSocketStatus() {
         lastConnectedAt: state.socketLastConnectedAt,
         lastDisconnectedAt: state.socketLastDisconnectedAt
     })));
+}
+
+/** Agent-to-user communications this session is currently waiting on. */
+export function useSessionPendingCommunications(sessionId: string): PendingAgentCommunication[] {
+    return storage(useShallow((state) =>
+        selectPendingCommunications(state.sessions[sessionId]?.agentState ?? null)));
 }
 
 export function useSessionGitStatus(sessionId: string): GitStatus | null {

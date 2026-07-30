@@ -528,11 +528,26 @@ export const ja: TranslationStructure = {
         offlineUnableToSpawn: 'オフラインのため新しいセッションを生成できません',
     },
 
+    agentQuestion: {
+        title: "質問",
+        submit: "回答を送信",
+        chooseMultiple: "当てはまるものをすべて選択",
+        ownAnswer: "自分で回答",
+        ownAnswerPlaceholder: "回答を入力",
+        submitFailed: "回答を送信できませんでした",
+        dismiss: "閉じる",
+        unsupportedTitle: "未対応のリクエスト",
+        unsupportedDescription: ({ kind }: { kind: string }) => `このバージョンの Happy は「${kind}」リクエストを表示できません。アプリを更新してください。`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? "他に1件の質問" : `${count} 件の質問`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'アーカイブを表示',
         hideArchived: 'アーカイブを非表示',
         newSession: '新しいセッション',
+        projects: "プロジェクト",
     },
 
     zen: {
