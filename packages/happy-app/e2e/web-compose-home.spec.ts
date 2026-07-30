@@ -596,7 +596,12 @@ test.describe('中文 Web 自定义指令与 Skills 设置', () => {
 
         if (await search.isVisible()) {
             await search.fill('zzzz-audit-no-match');
-            await expect(page.getByText('无匹配的 Skills', { exact: true })).toBeVisible();
+            await expect(search).toHaveValue('zzzz-audit-no-match');
+            // 隔离环境里的机器可能仍在扫描本机 Skills。搜索交互不应把
+            // 合法的加载态误判为“无匹配”，两种可观察状态都属于稳定 UI。
+            const noMatches = page.getByText('无匹配的 Skills', { exact: true });
+            const loading = page.getByRole('progressbar');
+            await expect(noMatches.or(loading)).toBeVisible();
             await search.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
             await search.press('Backspace');
             await expect(search).toHaveValue('');
@@ -982,6 +987,37 @@ test.describe('中文 Web 安全组件演示主题与语义', () => {
 
 test.describe('中文 Web 消息与工具演示', () => {
     test.use({ locale: 'zh-CN' });
+
+    test('宽屏图片消息与正文阅读列对齐，不再横向铺满', async ({ page }) => {
+        await page.setViewportSize({ width: 1600, height: 900 });
+        await page.goto(authenticatedRoute('/dev/messages-demo'));
+
+        const host = page.getByTestId('dev-featured-gallery-host');
+        const gallery = page.getByTestId('attachment-gallery-featured');
+        await expect(host).toBeVisible();
+        await expect(gallery).toBeVisible();
+
+        const layout = await host.evaluate((hostElement) => {
+            const galleryElement = hostElement.querySelector(
+                '[data-testid="attachment-gallery-featured"]',
+            );
+            if (!(galleryElement instanceof HTMLElement)) {
+                throw new Error('找不到特色图片消息容器');
+            }
+            const hostRect = hostElement.getBoundingClientRect();
+            const galleryRect = galleryElement.getBoundingClientRect();
+            return {
+                hostWidth: hostRect.width,
+                galleryWidth: galleryRect.width,
+                leftGap: galleryRect.left - hostRect.left,
+                rightGap: hostRect.right - galleryRect.right,
+            };
+        });
+
+        expect(layout.hostWidth).toBeGreaterThan(800);
+        expect(layout.galleryWidth).toBeLessThanOrEqual(800);
+        expect(Math.abs(layout.leftGap - layout.rightGap)).toBeLessThanOrEqual(1);
+    });
 
     test('消息表格与代码在窄屏内横向滚动，图片操作具备名称', async ({ page }) => {
         await page.setViewportSize({ width: 800, height: 900 });

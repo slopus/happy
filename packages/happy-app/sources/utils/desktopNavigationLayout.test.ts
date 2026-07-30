@@ -63,8 +63,9 @@ describe('desktopNavigationLayout', () => {
             headerMaxWidth: 800,
             headerHorizontalPadding: 16,
             rightPanelWidth: 360,
+            controlStartPadding: 16,
             buttonCount: 3,
             targetHitSlop: 8,
-        })).toBe(114);
+        })).toBe(130);
     });
 });

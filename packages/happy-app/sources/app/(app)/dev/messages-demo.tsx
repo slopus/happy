@@ -5,6 +5,7 @@ import { MessageView } from '@/components/MessageView';
 import { debugMessages } from '@/dev/messages-demo-data';
 import { Message } from '@/sync/typesMessage';
 import { useDemoMessages } from '@/hooks/useDemoMessages';
+import { AttachmentGalleryView } from '@/components/AttachmentGalleryView';
 
 export default React.memo(function MessagesDemoScreen() {
     // Combine all demo messages
@@ -19,6 +20,16 @@ export default React.memo(function MessagesDemoScreen() {
                 <FlatList
                     data={allMessages}
                     keyExtractor={(item) => item.id}
+                    ListHeaderComponent={(
+                        <View testID="dev-featured-gallery-host" style={styles.galleryHost}>
+                            <AttachmentGalleryView
+                                messages={[]}
+                                sessionId={sessionId}
+                                presentation="featured"
+                                pendingCount={1}
+                            />
+                        </View>
+                    )}
                     renderItem={({ item }) => (
                         <MessageView
                             message={item}
@@ -41,5 +52,8 @@ const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
         backgroundColor: theme.colors.surface,
+    },
+    galleryHost: {
+        width: '100%',
     },
 }));
