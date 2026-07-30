@@ -32,7 +32,7 @@ import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/Realtim
 import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
-import { getRigActivityIndicators, getRigIdentity } from './rig';
+import { backgroundWorkCount, getRigActivityIndicators, getRigIdentity, hasBackgroundActivity } from './rig';
 import { indexSessionsById } from './sessionIdentity';
 
 // Debounce timer for realtimeMode changes
@@ -89,6 +89,8 @@ export interface SessionRowData {
     providerKind: string | null;
     modelName: string | null;
     activitySummary: string | null;
+    /** In-flight background items, for the "N running in background" status line. */
+    backgroundCount: number;
     state: SessionState;
     // Only present on inactive sessions — active sessions never show "last seen"
     // and activeAt updates on every heartbeat, causing needless deep-equal diffs
@@ -115,6 +117,10 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         state = 'permission_required';
     } else if (session.thinking) {
         state = 'thinking';
+    } else if (hasBackgroundActivity(session.metadata)) {
+        // The turn ended but a background shell / subagent / workflow is still
+        // running, so the session is not actually idle.
+        state = 'background';
     } else {
         state = 'waiting';
     }
@@ -134,6 +140,7 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         activitySummary: rigActivity.length > 0
             ? rigActivity.map((item) => `${item.count}${item.queued ? `+${item.queued}` : ''} ${item.key}`).join(' · ')
             : null,
+        backgroundCount: backgroundWorkCount(session.metadata),
         state,
         ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
         hasDraft: !!session.draft,

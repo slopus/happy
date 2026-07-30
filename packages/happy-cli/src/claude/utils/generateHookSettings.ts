@@ -27,21 +27,30 @@ export function generateHookSettingsFile(port: number): string {
 
     // Path to the hook forwarder script
     const forwarderScript = resolve(projectPath(), 'scripts', 'session_hook_forwarder.cjs');
-    const hookCommand = `node "${forwarderScript}" ${port}`;
-
-    const settings = {
-        hooks: {
-            SessionStart: [
+    const hookEntry = (path: string) => [
+        {
+            matcher: "*",
+            hooks: [
                 {
-                    matcher: "*",
-                    hooks: [
-                        {
-                            type: "command",
-                            command: hookCommand
-                        }
-                    ]
+                    type: "command",
+                    command: `node "${forwarderScript}" ${port} ${path}`
                 }
             ]
+        }
+    ];
+
+    // Stop carries `background_tasks` — the background work (shells, subagents,
+    // workflows) still in flight when the turn ends. It is what distinguishes
+    // "the turn ended and the session is idle" from "the turn ended but a build
+    // is still running", and it arrives in both launch modes because the
+    // `claude` binary runs its hooks whether it is driven through the PTY or
+    // through the SDK. SessionEnd clears the counts, so a session that exits
+    // mid-build leaves no stale activity behind.
+    const settings = {
+        hooks: {
+            SessionStart: hookEntry('/hook/session-start'),
+            Stop: hookEntry('/hook/stop'),
+            SessionEnd: hookEntry('/hook/session-end')
         }
     };
 

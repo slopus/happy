@@ -95,6 +95,7 @@ export const pl: TranslationStructure = {
         activeNow: 'Aktywny teraz',
         unknown: 'nieznane',
         unread: 'nowe wyniki',
+        backgroundWork: ({ count }: { count: number }) => `${count} w tle`,
     },
 
     time: {

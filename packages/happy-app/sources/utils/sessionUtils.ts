@@ -2,8 +2,14 @@ import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
+import { backgroundWorkCount, hasBackgroundActivity } from '@/sync/rig';
 
-export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
+/**
+ * `background` means the turn is over but the session still has work in flight
+ * — a background shell, a subagent, a workflow. It sits between `thinking` and
+ * `waiting`: nothing is being generated, yet the session is not done either.
+ */
+export type SessionState = 'disconnected' | 'thinking' | 'background' | 'waiting' | 'permission_required';
 
 export interface SessionStatus {
     state: SessionState;
@@ -59,6 +65,21 @@ export function useSessionStatus(session: Session): SessionStatus {
             shouldShowStatus: true,
             statusColor: '#007AFF',
             statusDotColor: '#007AFF',
+            isPulsing: true
+        };
+    }
+
+    // Turn is over, but a background shell / subagent / workflow is still
+    // running — a lighter blue than `thinking` to read as "related activity,
+    // not the main thread".
+    if (hasBackgroundActivity(session.metadata)) {
+        return {
+            state: 'background',
+            isConnected: true,
+            statusText: t('status.backgroundWork', { count: backgroundWorkCount(session.metadata) }),
+            shouldShowStatus: true,
+            statusColor: '#5AC8FA',
+            statusDotColor: '#5AC8FA',
             isPulsing: true
         };
     }

@@ -85,6 +85,7 @@ export const zhHant: TranslationStructure = {
         activeNow: '目前活躍',
         unknown: '未知',
         unread: '新結果',
+        backgroundWork: ({ count }: { count: number }) => `背景執行 ${count} 項`,
     },
 
     time: {

@@ -18,6 +18,7 @@ import { initialMachineMetadata } from '@/daemon/run';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/utils/generateHookSettings';
+import { activityEquals, isActivityEmpty, summarizeBackgroundTasks, type SessionActivity } from '@/claude/utils/backgroundActivity';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
@@ -466,6 +467,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Used by hook server to notify Session when Claude changes session ID
     let currentSession: Session | null = null;
 
+    // Last background-activity summary pushed to metadata. The Stop hook fires
+    // on every turn, and most turns start no background work at all, so this
+    // keeps idle turns from re-sending an identical metadata update.
+    let lastReportedActivity: SessionActivity | undefined = undefined;
+
     // Start Hook server for receiving Claude session notifications
     const hookServer = await startHookServer({
         onSessionHook: (sessionId, data) => {
@@ -494,6 +500,17 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                     currentSession.onSessionFound(sessionId);
                 }
             }
+        },
+        onBackgroundActivity: (tasks) => {
+            const activity = summarizeBackgroundTasks(tasks);
+            if (activityEquals(activity, lastReportedActivity)) {
+                return;
+            }
+            lastReportedActivity = activity;
+            // Absent rather than an all-zero object once nothing is running, so
+            // a session with no background work carries no activity field at all.
+            const next = isActivityEmpty(activity) ? undefined : activity;
+            session.updateMetadata((metadata) => ({ ...metadata, activity: next }));
         }
     });
     logger.debug(`[START] Hook server started on port ${hookServer.port}`);

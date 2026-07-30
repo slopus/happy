@@ -22,6 +22,7 @@ function session(
         providerKind: null,
         modelName: null,
         activitySummary: null,
+        backgroundCount: 0,
         state: 'waiting',
         createdAt,
         hasDraft: false,

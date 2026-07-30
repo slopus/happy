@@ -84,6 +84,7 @@ export const ca: TranslationStructure = {
         activeNow: 'Actiu ara',
         unknown: 'desconegut',
         unread: 'nous resultats',
+        backgroundWork: ({ count }: { count: number }) => `${count} en segon pla`,
     },
 
     time: {

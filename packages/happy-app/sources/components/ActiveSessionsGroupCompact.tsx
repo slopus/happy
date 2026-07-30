@@ -27,6 +27,8 @@ import { ProviderIcon } from './ProviderIcon';
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
     disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
     thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
+    // Lighter blue than `thinking`: still working, but not on your turn.
+    background: { color: '#5AC8FA', dotColor: '#5AC8FA', isPulsing: true, isConnected: true },
     waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
     permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
 };
@@ -281,7 +283,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     color={theme.colors.textSecondary}
                 />
             );
-        } else if (session.state === 'permission_required' || session.state === 'thinking') {
+        } else if (session.state === 'permission_required' || session.state === 'thinking' || session.state === 'background') {
             indicator = <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />;
         } else if (session.state === 'waiting') {
             indicator = <StatusDot color={theme.colors.textSecondary} isPulsing={false} />;

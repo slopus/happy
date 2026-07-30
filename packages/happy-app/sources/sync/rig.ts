@@ -178,8 +178,14 @@ export function rigCanUseShell(metadata: Metadata | null | undefined): boolean {
         || (metadata?.capabilities?.shell === true && rigHasRpcMethod(metadata, 'bash'));
 }
 
+/**
+ * Activity indicators for any client that reports `metadata.activity` — Rig
+ * reports it natively, and happy-cli derives it from Claude Code's Stop hook.
+ * Gating this on Rig would hide background shells and subagents for every
+ * Claude session, which is where most of that work actually happens.
+ */
 export function getRigActivityIndicators(metadata: Metadata | null | undefined): RigActivityIndicator[] {
-    if (!isRigMetadata(metadata) || !metadata?.activity) return [];
+    if (!metadata?.activity) return [];
     const indicators: RigActivityIndicator[] = [];
     const { activity } = metadata;
     if (activity.subagents.running > 0 || activity.subagents.queued > 0) {
@@ -196,6 +202,37 @@ export function getRigActivityIndicators(metadata: Metadata | null | undefined):
         indicators.push({ key: 'tasks', count: activity.tasks.inProgress, queued: activity.tasks.pending });
     }
     return indicators;
+}
+
+/**
+ * Whether the session has background work in flight. Cheaper than building the
+ * indicator list, and used on the session-list hot path to decide whether an
+ * idle session should still read as busy.
+ */
+export function hasBackgroundActivity(metadata: Metadata | null | undefined): boolean {
+    const activity = metadata?.activity;
+    if (!activity) return false;
+    return activity.subagents.running > 0
+        || activity.subagents.queued > 0
+        || activity.workflows.running > 0
+        || activity.processes.running > 0
+        || activity.tasks.pending > 0
+        || activity.tasks.inProgress > 0;
+}
+
+/**
+ * Total in-flight background items, for the one-line "N running" status text.
+ * Queued work counts too — it is why the session is still busy.
+ */
+export function backgroundWorkCount(metadata: Metadata | null | undefined): number {
+    const activity = metadata?.activity;
+    if (!activity) return 0;
+    return activity.subagents.running
+        + activity.subagents.queued
+        + activity.workflows.running
+        + activity.processes.running
+        + activity.tasks.pending
+        + activity.tasks.inProgress;
 }
 
 export function getRigReasoningLevels(metadata: Metadata | null | undefined, modelKey: string | null | undefined): string[] {
