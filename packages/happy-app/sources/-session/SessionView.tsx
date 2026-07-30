@@ -15,7 +15,13 @@ import { useImagePicker } from '@/hooks/useImagePicker';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
 import { requestScreenshot } from '@/sync/ops.screenshot';
-import { saveBase64Png, addScreenshotEntry, useHasNewScreenshots, type ScreenshotEntry } from '@/sync/screenshotGallery';
+import {
+    saveBase64Png,
+    resolveScreenshotUri,
+    addScreenshotEntry,
+    useHasNewScreenshots,
+    type ScreenshotEntry,
+} from '@/sync/screenshotGallery';
 import { ScreenshotGalleryDrawer } from '@/components/ScreenshotGalleryDrawer';
 import { imageViewer } from '@/sync/imageViewer';
 import { Modal } from '@/modal';
@@ -678,9 +684,15 @@ function SessionViewLoaded({
                     );
                     return;
                 }
-                const uri = await saveBase64Png(res.dataBase64);
-                const entry = addScreenshotEntry(sessionId, { uri, source: 'manual', target, createdAt: Date.now() });
-                imageViewer.open({ uri, filename: `screenshot-${entry.id}.png` });
+                const persistentUri = await saveBase64Png(res.dataBase64);
+                const entry = addScreenshotEntry(sessionId, {
+                    uri: persistentUri,
+                    source: 'manual',
+                    target,
+                    createdAt: Date.now(),
+                });
+                const displayUri = await resolveScreenshotUri(persistentUri);
+                imageViewer.open({ uri: displayUri, filename: `screenshot-${entry.id}.png` });
                 // 请求了浏览器但 CLI 没找到浏览器窗口、回退成整屏：截图仍打开，只是轻提示一下
                 if (target === 'browser' && res.targetUsed === 'desktop') {
                     Modal.alert(
