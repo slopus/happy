@@ -107,17 +107,20 @@ export function AnimatedBlurBackdrop({
 
 export function AnimatedClickAwayBackdrop({
     dimColor = 'transparent',
+    exitImmediately = false,
     onPress,
     style,
 }: {
     dimColor?: string;
+    /** Unmount without running the backdrop exit animation. */
+    exitImmediately?: boolean;
     onPress?: () => void;
     style?: StyleProp<ViewStyle>;
 }) {
     return (
         <Animated.View
             entering={backdropEntering}
-            exiting={backdropExiting}
+            exiting={exitImmediately ? undefined : backdropExiting}
             pointerEvents="box-none"
             style={[StyleSheet.absoluteFill, style]}
         >
@@ -206,15 +209,18 @@ export function LocalBlurHalo({
 
 export function AnimatedPopup({
     children,
+    exitImmediately = false,
     style,
 }: {
     children: React.ReactNode;
+    /** Unmount without leaving an interactive popup during its exit animation. */
+    exitImmediately?: boolean;
     style?: StyleProp<ViewStyle>;
 }) {
     return (
         <Animated.View
             entering={popupEntering}
-            exiting={popupExiting}
+            exiting={exitImmediately ? undefined : popupExiting}
             style={style}
         >
             {children}

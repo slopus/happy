@@ -35,6 +35,14 @@ import { resolveAgentInputPrimaryAction } from './agentInputPrimaryAction';
 import { NativeSettingsMenu, type NativeSettingsMenuGroup } from './NativeSettingsMenu';
 import { ProviderIcon } from './ProviderIcon';
 import { isRigMetadata } from '@/sync/rig';
+import {
+    MOBILE_COMPOSER_LAYOUT,
+    MOBILE_COMPOSER_METRICS,
+    resolveMobileComposerActionGeometry,
+    resolveMobileComposerActionRowGeometry,
+    resolveMobileComposerMenuGeometry,
+} from './agentInputLayout';
+import { shouldUseExpoNativeSettingsMenu } from './glassInteractionPolicy';
 
 interface AgentInputProps {
     // `initialValue` seeds the uncontrolled textarea once; keystrokes never
@@ -101,6 +109,8 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
+    /** Enable native multiline height propagation for chat-detail composers. */
+    autoGrowInput?: boolean;
     zenMode?: boolean;
     /** Image attachments waiting to be sent (expImageUpload feature). */
     selectedImages?: AttachmentPreview[];
@@ -116,14 +126,12 @@ function permissionKindIcon(kind: string | null | undefined): React.ComponentPro
     return 'folder-open-outline';
 }
 
-// The composer text/caret must line up with the visible leading edge of the
-// add glyph, rather than the larger 42pt touch target around it. Keeping the
-// geometry in one place prevents the two rows from drifting apart.
-const MOBILE_COMPOSER_SHELL_INSET = 10;
-const MOBILE_COMPOSER_ACTION_SIZE = 42;
-const MOBILE_COMPOSER_ADD_ICON_SIZE = 26;
-const MOBILE_COMPOSER_TEXT_INSET = MOBILE_COMPOSER_SHELL_INSET
-    + (MOBILE_COMPOSER_ACTION_SIZE - MOBILE_COMPOSER_ADD_ICON_SIZE) / 2;
+const MOBILE_ICON_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('icon');
+const MOBILE_MODEL_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('model');
+const MOBILE_EFFORT_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('effort');
+const MOBILE_ACTION_ROW_GEOMETRY = resolveMobileComposerActionRowGeometry();
+const MOBILE_ICON_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('icon');
+const MOBILE_PRIMARY_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('primary');
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -159,15 +167,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
             android: theme.colors.glass.backgroundStrong,
             default: theme.colors.input.background,
         }),
-        borderRadius: 30,
+        borderRadius: MOBILE_COMPOSER_METRICS.shellRadius,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.glass.border,
-        paddingHorizontal: MOBILE_COMPOSER_SHELL_INSET,
-        paddingTop: 8,
-        paddingBottom: 8,
+        paddingHorizontal: MOBILE_COMPOSER_METRICS.shellInset,
+        paddingTop: MOBILE_COMPOSER_METRICS.shellPaddingTop,
+        paddingBottom: MOBILE_COMPOSER_METRICS.shellPaddingBottom,
     },
     mobileUnifiedPanelShadow: {
-        borderRadius: 30,
+        borderRadius: MOBILE_COMPOSER_METRICS.shellRadius,
     },
     inputContainer: {
         flexDirection: 'row',
@@ -180,14 +188,16 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     mobileInputContainer: {
         alignItems: 'center',
-        // Keep a one-line composer compact while centering its caret between
-        // the shell and the action row. The previous 60pt slot left a full
-        // blank line below an empty input on phones.
-        minHeight: 44,
-        // 18pt from the outer edge: 10pt shell inset plus the 8pt offset to
-        // the visible edge of the 26pt add glyph inside its 42pt target.
-        paddingHorizontal: MOBILE_COMPOSER_TEXT_INSET - MOBILE_COMPOSER_SHELL_INSET,
-        paddingVertical: 4,
+        // Keep a one-line composer compact while aligning its caret with the
+        // add glyph below. The previous 60pt slot left a full blank line below
+        // an empty input on phones.
+        minHeight: MOBILE_COMPOSER_METRICS.inputMinHeight,
+        // 18pt from the outer edge: 10pt shell inset plus the 8pt inset from
+        // the add button edge to the 26pt glyph.
+        paddingLeft: MOBILE_COMPOSER_LAYOUT.inputContainerPaddingLeft,
+        paddingRight: MOBILE_COMPOSER_LAYOUT.inputContainerPaddingRight,
+        paddingTop: MOBILE_COMPOSER_METRICS.inputPaddingTop,
+        paddingBottom: MOBILE_COMPOSER_METRICS.inputPaddingBottom,
     },
 
     // Overlay styles
@@ -317,25 +327,19 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         justifyContent: 'space-between',
         paddingHorizontal: 0,
     },
-    mobileActionButtonsContainer: {
-        height: MOBILE_COMPOSER_ACTION_SIZE,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 2,
-    },
-    mobileIconButton: {
-        width: MOBILE_COMPOSER_ACTION_SIZE,
-        height: MOBILE_COMPOSER_ACTION_SIZE,
-        borderRadius: MOBILE_COMPOSER_ACTION_SIZE / 2,
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-    },
+    mobileActionButtonsContainer: MOBILE_ACTION_ROW_GEOMETRY,
+    mobileIconButton: MOBILE_ICON_ACTION_GEOMETRY,
+    mobileIconMenuFrame: MOBILE_ICON_MENU_GEOMETRY.frame,
+    mobileIconMenuContent: MOBILE_ICON_MENU_GEOMETRY.content,
+    mobileModelMenuFrame: MOBILE_MODEL_MENU_GEOMETRY.frame,
+    mobileModelMenuContent: MOBILE_MODEL_MENU_GEOMETRY.content,
+    mobileEffortMenuFrame: MOBILE_EFFORT_MENU_GEOMETRY.frame,
+    mobileEffortMenuContent: MOBILE_EFFORT_MENU_GEOMETRY.content,
     mobileModeButton: {
         flex: 1,
         minWidth: 0,
-        height: 40,
-        borderRadius: 20,
+        height: MOBILE_COMPOSER_METRICS.secondaryActionHeight,
+        borderRadius: MOBILE_COMPOSER_METRICS.secondaryActionHeight / 2,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-end',
@@ -344,10 +348,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         gap: 7,
     },
     mobileEffortButton: {
-        width: 64,
+        width: MOBILE_COMPOSER_METRICS.effortWidth,
         flexShrink: 0,
-        height: 40,
-        borderRadius: 20,
+        height: MOBILE_COMPOSER_METRICS.secondaryActionHeight,
+        borderRadius: MOBILE_COMPOSER_METRICS.secondaryActionHeight / 2,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-start',
@@ -397,12 +401,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexShrink: 0,
         marginLeft: 8,
     },
-    mobilePrimaryButton: {
-        width: MOBILE_COMPOSER_ACTION_SIZE,
-        height: MOBILE_COMPOSER_ACTION_SIZE,
-        borderRadius: MOBILE_COMPOSER_ACTION_SIZE / 2,
-        marginLeft: 1,
-    },
+    mobilePrimaryButton: MOBILE_PRIMARY_ACTION_GEOMETRY,
     mobilePrimaryButtonActive: {
         backgroundColor: theme.colors.surfaceHighest,
     },
@@ -696,8 +695,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // The compact action row is deliberately limited to the narrow native
     // layout. Desktop web, Mac Catalyst, and tablet-width canvases retain the
     // existing composer affordances rather than inheriting it.
-    const compactMobileComposer = Platform.OS !== 'web' && !isRunningOnMac() && screenWidth <= 700;
-    const useNativeSettingsMenus = compactMobileComposer;
+    const runningOnMac = isRunningOnMac();
+    const compactMobileComposer = Platform.OS !== 'web' && !runningOnMac && screenWidth <= 700;
+    const useNativeSettingsMenus = compactMobileComposer
+        || shouldUseExpoNativeSettingsMenu(Platform.OS, runningOnMac);
     const activeSendIconColor = compactMobileComposer ? theme.colors.text : theme.colors.button.primary.tint;
     const isSendBlocked = props.blockSend ?? false;
 
@@ -1083,7 +1084,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     ? t('agentInput.geminiPermissionMode.title')
                     : t('agentInput.permissionMode.title'),
             systemImage: 'shield',
-            options: availableModes.map((mode) => ({ key: mode.key, label: withSandboxSuffix(mode.name, mode.key) })),
+            options: availableModes.map((mode) => ({
+                key: mode.key,
+                label: withSandboxSuffix(mode.name, mode.key),
+                disabled: mode.disabled,
+            })),
             selectedKey: permissionModeKey,
             onSelect: (key) => {
                 const mode = availableModes.find((candidate) => candidate.key === key);
@@ -1099,7 +1104,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 key: 'model',
                 label: props.modelMode?.name ?? t('agentInput.model.title'),
                 systemImage: 'cube',
-                options: availableModels.map((model) => ({ key: model.key, label: model.name })),
+                options: availableModels.map((model) => ({ key: model.key, label: model.name, disabled: model.disabled })),
                 selectedKey: props.modelMode?.key,
                 onSelect: (key) => {
                     const model = availableModels.find((candidate) => candidate.key === key);
@@ -1114,7 +1119,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 key: 'effort',
                 label: props.effortLevel?.name ?? t('agentInput.effort.title'),
                 systemImage: 'bolt',
-                options: availableEffortLevels.map((level) => ({ key: level.key, label: level.name })),
+                options: availableEffortLevels.map((level) => ({ key: level.key, label: level.name, disabled: level.disabled })),
                 selectedKey: props.effortLevel?.key,
                 onSelect: (key) => {
                     const level = availableEffortLevels.find((candidate) => candidate.key === key);
@@ -1223,22 +1228,34 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     {props.zenMode && <View style={{ flex: 1 }} />}
                     {!props.zenMode && <View style={styles.actionButtonsLeft}>
                         {props.onPermissionModeChange && (
-                            <Pressable
-                                onPress={handleSettingsPress}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                style={(p) => ({
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                    paddingHorizontal: 8,
-                                    paddingVertical: 6,
-                                    justifyContent: 'center',
-                                    height: 32,
-                                    opacity: p.pressed ? 0.7 : 1,
-                                })}
-                            >
-                                <Octicons name="gear" size={16} color={theme.colors.button.secondary.tint} />
-                            </Pressable>
+                            useNativeSettingsMenus ? (
+                                <NativeSettingsMenu
+                                    accessibilityLabel={t('settings.title')}
+                                    groups={[...permissionSettingsGroups, ...modelSettingsGroups]}
+                                    style={{ width: 40, height: 40 }}
+                                >
+                                    <View style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+                                        <Octicons name="gear" size={16} color={theme.colors.button.secondary.tint} />
+                                    </View>
+                                </NativeSettingsMenu>
+                            ) : (
+                                <Pressable
+                                    onPress={handleSettingsPress}
+                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                    style={(p) => ({
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        borderRadius: Platform.select({ default: 16, android: 20 }),
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 6,
+                                        justifyContent: 'center',
+                                        height: 32,
+                                        opacity: p.pressed ? 0.7 : 1,
+                                    })}
+                                >
+                                    <Octicons name="gear" size={16} color={theme.colors.button.secondary.tint} />
+                                </Pressable>
+                            )
                         )}
 
                         {props.agentType && props.onAgentClick && (
@@ -1443,7 +1460,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         </Pressable>
     );
 
-    const desktopSettingsOverlay = !compactMobileComposer && openPicker === 'permission' ? (
+    const desktopSettingsOverlay = !useNativeSettingsMenus && !compactMobileComposer && openPicker === 'permission' ? (
         <>
             <TouchableWithoutFeedback onPress={closePicker}>
                 <View style={styles.overlayBackdrop} />
@@ -1920,13 +1937,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         <MultiTextInput
                             ref={inputRef}
                             defaultValue={props.initialValue}
-                            paddingTop={compactMobileComposer ? 4 : Platform.OS === 'web' ? 10 : 8}
-                            paddingBottom={compactMobileComposer ? 4 : Platform.OS === 'web' ? 10 : 8}
+                            paddingTop={compactMobileComposer
+                                ? MOBILE_COMPOSER_METRICS.inputPaddingTop
+                                : Platform.OS === 'web' ? 10 : 8}
+                            paddingBottom={compactMobileComposer
+                                ? MOBILE_COMPOSER_METRICS.inputPaddingBottom
+                                : Platform.OS === 'web' ? 10 : 8}
                             onChangeText={handleTextChange}
                             placeholder={props.placeholder}
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
-                            maxHeight={Platform.OS === 'web' ? 480 : 120}
+                            maxHeight={Platform.OS === 'web' ? 480 : MOBILE_COMPOSER_METRICS.inputMaxHeight}
+                            lineHeight={compactMobileComposer ? MOBILE_COMPOSER_METRICS.inputLineHeight : undefined}
+                            autoGrow={Platform.OS !== 'web' && props.autoGrowInput}
                         />
                     </View>
 
@@ -1947,7 +1970,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             >
                                 <Ionicons
                                     name="add"
-                                    size={MOBILE_COMPOSER_ADD_ICON_SIZE}
+                                    size={MOBILE_COMPOSER_METRICS.addIconSize}
                                     color={(props.selectedImages?.length ?? 0) > 0
                                         ? theme.colors.radio.active
                                         : theme.colors.text}
@@ -1957,8 +1980,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                         {!props.zenMode && permissionSettingsGroups.length > 0 && (
                             useNativeSettingsMenus ? (
-                                <NativeSettingsMenu groups={permissionSettingsGroups} flat style={styles.mobileIconButton}>
-                                    <View style={styles.mobileIconButton}>
+                                <NativeSettingsMenu
+                                    accessibilityLabel={permissionSettingsGroups[0]?.label}
+                                    groups={permissionSettingsGroups}
+                                    flat
+                                    style={styles.mobileIconMenuFrame}
+                                >
+                                    <View style={styles.mobileIconMenuContent}>
                                         <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
                                     </View>
                                 </NativeSettingsMenu>
@@ -1980,8 +2008,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         {!props.zenMode ? (
                             <>
                                 {useNativeSettingsMenus && modelSettingsGroup ? (
-                                    <NativeSettingsMenu groups={[modelSettingsGroup]} flat style={styles.mobileModeButton}>
-                                        <View style={styles.mobileModeButton}>
+                                    <NativeSettingsMenu
+                                        accessibilityLabel={t('agentInput.model.title')}
+                                        groups={[modelSettingsGroup]}
+                                        flat
+                                        style={styles.mobileModelMenuFrame}
+                                    >
+                                        <View style={styles.mobileModelMenuContent}>
                                             {renderModelValue()}
                                         </View>
                                     </NativeSettingsMenu>
@@ -2003,8 +2036,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                                 {effortSettingsGroup && (
                                     useNativeSettingsMenus ? (
-                                        <NativeSettingsMenu groups={[effortSettingsGroup]} flat style={styles.mobileEffortButton}>
-                                            <View style={styles.mobileEffortButton}>
+                                        <NativeSettingsMenu
+                                            accessibilityLabel={t('agentInput.effort.title')}
+                                            groups={[effortSettingsGroup]}
+                                            flat
+                                            style={styles.mobileEffortMenuFrame}
+                                        >
+                                            <View style={styles.mobileEffortMenuContent}>
                                                 {renderEffortValue()}
                                             </View>
                                         </NativeSettingsMenu>

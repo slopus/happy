@@ -59,8 +59,14 @@ import {
 import { isRunningOnMac } from '@/utils/platform';
 import { getNewSessionSidebarLayout } from '@/utils/newSessionSidebarLayout';
 import { getAgentPickerItems, getModePickerItems } from '@/utils/newSessionPickerItems';
+import {
+    NEW_SESSION_PICKER_LAYERS,
+    cancelPendingPickerOpenState,
+    resolvePickerToggleAction,
+} from '@/utils/newSessionPickerInteraction';
 import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { MobileGlassSurface } from '@/components/MobileGlass';
+import { getNativeGlassInteractivity } from '@/components/glassInteractionPolicy';
 import { BubblePressable } from '@/components/BubblePressable';
 import { Header } from '@/components/navigation/Header';
 import { MOBILE_GLASS_HEADER_HEIGHT } from '@/components/navigation/headerMetrics';
@@ -304,6 +310,7 @@ function PickerContent({
         return (
             <BubblePressable
                 key={item.key}
+                scaleFeedback={false}
                 style={(p) => [
                     pickerStyles.option,
                     embedded && pickerStyles.embeddedOption,
@@ -403,6 +410,7 @@ function ComposerSettingsContent({
                 {items.map((item) => (
                     <BubblePressable
                         key={item.key}
+                        scaleFeedback={false}
                         onPress={() => onSelect(item.key)}
                         style={(pressedState) => [
                             pickerStyles.option,
@@ -560,7 +568,7 @@ function PathPickerContent({
                             <GlassView
                                 glassEffectStyle="regular"
                                 tintColor="rgba(255,255,255,0.10)"
-                                isInteractive={true}
+                                isInteractive={getNativeGlassInteractivity(true)}
                                 style={[
                                     pickerStyles.doneButtonGlass,
                                     { borderColor: 'rgba(255,255,255,0.16)' },
@@ -633,6 +641,7 @@ function PathPickerContent({
                     return (
                         <BubblePressable
                             key={item.key}
+                            scaleFeedback={false}
                             style={(p) => [
                                 pickerStyles.option,
                                 embedded && pickerStyles.embeddedOption,
@@ -975,21 +984,24 @@ function NewSessionScreen() {
     const isDesktop = Platform.OS === 'web' || isRunningOnMac();
 
 
-    const toggleConfig = React.useCallback(() => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setActivePicker(null);
-        setIsConfigExpanded(v => !v);
+    const cancelPendingPickerOpen = React.useCallback(() => {
+        cancelPendingPickerOpenState({
+            pendingPickerRef,
+            subscriptionRef: pickerKeyboardSubscriptionRef,
+            timerRef: pickerOpenTimerRef,
+        });
     }, []);
 
-    const cancelPendingPickerOpen = React.useCallback(() => {
-        pendingPickerRef.current = null;
-        pickerKeyboardSubscriptionRef.current?.remove();
-        pickerKeyboardSubscriptionRef.current = null;
-        if (pickerOpenTimerRef.current) {
-            clearTimeout(pickerOpenTimerRef.current);
-            pickerOpenTimerRef.current = null;
-        }
-    }, []);
+    const closePicker = React.useCallback(() => {
+        cancelPendingPickerOpen();
+        setActivePicker(null);
+    }, [cancelPendingPickerOpen]);
+
+    const toggleConfig = React.useCallback(() => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        closePicker();
+        setIsConfigExpanded(v => !v);
+    }, [closePicker]);
 
     React.useEffect(() => cancelPendingPickerOpen, [cancelPendingPickerOpen]);
 
@@ -998,14 +1010,20 @@ function NewSessionScreen() {
     }, [activePicker, composerSettingsPage]);
 
     const togglePicker = React.useCallback((type: PickerType) => {
-        if (activePicker === type || pendingPickerRef.current === type) {
-            cancelPendingPickerOpen();
-            setActivePicker(null);
+        const action = resolvePickerToggleAction({
+            activePicker,
+            pendingPicker: pendingPickerRef.current,
+            requestedPicker: type,
+        });
+        if (action === 'keep-pending') {
+            return;
+        }
+        if (action === 'close-active') {
+            closePicker();
             return;
         }
 
-        cancelPendingPickerOpen();
-        setActivePicker(null);
+        closePicker();
         if (isDesktop || !Keyboard.isVisible()) {
             setActivePicker(type);
             return;
@@ -1023,7 +1041,7 @@ function NewSessionScreen() {
         pickerOpenTimerRef.current = setTimeout(finishOpening, 420);
         composerInputRef.current?.blur();
         Keyboard.dismiss();
-    }, [activePicker, cancelPendingPickerOpen, isDesktop]);
+    }, [activePicker, cancelPendingPickerOpen, closePicker, isDesktop]);
 
     const isOffline = selectedMachine ? !isMachineOnline(selectedMachine) : false;
     const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS[0];
@@ -1178,10 +1196,11 @@ function NewSessionScreen() {
                 break;
             }
         }
-        setActivePicker(null);
+        closePicker();
     }, [
         activePicker,
         availableAgents,
+        closePicker,
         draft.setEffortLevel,
         draft.setModelMode,
         draft.setPermissionMode,
@@ -1404,7 +1423,7 @@ function NewSessionScreen() {
                 value={selectedPath}
                 homeDir={selectedHomeDir}
                 onChangeValue={setSelectedPath}
-                onDone={() => setActivePicker(null)}
+                onDone={closePicker}
                 embedded={sidebarLayout.showSidebar}
             />
         ) : pickerData ? (
@@ -1427,6 +1446,7 @@ function NewSessionScreen() {
         );
     }, [
         activePicker,
+        closePicker,
         handlePickerSelect,
         pathItems,
         pickerData,
@@ -1463,7 +1483,7 @@ function NewSessionScreen() {
             value={selectedPath}
             homeDir={selectedHomeDir}
             onChangeValue={setSelectedPath}
-            onDone={() => setActivePicker(null)}
+            onDone={closePicker}
             embedded
         />
     ) : pickerData ? (
@@ -1549,6 +1569,7 @@ function NewSessionScreen() {
                     <>
                         <View style={styles.configRowWithToggle}>
                             <BubblePressable
+                                scaleFeedback={false}
                                 style={(p) => [
                                     styles.configRow,
                                     { flex: 1 },
@@ -1591,6 +1612,7 @@ function NewSessionScreen() {
 
                         <View style={{ opacity: isOffline ? 0.4 : 1 }} pointerEvents={isOffline ? 'none' : 'auto'}>
                             <BubblePressable
+                                scaleFeedback={false}
                                 style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
                                 onPress={() => togglePicker('path')}
                             >
@@ -1606,6 +1628,7 @@ function NewSessionScreen() {
                                 <>
                                     <View style={styles.configRow}>
                                         <BubblePressable
+                                            scaleFeedback={false}
                                             onPress={() => togglePicker('agent')}
                                             style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}
                                         >
@@ -1623,7 +1646,7 @@ function NewSessionScreen() {
                                         {showModel && (
                                             <>
                                                 <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
-                                                <BubblePressable onPress={() => togglePicker('model')} style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}>
+                                                <BubblePressable scaleFeedback={false} onPress={() => togglePicker('model')} style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}>
                                                     <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
                                                         {currentModel.name}
                                                     </Text>
@@ -1635,7 +1658,7 @@ function NewSessionScreen() {
                                         {showEffort && (
                                             <>
                                                 <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
-                                                <BubblePressable onPress={() => togglePicker('effort')} style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}>
+                                                <BubblePressable scaleFeedback={false} onPress={() => togglePicker('effort')} style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}>
                                                     <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
                                                         {currentEffort?.name}
                                                     </Text>
@@ -1650,6 +1673,7 @@ function NewSessionScreen() {
 
                                     {showPermission && (
                                         <BubblePressable
+                                            scaleFeedback={false}
                                             style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
                                             onPress={() => togglePicker('permission')}
                                         >
@@ -1671,6 +1695,7 @@ function NewSessionScreen() {
                             {supportsWorktree && (
                                 <>
                                     <BubblePressable
+                                        scaleFeedback={false}
                                         style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
                                         onPress={() => togglePicker('worktree')}
                                     >
@@ -1689,6 +1714,7 @@ function NewSessionScreen() {
                     <>
                         <View style={styles.configRowWithToggle}>
                             <BubblePressable
+                                scaleFeedback={false}
                                 style={(p) => [styles.collapsedRow, { flex: 1 }, p.pressed && styles.configRowPressed]}
                                 onPress={() => togglePicker('path')}
                             >
@@ -1861,6 +1887,7 @@ function NewSessionScreen() {
                 {isNativeMobile && (
                     <View style={styles.mobileComposerLeftControls}>
                         <BubblePressable
+                            scaleFeedback={false}
                             onPress={() => togglePicker('agent')}
                             style={(pressedState) => [
                                 styles.composerAgentButton,
@@ -1952,19 +1979,12 @@ function NewSessionScreen() {
                 />
             )}
 
-            {isNativeMobile && activePicker && (
-                <AnimatedClickAwayBackdrop
-                    onPress={() => setActivePicker(null)}
-                    style={styles.nativePickerBackdrop}
-                />
-            )}
-
             {sidebarLayout.showSidebar ? (
                 <View style={styles.desktopShell}>
                     {Platform.OS === 'web' && activePicker && (
                         <Pressable
                             style={styles.clickAwayBackdrop}
-                            onPress={() => setActivePicker(null)}
+                            onPress={closePicker}
                         />
                     )}
                     <View style={styles.desktopMain}>
@@ -1991,6 +2011,13 @@ function NewSessionScreen() {
                 </View>
             ) : (
                 <View style={styles.inner}>
+                    {isNativeMobile && activePicker && (
+                        <AnimatedClickAwayBackdrop
+                            exitImmediately
+                            onPress={closePicker}
+                            style={styles.nativePickerBackdrop}
+                        />
+                    )}
                     {isNativeMobile ? (
                         <>
                             <ScrollView
@@ -1998,11 +2025,17 @@ function NewSessionScreen() {
                                 contentContainerStyle={styles.mobileConfigScrollContent}
                                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                                 keyboardShouldPersistTaps="handled"
-                                onScrollBeginDrag={Keyboard.dismiss}
+                                onScrollBeginDrag={() => {
+                                    Keyboard.dismiss();
+                                    closePicker();
+                                }}
                                 showsVerticalScrollIndicator={false}
                             >
                                 <Pressable
-                                    onPress={Keyboard.dismiss}
+                                    onPress={() => {
+                                        Keyboard.dismiss();
+                                        closePicker();
+                                    }}
                                     style={styles.mobileKeyboardDismissArea}
                                 >
                                     <View
@@ -2030,7 +2063,7 @@ function NewSessionScreen() {
                             {Platform.OS === 'web' && activePicker && (
                                 <Pressable
                                     style={styles.clickAwayBackdropBehind}
-                                    onPress={() => setActivePicker(null)}
+                                    onPress={closePicker}
                                 />
                             )}
                             <View style={{ flex: 1 }} />
@@ -2052,7 +2085,7 @@ function NewSessionScreen() {
                         { top: nativePickerTop },
                     ]}
                 >
-                    <AnimatedPopup>
+                    <AnimatedPopup exitImmediately>
                         <LocalBlurHalo borderRadius={24} />
                         <MobileGlassSurface
                             nativeEffect
@@ -2085,7 +2118,7 @@ function NewSessionScreen() {
             {Platform.OS !== 'web' && !isNativeMobile && (
                 <BottomSheet
                     visible={!!activePicker}
-                    onClose={() => setActivePicker(null)}
+                    onClose={closePicker}
                 >
                     {activePicker === 'path' ? (
                         <PathPickerContent
@@ -2094,7 +2127,7 @@ function NewSessionScreen() {
                             value={selectedPath}
                             homeDir={selectedHomeDir}
                             onChangeValue={setSelectedPath}
-                            onDone={() => setActivePicker(null)}
+                            onDone={closePicker}
                         />
                     ) : pickerData ? (
                         <PickerContent {...pickerData} onSelect={handlePickerSelect} />
@@ -2180,10 +2213,11 @@ const styles = StyleSheet.create((theme) => ({
         paddingHorizontal: 20,
         paddingTop: 0,
         paddingBottom: 8,
-        zIndex: 20,
+        zIndex: NEW_SESSION_PICKER_LAYERS.config,
     },
     mobileConfigScroll: {
         flex: 1,
+        zIndex: NEW_SESSION_PICKER_LAYERS.config,
     },
     mobileConfigScrollContent: {
         flexGrow: 1,
@@ -2209,7 +2243,7 @@ const styles = StyleSheet.create((theme) => ({
         shadowOpacity: 1,
         shadowRadius: 24,
         elevation: 8,
-        zIndex: 10,
+        zIndex: NEW_SESSION_PICKER_LAYERS.composer,
     },
     mobileHeaderTitle: {
         fontSize: 16,
@@ -2233,7 +2267,7 @@ const styles = StyleSheet.create((theme) => ({
         zIndex: 1,
     },
     nativePickerBackdrop: {
-        zIndex: 150,
+        zIndex: NEW_SESSION_PICKER_LAYERS.backdrop,
     },
     clickAwayBackdropBehind: {
         position: 'absolute',
@@ -2291,7 +2325,7 @@ const styles = StyleSheet.create((theme) => ({
         position: 'absolute',
         left: 20,
         right: 20,
-        zIndex: 151,
+        zIndex: NEW_SESSION_PICKER_LAYERS.popup,
     },
     nativePopoverSurface: {
         width: '100%',

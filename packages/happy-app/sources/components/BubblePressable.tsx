@@ -9,12 +9,14 @@ import {
     ViewStyle,
 } from 'react-native';
 import Animated, {
+    cancelAnimation,
     Easing,
     useAnimatedStyle,
     useSharedValue,
     withSpring,
     withTiming,
 } from 'react-native-reanimated';
+import { resolveBubblePressableFeedback } from './bubblePressableFeedback';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -22,6 +24,7 @@ type BubblePressableProps = Omit<PressableProps, 'style'> & {
     style?: StyleProp<ViewStyle> | ((state: PressableStateCallbackType) => StyleProp<ViewStyle>);
     pressedStyle?: StyleProp<ViewStyle>;
     bubbleScale?: number;
+    scaleFeedback?: boolean;
 };
 
 /**
@@ -32,6 +35,7 @@ export const BubblePressable = React.memo(({
     style,
     pressedStyle,
     bubbleScale = Platform.OS === 'web' ? 1.01 : 1.025,
+    scaleFeedback = true,
     disabled,
     onPressIn,
     onPressOut,
@@ -39,31 +43,46 @@ export const BubblePressable = React.memo(({
 }: BubblePressableProps) => {
     const scale = useSharedValue(1);
     const [pressed, setPressed] = React.useState(false);
+    const { animateScale } = resolveBubblePressableFeedback({
+        platform: Platform.OS === 'web' ? 'web' : 'native',
+        scaleFeedback,
+    });
+    React.useEffect(() => {
+        if (animateScale) {
+            return;
+        }
+        cancelAnimation(scale);
+        scale.value = 1;
+    }, [animateScale, scale]);
     const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
+        ...(animateScale ? { transform: [{ scale: scale.value }] } : {}),
     }));
 
     const handlePressIn = React.useCallback((event: GestureResponderEvent) => {
         if (!disabled) {
             setPressed(true);
-            scale.value = withTiming(bubbleScale, {
-                duration: 65,
-                easing: Easing.out(Easing.quad),
-            });
+            if (animateScale) {
+                scale.value = withTiming(bubbleScale, {
+                    duration: 65,
+                    easing: Easing.out(Easing.quad),
+                });
+            }
         }
         onPressIn?.(event);
-    }, [bubbleScale, disabled, onPressIn, scale]);
+    }, [animateScale, bubbleScale, disabled, onPressIn, scale]);
 
     const handlePressOut = React.useCallback((event: GestureResponderEvent) => {
         setPressed(false);
-        scale.value = withSpring(1, {
-            damping: 14,
-            stiffness: 520,
-            mass: 0.4,
-            overshootClamping: false,
-        });
+        if (animateScale) {
+            scale.value = withSpring(1, {
+                damping: 14,
+                stiffness: 520,
+                mass: 0.4,
+                overshootClamping: false,
+            });
+        }
         onPressOut?.(event);
-    }, [onPressOut, scale]);
+    }, [animateScale, onPressOut, scale]);
 
     // Bubble feedback belongs to the mobile glass controls. Keep desktop
     // interaction identical to the previous plain Pressable behavior.
@@ -91,7 +110,7 @@ export const BubblePressable = React.memo(({
             style={[
                 typeof style === 'function' ? style({ pressed } as PressableStateCallbackType) : style,
                 pressed && pressedStyle,
-                animatedStyle,
+                animateScale && animatedStyle,
             ]}
         />
     );

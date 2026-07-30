@@ -11,6 +11,7 @@ export function NativeSettingsMenu({ groups, children, style, flat = false }: Na
                     {groups.flatMap((group) => group.options.map((option) => (
                         <DropdownMenuItem
                             key={`${group.key}:${option.key}`}
+                            enabled={!option.disabled}
                             onClick={() => group.onSelect(option.key)}
                         >
                             <DropdownMenuItem.Text>

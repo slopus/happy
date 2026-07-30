@@ -615,6 +615,7 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
             sessionId={sessionId}
             initialValue={initialDraft}
             onChangeText={handleChangeText}
+            autoGrowInput={Platform.OS !== 'web'}
         />
     );
 });
