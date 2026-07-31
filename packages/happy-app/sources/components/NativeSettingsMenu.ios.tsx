@@ -53,7 +53,12 @@ export function NativeSettingsMenu({
             >
                 {children}
             </View>
-            <Host style={styles.host}>
+            {/* The host must not perform keyboard avoidance: it is pinned over a
+                composer chip whose position React Native already manages. Left on,
+                SwiftUI shifts the menu's invisible trigger up by the keyboard
+                height while the host's RN frame stays put, so the chip becomes
+                untappable whenever the keyboard is open. */}
+            <Host ignoreSafeArea="keyboard" style={styles.host}>
                 <Menu
                     modifiers={[tint('#FFFFFF')]}
                     label={(
