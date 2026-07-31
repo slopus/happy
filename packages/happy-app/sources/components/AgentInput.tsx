@@ -895,13 +895,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const contextStatus = props.usageData?.contextSize
         ? getContextStatus(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme, props.usageData.contextWindow)
         : null;
-    // Only Session and Week are user-meaningful; provider-internal windows
-    // (nimbus_quill and friends) stay out of the popup.
+    // Session, Week, and any allotment the backend bothered to name (the
+    // model-scoped weekly caps) are user-meaningful; provider-internal windows
+    // (nimbus_quill and friends) arrive unnamed and stay out of the popup.
     const usageRows = React.useMemo(() => {
         const rows = getUsageLimitRows(props.sessionStatusUsageLimits ?? null);
         const session = rows.find((row) => row.id === 'five_hour') ?? null;
         const week = rows.find((row) => row.id === 'seven_day') ?? null;
-        return { session, week };
+        const scoped = rows.filter((row) => row.scoped);
+        return { session, week, scoped };
     }, [props.sessionStatusUsageLimits]);
     const weekPercent = usageRows.week?.utilization != null && (props.alwaysShowContextSize || contextStatus != null)
         ? getUsageLimitDisplayPercentage(usageRows.week.utilization, usageLimitShowRemaining)
@@ -919,6 +921,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         };
         push('session', t('agentInput.usagePopup.session'), usageRows.session);
         push('week', t('agentInput.usagePopup.week'), usageRows.week);
+        // The scope name is the model's own display name ("Fable") — a proper
+        // noun that reads the same in every locale, so it needs no string key.
+        for (const row of usageRows.scoped) {
+            push(row.id, row.label, row);
+        }
         return options;
     }, [usageRows, usageLimitShowRemaining]);
 
