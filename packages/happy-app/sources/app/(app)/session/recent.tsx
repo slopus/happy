@@ -12,6 +12,7 @@ import { layout } from '@/components/layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Pressable } from 'react-native';
 import { t } from '@/text';
+import { EmptySessionsTablet, shouldShowSessionEmptyState } from '@/components/EmptySessionsTablet';
 
 interface SessionHistoryItem {
     type: 'session' | 'date-header';
@@ -80,18 +81,6 @@ const styles = StyleSheet.create((theme) => ({
     sessionSubtitle: {
         fontSize: 13,
         color: theme.colors.textSecondary,
-        ...Typography.default(),
-    },
-    emptyContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 32,
-    },
-    emptyText: {
-        fontSize: 16,
-        color: theme.colors.textSecondary,
-        textAlign: 'center',
         ...Typography.default(),
     },
 }));
@@ -238,15 +227,11 @@ export default function SessionHistory() {
         );
     }
     
-    if (groupedItems.length === 0) {
+    if (shouldShowSessionEmptyState(groupedItems.length)) {
         return (
             <View style={styles.container}>
                 <View style={styles.contentContainer}>
-                    <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>
-                            {t('sessionHistory.empty')}
-                        </Text>
-                    </View>
+                    <EmptySessionsTablet title={t('sessionHistory.empty')} />
                 </View>
             </View>
         );

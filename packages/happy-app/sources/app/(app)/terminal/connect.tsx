@@ -11,6 +11,7 @@ import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { t } from '@/text';
+import { InvalidRouteState } from '@/components/InvalidRouteState';
 
 export default function TerminalConnectScreen() {
     const { theme } = useUnistyles();
@@ -51,6 +52,10 @@ export default function TerminalConnectScreen() {
     const handleReject = () => {
         router.back();
     };
+
+    const handleInvalidLinkRecovery = React.useCallback(() => {
+        router.replace('/');
+    }, [router]);
 
     // Show placeholder for mobile platforms
     if (Platform.OS !== 'web') {
@@ -113,40 +118,12 @@ export default function TerminalConnectScreen() {
     // Show error if no key found
     if (!publicKey) {
         return (
-            <ItemList>
-                <ItemGroup>
-                    <View style={{ 
-                        alignItems: 'center',
-                        paddingVertical: 32,
-                        paddingHorizontal: 16
-                    }}>
-                        <Ionicons 
-                            name="warning-outline" 
-                            size={48} 
-                            color="#FF3B30" 
-                            style={{ marginBottom: 16 }} 
-                        />
-                        <Text style={{ 
-                            ...Typography.default('semiBold'), 
-                            fontSize: 16, 
-                            color: '#FF3B30',
-                            textAlign: 'center',
-                            marginBottom: 8 
-                        }}>
-                            {t('terminal.invalidConnectionLink')}
-                        </Text>
-                        <Text style={{ 
-                            ...Typography.default(), 
-                            fontSize: 14, 
-                            color: '#666', 
-                            textAlign: 'center',
-                            lineHeight: 20 
-                        }}>
-                            {t('terminal.invalidConnectionLinkDescription')}
-                        </Text>
-                    </View>
-                </ItemGroup>
-            </ItemList>
+            <InvalidRouteState
+                actionLabel={t('common.home')}
+                description={t('terminal.invalidConnectionLinkDescription')}
+                onAction={handleInvalidLinkRecovery}
+                title={t('terminal.invalidConnectionLink')}
+            />
         );
     }
 
