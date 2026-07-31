@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { NormalizedMessage } from '../typesRaw';
+import { createId } from '@paralleldrive/cuid2';
+import { NormalizedMessage, normalizeRawMessage } from '../typesRaw';
 import { createReducer } from './reducer';
 import { reducer } from './reducer';
 import { AgentState } from '../storageTypes';
@@ -3083,6 +3084,95 @@ describe('reducer', () => {
                     expect(result.messages[0].children[0].tool.name).toBe('Read');
                 }
             }
+        });
+
+        it('keeps root final output while nesting child SessionEnvelope messages under Agent', () => {
+            const turn = 'session-turn-1';
+            const sessionSubagent = createId();
+            const envelopes = [
+                {
+                    id: 'env-parent',
+                    time: 1000,
+                    role: 'agent',
+                    turn,
+                    ev: {
+                        t: 'tool-call-start',
+                        call: 'collab-spawn-1',
+                        name: 'Agent',
+                        title: 'Spawn agent',
+                        description: 'Spawn agent',
+                        args: {
+                            prompt: 'Review the implementation',
+                            sessionSubagent,
+                        },
+                    },
+                },
+                {
+                    id: 'env-child-start',
+                    time: 1100,
+                    role: 'agent',
+                    turn,
+                    subagent: sessionSubagent,
+                    ev: { t: 'start' },
+                },
+                {
+                    id: 'env-child-text',
+                    time: 1200,
+                    role: 'agent',
+                    turn,
+                    subagent: sessionSubagent,
+                    ev: { t: 'text', text: 'Child review complete' },
+                },
+                {
+                    id: 'env-root-final',
+                    time: 1300,
+                    role: 'agent',
+                    turn,
+                    ev: { t: 'text', text: 'Root final answer' },
+                },
+                {
+                    id: 'env-turn-end',
+                    time: 1400,
+                    role: 'agent',
+                    turn,
+                    ev: { t: 'turn-end', status: 'completed' },
+                },
+            ];
+            const normalized = envelopes
+                .map((envelope, index) => normalizeRawMessage(
+                    `db-session-${index}`,
+                    null,
+                    envelope.time,
+                    { role: 'session', content: envelope } as any,
+                ))
+                .filter((message): message is NormalizedMessage => message !== null);
+
+            expect(normalized.some((message) => (
+                message.role === 'agent'
+                && message.content.some((content) => content.type === 'text' && content.text === 'Root final answer')
+            ))).toBe(true);
+
+            const state = createReducer();
+            const result = reducer(state, normalized);
+
+            expect(result.messages).toHaveLength(2);
+            expect(result.hasReadyEvent).toBe(true);
+            const parentMessage = result.messages.find((message) => message.kind === 'tool-call');
+            expect(parentMessage?.kind).toBe('tool-call');
+            if (parentMessage?.kind === 'tool-call') {
+                expect(parentMessage.tool.name).toBe('Agent');
+                expect(parentMessage.children).toHaveLength(1);
+                expect(parentMessage.children[0]).toMatchObject({
+                    kind: 'agent-text',
+                    text: 'Child review complete',
+                });
+            }
+            expect(result.messages.find((message) => (
+                message.kind === 'agent-text' && message.text === 'Root final answer'
+            ))).toMatchObject({
+                kind: 'agent-text',
+                text: 'Root final answer',
+            });
         });
     });
 
