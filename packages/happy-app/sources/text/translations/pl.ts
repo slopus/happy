@@ -742,6 +742,9 @@ export const pl: TranslationStructure = {
         showArchived: 'Pokaż zarchiwizowane',
         hideArchived: 'Ukryj zarchiwizowane',
         newSession: 'Nowa sesja',
+        emptySessionsTitle: 'Brak aktywnych sesji',
+        emptySessionsOnlineDescription: 'Rozpocznij nową sesję na dowolnej z połączonych maszyn.',
+        emptySessionsOfflineDescription: 'Otwórz nowy terminal na komputerze, aby rozpocząć sesję.',
 
         searchSessions: 'Zarządzaj sesjami',
     },

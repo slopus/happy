@@ -727,6 +727,9 @@ export const ja: TranslationStructure = {
         showArchived: 'アーカイブを表示',
         hideArchived: 'アーカイブを非表示',
         newSession: '新しいセッション',
+        emptySessionsTitle: 'アクティブなセッションはありません',
+        emptySessionsOnlineDescription: '接続済みのマシンのいずれかで新しいセッションを開始してください。',
+        emptySessionsOfflineDescription: 'コンピューターで新しいターミナルを開き、セッションを開始してください。',
 
         searchSessions: 'セッション管理',
     },

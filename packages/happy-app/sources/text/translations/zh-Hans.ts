@@ -727,6 +727,9 @@ export const zhHans: TranslationStructure = {
         showArchived: '显示已归档',
         hideArchived: '隐藏已归档',
         newSession: '新建会话',
+        emptySessionsTitle: '暂无活跃会话',
+        emptySessionsOnlineDescription: '在任意一台已连接的设备上开始新会话。',
+        emptySessionsOfflineDescription: '在电脑上打开新的终端以开始会话。',
 
         searchSessions: '会话管理',
     },

@@ -726,6 +726,9 @@ export const zhHant: TranslationStructure = {
         showArchived: '顯示已封存',
         hideArchived: '隱藏已封存',
         newSession: '新建對話',
+        emptySessionsTitle: '目前沒有活躍的工作階段',
+        emptySessionsOnlineDescription: '在任一台已連線的裝置上開始新的工作階段。',
+        emptySessionsOfflineDescription: '在電腦上開啟新的終端機以開始工作階段。',
 
         searchSessions: '會話管理',
     },
