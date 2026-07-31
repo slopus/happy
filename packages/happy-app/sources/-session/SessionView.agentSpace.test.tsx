@@ -6,6 +6,11 @@ import {
     AgentSpaceExitButton,
     SessionRightPanelContent,
 } from '@/components/agents/SessionAgentSpaceBoundary';
+import {
+    getDesktopRightPanelWidth,
+    getPersistentHeaderContentInset,
+    PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+} from '@/utils/desktopNavigationLayout';
 import { SessionView } from './SessionView';
 
 // react-test-renderer does not publish TypeScript declarations with the package.
@@ -372,7 +377,18 @@ describe('SessionView Agent-space boundary', () => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
 
-        expect(renderer.root.findByType('ChatHeaderView').props.headerContentLeftInset).toBe(274);
+        const expectedInset = getPersistentHeaderContentInset({
+            windowWidth: mocks.windowWidth,
+            headerMaxWidth: 800,
+            headerHorizontalPadding: 16,
+            sidebarVisible: true,
+            rightPanelWidth: getDesktopRightPanelWidth(mocks.windowWidth),
+            controlStartPadding: 16,
+            buttonCount: 3,
+            controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+            targetHitSlop: 8,
+        });
+        expect(renderer.root.findByType('ChatHeaderView').props.headerContentLeftInset).toBe(expectedInset);
 
         act(() => renderer.unmount());
     });

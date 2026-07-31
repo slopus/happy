@@ -6,8 +6,8 @@ export const PERSISTENT_NAVIGATION_BUTTON_GAP = 4;
 export const PERSISTENT_NAVIGATION_HIT_SLOP = 10;
 export const PERSISTENT_NAVIGATION_TARGET_GAP = 4;
 export const TAURI_HEADER_CONTROL_LEFT = 92;
-export const PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH = 70;
-export const PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH = 98;
+export const PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH = 92;
+export const PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH = 118;
 export const PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH = (
     PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH
     + PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH
@@ -47,6 +47,22 @@ export function isDesktopRightPanelAvailable({
     return isTablet
         && supportsPersistentPanel
         && windowWidth >= DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH;
+}
+
+export type DesktopRightPanelPresentation = 'unavailable' | 'zen' | 'collapsed' | 'expanded';
+
+export function getDesktopRightPanelPresentation({
+    available,
+    collapsed,
+    zenMode,
+}: {
+    available: boolean;
+    collapsed: boolean;
+    zenMode: boolean;
+}): DesktopRightPanelPresentation {
+    if (!available) return 'unavailable';
+    if (zenMode) return 'zen';
+    return collapsed ? 'collapsed' : 'expanded';
 }
 
 export function getPersistentNavigationControlsWidth(buttonCount: number): number {

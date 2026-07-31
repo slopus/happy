@@ -16,6 +16,7 @@ import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import {
     getPersistentHeaderContentInset,
     getDesktopRightPanelWidth,
+    getDesktopRightPanelPresentation,
     isDesktopRightPanelAvailable,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
@@ -702,7 +703,12 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         supportsPersistentPanel: Platform.OS === 'web' || inTauri,
         windowWidth,
     });
-    const showDesktopRightPanel = desktopRightPanelAvailable && !zenMode && !desktopRightPanelCollapsed;
+    const desktopRightPanelPresentation = getDesktopRightPanelPresentation({
+        available: desktopRightPanelAvailable,
+        collapsed: desktopRightPanelCollapsed,
+        zenMode,
+    });
+    const showDesktopRightPanel = desktopRightPanelPresentation === 'expanded';
     const persistentHeaderContentInset = isTablet
         ? getPersistentHeaderContentInset({
             windowWidth,
@@ -763,16 +769,14 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         </View>
     );
 
-    const rightPanelRestoreButton = desktopRightPanelAvailable
-        && !zenMode
-        && desktopRightPanelCollapsed ? (
-            <DesktopRightPanelRestoreButton
-                label={t('desktopWorkspace.showPanel', {
-                    panel: t('rightPanelCapabilityHub.title'),
-                })}
-                onPress={() => setDesktopRightPanelCollapsed(false)}
-            />
-        ) : null;
+    const rightPanelRestoreButton = desktopRightPanelPresentation === 'collapsed' ? (
+        <DesktopRightPanelRestoreButton
+            label={t('desktopWorkspace.showPanel', {
+                panel: t('rightPanelCapabilityHub.title'),
+            })}
+            onPress={() => setDesktopRightPanelCollapsed(false)}
+        />
+    ) : null;
     const composeContent = (
         <View style={styles.container}>
             <Header

@@ -128,12 +128,22 @@ export const SidebarNavigator = React.memo(() => {
 
     const drawerContent = React.useCallback(
         () => (
-            <SidebarView
-                closeDrawerOnNavigate={!isDesktopLayout}
-                desktopDensity={isDesktopLayout}
-            />
+            <View
+                aria-hidden={isDesktopLayout && !showSidebar}
+                accessibilityElementsHidden={isDesktopLayout && !showSidebar}
+                importantForAccessibility={isDesktopLayout && !showSidebar ? 'no-hide-descendants' : 'auto'}
+                style={[
+                    styles.drawerContent,
+                    isDesktopLayout && !showSidebar && styles.drawerContentHidden,
+                ]}
+            >
+                <SidebarView
+                    closeDrawerOnNavigate={!isDesktopLayout}
+                    desktopDensity={isDesktopLayout}
+                />
+            </View>
         ),
-        [isDesktopLayout]
+        [isDesktopLayout, showSidebar]
     );
 
     return (
@@ -251,6 +261,7 @@ const PersistentHeader = React.memo(() => {
                         sidebarVisible && styles.toggleSelected,
                         pressed && styles.togglePressed,
                     ]}
+                    aria-expanded={sidebarVisible}
                     accessibilityLabel={sidebarToggleLabel}
                     accessibilityRole="button"
                     accessibilityState={{ expanded: sidebarVisible }}
@@ -276,6 +287,7 @@ const PersistentHeader = React.memo(() => {
                         zenMode && styles.zenToggleSelected,
                         pressed && styles.togglePressed,
                     ]}
+                    aria-selected={zenMode}
                     accessibilityLabel={t('zen.toggle')}
                     accessibilityRole="button"
                     accessibilityState={{ selected: zenMode }}
@@ -321,6 +333,12 @@ const PersistentHeader = React.memo(() => {
 });
 
 const styles = StyleSheet.create((theme) => ({
+    drawerContent: {
+        flex: 1,
+    },
+    drawerContentHidden: {
+        display: 'none',
+    },
     navigationControls: {
         width: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
         flexDirection: 'row',

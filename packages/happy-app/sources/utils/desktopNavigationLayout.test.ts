@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
     getDesktopSidebarWidth,
     getDesktopRightPanelWidth,
+    getDesktopRightPanelPresentation,
     isDesktopRightPanelAvailable,
     getPersistentHeaderPointerEvents,
     getPersistentHeaderContentInset,
     getPersistentNavigationControlsWidth,
+    PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
 } from './desktopNavigationLayout';
 
 describe('desktopNavigationLayout', () => {
@@ -49,6 +51,22 @@ describe('desktopNavigationLayout', () => {
             windowWidth: 1440,
         })).toBe(false);
     });
+
+    it.each([
+        { available: false, collapsed: false, zenMode: false, expected: 'unavailable' },
+        { available: true, collapsed: false, zenMode: true, expected: 'zen' },
+        { available: true, collapsed: true, zenMode: false, expected: 'collapsed' },
+        { available: true, collapsed: false, zenMode: false, expected: 'expanded' },
+    ] as const)(
+        'resolves $expected for available=$available collapsed=$collapsed zenMode=$zenMode',
+        ({ available, collapsed, zenMode, expected }) => {
+            expect(getDesktopRightPanelPresentation({
+                available,
+                collapsed,
+                zenMode,
+            })).toBe(expected);
+        },
+    );
 
     it('calculates the rendered controls width from the real button geometry', () => {
         expect(getPersistentNavigationControlsWidth(3)).toBe(92);
@@ -98,9 +116,9 @@ describe('desktopNavigationLayout', () => {
             headerHorizontalPadding: 16,
             sidebarVisible: false,
             buttonCount: 3,
-            controlsWidth: 236,
+            controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
             targetHitSlop: 8,
-        })).toBe(258);
+        })).toBe(300);
     });
 
     it('reserves navigation space when the desktop file panel narrows the session header', () => {

@@ -153,7 +153,7 @@ describe('SidebarNavigator drawer behavior', () => {
         });
 
         const drawer = renderer.root.findByType('Drawer');
-        const sidebar = drawer.props.drawerContent();
+        const sidebar = drawer.props.drawerContent().props.children;
         expect(sidebar.props.closeDrawerOnNavigate).toBe(expected);
         expect(sidebar.props.desktopDensity).toBe(isTablet);
         act(() => renderer.unmount());
@@ -168,6 +168,7 @@ describe('SidebarNavigator drawer behavior', () => {
         const drawer = renderer.root.findByType('Drawer');
         expect(drawer.props.screenOptions.drawerStyle.width).toBe(360);
         const sidebarToggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
+        expect(sidebarToggle.props['aria-expanded']).toBe(true);
         expect(sidebarToggle.props.accessibilityState).toEqual({ expanded: true });
         expect(sidebarToggle.props.accessibilityLabel).toBe('desktopWorkspace.hideSessions');
         expect(sidebarToggle.findAllByType('Text').some(
@@ -181,6 +182,28 @@ describe('SidebarNavigator drawer behavior', () => {
         act(() => renderer.unmount());
     });
 
+    it('removes a collapsed desktop sidebar from layout and the accessibility tree', () => {
+        mocks.desktopLeftSidebarCollapsed = true;
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<SidebarNavigator />);
+        });
+
+        const drawer = renderer.root.findByType('Drawer');
+        const drawerContent = drawer.props.drawerContent();
+        expect(drawer.props.screenOptions.drawerStyle.width).toBe(0);
+        expect(drawerContent.props['aria-hidden']).toBe(true);
+        expect(drawerContent.props.accessibilityElementsHidden).toBe(true);
+        expect(drawerContent.props.importantForAccessibility).toBe('no-hide-descendants');
+        expect(drawerContent.props.style).toContainEqual({ display: 'none' });
+
+        const sidebarToggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
+        expect(sidebarToggle.props['aria-expanded']).toBe(false);
+        expect(sidebarToggle.props.accessibilityLabel).toBe('desktopWorkspace.showSessions');
+
+        act(() => renderer.unmount());
+    });
+
     it('keeps a visible labeled and selected Zen exit affordance', () => {
         mocks.zenMode = true;
         let renderer: any;
@@ -189,6 +212,7 @@ describe('SidebarNavigator drawer behavior', () => {
         });
 
         const zenToggle = renderer.root.findByProps({ testID: 'desktop-navigation-zen-button' });
+        expect(zenToggle.props['aria-selected']).toBe(true);
         expect(zenToggle.props.accessibilityState).toEqual({ selected: true });
         expect(zenToggle.findAllByType('Text').some((node: any) => node.props.children === 'zen.toggle')).toBe(true);
         expect(zenToggle.findAllByType('Ionicons').some((node: any) => node.props.name === 'close-circle')).toBe(true);

@@ -260,6 +260,76 @@ test('桌面侧栏导航控件不覆盖用户卡片', async ({ page }) => {
     await page.screenshot({ path: 'test-results/desktop-sidebar-navigation.png', fullPage: true });
 });
 
+test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(authenticatedRoute('/new'));
+    await expect(page.getByRole('textbox')).toBeVisible();
+
+    const sidebarToggle = page.getByTestId('desktop-navigation-sidebar-button');
+    const zenToggle = page.getByTestId('desktop-navigation-zen-button');
+    const sidebarCard = page.getByTestId('sidebar-user-card');
+    const greeting = page.locator('[data-testid="compose-home-greeting"]:visible');
+
+    if (await zenToggle.getAttribute('aria-selected') === 'true') {
+        await zenToggle.click();
+    }
+    if (await sidebarToggle.getAttribute('aria-expanded') === 'false') {
+        await sidebarToggle.click();
+    }
+    if (!await page.locator('[data-testid="desktop-right-panel"]:visible').isVisible()) {
+        await page.locator('[data-testid="desktop-right-panel-restore-button"]:visible').click();
+    }
+
+    const rightPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
+    await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(rightPanel).toBeVisible();
+    await expect(rightPanel.getByText('Capability Hub', { exact: true })).toHaveCount(2);
+    await expect(rightPanel.getByText('Quick Prompts', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-desktop-density')).toBeVisible();
+
+    await page.screenshot({
+        path: 'test-results/pc-workspace-panels-after-1280x720.png',
+        fullPage: true,
+    });
+
+    const initialGreetingBox = await greeting.boundingBox();
+    expect(initialGreetingBox).not.toBeNull();
+
+    await page.locator('[data-testid="desktop-right-panel-collapse-button"]:visible').click();
+    await expect(rightPanel).toHaveCount(0);
+    await expect(page.locator('[data-testid="desktop-right-panel-restore-button"]:visible')).toBeVisible();
+
+    const rightCollapsedGreetingBox = await greeting.boundingBox();
+    expect(rightCollapsedGreetingBox).not.toBeNull();
+    expect(rightCollapsedGreetingBox!.x).toBeGreaterThan(initialGreetingBox!.x + 20);
+
+    await page.locator('[data-testid="desktop-right-panel-restore-button"]:visible').click();
+    await expect(rightPanel).toBeVisible();
+
+    await sidebarToggle.click();
+    await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect.poll(async () => {
+        const box = await sidebarCard.boundingBox();
+        return box ? box.x + box.width : 0;
+    }).toBeLessThanOrEqual(0);
+
+    const leftCollapsedGreetingBox = await greeting.boundingBox();
+    expect(leftCollapsedGreetingBox).not.toBeNull();
+    expect(leftCollapsedGreetingBox!.x).toBeLessThan(initialGreetingBox!.x - 20);
+
+    await zenToggle.click();
+    await expect(zenToggle).toHaveAttribute('aria-selected', 'true');
+    await expect(rightPanel).toHaveCount(0);
+
+    await zenToggle.click();
+    await expect(zenToggle).toHaveAttribute('aria-selected', 'false');
+    await expect(rightPanel).toBeVisible();
+    await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'false');
+
+    await sidebarToggle.click();
+    await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'true');
+});
+
 test('桌面问候语与输入框内容列对齐且代表性中文标题保持单行', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(new URL('/new', authenticatedWebUrl).toString());

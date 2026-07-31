@@ -36,6 +36,7 @@ import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/u
 import {
     getPersistentHeaderContentInset,
     getDesktopRightPanelWidth,
+    getDesktopRightPanelPresentation,
     isDesktopRightPanelAvailable,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
@@ -106,7 +107,12 @@ export const SessionView = React.memo((props: { id: string }) => {
         windowWidth,
     }) && isDataReady && !!session;
     const canShowFilePanel = desktopRightPanelAvailable && fileDiffsSidebarEnabled;
-    const showDesktopRightPanel = desktopRightPanelAvailable && !zenMode && !desktopRightPanelCollapsed;
+    const desktopRightPanelPresentation = getDesktopRightPanelPresentation({
+        available: desktopRightPanelAvailable,
+        collapsed: desktopRightPanelCollapsed,
+        zenMode,
+    });
+    const showDesktopRightPanel = desktopRightPanelPresentation === 'expanded';
 
     // Match left sidebar width: 30% of window, clamped to 250–360px
     const rightPanelWidth = getDesktopRightPanelWidth(windowWidth);
@@ -296,14 +302,12 @@ export const SessionView = React.memo((props: { id: string }) => {
     const desktopPanelLabel = desktopPanelMode === 'files' && canShowFilePanel
         ? t('common.files')
         : t('rightPanelCapabilityHub.title');
-    const rightPanelRestoreButton = desktopRightPanelAvailable
-        && !zenMode
-        && desktopRightPanelCollapsed ? (
-            <DesktopRightPanelRestoreButton
-                label={t('desktopWorkspace.showPanel', { panel: desktopPanelLabel })}
-                onPress={() => setDesktopRightPanelCollapsed(false)}
-            />
-        ) : null;
+    const rightPanelRestoreButton = desktopRightPanelPresentation === 'collapsed' ? (
+        <DesktopRightPanelRestoreButton
+            label={t('desktopWorkspace.showPanel', { panel: desktopPanelLabel })}
+            onPress={() => setDesktopRightPanelCollapsed(false)}
+        />
+    ) : null;
 
     // Match the permanent sidebar's explicit /new destination and visible label.
     // The text makes the isolated top-right action understandable before click.
