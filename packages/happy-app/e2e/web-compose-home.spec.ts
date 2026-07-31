@@ -801,7 +801,11 @@ test.describe('中文 Web 工件与生成图片语义', () => {
         await expect(page.getByText('暂无工件', { exact: true })).toBeVisible();
         const createButton = page.getByRole('button', { name: '新建工件', exact: true });
         await expect(createButton).toHaveCount(1);
-        await createButton.click();
+        await expect(createButton).toBeVisible();
+        await expect(createButton.getByText('新建工件', { exact: true })).toBeVisible();
+        await createButton.focus();
+        await expect(createButton).toBeFocused();
+        await createButton.press('Enter');
         await expect.poll(() => new URL(page.url()).pathname).toBe('/artifacts/new');
 
         await expect(page.getByRole('textbox', { name: '标题', exact: true })).toHaveCount(1);
@@ -819,6 +823,16 @@ test.describe('中文 Web 工件与生成图片语义', () => {
         await page.getByRole('textbox', { name: '标题', exact: true }).fill('隔离测试工件');
         await page.getByRole('textbox', { name: '内容', exact: true }).fill('仅用于本次隔离 E2E，环境结束后自动删除。');
         await saveButton.click();
+        await expect.poll(() => new URL(page.url()).pathname).toMatch(/^\/artifacts\/[^/]+$/);
+
+        await page.goto(authenticatedRoute('/artifacts'));
+        await expect.poll(() => new URL(page.url()).pathname).toBe('/artifacts');
+        await expect(page.getByText('隔离测试工件', { exact: true })).toBeVisible();
+        await expect(page.getByText('新建工件', { exact: true })).toHaveCount(0);
+        const artifactFab = page.getByRole('button', { name: '新建工件', exact: true });
+        await expect(artifactFab).toHaveCount(1);
+        await expect(artifactFab).toBeVisible();
+        await page.getByRole('button', { name: '隔离测试工件', exact: true }).click();
         await expect.poll(() => new URL(page.url()).pathname).toMatch(/^\/artifacts\/[^/]+$/);
 
         const editButton = page.getByRole('button', { name: '编辑工件', exact: true });
