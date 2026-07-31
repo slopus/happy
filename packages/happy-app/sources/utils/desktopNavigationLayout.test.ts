@@ -4,6 +4,7 @@ import {
     getDesktopRightPanelWidth,
     getDesktopRightPanelPresentation,
     isDesktopRightPanelAvailable,
+    shouldUseCompactSessionHeader,
     getPersistentHeaderPointerEvents,
     getPersistentHeaderContentInset,
     getPersistentNavigationControlsWidth,
@@ -50,6 +51,14 @@ describe('desktopNavigationLayout', () => {
             supportsPersistentPanel: false,
             windowWidth: 1440,
         })).toBe(false);
+    });
+
+    it.each([
+        { isTablet: true, width: 1179, expected: true },
+        { isTablet: true, width: 1180, expected: false },
+        { isTablet: false, width: 1100, expected: false },
+    ])('sets compact session metadata to $expected at $width px', ({ isTablet, width, expected }) => {
+        expect(shouldUseCompactSessionHeader({ isTablet, windowWidth: width })).toBe(expected);
     });
 
     it.each([

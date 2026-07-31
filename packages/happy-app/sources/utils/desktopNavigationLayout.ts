@@ -1,5 +1,6 @@
 export const WEB_TABLET_MIN_WIDTH = 800;
 export const DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH = 1100;
+export const DESKTOP_SESSION_HEADER_COMPACT_WINDOW_WIDTH = 1180;
 export const PERSISTENT_NAVIGATION_HORIZONTAL_PADDING = 16;
 export const PERSISTENT_NAVIGATION_BUTTON_SIZE = 28;
 export const PERSISTENT_NAVIGATION_BUTTON_GAP = 4;
@@ -47,6 +48,16 @@ export function isDesktopRightPanelAvailable({
     return isTablet
         && supportsPersistentPanel
         && windowWidth >= DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH;
+}
+
+export function shouldUseCompactSessionHeader({
+    isTablet,
+    windowWidth,
+}: {
+    isTablet: boolean;
+    windowWidth: number;
+}): boolean {
+    return isTablet && windowWidth < DESKTOP_SESSION_HEADER_COMPACT_WINDOW_WIDTH;
 }
 
 export type DesktopRightPanelPresentation = 'unavailable' | 'zen' | 'collapsed' | 'expanded';
