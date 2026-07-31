@@ -38,6 +38,7 @@ import {
     getDesktopRightPanelWidth,
     getDesktopRightPanelPresentation,
     isDesktopRightPanelAvailable,
+    shouldUseCompactSessionHeader,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
 } from '@/utils/desktopNavigationLayout';
@@ -55,7 +56,7 @@ import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import * as Application from 'expo-application';
 import * as Clipboard from 'expo-clipboard';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useNavigation } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import * as React from 'react';
@@ -77,6 +78,39 @@ const AGENT_LABELS: Record<string, string> = {
 };
 
 const CAN_COPY_SESSION_ID = Application.applicationId === 'build.paws.preview';
+
+function SessionNewSessionAction({
+    onPress,
+}: {
+    onPress: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const [pressed, setPressed] = React.useState(false);
+    workspaceStyles.useVariants({ pressState: pressed ? 'pressed' : 'idle' });
+
+    return (
+        <Pressable
+            accessibilityLabel={t('sidebar.newSession')}
+            accessibilityRole="button"
+            onPress={onPress}
+            onPressIn={() => setPressed(true)}
+            onPressOut={() => setPressed(false)}
+            hitSlop={10}
+            style={workspaceStyles.headerAction}
+            testID="session-header-new-session-button"
+        >
+            <Ionicons
+                name="add-outline"
+                size={18}
+                color={theme.colors.button.primary.tint}
+                testID="session-header-new-session-icon"
+            />
+            <Text numberOfLines={1} ellipsizeMode="tail" style={workspaceStyles.headerActionText}>
+                {t('sidebar.newSession')}
+            </Text>
+        </Pressable>
+    );
+}
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -265,6 +299,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerTitleSlot = showChip ? (
         <SessionHeaderChip
             agentLabel={agentLabel}
+            compact={shouldUseCompactSessionHeader({ isTablet, windowWidth })}
             machineName={machineName}
             online={sessionOnline}
             open={infoPanelOpen}
@@ -312,19 +347,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     // Match the permanent sidebar's explicit /new destination and visible label.
     // The text makes the isolated top-right action understandable before click.
     const newSessionButton = (
-        <Pressable
-            accessibilityLabel={t('sidebar.newSession')}
-            accessibilityRole="button"
-            onPress={() => router.navigate('/new')}
-            hitSlop={10}
-            style={workspaceStyles.headerAction}
-            testID="session-header-new-session-button"
-        >
-            <MaterialCommunityIcons name="message-plus-outline" size={23} color={theme.colors.header.tint} />
-            <Text style={workspaceStyles.headerActionText}>
-                {t('sidebar.newSession')}
-            </Text>
-        </Pressable>
+        <SessionNewSessionAction onPress={() => router.navigate('/new')} />
     );
     const defaultHeaderRightSlot = (
         <View style={workspaceStyles.headerActions}>
@@ -1151,11 +1174,25 @@ function CenteredInputWidth(props: {
 
 const workspaceStyles = StyleSheet.create((theme) => ({
     headerAction: {
+        minHeight: 32,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 5,
-        paddingHorizontal: 8,
-        paddingVertical: 5,
+        justifyContent: 'center',
+        gap: 6,
+        paddingHorizontal: 11,
+        paddingVertical: 6,
+        borderRadius: 16,
+        backgroundColor: theme.colors.button.primary.background,
+        variants: {
+            pressState: {
+                idle: {
+                    opacity: 1,
+                },
+                pressed: {
+                    opacity: 0.82,
+                },
+            },
+        },
     },
     headerActions: {
         flexDirection: 'row',
@@ -1163,7 +1200,7 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         gap: 5,
     },
     headerActionText: {
-        color: theme.colors.header.tint,
+        color: theme.colors.button.primary.tint,
         fontSize: 12,
         fontWeight: '600',
     },

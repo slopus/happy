@@ -29,9 +29,12 @@ vi.mock('react-native-unistyles', () => {
     return {
         StyleSheet: {
             hairlineWidth: 1,
-            create: (factory: unknown) => typeof factory === 'function'
-                ? (factory as (value: typeof theme) => object)(theme)
-                : factory,
+            create: (factory: unknown) => {
+                const styles = typeof factory === 'function'
+                    ? (factory as (value: typeof theme) => object)(theme)
+                    : factory;
+                return { ...styles as object, useVariants: vi.fn() };
+            },
         },
         useUnistyles: () => ({ theme }),
     };
@@ -73,6 +76,31 @@ describe('SessionHeaderChip connection semantics', () => {
         expect(chip.props.accessibilityState).toEqual({ expanded: false });
         expect(chip.props.accessibilityLabel).toBe(`codex, ${status}, Mac mini`);
         expect(chip.findAllByType('Text').some((node: any) => node.props.children === status)).toBe(true);
+
+        act(() => renderer.unmount());
+    });
+
+    it.each([
+        { online: true, status: 'status.online' },
+        { online: false, status: 'status.offline' },
+    ])('keeps $status visible and full metadata accessible in compact desktop layout', ({ online, status }) => {
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <SessionHeaderChip
+                    agentLabel="codex"
+                    compact
+                    machineName="Mac mini"
+                    online={online}
+                    open={false}
+                    onPress={vi.fn()}
+                />,
+            );
+        });
+
+        const chip = renderer.root.findByProps({ testID: 'session-header-chip' });
+        expect(chip.props.accessibilityLabel).toBe(`codex, ${status}, Mac mini`);
+        expect(chip.findAllByType('Text').map((node: any) => node.props.children)).toEqual(['codex', status]);
 
         act(() => renderer.unmount());
     });

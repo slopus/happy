@@ -14,6 +14,8 @@ import { t } from '@/text';
  */
 interface SessionHeaderChipProps {
     agentLabel: string;
+    /** Keeps only the essential identity when adjacent desktop actions need the space. */
+    compact?: boolean;
     machineName: string | null;
     online: boolean;
     /** Whether the info dropdown is currently open (controls the chevron direction). */
@@ -21,10 +23,11 @@ interface SessionHeaderChipProps {
     onPress: () => void;
 }
 
-export const SessionHeaderChip = React.memo(({ agentLabel, machineName, online, open, onPress }: SessionHeaderChipProps) => {
+export const SessionHeaderChip = React.memo(({ agentLabel, compact = false, machineName, online, open, onPress }: SessionHeaderChipProps) => {
     const { theme } = useUnistyles();
     const statusLabel = online ? t('status.online') : t('status.offline');
     const accessibilityLabel = [agentLabel, statusLabel, machineName].filter(Boolean).join(', ');
+    styles.useVariants({ density: compact ? 'compact' : 'regular' });
     return (
         <Pressable
             accessibilityLabel={accessibilityLabel}
@@ -42,7 +45,7 @@ export const SessionHeaderChip = React.memo(({ agentLabel, machineName, online, 
                 style={[styles.dot, { backgroundColor: online ? theme.colors.status.connected : theme.colors.status.disconnected }]}
             />
             <Text style={styles.status} numberOfLines={1}>{statusLabel}</Text>
-            {machineName ? (
+            {!compact && machineName ? (
                 <Text style={styles.machine} numberOfLines={1}>{machineName}</Text>
             ) : null}
             <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={13} color={theme.colors.textSecondary} />
@@ -52,16 +55,27 @@ export const SessionHeaderChip = React.memo(({ agentLabel, machineName, online, 
 
 const styles = StyleSheet.create((theme) => ({
     chip: {
+        width: '100%',
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 7,
         maxWidth: 290,
         paddingVertical: 6,
-        paddingHorizontal: 12,
         borderRadius: 999,
         backgroundColor: theme.colors.surface,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
+        variants: {
+            density: {
+                regular: {
+                    gap: 7,
+                    paddingHorizontal: 12,
+                },
+                compact: {
+                    gap: 4,
+                    paddingHorizontal: 8,
+                },
+            },
+        },
     },
     agent: {
         ...Typography.default('semiBold'),

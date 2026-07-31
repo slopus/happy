@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
     routerPush: vi.fn(),
     routerBack: vi.fn(),
     navigationDispatch: vi.fn(),
+    styleUseVariants: vi.fn(),
     session: {
         id: 'session-1',
         seq: 1,
@@ -100,14 +101,23 @@ vi.mock('react-native-unistyles', () => {
             surfacePressed: '#333333',
             text: '#ffffff',
             textSecondary: '#aaaaaa',
+            button: {
+                primary: {
+                    background: '#7c5cbf',
+                    tint: '#ffffff',
+                },
+            },
         },
     };
     return {
         StyleSheet: {
             hairlineWidth: 1,
-            create: (factory: unknown) => typeof factory === 'function'
-                ? (factory as (value: typeof theme) => object)(theme)
-                : factory,
+            create: (factory: unknown) => {
+                const styles = typeof factory === 'function'
+                    ? (factory as (value: typeof theme) => object)(theme)
+                    : factory;
+                return { ...styles as object, useVariants: mocks.styleUseVariants };
+            },
         },
         useUnistyles: () => ({ theme }),
     };
@@ -478,9 +488,42 @@ describe('SessionView Agent-space boundary', () => {
 
         const action = renderer.root.findByProps({ testID: 'session-header-new-session-button' });
         expect(action.props.accessibilityLabel).toBe('sidebar.newSession');
-        expect(action.findAllByType('Text').some((node: any) => node.props.children === 'sidebar.newSession')).toBe(true);
+        expect(action.props.style).toMatchObject({
+            minHeight: 32,
+            borderRadius: 16,
+            backgroundColor: '#7c5cbf',
+        });
+        expect(mocks.styleUseVariants).toHaveBeenCalledWith({ pressState: 'idle' });
+        expect(renderer.root.findByProps({ testID: 'session-header-new-session-icon' }).props).toMatchObject({
+            name: 'add-outline',
+            size: 18,
+        });
+        const label = action.findAllByType('Text').find((node: any) => node.props.children === 'sidebar.newSession');
+        expect(label?.props).toMatchObject({ numberOfLines: 1, ellipsizeMode: 'tail' });
+        act(() => action.props.onPressIn());
+        expect(mocks.styleUseVariants).toHaveBeenCalledWith({ pressState: 'pressed' });
+        act(() => action.props.onPressOut());
         act(() => action.props.onPress());
         expect(mocks.routerNavigate).toHaveBeenCalledWith('/new');
+
+        act(() => renderer.unmount());
+    });
+
+    it.each([
+        { windowWidth: 1100, compact: true },
+        { windowWidth: 1280, compact: false },
+    ])('sets session metadata compact=$compact at $windowWidth px', ({ windowWidth, compact }) => {
+        mocks.isDataReady = true;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        mocks.windowWidth = windowWidth;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        expect(renderer.root.findByType('SessionHeaderChip').props.compact).toBe(compact);
 
         act(() => renderer.unmount());
     });
