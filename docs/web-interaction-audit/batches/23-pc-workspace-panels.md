@@ -42,11 +42,37 @@
 7. SessionHeaderChip 在状态点旁同时显示本地化 `Online/Offline`，并把完整状态写入可访问名称。
 8. 为 10 种现有语言补齐桌面工作区的显示/隐藏文案。
 
-## 五、修复后截图
+## 五、逐项修复前后截图（6/6）
 
-隔离浏览器环境的 `1280×720` 截图显示：左栏常用入口更紧凑；顶部出现具名的 `Sessions` 和 `Zen mode`；右栏展示 Capability Hub，并提供隐藏操作。
+原报告的一组整页前后图只适合作为整体上下文，不能同时证明 6 个可见问题。下面按 `Case ID → 修复前 → 修复后` 逐项补齐；修复前均来自用户提供的同一张真实 PC 截图，并按问题区域独立裁切，修复后来自隔离环境的 Playwright `1280×720` 实际页面。
 
-![修复后：PC 三栏工作区具备明确控制与 Capability Hub](../screenshots/batch-23-pc-workspace-after-1280x720.png)
+### PC-004：禅模式发现性
+
+![PC-004 禅模式修复前后对比](../screenshots/batch-23-case-01-zen-before-after.png)
+
+### PC-005：左栏独立折叠
+
+![PC-005 左栏折叠修复前后对比](../screenshots/batch-23-case-02-left-sidebar-before-after.png)
+
+### PC-006：右栏能力与折叠
+
+![PC-006 Capability Hub 修复前后对比](../screenshots/batch-23-case-03-capability-hub-before-after.png)
+
+### PC-007：顶部新会话语义
+
+![PC-007 新会话入口修复前后对比](../screenshots/batch-23-case-04-new-session-before-after.png)
+
+### PC-008：PC 左栏密度
+
+![PC-008 侧栏密度修复前后对比](../screenshots/batch-23-case-05-sidebar-density-before-after.png)
+
+### PC-009：会话连接状态表达
+
+![PC-009 会话状态修复前后对比](../screenshots/batch-23-case-06-session-status-before-after.png)
+
+六项总览：
+
+![Batch 23 六项修复前后截图总览](../screenshots/batch-23-six-case-contact-sheet.png)
 
 ## 六、自动化交互证据
 
@@ -85,11 +111,14 @@
 - `git diff --check`：passed
 - 新增交互 Case 的动作增量：Console error 0、失败 Fetch 0
 - 默认 Playwright 配置因本机缺少配套 ffmpeg 无法创建页面；按既有经验使用未提交的 `video: off` 临时配置重跑，产品 Case 正常完成
+- 补充截图证据：`6` 个可见 UI Case 对应 `6` 组独立前后截图；逐张人工目检通过
+- 会话态截图使用临时本地视觉 fixture 注入在线 Codex 会话，仅用于稳定渲染已合并的真实组件；fixture 与截图脚本未提交
 
 ## 九、PR、CI 与合并
 
 - PR：[#239](https://github.com/wangjs-jacky/happy/pull/239)
+- 合并提交：`289943f16142b3beb8092c833edfa57095a80cfc`
 - 实现提交：`8913082ef077607a0be8620556324176604ac848`
 - 文案与复审修复：`421098aa67e5b03ce91f6448946d91852880c140`
 - 最终交互、可访问性与截图证据：`43630bfda53f6eddd97449a41564ca6b050ab572`
-- 合并门：等待 PR 必需检查通过后合并；最终 Preview OTA 与 merge commit 以 PR 记录为准
+- 补充截图 PR：[#240](https://github.com/wangjs-jacky/happy/pull/240)
