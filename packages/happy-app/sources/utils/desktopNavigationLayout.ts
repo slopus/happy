@@ -1,10 +1,12 @@
 export const WEB_TABLET_MIN_WIDTH = 800;
+export const DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH = 1100;
 export const PERSISTENT_NAVIGATION_HORIZONTAL_PADDING = 16;
 export const PERSISTENT_NAVIGATION_BUTTON_SIZE = 28;
 export const PERSISTENT_NAVIGATION_BUTTON_GAP = 4;
 export const PERSISTENT_NAVIGATION_HIT_SLOP = 10;
 export const PERSISTENT_NAVIGATION_TARGET_GAP = 4;
 export const TAURI_HEADER_CONTROL_LEFT = 92;
+export const PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH = 236;
 
 export function getPersistentHeaderPointerEvents({
     isWeb,
@@ -19,6 +21,11 @@ export function getPersistentHeaderPointerEvents({
 export function getDesktopSidebarWidth(windowWidth: number): number {
     if (windowWidth < WEB_TABLET_MIN_WIDTH) return 0;
     return Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
+}
+
+export function getDesktopRightPanelWidth(windowWidth: number): number {
+    if (windowWidth < DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH) return 0;
+    return Math.min(Math.max(Math.floor(windowWidth * 0.24), 280), 360);
 }
 
 export function getPersistentNavigationControlsWidth(buttonCount: number): number {
@@ -37,6 +44,7 @@ export function getPersistentHeaderContentInset({
     rightPanelWidth = 0,
     controlStartPadding = 0,
     buttonCount,
+    controlsWidth,
     targetHitSlop = 0,
 }: {
     windowWidth: number;
@@ -47,6 +55,8 @@ export function getPersistentHeaderContentInset({
     rightPanelWidth?: number;
     controlStartPadding?: number;
     buttonCount: number;
+    /** Exact rendered width when controls are not all square icon buttons. */
+    controlsWidth?: number;
     targetHitSlop?: number;
 }): number {
     const sidebarWidth = sidebarVisible ? getDesktopSidebarWidth(windowWidth) : 0;
@@ -57,7 +67,7 @@ export function getPersistentHeaderContentInset({
     const controlsHitRight = (
         PERSISTENT_NAVIGATION_HORIZONTAL_PADDING
         + controlStartPadding
-        + getPersistentNavigationControlsWidth(buttonCount)
+        + (controlsWidth ?? getPersistentNavigationControlsWidth(buttonCount))
         + PERSISTENT_NAVIGATION_HIT_SLOP
     );
 

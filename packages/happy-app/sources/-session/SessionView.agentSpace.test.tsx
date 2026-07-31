@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
     windowWidth: 390,
     isTablet: false,
     platformOS: 'android',
+    desktopRightPanelCollapsed: false,
+    setDesktopRightPanelCollapsed: vi.fn(),
     spaceAgent: null as AgentLauncher | null,
     useSpaceAgentForSession: vi.fn(),
     enterSpace: vi.fn(),
@@ -84,6 +86,7 @@ vi.mock('react-native-unistyles', () => {
         colors: {
             accent: '#7c5cbf',
             divider: '#444444',
+            groupped: { background: '#111111' },
             header: { tint: '#ffffff' },
             primary: '#7c5cbf',
             shadow: { color: '#000000', opacity: 0.2 },
@@ -183,7 +186,17 @@ vi.mock('@/sync/storage', () => ({
         }),
     },
     useIsDataReady: () => mocks.isDataReady,
-    useLocalSetting: (key: string) => key === 'acknowledgedCliVersions' ? {} : false,
+    useLocalSetting: (key: string) => {
+        if (key === 'acknowledgedCliVersions') return {};
+        if (key === 'desktopRightPanelCollapsed') return mocks.desktopRightPanelCollapsed;
+        return false;
+    },
+    useLocalSettingMutable: (key: string) => {
+        if (key === 'desktopRightPanelCollapsed') {
+            return [mocks.desktopRightPanelCollapsed, mocks.setDesktopRightPanelCollapsed];
+        }
+        return [false, vi.fn()];
+    },
     useSession: () => mocks.session,
     useSessionMessages: () => ({ messages: [], isLoaded: true }),
     useSessionUsage: () => undefined,
@@ -262,6 +275,7 @@ describe('SessionView Agent-space boundary', () => {
         mocks.windowWidth = 390;
         mocks.isTablet = false;
         mocks.platformOS = 'android';
+        mocks.desktopRightPanelCollapsed = false;
         mocks.spaceAgent = null;
         mocks.useSpaceAgentForSession.mockImplementation(() => mocks.spaceAgent);
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -327,14 +341,20 @@ describe('SessionView Agent-space boundary', () => {
         mocks.fileDiffsSidebarEnabled = true;
         mocks.runningOnMac = true;
         mocks.windowWidth = 1400;
+        mocks.isTablet = true;
         let renderer: any;
 
         act(() => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
 
-        expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(1);
+        expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(1);
+        expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(0);
         expect(renderer.root.findAllByType('RightSwipePanelHost')).toHaveLength(0);
+
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.onPress());
+        expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(1);
+        expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(0);
 
         act(() => renderer.unmount());
     });
@@ -352,7 +372,67 @@ describe('SessionView Agent-space boundary', () => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
 
-        expect(renderer.root.findByType('ChatHeaderView').props.headerContentLeftInset).toBe(130);
+        expect(renderer.root.findByType('ChatHeaderView').props.headerContentLeftInset).toBe(274);
+
+        act(() => renderer.unmount());
+    });
+
+    it('shows the capability hub by default on a wide desktop session', () => {
+        mocks.isDataReady = true;
+        mocks.windowWidth = 1400;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel' })).toHaveLength(1);
+        expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(1);
+        expect(renderer.root.findAllByType('RightSwipePanelHost')).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
+
+    it('collapses and restores the desktop capability panel independently', () => {
+        mocks.isDataReady = true;
+        mocks.windowWidth = 1400;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-collapse-button' }).props.onPress());
+        expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenCalledWith(true);
+
+        act(() => {
+            renderer.unmount();
+            mocks.desktopRightPanelCollapsed = true;
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-restore-button' })).toHaveLength(1);
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-restore-button' }).props.onPress());
+        expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenLastCalledWith(false);
+
+        act(() => renderer.unmount());
+    });
+
+    it('uses the labeled new-session action and the same /new route as the sidebar', () => {
+        mocks.isDataReady = true;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        const action = renderer.root.findByProps({ testID: 'session-header-new-session-button' });
+        expect(action.props.accessibilityLabel).toBe('sidebar.newSession');
+        expect(action.findAllByType('Text').some((node: any) => node.props.children === 'sidebar.newSession')).toBe(true);
+        act(() => action.props.onPress());
+        expect(mocks.routerNavigate).toHaveBeenCalledWith('/new');
 
         act(() => renderer.unmount());
     });

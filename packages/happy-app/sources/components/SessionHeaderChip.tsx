@@ -3,6 +3,7 @@ import { View, Text, Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
+import { t } from '@/text';
 
 /**
  * Header chip for an open session — mirrors the home screen's machine/agent
@@ -22,15 +23,25 @@ interface SessionHeaderChipProps {
 
 export const SessionHeaderChip = React.memo(({ agentLabel, machineName, online, open, onPress }: SessionHeaderChipProps) => {
     const { theme } = useUnistyles();
+    const statusLabel = online ? t('status.online') : t('status.offline');
+    const accessibilityLabel = [agentLabel, statusLabel, machineName].filter(Boolean).join(', ');
     return (
         <Pressable
+            accessibilityLabel={accessibilityLabel}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: open }}
             onPress={onPress}
             hitSlop={8}
             style={styles.chip}
             testID="session-header-chip"
         >
             <Text style={styles.agent} numberOfLines={1}>{agentLabel}</Text>
-            <View style={[styles.dot, { backgroundColor: online ? theme.colors.status.connected : theme.colors.status.disconnected }]} />
+            <View
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+                style={[styles.dot, { backgroundColor: online ? theme.colors.status.connected : theme.colors.status.disconnected }]}
+            />
+            <Text style={styles.status} numberOfLines={1}>{statusLabel}</Text>
             {machineName ? (
                 <Text style={styles.machine} numberOfLines={1}>{machineName}</Text>
             ) : null}
@@ -44,7 +55,7 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 7,
-        maxWidth: 230,
+        maxWidth: 290,
         paddingVertical: 6,
         paddingHorizontal: 12,
         borderRadius: 999,
@@ -63,6 +74,11 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 11,
         color: theme.colors.textSecondary,
         flexShrink: 1,
+    },
+    status: {
+        ...Typography.default('semiBold'),
+        fontSize: 11,
+        color: theme.colors.textSecondary,
     },
     dot: {
         width: 6,

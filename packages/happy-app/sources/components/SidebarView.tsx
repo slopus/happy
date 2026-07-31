@@ -39,6 +39,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         borderColor: theme.colors.divider,
         gap: 10,
     },
+    messagesRowDesktop: {
+        marginHorizontal: 10,
+        marginTop: 3,
+        marginBottom: 1,
+        paddingVertical: 7,
+        paddingHorizontal: 10,
+    },
     messagesText: {
         flex: 1,
         fontSize: 14,
@@ -78,6 +85,13 @@ const stylesheet = StyleSheet.create((theme) => ({
     newSessionButtonPressed: {
         backgroundColor: theme.colors.surfacePressed,
     },
+    newSessionButtonDesktop: {
+        marginHorizontal: 10,
+        marginTop: 3,
+        marginBottom: 1,
+        paddingVertical: 7,
+        paddingHorizontal: 10,
+    },
     newSessionText: {
         fontSize: 14,
         fontWeight: '500',
@@ -101,6 +115,15 @@ const stylesheet = StyleSheet.create((theme) => ({
     userCardPressed: {
         backgroundColor: theme.colors.surfacePressed,
     },
+    userCardDesktop: {
+        marginHorizontal: 10,
+        marginTop: 3,
+        marginBottom: 2,
+        paddingVertical: 5,
+        paddingHorizontal: 9,
+        borderRadius: 10,
+        gap: 9,
+    },
     userInfoButton: {
         flex: 1,
         flexDirection: 'row',
@@ -110,6 +133,10 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     userInfoButtonPressed: {
         opacity: 0.7,
+    },
+    userInfoButtonDesktop: {
+        minHeight: 32,
+        gap: 8,
     },
     userName: {
         flex: 1,
@@ -132,6 +159,15 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     agentsCardPressed: {
         backgroundColor: theme.colors.surfacePressed,
+    },
+    agentsCardDesktop: {
+        marginHorizontal: 10,
+        marginTop: 3,
+        marginBottom: 1,
+        paddingVertical: 7,
+        paddingHorizontal: 10,
+        borderRadius: 10,
+        gap: 0,
     },
     agentsHeader: {
         flexDirection: 'row',
@@ -186,10 +222,12 @@ const stylesheet = StyleSheet.create((theme) => ({
 
 interface SidebarViewProps {
     closeDrawerOnNavigate?: boolean;
+    desktopDensity?: boolean;
 }
 
 export const SidebarView = React.memo(({
     closeDrawerOnNavigate = true,
+    desktopDensity = false,
 }: SidebarViewProps) => {
     useDrawerHaptics();
     const styles = stylesheet;
@@ -228,7 +266,7 @@ export const SidebarView = React.memo(({
     // 隐藏全局用户卡/收件箱/会话列表，只看本空间。退出空间即回落到下面的常规侧栏。
     if (spaceAgent) {
         return (
-            <View style={[styles.container, { paddingTop: safeArea.top + 12 }]}>
+            <View style={[styles.container, { paddingTop: safeArea.top + (desktopDensity ? 4 : 12) }]}>
                 <AgentSpaceWorkbench
                     agent={spaceAgent}
                     onExit={exitAgentSpace}
@@ -240,14 +278,18 @@ export const SidebarView = React.memo(({
     }
 
     return (
-        <View style={[styles.container, { paddingTop: safeArea.top + 12 }]}>
+        <View
+            style={[styles.container, { paddingTop: safeArea.top + (desktopDensity ? 4 : 12) }]}
+            testID={desktopDensity ? 'sidebar-desktop-density' : undefined}
+        >
             {/* User card — avatar opens the photo, camera changes it, the rest opens settings. */}
-            <View style={styles.userCard} testID="sidebar-user-card">
-                <ProfileAvatarControl profile={profile} size={40} />
+            <View style={[styles.userCard, desktopDensity && styles.userCardDesktop]} testID="sidebar-user-card">
+                <ProfileAvatarControl profile={profile} size={desktopDensity ? 32 : 40} />
                 <Pressable
                     onPress={() => go('/settings')}
                     style={({ pressed }) => [
                         styles.userInfoButton,
+                        desktopDensity && styles.userInfoButtonDesktop,
                         pressed && styles.userInfoButtonPressed,
                     ]}
                 >
@@ -257,7 +299,10 @@ export const SidebarView = React.memo(({
             </View>
 
             {/* Messages / friends (formerly the Inbox tab) */}
-            <Pressable onPress={() => go('/inbox')} style={styles.messagesRow}>
+            <Pressable
+                onPress={() => go('/inbox')}
+                style={[styles.messagesRow, desktopDensity && styles.messagesRowDesktop]}
+            >
                 <Ionicons name="chatbubble-ellipses-outline" size={17} color={stylesheet.messagesText.color} />
                 <Text style={styles.messagesText}>{t('tabs.inbox')}</Text>
                 {friendRequests.length > 0 && (
@@ -273,6 +318,7 @@ export const SidebarView = React.memo(({
                 testID="sidebar-new-session-button"
                 style={({ pressed }) => [
                     styles.newSessionButton,
+                    desktopDensity && styles.newSessionButtonDesktop,
                     pressed && styles.newSessionButtonPressed,
                 ]}
             >
@@ -285,6 +331,7 @@ export const SidebarView = React.memo(({
                 onPress={() => (agents.length > 0 ? setSheetOpen(true) : go('/settings/my-agents'))}
                 style={({ pressed }) => [
                     styles.agentsCard,
+                    desktopDensity && styles.agentsCardDesktop,
                     pressed && styles.agentsCardPressed,
                 ]}
             >
@@ -299,7 +346,7 @@ export const SidebarView = React.memo(({
                         <Text style={styles.agentsAddText}>{t('agents.add')}</Text>
                     </Pressable>
                 </View>
-                {agents.length > 0 ? (
+                {!desktopDensity && agents.length > 0 ? (
                     <View style={styles.agentsAvatars}>
                         {agents.slice(0, 5).map((agent) => (
                             <View key={agent.id} style={[styles.agentMiniAvatar, { backgroundColor: agent.color }]}>
@@ -307,9 +354,9 @@ export const SidebarView = React.memo(({
                             </View>
                         ))}
                     </View>
-                ) : (
+                ) : !desktopDensity ? (
                     <Text style={styles.agentsEmpty} numberOfLines={1}>{t('agents.empty')}</Text>
-                )}
+                ) : null}
             </Pressable>
 
             {/* Search history sessions */}
@@ -317,6 +364,7 @@ export const SidebarView = React.memo(({
                 onPress={() => go('/session/search')}
                 style={({ pressed }) => [
                     styles.newSessionButton,
+                    desktopDensity && styles.newSessionButtonDesktop,
                     pressed && styles.newSessionButtonPressed,
                 ]}
             >

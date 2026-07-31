@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     getDesktopSidebarWidth,
+    getDesktopRightPanelWidth,
     getPersistentHeaderPointerEvents,
     getPersistentHeaderContentInset,
     getPersistentNavigationControlsWidth,
@@ -14,6 +15,15 @@ describe('desktopNavigationLayout', () => {
         { width: 1600, expected: 360 },
     ])('calculates the desktop sidebar width at $width px', ({ width, expected }) => {
         expect(getDesktopSidebarWidth(width)).toBe(expected);
+    });
+
+    it.each([
+        { width: 1099, expected: 0 },
+        { width: 1100, expected: 280 },
+        { width: 1280, expected: 307 },
+        { width: 1500, expected: 360 },
+    ])('calculates a compact desktop right panel width at $width px', ({ width, expected }) => {
+        expect(getDesktopRightPanelWidth(width)).toBe(expected);
     });
 
     it('calculates the rendered controls width from the real button geometry', () => {
@@ -55,6 +65,18 @@ describe('desktopNavigationLayout', () => {
             buttonCount: 3,
             targetHitSlop: 8,
         })).toBe(114);
+    });
+
+    it('uses the exact width for labeled desktop controls', () => {
+        expect(getPersistentHeaderContentInset({
+            windowWidth: 1280,
+            headerMaxWidth: Number.POSITIVE_INFINITY,
+            headerHorizontalPadding: 16,
+            sidebarVisible: false,
+            buttonCount: 3,
+            controlsWidth: 236,
+            targetHitSlop: 8,
+        })).toBe(258);
     });
 
     it('reserves navigation space when the desktop file panel narrows the session header', () => {

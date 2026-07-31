@@ -3,11 +3,10 @@ import * as React from 'react';
 import { Drawer } from 'expo-router/drawer';
 import { useIsTablet, useHeaderHeight } from '@/utils/responsive';
 import { SidebarView } from './SidebarView';
-import { useWindowDimensions, View, Pressable, Platform, BackHandler } from 'react-native';
+import { useWindowDimensions, View, Pressable, Platform, BackHandler, Text } from 'react-native';
 import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -19,6 +18,7 @@ import { useSessionSelection } from '@/hooks/useSessionSelection';
 import {
     getDesktopSidebarWidth,
     getPersistentHeaderPointerEvents,
+    PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
 } from '@/utils/desktopNavigationLayout';
 
@@ -27,10 +27,11 @@ export const SidebarNavigator = React.memo(() => {
     const isTablet = useIsTablet();
     const { theme } = useUnistyles();
     const zenMode = useLocalSetting('zenMode');
+    const desktopLeftSidebarCollapsed = useLocalSetting('desktopLeftSidebarCollapsed');
     const selectionMode = useSessionSelection((s) => s.active);
     const clearSelection = useSessionSelection((s) => s.clearSelection);
     const isDesktopLayout = auth.isAuthenticated && isTablet;
-    const showSidebar = isDesktopLayout && !zenMode;
+    const showSidebar = isDesktopLayout && !zenMode && !desktopLeftSidebarCollapsed;
     const { width: windowWidth } = useWindowDimensions();
 
     // Calculate target drawer width
@@ -124,7 +125,12 @@ export const SidebarNavigator = React.memo(() => {
     }, [isDesktopLayout, drawerWidth, windowWidth, auth.isAuthenticated, fullDrawerWidth, selectionMode, theme.colors.surface]);
 
     const drawerContent = React.useCallback(
-        () => <SidebarView closeDrawerOnNavigate={!isDesktopLayout} />,
+        () => (
+            <SidebarView
+                closeDrawerOnNavigate={!isDesktopLayout}
+                desktopDensity={isDesktopLayout}
+            />
+        ),
         [isDesktopLayout]
     );
 
@@ -150,6 +156,7 @@ const PersistentHeader = React.memo(() => {
     const router = useRouter();
     const { width: windowWidth } = useWindowDimensions();
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
+    const [desktopLeftSidebarCollapsed, setDesktopLeftSidebarCollapsed] = useLocalSettingMutable('desktopLeftSidebarCollapsed');
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
 
@@ -166,6 +173,9 @@ const PersistentHeader = React.memo(() => {
     const handleZenToggle = React.useCallback(() => {
         setZenMode(!zenMode);
     }, [zenMode, setZenMode]);
+    const handleSidebarToggle = React.useCallback(() => {
+        setDesktopLeftSidebarCollapsed(!desktopLeftSidebarCollapsed);
+    }, [desktopLeftSidebarCollapsed, setDesktopLeftSidebarCollapsed]);
 
     const handleBack = React.useCallback(() => {
         // Intra-session overlay (file diff / file view) consumes back first,
@@ -195,7 +205,8 @@ const PersistentHeader = React.memo(() => {
 
     const canGoBackEffective = canGoBack || overlayCanBack;
     const canGoForwardEffective = canGoForward || overlayCanForward;
-    const sidebarWidth = zenMode ? 0 : getDesktopSidebarWidth(windowWidth);
+    const sidebarVisible = !zenMode && !desktopLeftSidebarCollapsed;
+    const sidebarWidth = sidebarVisible ? getDesktopSidebarWidth(windowWidth) : 0;
 
     return (
         <View
@@ -221,27 +232,92 @@ const PersistentHeader = React.memo(() => {
             }}
             {...(inTauri ? { dataSet: { tauriDragRegion: 'true' } } : {})}
         >
-            {/* Zen / Back / Forward buttons */}
+            {/* Sidebar / Zen / Back / Forward buttons */}
             <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, pointerEvents: 'auto' }}
+                style={{
+                    width: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    pointerEvents: 'auto',
+                }}
                 testID="desktop-navigation-controls"
                 {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
             >
                 <Pressable
+                    onPress={handleSidebarToggle}
+                    hitSlop={8}
+                    style={({ pressed }) => ({
+                        width: 70,
+                        height: 30,
+                        paddingHorizontal: 8,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 5,
+                        borderRadius: 9,
+                        borderWidth: 1,
+                        borderColor: theme.colors.divider,
+                        backgroundColor: sidebarVisible ? theme.colors.surfacePressed : theme.colors.surface,
+                        opacity: pressed ? 0.7 : 1,
+                    })}
+                    accessibilityLabel={t('sidebar.sessionsTitle')}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: sidebarVisible }}
+                    testID="desktop-navigation-sidebar-button"
+                >
+                    <Ionicons
+                        name={sidebarVisible ? 'chevron-back' : 'albums-outline'}
+                        size={16}
+                        color={theme.colors.header.tint}
+                    />
+                    <Text
+                        numberOfLines={1}
+                        style={{ color: theme.colors.header.tint, fontSize: 12, fontWeight: '600' }}
+                    >
+                        {t('sidebar.sessionsTitle')}
+                    </Text>
+                </Pressable>
+                <Pressable
                     onPress={handleZenToggle}
-                    hitSlop={10}
-                    style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
+                    hitSlop={8}
+                    style={({ pressed }) => ({
+                        width: 98,
+                        height: 30,
+                        paddingHorizontal: 8,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        borderRadius: 9,
+                        borderWidth: 1,
+                        borderColor: zenMode ? theme.colors.textLink : theme.colors.divider,
+                        backgroundColor: zenMode ? theme.colors.surfacePressed : theme.colors.surface,
+                        opacity: pressed ? 0.7 : 1,
+                    })}
                     accessibilityLabel={t('zen.toggle')}
                     accessibilityRole="button"
                     accessibilityState={{ selected: zenMode }}
                     testID="desktop-navigation-zen-button"
                 >
-                    <Image
-                        source={require('@/assets/images/zen-icon.png')}
-                        contentFit="contain"
-                        style={{ width: 18, height: 18 }}
-                        tintColor={zenMode ? theme.colors.textLink : theme.colors.header.tint}
+                    <Ionicons
+                        name="leaf-outline"
+                        size={17}
+                        color={zenMode ? theme.colors.textLink : theme.colors.header.tint}
                     />
+                    <Text
+                        numberOfLines={1}
+                        style={{
+                            color: zenMode ? theme.colors.textLink : theme.colors.header.tint,
+                            fontSize: 12,
+                            fontWeight: '600',
+                        }}
+                    >
+                        {t('zen.toggle')}
+                    </Text>
+                    {zenMode && (
+                        <Ionicons name="close-circle" size={14} color={theme.colors.textLink} />
+                    )}
                 </Pressable>
                 <Pressable
                     onPress={handleBack}
