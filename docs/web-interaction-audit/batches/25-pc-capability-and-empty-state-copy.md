@@ -54,4 +54,4 @@ Visible UI cases: 2
 - Happy App typecheck：passed
 - `git diff --check`：passed
 - 独立回归：PC-010、PC-011 均为“已修复”，路径内新增回归 0；2 个可见 Case 对应 2 组独立前后证据
-- 实际 PR 证据检查：待创建 PR 后执行
+- 实际 PR 证据检查：[PR #244](https://github.com/wangjs-jacky/happy/pull/244) 声明 2 个可见 Case、嵌入 2 组独立 Before/After；独立验收确认 4 个 commit-SHA 图片链接均为 HTTP 200 / `image/png`
