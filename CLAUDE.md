@@ -71,6 +71,18 @@ git push -u origin <branch-name>
 gh pr create --repo wangjs-jacky/happy --base main --head <branch-name>
 ```
 
+### PC/UI PR 可视证据门
+
+只要 PR 包含用户可见的 PC Web、布局、图标、状态或交互变化，合并前必须让 PR 正文自身携带逐 Case 证据：
+
+1. 声明 `Visible UI cases: N`。
+2. 用 `Case ID → 问题 → 修复前 → 修复后` 矩阵逐项嵌入图片；每个可见 Case 一组，整页总览或 contact sheet 不得重复代替多组证据。
+3. `N` 必须同时等于矩阵中的可见 Case 数和独立前后截图组数。纯逻辑或不可见后台 Case 不进入 `N`，共享证据必须在表内说明理由。
+4. 图片使用不可变 commit SHA 的仓库 URL 或 GitHub 上传附件，不得引用合并后会删除的功能分支。PR 创建或更新后必须打开实际 PR，确认每张图片能够渲染。
+5. 独立验收 Agent 必须评审实际 PR 正文。缺图、错配、重复占位、失效链接或只在聊天/本地报告中存在时，即使测试和 CI 全绿也不得合并。
+
+使用根目录 [`.github/pull_request_template.md`](.github/pull_request_template.md) 的 Visual evidence 区块，不要在 `gh pr create --body` 时删掉该区块。非视觉 PR 填 `Visible UI cases: 0` 并说明原因。
+
 ## 四、Worktree 开发流程（隔离开发，推荐）
 
 需要在不打断当前工作区的前提下并行开发时，用 git worktree。约定如下（与全局 `~/.claude/CLAUDE.md` 一致）：
