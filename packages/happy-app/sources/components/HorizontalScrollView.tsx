@@ -3,13 +3,20 @@ import { Platform, ScrollView, ScrollViewProps } from 'react-native';
 
 // Gesture-locked horizontal wheel scroll.
 //
-// The first wheel event of a trackpad gesture decides the axis: if horizontal
-// movement clearly dominates (|deltaX| > |deltaY| * 2, min 3px) we lock to
-// horizontal and drive scrollLeft ourselves; otherwise we lock to vertical and
-// let every subsequent event pass through to the page. The lock resets after
-// 150ms of idle (gesture ended). This avoids the two failure modes of pure
-// per-event detection: slow vertical scrolls leaking tiny deltaX that gets
-// misclassified, and fast diagonal swipes flickering between axes.
+// Trackpad swipes ramp up from 1-2px deltas, so deciding the axis solely on
+// the first event of a gesture misclassifies nearly every real horizontal
+// swipe as vertical (and momentum-tail events keep re-arming the stale lock).
+// Instead the lock is asymmetric: 'h' is sticky until 150ms of idle, while
+// 'v' is soft — any clearly horizontal event (|deltaX| > |deltaY|, min 2px)
+// upgrades the gesture to 'h' mid-flight. Vertical scrolls with 1px deltaX
+// noise stay vertical, and a purely vertical event during an 'h' lock is
+// passed back to the outer list so chat scrolling never goes dead.
+//
+// Events we don't consume bubble up to the inverted chat list, whose
+// react-native-web wheel handler swallows them unless a nested horizontal
+// scroller can take them natively (see
+// patches/fix-rnw-inverted-wheel-horizontal.cjs) — that native path also
+// covers sub-2px slow swipes that the lock ignores.
 //
 // Shift + wheel always converts vertical to horizontal (mouse wheel users).
 // At scroll boundaries the event passes through so the page can scroll.
@@ -40,14 +47,18 @@ function useHorizontalWheelScroll() {
             window.clearTimeout(gestureTimer);
             gestureTimer = window.setTimeout(() => { gestureAxis = null; }, 150);
 
-            // Decide axis on the first event of the gesture.
-            if (gestureAxis === null) {
-                const absX = Math.abs(e.deltaX);
-                const absY = Math.abs(e.deltaY);
-                gestureAxis = (absX > absY * 2 && absX > 3) ? 'h' : 'v';
+            // 'h' is sticky until idle; 'v' is soft and can upgrade mid-gesture.
+            const absX = Math.abs(e.deltaX);
+            const absY = Math.abs(e.deltaY);
+            if (gestureAxis !== 'h') {
+                if (absX > absY && absX >= 2) gestureAxis = 'h';
+                else if (gestureAxis === null) gestureAxis = 'v';
             }
 
             if (gestureAxis === 'v') return;
+
+            // 'h'-locked but purely vertical event: give it back to the list.
+            if (e.deltaX === 0 && absY > 0) return;
 
             // Horizontal-locked: scroll the element, unless at boundary.
             const atStart = el.scrollLeft <= 0 && e.deltaX < 0;
