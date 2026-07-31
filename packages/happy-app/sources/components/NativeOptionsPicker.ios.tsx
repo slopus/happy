@@ -10,11 +10,15 @@ import {
     Text,
 } from '@expo/ui/swift-ui';
 import {
+    accessibilityLabel,
+    contentShape,
     frame,
-    opacity,
+    foregroundColor,
+    shapes,
     tint,
 } from '@expo/ui/swift-ui/modifiers';
 import type { NativeOptionsPickerProps } from './NativeOptionsPicker';
+import { useDeferredNativeMenuAction } from './nativeMenuInteraction';
 
 const systemImage = (name: string) => (
     name as React.ComponentProps<typeof Image>['systemName']
@@ -25,12 +29,17 @@ const styles = StyleSheet.create({
         position: 'relative',
         width: '100%',
     },
+    trigger: {
+        width: '100%',
+        minWidth: 0,
+    },
     host: {
         ...StyleSheet.absoluteFillObject,
     },
 });
 
 export function NativeOptionsPicker({
+    title,
     triggerLabel,
     systemImage: triggerSystemImage,
     options,
@@ -38,24 +47,33 @@ export function NativeOptionsPicker({
     onSelect,
     children,
 }: NativeOptionsPickerProps) {
+    const deferMenuAction = useDeferredNativeMenuAction();
+
     return (
         <View style={styles.container}>
-            <View pointerEvents="none">{children}</View>
-            <Host
-                colorScheme="dark"
-                style={styles.host}
+            <View
+                pointerEvents="none"
+                accessible={false}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={styles.trigger}
             >
+                {children}
+            </View>
+            <Host style={styles.host}>
                 <Menu
                     modifiers={[tint('#FFFFFF')]}
                     label={(
                         <HStack
                             modifiers={[
-                                frame({ maxWidth: 10000, minHeight: 42 }),
-                                opacity(0.01),
+                                frame({ maxWidth: 10000, maxHeight: 10000, minHeight: 42 }),
+                                contentShape(shapes.rectangle()),
+                                accessibilityLabel(`${title}: ${triggerLabel}`),
+                                foregroundColor('clear'),
                             ]}
                         >
                             {!!triggerSystemImage && <Image systemName={systemImage(triggerSystemImage)} />}
-                            <Text>{triggerLabel}</Text>
+                            <Text>{`${title}: ${triggerLabel}`}</Text>
                             <Spacer minLength={8} />
                         </HStack>
                     )}
@@ -65,7 +83,7 @@ export function NativeOptionsPicker({
                             key={option.key}
                             label={option.label}
                             systemImage={option.key === selectedKey ? systemImage('checkmark') : undefined}
-                            onPress={() => onSelect(option.key)}
+                            onPress={() => deferMenuAction(() => onSelect(option.key))}
                         />
                     ))}
                 </Menu>
