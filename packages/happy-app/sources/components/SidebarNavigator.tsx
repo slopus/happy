@@ -3,13 +3,12 @@ import * as React from 'react';
 import { Drawer } from 'expo-router/drawer';
 import { useIsTablet, useHeaderHeight } from '@/utils/responsive';
 import { SidebarView } from './SidebarView';
-import { useWindowDimensions, View, Pressable, Platform, BackHandler } from 'react-native';
+import { useWindowDimensions, View, Pressable, Platform, BackHandler, Text } from 'react-native';
 import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { isTauri } from '@/utils/isTauri';
 import { useOverlayNav } from '@/-session/sessionOverlayNav';
@@ -19,6 +18,9 @@ import { useSessionSelection } from '@/hooks/useSessionSelection';
 import {
     getDesktopSidebarWidth,
     getPersistentHeaderPointerEvents,
+    PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+    PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH,
+    PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
 } from '@/utils/desktopNavigationLayout';
 
@@ -27,10 +29,11 @@ export const SidebarNavigator = React.memo(() => {
     const isTablet = useIsTablet();
     const { theme } = useUnistyles();
     const zenMode = useLocalSetting('zenMode');
+    const desktopLeftSidebarCollapsed = useLocalSetting('desktopLeftSidebarCollapsed');
     const selectionMode = useSessionSelection((s) => s.active);
     const clearSelection = useSessionSelection((s) => s.clearSelection);
     const isDesktopLayout = auth.isAuthenticated && isTablet;
-    const showSidebar = isDesktopLayout && !zenMode;
+    const showSidebar = isDesktopLayout && !zenMode && !desktopLeftSidebarCollapsed;
     const { width: windowWidth } = useWindowDimensions();
 
     // Calculate target drawer width
@@ -124,8 +127,23 @@ export const SidebarNavigator = React.memo(() => {
     }, [isDesktopLayout, drawerWidth, windowWidth, auth.isAuthenticated, fullDrawerWidth, selectionMode, theme.colors.surface]);
 
     const drawerContent = React.useCallback(
-        () => <SidebarView closeDrawerOnNavigate={!isDesktopLayout} />,
-        [isDesktopLayout]
+        () => (
+            <View
+                aria-hidden={isDesktopLayout && !showSidebar}
+                accessibilityElementsHidden={isDesktopLayout && !showSidebar}
+                importantForAccessibility={isDesktopLayout && !showSidebar ? 'no-hide-descendants' : 'auto'}
+                style={[
+                    styles.drawerContent,
+                    isDesktopLayout && !showSidebar && styles.drawerContentHidden,
+                ]}
+            >
+                <SidebarView
+                    closeDrawerOnNavigate={!isDesktopLayout}
+                    desktopDensity={isDesktopLayout}
+                />
+            </View>
+        ),
+        [isDesktopLayout, showSidebar]
     );
 
     return (
@@ -150,6 +168,7 @@ const PersistentHeader = React.memo(() => {
     const router = useRouter();
     const { width: windowWidth } = useWindowDimensions();
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
+    const [desktopLeftSidebarCollapsed, setDesktopLeftSidebarCollapsed] = useLocalSettingMutable('desktopLeftSidebarCollapsed');
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
 
@@ -166,6 +185,9 @@ const PersistentHeader = React.memo(() => {
     const handleZenToggle = React.useCallback(() => {
         setZenMode(!zenMode);
     }, [zenMode, setZenMode]);
+    const handleSidebarToggle = React.useCallback(() => {
+        setDesktopLeftSidebarCollapsed(!desktopLeftSidebarCollapsed);
+    }, [desktopLeftSidebarCollapsed, setDesktopLeftSidebarCollapsed]);
 
     const handleBack = React.useCallback(() => {
         // Intra-session overlay (file diff / file view) consumes back first,
@@ -195,7 +217,11 @@ const PersistentHeader = React.memo(() => {
 
     const canGoBackEffective = canGoBack || overlayCanBack;
     const canGoForwardEffective = canGoForward || overlayCanForward;
-    const sidebarWidth = zenMode ? 0 : getDesktopSidebarWidth(windowWidth);
+    const sidebarVisible = !zenMode && !desktopLeftSidebarCollapsed;
+    const sidebarWidth = sidebarVisible ? getDesktopSidebarWidth(windowWidth) : 0;
+    const sidebarToggleLabel = sidebarVisible
+        ? t('desktopWorkspace.hideSessions')
+        : t('desktopWorkspace.showSessions');
 
     return (
         <View
@@ -221,39 +247,83 @@ const PersistentHeader = React.memo(() => {
             }}
             {...(inTauri ? { dataSet: { tauriDragRegion: 'true' } } : {})}
         >
-            {/* Zen / Back / Forward buttons */}
+            {/* Sidebar / Zen / Back / Forward buttons */}
             <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, pointerEvents: 'auto' }}
+                style={styles.navigationControls}
                 testID="desktop-navigation-controls"
                 {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
             >
                 <Pressable
+                    onPress={handleSidebarToggle}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                        styles.sidebarToggle,
+                        sidebarVisible && styles.toggleSelected,
+                        pressed && styles.togglePressed,
+                    ]}
+                    aria-expanded={sidebarVisible}
+                    accessibilityLabel={sidebarToggleLabel}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: sidebarVisible }}
+                    testID="desktop-navigation-sidebar-button"
+                >
+                    <Ionicons
+                        name={sidebarVisible ? 'chevron-back' : 'albums-outline'}
+                        size={16}
+                        color={theme.colors.header.tint}
+                    />
+                    <Text
+                        numberOfLines={1}
+                        style={styles.sidebarToggleText}
+                    >
+                        {t('desktopWorkspace.sessions')}
+                    </Text>
+                </Pressable>
+                <Pressable
                     onPress={handleZenToggle}
-                    hitSlop={10}
-                    style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                        styles.zenToggle,
+                        zenMode && styles.zenToggleSelected,
+                        pressed && styles.togglePressed,
+                    ]}
+                    aria-selected={zenMode}
                     accessibilityLabel={t('zen.toggle')}
                     accessibilityRole="button"
                     accessibilityState={{ selected: zenMode }}
                     testID="desktop-navigation-zen-button"
                 >
-                    <Image
-                        source={require('@/assets/images/zen-icon.png')}
-                        contentFit="contain"
-                        style={{ width: 18, height: 18 }}
-                        tintColor={zenMode ? theme.colors.textLink : theme.colors.header.tint}
+                    <Ionicons
+                        name="leaf-outline"
+                        size={17}
+                        color={zenMode ? theme.colors.textLink : theme.colors.header.tint}
                     />
+                    <Text
+                        numberOfLines={1}
+                        style={[styles.zenToggleText, zenMode && styles.zenToggleTextSelected]}
+                    >
+                        {t('zen.toggle')}
+                    </Text>
+                    {zenMode && (
+                        <Ionicons name="close-circle" size={14} color={theme.colors.textLink} />
+                    )}
                 </Pressable>
                 <Pressable
                     onPress={handleBack}
                     disabled={!canGoBackEffective}
                     hitSlop={10}
-                    style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBackEffective ? 1 : 0.3 }}
+                    style={[styles.historyButton, !canGoBackEffective && styles.historyButtonDisabled]}
                     testID="desktop-navigation-back-button"
                 >
                     <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
                 </Pressable>
                 {Platform.OS === 'web' && (
-                    <Pressable onPress={handleForward} disabled={!canGoForwardEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoForwardEffective ? 1 : 0.3 }}>
+                    <Pressable
+                        onPress={handleForward}
+                        disabled={!canGoForwardEffective}
+                        hitSlop={10}
+                        style={[styles.historyButton, !canGoForwardEffective && styles.historyButtonDisabled]}
+                    >
                         <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />
                     </Pressable>
                 )}
@@ -261,3 +331,77 @@ const PersistentHeader = React.memo(() => {
         </View>
     );
 });
+
+const styles = StyleSheet.create((theme) => ({
+    drawerContent: {
+        flex: 1,
+    },
+    drawerContentHidden: {
+        display: 'none',
+    },
+    navigationControls: {
+        width: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        pointerEvents: 'auto',
+    },
+    sidebarToggle: {
+        width: PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH,
+        height: 30,
+        paddingHorizontal: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 5,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surface,
+    },
+    toggleSelected: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    togglePressed: {
+        opacity: 0.7,
+    },
+    sidebarToggleText: {
+        color: theme.colors.header.tint,
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    zenToggle: {
+        width: PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH,
+        height: 30,
+        paddingHorizontal: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surface,
+    },
+    zenToggleSelected: {
+        borderColor: theme.colors.textLink,
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    zenToggleText: {
+        color: theme.colors.header.tint,
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    zenToggleTextSelected: {
+        color: theme.colors.textLink,
+    },
+    historyButton: {
+        width: 28,
+        height: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    historyButtonDisabled: {
+        opacity: 0.3,
+    },
+}));

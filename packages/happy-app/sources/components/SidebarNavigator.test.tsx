@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
     isTablet: true,
     clearSelection: vi.fn(),
     setZenMode: vi.fn(),
+    setDesktopLeftSidebarCollapsed: vi.fn(),
+    zenMode: false,
+    desktopLeftSidebarCollapsed: false,
 }));
 
 vi.mock('@/auth/AuthContext', () => ({
@@ -29,14 +32,9 @@ vi.mock('expo-router', () => ({
     }),
 }));
 vi.mock('react-native', async () => {
-    const React = await import('react');
     return {
-        // 只渲染导航器根 View 的第一个子节点 Drawer，隔离与本测试无关的 PersistentHeader。
-        View: ({ children, ...props }: { children?: React.ReactNode }) => React.createElement(
-            'View',
-            props,
-            Array.isArray(children) ? children[0] : children,
-        ),
+        View: 'View',
+        Text: 'Text',
         Pressable: 'Pressable',
         Platform: { OS: 'web' },
         BackHandler: { addEventListener: vi.fn() },
@@ -44,8 +42,14 @@ vi.mock('react-native', async () => {
     };
 });
 vi.mock('@/sync/storage', () => ({
-    useLocalSetting: () => false,
-    useLocalSettingMutable: () => [false, mocks.setZenMode],
+    useLocalSetting: (key: string) => key === 'zenMode'
+        ? mocks.zenMode
+        : key === 'desktopLeftSidebarCollapsed'
+            ? mocks.desktopLeftSidebarCollapsed
+            : false,
+    useLocalSettingMutable: (key: string) => key === 'zenMode'
+        ? [mocks.zenMode, mocks.setZenMode]
+        : [mocks.desktopLeftSidebarCollapsed, mocks.setDesktopLeftSidebarCollapsed],
 }));
 vi.mock('react-native-safe-area-context', () => ({
     useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -57,11 +61,26 @@ vi.mock('react-native-unistyles', () => ({
         theme: {
             colors: {
                 surface: '#111',
+                surfacePressed: '#222',
+                divider: '#333',
+                header: { tint: '#fff' },
+                textLink: '#88f',
                 text: '#fff',
                 textSecondary: '#aaa',
             },
         },
     }),
+    StyleSheet: {
+        create: (factory: any) => factory({
+            colors: {
+                surface: '#111',
+                surfacePressed: '#222',
+                divider: '#333',
+                header: { tint: '#fff' },
+                textLink: '#88f',
+            },
+        }),
+    },
 }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/utils/isTauri', () => ({ isTauri: () => false }));
@@ -110,6 +129,8 @@ describe('SidebarNavigator drawer behavior', () => {
 
     beforeEach(() => {
         mocks.isTablet = true;
+        mocks.zenMode = false;
+        mocks.desktopLeftSidebarCollapsed = false;
         vi.clearAllMocks();
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
@@ -132,8 +153,74 @@ describe('SidebarNavigator drawer behavior', () => {
         });
 
         const drawer = renderer.root.findByType('Drawer');
-        const sidebar = drawer.props.drawerContent();
+        const sidebar = drawer.props.drawerContent().props.children;
         expect(sidebar.props.closeDrawerOnNavigate).toBe(expected);
+        expect(sidebar.props.desktopDensity).toBe(isTablet);
+        act(() => renderer.unmount());
+    });
+
+    it('collapses the desktop sidebar without changing Zen mode', () => {
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<SidebarNavigator />);
+        });
+
+        const drawer = renderer.root.findByType('Drawer');
+        expect(drawer.props.screenOptions.drawerStyle.width).toBe(360);
+        const sidebarToggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
+        expect(sidebarToggle.props['aria-expanded']).toBe(true);
+        expect(sidebarToggle.props.accessibilityState).toEqual({ expanded: true });
+        expect(sidebarToggle.props.accessibilityLabel).toBe('desktopWorkspace.hideSessions');
+        expect(sidebarToggle.findAllByType('Text').some(
+            (node: any) => node.props.children === 'desktopWorkspace.sessions',
+        )).toBe(true);
+
+        act(() => sidebarToggle.props.onPress());
+        expect(mocks.setDesktopLeftSidebarCollapsed).toHaveBeenCalledWith(true);
+        expect(mocks.setZenMode).not.toHaveBeenCalled();
+
+        act(() => renderer.unmount());
+    });
+
+    it('removes a collapsed desktop sidebar from layout and the accessibility tree', () => {
+        mocks.desktopLeftSidebarCollapsed = true;
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<SidebarNavigator />);
+        });
+
+        const drawer = renderer.root.findByType('Drawer');
+        const drawerContent = drawer.props.drawerContent();
+        expect(drawer.props.screenOptions.drawerStyle.width).toBe(0);
+        expect(drawerContent.props['aria-hidden']).toBe(true);
+        expect(drawerContent.props.accessibilityElementsHidden).toBe(true);
+        expect(drawerContent.props.importantForAccessibility).toBe('no-hide-descendants');
+        expect(drawerContent.props.style).toContainEqual({ display: 'none' });
+
+        const sidebarToggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
+        expect(sidebarToggle.props['aria-expanded']).toBe(false);
+        expect(sidebarToggle.props.accessibilityLabel).toBe('desktopWorkspace.showSessions');
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps a visible labeled and selected Zen exit affordance', () => {
+        mocks.zenMode = true;
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<SidebarNavigator />);
+        });
+
+        const zenToggle = renderer.root.findByProps({ testID: 'desktop-navigation-zen-button' });
+        expect(zenToggle.props['aria-selected']).toBe(true);
+        expect(zenToggle.props.accessibilityState).toEqual({ selected: true });
+        expect(zenToggle.findAllByType('Text').some((node: any) => node.props.children === 'zen.toggle')).toBe(true);
+        expect(zenToggle.findAllByType('Ionicons').some((node: any) => node.props.name === 'close-circle')).toBe(true);
+
+        act(() => zenToggle.props.onPress());
+        expect(mocks.setZenMode).toHaveBeenCalledWith(false);
+        expect(mocks.setDesktopLeftSidebarCollapsed).not.toHaveBeenCalled();
+
         act(() => renderer.unmount());
     });
 });

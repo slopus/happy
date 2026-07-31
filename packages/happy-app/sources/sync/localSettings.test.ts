@@ -17,6 +17,32 @@ describe('localSettings hapticFeedbackEnabled', () => {
     });
 });
 
+describe('localSettings desktop workspace panels', () => {
+    it('keeps both desktop panels expanded by default', () => {
+        expect(localSettingsDefaults.desktopLeftSidebarCollapsed).toBe(false);
+        expect(localSettingsDefaults.desktopRightPanelCollapsed).toBe(false);
+    });
+
+    it('preserves independent collapse preferences when older data only has Zen mode', () => {
+        const parsed = localSettingsParse({ zenMode: true });
+
+        expect(parsed.zenMode).toBe(true);
+        expect(parsed.desktopLeftSidebarCollapsed).toBe(false);
+        expect(parsed.desktopRightPanelCollapsed).toBe(false);
+    });
+
+    it('restores independently stored panel preferences', () => {
+        const parsed = localSettingsParse({
+            zenMode: false,
+            desktopLeftSidebarCollapsed: true,
+            desktopRightPanelCollapsed: false,
+        });
+
+        expect(parsed.desktopLeftSidebarCollapsed).toBe(true);
+        expect(parsed.desktopRightPanelCollapsed).toBe(false);
+    });
+});
+
 describe('localSettings ask API config', () => {
     it('defaults to an unconfigured ask API', () => {
         expect(localSettingsDefaults.askApi).toEqual({

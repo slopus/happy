@@ -11,6 +11,19 @@ const mocks = vi.hoisted(() => ({
     dispatch: vi.fn(),
     exitSpace: vi.fn(),
     navigate: vi.fn(),
+    spaceAgent: {
+        id: 'health',
+        name: 'Health',
+        glyph: 'H',
+        color: '#00aa66',
+        machineId: 'machine-1',
+        path: '~/health',
+        kind: 'standard',
+        spaceType: 'health',
+        imageStyleIds: [],
+        imageVariantsPerStyle: 1,
+        presets: [],
+    } as any,
 }));
 
 vi.mock('react-native', () => ({
@@ -63,19 +76,7 @@ vi.mock('./ProfileAvatarControl', () => ({ ProfileAvatarControl: 'ProfileAvatarC
 vi.mock('./agents/AgentSheet', () => ({ AgentSheet: 'AgentSheet' }));
 vi.mock('@/hooks/useAgentSpace', () => ({
     useAgentSpace: () => ({
-        agent: {
-            id: 'health',
-            name: 'Health',
-            glyph: 'H',
-            color: '#00aa66',
-            machineId: 'machine-1',
-            path: '~/health',
-            kind: 'standard',
-            spaceType: 'health',
-            imageStyleIds: [],
-            imageVariantsPerStyle: 1,
-            presets: [],
-        },
+        agent: mocks.spaceAgent,
         exit: mocks.exitSpace,
     }),
 }));
@@ -87,6 +88,19 @@ describe('SidebarView Agent space exit', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.spaceAgent = {
+            id: 'health',
+            name: 'Health',
+            glyph: 'H',
+            color: '#00aa66',
+            machineId: 'machine-1',
+            path: '~/health',
+            kind: 'standard',
+            spaceType: 'health',
+            imageStyleIds: [],
+            imageVariantsPerStyle: 1,
+            presets: [],
+        };
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
@@ -126,6 +140,43 @@ describe('SidebarView Agent space exit', () => {
         expect(mocks.exitSpace).toHaveBeenCalledOnce();
         expect(mocks.dispatch).not.toHaveBeenCalled();
         expect(mocks.navigate).toHaveBeenCalledWith('/');
+        act(() => renderer.unmount());
+    });
+
+    it('uses a compact desktop-only density and keeps the session list visible', () => {
+        mocks.spaceAgent = null;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(
+                <SidebarView closeDrawerOnNavigate={false} desktopDensity />,
+            );
+        });
+
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-desktop-density' })).toHaveLength(1);
+        expect(renderer.root.findByType('ProfileAvatarControl').props.size).toBe(32);
+        expect(renderer.root.findAllByType('MainView')).toHaveLength(1);
+        expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'agents.empty')).toBe(false);
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the roomier mobile sidebar layout unchanged', () => {
+        mocks.spaceAgent = null;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(
+                <SidebarView closeDrawerOnNavigate />,
+            );
+        });
+
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-desktop-density' })).toHaveLength(0);
+        expect(renderer.root.findByType('ProfileAvatarControl').props.size).toBe(40);
+        expect(renderer.root.findAllByType('Text').some(
+            (node: any) => node.props.children === 'agents.empty',
+        )).toBe(true);
+
         act(() => renderer.unmount());
     });
 });

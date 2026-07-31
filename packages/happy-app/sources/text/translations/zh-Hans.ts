@@ -50,6 +50,14 @@ export const zhHans: TranslationStructure = {
         kcalSuffix: ' 千卡',
         recentNightLabel: ({ date }: { date: string }) => `最近一晚 · ${date}`,
     },
+    desktopWorkspace: {
+        sessions: '会话',
+        showSessions: '展开会话侧栏',
+        hideSessions: '收起会话侧栏',
+        showPanel: ({ panel }: { panel: string }) => `展开${panel}`,
+        hidePanel: ({ panel }: { panel: string }) => `收起${panel}`,
+        hidePanelShort: '收起',
+    },
     composeHome: {
         greeting: ({ name }: { name: string }) => `嗨 ${name}，今天和 Paws 做点什么`,
         greetingNoName: '今天和 Paws 做点什么',

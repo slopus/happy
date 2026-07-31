@@ -59,6 +59,14 @@ export const pl: TranslationStructure = {
         kcalSuffix: ' kcal',
         recentNightLabel: ({ date }: { date: string }) => `Ostatnia noc · ${date}`,
     },
+    desktopWorkspace: {
+        sessions: 'Sesje',
+        showSessions: 'Pokaż panel boczny sesji',
+        hideSessions: 'Ukryj panel boczny sesji',
+        showPanel: ({ panel }: { panel: string }) => `Pokaż ${panel}`,
+        hidePanel: ({ panel }: { panel: string }) => `Ukryj ${panel}`,
+        hidePanelShort: 'Ukryj',
+    },
     composeHome: {
         greeting: ({ name }: { name: string }) => `Cześć ${name}, co dziś zrobimy?`,
         greetingNoName: 'Co dziś zrobimy?',

@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
     getDesktopSidebarWidth,
+    getDesktopRightPanelWidth,
+    getDesktopRightPanelPresentation,
+    isDesktopRightPanelAvailable,
     getPersistentHeaderPointerEvents,
     getPersistentHeaderContentInset,
     getPersistentNavigationControlsWidth,
+    PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
 } from './desktopNavigationLayout';
 
 describe('desktopNavigationLayout', () => {
@@ -15,6 +19,54 @@ describe('desktopNavigationLayout', () => {
     ])('calculates the desktop sidebar width at $width px', ({ width, expected }) => {
         expect(getDesktopSidebarWidth(width)).toBe(expected);
     });
+
+    it.each([
+        { width: 1099, expected: 0 },
+        { width: 1100, expected: 280 },
+        { width: 1280, expected: 307 },
+        { width: 1500, expected: 360 },
+    ])('calculates a compact desktop right panel width at $width px', ({ width, expected }) => {
+        expect(getDesktopRightPanelWidth(width)).toBe(expected);
+    });
+
+    it('only enables the persistent right panel for supported wide desktop layouts', () => {
+        expect(isDesktopRightPanelAvailable({
+            isTablet: true,
+            supportsPersistentPanel: true,
+            windowWidth: 1100,
+        })).toBe(true);
+        expect(isDesktopRightPanelAvailable({
+            isTablet: true,
+            supportsPersistentPanel: true,
+            windowWidth: 1099,
+        })).toBe(false);
+        expect(isDesktopRightPanelAvailable({
+            isTablet: false,
+            supportsPersistentPanel: true,
+            windowWidth: 1440,
+        })).toBe(false);
+        expect(isDesktopRightPanelAvailable({
+            isTablet: true,
+            supportsPersistentPanel: false,
+            windowWidth: 1440,
+        })).toBe(false);
+    });
+
+    it.each([
+        { available: false, collapsed: false, zenMode: false, expected: 'unavailable' },
+        { available: true, collapsed: false, zenMode: true, expected: 'zen' },
+        { available: true, collapsed: true, zenMode: false, expected: 'collapsed' },
+        { available: true, collapsed: false, zenMode: false, expected: 'expanded' },
+    ] as const)(
+        'resolves $expected for available=$available collapsed=$collapsed zenMode=$zenMode',
+        ({ available, collapsed, zenMode, expected }) => {
+            expect(getDesktopRightPanelPresentation({
+                available,
+                collapsed,
+                zenMode,
+            })).toBe(expected);
+        },
+    );
 
     it('calculates the rendered controls width from the real button geometry', () => {
         expect(getPersistentNavigationControlsWidth(3)).toBe(92);
@@ -55,6 +107,18 @@ describe('desktopNavigationLayout', () => {
             buttonCount: 3,
             targetHitSlop: 8,
         })).toBe(114);
+    });
+
+    it('uses the exact width for labeled desktop controls', () => {
+        expect(getPersistentHeaderContentInset({
+            windowWidth: 1280,
+            headerMaxWidth: Number.POSITIVE_INFINITY,
+            headerHorizontalPadding: 16,
+            sidebarVisible: false,
+            buttonCount: 3,
+            controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+            targetHitSlop: 8,
+        })).toBe(300);
     });
 
     it('reserves navigation space when the desktop file panel narrows the session header', () => {

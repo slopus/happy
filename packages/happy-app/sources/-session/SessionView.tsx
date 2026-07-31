@@ -6,6 +6,7 @@ import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { SessionHeaderChip } from '@/components/SessionHeaderChip';
 import { SessionInfoDropdown } from '@/components/SessionInfoDropdown';
+import { DesktopRightPanel, DesktopRightPanelRestoreButton } from '@/components/DesktopRightPanel';
 import { RightSwipePanelHost } from '@/components/RightSwipePanelHost';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
@@ -25,14 +26,21 @@ import {
 import { ScreenshotGalleryDrawer } from '@/components/ScreenshotGalleryDrawer';
 import { imageViewer } from '@/sync/imageViewer';
 import { Modal } from '@/modal';
-import { storage, useIsDataReady, useLocalSetting, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { getPersistentHeaderContentInset, TAURI_HEADER_CONTROL_LEFT } from '@/utils/desktopNavigationLayout';
+import {
+    getPersistentHeaderContentInset,
+    getDesktopRightPanelWidth,
+    getDesktopRightPanelPresentation,
+    isDesktopRightPanelAvailable,
+    PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+    TAURI_HEADER_CONTROL_LEFT,
+} from '@/utils/desktopNavigationLayout';
 import { isTauri } from '@/utils/isTauri';
 import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
 import { AllFilesDiffView } from '@/components/AllFilesDiffView';
@@ -55,7 +63,7 @@ import { useMemo } from 'react';
 import { ActivityIndicator, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 // Agent display labels for the header chip. Mirrors ComposeHome's map, but keyed
 // off the running session's `flavor` (an active session reports its agent there).
@@ -87,18 +95,27 @@ export const SessionView = React.memo((props: { id: string }) => {
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
+    const desktopLeftSidebarCollapsed = useLocalSetting('desktopLeftSidebarCollapsed');
+    const [desktopRightPanelCollapsed, setDesktopRightPanelCollapsed] = useLocalSettingMutable('desktopRightPanelCollapsed');
     const sessionComposerHandleRef = React.useRef<ChatComposerHandle | null>(null);
 
-    // Base condition: can we show the diff sidebar at all?
-    const canShowSidebar = fileDiffsSidebarEnabled
-        && (isRunningOnMac() || Platform.OS === 'web')
-        && windowWidth >= SIDEBAR_MIN_WINDOW_WIDTH
-        && isDataReady && !!session;
-
-    const showSidebar = canShowSidebar && !zenMode;
+    // The capability hub is a first-class desktop panel. File browsing is an
+    // optional mode inside that same panel instead of a separate fourth column.
+    const desktopRightPanelAvailable = isDesktopRightPanelAvailable({
+        isTablet,
+        supportsPersistentPanel: isRunningOnMac() || Platform.OS === 'web',
+        windowWidth,
+    }) && isDataReady && !!session;
+    const canShowFilePanel = desktopRightPanelAvailable && fileDiffsSidebarEnabled;
+    const desktopRightPanelPresentation = getDesktopRightPanelPresentation({
+        available: desktopRightPanelAvailable,
+        collapsed: desktopRightPanelCollapsed,
+        zenMode,
+    });
+    const showDesktopRightPanel = desktopRightPanelPresentation === 'expanded';
 
     // Match left sidebar width: 30% of window, clamped to 250–360px
-    const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
+    const rightPanelWidth = getDesktopRightPanelWidth(windowWidth);
 
     // Animate diff sidebar width.
     //
@@ -108,20 +125,26 @@ export const SessionView = React.memo((props: { id: string }) => {
     // grinds to ~15fps on dev builds. Snapping skips the layout thrash —
     // the chat reflows once instead of 60 times. Native keeps the smooth
     // animation because it runs on Reanimated's UI thread.
-    const sidebarAnim = useSharedValue(showSidebar ? 1 : 0);
+    const rightPanelAnim = useSharedValue(showDesktopRightPanel ? 1 : 0);
     React.useEffect(() => {
-        sidebarAnim.value = withTiming(showSidebar ? 1 : 0, {
+        rightPanelAnim.value = withTiming(showDesktopRightPanel ? 1 : 0, {
             duration: Platform.OS === 'web' ? 0 : 250,
             easing: Easing.out(Easing.cubic),
         });
-    }, [showSidebar]);
-    const animatedSidebarStyle = useAnimatedStyle(() => ({
-        width: sidebarAnim.value * sidebarWidth,
-        opacity: sidebarAnim.value,
+    }, [showDesktopRightPanel]);
+    const animatedRightPanelStyle = useAnimatedStyle(() => ({
+        width: rightPanelAnim.value * rightPanelWidth,
+        opacity: rightPanelAnim.value,
         overflow: 'hidden' as const,
     }));
 
     const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
+    const [desktopPanelMode, setDesktopPanelMode] = React.useState<'capabilities' | 'files'>('capabilities');
+    React.useEffect(() => {
+        if (!canShowFilePanel && desktopPanelMode === 'files') {
+            setDesktopPanelMode('capabilities');
+        }
+    }, [canShowFilePanel, desktopPanelMode]);
 
     // Overlay state is managed as a browser-style history stack so the
     // sidebar's back / forward arrows can navigate between chat ↔ diff ↔ file
@@ -158,10 +181,10 @@ export const SessionView = React.memo((props: { id: string }) => {
     // When sidebar capability is lost (screen too narrow, disabled), close views.
     // Don't close on zen mode toggle — keep the view visible.
     React.useEffect(() => {
-        if (!canShowSidebar) {
+        if (!canShowFilePanel) {
             setOverlayHistory({ stack: [{ kind: 'none' }], cursor: 0 });
         }
-    }, [canShowSidebar]);
+    }, [canShowFilePanel]);
 
     // Right-side header content published by the active overlay (diff toggle / save button).
     const [headerRightSlot, setHeaderRightSlot] = React.useState<React.ReactNode>(null);
@@ -276,26 +299,57 @@ export const SessionView = React.memo((props: { id: string }) => {
         </View>
     ) : undefined;
 
-    // New-session button on the header's right edge. Returns to the particle
-    // home (ComposeHome) to start a fresh session — not the older /new composer.
-    // A Kimi-style "new chat" bubble+plus glyph. Hidden while a file / diff
-    // overlay owns the right slot.
+    const desktopPanelLabel = desktopPanelMode === 'files' && canShowFilePanel
+        ? t('common.files')
+        : t('rightPanelCapabilityHub.title');
+    const rightPanelRestoreButton = desktopRightPanelPresentation === 'collapsed' ? (
+        <DesktopRightPanelRestoreButton
+            label={t('desktopWorkspace.showPanel', { panel: desktopPanelLabel })}
+            onPress={() => setDesktopRightPanelCollapsed(false)}
+        />
+    ) : null;
+
+    // Match the permanent sidebar's explicit /new destination and visible label.
+    // The text makes the isolated top-right action understandable before click.
     const newSessionButton = (
-        <Pressable onPress={() => router.navigate('/')} hitSlop={12} style={{ paddingHorizontal: 6, paddingVertical: 4 }}>
+        <Pressable
+            accessibilityLabel={t('sidebar.newSession')}
+            accessibilityRole="button"
+            onPress={() => router.navigate('/new')}
+            hitSlop={10}
+            style={workspaceStyles.headerAction}
+            testID="session-header-new-session-button"
+        >
             <MaterialCommunityIcons name="message-plus-outline" size={23} color={theme.colors.header.tint} />
+            <Text style={workspaceStyles.headerActionText}>
+                {t('sidebar.newSession')}
+            </Text>
         </Pressable>
+    );
+    const defaultHeaderRightSlot = (
+        <View style={workspaceStyles.headerActions}>
+            {rightPanelRestoreButton}
+            {spaceAgent ? exitSpaceButton : newSessionButton}
+        </View>
+    );
+    const overlayHeaderRightSlot = (
+        <View style={workspaceStyles.headerActions}>
+            {rightPanelRestoreButton}
+            {headerRightSlot}
+        </View>
     );
     const persistentHeaderContentInset = isTablet
         ? getPersistentHeaderContentInset({
             windowWidth,
             headerMaxWidth: layout.headerMaxWidth,
             headerHorizontalPadding: Platform.OS === 'ios' ? 8 : 16,
-            sidebarVisible: !zenMode,
-            rightPanelWidth: showSidebar ? sidebarWidth : 0,
+            sidebarVisible: !zenMode && !desktopLeftSidebarCollapsed,
+            rightPanelWidth: showDesktopRightPanel ? rightPanelWidth : 0,
             // SidebarNavigator 同时存在 `left: sidebar + 16` 和非 Tauri 环境下的
             // `paddingLeft: 16`，命中区域计算必须包含第二段偏移。
             controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
             buttonCount: Platform.OS === 'web' ? 3 : 2,
+            controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
             targetHitSlop: 8,
         })
         : 0;
@@ -342,7 +396,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         headerContentLeftInset={persistentHeaderContentInset}
                         leftSlot={enterSpaceButton}
                         titleSlot={spaceAgent ? spaceTitleSlot : headerTitleSlot}
-                        rightSlot={(diffViewOpen || !!fileViewPath) ? headerRightSlot : (spaceAgent ? exitSpaceButton : newSessionButton)}
+                        rightSlot={(diffViewOpen || !!fileViewPath) ? overlayHeaderRightSlot : defaultHeaderRightSlot}
                         onTitlePress={session && !spaceAgent ? () => router.push(`/session/${sessionId}/info`) : undefined}
                         onListPress={openSessionList}
                     />
@@ -388,7 +442,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         </>
     );
 
-    if (!canShowSidebar) {
+    if (!desktopRightPanelAvailable) {
         const rightPanel = (
             <SessionRightPanelContent
                 composerHandleRef={sessionComposerHandleRef}
@@ -403,24 +457,34 @@ export const SessionView = React.memo((props: { id: string }) => {
         );
     }
 
-    // Desktop layout: chat + animated sidebar at the same level (full height).
-    // When a sidebar file is selected, InlineFileDiff overlays the main content
-    // (chat stays mounted underneath so state is preserved).
+    const desktopPanelTabs = [
+        {
+            key: 'capabilities',
+            label: t('rightPanelCapabilityHub.title'),
+            icon: 'sparkles-outline' as const,
+        },
+        ...(canShowFilePanel ? [{
+            key: 'files',
+            label: t('common.files'),
+            icon: 'folder-outline' as const,
+        }] : []),
+    ];
+
+    // Desktop layout: chat + one independently collapsible capability panel.
+    // File browsing is a tab in that panel, so enabling it never removes quick
+    // prompts or creates a fourth column.
     return (
         <View style={{ flex: 1, flexDirection: 'row' }}>
             <View
-                style={{
-                    flex: 1,
+                style={[
+                    workspaceStyles.desktopMain,
                     // Web-only: isolate the chat subtree's layout from the
-                    // parent flex-row. If we ever bring back a width
-                    // animation on the right sidebar, `contain` prevents
-                    // layout work from leaking up to the chat tree on
-                    // every frame.
-                    ...(Platform.OS === 'web' ? { contain: 'layout style paint' as any } : {}),
-                }}
+                    // parent flex-row so right-panel layout work stays local.
+                    Platform.OS === 'web' && ({ contain: 'layout style paint' } as any),
+                ]}
             >
                 {mainContent}
-                {diffViewOpen && canShowSidebar && (
+                {diffViewOpen && canShowFilePanel && (
                     <View
                         style={{
                             pointerEvents: 'box-none',
@@ -439,7 +503,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         />
                     </View>
                 )}
-                {fileViewPath && canShowSidebar && (
+                {fileViewPath && canShowFilePanel && (
                     <View
                         style={{
                             pointerEvents: 'box-none',
@@ -459,23 +523,43 @@ export const SessionView = React.memo((props: { id: string }) => {
                     </View>
                 )}
             </View>
-            <Animated.View style={[{ minWidth: 0, alignSelf: 'stretch' }, animatedSidebarStyle]}>
-                <View style={{ width: sidebarWidth, flex: 1 }}>
-                    <FilesSidebar
-                        sessionId={sessionId}
-                        selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
-                        onFilePress={handleSidebarFilePress}
-                        mode={sidebarMode}
-                        onModeChange={setSidebarMode}
-                        onAllFilesFilePress={handleAllFilesFilePress}
-                    />
+            <Animated.View
+                pointerEvents={showDesktopRightPanel ? 'auto' : 'none'}
+                style={[workspaceStyles.desktopPanelClip, animatedRightPanelStyle]}
+            >
+                <View style={[workspaceStyles.desktopPanel, { width: rightPanelWidth }]}>
+                    <DesktopRightPanel
+                        activeTab={desktopPanelMode}
+                        collapseAccessibilityLabel={t('desktopWorkspace.hidePanel', {
+                            panel: desktopPanelLabel,
+                        })}
+                        collapseLabel={t('desktopWorkspace.hidePanelShort')}
+                        onCollapse={() => setDesktopRightPanelCollapsed(true)}
+                        onTabChange={(key) => setDesktopPanelMode(key === 'files' ? 'files' : 'capabilities')}
+                        tabs={desktopPanelTabs}
+                    >
+                        {desktopPanelMode === 'files' && canShowFilePanel ? (
+                            <FilesSidebar
+                                sessionId={sessionId}
+                                selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
+                                onFilePress={handleSidebarFilePress}
+                                mode={sidebarMode}
+                                onModeChange={setSidebarMode}
+                                onAllFilesFilePress={handleAllFilesFilePress}
+                            />
+                        ) : (
+                            <SessionRightPanelContent
+                                composerHandleRef={sessionComposerHandleRef}
+                                sessionId={sessionId}
+                                spaceAgent={spaceAgent}
+                            />
+                        )}
+                    </DesktopRightPanel>
                 </View>
             </Animated.View>
         </View>
     );
 });
-
-const SIDEBAR_MIN_WINDOW_WIDTH = 1100;
 
 // Hoisted so MessageComposer's React.memo doesn't see a new array ref on every keystroke
 const AGENT_INPUT_AUTOCOMPLETE_PREFIXES = ['@', '/'];
@@ -1064,3 +1148,34 @@ function CenteredInputWidth(props: {
         </View>
     );
 }
+
+const workspaceStyles = StyleSheet.create((theme) => ({
+    headerAction: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+    },
+    headerActionText: {
+        color: theme.colors.header.tint,
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    desktopMain: {
+        flex: 1,
+        minWidth: 0,
+    },
+    desktopPanelClip: {
+        minWidth: 0,
+        alignSelf: 'stretch',
+    },
+    desktopPanel: {
+        flex: 1,
+    },
+}));

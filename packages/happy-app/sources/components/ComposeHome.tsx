@@ -13,11 +13,18 @@ import type { MultiTextInputHandle } from './MultiTextInput';
 import { SessionConfigPanel, type SessionConfigPanelHandle } from './SessionConfigPanel';
 import { ComposeHomeParticles } from './ComposeHomeParticles';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
-import { getPersistentHeaderContentInset, TAURI_HEADER_CONTROL_LEFT } from '@/utils/desktopNavigationLayout';
+import {
+    getPersistentHeaderContentInset,
+    getDesktopRightPanelWidth,
+    getDesktopRightPanelPresentation,
+    isDesktopRightPanelAvailable,
+    PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+    TAURI_HEADER_CONTROL_LEFT,
+} from '@/utils/desktopNavigationLayout';
 import { isTauri } from '@/utils/isTauri';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { storage, useProfile, useAllMachines, useLocalSetting, useSetting, useSettingMutable } from '@/sync/storage';
+import { storage, useProfile, useAllMachines, useLocalSetting, useLocalSettingMutable, useSetting, useSettingMutable } from '@/sync/storage';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useSpawnSession } from '@/hooks/useSpawnSession';
 import { useImagePicker } from '@/hooks/useImagePicker';
@@ -25,6 +32,7 @@ import { getDisplayName, getAvatarUrl } from '@/sync/profile';
 import { Avatar } from './Avatar';
 import { RightSwipePanelHost } from './RightSwipePanelHost';
 import { SessionCapabilityHub } from './rightPanel/SessionCapabilityHub';
+import { DesktopRightPanel, DesktopRightPanelRestoreButton } from './DesktopRightPanel';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveNewSessionModeSelection } from '@/utils/newSessionModeSelection';
 import {
@@ -122,6 +130,8 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const machines = useAllMachines();
     const askApi = useLocalSetting('askApi');
     const zenMode = useLocalSetting('zenMode');
+    const desktopLeftSidebarCollapsed = useLocalSetting('desktopLeftSidebarCollapsed');
+    const [desktopRightPanelCollapsed, setDesktopRightPanelCollapsed] = useLocalSettingMutable('desktopRightPanelCollapsed');
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const { sending, spawn } = useSpawnSession();
     const [text, setText] = React.useState('');
@@ -688,16 +698,29 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     // isSendDisabled) instead of letting a doomed spawn through.
     const canSpawn = online && worktreeKey !== '__new__';
     const canSubmit = canSpawn && (!activeImageAgent || activeImageStyles.length > 0);
+    const desktopRightPanelAvailable = isDesktopRightPanelAvailable({
+        isTablet,
+        supportsPersistentPanel: Platform.OS === 'web' || inTauri,
+        windowWidth,
+    });
+    const desktopRightPanelPresentation = getDesktopRightPanelPresentation({
+        available: desktopRightPanelAvailable,
+        collapsed: desktopRightPanelCollapsed,
+        zenMode,
+    });
+    const showDesktopRightPanel = desktopRightPanelPresentation === 'expanded';
     const persistentHeaderContentInset = isTablet
         ? getPersistentHeaderContentInset({
             windowWidth,
             headerMaxWidth: layout.headerMaxWidth,
             headerHorizontalPadding: Platform.select({ ios: 8, default: 16 }) ?? 16,
-            sidebarVisible: !zenMode,
+            sidebarVisible: !zenMode && !desktopLeftSidebarCollapsed,
+            rightPanelWidth: showDesktopRightPanel ? getDesktopRightPanelWidth(windowWidth) : 0,
             // SidebarNavigator 同时存在 `left: sidebar + 16` 和非 Tauri 环境下的
             // `paddingLeft: 16`，命中区域计算必须包含第二段偏移。
             controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
             buttonCount: Platform.OS === 'web' ? 3 : 2,
+            controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
             targetHitSlop: 8,
         })
         : 0;
@@ -746,9 +769,16 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         </View>
     );
 
-    return (
-        <RightSwipePanelHost panelContent={<SessionCapabilityHub />}>
-            <View style={styles.container}>
+    const rightPanelRestoreButton = desktopRightPanelPresentation === 'collapsed' ? (
+        <DesktopRightPanelRestoreButton
+            label={t('desktopWorkspace.showPanel', {
+                panel: t('rightPanelCapabilityHub.title'),
+            })}
+            onPress={() => setDesktopRightPanelCollapsed(false)}
+        />
+    ) : null;
+    const composeContent = (
+        <View style={styles.container}>
             <Header
                 title={modelChip}
                 headerShadowVisible={false}
@@ -775,15 +805,20 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         </Pressable>
                     ) : null
                 )}
-                headerRight={isScreen ? undefined : () => (
-                    <Pressable onPress={openSettings} hitSlop={12} style={styles.headerButton}>
-                        <Avatar
-                            id={profile.id}
-                            size={28}
-                            imageUrl={getAvatarUrl(profile)}
-                            thumbhash={profile.avatar?.thumbhash}
-                        />
-                    </Pressable>
+                headerRight={isScreen && !rightPanelRestoreButton ? undefined : () => (
+                    <View style={styles.desktopHeaderActions}>
+                        {rightPanelRestoreButton}
+                        {!isScreen && (
+                            <Pressable onPress={openSettings} hitSlop={12} style={styles.headerButton}>
+                                <Avatar
+                                    id={profile.id}
+                                    size={28}
+                                    imageUrl={getAvatarUrl(profile)}
+                                    thumbhash={profile.avatar?.thumbhash}
+                                />
+                            </Pressable>
+                        )}
+                    </View>
                 )}
             />
 
@@ -1029,12 +1064,64 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                     onClose={closeImageStyleGallery}
                 />
             )}
+        </View>
+    );
+
+    if (!desktopRightPanelAvailable) {
+        return (
+            <RightSwipePanelHost panelContent={<SessionCapabilityHub />}>
+                {composeContent}
+            </RightSwipePanelHost>
+        );
+    }
+
+    const desktopRightPanelWidth = getDesktopRightPanelWidth(windowWidth);
+    return (
+        <View style={styles.desktopWorkspace}>
+            <View style={styles.desktopWorkspaceMain}>
+                {composeContent}
             </View>
-        </RightSwipePanelHost>
+            {showDesktopRightPanel && (
+                <View style={[styles.desktopWorkspacePanel, { width: desktopRightPanelWidth }]}>
+                    <DesktopRightPanel
+                        activeTab="capabilities"
+                        collapseAccessibilityLabel={t('desktopWorkspace.hidePanel', {
+                            panel: t('rightPanelCapabilityHub.title'),
+                        })}
+                        collapseLabel={t('desktopWorkspace.hidePanelShort')}
+                        onCollapse={() => setDesktopRightPanelCollapsed(true)}
+                        onTabChange={() => undefined}
+                        tabs={[{
+                            key: 'capabilities',
+                            label: t('rightPanelCapabilityHub.title'),
+                            icon: 'sparkles-outline',
+                        }]}
+                    >
+                        <SessionCapabilityHub />
+                    </DesktopRightPanel>
+                </View>
+            )}
+        </View>
     );
 });
 
 const styles = StyleSheet.create((theme) => ({
+    desktopWorkspace: {
+        flex: 1,
+        flexDirection: 'row',
+    },
+    desktopWorkspaceMain: {
+        flex: 1,
+        minWidth: 0,
+    },
+    desktopWorkspacePanel: {
+        flexShrink: 0,
+    },
+    desktopHeaderActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+    },
     container: {
         flex: 1,
         backgroundColor: theme.colors.groupped.background,

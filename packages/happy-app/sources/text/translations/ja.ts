@@ -51,6 +51,14 @@ export const ja: TranslationStructure = {
         kcalSuffix: ' kcal',
         recentNightLabel: ({ date }: { date: string }) => `直近 · ${date}`,
     },
+    desktopWorkspace: {
+        sessions: 'セッション',
+        showSessions: 'セッションサイドバーを表示',
+        hideSessions: 'セッションサイドバーを非表示',
+        showPanel: ({ panel }: { panel: string }) => `${panel}を表示`,
+        hidePanel: ({ panel }: { panel: string }) => `${panel}を非表示`,
+        hidePanelShort: '非表示',
+    },
     composeHome: {
         greeting: ({ name }: { name: string }) => `こんにちは ${name}さん、今日は何をしますか？`,
         greetingNoName: '今日は何をしますか？',

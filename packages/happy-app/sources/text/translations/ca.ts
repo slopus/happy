@@ -48,6 +48,14 @@ export const ca: TranslationStructure = {
         kcalSuffix: ' kcal',
         recentNightLabel: ({ date }: { date: string }) => `Recent · ${date}`,
     },
+    desktopWorkspace: {
+        sessions: 'Sessions',
+        showSessions: 'Mostra la barra lateral de sessions',
+        hideSessions: 'Amaga la barra lateral de sessions',
+        showPanel: ({ panel }: { panel: string }) => `Mostra ${panel}`,
+        hidePanel: ({ panel }: { panel: string }) => `Amaga ${panel}`,
+        hidePanelShort: 'Amaga',
+    },
     composeHome: {
         greeting: ({ name }: { name: string }) => `Hola ${name}, què fem avui?`,
         greetingNoName: 'Què fem avui?',

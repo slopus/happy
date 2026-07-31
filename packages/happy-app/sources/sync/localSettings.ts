@@ -19,6 +19,8 @@ export const LocalSettingsSchema = z.object({
     consoleLoggingEnabled: z.boolean().describe('Enable console output in production builds'),
     verboseLogging: z.boolean().describe('Log all network requests and responses'),
     zenMode: z.boolean().describe('Hide all sidebars and non-essential UI for focused work'),
+    desktopLeftSidebarCollapsed: z.boolean().describe('Collapse the desktop session sidebar independently of Zen mode'),
+    desktopRightPanelCollapsed: z.boolean().describe('Collapse the desktop capability panel independently of Zen mode'),
     // 「Agent 空间模式」：进入某个「我的 Agent」后，左侧侧栏收敛为该 Agent 的专属工作台
     // （仅本空间会话 + 预设快捷指令 + 退出空间）。存 agent id；null 为全局视图。刻意放设备本地、
     // 不随账号同步（同 agents/zenMode），避免被同步 churn 冲掉。
@@ -65,6 +67,8 @@ export const localSettingsDefaults: LocalSettings = {
     consoleLoggingEnabled: false,
     verboseLogging: false,
     zenMode: false,
+    desktopLeftSidebarCollapsed: false,
+    desktopRightPanelCollapsed: false,
     agentSpaceId: null,
     hapticFeedbackEnabled: true,
     askApi: {
