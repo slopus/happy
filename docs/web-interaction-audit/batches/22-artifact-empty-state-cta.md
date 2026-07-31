@@ -89,4 +89,6 @@ PC 预期：
 
 ## 八、PR、CI 与合并
 
-待 PR 合并后补充。
+- PR：[#238](https://github.com/wangjs-jacky/happy/pull/238)
+- 实现与证据提交：`7700819be15a12b396ea692cc4df11ebf982bb52`
+- 合并门：等待 PR 必需检查通过后合并；最终 CI 与 merge commit 以 PR 记录为准。
