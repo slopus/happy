@@ -6,6 +6,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useRouter } from 'expo-router';
+import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -78,13 +79,13 @@ export function EmptySessionsTablet() {
             />
             
             <Text style={styles.titleText}>
-                No active sessions
+                {t('sidebar.emptySessionsTitle')}
             </Text>
             
             {hasOnlineMachines ? (
                 <>
                     <Text style={styles.descriptionText}>
-                        Start a new session on any of your connected machines.
+                        {t('sidebar.emptySessionsOnlineDescription')}
                     </Text>
                     <Pressable
                         style={styles.button}
@@ -97,13 +98,13 @@ export function EmptySessionsTablet() {
                             style={styles.buttonIcon}
                         />
                         <Text style={styles.buttonText}>
-                            Start New Session
+                            {t('newSession.title')}
                         </Text>
                     </Pressable>
                 </>
             ) : (
                 <Text style={styles.descriptionText}>
-                    Open a new terminal on your computer to start session.
+                    {t('sidebar.emptySessionsOfflineDescription')}
                 </Text>
             )}
         </View>

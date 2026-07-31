@@ -726,6 +726,9 @@ export const es: TranslationStructure = {
         showArchived: 'Mostrar archivadas',
         hideArchived: 'Ocultar archivadas',
         newSession: 'Nueva sesión',
+        emptySessionsTitle: 'No hay sesiones activas',
+        emptySessionsOnlineDescription: 'Inicia una nueva sesión en cualquiera de tus máquinas conectadas.',
+        emptySessionsOfflineDescription: 'Abre un nuevo terminal en tu computadora para iniciar una sesión.',
 
         searchSessions: 'Gestionar sesiones',
     },

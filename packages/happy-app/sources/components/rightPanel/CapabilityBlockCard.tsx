@@ -41,7 +41,7 @@ export const CapabilityBlockCard = React.memo(function CapabilityBlockCard({
                 </View>
                 <Text style={[styles.count, { color: theme.colors.text }]}>{count}</Text>
             </View>
-            <Text numberOfLines={1} style={[styles.title, { color: theme.colors.text }]}>
+            <Text numberOfLines={2} style={[styles.title, { color: theme.colors.text }]}>
                 {title}
             </Text>
             {preview ? (
@@ -85,11 +85,14 @@ const styles = StyleSheet.create(() => ({
     title: {
         fontSize: 15,
         fontWeight: '600',
+        lineHeight: 18,
         marginBottom: 6,
+        minHeight: 36,
     },
     preview: {
         fontSize: 12,
         lineHeight: 16,
+        minHeight: 32,
     },
     previewSpacer: {
         minHeight: 32,

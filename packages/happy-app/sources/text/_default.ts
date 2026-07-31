@@ -759,6 +759,9 @@ export const en = {
         showArchived: 'Show archived',
         hideArchived: 'Hide archived',
         newSession: 'New session',
+        emptySessionsTitle: 'No active sessions',
+        emptySessionsOnlineDescription: 'Start a new session on any of your connected machines.',
+        emptySessionsOfflineDescription: 'Open a new terminal on your computer to start a session.',
         searchSessions: 'Manage sessions',
     },
     sessionSearch: {

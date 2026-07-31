@@ -726,6 +726,9 @@ export const ca: TranslationStructure = {
         showArchived: 'Mostra arxivades',
         hideArchived: 'Amaga arxivades',
         newSession: 'Nova sessió',
+        emptySessionsTitle: 'No hi ha sessions actives',
+        emptySessionsOnlineDescription: 'Inicia una sessió nova en qualsevol de les teves màquines connectades.',
+        emptySessionsOfflineDescription: "Obre un terminal nou a l'ordinador per iniciar una sessió.",
 
         searchSessions: 'Gestiona sessions',
     },
