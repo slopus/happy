@@ -1005,6 +1005,179 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('keeps root turn lifecycle isolated while forwarding interleaved child thread events', async () => {
+        let emitNotification = (_payload: unknown): void => {
+            throw new Error('App-server notification emitter is not ready');
+        };
+        const proc = createMockProcess({
+            pid: 3005,
+            onRequest: (msg, stdout) => {
+                emitNotification = (payload) => pushJsonLine(stdout, payload);
+
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-root', path: '/tmp/thread-root' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-root', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/started',
+                            params: {
+                                threadId: 'thread-root',
+                                turn: { id: 'turn-root', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-root',
+                                turnId: 'turn-root',
+                                item: {
+                                    type: 'subAgentActivity',
+                                    id: 'collab-spawn-1',
+                                    kind: 'started',
+                                    agentThreadId: 'thread-child',
+                                    agentPath: '/root/reviewer',
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'thread/status/changed',
+                            params: {
+                                threadId: 'thread-root',
+                                status: { type: 'idle' },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/started',
+                            params: {
+                                threadId: 'thread-child',
+                                turn: { id: 'turn-child', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-child',
+                                turnId: 'turn-child',
+                                item: {
+                                    type: 'agentMessage',
+                                    id: 'child-msg-1',
+                                    text: 'Child review complete',
+                                    phase: 'final_answer',
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-child',
+                                turn: { id: 'turn-child', items: [], status: 'interrupted', error: null },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        let rootTurnSettled = false;
+        const rootTurn = client.sendTurnAndWait('delegate review').then((result) => {
+            rootTurnSettled = true;
+            return result;
+        });
+
+        await waitFor(() => events.some((event) => event.message === 'Child review complete'));
+
+        expect(rootTurnSettled).toBe(false);
+        expect(client.turnId).toBe('turn-root');
+        expect(events.filter((event) => event.type === 'task_started')).toEqual([
+            expect.objectContaining({ turn_id: 'turn-root' }),
+        ]);
+        expect(events.filter((event) => event.type === 'task_complete' || event.type === 'turn_aborted')).toHaveLength(0);
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'collab_agent_tool_begin',
+                call_id: 'collab-spawn-1',
+                receiver_thread_ids: ['thread-child'],
+            }),
+            expect.objectContaining({
+                type: 'collab_agent_tool_end',
+                call_id: 'collab-spawn-1',
+            }),
+            expect.objectContaining({
+                type: 'agent_message',
+                message: 'Child review complete',
+                subagent: 'thread-child',
+            }),
+        ]));
+
+        emitNotification({
+            method: 'item/completed',
+            params: {
+                threadId: 'thread-root',
+                turnId: 'turn-root',
+                item: {
+                    type: 'agentMessage',
+                    id: 'root-msg-1',
+                    text: 'Root final answer',
+                    phase: 'final_answer',
+                },
+            },
+        });
+        emitNotification({
+            method: 'turn/completed',
+            params: {
+                threadId: 'thread-root',
+                turn: { id: 'turn-root', items: [], status: 'completed', error: null },
+            },
+        });
+
+        await expect(rootTurn).resolves.toEqual({ aborted: false });
+        expect(events.filter((event) => event.type === 'task_complete')).toEqual([
+            expect.objectContaining({ turn_id: 'turn-root' }),
+        ]);
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({ type: 'agent_message', message: 'Root final answer' }),
+        ]));
+
+        await client.disconnect();
+    });
+
     it('maps raw file change items into legacy patch events', async () => {
         const proc = createMockProcess({
             pid: 3003,

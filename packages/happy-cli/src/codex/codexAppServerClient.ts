@@ -266,6 +266,23 @@ export class CodexAppServerClient {
         return typeof status === 'string' && status.length > 0 ? status : null;
     }
 
+    private extractThreadId(params: any): string | null {
+        const threadId = params?.threadId ?? params?.thread?.id ?? null;
+        return typeof threadId === 'string' && threadId.length > 0 ? threadId : null;
+    }
+
+    private isRootThreadNotification(params: any): boolean {
+        const threadId = this.extractThreadId(params);
+        return !threadId || !this._threadId || threadId === this._threadId;
+    }
+
+    private childEventScope(params: any): { subagent?: string } {
+        const threadId = this.extractThreadId(params);
+        return threadId && this._threadId && threadId !== this._threadId
+            ? { subagent: threadId }
+            : {};
+    }
+
     private shouldHandleRawNotification(method: string): boolean {
         const isRawNotification = method === 'thread/started'
             || method === 'turn/started'
@@ -332,6 +349,9 @@ export class CodexAppServerClient {
         }
 
         if (method === 'turn/started') {
+            if (!this.isRootThreadNotification(params)) {
+                return true;
+            }
             const turnId = this.extractTurnId(params);
             if (turnId) {
                 this._turnId = turnId;
@@ -345,6 +365,9 @@ export class CodexAppServerClient {
         }
 
         if (method === 'turn/completed') {
+            if (!this.isRootThreadNotification(params)) {
+                return true;
+            }
             this.emitRawTurnCompletion(
                 this.extractTurnId(params),
                 this.extractTurnStatus(params),
@@ -355,6 +378,9 @@ export class CodexAppServerClient {
         }
 
         if (method === 'thread/settings/updated') {
+            if (!this.isRootThreadNotification(params)) {
+                return true;
+            }
             const threadId = typeof params?.threadId === 'string' ? params.threadId : null;
             const threadSettings = params?.threadSettings as ThreadSettings | undefined;
             if (threadSettings && typeof threadSettings.model === 'string') {
@@ -368,14 +394,16 @@ export class CodexAppServerClient {
         }
 
         if (method === 'thread/status/changed') {
-            const statusType = params?.status?.type;
-            if (statusType === 'idle' && this.pendingTurnCompletion) {
-                this.emitRawTurnCompletion(this._turnId, 'completed', null, method);
-            }
+            // A parent thread may become idle while spawned agents are still running.
+            // Only turn/completed (or a root final answer fallback) is authoritative
+            // enough to close the Happy turn.
             return true;
         }
 
         if (method === 'thread/tokenUsage/updated') {
+            if (!this.isRootThreadNotification(params)) {
+                return true;
+            }
             const tokenUsage = params?.tokenUsage;
             if (tokenUsage && typeof tokenUsage === 'object') {
                 this.eventHandler?.({
@@ -391,6 +419,77 @@ export class CodexAppServerClient {
             return method.startsWith('item/');
         }
 
+        const eventScope = this.childEventScope(params);
+
+        if (method === 'item/completed' && item.type === 'subAgentActivity') {
+            const kind = item.kind;
+            const agentThreadId = typeof item.agentThreadId === 'string'
+                ? item.agentThreadId
+                : (typeof item.agent_thread_id === 'string' ? item.agent_thread_id : null);
+
+            if (kind === 'started' && agentThreadId) {
+                const callId = typeof item.id === 'string' ? item.id : '';
+                const agentPath = typeof item.agentPath === 'string'
+                    ? item.agentPath
+                    : (typeof item.agent_path === 'string' ? item.agent_path : null);
+                const common = {
+                    call_id: callId,
+                    callId,
+                    tool: 'spawnAgent',
+                    receiver_thread_ids: [agentThreadId],
+                    prompt: agentPath,
+                    agent_path: agentPath,
+                    ...eventScope,
+                };
+                this.eventHandler?.({
+                    type: 'collab_agent_tool_begin',
+                    ...common,
+                });
+                this.eventHandler?.({
+                    type: 'collab_agent_tool_end',
+                    ...common,
+                    status: 'completed',
+                });
+            }
+            return true;
+        }
+
+        if (item.type === 'collabAgentToolCall') {
+            const callId = typeof item.id === 'string' ? item.id : '';
+            const receiverThreadIds = Array.isArray(item.receiverThreadIds)
+                ? item.receiverThreadIds.filter((value: unknown): value is string => typeof value === 'string' && value.length > 0)
+                : [];
+            const common = {
+                call_id: callId,
+                callId,
+                tool: item.tool,
+                sender_thread_id: item.senderThreadId,
+                receiver_thread_ids: receiverThreadIds,
+                prompt: item.prompt,
+                model: item.model,
+                reasoning_effort: item.reasoningEffort,
+                agents_states: item.agentsStates,
+                ...eventScope,
+            };
+
+            if (method === 'item/started') {
+                this.eventHandler?.({
+                    type: 'collab_agent_tool_begin',
+                    ...common,
+                });
+                return true;
+            }
+
+            if (method === 'item/completed') {
+                this.eventHandler?.({
+                    type: 'collab_agent_tool_end',
+                    ...common,
+                    status: item.status,
+                });
+                return true;
+            }
+        }
+
         if (method === 'item/started' && item.type === 'commandExecution') {
             const callId = typeof item.id === 'string' ? item.id : '';
             this.eventHandler?.({
@@ -400,6 +499,7 @@ export class CodexAppServerClient {
                 command: item.command,
                 cwd: item.cwd,
                 description: item.command,
+                ...eventScope,
             });
             return true;
         }
@@ -416,6 +516,7 @@ export class CodexAppServerClient {
                 status: item.status,
                 cwd: item.cwd,
                 command: item.command,
+                ...eventScope,
             });
             return true;
         }
@@ -434,6 +535,7 @@ export class CodexAppServerClient {
                     call_id: callId,
                     callId,
                     changes: changes ?? {},
+                    ...eventScope,
                 });
                 return true;
             }
@@ -444,6 +546,7 @@ export class CodexAppServerClient {
                     call_id: callId,
                     callId,
                     status: item.status,
+                    ...eventScope,
                 });
 
                 if (callId && (item.status === 'completed' || item.status === 'failed' || item.status === 'declined')) {
@@ -461,10 +564,11 @@ export class CodexAppServerClient {
                     message: text,
                     item_id: item.id,
                     phase: item.phase,
+                    ...eventScope,
                 });
             }
 
-            if (item.phase === 'final_answer' && this.pendingTurnCompletion) {
+            if (this.isRootThreadNotification(params) && item.phase === 'final_answer' && this.pendingTurnCompletion) {
                 this.emitRawTurnCompletion(
                     this.extractTurnId(params),
                     'completed',
@@ -483,10 +587,11 @@ export class CodexAppServerClient {
                     message: review,
                     item_id: item.id,
                     phase: 'final_answer',
+                    ...eventScope,
                 });
             }
 
-            if (this.pendingTurnCompletion) {
+            if (this.isRootThreadNotification(params) && this.pendingTurnCompletion) {
                 this.emitRawTurnCompletion(
                     this.extractTurnId(params),
                     'completed',
@@ -1530,6 +1635,9 @@ export class CodexAppServerClient {
         if (method === 'thread/started' || method === 'turn/started' ||
             method === 'turn/completed' || method === 'thread/status/changed') {
             logger.debug(`[CodexAppServer] Lifecycle notification: ${method}`);
+            if (!this.isRootThreadNotification(params)) {
+                return;
+            }
             // Mark the turn as started so the completion guard lets it through.
             if (method === 'turn/started') {
                 const turnId = this.extractTurnId(params);

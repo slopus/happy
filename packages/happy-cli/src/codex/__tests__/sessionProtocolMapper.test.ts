@@ -67,6 +67,88 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         expect(subagent).not.toBe('parent-call-1');
     });
 
+    it('keeps one root turn while mapping a spawned child thread to a stable subagent', () => {
+        const started = mapCodexMcpMessageToSessionEnvelopes(
+            { type: 'task_started', turn_id: 'provider-root-turn' },
+            { currentTurnId: null },
+        );
+        const rootTurn = started.currentTurnId;
+        expect(rootTurn).not.toBeNull();
+
+        const spawned = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'collab_agent_tool_begin',
+            call_id: 'collab-spawn-1',
+            tool: 'spawnAgent',
+            receiver_thread_ids: ['thread-child'],
+            prompt: 'Review the implementation',
+            model: 'gpt-test',
+            reasoning_effort: 'high',
+        }, started);
+
+        expect(spawned.envelopes).toHaveLength(1);
+        expect(spawned.envelopes[0]).toMatchObject({
+            role: 'agent',
+            turn: rootTurn,
+            ev: {
+                t: 'tool-call-start',
+                call: 'collab-spawn-1',
+                name: 'Agent',
+                args: {
+                    prompt: 'Review the implementation',
+                },
+            },
+        });
+        expect(spawned.envelopes[0].subagent).toBeUndefined();
+        if (spawned.envelopes[0].ev.t !== 'tool-call-start') {
+            throw new Error('Expected collaboration tool call start');
+        }
+        const sessionSubagent = spawned.envelopes[0].ev.args.sessionSubagent;
+        expect(typeof sessionSubagent).toBe('string');
+        expect(isCuid(sessionSubagent as string)).toBe(true);
+
+        const childFirst = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'agent_message',
+            message: 'Child progress',
+            subagent: 'thread-child',
+        }, spawned);
+        expect(childFirst.envelopes).toHaveLength(2);
+        expect(childFirst.envelopes[0]).toMatchObject({
+            role: 'agent',
+            turn: rootTurn,
+            subagent: sessionSubagent,
+            ev: { t: 'start' },
+        });
+        expect(childFirst.envelopes[1]).toMatchObject({
+            role: 'agent',
+            turn: rootTurn,
+            subagent: sessionSubagent,
+            ev: { t: 'text', text: 'Child progress' },
+        });
+
+        const childSecond = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'agent_message',
+            message: 'Child final',
+            subagent: 'thread-child',
+        }, childFirst);
+        expect(childSecond.envelopes).toHaveLength(1);
+        expect(childSecond.envelopes[0]).toMatchObject({
+            turn: rootTurn,
+            subagent: sessionSubagent,
+            ev: { t: 'text', text: 'Child final' },
+        });
+
+        const rootFinal = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'agent_message',
+            message: 'Root final',
+        }, childSecond);
+        expect(rootFinal.currentTurnId).toBe(rootTurn);
+        expect(rootFinal.envelopes[0]).toMatchObject({
+            turn: rootTurn,
+            ev: { t: 'text', text: 'Root final' },
+        });
+        expect(rootFinal.envelopes[0].subagent).toBeUndefined();
+    });
+
     it('emits stop for active subagents before turn-end', () => {
         const subagent = createId();
         const activeSubagents = new Set<string>([subagent]);

@@ -101,6 +101,13 @@ function resolveSessionSubagent(
         return undefined;
     }
 
+    return resolveProviderSubagent(providerSubagent, providerSubagentToSessionSubagent);
+}
+
+function resolveProviderSubagent(
+    providerSubagent: string,
+    providerSubagentToSessionSubagent: Map<string, string>,
+): string {
     const existing = providerSubagentToSessionSubagent.get(providerSubagent);
     if (existing) {
         return existing;
@@ -109,6 +116,30 @@ function resolveSessionSubagent(
     const created = createId();
     providerSubagentToSessionSubagent.set(providerSubagent, created);
     return created;
+}
+
+function pickReceiverThreadIds(message: Record<string, unknown>): string[] {
+    const receiverThreadIds = message.receiver_thread_ids ?? message.receiverThreadIds;
+    return Array.isArray(receiverThreadIds)
+        ? receiverThreadIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
+        : [];
+}
+
+function collabAgentToolTitle(tool: unknown): string {
+    switch (tool) {
+        case 'spawnAgent':
+            return 'Spawn agent';
+        case 'sendInput':
+            return 'Send input to agent';
+        case 'resumeAgent':
+            return 'Resume agent';
+        case 'wait':
+            return 'Wait for agents';
+        case 'closeAgent':
+            return 'Close agent';
+        default:
+            return 'Agent collaboration';
+    }
 }
 
 function pickCallId(message: Record<string, unknown>): string {
@@ -453,6 +484,49 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             activeSubagents,
             providerSubagentToSessionSubagent,
             envelopes: [],
+        };
+    }
+
+    if (type === 'collab_agent_tool_begin' || type === 'collab_agent_tool_end') {
+        const subagent = resolveSessionSubagent(message, providerSubagentToSessionSubagent);
+        const opts = buildEnvelopeOptions(state.currentTurnId, subagent);
+        const envelopes: SessionEnvelope[] = [];
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+
+        const call = pickCallId(message);
+        if (type === 'collab_agent_tool_end') {
+            envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, opts));
+        } else {
+            const receiverThreadIds = pickReceiverThreadIds(message);
+            const receiverThreadId = receiverThreadIds.length === 1 ? receiverThreadIds[0] : undefined;
+            const sessionSubagent = receiverThreadId
+                ? resolveProviderSubagent(receiverThreadId, providerSubagentToSessionSubagent)
+                : undefined;
+            const tool = message.tool;
+            const title = collabAgentToolTitle(tool);
+            envelopes.push(createEnvelope('agent', {
+                t: 'tool-call-start',
+                call,
+                name: 'Agent',
+                title,
+                description: title,
+                args: {
+                    tool,
+                    prompt: message.prompt,
+                    model: message.model,
+                    reasoningEffort: message.reasoning_effort ?? message.reasoningEffort,
+                    receiverThreadIds,
+                    ...(sessionSubagent ? { sessionSubagent } : {}),
+                },
+            }, opts));
+        }
+
+        return {
+            currentTurnId: state.currentTurnId,
+            startedSubagents,
+            activeSubagents,
+            providerSubagentToSessionSubagent,
+            envelopes,
         };
     }
 
