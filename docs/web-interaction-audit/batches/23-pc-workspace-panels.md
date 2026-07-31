@@ -88,4 +88,8 @@
 
 ## 九、PR、CI 与合并
 
-- PR、CI、Preview OTA 与 merge commit 以本次 PR 记录为准。
+- PR：[#239](https://github.com/wangjs-jacky/happy/pull/239)
+- 实现提交：`8913082ef077607a0be8620556324176604ac848`
+- 文案与复审修复：`421098aa67e5b03ce91f6448946d91852880c140`
+- 最终交互、可访问性与截图证据：`43630bfda53f6eddd97449a41564ca6b050ab572`
+- 合并门：等待 PR 必需检查通过后合并；最终 Preview OTA 与 merge commit 以 PR 记录为准
