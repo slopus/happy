@@ -35,8 +35,8 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import {
     getPersistentHeaderContentInset,
-    DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH,
     getDesktopRightPanelWidth,
+    isDesktopRightPanelAvailable,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
 } from '@/utils/desktopNavigationLayout';
@@ -62,7 +62,7 @@ import { useMemo } from 'react';
 import { ActivityIndicator, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 // Agent display labels for the header chip. Mirrors ComposeHome's map, but keyed
 // off the running session's `flavor` (an active session reports its agent there).
@@ -100,10 +100,11 @@ export const SessionView = React.memo((props: { id: string }) => {
 
     // The capability hub is a first-class desktop panel. File browsing is an
     // optional mode inside that same panel instead of a separate fourth column.
-    const desktopRightPanelAvailable = isTablet
-        && (isRunningOnMac() || Platform.OS === 'web')
-        && windowWidth >= DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH
-        && isDataReady && !!session;
+    const desktopRightPanelAvailable = isDesktopRightPanelAvailable({
+        isTablet,
+        supportsPersistentPanel: isRunningOnMac() || Platform.OS === 'web',
+        windowWidth,
+    }) && isDataReady && !!session;
     const canShowFilePanel = desktopRightPanelAvailable && fileDiffsSidebarEnabled;
     const showDesktopRightPanel = desktopRightPanelAvailable && !zenMode && !desktopRightPanelCollapsed;
 
@@ -118,16 +119,16 @@ export const SessionView = React.memo((props: { id: string }) => {
     // grinds to ~15fps on dev builds. Snapping skips the layout thrash —
     // the chat reflows once instead of 60 times. Native keeps the smooth
     // animation because it runs on Reanimated's UI thread.
-    const sidebarAnim = useSharedValue(showDesktopRightPanel ? 1 : 0);
+    const rightPanelAnim = useSharedValue(showDesktopRightPanel ? 1 : 0);
     React.useEffect(() => {
-        sidebarAnim.value = withTiming(showDesktopRightPanel ? 1 : 0, {
+        rightPanelAnim.value = withTiming(showDesktopRightPanel ? 1 : 0, {
             duration: Platform.OS === 'web' ? 0 : 250,
             easing: Easing.out(Easing.cubic),
         });
     }, [showDesktopRightPanel]);
-    const animatedSidebarStyle = useAnimatedStyle(() => ({
-        width: sidebarAnim.value * rightPanelWidth,
-        opacity: sidebarAnim.value,
+    const animatedRightPanelStyle = useAnimatedStyle(() => ({
+        width: rightPanelAnim.value * rightPanelWidth,
+        opacity: rightPanelAnim.value,
         overflow: 'hidden' as const,
     }));
 
@@ -299,7 +300,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         && !zenMode
         && desktopRightPanelCollapsed ? (
             <DesktopRightPanelRestoreButton
-                label={desktopPanelLabel}
+                label={t('desktopWorkspace.showPanel', { panel: desktopPanelLabel })}
                 onPress={() => setDesktopRightPanelCollapsed(false)}
             />
         ) : null;
@@ -312,25 +313,25 @@ export const SessionView = React.memo((props: { id: string }) => {
             accessibilityRole="button"
             onPress={() => router.navigate('/new')}
             hitSlop={10}
-            style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 5,
-                paddingHorizontal: 8,
-                paddingVertical: 5,
-            }}
+            style={workspaceStyles.headerAction}
             testID="session-header-new-session-button"
         >
             <MaterialCommunityIcons name="message-plus-outline" size={23} color={theme.colors.header.tint} />
-            <Text style={{ color: theme.colors.header.tint, fontSize: 12, fontWeight: '600' }}>
+            <Text style={workspaceStyles.headerActionText}>
                 {t('sidebar.newSession')}
             </Text>
         </Pressable>
     );
     const defaultHeaderRightSlot = (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+        <View style={workspaceStyles.headerActions}>
             {rightPanelRestoreButton}
             {spaceAgent ? exitSpaceButton : newSessionButton}
+        </View>
+    );
+    const overlayHeaderRightSlot = (
+        <View style={workspaceStyles.headerActions}>
+            {rightPanelRestoreButton}
+            {headerRightSlot}
         </View>
     );
     const persistentHeaderContentInset = isTablet
@@ -391,7 +392,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         headerContentLeftInset={persistentHeaderContentInset}
                         leftSlot={enterSpaceButton}
                         titleSlot={spaceAgent ? spaceTitleSlot : headerTitleSlot}
-                        rightSlot={(diffViewOpen || !!fileViewPath) ? headerRightSlot : defaultHeaderRightSlot}
+                        rightSlot={(diffViewOpen || !!fileViewPath) ? overlayHeaderRightSlot : defaultHeaderRightSlot}
                         onTitlePress={session && !spaceAgent ? () => router.push(`/session/${sessionId}/info`) : undefined}
                         onListPress={openSessionList}
                     />
@@ -471,15 +472,12 @@ export const SessionView = React.memo((props: { id: string }) => {
     return (
         <View style={{ flex: 1, flexDirection: 'row' }}>
             <View
-                style={{
-                    flex: 1,
+                style={[
+                    workspaceStyles.desktopMain,
                     // Web-only: isolate the chat subtree's layout from the
-                    // parent flex-row. If we ever bring back a width
-                    // animation on the right sidebar, `contain` prevents
-                    // layout work from leaking up to the chat tree on
-                    // every frame.
-                    ...(Platform.OS === 'web' ? { contain: 'layout style paint' as any } : {}),
-                }}
+                    // parent flex-row so right-panel layout work stays local.
+                    Platform.OS === 'web' && ({ contain: 'layout style paint' } as any),
+                ]}
             >
                 {mainContent}
                 {diffViewOpen && canShowFilePanel && (
@@ -523,12 +521,15 @@ export const SessionView = React.memo((props: { id: string }) => {
             </View>
             <Animated.View
                 pointerEvents={showDesktopRightPanel ? 'auto' : 'none'}
-                style={[{ minWidth: 0, alignSelf: 'stretch' }, animatedSidebarStyle]}
+                style={[workspaceStyles.desktopPanelClip, animatedRightPanelStyle]}
             >
-                <View style={{ width: rightPanelWidth, flex: 1 }}>
+                <View style={[workspaceStyles.desktopPanel, { width: rightPanelWidth }]}>
                     <DesktopRightPanel
                         activeTab={desktopPanelMode}
-                        collapseLabel={t('message.hidePrompt')}
+                        collapseAccessibilityLabel={t('desktopWorkspace.hidePanel', {
+                            panel: desktopPanelLabel,
+                        })}
+                        collapseLabel={t('desktopWorkspace.hidePanelShort')}
                         onCollapse={() => setDesktopRightPanelCollapsed(true)}
                         onTabChange={(key) => setDesktopPanelMode(key === 'files' ? 'files' : 'capabilities')}
                         tabs={desktopPanelTabs}
@@ -1143,3 +1144,34 @@ function CenteredInputWidth(props: {
         </View>
     );
 }
+
+const workspaceStyles = StyleSheet.create((theme) => ({
+    headerAction: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+    },
+    headerActionText: {
+        color: theme.colors.header.tint,
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    desktopMain: {
+        flex: 1,
+        minWidth: 0,
+    },
+    desktopPanelClip: {
+        minWidth: 0,
+        alignSelf: 'stretch',
+    },
+    desktopPanel: {
+        flex: 1,
+    },
+}));

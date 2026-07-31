@@ -420,6 +420,38 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
+    it('keeps the right-panel restore action available while a file overlay is open', () => {
+        mocks.isDataReady = true;
+        mocks.fileDiffsSidebarEnabled = true;
+        mocks.windowWidth = 1400;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.onPress());
+        const filesSidebar = renderer.root.findByType('FilesSidebar');
+        act(() => filesSidebar.props.onFilePress({
+            status: 'modified',
+            fullPath: '/tmp/example.ts',
+        }));
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-collapse-button' }).props.onPress());
+
+        act(() => {
+            mocks.desktopRightPanelCollapsed = true;
+            filesSidebar.props.onModeChange('allFiles');
+        });
+
+        const restore = renderer.root.findByProps({ testID: 'desktop-right-panel-restore-button' });
+        expect(restore.props.accessibilityLabel).toBe('desktopWorkspace.showPanel');
+        act(() => restore.props.onPress());
+        expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenLastCalledWith(false);
+
+        act(() => renderer.unmount());
+    });
+
     it('uses the labeled new-session action and the same /new route as the sidebar', () => {
         mocks.isDataReady = true;
         let renderer: any;

@@ -13,6 +13,7 @@ export type DesktopRightPanelTab = {
 export const DesktopRightPanel = React.memo(function DesktopRightPanel({
     activeTab,
     children,
+    collapseAccessibilityLabel,
     collapseLabel,
     onCollapse,
     onTabChange,
@@ -20,13 +21,13 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
 }: {
     activeTab: string;
     children: React.ReactNode;
+    collapseAccessibilityLabel: string;
     collapseLabel: string;
     onCollapse: () => void;
     onTabChange: (key: string) => void;
     tabs: readonly DesktopRightPanelTab[];
 }) {
     const { theme } = useUnistyles();
-    const activeLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? tabs[0]?.label ?? '';
 
     return (
         <View style={styles.container} testID="desktop-right-panel">
@@ -64,7 +65,7 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
                     })}
                 </View>
                 <Pressable
-                    accessibilityLabel={`${collapseLabel} ${activeLabel}`}
+                    accessibilityLabel={collapseAccessibilityLabel}
                     accessibilityRole="button"
                     hitSlop={8}
                     onPress={onCollapse}

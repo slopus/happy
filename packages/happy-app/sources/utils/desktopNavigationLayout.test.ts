@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     getDesktopSidebarWidth,
     getDesktopRightPanelWidth,
+    isDesktopRightPanelAvailable,
     getPersistentHeaderPointerEvents,
     getPersistentHeaderContentInset,
     getPersistentNavigationControlsWidth,
@@ -24,6 +25,29 @@ describe('desktopNavigationLayout', () => {
         { width: 1500, expected: 360 },
     ])('calculates a compact desktop right panel width at $width px', ({ width, expected }) => {
         expect(getDesktopRightPanelWidth(width)).toBe(expected);
+    });
+
+    it('only enables the persistent right panel for supported wide desktop layouts', () => {
+        expect(isDesktopRightPanelAvailable({
+            isTablet: true,
+            supportsPersistentPanel: true,
+            windowWidth: 1100,
+        })).toBe(true);
+        expect(isDesktopRightPanelAvailable({
+            isTablet: true,
+            supportsPersistentPanel: true,
+            windowWidth: 1099,
+        })).toBe(false);
+        expect(isDesktopRightPanelAvailable({
+            isTablet: false,
+            supportsPersistentPanel: true,
+            windowWidth: 1440,
+        })).toBe(false);
+        expect(isDesktopRightPanelAvailable({
+            isTablet: true,
+            supportsPersistentPanel: false,
+            windowWidth: 1440,
+        })).toBe(false);
     });
 
     it('calculates the rendered controls width from the real button geometry', () => {

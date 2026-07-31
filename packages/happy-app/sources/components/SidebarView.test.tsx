@@ -160,4 +160,23 @@ describe('SidebarView Agent space exit', () => {
 
         act(() => renderer.unmount());
     });
+
+    it('keeps the roomier mobile sidebar layout unchanged', () => {
+        mocks.spaceAgent = null;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(
+                <SidebarView closeDrawerOnNavigate />,
+            );
+        });
+
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-desktop-density' })).toHaveLength(0);
+        expect(renderer.root.findByType('ProfileAvatarControl').props.size).toBe(40);
+        expect(renderer.root.findAllByType('Text').some(
+            (node: any) => node.props.children === 'agents.empty',
+        )).toBe(true);
+
+        act(() => renderer.unmount());
+    });
 });

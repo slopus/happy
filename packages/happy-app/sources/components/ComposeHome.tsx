@@ -15,8 +15,8 @@ import { ComposeHomeParticles } from './ComposeHomeParticles';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import {
     getPersistentHeaderContentInset,
-    DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH,
     getDesktopRightPanelWidth,
+    isDesktopRightPanelAvailable,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
 } from '@/utils/desktopNavigationLayout';
@@ -697,9 +697,11 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     // isSendDisabled) instead of letting a doomed spawn through.
     const canSpawn = online && worktreeKey !== '__new__';
     const canSubmit = canSpawn && (!activeImageAgent || activeImageStyles.length > 0);
-    const desktopRightPanelAvailable = isTablet
-        && (Platform.OS === 'web' || inTauri)
-        && windowWidth >= DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH;
+    const desktopRightPanelAvailable = isDesktopRightPanelAvailable({
+        isTablet,
+        supportsPersistentPanel: Platform.OS === 'web' || inTauri,
+        windowWidth,
+    });
     const showDesktopRightPanel = desktopRightPanelAvailable && !zenMode && !desktopRightPanelCollapsed;
     const persistentHeaderContentInset = isTablet
         ? getPersistentHeaderContentInset({
@@ -765,7 +767,9 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         && !zenMode
         && desktopRightPanelCollapsed ? (
             <DesktopRightPanelRestoreButton
-                label={t('rightPanelCapabilityHub.title')}
+                label={t('desktopWorkspace.showPanel', {
+                    panel: t('rightPanelCapabilityHub.title'),
+                })}
                 onPress={() => setDesktopRightPanelCollapsed(false)}
             />
         ) : null;
@@ -798,7 +802,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                     ) : null
                 )}
                 headerRight={isScreen && !rightPanelRestoreButton ? undefined : () => (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <View style={styles.desktopHeaderActions}>
                         {rightPanelRestoreButton}
                         {!isScreen && (
                             <Pressable onPress={openSettings} hitSlop={12} style={styles.headerButton}>
@@ -1069,15 +1073,18 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
 
     const desktopRightPanelWidth = getDesktopRightPanelWidth(windowWidth);
     return (
-        <View style={{ flex: 1, flexDirection: 'row' }}>
-            <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={styles.desktopWorkspace}>
+            <View style={styles.desktopWorkspaceMain}>
                 {composeContent}
             </View>
             {showDesktopRightPanel && (
-                <View style={{ width: desktopRightPanelWidth }}>
+                <View style={[styles.desktopWorkspacePanel, { width: desktopRightPanelWidth }]}>
                     <DesktopRightPanel
                         activeTab="capabilities"
-                        collapseLabel={t('message.hidePrompt')}
+                        collapseAccessibilityLabel={t('desktopWorkspace.hidePanel', {
+                            panel: t('rightPanelCapabilityHub.title'),
+                        })}
+                        collapseLabel={t('desktopWorkspace.hidePanelShort')}
                         onCollapse={() => setDesktopRightPanelCollapsed(true)}
                         onTabChange={() => undefined}
                         tabs={[{
@@ -1095,6 +1102,22 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
 });
 
 const styles = StyleSheet.create((theme) => ({
+    desktopWorkspace: {
+        flex: 1,
+        flexDirection: 'row',
+    },
+    desktopWorkspaceMain: {
+        flex: 1,
+        minWidth: 0,
+    },
+    desktopWorkspacePanel: {
+        flexShrink: 0,
+    },
+    desktopHeaderActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+    },
     container: {
         flex: 1,
         backgroundColor: theme.colors.groupped.background,

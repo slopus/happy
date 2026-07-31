@@ -6,7 +6,14 @@ export const PERSISTENT_NAVIGATION_BUTTON_GAP = 4;
 export const PERSISTENT_NAVIGATION_HIT_SLOP = 10;
 export const PERSISTENT_NAVIGATION_TARGET_GAP = 4;
 export const TAURI_HEADER_CONTROL_LEFT = 92;
-export const PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH = 236;
+export const PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH = 70;
+export const PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH = 98;
+export const PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH = (
+    PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH
+    + PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH
+    + 2 * PERSISTENT_NAVIGATION_BUTTON_SIZE
+    + 3 * PERSISTENT_NAVIGATION_BUTTON_GAP
+);
 
 export function getPersistentHeaderPointerEvents({
     isWeb,
@@ -26,6 +33,20 @@ export function getDesktopSidebarWidth(windowWidth: number): number {
 export function getDesktopRightPanelWidth(windowWidth: number): number {
     if (windowWidth < DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH) return 0;
     return Math.min(Math.max(Math.floor(windowWidth * 0.24), 280), 360);
+}
+
+export function isDesktopRightPanelAvailable({
+    isTablet,
+    supportsPersistentPanel,
+    windowWidth,
+}: {
+    isTablet: boolean;
+    supportsPersistentPanel: boolean;
+    windowWidth: number;
+}): boolean {
+    return isTablet
+        && supportsPersistentPanel
+        && windowWidth >= DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH;
 }
 
 export function getPersistentNavigationControlsWidth(buttonCount: number): number {

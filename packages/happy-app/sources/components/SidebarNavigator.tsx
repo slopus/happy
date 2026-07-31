@@ -8,7 +8,7 @@ import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { isTauri } from '@/utils/isTauri';
 import { useOverlayNav } from '@/-session/sessionOverlayNav';
@@ -19,6 +19,8 @@ import {
     getDesktopSidebarWidth,
     getPersistentHeaderPointerEvents,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+    PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH,
+    PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
 } from '@/utils/desktopNavigationLayout';
 
@@ -207,6 +209,9 @@ const PersistentHeader = React.memo(() => {
     const canGoForwardEffective = canGoForward || overlayCanForward;
     const sidebarVisible = !zenMode && !desktopLeftSidebarCollapsed;
     const sidebarWidth = sidebarVisible ? getDesktopSidebarWidth(windowWidth) : 0;
+    const sidebarToggleLabel = sidebarVisible
+        ? t('desktopWorkspace.hideSessions')
+        : t('desktopWorkspace.showSessions');
 
     return (
         <View
@@ -234,34 +239,19 @@ const PersistentHeader = React.memo(() => {
         >
             {/* Sidebar / Zen / Back / Forward buttons */}
             <View
-                style={{
-                    width: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 4,
-                    pointerEvents: 'auto',
-                }}
+                style={styles.navigationControls}
                 testID="desktop-navigation-controls"
                 {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
             >
                 <Pressable
                     onPress={handleSidebarToggle}
                     hitSlop={8}
-                    style={({ pressed }) => ({
-                        width: 70,
-                        height: 30,
-                        paddingHorizontal: 8,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 5,
-                        borderRadius: 9,
-                        borderWidth: 1,
-                        borderColor: theme.colors.divider,
-                        backgroundColor: sidebarVisible ? theme.colors.surfacePressed : theme.colors.surface,
-                        opacity: pressed ? 0.7 : 1,
-                    })}
-                    accessibilityLabel={t('sidebar.sessionsTitle')}
+                    style={({ pressed }) => [
+                        styles.sidebarToggle,
+                        sidebarVisible && styles.toggleSelected,
+                        pressed && styles.togglePressed,
+                    ]}
+                    accessibilityLabel={sidebarToggleLabel}
                     accessibilityRole="button"
                     accessibilityState={{ expanded: sidebarVisible }}
                     testID="desktop-navigation-sidebar-button"
@@ -273,28 +263,19 @@ const PersistentHeader = React.memo(() => {
                     />
                     <Text
                         numberOfLines={1}
-                        style={{ color: theme.colors.header.tint, fontSize: 12, fontWeight: '600' }}
+                        style={styles.sidebarToggleText}
                     >
-                        {t('sidebar.sessionsTitle')}
+                        {t('desktopWorkspace.sessions')}
                     </Text>
                 </Pressable>
                 <Pressable
                     onPress={handleZenToggle}
                     hitSlop={8}
-                    style={({ pressed }) => ({
-                        width: 98,
-                        height: 30,
-                        paddingHorizontal: 8,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 6,
-                        borderRadius: 9,
-                        borderWidth: 1,
-                        borderColor: zenMode ? theme.colors.textLink : theme.colors.divider,
-                        backgroundColor: zenMode ? theme.colors.surfacePressed : theme.colors.surface,
-                        opacity: pressed ? 0.7 : 1,
-                    })}
+                    style={({ pressed }) => [
+                        styles.zenToggle,
+                        zenMode && styles.zenToggleSelected,
+                        pressed && styles.togglePressed,
+                    ]}
                     accessibilityLabel={t('zen.toggle')}
                     accessibilityRole="button"
                     accessibilityState={{ selected: zenMode }}
@@ -307,11 +288,7 @@ const PersistentHeader = React.memo(() => {
                     />
                     <Text
                         numberOfLines={1}
-                        style={{
-                            color: zenMode ? theme.colors.textLink : theme.colors.header.tint,
-                            fontSize: 12,
-                            fontWeight: '600',
-                        }}
+                        style={[styles.zenToggleText, zenMode && styles.zenToggleTextSelected]}
                     >
                         {t('zen.toggle')}
                     </Text>
@@ -323,13 +300,18 @@ const PersistentHeader = React.memo(() => {
                     onPress={handleBack}
                     disabled={!canGoBackEffective}
                     hitSlop={10}
-                    style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBackEffective ? 1 : 0.3 }}
+                    style={[styles.historyButton, !canGoBackEffective && styles.historyButtonDisabled]}
                     testID="desktop-navigation-back-button"
                 >
                     <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
                 </Pressable>
                 {Platform.OS === 'web' && (
-                    <Pressable onPress={handleForward} disabled={!canGoForwardEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoForwardEffective ? 1 : 0.3 }}>
+                    <Pressable
+                        onPress={handleForward}
+                        disabled={!canGoForwardEffective}
+                        hitSlop={10}
+                        style={[styles.historyButton, !canGoForwardEffective && styles.historyButtonDisabled]}
+                    >
                         <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />
                     </Pressable>
                 )}
@@ -337,3 +319,71 @@ const PersistentHeader = React.memo(() => {
         </View>
     );
 });
+
+const styles = StyleSheet.create((theme) => ({
+    navigationControls: {
+        width: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        pointerEvents: 'auto',
+    },
+    sidebarToggle: {
+        width: PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH,
+        height: 30,
+        paddingHorizontal: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 5,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surface,
+    },
+    toggleSelected: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    togglePressed: {
+        opacity: 0.7,
+    },
+    sidebarToggleText: {
+        color: theme.colors.header.tint,
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    zenToggle: {
+        width: PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH,
+        height: 30,
+        paddingHorizontal: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surface,
+    },
+    zenToggleSelected: {
+        borderColor: theme.colors.textLink,
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    zenToggleText: {
+        color: theme.colors.header.tint,
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    zenToggleTextSelected: {
+        color: theme.colors.textLink,
+    },
+    historyButton: {
+        width: 28,
+        height: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    historyButtonDisabled: {
+        opacity: 0.3,
+    },
+}));

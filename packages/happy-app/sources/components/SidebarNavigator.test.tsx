@@ -70,6 +70,17 @@ vi.mock('react-native-unistyles', () => ({
             },
         },
     }),
+    StyleSheet: {
+        create: (factory: any) => factory({
+            colors: {
+                surface: '#111',
+                surfacePressed: '#222',
+                divider: '#333',
+                header: { tint: '#fff' },
+                textLink: '#88f',
+            },
+        }),
+    },
 }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/utils/isTauri', () => ({ isTauri: () => false }));
@@ -158,6 +169,10 @@ describe('SidebarNavigator drawer behavior', () => {
         expect(drawer.props.screenOptions.drawerStyle.width).toBe(360);
         const sidebarToggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
         expect(sidebarToggle.props.accessibilityState).toEqual({ expanded: true });
+        expect(sidebarToggle.props.accessibilityLabel).toBe('desktopWorkspace.hideSessions');
+        expect(sidebarToggle.findAllByType('Text').some(
+            (node: any) => node.props.children === 'desktopWorkspace.sessions',
+        )).toBe(true);
 
         act(() => sidebarToggle.props.onPress());
         expect(mocks.setDesktopLeftSidebarCollapsed).toHaveBeenCalledWith(true);
