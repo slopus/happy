@@ -965,6 +965,9 @@ export const ru: TranslationStructure = {
         codeCopied: 'Код скопирован',
         copyFailed: 'Ошибка копирования',
         mermaidRenderFailed: 'Не удалось отобразить диаграмму mermaid',
+        // Multi-select on option chips
+        optionsRunInSequence: 'Выполнить по порядку',
+        optionsSequencePrompt: 'Выполни следующее по порядку:',
     },
 
     artifacts: {

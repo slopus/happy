@@ -965,6 +965,9 @@ export const pl: TranslationStructure = {
         codeCopied: 'Kod skopiowany',
         copyFailed: 'Błąd kopiowania',
         mermaidRenderFailed: 'Nie udało się wyświetlić diagramu mermaid',
+        // Multi-select on option chips
+        optionsRunInSequence: 'Wykonaj po kolei',
+        optionsSequencePrompt: 'Wykonaj kolejno następujące czynności:',
     },
 
     artifacts: {

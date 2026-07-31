@@ -965,6 +965,9 @@ export const en = {
         codeCopied: 'Code copied',
         copyFailed: 'Copy failed',
         mermaidRenderFailed: 'Failed to render mermaid diagram',
+        // Multi-select on option chips
+        optionsRunInSequence: 'Run in sequence',
+        optionsSequencePrompt: 'Please do the following in order:',
     },
 
     artifacts: {

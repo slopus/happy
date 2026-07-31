@@ -950,6 +950,9 @@ export const ja: TranslationStructure = {
         codeCopied: 'コードをコピーしました',
         copyFailed: 'コピーに失敗しました',
         mermaidRenderFailed: 'Mermaidダイアグラムのレンダリングに失敗しました',
+        // Multi-select on option chips
+        optionsRunInSequence: '順番に実行',
+        optionsSequencePrompt: '以下を順番に実行してください：',
     },
 
     artifacts: {
