@@ -104,4 +104,29 @@ describe('SessionHeaderChip connection semantics', () => {
 
         act(() => renderer.unmount());
     });
+
+    it('keeps the agent identity visible while the machine label takes the remaining width', () => {
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <SessionHeaderChip
+                    agentLabel="codex"
+                    machineName="192.168.100.100"
+                    online
+                    open={false}
+                    onPress={vi.fn()}
+                />,
+            );
+        });
+
+        const texts = renderer.root.findAllByType('Text');
+        const agent = texts.find((node: any) => node.props.children === 'codex');
+        const machine = texts.find((node: any) => node.props.children === '192.168.100.100');
+
+        expect(agent?.props.style).toMatchObject({ flexShrink: 0 });
+        expect(machine?.props).toMatchObject({ numberOfLines: 1, ellipsizeMode: 'tail' });
+        expect(machine?.props.style).toMatchObject({ flex: 1, minWidth: 0, flexShrink: 1 });
+
+        act(() => renderer.unmount());
+    });
 });

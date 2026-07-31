@@ -46,7 +46,7 @@ export const SessionHeaderChip = React.memo(({ agentLabel, compact = false, mach
             />
             <Text style={styles.status} numberOfLines={1}>{statusLabel}</Text>
             {!compact && machineName ? (
-                <Text style={styles.machine} numberOfLines={1}>{machineName}</Text>
+                <Text style={styles.machine} numberOfLines={1} ellipsizeMode="tail">{machineName}</Text>
             ) : null}
             <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={13} color={theme.colors.textSecondary} />
         </Pressable>
@@ -81,12 +81,14 @@ const styles = StyleSheet.create((theme) => ({
         ...Typography.default('semiBold'),
         fontSize: 13,
         color: theme.colors.text,
-        flexShrink: 1,
+        flexShrink: 0,
     },
     machine: {
         ...Typography.mono(),
         fontSize: 11,
         color: theme.colors.textSecondary,
+        flex: 1,
+        minWidth: 0,
         flexShrink: 1,
     },
     status: {
