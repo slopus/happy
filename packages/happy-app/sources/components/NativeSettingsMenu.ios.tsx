@@ -25,7 +25,12 @@ export function NativeSettingsMenu({ groups, children, style, flat = false }: Na
     return (
         <View style={[styles.container, style]}>
             <View pointerEvents="none" style={styles.trigger}>{children}</View>
-            <Host colorScheme="dark" style={styles.host}>
+            {/* The host must not perform keyboard avoidance: it is pinned over a
+                composer chip whose position React Native already manages. Left on,
+                SwiftUI shifts the menu's invisible trigger up by the keyboard
+                height while the host's RN frame stays put, so the chip becomes
+                untappable whenever the keyboard is open. */}
+            <Host colorScheme="dark" ignoreSafeArea="keyboard" style={styles.host}>
                 <Menu
                     modifiers={[tint('#FFFFFF')]}
                     label={(
