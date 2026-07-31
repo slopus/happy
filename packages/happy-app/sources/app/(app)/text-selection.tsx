@@ -9,15 +9,24 @@ import { t } from '@/text';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { Ionicons } from '@expo/vector-icons';
+import { InvalidRouteState } from '@/components/InvalidRouteState';
 
-export default function TextSelectionScreen() {
+function readTextId(value: string | string[] | undefined): string | null {
+    return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+export const TextSelectionScreen = React.memo(function TextSelectionScreen() {
     const router = useRouter();
     const navigation = useNavigation();
-    const { textId } = useLocalSearchParams<{ textId: string }>();
+    const params = useLocalSearchParams<{ textId?: string | string[] }>();
+    const textId = readTextId(params.textId);
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
-    const [fullText, setFullText] = React.useState<string>('');
-    const [loading, setLoading] = React.useState(true);
+    const [fullText, setFullText] = React.useState('');
+    const [loading, setLoading] = React.useState(Boolean(textId));
+    const errorMessage = !textId
+        ? t('textSelection.noTextProvided')
+        : (!loading && !fullText ? t('textSelection.textNotFound') : null);
 
     // Copy functionality
     const handleCopyAll = React.useCallback(async () => {
@@ -37,7 +46,7 @@ export default function TextSelectionScreen() {
     // Set up header right button
     React.useLayoutEffect(() => {
         navigation.setOptions({
-            headerRight: () => (
+            headerRight: textId ? () => (
                 <Pressable
                     onPress={handleCopyAll}
                     style={({ pressed }) => [
@@ -49,38 +58,44 @@ export default function TextSelectionScreen() {
                     <Ionicons 
                         name="copy-outline" 
                         size={24} 
-                        color={loading || !fullText ? theme.colors.textSecondary : theme.colors.header.tint} 
+                        color={loading || !fullText ? theme.colors.textSecondary : theme.colors.header.tint}
                     />
                 </Pressable>
-            ),
+            ) : undefined,
         });
-    }, [navigation, handleCopyAll, loading, fullText, theme]);
+    }, [navigation, handleCopyAll, loading, fullText, textId, theme]);
 
     React.useEffect(() => {
         if (!textId) {
-            Modal.alert(t('common.error'), t('textSelection.noTextProvided'), [
-                { text: t('common.ok'), onPress: () => router.back() }
-            ]);
+            setFullText('');
+            setLoading(false);
             return;
         }
 
         const content = retrieveTempText(textId);
-        if (content) {
-            setFullText(content);
-        } else {
-            Modal.alert(t('common.error'), t('textSelection.textNotFound'), [
-                { text: t('common.ok'), onPress: () => router.back() }
-            ]);
-        }
+        setFullText(content ?? '');
         setLoading(false);
-    }, [textId, router]);
+    }, [textId]);
+
+    const handleInvalidTextRecovery = React.useCallback(() => {
+        router.replace('/');
+    }, [router]);
+
+    if (errorMessage) {
+        return (
+            <InvalidRouteState
+                title={t('common.error')}
+                description={errorMessage}
+                actionLabel={t('common.home')}
+                onAction={handleInvalidTextRecovery}
+            />
+        );
+    }
 
     if (loading) {
         return (
             <View style={styles.container}>
-                <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
-                    {t('common.loading')}
-                </Text>
+                <Text style={styles.loadingText}>{t('common.loading')}</Text>
             </View>
         );
     }
@@ -109,7 +124,9 @@ export default function TextSelectionScreen() {
             </ScrollView>
         </View>
     );
-}
+});
+
+export default TextSelectionScreen;
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -118,6 +135,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     loadingText: {
         ...Typography.default(),
+        color: theme.colors.textSecondary,
         fontSize: 16,
         textAlign: 'center',
         marginTop: 50,

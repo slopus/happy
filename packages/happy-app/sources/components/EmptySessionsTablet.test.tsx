@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error The test only uses the minimal create/unmount API.
 import TestRenderer from 'react-test-renderer';
 
-import { EmptySessionsTablet } from './EmptySessionsTablet';
+import { EmptySessionsTablet, shouldShowSessionEmptyState } from './EmptySessionsTablet';
 
 const { navigate, state, translations } = vi.hoisted(() => ({
     navigate: vi.fn(),
@@ -101,6 +101,23 @@ describe('EmptySessionsTablet i18n empty state', () => {
         act(() => renderer.unmount());
     });
 
+    it('supports page-specific empty titles without changing the recovery action', () => {
+        state.machines = [{ online: true }];
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<EmptySessionsTablet title="暂无历史会话" />);
+        });
+
+        expect(renderedText(renderer)).toEqual([
+            '暂无历史会话',
+            '在任意一台已连接的设备上开始新会话。',
+            '开始新会话',
+        ]);
+
+        act(() => renderer.unmount());
+    });
+
     it('renders translated offline guidance without the new-session action', () => {
         state.machines = [{ online: false }];
         let renderer: any;
@@ -116,5 +133,12 @@ describe('EmptySessionsTablet i18n empty state', () => {
         expect(renderer.root.findAllByType('Pressable')).toHaveLength(0);
 
         act(() => renderer.unmount());
+    });
+});
+
+describe('session collection presentation', () => {
+    it('uses the structured empty state only when the collection has no sessions', () => {
+        expect(shouldShowSessionEmptyState(0)).toBe(true);
+        expect(shouldShowSessionEmptyState(1)).toBe(false);
     });
 });

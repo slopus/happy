@@ -14,6 +14,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/Avatar';
+import { EmptySessionsTablet, shouldShowSessionEmptyState } from '@/components/EmptySessionsTablet';
 import { layout } from '@/components/layout';
 import { Typography } from '@/constants/Typography';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -160,6 +161,7 @@ export default React.memo(function SessionSearchScreen() {
     const allNeedsCount = managedSessions.filter((item) => item.needsAction).length;
     const hasQuery = query.trim().length > 0;
     const hasResults = filteredSessions.length > 0;
+    const isSessionCollectionEmpty = shouldShowSessionEmptyState(managedSessions.length);
 
     const handleSessionPress = React.useCallback((sessionId: string) => {
         if (sortMode) {
@@ -167,6 +169,19 @@ export default React.memo(function SessionSearchScreen() {
         }
         navigateToSession(sessionId);
     }, [navigateToSession, sortMode]);
+
+    if (isSessionCollectionEmpty) {
+        return (
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+                <View style={styles.content}>
+                    <EmptySessionsTablet title={t('sessionSearch.empty')} />
+                </View>
+            </KeyboardAvoidingView>
+        );
+    }
 
     return (
         <KeyboardAvoidingView

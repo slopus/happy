@@ -8,10 +8,10 @@ import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/auth/AuthContext';
 import { connectService } from '@/sync/apiServices';
 import { sync } from '@/sync/sync';
-import { View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { StyleSheet } from 'react-native-unistyles';
-import { Platform } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 
 export default function ClaudeOAuth() {
     // const router = useRouter();
@@ -64,11 +64,32 @@ export default function ClaudeOAuth() {
     );
 }
 
-const OAuthViewUnsupported = React.memo((props: {
+export const OAuthViewUnsupported = React.memo((props: {
     name: string;
     command?: string;
 }) => {
     const command = props.command || `happy connect ${props.name.toLowerCase()}`;
+    const [copied, setCopied] = React.useState(false);
+    const feedbackTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    React.useEffect(() => () => {
+        if (feedbackTimer.current) {
+            clearTimeout(feedbackTimer.current);
+        }
+    }, []);
+
+    const handleCopy = React.useCallback(async () => {
+        try {
+            await Clipboard.setStringAsync(command);
+            setCopied(true);
+            if (feedbackTimer.current) {
+                clearTimeout(feedbackTimer.current);
+            }
+            feedbackTimer.current = setTimeout(() => setCopied(false), 2_000);
+        } catch (error) {
+            console.error('Failed to copy Claude connection command:', error);
+        }
+    }, [command]);
 
     return (
         <View style={styles.unsupportedContainer}>
@@ -77,10 +98,24 @@ const OAuthViewUnsupported = React.memo((props: {
                 {t('connectClaude.instruction')}
             </Text>
             <View style={styles.terminalContainer}>
-                <Text style={styles.terminalCommand}>
-                    <Text style={styles.terminalPrompt}>$ </Text>
-                    {command}
-                </Text>
+                <View style={styles.terminalRow}>
+                    <Text style={styles.terminalCommand}>
+                        <Text style={styles.terminalPrompt}>$ </Text>
+                        {command}
+                    </Text>
+                    <Pressable
+                        accessibilityLabel={t(copied ? 'common.copied' : 'common.copy')}
+                        accessibilityRole="button"
+                        onPress={handleCopy}
+                        style={({ pressed }) => [styles.copyButton, pressed && styles.copyButtonPressed]}
+                        tabIndex={0}
+                        testID="claude-connect-copy-button"
+                    >
+                        <Text accessibilityLiveRegion="polite" style={styles.copyButtonText}>
+                            {t(copied ? 'common.copied' : 'common.copy')}
+                        </Text>
+                    </Pressable>
+                </View>
             </View>
         </View>
     );
@@ -165,14 +200,41 @@ const styles = StyleSheet.create((theme) => ({
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.1)',
     },
+    terminalRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: 12,
+        justifyContent: 'space-between',
+    },
     terminalPrompt: {
         fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
         fontSize: 14,
         color: '#00ff00',
     },
     terminalCommand: {
+        flex: 1,
         fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
         fontSize: 14,
         color: '#ffffff',
+        minWidth: 0,
+    },
+    copyButton: {
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        borderRadius: 6,
+        borderWidth: 1,
+        justifyContent: 'center',
+        minHeight: 32,
+        minWidth: 64,
+        paddingHorizontal: 10,
+    },
+    copyButtonPressed: {
+        opacity: 0.72,
+    },
+    copyButtonText: {
+        color: '#ffffff',
+        fontSize: 13,
+        fontWeight: '600',
     },
 }));

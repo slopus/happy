@@ -55,7 +55,11 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export function EmptySessionsTablet() {
+export function shouldShowSessionEmptyState(sessionCount: number): boolean {
+    return sessionCount === 0;
+}
+
+export function EmptySessionsTablet({ title = t('sidebar.emptySessionsTitle') }: { title?: string }) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const router = useRouter();
@@ -79,7 +83,7 @@ export function EmptySessionsTablet() {
             />
             
             <Text style={styles.titleText}>
-                {t('sidebar.emptySessionsTitle')}
+                {title}
             </Text>
             
             {hasOnlineMachines ? (
