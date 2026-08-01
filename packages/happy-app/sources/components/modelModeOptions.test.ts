@@ -78,6 +78,14 @@ describe('modelModeOptions', () => {
         expect(getDefaultEffortKey('codex')).toBe('medium');
     });
 
+    it('uses neutral defaults for an agent advertised by a remote bridge', () => {
+        expect(getDefaultPermissionModeKey('lmstudio')).toBe('default');
+        expect(getDefaultModelKey('lmstudio')).toBe('default');
+        expect(getDefaultEffortKey('lmstudio')).toBeNull();
+        expect(getAvailablePermissionModes('lmstudio', null, translate).map((mode) => mode.key)).toEqual(['default']);
+        expect(getAvailableModels('lmstudio', null, translate).map((mode) => mode.key)).toEqual(['default']);
+    });
+
     it('prefers metadata models over hardcoded fallbacks', () => {
         const models = getAvailableModels('gemini', {
             models: [

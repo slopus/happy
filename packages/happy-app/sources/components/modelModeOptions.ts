@@ -156,7 +156,10 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     if (flavor === 'agy') {
         return getAgyPermissionModes(translate);
     }
-    return getClaudePermissionModes(translate);
+    if (flavor === 'claude') {
+        return getClaudePermissionModes(translate);
+    }
+    return [{ key: 'default', name: translate('agentInput.permissionMode.default'), description: null }];
 }
 
 export function getOpenClawModelModes(): ModelMode[] {
@@ -192,7 +195,10 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     if (flavor === 'agy') {
         return getAgyModelModes();
     }
-    return getClaudeModelModes();
+    if (flavor === 'claude') {
+        return getClaudeModelModes();
+    }
+    return [{ key: 'default', name: 'default model', description: null }];
 }
 
 export function getAvailableModels(

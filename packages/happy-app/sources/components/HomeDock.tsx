@@ -38,6 +38,7 @@ import {
     type ModeOption,
 } from './modelModeOptions';
 import type { NewSessionAgentType } from '@/sync/persistence';
+import { BUILT_IN_AGENTS, getAvailableAgents } from '@/utils/availableAgents';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { Modal } from '@/modal';
 
@@ -50,14 +51,6 @@ type EnvironmentSetting = 'machine' | 'project' | 'worktree';
 type AgentSetting = 'agent' | 'model' | 'permission' | 'effort';
 
 const CUSTOM_PROJECT_PATH_KEY = '__custom_project_path__';
-
-const AGENTS: Array<{ key: NewSessionAgentType; name: string }> = [
-    { key: 'claude', name: 'Claude Code' },
-    { key: 'codex', name: 'Codex' },
-    { key: 'openclaw', name: 'OpenClaw' },
-    { key: 'gemini', name: 'Gemini' },
-    { key: 'agy', name: 'Agy' },
-];
 
 const styles = StyleSheet.create((theme) => ({
     keyboardFollower: {
@@ -582,7 +575,7 @@ export const HomeDock = React.memo(({
             return [{
                 key: '__none__',
                 name: 'No worktree',
-                description: `Not supported by ${AGENTS.find((agent) => agent.key === agentType)?.name ?? agentType}`,
+                description: `Not supported by ${BUILT_IN_AGENTS.find((agent) => agent.key === agentType)?.name ?? agentType}`,
             }];
         }
         const options: ModeOption[] = [
@@ -599,11 +592,10 @@ export const HomeDock = React.memo(({
         return options;
     }, [agentType, existingWorktrees, supportsWorktree, worktreeKey]);
     const currentWorktree = resolveOption(worktreeOptions, [selectedWorktreeKey]);
-    const availableAgents = React.useMemo(() => {
-        const availability = selectedMachine?.metadata?.cliAvailability;
-        if (!availability) return AGENTS;
-        return AGENTS.filter((agent) => availability[agent.key]);
-    }, [selectedMachine]);
+    const availableAgents = React.useMemo(
+        () => getAvailableAgents(selectedMachine?.metadata),
+        [selectedMachine],
+    );
     const defaults = React.useMemo(
         () => resolveAgentDefaultConfig(defaultOverrides, agentType),
         [agentType, defaultOverrides],
@@ -623,7 +615,7 @@ export const HomeDock = React.memo(({
         [agentType, currentModel?.key],
     );
     const currentEffort = resolveOption(effortOptions, [effortLevel, defaults.effortLevel]);
-    const currentAgent = availableAgents.find((agent) => agent.key === agentType) ?? availableAgents[0] ?? AGENTS[0];
+    const currentAgent = availableAgents.find((agent) => agent.key === agentType) ?? availableAgents[0] ?? BUILT_IN_AGENTS[0];
     const canSubmit = !isSubmitting && (
         prompt.trim().length > 0 || (expImageUpload && selectedImages.length > 0)
     );

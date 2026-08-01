@@ -59,6 +59,7 @@ import {
 import { isRunningOnMac } from '@/utils/platform';
 import { getNewSessionSidebarLayout } from '@/utils/newSessionSidebarLayout';
 import { getAgentPickerItems, getModePickerItems } from '@/utils/newSessionPickerItems';
+import { BUILT_IN_AGENTS, getAvailableAgents } from '@/utils/availableAgents';
 import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { MobileGlassSurface } from '@/components/MobileGlass';
 import { BubblePressable } from '@/components/BubblePressable';
@@ -78,14 +79,14 @@ const agentIcons = {
     gemini: require('@/assets/images/icon-gemini.png'),
     agy: require('@/assets/images/icon-agy.png'),
 };
+const defaultAgentIcon = require('@/assets/images/icon-monochrome.png');
 
-type AgentKey = NewSessionAgentType;
-const ALL_AGENTS: { key: AgentKey; label: string }[] = [
-    { key: 'claude', label: 'claude code' },
-    { key: 'codex', label: 'codex' },
-    { key: 'openclaw', label: 'openclaw' },
-    { key: 'agy', label: 'agy' },
-];
+function getAgentIcon(agent: string) {
+    if (agent === 'claude-code' || agent === 'claude-codex') {
+        return agentIcons.claude;
+    }
+    return agentIcons[agent as keyof typeof agentIcons] ?? defaultAgentIcon;
+}
 
 type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean };
 
@@ -896,11 +897,10 @@ function NewSessionScreen() {
     }, [worktreeItems, worktreeKey]);
 
     // Filter available agents based on CLI availability from machine metadata
-    const availableAgents = React.useMemo(() => {
-        const availability = selectedMachine?.metadata?.cliAvailability;
-        if (!availability) return ALL_AGENTS;
-        return ALL_AGENTS.filter(a => availability[a.key]);
-    }, [selectedMachine]);
+    const availableAgents = React.useMemo(
+        () => getAvailableAgents(selectedMachine?.metadata),
+        [selectedMachine],
+    );
 
     // If current agent not available on this machine, switch to first available
     React.useEffect(() => {
@@ -1026,7 +1026,7 @@ function NewSessionScreen() {
     }, [activePicker, cancelPendingPickerOpen, isDesktop]);
 
     const isOffline = selectedMachine ? !isMachineOnline(selectedMachine) : false;
-    const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS[0];
+    const agent = availableAgents.find(a => a.key === selectedAgent) ?? BUILT_IN_AGENTS[0];
     const currentPermission = permissionModes[permissionIndex] ?? permissionModes[0];
     const currentEffort = effortLevels[effortIndex] ?? effortLevels[0];
     const permissionStyle = currentPermission?.key !== 'default' ? getPermissionStyle(currentPermission.key) : null;
@@ -1610,7 +1610,7 @@ function NewSessionScreen() {
                                             style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}
                                         >
                                             <RNImage
-                                                source={agentIcons[agent.key]}
+                                                source={getAgentIcon(agent.key)}
                                                 style={[styles.agentIcon, { tintColor: theme.colors.textSecondary }]}
                                                 resizeMode="contain"
                                             />
@@ -1724,7 +1724,7 @@ function NewSessionScreen() {
                                         style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
                                     >
                                         <RNImage
-                                            source={agentIcons[agent.key]}
+                                            source={getAgentIcon(agent.key)}
                                             style={[styles.collapsedAgentIcon, { tintColor: theme.colors.textSecondary }]}
                                             resizeMode="contain"
                                         />
@@ -1865,7 +1865,7 @@ function NewSessionScreen() {
                             accessibilityLabel={`Agent: ${agent.label}`}
                         >
                             <RNImage
-                                source={agentIcons[agent.key]}
+                                source={getAgentIcon(agent.key)}
                                 style={[styles.collapsedAgentIcon, { tintColor: theme.colors.textSecondary }]}
                                 resizeMode="contain"
                             />

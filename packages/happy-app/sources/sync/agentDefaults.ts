@@ -37,22 +37,29 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     agy: { permissionMode: 'default', modelMode: 'Gemini 3.1 Pro (High)', effortLevel: null },
 };
 
-export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
+const remoteAgentDefaults: AgentDefaultConfig = {
+    permissionMode: 'default',
+    modelMode: 'default',
+    effortLevel: null,
+};
+
+export function normalizeAgentKey(flavor: string | null | undefined): string {
     if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw' || flavor === 'agy') {
         return flavor;
     }
-    return 'claude';
+    return flavor?.trim() || 'claude';
 }
 
 export function getCodeAgentDefaults(flavor: string | null | undefined): AgentDefaultConfig {
-    return codeAgentDefaults[normalizeAgentKey(flavor)];
+    return codeAgentDefaults[normalizeAgentKey(flavor) as AgentKey] ?? remoteAgentDefaults;
 }
 
 export function getAgentDefaultOverride(
     overrides: AgentDefaultOverrides | null | undefined,
     flavor: string | null | undefined,
 ): AgentDefaultOverride {
-    return overrides?.[normalizeAgentKey(flavor)] ?? {};
+    const parsed = AgentDefaultOverrideSchema.safeParse(overrides?.[normalizeAgentKey(flavor)]);
+    return parsed.success ? parsed.data : AgentDefaultOverrideSchema.parse({});
 }
 
 export function resolveAgentDefaultConfig(

@@ -430,6 +430,16 @@ export const MachineMetadataSchema = z.object({
         agy: z.boolean().optional(), // optional: older CLIs don't report agy
         detectedAt: z.number(),
     }).optional(),
+    remoteCapabilities: z.object({
+        agents: z.array(z.object({
+            type: z.string(),
+            name: z.string(),
+            description: z.string().optional(),
+            available: z.boolean().optional(),
+            authenticated: z.boolean().optional(),
+        }).passthrough()),
+        roots: z.array(z.unknown()).optional(),
+    }).passthrough().optional(),
     resumeSupport: z.object({
         rpcAvailable: z.boolean(),
         requiresSameMachine: z.boolean(),

@@ -12,7 +12,7 @@ const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
 const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-count';
 const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
 
-export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy';
+export type NewSessionAgentType = string;
 export type NewSessionSessionType = 'simple' | 'worktree';
 
 export interface NewSessionDraft {
@@ -146,8 +146,8 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const input = typeof parsed.input === 'string' ? parsed.input : '';
         const selectedMachineId = typeof parsed.selectedMachineId === 'string' ? parsed.selectedMachineId : null;
         const selectedPath = typeof parsed.selectedPath === 'string' ? parsed.selectedPath : null;
-        const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini' || parsed.agentType === 'openclaw' || parsed.agentType === 'agy'
-            ? parsed.agentType
+        const agentType: NewSessionAgentType = typeof parsed.agentType === 'string' && parsed.agentType.trim().length > 0
+            ? parsed.agentType.trim().slice(0, 128)
             : 'claude';
         const permissionMode: PermissionModeKey | null = typeof parsed.permissionMode === 'string'
             ? parsed.permissionMode
