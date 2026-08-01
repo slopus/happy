@@ -206,6 +206,30 @@ async function selectProductionTarget(page: Page): Promise<void> {
     await showVideoStep(page, '已选择 Agent codex', 800);
 }
 
+async function expectKeyboardAccessiblePicker(
+    page: Page,
+    trigger: Locator,
+    pickerTestId: string,
+): Promise<void> {
+    await expect(trigger).toHaveAttribute('role', 'button');
+    await expect(trigger).toHaveAccessibleName(/.+/);
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    for (const activationKey of ['Space', 'Enter'] as const) {
+        await trigger.focus();
+        await trigger.press(activationKey);
+
+        const picker = page.getByTestId(pickerTestId);
+        await expect(picker).toBeVisible();
+        await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+        await page.keyboard.press('Escape');
+        await expect(picker).toHaveCount(0);
+        await expect(trigger).toBeFocused();
+        await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    }
+}
+
 async function expectUniqueRoundTrip(
     page: Page,
     prompt: string,
@@ -305,6 +329,22 @@ test('生产账号真实 Session 链路可重复、刷新后仍可继续并覆�
             addTrace(trace, 'iteration-start', { iteration, runId });
 
             await page.goto('/new');
+            const machineTrigger = page.locator('[data-testid="session-config-machine-trigger"]:visible');
+            if (!await machineTrigger.isVisible()) {
+                await page.locator('[data-testid="compose-home-model-chip"]:visible').click();
+            }
+            await expect(machineTrigger).toBeVisible({ timeout: 90_000 });
+            await expectKeyboardAccessiblePicker(
+                page,
+                machineTrigger,
+                'session-config-picker-machine',
+            );
+            await expectKeyboardAccessiblePicker(
+                page,
+                page.locator('[data-testid="session-config-agent-trigger"]:visible'),
+                'session-config-picker-agent',
+            );
+
             await selectProductionTarget(page);
             const newSessionInput = page.locator('[data-testid="new-session-message-input"]:visible');
             await expect(newSessionInput).toBeVisible();

@@ -764,6 +764,18 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const pickerTriggerRefs = React.useRef<Partial<Record<PickerType, HTMLElement>>>({});
         activePickerRef.current = activePicker;
 
+        const capturePickerTrigger = React.useCallback((type: PickerType, node: unknown) => {
+            if (
+                Platform.OS !== 'web'
+                || typeof HTMLElement === 'undefined'
+            ) {
+                return;
+            }
+            if (node instanceof HTMLElement) {
+                pickerTriggerRefs.current[type] = node;
+            }
+        }, []);
+
         // Config collapse — auto-collapses when typing, expands when empty
         const [isConfigExpanded, setIsConfigExpanded] = React.useState(true);
 
@@ -1261,7 +1273,12 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                         <>
                             <View style={styles.configRowWithToggle}>
                                 <Pressable
+                                    ref={(node) => capturePickerTrigger('machine', node)}
                                     testID="session-config-machine-trigger"
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`${t('devTools.machine')}: ${machineName}`}
+                                    accessibilityState={{ expanded: activePicker === 'machine' }}
+                                    aria-expanded={activePicker === 'machine'}
                                     style={(p) => [
                                         styles.configRow,
                                         { flex: 1 },
@@ -1323,8 +1340,13 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     <>
                                         <View style={styles.configRow}>
                                             <Pressable
+                                                ref={(node) => capturePickerTrigger('agent', node)}
                                                 testID="session-config-agent-trigger"
                                                 onPress={(event) => togglePicker('agent', event)}
+                                                accessibilityRole="button"
+                                                accessibilityLabel={`${t('agents.title')}: ${agent.label}`}
+                                                accessibilityState={{ expanded: activePicker === 'agent' }}
+                                                aria-expanded={activePicker === 'agent'}
                                                 style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}
                                             >
                                                 <RNImage
