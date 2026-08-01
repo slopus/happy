@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 
 const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL!;
 
@@ -6,6 +6,39 @@ function authenticatedRoute(pathname: string): string {
     const url = new URL(authenticatedWebUrl);
     url.pathname = pathname;
     return url.toString();
+}
+
+async function renderedLineTexts(locator: Locator): Promise<string[]> {
+    return locator.evaluate((element) => {
+        const chars: Array<{ top: number; value: string }> = [];
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+            const value = node.textContent ?? '';
+            for (let index = 0; index < value.length; index += 1) {
+                if (/\s/.test(value[index])) continue;
+                const range = document.createRange();
+                range.setStart(node, index);
+                range.setEnd(node, index + 1);
+                const rect = range.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                    chars.push({ top: Math.round(rect.top), value: value[index] });
+                }
+            }
+            node = walker.nextNode();
+        }
+
+        const lines: Array<{ top: number; value: string }> = [];
+        for (const char of chars) {
+            let line = lines.find((candidate) => Math.abs(candidate.top - char.top) <= 1);
+            if (!line) {
+                line = { top: char.top, value: '' };
+                lines.push(line);
+            }
+            line.value += char.value;
+        }
+        return lines.sort((left, right) => left.top - right.top).map((line) => line.value);
+    });
 }
 
 const viewports = [
@@ -22,6 +55,37 @@ const expectedIsolatedDevRouteLoadEvidence = {
     failedRequestTypes: Array(6).fill('fetch'),
     failedRequestReasons: Array(6).fill('net::ERR_CONNECTION_REFUSED'),
 };
+
+test('中文欢迎页在四档桌面视口没有孤字收尾', async ({ browser }, testInfo) => {
+    const context = await browser.newContext({ locale: 'zh-CN', deviceScaleFactor: 1 });
+    const page = await context.newPage();
+    const url = new URL(authenticatedWebUrl);
+    url.pathname = '/';
+    url.search = '';
+    url.hash = '';
+
+    try {
+        for (const viewport of [
+            { width: 1024, height: 768 },
+            { width: 1280, height: 720 },
+            { width: 1440, height: 900 },
+            { width: 1920, height: 1080 },
+        ]) {
+            await page.setViewportSize(viewport);
+            await page.goto(url.toString());
+            const titleLines = await renderedLineTexts(page.getByTestId('welcome-title'));
+            const subtitleLines = await renderedLineTexts(page.getByTestId('welcome-subtitle'));
+            expect(titleLines.at(-1)?.length ?? 0, '欢迎页标题不得以一到两个字孤行收尾').toBeGreaterThan(2);
+            expect(subtitleLines.at(-1)?.length ?? 0, '欢迎页说明不得以一到两个字孤行收尾').toBeGreaterThan(2);
+            await page.screenshot({
+                path: testInfo.outputPath(`welcome-after-${viewport.width}x${viewport.height}.png`),
+                fullPage: true,
+            });
+        }
+    } finally {
+        await context.close();
+    }
+});
 
 for (const viewport of viewports) {
     test(`${viewport.name}首页可输入且没有 OTA 蒙层`, async ({ page }) => {
@@ -515,6 +579,56 @@ test('桌面 Machine Picker 各关闭入口重复退出后都把焦点返回触�
 
             await expect(dialog).toHaveCount(0);
             await expect(machineTrigger).toBeFocused();
+        }
+    }
+});
+
+test('桌面 Machine 与 Agent Picker 支持标准键盘激活并在关闭后回焦', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(authenticatedRoute('/new'));
+    await expect(page.getByRole('textbox')).toBeVisible();
+
+    const machineTrigger = page.getByTestId('session-config-machine-trigger');
+    if (!await machineTrigger.isVisible()) {
+        await page.locator('[data-testid="compose-home-model-chip"]:visible').click();
+    }
+
+    for (const picker of [
+        {
+            trigger: machineTrigger,
+            dialog: page.getByTestId('session-config-picker-machine'),
+        },
+        {
+            trigger: page.getByTestId('session-config-agent-trigger'),
+            dialog: page.getByTestId('session-config-picker-agent'),
+        },
+    ]) {
+        await expect(picker.trigger).toHaveAttribute('role', 'button');
+        await expect(picker.trigger).toHaveAccessibleName(/.+/);
+        await expect(picker.trigger).toHaveAttribute('aria-expanded', 'false');
+
+        for (const activationKey of ['Space', 'Enter'] as const) {
+            await picker.trigger.focus();
+            await page.screenshot({
+                path: testInfo.outputPath(`${await picker.trigger.getAttribute('data-testid')}-${activationKey}-before.png`),
+                fullPage: true,
+            });
+            await picker.trigger.press(activationKey);
+            await expect(picker.dialog).toBeVisible();
+            await expect(picker.trigger).toHaveAttribute('aria-expanded', 'true');
+            await page.screenshot({
+                path: testInfo.outputPath(`${await picker.trigger.getAttribute('data-testid')}-${activationKey}-open.png`),
+                fullPage: true,
+            });
+
+            await page.keyboard.press('Escape');
+            await expect(picker.dialog).toHaveCount(0);
+            await expect(picker.trigger).toBeFocused();
+            await expect(picker.trigger).toHaveAttribute('aria-expanded', 'false');
+            await page.screenshot({
+                path: testInfo.outputPath(`${await picker.trigger.getAttribute('data-testid')}-${activationKey}-after.png`),
+                fullPage: true,
+            });
         }
     }
 });

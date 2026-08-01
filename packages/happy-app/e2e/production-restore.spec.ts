@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
@@ -7,9 +7,42 @@ const productionEnabled = process.env.HAPPY_E2E_PRODUCTION === '1';
 const secretKeyFile = process.env.HAPPY_E2E_SECRET_KEY_FILE
     ?? path.resolve(process.cwd(), '../..', '.paws-e2e-production.key');
 
+async function renderedLineTexts(locator: Locator): Promise<string[]> {
+    return locator.evaluate((element: Element) => {
+        const chars: Array<{ top: number; value: string }> = [];
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+            const value = node.textContent ?? '';
+            for (let index = 0; index < value.length; index += 1) {
+                if (/\s/.test(value[index])) continue;
+                const range = document.createRange();
+                range.setStart(node, index);
+                range.setEnd(node, index + 1);
+                const rect = range.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                    chars.push({ top: Math.round(rect.top), value: value[index] });
+                }
+            }
+            node = walker.nextNode();
+        }
+
+        const lines: Array<{ top: number; value: string }> = [];
+        for (const char of chars) {
+            let line = lines.find((candidate) => Math.abs(candidate.top - char.top) <= 1);
+            if (!line) {
+                line = { top: char.top, value: '' };
+                lines.push(line);
+            }
+            line.value += char.value;
+        }
+        return lines.sort((left, right) => left.top - right.top).map((line) => line.value);
+    });
+}
+
 // Playwright 的 DOM Trace 会保存输入值，因此密钥输入阶段必须关闭自动 Trace。
 // 成功离开恢复页后再手动启动 Trace，视频和截图只会看到密码掩码。
-test.use({ trace: 'off' });
+test.use({ trace: 'off', locale: 'zh-CN' });
 
 test.describe('真实账号恢复', () => {
     test.beforeEach(() => {
@@ -51,6 +84,24 @@ test.describe('真实账号恢复', () => {
                 cause: error,
             });
         }
+
+        for (const viewport of [
+            { width: 1024, height: 768 },
+            { width: 1280, height: 720 },
+            { width: 1440, height: 900 },
+            { width: 1920, height: 1080 },
+        ]) {
+            await page.setViewportSize(viewport);
+            const titleLines = await renderedLineTexts(page.getByTestId('welcome-title'));
+            const subtitleLines = await renderedLineTexts(page.getByTestId('welcome-subtitle'));
+            expect(titleLines.at(-1)?.length ?? 0, '欢迎页标题不得以一到两个字孤行收尾').toBeGreaterThan(2);
+            expect(subtitleLines.at(-1)?.length ?? 0, '欢迎页说明不得以一到两个字孤行收尾').toBeGreaterThan(2);
+            await page.screenshot({
+                path: testInfo.outputPath(`welcome-${viewport.width}x${viewport.height}.png`),
+                fullPage: true,
+            });
+        }
+
         await loginButton.click();
 
         const restoreContent = page.getByTestId('restore-device-content');

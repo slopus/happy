@@ -56,10 +56,10 @@ function NotAuthenticated() {
                 resizeMode="contain"
                 style={styles.logo}
             />
-            <Text style={styles.title}>
+            <Text testID="welcome-title" style={styles.title}>
                 {t('welcome.title')}
             </Text>
-            <Text style={styles.subtitle}>
+            <Text testID="welcome-subtitle" style={styles.subtitle}>
                 {t('welcome.subtitle')}
             </Text>
             {Platform.OS !== 'android' && Platform.OS !== 'ios' ? (
@@ -117,10 +117,10 @@ function NotAuthenticated() {
                     />
                 </View>
                 <View style={styles.landscapeContentSection}>
-                    <Text style={styles.landscapeTitle}>
+                    <Text testID="welcome-title" style={styles.landscapeTitle}>
                         {t('welcome.title')}
                     </Text>
-                    <Text style={styles.landscapeSubtitle}>
+                    <Text testID="welcome-subtitle" style={styles.landscapeSubtitle}>
                         {t('welcome.subtitle')}
                     </Text>
                     {Platform.OS !== 'android' && Platform.OS !== 'ios'
@@ -223,7 +223,7 @@ const styles = StyleSheet.create((theme) => ({
     landscapeInner: {
         flexGrow: 1,
         flexBasis: 0,
-        maxWidth: 800,
+        maxWidth: 960,
         flexDirection: 'row',
     },
     landscapeLogoSection: {
@@ -241,12 +241,14 @@ const styles = StyleSheet.create((theme) => ({
         paddingLeft: 24,
     },
     landscapeTitle: {
+        width: '100%',
         textAlign: 'center',
         fontSize: 25,
         ...Typography.display('semiBold'),
         color: theme.colors.text,
     },
     landscapeSubtitle: {
+        width: '100%',
         ...Typography.default(),
         fontSize: 18,
         color: theme.colors.textSecondary,
