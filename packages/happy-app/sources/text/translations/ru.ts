@@ -170,6 +170,8 @@ export const ru: TranslationStructure = {
         },
         display: 'Отображение',
         displayDescription: 'Управление макетом и интервалами',
+        compactToolCalls: 'Компактные вызовы инструментов',
+        compactToolCallsDescription: 'Показывать неинтерактивные вызовы одной строкой; нажмите строку для подробностей',
         inlineToolCalls: 'Встроенные вызовы инструментов',
         inlineToolCallsDescription: 'Отображать вызовы инструментов прямо в сообщениях чата',
         expandTodoLists: 'Развернуть списки задач',

@@ -184,6 +184,8 @@ export const es: TranslationStructure = {
         },
         display: 'Pantalla',
         displayDescription: 'Controla diseño y espaciado',
+        compactToolCalls: 'Llamadas a herramientas compactas',
+        compactToolCallsDescription: 'Muestra las llamadas no interactivas en una sola línea; abre una fila para ver los detalles',
         inlineToolCalls: 'Llamadas a herramientas en línea',
         inlineToolCallsDescription: 'Mostrar llamadas a herramientas directamente en mensajes de chat',
         expandTodoLists: 'Expandir listas de tareas',

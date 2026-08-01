@@ -185,6 +185,8 @@ export const ja: TranslationStructure = {
         },
         display: '表示',
         displayDescription: 'レイアウトと間隔を調整',
+        compactToolCalls: 'ツール呼び出しをコンパクト表示',
+        compactToolCallsDescription: '非対話型のツール呼び出しを1行で表示し、行を開いて詳細を確認します',
         inlineToolCalls: 'ツール呼び出しをインライン表示',
         inlineToolCallsDescription: 'チャットメッセージ内にツール呼び出しを直接表示',
         expandTodoLists: 'Todoリストを展開',

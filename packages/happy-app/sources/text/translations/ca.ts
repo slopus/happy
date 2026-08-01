@@ -184,6 +184,8 @@ export const ca: TranslationStructure = {
         },
         display: 'Pantalla',
         displayDescription: 'Controla la disposició i l\'espaiat',
+        compactToolCalls: 'Crides d\'eines compactes',
+        compactToolCallsDescription: 'Mostra les crides no interactives en una sola línia; obre una fila per veure\'n els detalls',
         inlineToolCalls: 'Crides d\'eines en línia',
         inlineToolCallsDescription: 'Mostra les crides d\'eines directament als missatges de xat',
         expandTodoLists: 'Expandeix les llistes de tasques',

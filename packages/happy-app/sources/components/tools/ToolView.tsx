@@ -14,7 +14,14 @@ import { useRouter } from 'expo-router';
 import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 import { t } from '@/text';
-import { formatMCPTitle, getToolActivityLabel, getTerminalToolCommand, shouldRenderToolCardHeader } from '@/utils/toolDisplay';
+import {
+    formatMCPTitle,
+    getToolActivityLabel,
+    getTerminalToolCommand,
+    shouldRenderToolCardHeader,
+    shouldUseCompactToolRow,
+} from '@/utils/toolDisplay';
+import { useSetting } from '@/sync/storage';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -29,6 +36,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress, sessionId, messageId } = props;
     const router = useRouter();
     const { theme } = useUnistyles();
+    const compactToolCalls = useSetting('compactToolCalls');
 
     // For file-editing tools, navigate to file route instead of message detail
     const fileEditTools = ['Edit', 'MultiEdit', 'Write'];
@@ -165,10 +173,12 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     const terminalCommand = getTerminalToolCommand(tool);
     const isCompactTerminalTool = terminalCommand !== null;
-    const isCompactActivityTool = minimal || isCompactTerminalTool;
+    const isCompactActivityTool = shouldUseCompactToolRow(tool, compactToolCalls)
+        || minimal
+        || isCompactTerminalTool;
     const activityLabel = getToolActivityLabel(tool);
     const isInlineCodexPatch = Platform.OS === 'web' && tool.name === 'CodexPatch';
-    const renderCardHeader = shouldRenderToolCardHeader(tool.name, Platform.OS);
+    const renderCardHeader = isCompactActivityTool || shouldRenderToolCardHeader(tool.name, Platform.OS);
     const renderPermissionFooter = () => (
         tool.permission && sessionId && tool.name !== 'AskUserQuestion'
             ? <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} toolInput={tool.input} metadata={props.metadata} />

@@ -201,6 +201,8 @@ export const pl: TranslationStructure = {
         },
         display: 'Wyświetlanie',
         displayDescription: 'Kontroluj układ i odstępy',
+        compactToolCalls: 'Kompaktowe wywołania narzędzi',
+        compactToolCallsDescription: 'Pokazuj nieinteraktywne wywołania w jednym wierszu; otwórz wiersz, aby zobaczyć szczegóły',
         inlineToolCalls: 'Wbudowane wywołania narzędzi',
         inlineToolCallsDescription: 'Wyświetlaj wywołania narzędzi bezpośrednio w wiadomościach czatu',
         expandTodoLists: 'Rozwiń listy zadań',

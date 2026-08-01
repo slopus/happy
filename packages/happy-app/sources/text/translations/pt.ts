@@ -183,6 +183,8 @@ export const pt: TranslationStructure = {
         },
         display: 'Exibição',
         displayDescription: 'Controle layout e espaçamento',
+        compactToolCalls: 'Chamadas de ferramentas compactas',
+        compactToolCallsDescription: 'Mostre chamadas não interativas em uma linha; abra a linha para ver detalhes',
         inlineToolCalls: 'Chamadas de ferramentas inline',
         inlineToolCallsDescription: 'Exibir chamadas de ferramentas diretamente nas mensagens do chat',
         expandTodoLists: 'Expandir listas de tarefas',

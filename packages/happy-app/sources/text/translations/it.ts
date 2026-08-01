@@ -182,6 +182,8 @@ export const it: TranslationStructure = {
         },
         display: 'Schermo',
         displayDescription: 'Controlla layout e spaziatura',
+        compactToolCalls: 'Chiamate strumenti compatte',
+        compactToolCallsDescription: 'Mostra le chiamate non interattive su una riga; apri una riga per i dettagli',
         inlineToolCalls: 'Chiamate strumenti inline',
         inlineToolCallsDescription: 'Mostra le chiamate agli strumenti direttamente nei messaggi di chat',
         expandTodoLists: 'Espandi liste di attività',

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { groupMessagesForDisplay, groupToolCallsForDisplay } from './useGroupedMessages';
+import { generateGroupSummary, groupMessagesForDisplay, groupToolCallsForDisplay } from './useGroupedMessages';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
 
 vi.mock('@/components/tools/knownTools', () => ({
@@ -52,6 +52,24 @@ function namedToolMessage(id: string, name: string, createdAt: number): ToolCall
 }
 
 describe('useGroupedMessages', () => {
+    it('classifies Rig tool families in group summaries', () => {
+        const messages = [
+            namedToolMessage('terminal', 'exec_command', 1),
+            namedToolMessage('edit', 'apply_patch', 2),
+            namedToolMessage('read', 'read_agent_history', 3),
+            namedToolMessage('search', 'list_workspaces', 4),
+            namedToolMessage('task', 'spawn_agent', 5),
+        ];
+
+        expect(generateGroupSummary(messages)).toBe([
+            'toolGroup.editedFiles:1',
+            'toolGroup.readFiles:1',
+            'toolGroup.ranCommands:1',
+            'toolGroup.searched:1',
+            'toolGroup.ranTasks:1',
+        ].join(', '));
+    });
+
     it('stores grouped tools in chronological render order', () => {
         const messages: Message[] = [
             {

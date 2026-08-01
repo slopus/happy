@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Message } from '@/sync/typesMessage';
 import { knownTools } from '@/components/tools/knownTools';
+import { getToolSummaryCategory } from '@/utils/toolDisplay';
 import { t } from '@/text';
 
 // Display item types for the grouped message list
@@ -332,25 +333,13 @@ function hasPendingPermission(messages: Message[]): boolean {
     ));
 }
 
-// Tool name → category mapping for summary generation
-const TOOL_CATEGORIES: Record<string, string> = {
-    Edit: 'edit', MultiEdit: 'edit', Write: 'edit',
-    CodexPatch: 'edit', GeminiPatch: 'edit', edit: 'edit', NotebookEdit: 'edit',
-    Read: 'read', read: 'read', NotebookRead: 'read',
-    Bash: 'terminal', CodexBash: 'terminal', GeminiBash: 'terminal',
-    shell: 'terminal', execute: 'terminal',
-    Grep: 'search', Glob: 'search', LS: 'search', search: 'search', WebSearch: 'search',
-    WebFetch: 'web',
-    Task: 'task', Agent: 'task',
-};
-
 /** Generate a human-readable summary of tools in a group */
 export function generateGroupSummary(messages: Message[]): string {
     const counts: Record<string, number> = {};
 
     for (const msg of messages) {
         if (msg.kind === 'tool-call') {
-            const category = TOOL_CATEGORIES[msg.tool.name] || 'other';
+            const category = getToolSummaryCategory(msg.tool.name);
             counts[category] = (counts[category] || 0) + 1;
         }
     }

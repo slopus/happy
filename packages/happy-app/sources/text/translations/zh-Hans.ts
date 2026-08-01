@@ -185,6 +185,8 @@ export const zhHans: TranslationStructure = {
         },
         display: '显示',
         displayDescription: '控制布局和间距',
+        compactToolCalls: '紧凑显示工具调用',
+        compactToolCallsDescription: '将非交互式工具调用显示为单行；打开该行可查看详情',
         inlineToolCalls: '内联工具调用',
         inlineToolCallsDescription: '在聊天消息中直接显示工具调用',
         expandTodoLists: '展开待办列表',

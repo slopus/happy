@@ -184,6 +184,8 @@ export const zhHant: TranslationStructure = {
         },
         display: '顯示',
         displayDescription: '控制版面配置和間距',
+        compactToolCalls: '精簡顯示工具呼叫',
+        compactToolCallsDescription: '將非互動式工具呼叫顯示為單行；開啟該行可查看詳細資訊',
         inlineToolCalls: '內嵌工具呼叫',
         inlineToolCallsDescription: '在聊天訊息中直接顯示工具呼叫',
         expandTodoLists: '展開待辦清單',

@@ -182,6 +182,8 @@ export const en = {
         },
         display: 'Display',
         displayDescription: 'Control layout and spacing',
+        compactToolCalls: 'Compact Tool Calls',
+        compactToolCallsDescription: 'Show non-interactive tool calls as one-line rows; open a row for details',
         inlineToolCalls: 'Inline Tool Calls',
         inlineToolCallsDescription: 'Display tool calls directly in chat messages',
         expandTodoLists: 'Expand Todo Lists',
