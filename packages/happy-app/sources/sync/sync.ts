@@ -62,7 +62,7 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { resolveControlHandoffDirection } from './controlHandoff';
-import { resolveMessageDeliveryMeta, resolveMessageModeMeta, UnsupportedPermissionModeError } from './messageMeta';
+import { resolveAgentDefaultPin, resolveMessageDeliveryMeta, resolveMessageModeMeta, UnsupportedPermissionModeError } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { encryptBlob } from '@/encryption/blob';
@@ -756,6 +756,13 @@ class Sync {
                 return false;
             }
             throw error;
+        }
+        // Adopt the settings-level defaults as the session's own picks the first
+        // time it uses them, so editing the default later cannot re-model a
+        // session that is already running.
+        const defaultPin = resolveAgentDefaultPin(session, storage.getState().settings);
+        if (Object.keys(defaultPin).length > 0) {
+            sessionSetAgentModes(sessionId, defaultPin);
         }
         const { displayText, source = 'chat', attachments, awaitDelivery = false } = options ?? {};
 
