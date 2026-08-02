@@ -849,8 +849,14 @@ export function SessionViewLoaded({
     }, [sessionId, expImageUpload, selectedImages, clearImages, pendingCommunications]);
 
     const handleAbort = React.useCallback(() => {
-        // Stop cancels only the active turn. Permission, model, and effort are
-        // session choices and must remain sticky for the next message.
+        // Stop cancels only the active turn, so model and effort stay sticky for
+        // the next message. The permission mode cannot: both agents reset it to
+        // the launch value on abort (runClaude.ts / runCodex.ts
+        // `resetCurrentModeDefaults`), so leaving the app's synced copy in place
+        // desyncs the picker from what the next turn actually runs (#1492/#1595).
+        if (!isRig) {
+            sessionSetAgentModes(sessionId, { permissionMode: null });
+        }
         sessionAbort(sessionId);
     }, [sessionId]);
 
