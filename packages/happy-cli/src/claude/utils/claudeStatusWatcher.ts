@@ -55,6 +55,9 @@ import { logger } from "@/ui/logger";
 /** The only `status` value that counts as working. */
 const BUSY_STATUS = "busy";
 
+/** `status` value Claude Code writes while it is blocked on the user. */
+const WAITING_STATUS = "waiting";
+
 const DEFAULT_POLL_INTERVAL_MS = 500;
 
 /**
@@ -65,6 +68,21 @@ const DEFAULT_POLL_INTERVAL_MS = 500;
  * or a changed session id would pin `thinking` at true forever.
  */
 const MISSING_FILE_GRACE_POLLS = 3;
+
+/**
+ * `waitingFor` value Claude Code writes while it is blocked on an answer to a
+ * question (an open AskUserQuestion prompt). Other documented values —
+ * `permission prompt`, `sandbox request`, `worker request`, `dialog open` —
+ * also mean "blocked on the user", but only this one is a question we can
+ * forward, so we match it exactly rather than treating every `waiting` alike.
+ */
+const WAITING_FOR_INPUT = "input needed";
+
+/** The parts of a session status file we act on. */
+interface SessionStatusSnapshot {
+  status: string;
+  waitingFor: string | null;
+}
 
 function claudeSessionsDir(): string {
   const claudeConfigDir =
@@ -107,7 +125,9 @@ function livenessRank(pid: unknown): number {
  * SIGKILLed — the leftover busy@T3 would win forever and the phone would show
  * "working" permanently. So rank by process liveness first, timestamp second.
  */
-async function readStatusForSession(sessionId: string): Promise<string | null> {
+async function readStatusForSession(
+  sessionId: string,
+): Promise<SessionStatusSnapshot | null> {
   const dir = claudeSessionsDir();
   let files: string[];
   try {
@@ -126,6 +146,7 @@ async function readStatusForSession(sessionId: string): Promise<string | null> {
             pid?: unknown;
             sessionId?: unknown;
             status?: unknown;
+            waitingFor?: unknown;
             statusUpdatedAt?: unknown;
             updatedAt?: unknown;
           };
@@ -146,6 +167,8 @@ async function readStatusForSession(sessionId: string): Promise<string | null> {
               : -Infinity;
           return {
             status: parsed.status,
+            waitingFor:
+              typeof parsed.waitingFor === "string" ? parsed.waitingFor : null,
             at,
             liveness: livenessRank(parsed.pid),
           };
@@ -156,7 +179,12 @@ async function readStatusForSession(sessionId: string): Promise<string | null> {
       }),
   );
 
-  let best: { status: string; at: number; liveness: number } | null = null;
+  let best: {
+    status: string;
+    waitingFor: string | null;
+    at: number;
+    liveness: number;
+  } | null = null;
   for (const candidate of candidates) {
     if (!candidate) {
       continue;
@@ -169,7 +197,9 @@ async function readStatusForSession(sessionId: string): Promise<string | null> {
       best = candidate;
     }
   }
-  return best?.status ?? null;
+  return best === null
+    ? null
+    : { status: best.status, waitingFor: best.waitingFor };
 }
 
 export interface ClaudeStatusWatcherOptions {
@@ -180,6 +210,14 @@ export interface ClaudeStatusWatcherOptions {
   getSessionId: () => string | null;
   /** Called only when the state actually changes. */
   onThinkingChange: (thinking: boolean) => void;
+  /**
+   * Called only on change, with true while Claude is blocked waiting for an
+   * answer to a question. This is the authority on whether a question is
+   * *still* open: a transcript alone cannot tell a pending `AskUserQuestion`
+   * from one that was abandoned, and the file selection below discards
+   * leftovers from processes that are gone.
+   */
+  onWaitingForInputChange?: (waitingForInput: boolean) => void;
   pollIntervalMs?: number;
 }
 
@@ -194,6 +232,7 @@ export function startClaudeStatusWatcher(
   const pollIntervalMs = opts.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   let stopped = false;
   let lastThinking = false;
+  let lastWaitingForInput = false;
   let polling = false;
   let lastSessionId: string | null = null;
   let missingPolls = 0;
@@ -207,6 +246,20 @@ export function startClaudeStatusWatcher(
     lastThinking = thinking;
     logger.debug(`[ClaudeStatusWatcher] ${reason} → thinking=${thinking}`);
     opts.onThinkingChange(thinking);
+  };
+
+  // Same shape as applyThinking, and reset from all the same paths: a question
+  // that is no longer open must never stay published, or the phone keeps
+  // offering to answer something Claude has stopped waiting for.
+  const applyWaitingForInput = (waitingForInput: boolean, reason: string) => {
+    if (waitingForInput === lastWaitingForInput) {
+      return;
+    }
+    lastWaitingForInput = waitingForInput;
+    logger.debug(
+      `[ClaudeStatusWatcher] ${reason} → waitingForInput=${waitingForInput}`,
+    );
+    opts.onWaitingForInputChange?.(waitingForInput);
   };
 
   const tick = async () => {
@@ -226,13 +279,14 @@ export function startClaudeStatusWatcher(
         lastSessionId = sessionId;
         missingPolls = 0;
         applyThinking(false, "session changed");
+        applyWaitingForInput(false, "session changed");
       }
 
       if (!sessionId) {
         return;
       }
 
-      const status = await readStatusForSession(sessionId);
+      const snapshot = await readStatusForSession(sessionId);
 
       // We may have been stopped during the await. The reset in stop() can
       // miss this case when lastThinking happens to be false already, and
@@ -242,15 +296,28 @@ export function startClaudeStatusWatcher(
         return;
       }
 
-      if (status === null) {
+      if (snapshot === null) {
         missingPolls++;
         if (missingPolls >= MISSING_FILE_GRACE_POLLS) {
           applyThinking(false, "status file missing");
+          applyWaitingForInput(false, "status file missing");
         }
         return;
       }
       missingPolls = 0;
-      applyThinking(status === BUSY_STATUS, `status=${status}`);
+      applyThinking(
+        snapshot.status === BUSY_STATUS,
+        `status=${snapshot.status}`,
+      );
+      // Only `waiting` + `input needed` is a question we can forward. Every
+      // other combination — including the other `waitingFor` values, which are
+      // also "blocked on the user" — resolves to false, so nothing downstream
+      // can be left waiting on an answer that will never be asked for.
+      applyWaitingForInput(
+        snapshot.status === WAITING_STATUS &&
+          snapshot.waitingFor === WAITING_FOR_INPUT,
+        `status=${snapshot.status} waitingFor=${snapshot.waitingFor ?? "-"}`,
+      );
     } catch (error) {
       logger.debug("[ClaudeStatusWatcher] poll failed:", error);
     } finally {
@@ -270,6 +337,7 @@ export function startClaudeStatusWatcher(
     stopped = true;
     clearInterval(interval);
     applyThinking(false, "stopped");
+    applyWaitingForInput(false, "stopped");
     logger.debug("[ClaudeStatusWatcher] stopped");
   };
 }

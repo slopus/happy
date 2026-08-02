@@ -187,6 +187,115 @@ describe("startClaudeStatusWatcher", () => {
     expect(changes).toEqual([true, false, true]);
   });
 
+  // A question that is no longer open must never stay published, so this signal
+  // has to fall back to false from every path the thinking signal does.
+  describe("waitingForInput", () => {
+    const writeWaiting = (waitingFor: string | null) =>
+      writeFile(
+        join(sessionsDir, `${DEAD_PID}.json`),
+        JSON.stringify({
+          pid: DEAD_PID,
+          sessionId: SESSION_ID,
+          status: "waiting",
+          ...(waitingFor === null ? {} : { waitingFor }),
+          cwd: "/tmp",
+          statusUpdatedAt: Date.now(),
+        }),
+      );
+
+    const track = (getSessionId: () => string | null = () => SESSION_ID) => {
+      const waiting: boolean[] = [];
+      const dispose = startClaudeStatusWatcher({
+        getSessionId,
+        onThinkingChange: () => {},
+        onWaitingForInputChange: (w) => {
+          waiting.push(w);
+        },
+        pollIntervalMs: 20,
+      });
+      stop = dispose;
+      return { waiting, dispose };
+    };
+
+    it("reports true only while an answer is awaited", async () => {
+      await writeSessionFile(DEAD_PID, "busy");
+      const { waiting } = track();
+      await sleep(120);
+      expect(waiting).toEqual([]);
+
+      await writeWaiting("input needed");
+      await sleep(150);
+      expect(waiting).toEqual([true]);
+
+      // The user answered, so Claude is computing again.
+      await writeSessionFile(DEAD_PID, "busy");
+      await sleep(150);
+      expect(waiting).toEqual([true, false]);
+    });
+
+    // The other documented `waitingFor` values also mean "blocked on the user",
+    // but they are not questions we can forward. Publishing one would leave the
+    // phone offering to answer something Claude never asked.
+    it("ignores a waiting state that is not a question", async () => {
+      const { waiting } = track();
+      await writeWaiting("permission prompt");
+      await sleep(150);
+      expect(waiting).toEqual([]);
+
+      await writeWaiting("dialog open");
+      await sleep(150);
+      expect(waiting).toEqual([]);
+    });
+
+    it("ignores waiting with no discriminant at all", async () => {
+      const { waiting } = track();
+      await writeWaiting(null);
+      await sleep(150);
+      expect(waiting).toEqual([]);
+    });
+
+    it("does not re-report while the same question stays open", async () => {
+      const { waiting } = track();
+      await writeWaiting("input needed");
+      await sleep(200);
+      expect(waiting).toEqual([true]);
+    });
+
+    it("resets when the session id changes", async () => {
+      let currentId: string | null = SESSION_ID;
+      const { waiting } = track(() => currentId);
+      await writeWaiting("input needed");
+      await sleep(150);
+      expect(waiting).toEqual([true]);
+
+      currentId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
+      await sleep(150);
+      expect(waiting).toEqual([true, false]);
+    });
+
+    it("resets when the status file vanishes", async () => {
+      const { waiting } = track();
+      await writeWaiting("input needed");
+      await sleep(150);
+      expect(waiting).toEqual([true]);
+
+      await unlink(join(sessionsDir, `${DEAD_PID}.json`));
+      await sleep(300);
+      expect(waiting).toEqual([true, false]);
+    });
+
+    it("resets on stop", async () => {
+      const { waiting, dispose } = track();
+      await writeWaiting("input needed");
+      await sleep(150);
+      expect(waiting).toEqual([true]);
+
+      dispose();
+      stop = null;
+      expect(waiting).toEqual([true, false]);
+    });
+  });
+
   it("reports nothing while the session id is unknown", async () => {
     await writeSessionFile(DEAD_PID, "busy");
     const changes: boolean[] = [];
