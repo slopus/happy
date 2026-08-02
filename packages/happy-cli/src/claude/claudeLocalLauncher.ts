@@ -4,6 +4,7 @@ import { Session } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { launchFailureMessage } from "./utils/launchFailureMessage";
+import { startClaudeStatusWatcher } from "./utils/claudeStatusWatcher";
 
 export type LauncherResult = { type: 'switch' } | { type: 'exit', code: number };
 
@@ -36,6 +37,13 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
     };
     session.addSessionFoundCallback(scannerSessionCallback);
 
+    // Where local-mode thinking state comes from: the session status file
+    // Claude Code maintains itself. The in-process fetch patch does not work
+    // against the 2.x native binary — see claudeStatusWatcher.ts.
+    const stopStatusWatcher = startClaudeStatusWatcher({
+        getSessionId: () => session.sessionId,
+        onThinkingChange: session.onThinkingChange,
+    });
 
     // Handle abort
     let exitReason: LauncherResult | null = null;
@@ -173,6 +181,10 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
         
         // Remove session found callback
         session.removeSessionFoundCallback(scannerSessionCallback);
+
+        // Stop status tracking. This resets thinking to false internally, so
+        // shutdown cannot leave the session stuck at "working".
+        stopStatusWatcher();
 
         // Cleanup
         await scanner.cleanup();
