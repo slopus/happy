@@ -204,6 +204,14 @@ export interface AcpBackendOptions {
   /** Optional callback to check if prompt has change_title instruction */
   hasChangeTitleInstruction?: (prompt: string) => boolean;
 
+  /**
+   * Resume an existing agent-side session instead of creating a new one.
+   * Requires the agent to advertise the `loadSession` capability. Used to hand
+   * a session started elsewhere (e.g. Kimi's local TUI) to the ACP backend
+   * without losing its history.
+   */
+  loadSessionId?: string;
+
   /** Log raw session updates to console */
   verbose?: boolean;
 }
@@ -794,7 +802,25 @@ export class AcpBackend implements AgentBackend {
         mcpServers: mcpServers as unknown as NewSessionRequest['mcpServers'],
       };
 
-      logger.debug(`[AcpBackend] Creating new session...`);
+      const resumeSessionId = this.options.loadSessionId;
+      const operationName = resumeSessionId ? 'LoadSession' : 'NewSession';
+      logger.debug(resumeSessionId
+        ? `[AcpBackend] Loading existing session ${resumeSessionId}...`
+        : `[AcpBackend] Creating new session...`);
+
+      // loadSession replays the stored conversation as session/update
+      // notifications and resolves without a sessionId of its own, so the
+      // requested id stays authoritative.
+      const startSessionCall = async () => {
+        if (resumeSessionId) {
+          await this.connection!.loadSession({
+            ...newSessionRequest,
+            sessionId: resumeSessionId,
+          } as unknown as Parameters<NonNullable<typeof this.connection>['loadSession']>[0]);
+          return { sessionId: resumeSessionId } as NewSessionResponse;
+        }
+        return this.connection!.newSession(newSessionRequest);
+      };
 
       const sessionResponse = await withRetry(
         async () => {
@@ -802,7 +828,7 @@ export class AcpBackend implements AgentBackend {
           try {
             const result = await Promise.race([
               startupFailurePromise,
-              this.connection!.newSession(newSessionRequest).then((res) => {
+              startSessionCall().then((res) => {
                 if (timeoutHandle) {
                   clearTimeout(timeoutHandle);
                   timeoutHandle = null;
@@ -811,7 +837,7 @@ export class AcpBackend implements AgentBackend {
               }),
               new Promise<never>((_, reject) => {
                 timeoutHandle = setTimeout(() => {
-                  reject(new Error(`New session timeout after ${initTimeout}ms - ${this.transport.agentName} did not respond`));
+                  reject(new Error(`${operationName} timeout after ${initTimeout}ms - ${this.transport.agentName} did not respond`));
                 }, initTimeout);
               }),
             ]);
@@ -823,7 +849,7 @@ export class AcpBackend implements AgentBackend {
           }
         },
         {
-          operationName: 'NewSession',
+          operationName,
           maxAttempts: RETRY_CONFIG.maxAttempts,
           baseDelayMs: RETRY_CONFIG.baseDelayMs,
           maxDelayMs: RETRY_CONFIG.maxDelayMs,
