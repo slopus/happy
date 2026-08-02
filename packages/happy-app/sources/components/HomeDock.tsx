@@ -91,6 +91,30 @@ const styles = StyleSheet.create((theme) => ({
         paddingHorizontal: 7,
         gap: 4,
     },
+    compactModelMenu: {
+        flexBasis: 108,
+        maxWidth: 108,
+        minWidth: 0,
+        height: 40,
+        flexShrink: 1,
+    },
+    compactModelButton: {
+        alignSelf: 'stretch',
+        height: 40,
+        minWidth: 0,
+        paddingHorizontal: 7,
+        borderRadius: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+    },
+    compactModelText: {
+        flex: 1,
+        minWidth: 0,
+        color: theme.colors.text,
+        fontSize: 13,
+        ...Typography.default(),
+    },
     sideButton: {
         width: 42,
         height: 42,
@@ -970,6 +994,22 @@ export const HomeDock = React.memo(({
             style={styles.composerSurface}
         >
             <View style={styles.composerContent}>
+                {modelSettingsGroup && (
+                    <NativeSettingsMenu groups={[modelSettingsGroup]} flat style={styles.compactModelMenu}>
+                        <View
+                            accessible
+                            accessibilityRole="button"
+                            accessibilityLabel={`${t('agentInput.model.title')}: ${currentModel?.name ?? currentAgent.name}`}
+                            style={styles.compactModelButton}
+                        >
+                            <Ionicons name="cube-outline" size={16} color={theme.colors.text} />
+                            <Text style={styles.compactModelText} numberOfLines={1}>
+                                {currentModel?.name ?? currentAgent.name}
+                            </Text>
+                            <Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} />
+                        </View>
+                    </NativeSettingsMenu>
+                )}
                 {activateOnPress ? (
                     <Pressable onPress={activateOnPress} style={styles.inputEntry}>
                         <Text
