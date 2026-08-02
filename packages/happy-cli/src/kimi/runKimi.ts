@@ -180,6 +180,18 @@ async function runLocalMode(opts: {
     const abortController = new AbortController();
     let switchPrompt: string | null = null;
 
+    // Ctrl-C never reaches this process: kimi puts the terminal in raw mode, so
+    // it reads \x03 itself and exits on the second press. SIGTERM/SIGHUP do
+    // reach us though (daemon stop, closed terminal), and killing node without
+    // teardown would leave the session showing as online in the app forever.
+    // Stop the TUI and let the normal exit path below do the teardown.
+    const onTerminationSignal = () => {
+        logger.debug('[kimi] Termination signal received, stopping local session');
+        abortController.abort();
+    };
+    process.on('SIGTERM', onTerminationSignal);
+    process.on('SIGHUP', onTerminationSignal);
+
     // A message from the phone means the user wants to drive the session
     // remotely: stop the local TUI so remote mode can pick it up.
     session.onUserMessage((message) => {
@@ -266,10 +278,22 @@ async function runLocalMode(opts: {
         throw error;
     } finally {
         clearInterval(keepAliveInterval);
+        process.off('SIGTERM', onTerminationSignal);
+        process.off('SIGHUP', onTerminationSignal);
         reconnectionHandle?.cancel();
+
+        // Handing control to the phone keeps the Happy session alive — remote
+        // mode re-attaches to it by tag. Any other exit is the user leaving
+        // (Ctrl-C twice, /exit), so the session has to stop looking online.
+        if (switchPrompt === null) {
+            session.sendSessionDeath();
+            // The socket emit above can lose the race with process exit, so
+            // confirm over HTTP as well. Only `active` is touched: the session
+            // stays visible and resumable, matching Ctrl-C on the Claude path.
+            await opts.api.deactivateSession(session.sessionId);
+        }
+
         await session.flush();
-        // Remote mode re-attaches to this same Happy session by tag, so the
-        // socket is closed without announcing the session's death.
         await session.close();
     }
 }
