@@ -242,24 +242,6 @@ const styles = StyleSheet.create((theme) => ({
     focusBackdrop: {
         backgroundColor: 'rgba(0, 0, 0, 0.88)',
     },
-    focusBackPosition: {
-        position: 'absolute',
-        left: 20,
-    },
-    focusBackSurface: {
-        width: 52,
-        height: 52,
-        borderRadius: 26,
-        overflow: 'hidden',
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.glass.border,
-    },
-    focusBackButton: {
-        width: '100%',
-        height: '100%',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
     focusDock: {
         position: 'absolute',
         left: 0,
@@ -652,21 +634,6 @@ export const HomeDock = React.memo(({
             Extrapolation.CLAMP,
         ),
     }));
-    const focusBackButtonStyle = useAnimatedStyle(() => {
-        const reveal = interpolate(
-            focusPresentation.value,
-            [0.12, 0.52],
-            [0, 1],
-            Extrapolation.CLAMP,
-        );
-        return {
-            opacity: reveal,
-            transform: [
-                { translateY: -8 * (1 - reveal) },
-                { scale: 0.94 + 0.06 * reveal },
-            ],
-        };
-    });
     const focusedComposerAnimationStyle = useAnimatedStyle(() => ({
         height: interpolate(
             focusPresentation.value,
@@ -1221,29 +1188,9 @@ export const HomeDock = React.memo(({
                             onPress={closeFocusMode}
                         />
                     </Animated.View>
-                    <Animated.View style={[
-                        styles.focusBackPosition,
-                        { top: safeArea.top + 14 },
-                        focusBackButtonStyle,
-                    ]}>
-                        <MobileGlassSurface
-                            nativeEffect
-                            interactive
-                            intensity={80}
-                            glassEffectStyle="regular"
-                            style={styles.focusBackSurface}
-                        >
-                            <BubblePressable
-                                onPress={closeFocusMode}
-                                style={styles.focusBackButton}
-                                pressedStyle={styles.sideButtonPressed}
-                                accessibilityRole="button"
-                                accessibilityLabel={t('common.back')}
-                            >
-                                <Ionicons name="chevron-back" size={27} color={theme.colors.text} />
-                            </BubblePressable>
-                        </MobileGlassSurface>
-                    </Animated.View>
+                    {/* No back affordance here on purpose: tapping the backdrop
+                        already closes focus mode, and a floating chevron over the
+                        session list is redundant chrome. */}
 
                     <Animated.View style={[styles.focusDock, keyboardStyle]}>
                         <View style={styles.focusConfig}>

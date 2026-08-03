@@ -6,12 +6,11 @@ import {
     contentShape,
     disabled,
     frame,
-    foregroundColor,
+    opacity,
     shapes,
     tint,
 } from '@expo/ui/swift-ui/modifiers';
 import type { NativeSettingsMenuProps } from './NativeSettingsMenu';
-import { useDeferredNativeMenuAction } from './nativeMenuInteraction';
 
 const systemImage = (name: string) => (
     name as React.ComponentProps<typeof Button>['systemImage']
@@ -40,8 +39,6 @@ export function NativeSettingsMenu({
     style,
     flat = false,
 }: NativeSettingsMenuProps) {
-    const deferMenuAction = useDeferredNativeMenuAction();
-
     return (
         <View style={[styles.container, style]}>
             <View
@@ -62,13 +59,18 @@ export function NativeSettingsMenu({
                 <Menu
                     modifiers={[tint('#FFFFFF')]}
                     label={(
+                        // The label is a hit target only — the visible chip is the RN
+                        // view underneath. It must render nothing: the Menu's own
+                        // tint overrides foregroundColor on a label's text, so any
+                        // real content here paints white on top of the chip and reads
+                        // as a duplicate. opacity hides the whole subtree regardless.
+                        // VoiceOver still announces it via accessibilityLabel.
                         <HStack modifiers={[
                             frame({ maxWidth: 10000, maxHeight: 10000, minHeight: 40 }),
                             contentShape(shapes.rectangle()),
                             accessibilityLabelModifier(accessibilityLabel),
-                            foregroundColor('clear'),
+                            opacity(0.01),
                         ]}>
-                            <Text>{accessibilityLabel}</Text>
                             <Spacer minLength={8} />
                         </HStack>
                     )}
@@ -80,7 +82,7 @@ export function NativeSettingsMenu({
                                 label={option.label}
                                 systemImage={option.key === group.selectedKey ? systemImage('checkmark') : undefined}
                                 modifiers={[disabled(option.disabled === true)]}
-                                onPress={() => deferMenuAction(() => group.onSelect(option.key))}
+                                onPress={() => group.onSelect(option.key)}
                             />
                         ))
                     )) : groups.map((group) => (
@@ -101,7 +103,7 @@ export function NativeSettingsMenu({
                                     label={option.label}
                                     systemImage={option.key === group.selectedKey ? systemImage('checkmark') : undefined}
                                     modifiers={[disabled(option.disabled === true)]}
-                                    onPress={() => deferMenuAction(() => group.onSelect(option.key))}
+                                    onPress={() => group.onSelect(option.key)}
                                 />
                             ))}
                         </Section>

@@ -109,8 +109,6 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
-    /** Enable native multiline height propagation for chat-detail composers. */
-    autoGrowInput?: boolean;
     zenMode?: boolean;
     /** Image attachments waiting to be sent (expImageUpload feature). */
     selectedImages?: AttachmentPreview[];
@@ -1949,7 +1947,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             onStateChange={handleInputStateChange}
                             maxHeight={Platform.OS === 'web' ? 480 : MOBILE_COMPOSER_METRICS.inputMaxHeight}
                             lineHeight={compactMobileComposer ? MOBILE_COMPOSER_METRICS.inputLineHeight : undefined}
-                            autoGrow={Platform.OS !== 'web' && props.autoGrowInput}
                         />
                     </View>
 

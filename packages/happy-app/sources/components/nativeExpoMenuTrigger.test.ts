@@ -44,8 +44,6 @@ vi.mock('@expo/ui/swift-ui/modifiers', () => ({
 import { NativeOptionsPicker } from './NativeOptionsPicker.ios';
 import { NativeSettingsMenu } from './NativeSettingsMenu.ios';
 
-const MENU_DISMISS_DELAY_MS = 220;
-
 const originalConsoleError = console.error;
 
 beforeAll(() => {
@@ -55,10 +53,6 @@ beforeAll(() => {
         originalConsoleError(message, ...args);
     });
 });
-
-beforeEach(() => vi.useFakeTimers());
-
-afterEach(() => vi.useRealTimers());
 
 afterAll(() => vi.restoreAllMocks());
 
@@ -80,8 +74,28 @@ function expectFullTriggerHitArea(label: React.ReactElement, minHeight: number) 
         type: 'contentShape',
         shape: { type: 'rectangle' },
     });
-    expect(props.modifiers).toContainEqual({ type: 'foregroundColor', value: 'clear' });
-    expect(props.modifiers).not.toContainEqual({ type: 'opacity', value: 0.01 });
+    // The trigger is a hit target layered over the real RN chip, so it must draw
+    // nothing. foregroundColor is not enough: the parent Menu's tint overrides it
+    // and the label paints white over the chip, duplicating it on screen.
+    expect(props.modifiers).toContainEqual({ type: 'opacity', value: 0.01 });
+    expect(props.modifiers).not.toContainEqual({ type: 'foregroundColor', value: 'clear' });
+}
+
+/** The trigger must carry its name for VoiceOver, never as rendered content. */
+function expectNoVisibleTriggerContent(
+    renderer: ReactTestRenderer,
+    label: React.ReactElement,
+    announced: string,
+) {
+    const props = label.props as { modifiers: unknown[] };
+    expect(props.modifiers).toContainEqual({
+        type: 'accessibilityLabel',
+        value: { label: announced },
+    });
+    const trigger = render(label);
+    expect(trigger.root.findAllByType('ExpoText' as any)).toHaveLength(0);
+    expect(trigger.root.findAllByType('ExpoImage' as any)).toHaveLength(0);
+    void renderer;
 }
 
 describe('iOS Expo-native menu triggers', () => {
@@ -104,7 +118,7 @@ describe('iOS Expo-native menu triggers', () => {
         expect(renderer.root.findByType('ExpoHost' as any).props.style).toEqual({ position: 'absolute', inset: 0 });
 
         const menu = renderer.root.findByType('ExpoMenu' as any);
-        expect(menu.props.label.props.children[1].props.children).toBe('Machine: Mac');
+        expectNoVisibleTriggerContent(renderer, menu.props.label, 'Machine: Mac');
     });
 
     it('uses the complete option-row bounds and forwards native button selection', () => {
@@ -129,13 +143,11 @@ describe('iOS Expo-native menu triggers', () => {
         expect(buttons.find((button: any) => button.props.label === 'Mac')?.props.systemImage).toBe('checkmark');
         const mini = buttons.find((button: any) => button.props.label === 'Mini');
         act(() => mini.props.onPress());
-        expect(onSelect).not.toHaveBeenCalled();
-        act(() => vi.advanceTimersByTime(MENU_DISMISS_DELAY_MS));
         expect(onSelect).toHaveBeenCalledOnce();
         expect(onSelect).toHaveBeenCalledWith('mini');
     });
 
-    it('only commits the latest selection after menu dismissal', () => {
+    it('commits the selection the user tapped', () => {
         const onSelect = vi.fn();
         const renderer = render(React.createElement(NativeOptionsPicker, {
             title: 'Machine',
@@ -150,31 +162,10 @@ describe('iOS Expo-native menu triggers', () => {
         }));
         const buttons = renderer.root.findAllByType('ExpoButton' as any);
 
-        act(() => buttons[0].props.onPress());
         act(() => buttons[1].props.onPress());
-        act(() => vi.advanceTimersByTime(MENU_DISMISS_DELAY_MS));
 
         expect(onSelect).toHaveBeenCalledOnce();
         expect(onSelect).toHaveBeenCalledWith('mini');
-    });
-
-    it('cancels a pending selection when the native menu unmounts', () => {
-        const onSelect = vi.fn();
-        const renderer = render(React.createElement(NativeOptionsPicker, {
-            title: 'Machine',
-            triggerLabel: 'Mac',
-            options: [{ key: 'mac', label: 'Mac' }],
-            selectedKey: 'mac',
-            onSelect,
-            children: React.createElement('Trigger'),
-        }));
-        const button = renderer.root.findByType('ExpoButton' as any);
-
-        act(() => button.props.onPress());
-        act(() => renderer.unmount());
-        act(() => vi.advanceTimersByTime(MENU_DISMISS_DELAY_MS));
-
-        expect(onSelect).not.toHaveBeenCalled();
     });
 
     it('renders grouped settings as sections in one native menu with full trigger bounds', () => {
@@ -206,11 +197,7 @@ describe('iOS Expo-native menu triggers', () => {
         expect(container?.props.hitSlop).toBeUndefined();
         expect(renderer.root.findByType('ExpoHost' as any).props.style).toEqual({ position: 'absolute', inset: 0 });
         expectFullTriggerHitArea(menus[0].props.label, 40);
-        expect(menus[0].props.label.props.children[0].props.children).toBe('Settings');
-        expect(menus[0].props.label.props.modifiers).toContainEqual({
-            type: 'accessibilityLabel',
-            value: { label: 'Settings' },
-        });
+        expectNoVisibleTriggerContent(renderer, menus[0].props.label, 'Settings');
         const sections = renderer.root.findAllByType('ExpoSection' as any);
         expect(sections).toHaveLength(1);
         const sectionHeader = render(sections[0].props.header);
@@ -221,7 +208,6 @@ describe('iOS Expo-native menu triggers', () => {
         const safeMode = renderer.root.findAllByType('ExpoButton' as any).find((button: any) => button.props.label === 'Safe mode');
         expect(safeMode.props.systemImage).toBe('checkmark');
         act(() => safeMode.props.onPress());
-        act(() => vi.advanceTimersByTime(MENU_DISMISS_DELAY_MS));
         expect(onSelect).toHaveBeenCalledWith('safe');
 
         const locked = renderer.root.findAllByType('ExpoButton' as any).find((button: any) => button.props.label === 'Locked');

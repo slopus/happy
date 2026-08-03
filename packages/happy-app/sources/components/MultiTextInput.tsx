@@ -1,8 +1,7 @@
 import * as React from 'react';
-import { Text, TextInput, Platform, View, NativeSyntheticEvent, TextInputKeyPressEventData, TextInputSelectionChangeEventData, LayoutChangeEvent } from 'react-native';
+import { Text, TextInput, Platform, View, NativeSyntheticEvent, TextInputKeyPressEventData, TextInputSelectionChangeEventData } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
-import { resolveMultiTextInputLayout } from './multiTextInputLayout';
 
 export type SupportedKey = 'Enter' | 'Escape' | 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'Tab';
 
@@ -50,7 +49,6 @@ interface MultiTextInputProps {
     paddingLeft?: number;
     paddingRight?: number;
     multiline?: boolean;
-    autoGrow?: boolean;
     returnKeyType?: React.ComponentProps<typeof TextInput>['returnKeyType'];
     submitBehavior?: React.ComponentProps<typeof TextInput>['submitBehavior'];
     onSubmitEditing?: () => void;
@@ -69,7 +67,6 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
         maxHeight = 120,
         lineHeight = MULTI_TEXT_INPUT_LINE_HEIGHT,
         multiline = true,
-        autoGrow = false,
         returnKeyType = 'default',
         submitBehavior = multiline ? 'newline' : 'blurAndSubmit',
         onSubmitEditing,
@@ -99,15 +96,6 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
     // TextInput.setSelection() (Fabric's supported imperative caret API).
     const pendingSelectionRef = React.useRef<{ start: number; end: number } | null>(null);
     const [, bumpSelectionTick] = React.useReducer((c: number) => c + 1, 0);
-    const [measuredContentHeight, setMeasuredContentHeight] = React.useState(0);
-    const inputLayout = resolveMultiTextInputLayout({
-        contentHeight: measuredContentHeight,
-        hasText: text.length > 0,
-        maxHeight,
-        lineHeight,
-        paddingTop: props.paddingTop,
-        paddingBottom: props.paddingBottom,
-    });
     React.useLayoutEffect(() => {
         const sel = pendingSelectionRef.current;
         if (sel && inputRef.current) {
@@ -128,19 +116,6 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
         paddingLeft: props.paddingLeft,
         paddingRight: props.paddingRight,
         opacity: editable ? 1 : 0.58,
-        ...Typography.default(),
-    };
-    const measurementTextStyle = {
-        position: 'absolute' as const,
-        opacity: 0,
-        width: '100%' as const,
-        fontSize: MULTI_TEXT_INPUT_FONT_SIZE,
-        lineHeight,
-        padding: 0,
-        paddingTop: props.paddingTop,
-        paddingBottom: props.paddingBottom,
-        paddingLeft: props.paddingLeft,
-        paddingRight: props.paddingRight,
         ...Typography.default(),
     };
 
@@ -274,34 +249,13 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
     }), [onChangeText, onStateChange, onSelectionChange]);
 
     const displayText = text;
-    const handleMeasurementLayout = React.useCallback((event: LayoutChangeEvent) => {
-        if (!autoGrow || !multiline) return;
-        const nextContentHeight = Math.ceil(event.nativeEvent.layout.height);
-        setMeasuredContentHeight((previousContentHeight) => (
-            previousContentHeight === nextContentHeight ? previousContentHeight : nextContentHeight
-        ));
-    }, [autoGrow, multiline]);
-
-    const nativeTextStyle = autoGrow && multiline ? { height: inputLayout.height } : undefined;
 
     return (
-        <View style={autoGrow && multiline
-            ? { width: '100%', height: inputLayout.containerHeight }
-            : { width: '100%' }}>
-            {autoGrow && multiline && (
-                <Text
-                    accessible={false}
-                    pointerEvents="none"
-                    onLayout={handleMeasurementLayout}
-                    style={measurementTextStyle}
-                >
-                    {text || ' '}
-                </Text>
-            )}
+        <View style={{ width: '100%' }}>
             {editable ? (
                 <TextInput
                     ref={inputRef}
-                    style={nativeTextStyle ? [textStyle, nativeTextStyle] : textStyle}
+                    style={textStyle}
                     placeholder={placeholder}
                     placeholderTextColor={theme.colors.input.placeholder}
                     value={text}
@@ -318,7 +272,6 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
                     textContentType="none"
                     submitBehavior={submitBehavior}
                     onSubmitEditing={onSubmitEditing}
-                    scrollEnabled={autoGrow && multiline ? inputLayout.scrollEnabled : undefined}
                 />
             ) : (
                 <View pointerEvents="none">
