@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { Button, Host, HStack, Image, Menu, Section, Spacer, Text } from '@expo/ui/swift-ui';
 import {
     accessibilityLabel as accessibilityLabelModifier,
+    buttonStyle,
     contentShape,
     disabled,
     frame,
@@ -57,7 +58,9 @@ export function NativeSettingsMenu({
                 untappable whenever the keyboard is open. */}
             <Host ignoreSafeArea="keyboard" style={styles.host}>
                 <Menu
-                    modifiers={[tint('#FFFFFF')]}
+                    // No glass capsule: the plain style leaves the system less
+                    // chrome to morph when the menu opens.
+                    modifiers={[tint('#FFFFFF'), buttonStyle('plain')]}
                     label={(
                         // The label is a hit target only — the visible chip is the RN
                         // view underneath. It must render nothing: the Menu's own
@@ -93,7 +96,9 @@ export function NativeSettingsMenu({
                                     {group.systemImage ? (
                                         <Image systemName={sectionSystemImage(group.systemImage)} size={14} />
                                     ) : null}
-                                    <Text>{group.label}</Text>
+                                    {/* The heading names what is being chosen, not
+                                        the current value, which the chip already shows. */}
+                                    <Text>{group.title ?? group.label}</Text>
                                 </HStack>
                             )}
                         >

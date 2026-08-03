@@ -9,7 +9,10 @@ export type NativeSettingsMenuOption = {
 
 export type NativeSettingsMenuGroup = {
     key: string;
+    /** The current value, shown on the trigger. */
     label: string;
+    /** What is being chosen, shown as the heading above the options. */
+    title?: string;
     systemImage?: string;
     options: NativeSettingsMenuOption[];
     selectedKey: string | null | undefined;

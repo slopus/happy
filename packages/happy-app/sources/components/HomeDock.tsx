@@ -284,11 +284,6 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 17,
         ...Typography.default(),
     },
-    focusConfigChevron: {
-        width: 16,
-        alignItems: 'center',
-        gap: -5,
-    },
     focusComposerArea: {
         paddingHorizontal: 16,
         paddingBottom: 8,
@@ -566,11 +561,21 @@ export const HomeDock = React.memo(({
         return options;
     }, [agentType, existingWorktrees, supportsWorktree, worktreeKey]);
     const currentWorktree = resolveOption(worktreeOptions, [selectedWorktreeKey]);
-    const availableAgents = React.useMemo(() => {
+    // Every agent stays listed so the picker always reads as a choice. The ones
+    // the selected machine has no CLI for are disabled rather than hidden, which
+    // otherwise leaves a single checked row that looks like it does nothing.
+    const availableAgents = React.useMemo<ModeOption[]>(() => {
         const availability = selectedMachine?.metadata?.cliAvailability;
-        if (!availability) return AGENTS;
-        return AGENTS.filter((agent) => availability[agent.key]);
+        return AGENTS.map((agent) => (
+            !availability || availability[agent.key]
+                ? agent
+                : { ...agent, disabled: true, description: 'Not installed on this machine' }
+        ));
     }, [selectedMachine]);
+    const installedAgents = React.useMemo(
+        () => availableAgents.filter((agent) => !agent.disabled),
+        [availableAgents],
+    );
     const defaults = React.useMemo(
         () => resolveAgentDefaultConfig(defaultOverrides, agentType),
         [agentType, defaultOverrides],
@@ -752,10 +757,10 @@ export const HomeDock = React.memo(({
     }, [defaultOverrides, setAgentType, setEffortLevel, setModelMode, setPermissionMode]);
 
     React.useEffect(() => {
-        if (availableAgents.length > 0 && !availableAgents.some((agent) => agent.key === agentType)) {
-            selectAgent(availableAgents[0].key);
+        if (installedAgents.length > 0 && !installedAgents.some((agent) => agent.key === agentType)) {
+            selectAgent(installedAgents[0].key as NewSessionAgentType);
         }
-    }, [agentType, availableAgents, selectAgent]);
+    }, [agentType, installedAgents, selectAgent]);
 
     type SettingsRow = {
         page: string;
@@ -858,6 +863,7 @@ export const HomeDock = React.memo(({
         return {
             key: row.page,
             label: row.value || config.title,
+            title: config.title,
             systemImage: {
                 agent: 'cpu',
                 model: 'cube',
@@ -913,10 +919,6 @@ export const HomeDock = React.memo(({
                         <Text style={styles.optionValue} numberOfLines={1}>{row.value}</Text>
                     </View>
                 )}
-                <View style={styles.focusConfigChevron}>
-                    <Ionicons name="chevron-up" size={12} color={theme.colors.text} />
-                    <Ionicons name="chevron-down" size={12} color={theme.colors.text} />
-                </View>
             </View>
         </NativeOptionsPicker>
     );
@@ -1091,7 +1093,6 @@ export const HomeDock = React.memo(({
                                 style={styles.nativeModeMenu}
                             >
                                 <View style={styles.focusedModeButton}>
-                                    <Ionicons name="flash" size={18} color={theme.colors.text} />
                                     <Text style={styles.focusedModeText} numberOfLines={1}>
                                         {currentModel?.name ?? currentAgent.name}
                                     </Text>
@@ -1100,7 +1101,6 @@ export const HomeDock = React.memo(({
                         ) : (
                             <View style={styles.nativeModeMenu}>
                                 <View style={styles.focusedModeButton}>
-                                    <Ionicons name="flash" size={18} color={theme.colors.text} />
                                     <Text style={styles.focusedModeText} numberOfLines={1}>
                                         {currentAgent.name}
                                     </Text>

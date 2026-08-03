@@ -1101,6 +1101,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             groups.push({
                 key: 'model',
                 label: props.modelMode?.name ?? t('agentInput.model.title'),
+                title: t('agentInput.model.title'),
                 systemImage: 'cube',
                 options: availableModels.map((model) => ({ key: model.key, label: model.name, disabled: model.disabled })),
                 selectedKey: props.modelMode?.key,
@@ -1116,6 +1117,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             groups.push({
                 key: 'effort',
                 label: props.effortLevel?.name ?? t('agentInput.effort.title'),
+                title: t('agentInput.effort.title'),
                 systemImage: 'bolt',
                 options: availableEffortLevels.map((level) => ({ key: level.key, label: level.name, disabled: level.disabled })),
                 selectedKey: props.effortLevel?.key,

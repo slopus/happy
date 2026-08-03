@@ -32,8 +32,10 @@ vi.mock('@expo/ui/swift-ui', async () => {
 
 vi.mock('@expo/ui/swift-ui/modifiers', () => ({
     accessibilityLabel: (label: string) => ({ type: 'accessibilityLabel', value: { label } }),
+    buttonStyle: (value: string) => ({ type: 'buttonStyle', value }),
     contentShape: (shape: unknown) => ({ type: 'contentShape', shape }),
     disabled: (value: boolean) => ({ type: 'disabled', value: { disabled: value } }),
+    fixedSize: (value?: unknown) => ({ type: 'fixedSize', value }),
     frame: (value: unknown) => ({ type: 'frame', value }),
     foregroundColor: (value: string) => ({ type: 'foregroundColor', value }),
     opacity: (value: number) => ({ type: 'opacity', value }),
@@ -74,9 +76,13 @@ function expectFullTriggerHitArea(label: React.ReactElement, minHeight: number) 
         type: 'contentShape',
         shape: { type: 'rectangle' },
     });
-    // The trigger is a hit target layered over the real RN chip, so it must draw
-    // nothing. foregroundColor is not enough: the parent Menu's tint overrides it
-    // and the label paints white over the chip, duplicating it on screen.
+}
+
+/** The settings menu still layers its trigger over a real RN chip, so its label
+ * must draw nothing. foregroundColor is not enough: the parent Menu's tint
+ * overrides it and the label paints white over the chip, duplicating it. */
+function expectInvisibleTrigger(label: React.ReactElement) {
+    const props = label.props as { modifiers: unknown[] };
     expect(props.modifiers).toContainEqual({ type: 'opacity', value: 0.01 });
     expect(props.modifiers).not.toContainEqual({ type: 'foregroundColor', value: 'clear' });
 }
@@ -99,17 +105,21 @@ function expectNoVisibleTriggerContent(
 }
 
 describe('iOS Expo-native menu triggers', () => {
-    it('hides the pointer-disabled trigger subtree and announces the picker title and value', () => {
+    it('draws the picker row in SwiftUI and keeps the RN row for layout alone', () => {
         const renderer = render(React.createElement(NativeOptionsPicker, {
             title: 'Machine',
             triggerLabel: 'Mac',
+            systemImage: 'desktopcomputer',
             options: [{ key: 'mac', label: 'Mac' }],
             selectedKey: 'mac',
             onSelect: vi.fn(),
             children: React.createElement('Trigger'),
         }));
 
+        // The RN row only sizes the container: SwiftUI paints the visible row, so
+        // leaving the RN copy on screen would duplicate it.
         const trigger = renderer.root.findAllByType('View' as any).find((view: any) => view.props.pointerEvents === 'none');
+        expect(trigger?.props.style.opacity).toBe(0);
         expect(trigger?.props.accessibilityElementsHidden).toBe(true);
         expect(trigger?.props.importantForAccessibility).toBe('no-hide-descendants');
 
@@ -118,7 +128,34 @@ describe('iOS Expo-native menu triggers', () => {
         expect(renderer.root.findByType('ExpoHost' as any).props.style).toEqual({ position: 'absolute', inset: 0 });
 
         const menu = renderer.root.findByType('ExpoMenu' as any);
-        expectNoVisibleTriggerContent(renderer, menu.props.label, 'Machine: Mac');
+        expect(menu.props.modifiers).toContainEqual({ type: 'buttonStyle', value: 'plain' });
+        expect(menu.props.label.props.modifiers).toContainEqual({
+            type: 'accessibilityLabel',
+            value: { label: 'Machine: Mac' },
+        });
+
+        const label = render(menu.props.label);
+        expect(label.root.findByType('ExpoText' as any).props.children).toBe('Mac');
+        // One icon only: the leading symbol. The chevrons were noise.
+        const icons = label.root.findAllByType('ExpoImage' as any);
+        expect(icons).toHaveLength(1);
+        expect(icons[0].props.systemName).toBe('desktopcomputer');
+    });
+
+    it('heads the menu with a disabled item so the icon survives UIMenu', () => {
+        const renderer = render(React.createElement(NativeOptionsPicker, {
+            title: 'Machine',
+            triggerLabel: 'Mac',
+            systemImage: 'desktopcomputer',
+            options: [{ key: 'mac', label: 'Mac' }],
+            selectedKey: 'mac',
+            onSelect: vi.fn(),
+            children: React.createElement('Trigger'),
+        }));
+
+        const heading = renderer.root.findAllByType('ExpoButton' as any).find((button: any) => button.props.label === 'Machine');
+        expect(heading.props.systemImage).toBe('desktopcomputer');
+        expect(heading.props.modifiers).toContainEqual({ type: 'disabled', value: { disabled: true } });
     });
 
     it('uses the complete option-row bounds and forwards native button selection', () => {
@@ -161,8 +198,9 @@ describe('iOS Expo-native menu triggers', () => {
             children: React.createElement('Trigger'),
         }));
         const buttons = renderer.root.findAllByType('ExpoButton' as any);
+        const mini = buttons.find((button: any) => button.props.label === 'Mini');
 
-        act(() => buttons[1].props.onPress());
+        act(() => mini.props.onPress());
 
         expect(onSelect).toHaveBeenCalledOnce();
         expect(onSelect).toHaveBeenCalledWith('mini');
@@ -174,7 +212,8 @@ describe('iOS Expo-native menu triggers', () => {
             accessibilityLabel: 'Settings',
             groups: [{
                 key: 'permission',
-                label: 'Permissions',
+                label: 'Safe mode',
+                title: 'Permission mode',
                 systemImage: 'shield',
                 options: [
                     { key: 'safe', label: 'Safe mode' },
@@ -197,13 +236,15 @@ describe('iOS Expo-native menu triggers', () => {
         expect(container?.props.hitSlop).toBeUndefined();
         expect(renderer.root.findByType('ExpoHost' as any).props.style).toEqual({ position: 'absolute', inset: 0 });
         expectFullTriggerHitArea(menus[0].props.label, 40);
+        expectInvisibleTrigger(menus[0].props.label);
         expectNoVisibleTriggerContent(renderer, menus[0].props.label, 'Settings');
         const sections = renderer.root.findAllByType('ExpoSection' as any);
         expect(sections).toHaveLength(1);
         const sectionHeader = render(sections[0].props.header);
         expect(sectionHeader.root.findByType('ExpoHStack' as any)).toBeDefined();
         expect(sectionHeader.root.findByType('ExpoImage' as any).props.systemName).toBe('shield');
-        expect(sectionHeader.root.findByType('ExpoText' as any).props.children).toBe('Permissions');
+        // The heading names what is being chosen, not the current value.
+        expect(sectionHeader.root.findByType('ExpoText' as any).props.children).toBe('Permission mode');
 
         const safeMode = renderer.root.findAllByType('ExpoButton' as any).find((button: any) => button.props.label === 'Safe mode');
         expect(safeMode.props.systemImage).toBe('checkmark');
