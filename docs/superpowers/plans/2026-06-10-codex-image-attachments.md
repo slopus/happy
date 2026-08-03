@@ -1898,7 +1898,7 @@ Expected: `git diff --check` prints nothing. `git status --short` shows only int
 Start the local server, CLI daemon, and web app in separate terminals:
 
 ```bash
-pnpm --filter happy-server-self-host standalone:dev
+pnpm --filter happy-server standalone:dev
 ```
 
 ```bash

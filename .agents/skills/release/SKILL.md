@@ -90,21 +90,28 @@ Packaged installs resolve those from the separately installed
 `tools/webapp` as part of a CLI release.
 
 If the CLI release depends on self-host server changes, release
-`happy-server-self-host` separately: regenerate Prisma, build the bundled webapp
-with `pnpm --filter happy-server-self-host run bundle:webapp`, then publish the
-server package. The server package is a JS/TS npm package; npm handles platform
+`happy-server-self-host` separately. It lives in `packages/happy-server-self-host`
+and is the publishing shell around the private `packages/happy-server`:
+`pnpm --filter happy-server-self-host build` bundles that package's standalone
+entrypoint into `dist/` and copies `prisma/` in (this needs bun), then
+`pnpm --filter happy-server-self-host run bundle:webapp` builds the bundled
+webapp. Publish from `packages/happy-server-self-host` — `packages/happy-server`
+is private and is never published. The server package is a JS/TS npm package;
+npm handles platform
 specific dependencies such as Prisma and sharp normally. Do not pass
 `--ignore-scripts` when publishing it; its `prepublishOnly` script rebuilds the
 runtime, rebuilds the webapp, and runs tests before npm receives the tarball.
 
 Before handing a server publish to the user, pre-run the full `prepublishOnly`
 chain yourself to catch failures early — the `bundle:webapp` step runs a multi-minute
-`expo export`, and the server unit suite is **not** part of the GitHub CI gate, so
-`main` can be red even when the PR "passed":
+`expo export`, and `build` needs bun:
 
 ```bash
-cd packages/happy-server && pnpm run build && pnpm run bundle:webapp && pnpm test
+pnpm --filter happy-server-self-host --fail-if-no-match run prepublishOnly
 ```
+
+The server typecheck, unit suite, and both Docker images are gated by
+`.github/workflows/server.yml`.
 
 (Observed: `1332` merged a `standalone.spec.ts` test that only passes on Windows
 because the impl used POSIX `path.basename`; it was red on `main` and would have

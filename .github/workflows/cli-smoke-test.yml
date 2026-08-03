@@ -6,6 +6,7 @@ on:
     paths:
       - 'packages/happy-cli/**'
       - 'packages/happy-server/**'
+      - 'packages/happy-server-self-host/**'
       - 'packages/happy-wire/**'
       - '.github/workflows/cli-smoke-test.yml'
   pull_request:
@@ -13,6 +14,7 @@ on:
     paths:
       - 'packages/happy-cli/**'
       - 'packages/happy-server/**'
+      - 'packages/happy-server-self-host/**'
       - 'packages/happy-wire/**'
       - '.github/workflows/cli-smoke-test.yml'
   workflow_dispatch:
@@ -42,28 +44,33 @@ jobs:
 
     - name: Build packages
       run: |
-        pnpm --filter @slopus/happy-wire build
-        pnpm --filter happy build
+        pnpm --filter @slopus/happy-wire --fail-if-no-match build
+        pnpm --filter happy --fail-if-no-match build
+
+    # happy-server-self-host ships only a bundled runtime (no sources), and the
+    # bundler is bun.
+    - name: Install Bun
+      uses: oven-sh/setup-bun@v2
 
     # `happy server` resolves the self-host runtime and bundled webapp from
-    # happy-server-self-host. The server package is JS/TS and lets npm install
-    # platform-specific dependencies such as Prisma and sharp normally.
-    - name: Generate Prisma client + bundle happy-server-self-host webapp
+    # happy-server-self-host. Its build bundles packages/happy-server's
+    # standalone entrypoint and copies prisma/ in, so it must run before pack.
+    - name: Build happy-server-self-host runtime + bundle webapp
       run: |
-        pnpm --filter happy-server-self-host generate
-        pnpm --filter happy-server-self-host run bundle:webapp
+        pnpm --filter happy-server-self-host --fail-if-no-match build
+        pnpm --filter happy-server-self-host --fail-if-no-match run bundle:webapp
 
     - name: Pack packages
       run: |
-        pnpm --filter @slopus/happy-wire pack --pack-destination packages/happy-wire
-        pnpm --filter happy pack --pack-destination packages/happy-cli
-        pnpm --filter happy-server-self-host pack --pack-destination packages/happy-server
+        pnpm --filter @slopus/happy-wire --fail-if-no-match pack --pack-destination packages/happy-wire
+        pnpm --filter happy --fail-if-no-match pack --pack-destination packages/happy-cli
+        pnpm --filter happy-server-self-host --fail-if-no-match pack --pack-destination packages/happy-server-self-host
 
     - name: Install packed packages globally
       run: |
         WIRE_PACKAGE_FILE=$(ls packages/happy-wire/*.tgz)
         HAPPY_PACKAGE_FILE=$(ls packages/happy-cli/*.tgz)
-        SERVER_PACKAGE_FILE=$(ls packages/happy-server/*.tgz)
+        SERVER_PACKAGE_FILE=$(ls packages/happy-server-self-host/*.tgz)
         npm install -g "./$WIRE_PACKAGE_FILE" "./$SERVER_PACKAGE_FILE" "./$HAPPY_PACKAGE_FILE"
 
     - name: Test binary execution
@@ -141,13 +148,13 @@ jobs:
 
     - name: Build packages
       run: |
-        pnpm --filter @slopus/happy-wire build
-        pnpm --filter happy build
+        pnpm --filter @slopus/happy-wire --fail-if-no-match build
+        pnpm --filter happy --fail-if-no-match build
 
     - name: Pack packages
       run: |
-        pnpm --filter @slopus/happy-wire pack --pack-destination packages/happy-wire
-        pnpm --filter happy pack --pack-destination packages/happy-cli
+        pnpm --filter @slopus/happy-wire --fail-if-no-match pack --pack-destination packages/happy-wire
+        pnpm --filter happy --fail-if-no-match pack --pack-destination packages/happy-cli
 
     - name: Install packed package globally
       shell: cmd
