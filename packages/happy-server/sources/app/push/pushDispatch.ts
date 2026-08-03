@@ -10,14 +10,14 @@
  * Connected clients still receive the realtime message update over socket;
  * only the Expo push for "new message" went away.
  *
- * Suppression: if the user has ANY non-machine client that is active
- * (connected + not backgrounded), suppress the push — they can see in-app
- * indicators (unread dots, tab title counter) instead.
- *
- * "Active" is determined by socket.data.appState:
- *   - Clients send `app-state: { state: 'active' | 'background' }` via socket.
- *   - Old clients that never send it are treated as active (connected = present).
- *   - On disconnect the socket (and its state) disappears automatically.
+ * Suppression: if the user has a *viewer* client (mobile/web/desktop app) in the
+ * foreground, suppress the push — they can see in-app indicators (unread dots,
+ * tab title counter) instead. Only a user-scoped socket reporting `app-state:
+ * active` counts; the CLI session (session-scoped) and daemon (machine-scoped)
+ * do not, and a socket that never reports state is not assumed active beyond a
+ * short connect grace. See eventRouter.hasActiveViewerSocket() for the rationale
+ * (fixes a 2026-08-03 incident where the session's own socket suppressed 100% of
+ * pushes and silent iOS sockets suppressed the rest).
  */
 
 import { db } from "@/storage/db";

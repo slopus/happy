@@ -5,6 +5,12 @@ import { AccountProfile } from "@/types";
 import { getPublicUrl } from "@/storage/files";
 import type { SessionMessageContent } from "@slopus/happy-wire";
 
+// Grace window during which a freshly-connected viewer socket that has not yet
+// reported its app-state is treated as foreground. Covers the race between
+// connect and the first `app-state` event without letting an ever-silent socket
+// suppress pushes indefinitely. See hasActiveViewerSocket().
+const UNKNOWN_APP_STATE_GRACE_MS = 15_000;
+
 // === CONNECTION TYPES ===
 
 export interface SessionScopedConnection {
@@ -281,19 +287,51 @@ class EventRouter {
     // === PRESENCE QUERIES ===
 
     /**
-     * Returns true if the user has any non-machine socket that hasn't
-     * reported `app-state: background`.  Old clients that never send
-     * `app-state` are treated as active (connected = present).
+     * Returns true if the user has a *viewer* client (mobile / web / desktop app)
+     * that is genuinely in the foreground — i.e. a human is looking at Happy right
+     * now and an "attention needed" push would be redundant.
+     *
+     * Two rules, both learned from a 100%-suppression incident (2026-08-03):
+     *
+     *  1. Only `user-scoped` sockets count. A `session-scoped` socket is the CLI
+     *     agent itself (the very thing that raises the push) and a `machine-scoped`
+     *     socket is the daemon — neither means a human is watching. Counting the
+     *     session socket made every push suppress itself while a session ran.
+     *
+     *  2. A socket suppresses only when it has explicitly reported `app-state:
+     *     active`. `background` never suppresses. An "unknown" state (a client
+     *     that has never reported, e.g. an old build or a frozen/zombie socket)
+     *     gets a brief post-connect grace to cover the connect→first-event race,
+     *     then is treated as NOT foreground. Previously "unknown" meant "assume
+     *     active", so a silent/zombie socket suppressed every push forever.
+     *
+     * An explicit `active` never expires here — a user watching the app for
+     * minutes sends `active` once; a frozen socket that lied "active" then died
+     * is bounded by Socket.IO's own ping-timeout reaping.
      *
      * Uses fetchSockets() which works cross-replica via Redis streams adapter.
      */
-    async hasActiveNonMachineSocket(userId: string): Promise<boolean> {
+    async hasActiveViewerSocket(userId: string): Promise<boolean> {
         const sockets = await this.io.in(`user:${userId}`).fetchSockets();
+        const now = Date.now();
         return sockets.some(s => {
-            if (s.data.clientType === 'machine-scoped') return false;
-            // No app-state yet → old client or just connected; assume active
+            // Rule 1 — only a user-scoped viewer counts (undefined defaults to
+            // user-scoped, matching how the connection itself is classified).
+            const clientType = s.data.clientType as string | undefined;
+            if (clientType === 'session-scoped' || clientType === 'machine-scoped') {
+                return false;
+            }
+
+            // Rule 2 — foreground = explicit `active`; background never suppresses.
             const appState = s.data.appState as string | undefined;
-            return appState !== 'background';
+            if (appState === 'active') return true;
+            if (appState === 'background') return false;
+
+            // Unknown state: only within a short grace window after connect.
+            const ref = (s.data.appStateAt as number | undefined)
+                ?? (s.data.connectedAt as number | undefined);
+            if (ref === undefined) return false;
+            return (now - ref) < UNKNOWN_APP_STATE_GRACE_MS;
         });
     }
 
