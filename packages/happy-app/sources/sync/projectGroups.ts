@@ -87,3 +87,53 @@ export function buildProjectGroups(
 
     return [...projects.values()];
 }
+
+/** The session fields the sessions-list search box looks at. */
+export function sessionMatchesQuery(session: SessionRowData, normalizedQuery: string): boolean {
+    return [
+        session.name,
+        session.subtitle,
+        session.path,
+        session.machineId,
+        session.flavor,
+    ].some((value) => value?.toLocaleLowerCase().includes(normalizedQuery));
+}
+
+/**
+ * Narrows a project to what matches a search query, or drops it entirely.
+ *
+ * Projects hold their sessions nested inside worktrees, so the flat filter the
+ * list applies to ordinary sessions cannot see them: without this every Rig
+ * project disappeared as soon as anything was typed. Matching the project or a
+ * worktree by name keeps everything under it, so a search for a repo still
+ * shows the whole repo. Counts are recomputed so the badge agrees with the rows
+ * that are actually left.
+ */
+export function filterProjectGroup(
+    project: ProjectGroupData,
+    normalizedQuery: string,
+): ProjectGroupData | null {
+    if (project.name.toLocaleLowerCase().includes(normalizedQuery)) {
+        return project;
+    }
+
+    const workspaces = project.workspaces
+        .map((workspace) => (
+            workspace.name?.toLocaleLowerCase().includes(normalizedQuery)
+                ? workspace
+                : { ...workspace, sessions: workspace.sessions.filter((s) => sessionMatchesQuery(s, normalizedQuery)) }
+        ))
+        .filter((workspace) => workspace.sessions.length > 0);
+
+    if (workspaces.length === 0) {
+        return null;
+    }
+
+    const sessions = workspaces.flatMap((workspace) => workspace.sessions);
+    return {
+        ...project,
+        workspaces,
+        sessionCount: sessions.length,
+        activeCount: sessions.filter((session) => session.active).length,
+    };
+}
