@@ -116,10 +116,12 @@ export function isClaudeBypassEquivalent(mode: PermissionMode | undefined): bool
  */
 export function resolveRemoteClaudePermissionMode(
     currentMode: PermissionMode | undefined,
-    incomingMode: PermissionMode | undefined,
+    // Open string: the wire carries whatever mode the sending client offered,
+    // including modes that belong to other agents. Unknown modes are ignored.
+    incomingMode: string | undefined,
     sandboxEnabled: boolean,
 ): PermissionMode | undefined {
-    if (!incomingMode) {
+    if (!isPermissionMode(incomingMode)) {
         return currentMode;
     }
 

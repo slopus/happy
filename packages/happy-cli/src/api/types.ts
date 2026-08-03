@@ -189,8 +189,13 @@ export type Machine = {
  */
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
-  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
+  // Open string, not an enum: agents driven over ACP publish their own mode
+  // catalogs (kimi has `auto`, gemini has `auto_edit`), and an unknown value
+  // used to fail this schema — which silently dropped the whole user message.
+  // Every consumer validates the value against the modes it actually supports.
+  permissionMode: z.string().optional(), // Permission mode for this message
   model: z.string().nullable().optional(), // Model name for this message (null = reset)
+  effort: z.string().nullable().optional(), // Thinking effort / thought level (null = reset)
   fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)
   customSystemPrompt: z.string().nullable().optional(), // Custom system prompt for this message (null = reset)
   appendSystemPrompt: z.string().nullable().optional(), // Append to system prompt for this message (null = reset)

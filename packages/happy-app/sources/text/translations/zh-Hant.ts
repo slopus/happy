@@ -470,6 +470,7 @@ export const zhHant: TranslationStructure = {
             codex: 'Codex',
             gemini: 'Gemini',
             openclaw: 'OpenClaw',
+            kimi: 'Kimi',
         },
         model: {
             title: '模型',
@@ -511,6 +512,17 @@ export const zhHant: TranslationStructure = {
             badgeAutoEdit: '自動編輯',
             badgeYolo: 'YOLO',
             badgePlan: '計畫',
+        },
+        kimiPermissionMode: {
+            title: 'KIMI 權限模式',
+            default: '預設權限',
+            defaultDescription: '手動核准，工具正常執行',
+            plan: '計畫',
+            planDescription: '唯讀規劃，不執行工具',
+            auto: '自動',
+            autoDescription: '完全自主，從不詢問',
+            yolo: 'YOLO',
+            yoloDescription: '自動核准工具，仍可能提問',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩餘 ${percent}%`,

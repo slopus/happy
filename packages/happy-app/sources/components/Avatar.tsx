@@ -26,6 +26,7 @@ const flavorIcons = {
     openclaw: require('@/assets/images/icon-openclaw.png'),
     rig: require('@/assets/images/icon-rig.png'),
     agy: require('@/assets/images/icon-agy.png'),
+    kimi: require('@/assets/images/icon-kimi.png'),
 };
 
 const styles = StyleSheet.create((theme) => ({

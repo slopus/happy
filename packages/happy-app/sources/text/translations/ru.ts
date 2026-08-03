@@ -486,6 +486,7 @@ export const ru: TranslationStructure = {
             codex: 'Codex',
             gemini: 'Gemini',
             openclaw: 'OpenClaw',
+            kimi: 'Kimi',
         },
         model: {
             title: 'МОДЕЛЬ',
@@ -527,6 +528,17 @@ export const ru: TranslationStructure = {
             badgeAutoEdit: 'Авто-редактирование',
             badgeYolo: 'YOLO',
             badgePlan: 'Планирование',
+        },
+        kimiPermissionMode: {
+            title: 'РЕЖИМ РАЗРЕШЕНИЙ KIMI',
+            default: 'Разрешения по умолчанию',
+            defaultDescription: 'ручные подтверждения, инструменты работают как обычно',
+            plan: 'Планирование',
+            planDescription: 'планирование только для чтения, без запуска инструментов',
+            auto: 'Авто',
+            autoDescription: 'полностью автономно, никогда не спрашивает',
+            yolo: 'YOLO',
+            yoloDescription: 'автоматически одобряет инструменты, но может задавать вопросы',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `Осталось ${percent}%`,

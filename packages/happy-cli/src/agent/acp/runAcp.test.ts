@@ -589,6 +589,85 @@ describe('runAcp', () => {
     expect(mocks.backendState.setModelCalls).toEqual([]);
   });
 
+  it('switches the ACP thought level when the app sends an effort', async () => {
+    mocks.backendState.startSessionMessages = [
+      {
+        type: 'event',
+        name: 'config_options_update',
+        payload: {
+          configOptions: [
+            {
+              type: 'select',
+              id: 'thinking',
+              name: 'Thinking',
+              category: 'thought_level',
+              currentValue: 'high',
+              options: [
+                { value: 'low', name: 'Low' },
+                { value: 'high', name: 'High' },
+                { value: 'max', name: 'Max' },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'kimi',
+      command: 'kimi',
+      args: ['acp'],
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+    });
+
+    mocks.getUserMessageHandler()!({
+      role: 'user',
+      content: { type: 'text', text: 'Think harder' },
+      meta: { effort: 'max' },
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.prompts).toHaveLength(1);
+    });
+
+    // The level the session already runs at is not re-sent.
+    mocks.getUserMessageHandler()!({
+      role: 'user',
+      content: { type: 'text', text: 'Keep going' },
+      meta: { effort: 'max' },
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.prompts).toHaveLength(2);
+    });
+
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    expect(mocks.backendState.setConfigOptionCalls).toEqual([
+      { configId: 'thinking', value: 'max' },
+    ]);
+
+    const metadataHandlers = mocks.mockSession.updateMetadata.mock.calls.map((call) => call[0]);
+    const appliedMetadata = metadataHandlers.map((handler) => handler({ path: '/repo', host: 'host' }));
+    expect(appliedMetadata).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          currentThoughtLevelCode: 'high',
+          thoughtLevels: [
+            { code: 'low', value: 'Low' },
+            { code: 'high', value: 'High' },
+            { code: 'max', value: 'Max' },
+          ],
+        }),
+      ]),
+    );
+  });
+
   it('ignores ACP model and permission mode requests when values do not match advertised options', async () => {
     mocks.backendState.startSessionMessages = [
       {

@@ -143,6 +143,17 @@ export function getAgyPermissionModes(translate: Translate): PermissionMode[] {
     ];
 }
 
+// Mirrors the `mode` config option Kimi reports over ACP (`kimi acp`), used
+// before a session exists and its real catalog arrives in metadata.
+export function getKimiPermissionModes(translate: Translate): PermissionMode[] {
+    return [
+        { key: 'default', name: translate('agentInput.kimiPermissionMode.default'), description: translate('agentInput.kimiPermissionMode.defaultDescription') },
+        { key: 'plan', name: translate('agentInput.kimiPermissionMode.plan'), description: translate('agentInput.kimiPermissionMode.planDescription') },
+        { key: 'auto', name: translate('agentInput.kimiPermissionMode.auto'), description: translate('agentInput.kimiPermissionMode.autoDescription') },
+        { key: 'yolo', name: translate('agentInput.kimiPermissionMode.yolo'), description: translate('agentInput.kimiPermissionMode.yoloDescription') },
+    ];
+}
+
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
@@ -155,6 +166,9 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     }
     if (flavor === 'agy') {
         return getAgyPermissionModes(translate);
+    }
+    if (flavor === 'kimi') {
+        return getKimiPermissionModes(translate);
     }
     return getClaudePermissionModes(translate);
 }
@@ -179,6 +193,19 @@ export function getAgyModelModes(): ModelMode[] {
     ];
 }
 
+// Keys are the model ids Kimi reports in its ACP `model` config option; the
+// live catalog replaces this list once the session publishes its metadata.
+// `default` keeps `default_model` from the machine's kimi config.toml.
+export function getKimiModelModes(): ModelMode[] {
+    return [
+        { key: 'default', name: 'default model', description: null },
+        { key: 'kimi-code/k3', name: 'K3', description: null },
+        { key: 'kimi-code/k3-256k', name: 'K3-256k', description: null },
+        { key: 'kimi-code/kimi-for-coding', name: 'K2.7 Coding', description: null },
+        { key: 'kimi-code/kimi-for-coding-highspeed', name: 'K2.7 Coding Highspeed', description: null },
+    ];
+}
+
 export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translate): ModelMode[] {
     if (flavor === 'codex') {
         return getCodexModelModes();
@@ -191,6 +218,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     }
     if (flavor === 'agy') {
         return getAgyModelModes();
+    }
+    if (flavor === 'kimi') {
+        return getKimiModelModes();
     }
     return getClaudeModelModes();
 }
@@ -349,9 +379,20 @@ export function getCodexEffortLevels(): EffortLevel[] {
     ];
 }
 
+// Kimi exposes thinking effort as a session-wide `thought_level` ACP config
+// option; these are the levels it reports (`kimi acp`, 0.31.x).
+export function getKimiEffortLevels(): EffortLevel[] {
+    return [
+        { key: 'low', name: 'low' },
+        { key: 'high', name: 'high' },
+        { key: 'max', name: 'max' },
+    ];
+}
+
 export function getHardcodedEffortLevels(flavor: AgentFlavor): EffortLevel[] {
     if (flavor === 'claude') return getClaudeEffortLevels();
     if (flavor === 'codex') return getCodexEffortLevels();
+    if (flavor === 'kimi') return getKimiEffortLevels();
     return [];
 }
 
@@ -380,6 +421,12 @@ export function getEffortLevelsForModel(
     }
     if (flavor === 'codex') {
         return getCodexEffortLevels();
+    }
+    // Kimi's thinking levels are session-wide, not per-model, and the live list
+    // arrives in metadata once the ACP session reports its config options.
+    if (flavor === 'kimi') {
+        const reported = mapMetadataOptions(metadata?.thoughtLevels);
+        return reported.length > 0 ? reported : getKimiEffortLevels();
     }
     return [];
 }

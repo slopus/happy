@@ -269,6 +269,7 @@ function formatEnvelopeForServerLog(agentName: string, envelope: SessionEnvelope
 type AcpSwitchMode = {
   permissionMode?: string;
   model?: string | null;
+  effort?: string | null;
 };
 
 type AcpSelectableOption = {
@@ -321,7 +322,7 @@ function flattenSelectOptions(options: unknown): AcpSelectableOption[] {
 
 function extractConfigSelector(
   configOptions: SessionConfigOption[],
-  category: 'mode' | 'model',
+  category: 'mode' | 'model' | 'thought_level',
 ): AcpConfigSelector | null {
   const optionMatchesCategory = (option: SessionConfigOption): boolean => {
     if (option.category === category) {
@@ -332,6 +333,10 @@ function extractConfigSelector(
     const name = normalizeComparable(option.name);
     if (category === 'model') {
       return id.includes('model') || name.includes('model');
+    }
+    if (category === 'thought_level') {
+      return id.includes('thinking') || id.includes('effort') || id.includes('reasoning')
+        || name.includes('thinking') || name.includes('effort') || name.includes('reasoning');
     }
     return id.includes('mode') || id.includes('permission') || name.includes('mode') || name.includes('permission');
   };
@@ -545,8 +550,10 @@ export async function runAcp(opts: {
   const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
   let currentPermissionMode: string | undefined;
   let currentModel: string | null | undefined;
+  let currentEffort: string | null | undefined;
   let modeSelector: AcpConfigSelector | null = null;
   let modelSelector: AcpConfigSelector | null = null;
+  let thoughtSelector: AcpConfigSelector | null = null;
   let legacyModes: SessionModeState | null = null;
   let legacyModels: SessionModelState | null = null;
   let sawSlashCommands = false;
@@ -711,6 +718,28 @@ export async function runAcp(opts: {
     }
   };
 
+  // Thinking effort has no legacy ACP counterpart — agents that expose it do so
+  // through a `thought_level` config option (kimi calls it `thinking`).
+  const switchThoughtLevelIfRequested = async (requestedLevel: string): Promise<void> => {
+    if (!requestedLevel || !thoughtSelector) {
+      return;
+    }
+
+    const resolved = resolveRequestedCode(thoughtSelector.options, requestedLevel);
+    if (!resolved) {
+      logger.debug(`[${opts.agentName}] Ignoring unknown ACP thought level request: ${requestedLevel}`);
+      return;
+    }
+    if (resolved === thoughtSelector.currentCode) {
+      return;
+    }
+
+    const switched = await backend.setSessionConfigOption(thoughtSelector.configId, resolved);
+    if (switched) {
+      thoughtSelector.currentCode = resolved;
+    }
+  };
+
   const onBackendMessage = (msg: AgentMessage) => {
     if (verbose) {
       logAcp('muted', `Outgoing raw backend message from ${opts.agentName}: ${formatUnknownForConsole(msg, ACP_RAW_PREVIEW_CHARS)}`);
@@ -749,6 +778,7 @@ export async function runAcp(opts: {
 
         modeSelector = extractConfigSelector(configOptions, 'mode');
         modelSelector = extractConfigSelector(configOptions, 'model');
+        thoughtSelector = extractConfigSelector(configOptions, 'thought_level');
         if (verbose) {
           if (modeSelector) {
             sawModes = true;
@@ -872,9 +902,15 @@ export async function runAcp(opts: {
       logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
     }
 
+    if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'effort')) {
+      currentEffort = message.meta.effort ?? null;
+      logger.debug(`[${opts.agentName}] Requested ACP thought level: ${currentEffort ?? 'null'}`);
+    }
+
     messageQueue.push(message.content.text, {
       permissionMode: currentPermissionMode,
       model: currentModel,
+      effort: currentEffort,
     });
   });
   session.keepAlive(thinking, 'remote');
@@ -963,6 +999,9 @@ export async function runAcp(opts: {
         }
         if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
           await switchModelIfRequested(batch.mode.model);
+        }
+        if (typeof batch.mode.effort === 'string' && batch.mode.effort.length > 0) {
+          await switchThoughtLevelIfRequested(batch.mode.effort);
         }
         await backend.sendPrompt(acpSessionId, batch.message);
         await turnEnded;

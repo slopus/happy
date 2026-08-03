@@ -9,6 +9,9 @@ import {
     getDefaultEffortKey,
     getDefaultModelKey,
     getDefaultPermissionModeKey,
+    getEffortLevelsForModel,
+    getKimiEffortLevels,
+    getKimiModelModes,
     mapMetadataOptions,
     resolveCurrentOption,
 } from './modelModeOptions';
@@ -139,6 +142,36 @@ describe('modelModeOptions', () => {
         // not the claude list
         expect(keys).not.toContain('opus');
         expect(keys).not.toContain('sonnet');
+    });
+
+    it('falls back to kimi options before a session exists, then follows its ACP catalog', () => {
+        expect(getAvailableModels('kimi', null, translate)).toEqual(getKimiModelModes());
+        expect(getDefaultModelKey('kimi')).toBe('default');
+        expect(getDefaultPermissionModeKey('kimi')).toBe('default');
+
+        const modes = getAvailablePermissionModes('kimi', null, translate);
+        expect(modes.map((mode) => mode.key)).toEqual(['default', 'plan', 'auto', 'yolo']);
+
+        // Once the session reports its live catalog, that wins over the fallback.
+        const liveModels = getAvailableModels('kimi', {
+            models: [{ code: 'kimi-code/k3', value: 'K3' }],
+            currentModelCode: 'kimi-code/k3',
+        } as any, translate);
+        expect(liveModels).toEqual([{ key: 'kimi-code/k3', name: 'K3', description: null }]);
+    });
+
+    it('exposes kimi thinking levels, preferring the ones the session reports', () => {
+        expect(getEffortLevelsForModel('kimi', 'kimi-code/k3')).toEqual(getKimiEffortLevels());
+        expect(getDefaultEffortKey('kimi')).toBe('high');
+
+        const reported = getEffortLevelsForModel('kimi', 'kimi-code/k3', {
+            thoughtLevels: [{ code: 'low', value: 'Low' }, { code: 'max', value: 'Max' }],
+            currentThoughtLevelCode: 'max',
+        } as any);
+        expect(reported).toEqual([
+            { key: 'low', name: 'Low', description: null },
+            { key: 'max', name: 'Max', description: null },
+        ]);
     });
 
     it('resolves the first matching preferred key', () => {

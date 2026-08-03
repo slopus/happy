@@ -471,6 +471,7 @@ export const zhHans: TranslationStructure = {
             codex: 'Codex',
             gemini: 'Gemini',
             openclaw: 'OpenClaw',
+            kimi: 'Kimi',
         },
         model: {
             title: '模型',
@@ -512,6 +513,17 @@ export const zhHans: TranslationStructure = {
             badgeAutoEdit: '自动编辑',
             badgeYolo: 'YOLO',
             badgePlan: '计划',
+        },
+        kimiPermissionMode: {
+            title: 'KIMI 权限模式',
+            default: '默认权限',
+            defaultDescription: '手动批准，工具正常执行',
+            plan: '计划',
+            planDescription: '只读规划，不执行工具',
+            auto: '自动',
+            autoDescription: '完全自主，从不询问',
+            yolo: 'YOLO',
+            yoloDescription: '自动批准工具，仍可能提问',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,

@@ -57,6 +57,7 @@ const AGENTS: Array<{ key: NewSessionAgentType; name: string }> = [
     { key: 'openclaw', name: 'OpenClaw' },
     { key: 'gemini', name: 'Gemini' },
     { key: 'agy', name: 'Agy' },
+    { key: 'kimi', name: 'Kimi Code' },
 ];
 
 const styles = StyleSheet.create((theme) => ({
