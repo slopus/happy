@@ -353,4 +353,32 @@ describe('sessionScanner', () => {
     expect(collectedMessages).toHaveLength(1)
     expect(collectedMessages[0].type).toBe('user')
   })
+
+  it('emits the synthetic assistant message written when the API rejects a turn', async () => {
+    // Reproduces the "session goes silent" bug: on an API error (here a 429)
+    // Claude Code writes a synthetic assistant message carrying the error text.
+    // Those messages send `usage.service_tier: null`, which used to fail schema
+    // validation, so the scanner dropped them and the client saw the user's own
+    // message followed by nothing at all.
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+    })
+
+    const fixture = await readFile(join(__dirname, '..', '__fixtures__', 'api-error', 'rate-limit.jsonl'), 'utf-8')
+    const sessionId = 'c1d0a6cf-1f6c-4bb0-9a5a-2b0c2f5f9d10'
+
+    await writeFile(join(projectDir, `${sessionId}.jsonl`), fixture)
+    scanner.onNewSession(sessionId)
+    await new Promise((r) => setTimeout(r, 200))
+
+    expect(collectedMessages.map((m) => m.type)).toEqual(['user', 'assistant'])
+    const assistant = collectedMessages[1]
+    expect(assistant).toMatchObject({
+      type: 'assistant',
+      isApiErrorMessage: true,
+      apiErrorStatus: 429,
+    })
+  })
 })

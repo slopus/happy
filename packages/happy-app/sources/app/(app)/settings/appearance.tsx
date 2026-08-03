@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import * as Localization from 'expo-localization';
 import { StyleSheet, useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
-import { Appearance, Pressable, Text, View } from 'react-native';
+import { Appearance, Platform, Pressable, Text, View } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { darkTheme, lightTheme } from '@/theme';
 import { SESSION_STATUS_BAR_DISPLAY_MODES, type SessionStatusBarDisplay } from '@/sync/settings';
@@ -15,10 +15,13 @@ import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
 import {
     normalizeUserMessageBubbleColor,
     resolveUserMessageBubbleColor,
+    resolveUserMessageBubbleGlassColor,
     USER_MESSAGE_BUBBLE_COLORS,
     type UserMessageBubbleColor,
 } from '@/utils/userMessageBubbleColor';
 import * as React from 'react';
+import { MobileGlassSurface } from '@/components/MobileGlass';
+import { AnimatedCollapsible } from '@/components/AnimatedOverlay';
 
 // Define known avatar styles for this version of the app
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
@@ -48,8 +51,6 @@ const getSessionStatusDisplayLabel = (mode: SessionStatusBarDisplay): string => 
     switch (mode) {
         case 'hidden':
             return t('settingsAppearance.sessionStatusDisplayOptions.hidden');
-        case 'hiddenOnMobile':
-            return t('settingsAppearance.sessionStatusDisplayOptions.hiddenOnMobile');
         case 'above':
             return t('settingsAppearance.sessionStatusDisplayOptions.above');
         case 'below':
@@ -61,8 +62,6 @@ const getSessionStatusDisplayIcon = (mode: SessionStatusBarDisplay): React.Compo
     switch (mode) {
         case 'hidden':
             return 'eye-off-outline';
-        case 'hiddenOnMobile':
-            return 'phone-portrait-outline';
         case 'above':
             return 'chevron-up-outline';
         case 'below':
@@ -74,12 +73,24 @@ function BubbleColorPreview({ color }: { color: UserMessageBubbleColor }) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const palette = resolveUserMessageBubbleColor(color, theme.dark);
+    const glassPalette = resolveUserMessageBubbleGlassColor(color, theme.dark);
+    const glassEnabled = Platform.OS !== 'web';
 
     return (
-        <View style={[styles.bubblePreview, { backgroundColor: palette.background, borderColor: palette.border }]}>
+        <MobileGlassSurface
+            enabled={glassEnabled}
+            tintColor={glassEnabled ? glassPalette.tint : undefined}
+            style={[
+                styles.bubblePreview,
+                {
+                    backgroundColor: glassEnabled ? glassPalette.background : palette.background,
+                    borderColor: glassEnabled ? glassPalette.border : palette.border,
+                },
+            ]}
+        >
             <View style={[styles.bubblePreviewLine, { backgroundColor: palette.indicator, width: 18 }]} />
             <View style={[styles.bubblePreviewLine, { backgroundColor: palette.indicator, width: 26 }]} />
-        </View>
+        </MobileGlassSurface>
     );
 }
 
@@ -203,8 +214,10 @@ export default function AppearanceSettingsScreen() {
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
+    const [compactToolCalls, setCompactToolCalls] = useSettingMutable('compactToolCalls');
     const [userMessageBubbleColor, setUserMessageBubbleColor] = useSettingMutable('userMessageBubbleColor');
     const [sessionStatusBarDisplay, setSessionStatusBarDisplay] = useSettingMutable('sessionStatusBarDisplay');
+    const [usageLimitShowRemaining, setUsageLimitShowRemaining] = useSettingMutable('usageLimitShowRemaining');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
     const [statusPlacementDropdownOpen, setStatusPlacementDropdownOpen] = React.useState(false);
@@ -300,7 +313,7 @@ export default function AppearanceSettingsScreen() {
                     showDivider={statusPlacementDropdownOpen}
                 />
                 {statusPlacementDropdownOpen && (
-                    <View style={stylesheet.statusPlacementDropdown}>
+                    <AnimatedCollapsible style={stylesheet.statusPlacementDropdown}>
                         {SESSION_STATUS_BAR_DISPLAY_MODES.map((mode) => (
                             <StatusDisplayOption
                                 key={mode}
@@ -309,8 +322,19 @@ export default function AppearanceSettingsScreen() {
                                 onPress={() => applySessionStatusDisplay(mode)}
                             />
                         ))}
-                    </View>
+                    </AnimatedCollapsible>
                 )}
+                <Item
+                    title={t('settingsAppearance.usageLimitShowRemaining')}
+                    subtitle={t('settingsAppearance.usageLimitShowRemainingDescription')}
+                    icon={<Ionicons name="speedometer-outline" size={29} color={theme.colors.status.connecting} />}
+                    rightElement={
+                        <Switch
+                            value={usageLimitShowRemaining}
+                            onValueChange={setUsageLimitShowRemaining}
+                        />
+                    }
+                />
                 <Item
                     title={t('settingsAppearance.userMessageBubbleColor')}
                     subtitle={t('settingsAppearance.userMessageBubbleColorDescription')}
@@ -329,21 +353,19 @@ export default function AppearanceSettingsScreen() {
                     showDivider={bubbleColorDropdownOpen}
                 />
                 {bubbleColorDropdownOpen && (
-                    <React.Fragment>
-                        <View style={stylesheet.bubbleColorDropdown}>
-                            {USER_MESSAGE_BUBBLE_COLORS.map((color) => (
-                                <BubbleColorOption
-                                    key={color}
-                                    color={color}
-                                    selected={color === displayBubbleColor}
-                                    onPress={() => {
-                                        setUserMessageBubbleColor(color);
-                                        setBubbleColorDropdownOpen(false);
-                                    }}
-                                />
-                            ))}
-                        </View>
-                    </React.Fragment>
+                    <AnimatedCollapsible style={stylesheet.bubbleColorDropdown}>
+                        {USER_MESSAGE_BUBBLE_COLORS.map((color) => (
+                            <BubbleColorOption
+                                key={color}
+                                color={color}
+                                selected={color === displayBubbleColor}
+                                onPress={() => {
+                                    setUserMessageBubbleColor(color);
+                                    setBubbleColorDropdownOpen(false);
+                                }}
+                            />
+                        ))}
+                    </AnimatedCollapsible>
                 )}
             </ItemGroup>
 
@@ -369,6 +391,17 @@ export default function AppearanceSettingsScreen() {
 
             {/* Display Settings */}
             <ItemGroup title={t('settingsAppearance.display')} footer={t('settingsAppearance.displayDescription')}>
+                <Item
+                    title={t('settingsAppearance.compactToolCalls')}
+                    subtitle={t('settingsAppearance.compactToolCallsDescription')}
+                    icon={<Ionicons name="contract-outline" size={29} color="#5856D6" />}
+                    rightElement={
+                        <Switch
+                            value={compactToolCalls}
+                            onValueChange={setCompactToolCalls}
+                        />
+                    }
+                />
                 <Item
                     title={t('settingsAppearance.inlineToolCalls')}
                     subtitle={t('settingsAppearance.inlineToolCallsDescription')}
@@ -466,18 +499,6 @@ export default function AppearanceSettingsScreen() {
                     }
                 />
                 {/* <Item
-                    title="Compact Mode"
-                    subtitle="Reduce spacing between elements"
-                    icon={<Ionicons name="contract-outline" size={29} color="#5856D6" />}
-                    disabled
-                    rightElement={
-                        <Switch
-                            value={false}
-                            disabled
-                        />
-                    }
-                />
-                <Item
                     title="Show Avatars"
                     subtitle="Display user and assistant avatars"
                     icon={<Ionicons name="person-circle-outline" size={29} color="#5856D6" />}
@@ -532,10 +553,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 16,
     },
     statusPlacementOptionSelected: {
-        backgroundColor: theme.colors.surfaceSelected,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceSelected, default: theme.colors.glass.backgroundSubtle }),
     },
     statusPlacementOptionPressed: {
-        backgroundColor: theme.colors.surfacePressedOverlay,
+        backgroundColor: Platform.select({ web: theme.colors.surfacePressedOverlay, default: theme.colors.glass.backgroundStrong }),
     },
     statusPlacementOptionText: {
         color: theme.colors.text,
@@ -550,10 +571,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 16,
     },
     bubbleColorOptionSelected: {
-        backgroundColor: theme.colors.surfaceSelected,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceSelected, default: theme.colors.glass.backgroundSubtle }),
     },
     bubbleColorOptionPressed: {
-        backgroundColor: theme.colors.surfacePressedOverlay,
+        backgroundColor: Platform.select({ web: theme.colors.surfacePressedOverlay, default: theme.colors.glass.backgroundStrong }),
     },
     bubbleColorOptionText: {
         color: theme.colors.text,
@@ -573,6 +594,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         gap: 4,
         paddingHorizontal: 9,
+        overflow: 'hidden',
     },
     bubblePreviewLine: {
         height: 3,

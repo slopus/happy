@@ -10,9 +10,8 @@ import { DEFAULT_USER_MESSAGE_BUBBLE_COLOR } from '../utils/userMessageBubbleCol
 export const SUPPORTED_SCHEMA_VERSION = 2;
 
 // Where (and whether) the branch/model/effort/context status bar renders
-// around the composer. 'hiddenOnMobile' hides it on phones but shows it
-// below the composer on tablet/desktop/web.
-export const SESSION_STATUS_BAR_DISPLAY_MODES = ['hidden', 'hiddenOnMobile', 'above', 'below'] as const;
+// around the composer.
+export const SESSION_STATUS_BAR_DISPLAY_MODES = ['hidden', 'above', 'below'] as const;
 export type SessionStatusBarDisplay = typeof SESSION_STATUS_BAR_DISPLAY_MODES[number];
 
 export const SettingsSchema = z.object({
@@ -34,12 +33,14 @@ export const SettingsSchema = z.object({
     showFlavorIcons: z.boolean().describe('Whether to show AI provider icons in avatars'),
     userMessageBubbleColor: z.string().describe('User message bubble color preset'),
     sessionStatusBarDisplay: z.enum(SESSION_STATUS_BAR_DISPLAY_MODES).describe('Whether/where to show the branch, model, effort, and context status bar'),
+    usageLimitShowRemaining: z.boolean().describe('Show plan rate limits as quota remaining instead of quota used'),
 
     hideInactiveSessions: z.boolean().describe('Hide inactive sessions in the main list'),
     sortSessionsByActivity: z.boolean().describe('Sort the session list by last activity instead of creation date'),
     expResumeSession: z.boolean().describe('Enable experimental session resume feature'),
     fileDiffsSidebar: z.boolean().describe('Show the file diffs sidebar next to the chat on desktop'),
     groupToolCalls: z.boolean().describe('Collapse consecutive tool calls into grouped containers in chat'),
+    compactToolCalls: z.boolean().describe('Render non-interactive tool calls as compact one-line rows'),
     expImageUpload: z.boolean().describe('Enable experimental image upload in chat'),
     reviewPromptAnswered: z.boolean().describe('Whether the review prompt has been answered'),
     reviewPromptLikedApp: z.boolean().nullish().describe('Whether user liked the app when asked'),
@@ -110,12 +111,14 @@ export const settingsDefaults: Settings = {
     // Hidden everywhere by default — the context usage indicator is still too
     // raw to roll out; users can opt back in from appearance settings.
     sessionStatusBarDisplay: 'hidden',
+    usageLimitShowRemaining: false,
 
     hideInactiveSessions: false,
     sortSessionsByActivity: false,
     expResumeSession: false,
     fileDiffsSidebar: false,
     groupToolCalls: false,
+    compactToolCalls: true,
     expImageUpload: false,
     reviewPromptAnswered: false,
     reviewPromptLikedApp: null,

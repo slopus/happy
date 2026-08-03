@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ScrollView, View, Text } from 'react-native';
+import { Platform, ScrollView, View, Text } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
@@ -46,8 +46,9 @@ export default function ChangelogScreen() {
                 ]}
                 showsVerticalScrollIndicator={false}
             >
-                {entries.map((entry) => (
+                {entries.map((entry, index) => (
                     <View key={entry.title} style={styles.entryContainer}>
+                        {index > 0 ? <View style={styles.entryDivider} /> : null}
                         <Text style={styles.titleText}>
                             {entry.title}
                         </Text>
@@ -57,9 +58,7 @@ export default function ChangelogScreen() {
                             </Text>
                         ) : null}
                         {entry.markdown ? (
-                            <View style={styles.card}>
-                                <MarkdownView markdown={entry.markdown} />
-                            </View>
+                            <MarkdownView markdown={entry.markdown} />
                         ) : null}
                     </View>
                 ))}
@@ -71,13 +70,18 @@ export default function ChangelogScreen() {
 const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
     },
     content: {
         paddingHorizontal: 16,
         paddingTop: 16,
     },
     entryContainer: {
+        marginBottom: 32,
+    },
+    entryDivider: {
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: theme.colors.divider,
         marginBottom: 32,
     },
     titleText: {
@@ -93,11 +97,6 @@ const styles = StyleSheet.create((theme) => ({
         lineHeight: 22,
         color: theme.colors.textSecondary,
         marginBottom: 16,
-    },
-    card: {
-        backgroundColor: theme.colors.surfaceHigh,
-        borderRadius: 12,
-        padding: 16,
     },
     emptyState: {
         flex: 1,

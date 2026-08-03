@@ -1,3 +1,25 @@
+# August 3 — Composer and tool calls
+
+Shorter tool output and a composer that behaves again.
+
+- Tool calls show as one-line rows you can open for details — turn it off with Compact Tool Calls in Settings → Appearance.
+- The mic is back in the send button — voice when the composer is empty, send once you've typed, stop while the agent works.
+- Model and effort sit together next to the send button, and no longer get cut off when you switch.
+- Model, effort, and permission pickers are legible again on iOS 26.
+- The send button is visible again on the light theme.
+- Composer pickers stay tappable while the keyboard is open.
+
+# July 28 — Liquid glass, Opus 5
+
+A full mobile refresh and a new top model.
+
+- Liquid-glass mobile UI — glass surfaces across navigation, headers, modals, and session lists.
+- Opus 5 in the Claude model picker.
+- Side chats — fork a parallel conversation right next to your session.
+- Redesigned new-session screen — prompt, attachments, voice, model, effort, and permissions in one place. Drafts are preserved.
+- Pick your own sidebar panels, with keyboard shortcuts.
+- Session launch and resume are more reliable.
+
 # July 11 — GPT-5.6, Antigravity, bugfixes
 
 New models, a new agent, and live subagent rendering.

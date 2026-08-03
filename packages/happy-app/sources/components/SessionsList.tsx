@@ -1,12 +1,14 @@
 import React from 'react';
-import { View, Pressable, FlatList, Platform } from 'react-native';
+import { View, Pressable, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem, SessionRowData } from '@/sync/storage';
+import { filterProjectGroup, sessionMatchesQuery } from '@/sync/projectGroups';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
+import { ProjectGroup } from './ProjectGroup';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
@@ -21,6 +23,7 @@ import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPop
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
+import { SessionShortcutHintBadge } from './ShortcutHints';
 import { ProviderIcon } from './ProviderIcon';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -51,7 +54,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     projectGroup: {
         paddingHorizontal: 16,
         paddingVertical: 10,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.surfaceHigh }),
     },
     projectGroupTitle: {
         fontSize: 13,
@@ -70,12 +73,15 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: 'transparent',
     },
     sessionItemContainer: {
         marginHorizontal: 16,
         marginBottom: 1,
         overflow: 'hidden',
+        backgroundColor: theme.colors.surface,
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.divider,
     },
     sessionItemFirst: {
         borderTopLeftRadius: 12,
@@ -119,6 +125,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontWeight: '500',
         flex: 1,
         ...Typography.default('semiBold'),
+    },
+    sessionShortcutBadge: {
+        flexShrink: 0,
+        marginLeft: 8,
     },
     sessionTitleConnected: {
         color: theme.colors.text,
@@ -175,7 +185,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     artifactsSection: {
         paddingHorizontal: 16,
         paddingBottom: 12,
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
     },
     archiveToggle: {
         flexDirection: 'row',
@@ -197,10 +207,20 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export function SessionsList() {
+export function SessionsList({
+    topContentInset = 0,
+    bottomContentInset = 128,
+    onScroll,
+    searchQuery = '',
+}: {
+    topContentInset?: number;
+    bottomContentInset?: number;
+    onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+    searchQuery?: string;
+} = {}) {
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
-    const data = useVisibleSessionListViewData();
+    const sourceData = useVisibleSessionListViewData();
     const pathname = usePathname();
     const isTablet = useIsTablet();
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
@@ -219,10 +239,69 @@ export function SessionsList() {
 
     // Request review
     React.useEffect(() => {
-        if (data && data.length > 0) {
+        if (sourceData && sourceData.length > 0) {
             requestReview();
         }
-    }, [data && data.length > 0]);
+    }, [sourceData && sourceData.length > 0]);
+
+    const data = React.useMemo(() => {
+        const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+        if (!sourceData || !normalizedQuery) {
+            return sourceData;
+        }
+
+        const matches = (session: SessionRowData) => sessionMatchesQuery(session, normalizedQuery);
+
+        // Projects nest their sessions inside worktrees, so they need a pass of
+        // their own: the index walk below only ever sees flat `session` items.
+        const keptProjects = new Map<number, SessionListViewItem>();
+        sourceData.forEach((item, index) => {
+            if (item.type !== 'project') return;
+            const project = filterProjectGroup(item.project, normalizedQuery);
+            if (project) keptProjects.set(index, { ...item, project });
+        });
+
+        const keepIndices = new Set<number>();
+        let currentHeaderIndex: number | null = null;
+        let currentProjectIndex: number | null = null;
+
+        sourceData.forEach((item, index) => {
+            if (item.type === 'header') {
+                currentHeaderIndex = index;
+                currentProjectIndex = null;
+                return;
+            }
+            if (item.type === 'project-group') {
+                currentProjectIndex = index;
+                return;
+            }
+            if (item.type === 'session' && matches(item.session)) {
+                keepIndices.add(index);
+                if (currentHeaderIndex !== null) keepIndices.add(currentHeaderIndex);
+                if (currentProjectIndex !== null) keepIndices.add(currentProjectIndex);
+            }
+        });
+
+        const result: SessionListViewItem[] = [];
+        sourceData.forEach((item, index) => {
+            if (item.type === 'active-sessions') {
+                const sessions = item.sessions.filter(matches);
+                if (sessions.length > 0) result.push({ ...item, sessions });
+                return;
+            }
+            if (item.type === 'projects-header') {
+                if (keptProjects.size > 0) result.push(item);
+                return;
+            }
+            if (item.type === 'project') {
+                const kept = keptProjects.get(index);
+                if (kept) result.push(kept);
+                return;
+            }
+            if (keepIndices.has(index)) result.push(item);
+        });
+        return result;
+    }, [searchQuery, sourceData]);
 
     // Early return if no data yet
     if (!data) {
@@ -237,6 +316,8 @@ export function SessionsList() {
             case 'active-sessions': return 'active-sessions';
             case 'archive-toggle': return 'archive-toggle';
             case 'project-group': return `project-group-${item.machine.id}-${item.displayPath}-${index}`;
+            case 'projects-header': return 'projects-header';
+            case 'project': return `project-${item.project.id}`;
             case 'session': return `session-${item.session.id}`;
         }
     }, []);
@@ -267,6 +348,23 @@ export function SessionsList() {
                 return (
                     <ActiveSessionsGroupCompact
                         sessions={item.sessions}
+                        selectedSessionId={selectedSessionId}
+                    />
+                );
+
+            case 'projects-header':
+                return (
+                    <View style={styles.headerSection}>
+                        <Text style={styles.headerText}>
+                            {t('sidebar.projects')}
+                        </Text>
+                    </View>
+                );
+
+            case 'project':
+                return (
+                    <ProjectGroup
+                        project={item.project}
                         selectedSessionId={selectedSessionId}
                     />
                 );
@@ -325,11 +423,22 @@ export function SessionsList() {
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
                     extraData={selectedSessionId}
-                    contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
+                    contentContainerStyle={{
+                        paddingTop: topContentInset,
+                        paddingBottom: safeArea.bottom + bottomContentInset,
+                        maxWidth: layout.maxWidth,
+                    }}
                     ListHeaderComponent={HeaderComponent}
+                    ListEmptyComponent={searchQuery.trim() ? (
+                        <View style={{ paddingTop: 48, alignItems: 'center' }}>
+                            <Text style={styles.headerText}>{t('sessionHistory.empty')}</Text>
+                        </View>
+                    ) : null}
                     windowSize={5}
                     maxToRenderPerBatch={8}
                     initialNumToRender={12}
+                    onScroll={onScroll}
+                    scrollEventThrottle={16}
                 />
             </View>
         </View>
@@ -432,6 +541,10 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     ]} numberOfLines={1}>
                         {session.name}
                     </Text>
+                    <SessionShortcutHintBadge
+                        sessionId={session.id}
+                        style={styles.sessionShortcutBadge}
+                    />
                 </View>
 
                 {session.identityLine ? (

@@ -167,10 +167,11 @@ export const es: TranslationStructure = {
         sessionStatusBarDescription: 'Elige dónde aparecen la rama, el modelo, el esfuerzo y el contexto',
         sessionStatusDisplayOptions: {
             hidden: 'Oculto',
-            hiddenOnMobile: 'Oculto en móvil',
             above: 'Sobre el compositor',
             below: 'Bajo el compositor',
         },
+        usageLimitShowRemaining: 'Mostrar cuota restante',
+        usageLimitShowRemainingDescription: 'Los indicadores de límite cuentan hacia atrás en vez de hacia adelante',
         userMessageBubbleColor: 'Color de tus mensajes',
         userMessageBubbleColorDescription: 'Haz que tus mensajes sean más fáciles de encontrar en chats largos',
         userMessageBubbleColorOptions: {
@@ -183,6 +184,8 @@ export const es: TranslationStructure = {
         },
         display: 'Pantalla',
         displayDescription: 'Controla diseño y espaciado',
+        compactToolCalls: 'Llamadas a herramientas compactas',
+        compactToolCallsDescription: 'Muestra las llamadas no interactivas en una sola línea; abre una fila para ver los detalles',
         inlineToolCalls: 'Llamadas a herramientas en línea',
         inlineToolCallsDescription: 'Mostrar llamadas a herramientas directamente en mensajes de chat',
         expandTodoLists: 'Expandir listas de tareas',
@@ -442,6 +445,11 @@ export const es: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Contexto ${used} de ${total} tokens, ${percent}%`,
+            limitFiveHour: 'Límite de 5 horas',
+            limitSevenDay: 'Límite de 7 días',
+            limitResets: ({ time }: { time: string }) => `se restablece ${time}`,
+            limitAsOf: ({ age }: { age: string }) => `hace ${age}`,
+            limitRemaining: ({ percent }: { percent: number }) => `${percent}% restante`,
         },
     },
 
@@ -521,11 +529,26 @@ export const es: TranslationStructure = {
         offlineUnableToSpawn: 'No se puede crear nueva sesión, desconectado',
     },
 
+    agentQuestion: {
+        title: "Pregunta",
+        submit: "Enviar respuesta",
+        chooseMultiple: "Elige todas las que apliquen",
+        ownAnswer: "Tu propia respuesta",
+        ownAnswerPlaceholder: "Escribe una respuesta",
+        submitFailed: "No se pudo enviar tu respuesta",
+        dismiss: "Descartar",
+        unsupportedTitle: "Solicitud no compatible",
+        unsupportedDescription: ({ kind }: { kind: string }) => `Esta versión de Happy no puede mostrar una solicitud «${kind}». Actualiza la app para responder.`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? "1 pregunta más" : `${count} preguntas más`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Mostrar archivadas',
         hideArchived: 'Ocultar archivadas',
         newSession: 'Nueva sesión',
+        projects: "Proyectos",
     },
 
     zen: {
@@ -643,6 +666,8 @@ export const es: TranslationStructure = {
         deleted: 'Eliminado',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'archivo modificado' : 'archivos modificados'}`,
         allFiles: 'Todos los archivos',
+        addPanel: 'Añadir panel',
+        closePanel: 'Cerrar panel',
         editFile: 'Editar',
         saveFile: 'Guardar',
         failedToRead: 'Error al leer el archivo',
@@ -651,6 +676,19 @@ export const es: TranslationStructure = {
         fileConflictDescription: 'Este archivo fue modificado en el dispositivo mientras lo editabas. Recarga para ver la última versión.',
         reload: 'Recargar',
         overwrite: 'Sobrescribir',
+    },
+    sideChat: {
+        panelTitle: 'Chat lateral',
+        emptyTitle: 'Inicia un chat lateral',
+        emptySubtitle: 'Pregunta algo al agente por separado. Hereda el contexto de este chat pero permanece aislado — nada de aquí afecta a la conversación principal.',
+        startButton: 'Iniciar chat lateral',
+        creating: 'Iniciando chat lateral…',
+        unavailable: 'Esta sesión aún no puede iniciar un chat lateral — espera a que el agente esté en línea.',
+        composerPlaceholder: 'Mensaje al chat lateral…',
+        expand: 'Abrir en pantalla completa',
+        tabLabel: ({ index }: { index: number }) => `Chat lateral ${index}`,
+        newChat: 'Nuevo chat lateral',
+        close: 'Cerrar chat lateral',
     },
 
     settingsVoice: {

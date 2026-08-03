@@ -168,10 +168,11 @@ export const ja: TranslationStructure = {
         sessionStatusBarDescription: 'ブランチ、モデル、エフォート、コンテキストの表示場所を選択',
         sessionStatusDisplayOptions: {
             hidden: '非表示',
-            hiddenOnMobile: 'モバイルで非表示',
             above: '入力欄の上',
             below: '入力欄の下',
         },
+        usageLimitShowRemaining: '残量を表示',
+        usageLimitShowRemainingDescription: '上限を使用量ではなく残量で表示します',
         userMessageBubbleColor: 'ユーザーバブルの色',
         userMessageBubbleColorDescription: '長いチャットで自分のメッセージを見つけやすくします',
         userMessageBubbleColorOptions: {
@@ -184,6 +185,8 @@ export const ja: TranslationStructure = {
         },
         display: '表示',
         displayDescription: 'レイアウトと間隔を調整',
+        compactToolCalls: 'ツール呼び出しをコンパクト表示',
+        compactToolCallsDescription: '非対話型のツール呼び出しを1行で表示し、行を開いて詳細を確認します',
         inlineToolCalls: 'ツール呼び出しをインライン表示',
         inlineToolCallsDescription: 'チャットメッセージ内にツール呼び出しを直接表示',
         expandTodoLists: 'Todoリストを展開',
@@ -443,6 +446,11 @@ export const ja: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `コンテキスト ${total}トークン中${used}、${percent}%`,
+            limitFiveHour: '5時間の上限',
+            limitSevenDay: '7日間の上限',
+            limitResets: ({ time }: { time: string }) => `${time} リセット`,
+            limitAsOf: ({ age }: { age: string }) => `${age}前のデータ`,
+            limitRemaining: ({ percent }: { percent: number }) => `残り ${percent}%`,
         },
     },
 
@@ -522,11 +530,26 @@ export const ja: TranslationStructure = {
         offlineUnableToSpawn: 'オフラインのため新しいセッションを生成できません',
     },
 
+    agentQuestion: {
+        title: "質問",
+        submit: "回答を送信",
+        chooseMultiple: "当てはまるものをすべて選択",
+        ownAnswer: "自分で回答",
+        ownAnswerPlaceholder: "回答を入力",
+        submitFailed: "回答を送信できませんでした",
+        dismiss: "閉じる",
+        unsupportedTitle: "未対応のリクエスト",
+        unsupportedDescription: ({ kind }: { kind: string }) => `このバージョンの Happy は「${kind}」リクエストを表示できません。アプリを更新してください。`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? "他に1件の質問" : `${count} 件の質問`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'アーカイブを表示',
         hideArchived: 'アーカイブを非表示',
         newSession: '新しいセッション',
+        projects: "プロジェクト",
     },
 
     zen: {
@@ -644,6 +667,8 @@ export const ja: TranslationStructure = {
         deleted: '削除済み',
         changedFiles: ({ count }: { count: number }) => `${count}件の変更ファイル`,
         allFiles: 'すべてのファイル',
+        addPanel: 'パネルを追加',
+        closePanel: 'パネルを閉じる',
         editFile: '編集',
         saveFile: '保存',
         failedToRead: 'ファイルの読み取りに失敗しました',
@@ -652,6 +677,19 @@ export const ja: TranslationStructure = {
         fileConflictDescription: '編集中にデバイス上でファイルが変更されました。最新版を表示するには再読み込みしてください。',
         reload: '再読み込み',
         overwrite: '上書き',
+    },
+    sideChat: {
+        panelTitle: 'サイドチャット',
+        emptyTitle: 'サイドチャットを始める',
+        emptySubtitle: 'エージェントに脇で質問しましょう。このチャットのコンテキストを引き継ぎますが独立しており — ここでの操作はメインの会話に影響しません。',
+        startButton: 'サイドチャットを開始',
+        creating: 'サイドチャットを開始しています…',
+        unavailable: 'このセッションではまだサイドチャットを開始できません — エージェントがオンラインになるまでお待ちください。',
+        composerPlaceholder: 'サイドチャットにメッセージ…',
+        expand: '全画面で開く',
+        tabLabel: ({ index }: { index: number }) => `サイドチャット ${index}`,
+        newChat: '新しいサイドチャット',
+        close: 'サイドチャットを閉じる',
     },
 
     settingsVoice: {

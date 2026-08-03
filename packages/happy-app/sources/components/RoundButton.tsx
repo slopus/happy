@@ -3,6 +3,7 @@ import { ActivityIndicator, Platform, Pressable, StyleProp, Text, TextStyle, Vie
 import { iOSUIKit } from 'react-native-typography';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { MobileGlassSurface } from './MobileGlass';
 
 export type RoundButtonSize = 'large' | 'normal' | 'small';
 const sizes: { [key in RoundButtonSize]: { height: number, fontSize: number, hitSlop: number, pad: number } } = {
@@ -34,6 +35,16 @@ const stylesheet = StyleSheet.create((theme) => ({
         ...Typography.default('semiBold'),
         fontWeight: '600',
         includeFontPadding: false,
+    },
+    glassSurface: {
+        overflow: 'hidden',
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.glass.border,
+        backgroundColor: Platform.select({ web: 'transparent', android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
+    },
+    accentTint: {
+        ...StyleSheet.absoluteFillObject,
+        opacity: 0.68,
     },
 }));
 
@@ -77,6 +88,36 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
 
     const size = sizes[props.size || 'large'];
     const display = displays[props.display || 'default'];
+    const content = (
+        <View
+            style={[
+                styles.contentContainer,
+                { height: size.height - 2 },
+            ]}
+        >
+            {doLoading && (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator color={display.textColor} size='small' />
+                </View>
+            )}
+            <Text
+                style={[
+                    iOSUIKit.title3,
+                    styles.text,
+                    {
+                        marginTop: size.pad,
+                        opacity: doLoading ? 0 : 1,
+                        color: display.textColor,
+                        fontSize: size.fontSize,
+                    },
+                    props.textStyle,
+                ]}
+                numberOfLines={1}
+            >
+                {props.title}
+            </Text>
+        </View>
+    );
 
     return (
         <Pressable
@@ -89,7 +130,7 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
                     backgroundColor: display.backgroundColor,
                     borderColor: display.borderColor,
                     opacity: props.disabled ? 0.5 : 1,
-                    overflow: 'hidden',
+                    overflow: Platform.OS === 'web' ? 'hidden' : 'visible',
                 },
                 {
                     opacity: p.pressed ? 0.9 : 1
@@ -97,34 +138,23 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
                 props.style])}
             onPress={doAction}
         >
-            <View 
-                style={[
-                    styles.contentContainer,
-                    { height: size.height - 2 }
-                ]}
-            >
-                {doLoading && (
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator color={display.textColor} size='small' />
-                    </View>
-                )}
-                <Text 
+            {Platform.OS === 'web' ? content : (
+                <MobileGlassSurface
+                    enabled
+                    interactive
+                    intensity={72}
+                    tintColor={props.display === 'inverted' ? undefined : display.backgroundColor}
                     style={[
-                        iOSUIKit.title3, 
-                        styles.text,
-                        { 
-                            marginTop: size.pad, 
-                            opacity: doLoading ? 0 : 1, 
-                            color: display.textColor, 
-                            fontSize: size.fontSize, 
-                        }, 
-                        props.textStyle
-                    ]} 
-                    numberOfLines={1}
+                        styles.glassSurface,
+                        { borderRadius: size.height / 2 },
+                    ]}
                 >
-                    {props.title}
-                </Text>
-            </View>
+                    {props.display !== 'inverted' && (
+                    <View pointerEvents="none" style={[styles.accentTint, { backgroundColor: display.backgroundColor }]} />
+                    )}
+                    {content}
+                </MobileGlassSurface>
+            )}
         </Pressable>
     )
 });

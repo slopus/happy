@@ -13,7 +13,14 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
         const result: SessionListViewItem[] = [];
         let hasInactive = false;
 
-        // First pass: add active sessions group and check if inactive sessions exist
+        // First pass: projects lead, then the active sessions group. Projects
+        // carry their own archived sessions, so the toggle below never hides
+        // them and they are not counted as inactive here.
+        for (const item of data) {
+            if (item.type === 'projects-header' || item.type === 'project') {
+                result.push(item);
+            }
+        }
         for (const item of data) {
             if (item.type === 'active-sessions') {
                 result.push(item);
@@ -32,7 +39,7 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
             let pendingProjectGroup: SessionListViewItem | null = null;
 
             for (const item of data) {
-                if (item.type === 'active-sessions') {
+                if (item.type === 'active-sessions' || item.type === 'projects-header' || item.type === 'project') {
                     continue; // already added
                 }
 

@@ -1,11 +1,24 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
+import { Animated, View, Text, Platform, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
+import { isRunningOnMac } from '@/utils/platform';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import { layout } from '@/components/layout';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { MobileGlassSurface } from './MobileGlass';
+import { BubblePressable } from './BubblePressable';
+import {
+    MOBILE_GLASS_CONTROL_RADIUS,
+    MOBILE_GLASS_CONTROL_SIZE,
+    MOBILE_GLASS_HEADER_HEIGHT,
+} from './navigation/headerMetrics';
+import {
+    MobileHeaderScrim,
+    MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
+    MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY,
+} from './navigation/MobileHeaderScrim';
 
 interface ChatHeaderViewProps {
     title: string;
@@ -22,8 +35,11 @@ interface ChatHeaderViewProps {
     backgroundColor?: string;
     tintColor?: string;
     isConnected?: boolean;
+    backdropVisible?: boolean;
 }
 
+// The title belongs to the header scrim, not its own glass capsule. Keep a
+// dense native blur at rest and let it feather past the controls into content.
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     title,
     folderName,
@@ -33,6 +49,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     onTitlePress,
     onBackPress,
     isConnected = true,
+    backdropVisible = false,
 }) => {
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
@@ -40,85 +57,237 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     const isTablet = useIsTablet();
     const showBackButton = !isTablet && !!onBackPress;
     const hasExtra = !!extraPathSegment;
+    const glassEnabled = !isTablet && Platform.OS !== 'web' && !isRunningOnMac();
+    const contentHeight = glassEnabled ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT) : headerHeight;
+    const showFolderSubtitle = !!folderName && folderName !== title;
+    const folderNameColor = glassEnabled
+        ? theme.dark ? 'rgba(255, 255, 255, 0.78)' : 'rgba(24, 23, 28, 0.72)'
+        : theme.colors.textSecondary;
+    const backdropOpacity = React.useRef(new Animated.Value(
+        backdropVisible ? MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY : MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
+    )).current;
+    const [backdropMounted, setBackdropMounted] = React.useState(glassEnabled);
 
-    return (
-        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.header.background }]}>
-            <View style={styles.contentWrapper}>
-                <View style={[styles.content, { height: headerHeight }]}>
-                    {showBackButton && (
-                        <Pressable onPress={onBackPress} hitSlop={15} style={styles.backButton}>
-                            <Ionicons
-                                name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
-                                size={24}
-                                color={theme.colors.header.tint}
-                            />
-                        </Pressable>
-                    )}
-                    <Pressable
-                        style={styles.titleContainer}
-                        onPress={onTitlePress}
-                        disabled={!onTitlePress}
-                    >
-                        {folderName ? (
-                            <View style={styles.titleRow}>
+    React.useEffect(() => {
+        if (!glassEnabled) {
+            setBackdropMounted(false);
+            return;
+        }
+
+        setBackdropMounted(true);
+        Animated.timing(backdropOpacity, {
+            toValue: backdropVisible ? MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY : MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
+            duration: 200,
+            useNativeDriver: true,
+        }).start();
+    }, [backdropOpacity, backdropVisible, glassEnabled]);
+
+    if (Platform.OS === 'web') {
+        return (
+            <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.header.background }]}>
+                <View style={styles.contentWrapper}>
+                    <View style={[styles.webContent, { height: headerHeight }]}>
+                        {showBackButton && (
+                            <Pressable onPress={onBackPress} hitSlop={15} style={styles.webBackButton}>
+                                <Ionicons
+                                    name="arrow-back"
+                                    size={24}
+                                    color={theme.colors.header.tint}
+                                />
+                            </Pressable>
+                        )}
+                        <Pressable
+                            style={styles.titleContainer}
+                            onPress={onTitlePress}
+                            disabled={!onTitlePress}
+                        >
+                            {folderName ? (
+                                <View style={styles.webTitleRow}>
+                                    <Text
+                                        numberOfLines={1}
+                                        style={[styles.webFolderName, { color: theme.colors.textSecondary, ...Typography.default() }]}
+                                    >
+                                        {folderName}
+                                    </Text>
+                                    {title && title !== folderName && (
+                                        <>
+                                            <Text style={[styles.webSeparator, { color: theme.colors.textSecondary, ...Typography.default() }]}>/</Text>
+                                            <Text
+                                                numberOfLines={1}
+                                                ellipsizeMode="tail"
+                                                style={[
+                                                    styles.webTitle,
+                                                    hasExtra && styles.webTitleWithExtra,
+                                                    { color: theme.colors.header.tint, ...Typography.default() },
+                                                ]}
+                                            >
+                                                {title}
+                                            </Text>
+                                        </>
+                                    )}
+                                    {hasExtra && (
+                                        <>
+                                            <Text style={[styles.webSeparator, { color: theme.colors.textSecondary, ...Typography.default() }]}>/</Text>
+                                            <Text
+                                                numberOfLines={1}
+                                                ellipsizeMode="middle"
+                                                style={[styles.webExtraPath, { color: theme.colors.header.tint, ...Typography.mono() }]}
+                                            >
+                                                {extraPathSegment}
+                                            </Text>
+                                        </>
+                                    )}
+                                </View>
+                            ) : (
                                 <Text
                                     numberOfLines={1}
-                                    style={[styles.folderName, { color: theme.colors.textSecondary, ...Typography.default() }]}
+                                    ellipsizeMode="tail"
+                                    style={[styles.webTitle, { color: theme.colors.header.tint, ...Typography.default() }]}
                                 >
-                                    {folderName}
+                                    {title}
                                 </Text>
-                                {title && title !== folderName && (
-                                    <>
-                                        <Text style={[styles.separator, { color: theme.colors.textSecondary, ...Typography.default() }]}>/</Text>
-                                        <Text
-                                            numberOfLines={1}
-                                            ellipsizeMode="tail"
-                                            style={[
-                                                styles.title,
-                                                hasExtra && styles.titleWithExtra,
-                                                { color: theme.colors.header.tint, ...Typography.default() },
-                                            ]}
-                                        >
-                                            {title}
-                                        </Text>
-                                    </>
-                                )}
-                                {hasExtra && (
-                                    <>
-                                        <Text style={[styles.separator, { color: theme.colors.textSecondary, ...Typography.default() }]}>/</Text>
-                                        <Text
-                                            numberOfLines={1}
-                                            ellipsizeMode="middle"
-                                            style={[styles.extraPath, { color: theme.colors.header.tint, ...Typography.mono() }]}
-                                        >
-                                            {extraPathSegment}
-                                        </Text>
-                                    </>
-                                )}
+                            )}
+                            {identityLine ? (
+                                <Text
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                    style={[styles.identityLine, { color: theme.colors.textSecondary, ...Typography.default() }]}
+                                >
+                                    {identityLine}
+                                </Text>
+                            ) : null}
+                        </Pressable>
+                        {rightSlot ? <View style={styles.webRightSlot}>{rightSlot}</View> : null}
+                    </View>
+                </View>
+            </View>
+        );
+    }
+
+    const nativeTitle = (
+        <BubblePressable
+            style={[styles.titleContainer, glassEnabled && styles.mobileTitleContainer]}
+            onPress={onTitlePress}
+            disabled={!onTitlePress}
+            bubbleScale={1.012}
+        >
+            <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={[
+                    styles.title,
+                    glassEnabled && styles.mobileTitleText,
+                    { color: theme.colors.header.tint, ...Typography.default('semiBold') },
+                ]}
+            >
+                {title || folderName}
+            </Text>
+            {(showFolderSubtitle || hasExtra) && (
+                <View style={[styles.subtitleRow, glassEnabled && styles.mobileSubtitleRow]}>
+                    {showFolderSubtitle && (
+                        <Text
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                            style={[styles.folderName, { color: folderNameColor, ...Typography.default() }]}
+                        >
+                            {folderName}
+                        </Text>
+                    )}
+                    {showFolderSubtitle && hasExtra && (
+                        <Text style={[styles.separator, { color: theme.colors.textSecondary, ...Typography.default() }]}>•</Text>
+                    )}
+                    {hasExtra && (
+                        <Text
+                            numberOfLines={1}
+                            ellipsizeMode="middle"
+                            style={[styles.extraPath, { color: theme.colors.textSecondary, ...Typography.mono() }]}
+                        >
+                            {extraPathSegment}
+                        </Text>
+                    )}
+                </View>
+            )}
+            {identityLine ? (
+                <Text
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    style={[
+                        styles.identityLine,
+                        glassEnabled && styles.mobileIdentityLine,
+                        { color: theme.colors.textSecondary, ...Typography.default() },
+                    ]}
+                >
+                    {identityLine}
+                </Text>
+            ) : null}
+        </BubblePressable>
+    );
+
+    return (
+        <View
+            style={[
+                styles.container,
+                {
+                    paddingTop: insets.top,
+                    backgroundColor: glassEnabled ? 'transparent' : theme.colors.header.background,
+                },
+            ]}
+        >
+            {glassEnabled && backdropMounted && (
+                <Animated.View
+                    pointerEvents="none"
+                    style={[styles.headerBackdrop, { opacity: backdropOpacity }]}
+                >
+                    <MobileHeaderScrim variant="strong" />
+                </Animated.View>
+            )}
+            <View style={styles.contentWrapper}>
+                <View style={[styles.content, { height: contentHeight }]}>
+                    {showBackButton && (
+                        <Pressable
+                            onPress={onBackPress}
+                            hitSlop={10}
+                            style={({ pressed }) => [styles.backButton, pressed && styles.controlPressed]}
+                        >
+                            <MobileGlassSurface
+                                enabled={glassEnabled}
+                                interactive
+                                material="static"
+                                intensity={76}
+                                style={styles.backButtonGlass}
+                            >
+                                <Ionicons
+                                    name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                                    size={24}
+                                    color={theme.colors.header.tint}
+                                />
+                            </MobileGlassSurface>
+                        </Pressable>
+                    )}
+                    {glassEnabled ? (
+                        <>
+                            <View pointerEvents="none" style={styles.mobileTitleSpacer} />
+                            <View pointerEvents="box-none" style={styles.mobileTitleOverlay}>
+                                {nativeTitle}
                             </View>
-                        ) : (
-                            <Text
-                                numberOfLines={1}
-                                ellipsizeMode="tail"
-                                style={[styles.title, { color: theme.colors.header.tint, ...Typography.default() }]}
-                            >
-                                {title}
-                            </Text>
-                        )}
-                        {identityLine ? (
-                            <Text
-                                numberOfLines={1}
-                                ellipsizeMode="tail"
-                                style={[styles.identityLine, { color: theme.colors.textSecondary, ...Typography.default() }]}
-                            >
-                                {identityLine}
-                            </Text>
-                        ) : null}
-                    </Pressable>
-                    {rightSlot ? (
-                        <View style={styles.rightSlot}>
-                            {rightSlot}
+                        </>
+                    ) : (
+                        <View style={styles.titlePillContainer}>
+                            {nativeTitle}
                         </View>
+                    )}
+                    {rightSlot ? (
+                        <MobileGlassSurface
+                            enabled={glassEnabled}
+                            nativeEffect
+                            material="static"
+                            intensity={76}
+                            style={styles.rightControlGlass}
+                        >
+                            <View style={styles.rightSlot}>
+                                {rightSlot}
+                            </View>
+                        </MobileGlassSurface>
                     ) : null}
                 </View>
             </View>
@@ -126,10 +295,17 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     );
 };
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
     container: {
         position: 'relative',
         zIndex: 100,
+    },
+    headerBackdrop: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: -36,
+        left: 0,
     },
     contentWrapper: {
         width: '100%',
@@ -138,7 +314,15 @@ const styles = StyleSheet.create({
     content: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: Platform.OS === 'ios' ? 8 : 16,
+        gap: 8,
+        paddingHorizontal: 12,
+        width: '100%',
+        maxWidth: layout.headerMaxWidth,
+    },
+    webContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
         width: '100%',
         maxWidth: layout.headerMaxWidth,
     },
@@ -148,50 +332,176 @@ const styles = StyleSheet.create({
         alignItems: 'flex-start',
         minWidth: 0,
     },
-    identityLine: {
-        fontSize: 11,
-        lineHeight: 14,
-        maxWidth: '100%',
+    titlePillContainer: {
+        flex: 1,
+        alignSelf: 'stretch',
+        minWidth: 0,
     },
-    titleRow: {
+    mobileTitleSpacer: {
+        flex: 1,
+        minWidth: 0,
+    },
+    mobileTitleOverlay: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        left: MOBILE_GLASS_CONTROL_SIZE + 8,
+        right: MOBILE_GLASS_CONTROL_SIZE + 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    mobileTitleContainer: {
+        width: '100%',
+        flex: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 8,
+    },
+    mobileTitleText: {
+        textAlign: 'center',
+        textShadowColor: theme.dark ? 'rgba(0, 0, 0, 0.30)' : 'rgba(255, 255, 255, 0.30)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
+    },
+    mobileSubtitleRow: {
+        justifyContent: 'center',
+    },
+    mobileIdentityLine: {
+        textAlign: 'center',
+    },
+    webTitleRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
         width: '100%',
     },
-    folderName: {
+    identityLine: {
+        fontSize: 11,
+        lineHeight: 14,
+        maxWidth: '100%',
+    },
+    webFolderName: {
         fontSize: 14,
         flexShrink: 0,
     },
-    separator: {
+    webSeparator: {
         fontSize: 14,
         flexShrink: 0,
     },
-    title: {
+    webTitle: {
         fontSize: 14,
         fontWeight: '600',
         flexShrink: 1,
     },
-    titleWithExtra: {
-        // When an extra path segment follows, let the chat name keep its
-        // intrinsic width and squeeze the path first.
+    webTitleWithExtra: {
         flexShrink: 0.5,
     },
-    extraPath: {
+    webExtraPath: {
         flex: 1,
         minWidth: 0,
         fontSize: 13,
         flexShrink: 1,
     },
-    rightSlot: {
+    webRightSlot: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
         marginLeft: 12,
         flexShrink: 0,
     },
-    backButton: {
+    webBackButton: {
         paddingHorizontal: 8,
         paddingVertical: 4,
     },
-});
+    subtitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        width: '100%',
+    },
+    folderName: {
+        fontSize: 12,
+        lineHeight: 16,
+        flexShrink: 1,
+    },
+    separator: {
+        fontSize: 12,
+        lineHeight: 16,
+        flexShrink: 0,
+    },
+    title: {
+        fontSize: 16,
+        lineHeight: 20,
+        fontWeight: '600',
+        width: '100%',
+    },
+    extraPath: {
+        flex: 1,
+        minWidth: 0,
+        fontSize: 11,
+        lineHeight: 16,
+        flexShrink: 1,
+    },
+    rightControlGlass: {
+        minWidth: Platform.select({ web: 0, default: MOBILE_GLASS_CONTROL_SIZE }),
+        minHeight: Platform.select({ web: 0, default: MOBILE_GLASS_CONTROL_SIZE }),
+        borderRadius: MOBILE_GLASS_CONTROL_RADIUS,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        backgroundColor: Platform.select({
+            web: 'transparent',
+            ios: 'transparent',
+            android: theme.colors.glass.backgroundStrong,
+            default: 'transparent',
+        }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.glass.border,
+        shadowColor: theme.colors.glass.shadow,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: Platform.select({ web: 0, default: 1 }),
+        shadowRadius: 18,
+        elevation: Platform.select({ android: 8, default: 0 }),
+        zIndex: 1,
+    },
+    rightSlot: {
+        minHeight: Platform.select({ web: 0, default: MOBILE_GLASS_CONTROL_SIZE }),
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingHorizontal: Platform.select({ web: 0, default: 8 }),
+        flexShrink: 0,
+    },
+    backButton: {
+        width: Platform.select({ web: 36, default: MOBILE_GLASS_CONTROL_SIZE }),
+        height: Platform.select({ web: 36, default: MOBILE_GLASS_CONTROL_SIZE }),
+        borderRadius: MOBILE_GLASS_CONTROL_RADIUS,
+        zIndex: 1,
+    },
+    backButtonGlass: {
+        width: '100%',
+        height: '100%',
+        borderRadius: MOBILE_GLASS_CONTROL_RADIUS,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        backgroundColor: Platform.select({
+            web: 'transparent',
+            ios: 'transparent',
+            android: theme.colors.glass.backgroundStrong,
+            default: 'transparent',
+        }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.glass.border,
+        shadowColor: theme.colors.glass.shadow,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: Platform.select({ web: 0, default: 1 }),
+        shadowRadius: 18,
+        elevation: Platform.select({ android: 8, default: 0 }),
+    },
+    controlPressed: {
+        opacity: 0.68,
+        transform: [{ scale: 0.97 }],
+    },
+}));

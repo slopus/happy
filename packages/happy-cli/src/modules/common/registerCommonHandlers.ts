@@ -143,6 +143,13 @@ export interface SpawnSessionOptions {
     parentSessionId?: string;
     /** Happy message id used as the rewind point (only set for "duplicate"). */
     forkedFromMessageId?: string;
+    /**
+     * Marks the spawned session as a hidden "side chat" of `parentSessionId`.
+     * Side chats are forked from a parent session but never surface in the
+     * top-level session list — they are only rendered inside the parent's
+     * sidebar panel. See the app-side `useSideChatSession` lookup.
+     */
+    isSideChat?: boolean;
 }
 
 export type SpawnSessionResult =

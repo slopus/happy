@@ -3,32 +3,47 @@ import 'react-native-reanimated';
 import * as React from 'react';
 import { Typography } from '@/constants/Typography';
 import { createHeader } from '@/components/navigation/Header';
-import { Platform, TouchableOpacity, Text } from 'react-native';
+import { Platform, TouchableOpacity, Text, View } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { MobileGlassBackdrop } from '@/components/MobileGlass';
 
 export const unstable_settings = {
     initialRouteName: 'index',
 };
 
 export default function RootLayout() {
-    // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
+    // Keep UIKit in charge of iPhone/iPad headers. A custom React header makes
+    // native-stack animate every blur/glass subview during each push and pop.
     const shouldUseCustomHeader = Platform.OS === 'android' || isRunningOnMac() || Platform.OS === 'web';
+    const isDesktop = Platform.OS === 'web' || isRunningOnMac();
     const { theme } = useUnistyles();
 
     return (
+        <View
+            style={{
+                flex: 1,
+                backgroundColor: isDesktop
+                    ? theme.colors.surface
+                    : theme.colors.groupped.background,
+            }}
+        >
+            <MobileGlassBackdrop enabled={!isDesktop} />
         <Stack
             initialRouteName='index'
             screenOptions={{
                 header: shouldUseCustomHeader ? createHeader : undefined,
                 headerBackTitle: t('common.back'),
+                headerBackButtonDisplayMode: Platform.OS === 'ios' ? 'minimal' : undefined,
                 headerShadowVisible: false,
                 contentStyle: {
-                    backgroundColor: theme.colors.surface,
+                    backgroundColor: isDesktop
+                        ? theme.colors.surface
+                        : theme.colors.groupped.background,
                 },
                 headerStyle: {
-                    backgroundColor: theme.colors.header.background,
+                    backgroundColor: isDesktop ? theme.colors.header.background : 'transparent',
                 },
                 headerTintColor: theme.colors.header.tint,
                 headerTitleStyle: {
@@ -323,5 +338,6 @@ export default function RootLayout() {
                 }}
             />
         </Stack>
+        </View>
     );
 }

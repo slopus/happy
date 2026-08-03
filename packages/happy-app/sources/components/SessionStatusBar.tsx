@@ -1,17 +1,25 @@
 import * as React from 'react';
-import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import Svg, { Circle } from 'react-native-svg';
 import { hapticsLight } from './haptics';
 import { t } from '@/text';
 import type { EffortLevel, ModelMode, ModeOption } from './modelModeOptions';
+import { AnimatedPopup, LocalBlurHalo } from './AnimatedOverlay';
+import { MobileGlassSurface } from './MobileGlass';
 import {
     clampContextSize,
+    formatUsageLimitAge,
     getContextUsageLevel,
     getContextUsagePercentage,
-    SESSION_STATUS_CONTEXT_MAX,
+    getUsageLimitChips,
+    getUsageLimitDisplayPercentage,
+    getUsageLimitRows,
+    type UsageLimitsLike,
+    type UsageLimitStatus,
 } from '@/utils/sessionStatusBar';
+import { useSetting } from '@/sync/storage';
 
 type StatusIconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -27,9 +35,15 @@ type SessionStatusBarProps = {
     onEffortLevelChange?: (level: EffortLevel) => void;
     contextSize: number | null | undefined;
     contextWindow?: number | null | undefined;
+    usageLimits?: UsageLimitsLike;
 };
 
-type OpenMenu = 'model' | 'effort' | null;
+type OpenMenu = 'model' | 'effort' | 'limits' | null;
+
+// Below this window width the two limit chips collapse into one (the window
+// closest to its limit). Width-based rather than device-based: a narrow
+// desktop window needs the collapse just as much as a phone does.
+const LIMIT_CHIP_COLLAPSE_WIDTH = 480;
 
 export function SessionStatusBar(props: SessionStatusBarProps) {
     const styles = stylesheet;
@@ -39,17 +53,28 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
     const availableEffortLevels = props.availableEffortLevels ?? [];
     const canSelectModel = availableModels.length > 0 && !!props.onModelModeChange;
     const canSelectEffort = availableEffortLevels.length > 0 && !!props.onEffortLevelChange;
+    // Until the session reports its window there is no honest denominator, so
+    // the circle is omitted rather than drawn against a guess — a percentage
+    // that later corrects itself upward reads as the context refilling.
     const contextMaxValue = typeof props.contextWindow === 'number' && Number.isFinite(props.contextWindow) && props.contextWindow > 0
         ? Math.trunc(props.contextWindow)
-        : SESSION_STATUS_CONTEXT_MAX;
-    const contextValue = clampContextSize(props.contextSize, contextMaxValue);
-    const contextPercentage = getContextUsagePercentage(props.contextSize, contextMaxValue);
-    const contextLevel = getContextUsageLevel(props.contextSize, contextMaxValue);
+        : null;
+    const contextValue = contextMaxValue === null ? 0 : clampContextSize(props.contextSize, contextMaxValue);
+    const contextPercentage = contextMaxValue === null ? 0 : getContextUsagePercentage(props.contextSize, contextMaxValue);
+    const contextLevel = contextMaxValue === null ? 'normal' : getContextUsageLevel(props.contextSize, contextMaxValue);
     const contextColor = contextLevel === 'critical'
         ? theme.colors.warningCritical
         : contextLevel === 'warning'
             ? theme.colors.warning
             : theme.colors.status.connecting;
+    const { width: windowWidth } = useWindowDimensions();
+    const showRemaining = useSetting('usageLimitShowRemaining');
+    const limitChips = getUsageLimitChips(props.usageLimits, windowWidth < LIMIT_CHIP_COLLAPSE_WIDTH);
+    const limitStatusColor = (status: UsageLimitStatus): string | undefined => {
+        if (status === 'rejected') return theme.colors.warningCritical;
+        if (status === 'allowed_warning') return theme.colors.warning;
+        return undefined;
+    };
 
     return (
         <View style={styles.wrapper}>
@@ -75,6 +100,9 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
                     }}
                 />
             ) : null}
+            {openMenu === 'limits' ? (
+                <UsageLimitMenu usageLimits={props.usageLimits} statusColor={limitStatusColor} showRemaining={showRemaining} />
+            ) : null}
             <View style={styles.container}>
                 <View style={styles.leftCluster}>
                     {props.gitBranch ? (
@@ -98,12 +126,24 @@ export function SessionStatusBar(props: SessionStatusBarProps) {
                             onPress={canSelectEffort ? () => setOpenMenu((current) => current === 'effort' ? null : 'effort') : undefined}
                         />
                     ) : null}
-                    <ContextUsageCircle
-                        value={contextValue}
-                        maxValue={contextMaxValue}
-                        percentage={contextPercentage}
-                        color={contextColor}
-                    />
+                    {limitChips.map((chip) => (
+                        <StatusChip
+                            key={chip.id}
+                            icon="speedometer-outline"
+                            text={`${chip.shortLabel} ${getUsageLimitDisplayPercentage(chip.utilization, showRemaining)}%`}
+                            tint={limitStatusColor(chip.status)}
+                            active={openMenu === 'limits'}
+                            onPress={() => setOpenMenu((current) => current === 'limits' ? null : 'limits')}
+                        />
+                    ))}
+                    {contextMaxValue !== null ? (
+                        <ContextUsageCircle
+                            value={contextValue}
+                            maxValue={contextMaxValue}
+                            percentage={contextPercentage}
+                            color={contextColor}
+                        />
+                    ) : null}
                 </View>
             </View>
         </View>
@@ -118,9 +158,8 @@ function StatusOptionMenu<TOption extends ModeOption>(props: {
     const styles = stylesheet;
     const { theme } = useUnistyles();
 
-    return (
-        <View style={styles.menu}>
-            <ScrollView style={styles.menuScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    const options = (
+        <ScrollView style={styles.menuScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                 {props.options.map((option) => {
                     const isSelected = option.key === props.selectedKey;
 
@@ -161,7 +200,84 @@ function StatusOptionMenu<TOption extends ModeOption>(props: {
                         </Pressable>
                     );
                 })}
-            </ScrollView>
+        </ScrollView>
+    );
+
+    if (Platform.OS === 'web') {
+        return <View style={styles.webMenu}>{options}</View>;
+    }
+
+    return (
+        <AnimatedPopup style={styles.menu}>
+            <LocalBlurHalo borderRadius={18} expansion={12} />
+            <MobileGlassSurface enabled nativeEffect intensity={84} glassEffectStyle="regular" style={styles.menuGlass}>
+                {options}
+            </MobileGlassSurface>
+        </AnimatedPopup>
+    );
+}
+
+function formatResetTime(ms: number): string {
+    const d = new Date(ms);
+    if (ms - Date.now() < 22 * 3600_000) {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function UsageLimitMenu(props: {
+    usageLimits: UsageLimitsLike;
+    statusColor: (status: UsageLimitStatus) => string | undefined;
+    showRemaining: boolean;
+}) {
+    const styles = stylesheet;
+    const { theme } = useUnistyles();
+    const rows = getUsageLimitRows(props.usageLimits);
+    const knownLabels: Record<string, string> = {
+        five_hour: t('components.sessionStatusBar.limitFiveHour'),
+        seven_day: t('components.sessionStatusBar.limitSevenDay'),
+    };
+
+    return (
+        <View style={styles.menu}>
+            <View style={styles.limitMenuContent}>
+                {rows.map((row) => (
+                    <View key={row.id} style={styles.limitRow}>
+                        <View
+                            style={[
+                                styles.limitDot,
+                                { backgroundColor: props.statusColor(row.status) ?? theme.colors.status.connecting },
+                            ]}
+                        />
+                        <Text style={styles.limitRowLabel} numberOfLines={1}>
+                            {knownLabels[row.id] ?? row.label}
+                        </Text>
+                        <Text style={styles.limitRowValue}>
+                            {row.utilization === null
+                                ? '—'
+                                : props.showRemaining
+                                    // The bare chip percentage is ambiguous once it can mean
+                                    // either direction, so the popover spells this one out.
+                                    ? t('components.sessionStatusBar.limitRemaining', {
+                                        percent: getUsageLimitDisplayPercentage(row.utilization, true),
+                                    })
+                                    : `${row.utilization}%`}
+                        </Text>
+                        {row.resetsAt !== null ? (
+                            <Text style={styles.limitRowReset} numberOfLines={1}>
+                                {t('components.sessionStatusBar.limitResets', { time: formatResetTime(row.resetsAt) })}
+                            </Text>
+                        ) : null}
+                    </View>
+                ))}
+                {props.usageLimits ? (
+                    <Text style={styles.limitFooter}>
+                        {t('components.sessionStatusBar.limitAsOf', {
+                            age: formatUsageLimitAge(props.usageLimits.capturedAt, Date.now()),
+                        })}
+                    </Text>
+                ) : null}
+            </View>
         </View>
     );
 }
@@ -222,15 +338,17 @@ function StatusChip(props: {
     onPress?: () => void;
     active?: boolean;
     wide?: boolean;
+    /** Overrides the idle color, e.g. warning tint on limit chips. */
+    tint?: string;
 }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const tint = props.active ? theme.colors.radio.active : theme.colors.textSecondary;
+    const tint = props.active ? theme.colors.radio.active : (props.tint ?? theme.colors.textSecondary);
     const content = (
         <>
             <Ionicons name={props.icon} size={13} color={tint} />
             <Text
-                style={[styles.chipText, props.wide && styles.chipTextWide, props.active && { color: tint }]}
+                style={[styles.chipText, props.wide && styles.chipTextWide, (props.active || props.tint) && { color: tint }]}
                 numberOfLines={1}
                 ellipsizeMode="middle"
             >
@@ -285,7 +403,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         justifyContent: 'flex-start',
     },
     rightCluster: {
-        flexShrink: 0,
+        // Shrinkable so added chips compress (ellipsize) instead of pushing
+        // the row off-screen — the container row is flexWrap:'nowrap'.
+        flexShrink: 1,
+        minWidth: 0,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-end',
@@ -329,11 +450,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         maxWidth: '72%',
         maxHeight: 280,
         zIndex: 30,
-        overflow: 'hidden',
+        overflow: 'visible',
         borderRadius: 12,
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: 'transparent',
         ...Platform.select({
             web: {
                 boxShadow: '0 4px 20px rgba(0, 0, 0, 0.18)',
@@ -347,6 +466,29 @@ const stylesheet = StyleSheet.create((theme) => ({
             },
         }),
     },
+    webMenu: {
+        position: 'absolute',
+        right: 8,
+        bottom: 36,
+        width: 236,
+        maxWidth: '72%',
+        maxHeight: 280,
+        zIndex: 30,
+        overflow: 'hidden',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surface,
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.18)',
+    },
+    menuGlass: {
+        maxHeight: 280,
+        overflow: 'hidden',
+        borderRadius: 18,
+        borderWidth: Platform.select({ web: 1, default: StyleSheet.hairlineWidth }),
+        borderColor: Platform.select({ web: theme.colors.divider, default: theme.colors.glass.border }),
+        backgroundColor: Platform.select({ web: theme.colors.surface, android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
+    },
     menuScroll: {
         maxHeight: 280,
     },
@@ -359,7 +501,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingVertical: 9,
     },
     menuItemPressed: {
-        backgroundColor: theme.colors.surfacePressed,
+        backgroundColor: Platform.select({ web: theme.colors.surfacePressed, default: theme.colors.glass.backgroundSubtle }),
     },
     menuRadio: {
         width: 14,
@@ -394,5 +536,45 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         fontSize: 11,
         lineHeight: 14,
+    },
+    limitMenuContent: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        gap: 6,
+    },
+    limitRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        minHeight: 22,
+    },
+    limitDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        flexShrink: 0,
+    },
+    limitRowLabel: {
+        color: theme.colors.text,
+        fontSize: 13,
+        fontWeight: '500',
+        flexShrink: 1,
+        minWidth: 0,
+    },
+    limitRowValue: {
+        color: theme.colors.text,
+        fontSize: 13,
+        fontVariant: ['tabular-nums'],
+        marginLeft: 'auto',
+    },
+    limitRowReset: {
+        color: theme.colors.textSecondary,
+        fontSize: 11,
+        flexShrink: 0,
+    },
+    limitFooter: {
+        marginTop: 2,
+        color: theme.colors.textSecondary,
+        fontSize: 11,
     },
 }));

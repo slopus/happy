@@ -1,8 +1,9 @@
 import * as React from 'react';
-import { View, Pressable, Text } from 'react-native';
+import { View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { BubblePressable } from './BubblePressable';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -45,15 +46,14 @@ export const FABWide = React.memo(({ onPress }: { onPress: () => void }) => {
                 { bottom: safeArea.bottom + 16 }
             ]}
         >
-            <Pressable
-                style={({ pressed }) => [
-                    styles.button,
-                    pressed ? styles.buttonPressed : styles.buttonDefault
-                ]}
+            <BubblePressable
+                style={[styles.button, styles.buttonDefault]}
+                pressedStyle={styles.buttonPressed}
+                bubbleScale={1.018}
                 onPress={onPress}
             >
                 <Text style={styles.text}>{t('newSession.title')}</Text>
-            </Pressable>
+            </BubblePressable>
         </View>
     )
 });

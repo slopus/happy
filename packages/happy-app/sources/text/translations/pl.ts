@@ -184,10 +184,11 @@ export const pl: TranslationStructure = {
         sessionStatusBarDescription: 'Wybierz, gdzie wyświetlać gałąź, model, wysiłek i kontekst',
         sessionStatusDisplayOptions: {
             hidden: 'Ukryte',
-            hiddenOnMobile: 'Ukryte na telefonie',
             above: 'Nad polem wprowadzania',
             below: 'Pod polem wprowadzania',
         },
+        usageLimitShowRemaining: 'Pokaż pozostały limit',
+        usageLimitShowRemainingDescription: 'Wskaźniki limitu odliczają w dół zamiast w górę',
         userMessageBubbleColor: 'Kolor Twoich wiadomości',
         userMessageBubbleColorDescription: 'Ułatw znajdowanie swoich wiadomości w długich czatach',
         userMessageBubbleColorOptions: {
@@ -200,6 +201,8 @@ export const pl: TranslationStructure = {
         },
         display: 'Wyświetlanie',
         displayDescription: 'Kontroluj układ i odstępy',
+        compactToolCalls: 'Kompaktowe wywołania narzędzi',
+        compactToolCallsDescription: 'Pokazuj nieinteraktywne wywołania w jednym wierszu; otwórz wiersz, aby zobaczyć szczegóły',
         inlineToolCalls: 'Wbudowane wywołania narzędzi',
         inlineToolCallsDescription: 'Wyświetlaj wywołania narzędzi bezpośrednio w wiadomościach czatu',
         expandTodoLists: 'Rozwiń listy zadań',
@@ -458,6 +461,11 @@ export const pl: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Kontekst ${used} z ${total} tokenów, ${percent}%`,
+            limitFiveHour: 'Limit 5-godzinny',
+            limitSevenDay: 'Limit 7-dniowy',
+            limitResets: ({ time }: { time: string }) => `reset ${time}`,
+            limitAsOf: ({ age }: { age: string }) => `sprzed ${age}`,
+            limitRemaining: ({ percent }: { percent: number }) => `pozostało ${percent}%`,
         },
     },
 
@@ -537,11 +545,26 @@ export const pl: TranslationStructure = {
         offlineUnableToSpawn: 'Nie można utworzyć nowej sesji, offline',
     },
 
+    agentQuestion: {
+        title: "Pytanie",
+        submit: "Wyślij odpowiedź",
+        chooseMultiple: "Wybierz wszystkie pasujące",
+        ownAnswer: "Własna odpowiedź",
+        ownAnswerPlaceholder: "Wpisz odpowiedź",
+        submitFailed: "Nie udało się wysłać odpowiedzi",
+        dismiss: "Odrzuć",
+        unsupportedTitle: "Nieobsługiwane żądanie",
+        unsupportedDescription: ({ kind }: { kind: string }) => `Ta wersja Happy nie może pokazać żądania «${kind}». Zaktualizuj aplikację, aby odpowiedzieć.`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? "jeszcze 1 pytanie" : `${count} pytań więcej`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Pokaż zarchiwizowane',
         hideArchived: 'Ukryj zarchiwizowane',
         newSession: 'Nowa sesja',
+        projects: "Projekty",
     },
 
     zen: {
@@ -659,6 +682,8 @@ export const pl: TranslationStructure = {
         deleted: 'Usunięty',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'zmieniony plik' : 'zmienionych plików'}`,
         allFiles: 'Wszystkie pliki',
+        addPanel: 'Dodaj panel',
+        closePanel: 'Zamknij panel',
         editFile: 'Edytuj',
         saveFile: 'Zapisz',
         failedToRead: 'Nie udało się odczytać pliku',
@@ -667,6 +692,19 @@ export const pl: TranslationStructure = {
         fileConflictDescription: 'Ten plik został zmodyfikowany na urządzeniu podczas edycji. Załaduj ponownie aby zobaczyć najnowszą wersję.',
         reload: 'Załaduj ponownie',
         overwrite: 'Nadpisz',
+    },
+    sideChat: {
+        panelTitle: 'Czat boczny',
+        emptyTitle: 'Rozpocznij czat boczny',
+        emptySubtitle: 'Zapytaj agenta o coś na boku. Dziedziczy kontekst tego czatu, ale pozostaje odizolowany — nic tutaj nie wpływa na główną rozmowę.',
+        startButton: 'Rozpocznij czat boczny',
+        creating: 'Uruchamianie czatu bocznego…',
+        unavailable: 'Ta sesja nie może jeszcze rozpocząć czatu bocznego — poczekaj, aż agent będzie online.',
+        composerPlaceholder: 'Napisz na czacie bocznym…',
+        expand: 'Otwórz na pełnym ekranie',
+        tabLabel: ({ index }: { index: number }) => `Czat boczny ${index}`,
+        newChat: 'Nowy czat boczny',
+        close: 'Zamknij czat boczny',
     },
 
     settingsVoice: {

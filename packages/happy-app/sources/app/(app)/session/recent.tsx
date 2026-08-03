@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, FlatList } from 'react-native';
+import { Platform, View, FlatList } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useAllSessions } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
@@ -12,6 +12,7 @@ import { layout } from '@/components/layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Pressable } from 'react-native';
 import { t } from '@/text';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 
 interface SessionHistoryItem {
     type: 'session' | 'date-header';
@@ -25,14 +26,14 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'stretch',
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
     },
     contentContainer: {
         flex: 1,
         maxWidth: layout.maxWidth,
     },
     dateHeader: {
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
         paddingTop: 20,
         paddingBottom: 8,
         paddingHorizontal: 24,
@@ -45,25 +46,31 @@ const styles = StyleSheet.create((theme) => ({
         letterSpacing: 0.1,
     },
     sessionCard: {
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
         marginHorizontal: 16,
         marginBottom: 1,
+        overflow: 'hidden',
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.glass.border,
+    },
+    sessionPressable: {
         paddingVertical: 16,
         paddingHorizontal: 16,
         flexDirection: 'row',
         alignItems: 'center',
+        width: '100%',
     },
     sessionCardFirst: {
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
+        borderTopLeftRadius: Platform.select({ web: 12, default: 18 }),
+        borderTopRightRadius: Platform.select({ web: 12, default: 18 }),
     },
     sessionCardLast: {
-        borderBottomLeftRadius: 12,
-        borderBottomRightRadius: 12,
+        borderBottomLeftRadius: Platform.select({ web: 12, default: 18 }),
+        borderBottomRightRadius: Platform.select({ web: 12, default: 18 }),
         marginBottom: 12,
     },
     sessionCardSingle: {
-        borderRadius: 12,
+        borderRadius: Platform.select({ web: 12, default: 18 }),
         marginBottom: 12,
     },
     sessionContent: {
@@ -195,13 +202,18 @@ export default function SessionHistory() {
             const isSingle = isFirst && isLast;
             
             return (
-                <Pressable
+                <MobileGlassSurface
+                    enabled={Platform.OS !== 'web'}
+                    intensity={64}
                     style={[
                         styles.sessionCard,
                         isSingle ? styles.sessionCardSingle : 
                         isFirst ? styles.sessionCardFirst :
                         isLast ? styles.sessionCardLast : {}
                     ]}
+                >
+                <Pressable
+                    style={({ pressed }) => [styles.sessionPressable, Platform.OS !== 'web' && pressed && { opacity: 0.72 }]}
                     onPress={() => navigateToSession(session.id)}
                 >
                     <Avatar id={avatarId} size={48} />
@@ -214,6 +226,7 @@ export default function SessionHistory() {
                         </Text>
                     </View>
                 </Pressable>
+                </MobileGlassSurface>
             );
         }
         

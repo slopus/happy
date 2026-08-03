@@ -6,16 +6,38 @@ import { CommandPalette } from './CommandPalette';
 import { Command } from './types';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { useAuth } from '@/auth/AuthContext';
-import { storage } from '@/sync/storage';
+import { storage, useAllMachines } from '@/sync/storage';
 import { useShallow } from 'zustand/react/shallow';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { ShortcutHintsProvider } from '@/components/ShortcutHints';
+import {
+    formatShortcut,
+    getPreferredShortcutModifier,
+} from '@/keyboard/shortcuts';
+import { isTauri } from '@/utils/isTauri';
+import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { getSessionShortcutIdsInDisplayOrder } from '@/utils/sessionDisplayOrder';
+import { t } from '@/text';
+
+const EMPTY_SESSION_IDS: readonly string[] = [];
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
-    const { logout } = useAuth();
+    const { logout, isAuthenticated } = useAuth();
     const sessions = storage(useShallow((state) => state.sessions));
     const commandPaletteEnabled = storage(useShallow((state) => state.localSettings.commandPaletteEnabled));
+    const sessionListViewData = useVisibleSessionListViewData();
+    const machines = useAllMachines();
     const navigateToSession = useNavigateToSession();
+    const preferredModifier = useMemo(() => getPreferredShortcutModifier(
+        typeof navigator === 'undefined' ? undefined : navigator
+    ), []);
+    const browserSafeShortcuts = useMemo(() => Platform.OS === 'web' && !isTauri(), []);
+    const visibleSessionShortcutIds = useMemo(() => getSessionShortcutIdsInDisplayOrder(
+        sessionListViewData,
+        machines,
+        t('status.unknown'),
+    ), [machines, sessionListViewData]);
 
     // Define available commands
     const commands = useMemo((): Command[] => {
@@ -27,7 +49,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 subtitle: 'Start a new chat session',
                 icon: 'add-circle-outline',
                 category: 'Sessions',
-                shortcut: '⌘N',
+                shortcut: formatShortcut(preferredModifier, 'N', browserSafeShortcuts),
                 action: () => {
                     router.navigate('/new');
                 }
@@ -48,7 +70,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 subtitle: 'Configure your preferences',
                 icon: 'settings-outline',
                 category: 'Navigation',
-                shortcut: '⌘,',
+                shortcut: formatShortcut(preferredModifier, ',', browserSafeShortcuts),
                 action: () => {
                     router.push('/settings');
                 }
@@ -121,10 +143,10 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         }
 
         return cmds;
-    }, [router, logout, sessions]);
+    }, [browserSafeShortcuts, router, logout, sessions, navigateToSession, preferredModifier]);
 
     const showCommandPalette = useCallback(() => {
-        if (Platform.OS !== 'web' || !commandPaletteEnabled) return;
+        if (Platform.OS !== 'web' || !isAuthenticated || !commandPaletteEnabled) return;
         
         Modal.show({
             component: CommandPalette,
@@ -132,10 +154,43 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 commands,
             }
         } as any);
-    }, [commands, commandPaletteEnabled]);
+    }, [commands, commandPaletteEnabled, isAuthenticated]);
 
-    // Set up global keyboard handler only if feature is enabled
-    useGlobalKeyboard(commandPaletteEnabled ? showCommandPalette : () => {});
+    const openNewSession = useCallback(() => {
+        router.navigate('/new');
+    }, [router]);
 
-    return <>{children}</>;
+    const openSettings = useCallback(() => {
+        router.push('/settings');
+    }, [router]);
+
+    const openRecentSession = useCallback((index: number) => {
+        const sessionId = visibleSessionShortcutIds[index];
+        if (!sessionId) {
+            return false;
+        }
+        navigateToSession(sessionId);
+        return true;
+    }, [navigateToSession, visibleSessionShortcutIds]);
+
+    const visibleModifier = useGlobalKeyboard(
+        {
+            commandPalette: isAuthenticated && commandPaletteEnabled ? showCommandPalette : undefined,
+            newSession: isAuthenticated ? openNewSession : undefined,
+            settings: isAuthenticated ? openSettings : undefined,
+            recentSession: isAuthenticated ? openRecentSession : undefined,
+        },
+        browserSafeShortcuts,
+    );
+
+    return (
+        <ShortcutHintsProvider
+            modifier={isAuthenticated ? visibleModifier : null}
+            commandPaletteEnabled={isAuthenticated && commandPaletteEnabled}
+            recentSessionIds={isAuthenticated ? visibleSessionShortcutIds : EMPTY_SESSION_IDS}
+            browserSafeShortcuts={browserSafeShortcuts}
+        >
+            {children}
+        </ShortcutHintsProvider>
+    );
 }

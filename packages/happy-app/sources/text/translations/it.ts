@@ -165,10 +165,11 @@ export const it: TranslationStructure = {
         sessionStatusBarDescription: 'Scegli dove mostrare branch, modello, impegno e contesto',
         sessionStatusDisplayOptions: {
             hidden: 'Nascosto',
-            hiddenOnMobile: 'Nascosto su mobile',
             above: 'Sopra il compositore',
             below: 'Sotto il compositore',
         },
+        usageLimitShowRemaining: 'Mostra la quota rimanente',
+        usageLimitShowRemainingDescription: 'Gli indicatori di limite contano alla rovescia invece che in avanti',
         userMessageBubbleColor: 'Colore dei tuoi messaggi',
         userMessageBubbleColorDescription: 'Rendi i tuoi messaggi più facili da trovare nelle chat lunghe',
         userMessageBubbleColorOptions: {
@@ -181,6 +182,8 @@ export const it: TranslationStructure = {
         },
         display: 'Schermo',
         displayDescription: 'Controlla layout e spaziatura',
+        compactToolCalls: 'Chiamate strumenti compatte',
+        compactToolCallsDescription: 'Mostra le chiamate non interattive su una riga; apri una riga per i dettagli',
         inlineToolCalls: 'Chiamate strumenti inline',
         inlineToolCallsDescription: 'Mostra le chiamate agli strumenti direttamente nei messaggi di chat',
         expandTodoLists: 'Espandi liste di attività',
@@ -440,6 +443,11 @@ export const it: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Contesto ${used} di ${total} token, ${percent}%`,
+            limitFiveHour: 'Limite di 5 ore',
+            limitSevenDay: 'Limite di 7 giorni',
+            limitResets: ({ time }: { time: string }) => `si azzera ${time}`,
+            limitAsOf: ({ age }: { age: string }) => `${age} fa`,
+            limitRemaining: ({ percent }: { percent: number }) => `${percent}% rimanente`,
         },
     },
 
@@ -519,11 +527,26 @@ export const it: TranslationStructure = {
         offlineUnableToSpawn: 'Impossibile avviare una nuova sessione, offline',
     },
 
+    agentQuestion: {
+        title: "Domanda",
+        submit: "Invia risposta",
+        chooseMultiple: "Scegli tutte quelle pertinenti",
+        ownAnswer: "La tua risposta",
+        ownAnswerPlaceholder: "Scrivi una risposta",
+        submitFailed: "Impossibile inviare la risposta",
+        dismiss: "Ignora",
+        unsupportedTitle: "Richiesta non supportata",
+        unsupportedDescription: ({ kind }: { kind: string }) => `Questa versione di Happy non può mostrare una richiesta «${kind}». Aggiorna l'app per rispondere.`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? "1 altra domanda" : `${count} altre domande`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Mostra archiviate',
         hideArchived: 'Nascondi archiviate',
         newSession: 'Nuova sessione',
+        projects: "Progetti",
     },
 
     zen: {
@@ -641,6 +664,8 @@ export const it: TranslationStructure = {
         deleted: 'Eliminato',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'file modificato' : 'file modificati'}`,
         allFiles: 'Tutti i file',
+        addPanel: 'Aggiungi pannello',
+        closePanel: 'Chiudi pannello',
         editFile: 'Modifica',
         saveFile: 'Salva',
         failedToRead: 'Impossibile leggere il file',
@@ -649,6 +674,19 @@ export const it: TranslationStructure = {
         fileConflictDescription: 'Questo file è stato modificato sul dispositivo mentre lo stavi modificando. Ricarica per vedere l\'ultima versione.',
         reload: 'Ricarica',
         overwrite: 'Sovrascrivi',
+    },
+    sideChat: {
+        panelTitle: 'Chat laterale',
+        emptyTitle: 'Avvia una chat laterale',
+        emptySubtitle: 'Chiedi qualcosa all’agente a parte. Eredita il contesto di questa chat ma rimane isolata — nulla qui tocca la conversazione principale.',
+        startButton: 'Avvia chat laterale',
+        creating: 'Avvio della chat laterale…',
+        unavailable: 'Questa sessione non può ancora avviare una chat laterale — attendi che l’agente sia online.',
+        composerPlaceholder: 'Messaggio alla chat laterale…',
+        expand: 'Apri a schermo intero',
+        tabLabel: ({ index }: { index: number }) => `Chat laterale ${index}`,
+        newChat: 'Nuova chat laterale',
+        close: 'Chiudi chat laterale',
     },
 
     settingsVoice: {

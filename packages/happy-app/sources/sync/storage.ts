@@ -12,6 +12,8 @@ function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageS
 import { Session, Machine, GitStatus, SessionAgentModesPatch } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
+import { buildProjectGroups, isProjectSession, type ProjectGroupData } from "./projectGroups";
+import { selectPendingCommunications, type PendingAgentCommunication } from "./agentCommunications";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
@@ -24,6 +26,7 @@ import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts } from "./persistence";
 import { isAgentModePushPending } from "./agentModesPending";
+import { loadSessionLastMessageSentAt, saveSessionLastMessageSentAt } from "./persistence";
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -101,6 +104,13 @@ export interface SessionRowData {
     completedTodosCount: number;
     totalTodosCount: number;
     hasUnread: boolean;
+    // Rig-only project identity. Sessions from the Happy CLI leave these null
+    // and keep the flat, date-grouped presentation.
+    projectId: string | null;
+    projectName: string | null;
+    // Names the git worktree this session runs in; null in the primary tree.
+    workspaceId: string | null;
+    workspaceName: string | null;
 }
 
 function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): SessionRowData {
@@ -143,8 +153,13 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         completedTodosCount: session.todos?.filter(todo => todo.status === 'completed').length ?? 0,
         totalTodosCount: session.todos?.length ?? 0,
         hasUnread: unreadSessionIds?.has(session.id) ?? false,
+        projectId: session.metadata?.project?.id ?? null,
+        projectName: session.metadata?.project?.name ?? null,
+        workspaceId: session.metadata?.workspace?.id ?? null,
+        workspaceName: session.metadata?.workspace?.name ?? null,
     };
 }
+
 
 // Unified list item type for SessionsList component
 export type SessionListViewItem =
@@ -152,7 +167,12 @@ export type SessionListViewItem =
     | { type: 'active-sessions'; sessions: SessionRowData[] }
     | { type: 'archive-toggle'; hidden: boolean }
     | { type: 'project-group'; displayPath: string; machine: Machine }
+    | { type: 'projects-header' }
+    | { type: 'project'; project: ProjectGroupData }
     | { type: 'session'; session: SessionRowData };
+
+export type { ProjectGroupData, ProjectWorkspaceGroup } from './projectGroups';
+
 
 // Legacy type for backward compatibility - to be removed
 export type SessionListItem = string | Session;
@@ -218,6 +238,7 @@ interface StorageState {
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionAgentModes: (sessionId: string, patch: SessionAgentModesPatch) => void;
+    markSessionMessageSent: (sessionId: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -247,14 +268,25 @@ interface StorageState {
 // Helper function to build unified list view data from sessions and machines
 function buildSessionListViewData(
     sessions: Record<string, Session>,
-    unreadSessionIds?: Set<string>,
+    // Required on purpose: an omitted set silently rebuilds the list with
+    // hasUnread=false everywhere — exactly the bug this parameter caused twice.
+    unreadSessionIds: Set<string>,
 ): SessionListViewItem[] {
-    // Separate active and inactive sessions
+    // Separate active and inactive sessions. Rig sessions are pulled out
+    // entirely — they live in the projects section instead of the flat list.
+    const projectSessions: Session[] = [];
     const activeSessions: Session[] = [];
     const inactiveSessions: Session[] = [];
 
     Object.values(sessions).forEach(session => {
-        if (isSessionActive(session)) {
+        // Side chats are hidden children of another session — they render only
+        // inside the parent's sidebar panel, never in the top-level list.
+        if (session.metadata?.isSideChat) {
+            return;
+        }
+        if (isProjectSession(session)) {
+            projectSessions.push(session);
+        } else if (isSessionActive(session)) {
             activeSessions.push(session);
         } else {
             inactiveSessions.push(session);
@@ -262,14 +294,35 @@ function buildSessionListViewData(
     });
 
     // Sort by last activity or creation date (newest first), per user setting — matches applySessions behavior
+    // Activity sort keys off the last user-sent message, not updatedAt: updatedAt
+    // bumps on every background agent update, which would make the list jump while
+    // several sessions stream at once. lastMessageSentAt only moves when the user acts.
     const sortKey = storage.getState().settings.sortSessionsByActivity
-        ? (s: Session) => s.updatedAt
+        ? (s: Session) => s.lastMessageSentAt ?? s.createdAt
         : (s: Session) => s.createdAt;
     activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
     inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
+    // Active first so a project surfaces its live work, newest-first within each.
+    projectSessions.sort((a, b) => {
+        const activeDelta = Number(isSessionActive(b)) - Number(isSessionActive(a));
+        return activeDelta !== 0 ? activeDelta : sortKey(b) - sortKey(a);
+    });
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
+
+    // Projects sit above everything else and never mix with plain sessions
+    const projects = buildProjectGroups(
+        projectSessions,
+        s => buildSessionRowData(s, unreadSessionIds),
+        isSessionActive,
+    );
+    if (projects.length > 0) {
+        listData.push({ type: 'projects-header' });
+        for (const project of projects) {
+            listData.push({ type: 'project', project });
+        }
+    }
 
     // Add active sessions as a single item at the top (if any)
     if (activeSessions.length > 0) {
@@ -350,6 +403,7 @@ export const storage = create<StorageState>()((set, get) => {
     let purchases = loadPurchases();
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
+    let sessionLastMessageSentAt = loadSessionLastMessageSentAt();
     return {
         settings,
         settingsVersion: version,
@@ -407,6 +461,7 @@ export const storage = create<StorageState>()((set, get) => {
             // Load drafts if sessions are empty (initial load)
             const isInitialLoad = Object.keys(state.sessions).length === 0;
             const savedDrafts = isInitialLoad ? sessionDrafts : {};
+            const savedLastMessageSentAt = isInitialLoad ? sessionLastMessageSentAt : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = indexSessionsById(Object.values(state.sessions));
@@ -440,6 +495,9 @@ export const storage = create<StorageState>()((set, get) => {
                 const resolvedModelMode = resolveModePick('modelMode');
                 const resolvedEffortLevel = resolveModePick('effortLevel');
 
+                // Local activity timestamp — preserve in-memory value, else restore from MMKV.
+                const resolvedLastMessageSentAt = state.sessions[session.id]?.lastMessageSentAt ?? savedLastMessageSentAt[session.id];
+
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
@@ -447,6 +505,7 @@ export const storage = create<StorageState>()((set, get) => {
                     permissionMode: resolvedPermissionMode,
                     modelMode: resolvedModelMode,
                     effortLevel: resolvedEffortLevel,
+                    lastMessageSentAt: resolvedLastMessageSentAt,
                 };
             });
 
@@ -464,6 +523,10 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Process all sessions from merged set
             Object.values(mergedSessions).forEach(session => {
+                // Side chats are hidden children — never in any session list.
+                if (session.metadata?.isSideChat) {
+                    return;
+                }
                 if (activeSet.has(session.id)) {
                     activeSessions.push(session);
                 } else {
@@ -473,7 +536,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Sort both arrays by last activity or creation date (newest first), per user setting
             const sortKey = get().settings.sortSessionsByActivity
-                ? (s: Session) => s.updatedAt
+                ? (s: Session) => s.lastMessageSentAt ?? s.createdAt
                 : (s: Session) => s.createdAt;
             activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
             inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
@@ -1010,7 +1073,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionListViewData: buildSessionListViewData(updatedSessions)
+                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds)
             };
         }),
         // Permission / model / effort picks are local mirrors of synced session
@@ -1032,6 +1095,36 @@ export const storage = create<StorageState>()((set, get) => {
                         ...(patch.effortLevel !== undefined && { effortLevel: patch.effortLevel }),
                     }
                 }
+            };
+        }),
+        markSessionMessageSent: (sessionId: string) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    lastMessageSentAt: Date.now()
+                }
+            };
+
+            // Persist so activity ordering survives app restart.
+            const allTimestamps: Record<string, number> = {};
+            Object.entries(updatedSessions).forEach(([id, sess]) => {
+                if (sess.lastMessageSentAt) {
+                    allTimestamps[id] = sess.lastMessageSentAt;
+                }
+            });
+            saveSessionLastMessageSentAt(allTimestamps);
+
+            // Rebuild list view data — this timestamp drives activity-based sort.
+            // Pass unreadSessionIds so other sessions keep their unread badges
+            // (omitting it drops every badge until the next rebuild).
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds)
             };
         }),
         getSessionPathKey: (sessionId: string): string | null => {
@@ -1059,7 +1152,8 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Rebuild sessionListViewData to reflect machine changes
             const sessionListViewData = buildSessionListViewData(
-                state.sessions
+                state.sessions,
+                state.unreadSessionIds
             );
 
             return {
@@ -1076,7 +1170,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 machines: remaining,
-                sessionListViewData: buildSessionListViewData(state.sessions)
+                sessionListViewData: buildSessionListViewData(state.sessions, state.unreadSessionIds)
             };
         }),
         // Artifact methods
@@ -1132,14 +1226,19 @@ export const storage = create<StorageState>()((set, get) => {
             
             const { [sessionId]: _fileCache, ...remainingFileCache } = state.sessionFileCache;
 
-            // Clear drafts from persistent storage (permission / model / effort
+            // Clear local session data from persistent storage (permission / model / effort
             // picks live in synced session metadata, #1492)
             const drafts = loadSessionDrafts();
             delete drafts[sessionId];
             saveSessionDrafts(drafts);
-            
-            // Rebuild sessionListViewData without the deleted session
-            const sessionListViewData = buildSessionListViewData(remainingSessions);
+
+            const lastMessageSentAt = loadSessionLastMessageSentAt();
+            delete lastMessageSentAt[sessionId];
+            saveSessionLastMessageSentAt(lastMessageSentAt);
+
+            // Rebuild sessionListViewData without the deleted session.
+            // Pass unreadSessionIds so the remaining sessions keep their unread badges.
+            const sessionListViewData = buildSessionListViewData(remainingSessions, state.unreadSessionIds);
             
             return {
                 ...state,
@@ -1318,6 +1417,38 @@ export function useSession(id: string): Session | null {
     return storage(useShallow((state) => state.sessions[id] ?? null));
 }
 
+/**
+ * Resolve the live "side chat" sessions belonging to a given parent session.
+ * A side chat is a forked child flagged `metadata.isSideChat` whose
+ * `metadata.parentSessionId` points at the parent. A parent can have several;
+ * closing one archives it (`lifecycleState === 'archived'`), which drops it
+ * from this list so the sidebar panel only shows open side chats. Sorted
+ * oldest-first so tab order stays stable as new ones are created. Empty when
+ * none are open (the panel then offers to start one).
+ */
+export function useSideChatSessions(parentSessionId: string | null): Session[] {
+    return storage(useShallow((state) => {
+        if (!parentSessionId) {
+            return emptyArray as Session[];
+        }
+        const result: Session[] = [];
+        for (const session of Object.values(state.sessions)) {
+            if (
+                session.metadata?.isSideChat
+                && session.metadata?.parentSessionId === parentSessionId
+                && session.metadata?.lifecycleState !== 'archived'
+            ) {
+                result.push(session);
+            }
+        }
+        if (result.length === 0) {
+            return emptyArray as Session[];
+        }
+        result.sort((a, b) => a.createdAt - b.createdAt);
+        return result;
+    }));
+}
+
 const emptyArray: unknown[] = [];
 
 export function useSessionMessages(sessionId: string): {
@@ -1391,7 +1522,10 @@ export function useSessionListViewData(): SessionListViewItem[] | null {
 export function useAllSessions(): Session[] {
     return storage(useShallow((state) => {
         if (!state.isDataReady) return [];
-        return Object.values(state.sessions).sort((a, b) => b.updatedAt - a.updatedAt);
+        // Side chats are hidden children — exclude them from every list.
+        return Object.values(state.sessions)
+            .filter((s) => !s.metadata?.isSideChat)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
     }));
 }
 
@@ -1473,6 +1607,12 @@ export function useSocketStatus() {
         lastConnectedAt: state.socketLastConnectedAt,
         lastDisconnectedAt: state.socketLastDisconnectedAt
     })));
+}
+
+/** Agent-to-user communications this session is currently waiting on. */
+export function useSessionPendingCommunications(sessionId: string): PendingAgentCommunication[] {
+    return storage(useShallow((state) =>
+        selectPendingCommunications(state.sessions[sessionId]?.agentState ?? null)));
 }
 
 export function useSessionGitStatus(sessionId: string): GitStatus | null {

@@ -411,7 +411,13 @@ function usageFromClaudeMessage(message: RawJSONLines): SessionUsage | undefined
     if (message.type !== 'assistant') {
         return undefined;
     }
-    return message.message?.usage;
+    const usage = message.message?.usage;
+    if (!usage) {
+        return undefined;
+    }
+    // Synthetic messages send `service_tier: null`; the wire type only carries
+    // string | undefined, so normalise rather than widen the protocol.
+    return { ...usage, service_tier: usage.service_tier ?? undefined };
 }
 
 function canCarryUsage(envelope: SessionEnvelope): boolean {

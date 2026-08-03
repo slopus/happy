@@ -59,13 +59,21 @@ function resolveClaudeEntrypoint(pkgDir) {
     try {
         const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
         const binRel = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.claude;
-        if (!binRel) return null;
-        const binPath = path.join(pkgDir, binRel);
-        if (fs.existsSync(binPath)) {
-            return binPath;
+        if (binRel) {
+            const binPath = path.join(pkgDir, binRel);
+            if (fs.existsSync(binPath)) {
+                return binPath;
+            }
         }
     } catch (e) {
-        // Malformed package.json — treat as not found
+        // Malformed package.json — try the Node fallback below
+    }
+
+    // Some installations omit the platform binary (for example, when npm
+    // scripts were skipped) but retain Claude Code's Node fallback.
+    const wrapperPath = path.join(pkgDir, 'cli-wrapper.cjs');
+    if (fs.existsSync(wrapperPath)) {
+        return wrapperPath;
     }
     return null;
 }
@@ -315,10 +323,8 @@ function findHomebrewCliPath() {
             const entries = fs.readdirSync(nodeModulesPath);
             for (const entry of entries) {
                 if (entry === 'claude-code' || entry.startsWith('.claude-code-')) {
-                    const cliPath = path.join(nodeModulesPath, entry, 'cli.js');
-                    if (fs.existsSync(cliPath)) {
-                        return cliPath;
-                    }
+                    const entrypoint = resolveClaudeEntrypoint(path.join(nodeModulesPath, entry));
+                    if (entrypoint) return entrypoint;
                 }
             }
         }
@@ -398,11 +404,9 @@ function findNativeInstallerCliPath() {
     // Check ~/.claude/local/ (older installation method)
     const nativeBasePath = path.join(homeDir, '.claude', 'local');
     if (fs.existsSync(nativeBasePath)) {
-        // Look for the cli.js in the node_modules structure
-        const cliPath = path.join(nativeBasePath, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
-        if (fs.existsSync(cliPath)) {
-            return cliPath;
-        }
+        // Look for the package entrypoint in the node_modules structure.
+        const packageEntrypoint = resolveClaudeEntrypoint(path.join(nativeBasePath, 'node_modules', '@anthropic-ai', 'claude-code'));
+        if (packageEntrypoint) return packageEntrypoint;
         
         // Alternative: direct cli.js in the installation
         const directCliPath = path.join(nativeBasePath, 'cli.js');
@@ -680,6 +684,7 @@ function runClaudeCli(cliPath) {
 }
 
 module.exports = {
+    resolveClaudeEntrypoint,
     findGlobalClaudeCliPath,
     findClaudeInPath,
     detectSourceFromPath,

@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, Animated } from 'react-native';
+import { View, Text, Animated, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -23,6 +23,7 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
 import { HappyError } from '@/utils/errors';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 import { getRigIdentity, isRigMetadata } from '@/sync/rig';
 
 // Animated status dot component
@@ -234,7 +235,30 @@ function SessionInfoContent({ session }: { session: Session }) {
             <ItemList>
                 {/* Session Header */}
                 <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
-                    <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.surface, marginBottom: 8, borderRadius: 12, marginHorizontal: 16, marginTop: 16 }}>
+                    <MobileGlassSurface
+                        enabled={Platform.OS !== 'web'}
+                        intensity={68}
+                        style={{
+                            alignItems: 'center',
+                            paddingVertical: 24,
+                            backgroundColor: Platform.select({
+                                web: theme.colors.surface,
+                                android: theme.colors.glass.backgroundStrong,
+                                default: 'transparent',
+                            }),
+                            marginBottom: 8,
+                            borderRadius: Platform.select({ web: 12, default: 22 }),
+                            marginHorizontal: 16,
+                            marginTop: 16,
+                            overflow: 'hidden',
+                            borderWidth: Platform.OS === 'web' ? 0 : 0.5,
+                            borderColor: theme.colors.glass.border,
+                            shadowColor: theme.colors.glass.shadow,
+                            shadowOffset: { width: 0, height: 10 },
+                            shadowOpacity: Platform.OS === 'web' ? 0 : 1,
+                            shadowRadius: 24,
+                        }}
+                    >
                         <Avatar id={getSessionAvatarId(session)} size={80} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} clientId={session.metadata?.client?.id} />
                         <Text style={{
                             fontSize: 20,
@@ -257,7 +281,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 {sessionStatus.statusText}
                             </Text>
                         </View>
-                    </View>
+                    </MobileGlassSurface>
                 </View>
 
                 {/* CLI Version Warning */}

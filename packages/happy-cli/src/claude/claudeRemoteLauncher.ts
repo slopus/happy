@@ -5,6 +5,7 @@ import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import React from "react";
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
+import { mergeUsageLimits } from "./utils/usageLimits";
 import { Future } from "@/utils/future";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
@@ -15,6 +16,7 @@ import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
+import { launchFailureMessage } from "./utils/launchFailureMessage";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
 import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
 
@@ -400,6 +402,14 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             skills: metadata.skills,
                         }));
                     },
+                    onUsageLimits: (patch) => {
+                        // Merging against currentAgentState re-hydrates window
+                        // state across claudeRemote re-entries (mode switches).
+                        session.client.updateAgentState((currentAgentState) => ({
+                            ...currentAgentState,
+                            usageLimits: mergeUsageLimits(currentAgentState.usageLimits, patch),
+                        }));
+                    },
                     onQueryReady: (q) => {
                         permissionHandler.setPermissionModeUpdater(async (mode) => {
                             await q.setPermissionMode(mode);
@@ -445,7 +455,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 logger.debug('[remote]: launch error', e);
                 if (!exitReason) {
                     session.client.closeClaudeSessionTurn('failed');
-                    session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    session.client.sendSessionEvent({ type: 'message', message: launchFailureMessage(e) });
                     continue;
                 }
             } finally {

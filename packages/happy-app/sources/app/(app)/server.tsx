@@ -20,7 +20,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         flex: 1,
     },
     contentContainer: {
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
         paddingHorizontal: 16,
         paddingVertical: 12,
         width: '100%',
@@ -36,7 +36,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 8,
     },
     textInput: {
-        backgroundColor: theme.colors.input.background,
+        backgroundColor: Platform.select({ web: theme.colors.input.background, default: theme.colors.glass.backgroundSubtle }),
         padding: 12,
         borderRadius: 8,
         marginBottom: 8,

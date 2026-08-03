@@ -6,7 +6,7 @@
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import { storage } from './storage';
-import type { MachineMetadata, SessionAgentModesPatch } from './storageTypes';
+import type { AgentQuestionAnswer, MachineMetadata, SessionAgentModesPatch } from './storageTypes';
 import { markAgentModePushPending, clearAgentModePushPending, type AgentModeField } from './agentModesPending';
 import {
     isRigMetadata,
@@ -31,6 +31,19 @@ interface SessionPermissionRequest {
     allowTools?: string[];
     updatedInput?: Record<string, unknown>;
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+}
+
+/**
+ * Reply to an agent-to-user communication. Separate from the permission channel
+ * on purpose: nothing here approves or denies an action, it carries information
+ * the agent asked for. `kind` mirrors the request so the agent can route the
+ * reply once other kinds of communication exist.
+ */
+interface SessionCommunicationReply {
+    id: string;
+    kind: string;
+    status: 'answered' | 'cancelled';
+    answers?: Record<string, AgentQuestionAnswer>;
 }
 
 // Mode change operation types
@@ -176,6 +189,8 @@ export interface SpawnSessionOptions {
     parentSessionId?: string;
     /** Happy message id used as the rewind point (only set for "duplicate"). */
     forkedFromMessageId?: string;
+    /** Marks the spawned session as a hidden side chat of `parentSessionId`. */
+    isSideChat?: boolean;
 }
 
 // Options for forking a Claude session on a machine
@@ -235,7 +250,7 @@ export interface ResumeSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, permissionMode, modelMode, effortLevel, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, permissionMode, modelMode, effortLevel, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -251,10 +266,11 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             resumeCodexThreadId?: string,
             parentSessionId?: string,
             forkedFromMessageId?: string,
+            isSideChat?: boolean,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, permissionMode, modelMode, effortLevel, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, permissionMode, modelMode, effortLevel, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat }
         );
         return result;
     } catch (error) {
@@ -712,6 +728,32 @@ export async function sessionAllow(sessionId: string, id: string, mode?: 'defaul
 }
 
 /**
+ * Answer a question the agent asked. The reply carries back the same `kind` the
+ * agent published, so the agent can route it without guessing.
+ */
+export async function sessionAnswerQuestion(
+    sessionId: string,
+    id: string,
+    answers: Record<string, AgentQuestionAnswer>,
+    kind: string = 'form',
+): Promise<void> {
+    const reply: SessionCommunicationReply = { id, kind, status: 'answered', answers };
+    await apiSocket.sessionRPC(sessionId, 'communication', reply);
+}
+
+/**
+ * Dismiss a communication without answering it.
+ */
+export async function sessionCancelCommunication(
+    sessionId: string,
+    id: string,
+    kind: string = 'form',
+): Promise<void> {
+    const reply: SessionCommunicationReply = { id, kind, status: 'cancelled' };
+    await apiSocket.sessionRPC(sessionId, 'communication', reply);
+}
+
+/**
  * Deny a permission request
  */
 export async function sessionDeny(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'denied' | 'abort'): Promise<void> {
@@ -994,6 +1036,8 @@ type ForkOptions = {
     cutAfterUuid?: string;
     cutAfterItemId?: string;
     forkedFromMessageId?: string;
+    /** Marks the forked child as a hidden side chat (kept out of the session list). */
+    isSideChat?: boolean;
 };
 
 /**
@@ -1038,6 +1082,7 @@ export async function forkAndSpawn(
             resumeCodexThreadId: forkResult.newCodexThreadId,
             parentSessionId: source.sessionId,
             forkedFromMessageId: opts.forkedFromMessageId,
+            isSideChat: opts.isSideChat,
         });
 
         if (spawnResult.type === 'success') {
@@ -1076,6 +1121,7 @@ export async function forkAndSpawn(
         resumeClaudeSessionId: forkResult.newClaudeSessionId,
         parentSessionId: source.sessionId,
         forkedFromMessageId: opts.forkedFromMessageId,
+        isSideChat: opts.isSideChat,
     });
 
     // Pull the newly-created session row into local sync state before we
@@ -1092,6 +1138,18 @@ export async function forkAndSpawn(
     }
 
     return spawnResult;
+}
+
+/**
+ * Create a "side chat" for a session: a forked child that inherits the
+ * parent's full context but is provably isolated (writes only to its own
+ * transcript, never back into the parent) and is flagged `isSideChat` so it
+ * stays out of the top-level session list. Rendered only inside the parent's
+ * sidebar panel. Reuses the fork/spawn machinery; the only difference from a
+ * normal fork is the `isSideChat` marker.
+ */
+export async function spawnSideChat(source: ForkSource): Promise<SpawnSessionResult> {
+    return forkAndSpawn(source, { isSideChat: true });
 }
 
 // Export types for external use

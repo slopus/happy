@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, ScrollView, Pressable } from 'react-native';
+import { Platform, View, ActivityIndicator, ScrollView, Pressable } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAuth } from '@/auth/AuthContext';
@@ -20,19 +20,25 @@ const styles = StyleSheet.create((theme) => ({
     },
     periodSelector: {
         flexDirection: 'row',
-        padding: 16,
+        padding: Platform.select({ web: 16, default: 8 }),
+        margin: Platform.select({ web: 0, default: 16 }),
         gap: 8,
+        borderRadius: Platform.select({ web: 0, default: 20 }),
+        overflow: Platform.select({ web: 'visible', default: 'hidden' }),
+        backgroundColor: theme.colors.surface,
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.divider,
     },
     periodButton: {
         flex: 1,
         paddingVertical: 8,
         paddingHorizontal: 12,
         borderRadius: 8,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.surfaceHigh }),
         alignItems: 'center',
     },
     periodButtonActive: {
-        backgroundColor: '#007AFF',
+        backgroundColor: Platform.select({ web: '#007AFF', default: theme.colors.radio.active }),
     },
     periodText: {
         fontSize: 14,
@@ -46,8 +52,11 @@ const styles = StyleSheet.create((theme) => ({
         padding: 16,
         backgroundColor: theme.colors.surface,
         margin: 16,
-        borderRadius: 12,
+        borderRadius: Platform.select({ web: 12, default: 20 }),
         gap: 12,
+        overflow: Platform.select({ web: 'visible', default: 'hidden' }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.divider,
     },
     statRow: {
         flexDirection: 'row',
@@ -65,12 +74,19 @@ const styles = StyleSheet.create((theme) => ({
     },
     chartSection: {
         marginTop: 16,
+        marginHorizontal: Platform.select({ web: 0, default: 16 }),
+        borderRadius: Platform.select({ web: 0, default: 20 }),
+        overflow: Platform.select({ web: 'visible', default: 'hidden' }),
+        backgroundColor: Platform.select({ web: 'transparent', default: theme.colors.surface }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.divider,
     },
     sectionTitle: {
         fontSize: 18,
         fontWeight: '600',
         color: theme.colors.text,
         marginHorizontal: 16,
+        marginTop: Platform.select({ web: 0, default: 16 }),
         marginBottom: 8,
     },
     loadingContainer: {
@@ -98,10 +114,10 @@ const styles = StyleSheet.create((theme) => ({
         paddingVertical: 6,
         paddingHorizontal: 16,
         borderRadius: 16,
-        backgroundColor: theme.colors.divider,
+        backgroundColor: Platform.select({ web: theme.colors.divider, default: theme.colors.surfaceHigh }),
     },
     metricButtonActive: {
-        backgroundColor: '#007AFF',
+        backgroundColor: Platform.select({ web: '#007AFF', default: theme.colors.radio.active }),
     },
     metricText: {
         fontSize: 14,

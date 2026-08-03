@@ -165,10 +165,11 @@ export const en = {
         sessionStatusBarDescription: 'Choose where branch, model, effort, and context appear',
         sessionStatusDisplayOptions: {
             hidden: 'Hidden',
-            hiddenOnMobile: 'Hidden on mobile',
             above: 'Above composer',
             below: 'Below composer',
         },
+        usageLimitShowRemaining: 'Show Quota Remaining',
+        usageLimitShowRemainingDescription: 'Count plan limits down from full instead of up from empty',
         userMessageBubbleColor: 'User Bubble Color',
         userMessageBubbleColorDescription: 'Make your messages easier to spot in long chats',
         userMessageBubbleColorOptions: {
@@ -181,6 +182,8 @@ export const en = {
         },
         display: 'Display',
         displayDescription: 'Control layout and spacing',
+        compactToolCalls: 'Compact Tool Calls',
+        compactToolCallsDescription: 'Show non-interactive tool calls as one-line rows; open a row for details',
         inlineToolCalls: 'Inline Tool Calls',
         inlineToolCallsDescription: 'Display tool calls directly in chat messages',
         expandTodoLists: 'Expand Todo Lists',
@@ -456,6 +459,11 @@ export const en = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Context ${used} of ${total} tokens, ${percent}%`,
+            limitFiveHour: '5-hour limit',
+            limitSevenDay: '7-day limit',
+            limitResets: ({ time }: { time: string }) => `resets ${time}`,
+            limitAsOf: ({ age }: { age: string }) => `as of ${age} ago`,
+            limitRemaining: ({ percent }: { percent: number }) => `${percent}% left`,
         },
     },
 
@@ -535,11 +543,27 @@ export const en = {
         offlineUnableToSpawn: 'Unable to spawn new session, offline',
     },
 
+    agentQuestion: {
+        title: 'Question',
+        submit: 'Send answer',
+        chooseMultiple: 'Choose as many as apply',
+        ownAnswer: 'Your own answer',
+        ownAnswerPlaceholder: 'Write an answer instead',
+        submitFailed: 'Could not send your answer',
+        dismiss: 'Dismiss',
+        unsupportedTitle: 'Unsupported request',
+        unsupportedDescription: ({ kind }: { kind: string }) =>
+            `This version of Happy cannot show a "${kind}" request. Update the app to respond.`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? '1 more question' : `${count} more questions`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Show archived',
         hideArchived: 'Hide archived',
         newSession: 'New session',
+        projects: 'Projects',
     },
 
     zen: {
@@ -657,6 +681,8 @@ export const en = {
         deleted: 'Deleted',
         changedFiles: ({ count }: { count: number }) => `${count} changed ${count === 1 ? 'file' : 'files'}`,
         allFiles: 'All Files',
+        addPanel: 'Add panel',
+        closePanel: 'Close panel',
         editFile: 'Edit',
         saveFile: 'Save',
         failedToRead: 'Failed to read file',
@@ -665,6 +691,19 @@ export const en = {
         fileConflictDescription: 'This file was modified on the device while you were editing. Reload to see the latest version.',
         reload: 'Reload',
         overwrite: 'Overwrite',
+    },
+    sideChat: {
+        panelTitle: 'Side chat',
+        emptyTitle: 'Start a side chat',
+        emptySubtitle: 'Ask the agent something on the side. It inherits this chat’s context but stays isolated — nothing here touches the main conversation.',
+        startButton: 'Start side chat',
+        creating: 'Starting side chat…',
+        unavailable: 'This session can’t start a side chat yet — wait for the agent to come online.',
+        composerPlaceholder: 'Message side chat…',
+        expand: 'Open full screen',
+        tabLabel: ({ index }: { index: number }) => `Side chat ${index}`,
+        newChat: 'New side chat',
+        close: 'Close side chat',
     },
 
     settingsVoice: {
