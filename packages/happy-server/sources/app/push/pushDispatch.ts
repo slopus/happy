@@ -23,7 +23,14 @@
 import { db } from "@/storage/db";
 import { isUserActive } from "@/app/push/focusTracker";
 import { sendPushNotifications } from "@/app/push/pushSend";
+import { pushNotificationsCounter } from "@/app/monitoring/metrics2";
 import { log } from "@/utils/log";
+
+/** Normalise the event kind for the metrics label (bounded cardinality). */
+function pushKindLabel(data: Record<string, unknown> | undefined): string {
+    const kind = data?.kind;
+    return kind === 'done' || kind === 'permission' || kind === 'question' ? kind : 'unknown';
+}
 
 async function fetchTokensAndSend(params: {
     userId: string;
@@ -32,6 +39,7 @@ async function fetchTokensAndSend(params: {
     body: string;
     data: Record<string, unknown>;
     channelId: string;
+    kind: string;
 }): Promise<void> {
     // All push tokens are mobile — web/CLI never register Expo tokens.
     const tokens = await db.accountPushToken.findMany({
@@ -39,6 +47,7 @@ async function fetchTokensAndSend(params: {
     });
 
     if (tokens.length === 0) {
+        pushNotificationsCounter.inc({ outcome: 'no_tokens', kind: params.kind });
         log({ module: 'push' }, `No push tokens for user ${params.userId} session ${params.sessionId} — skipped`);
         return;
     }
@@ -71,8 +80,10 @@ async function fetchTokensAndSend(params: {
     }
 
     if (errors.length === 0) {
+        pushNotificationsCounter.inc({ outcome: 'sent', kind: params.kind });
         log({ module: 'push' }, `Push sent for user ${params.userId} session ${params.sessionId}: ${okCount} token(s)`);
     } else {
+        pushNotificationsCounter.inc({ outcome: 'error', kind: params.kind });
         log({ module: 'push', level: 'warn' }, `Push partial for user ${params.userId} session ${params.sessionId}: ok=${okCount} errors=${JSON.stringify(errors)}`);
     }
 }
@@ -85,10 +96,12 @@ export async function dispatchSessionEventPush(params: {
     data?: Record<string, unknown>;
 }): Promise<void> {
     const { userId, sessionId, title, body, data } = params;
+    const kind = pushKindLabel(data);
 
     try {
         try {
             if (await isUserActive(userId)) {
+                pushNotificationsCounter.inc({ outcome: 'suppressed', kind });
                 log({ module: 'push' }, `Suppressed session-event push for user ${userId} session ${sessionId}: user active`);
                 return;
             }
@@ -102,9 +115,11 @@ export async function dispatchSessionEventPush(params: {
             title,
             body,
             data: { sessionId, ...(data ?? {}) },
-            channelId: 'messages'
+            channelId: 'messages',
+            kind
         });
     } catch (error) {
+        pushNotificationsCounter.inc({ outcome: 'error', kind });
         log({ module: 'push', level: 'error' }, `Session-event push dispatch failed: ${error}`);
     }
 }

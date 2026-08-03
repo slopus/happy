@@ -79,6 +79,15 @@ export const websocketEventsCounter = new Counter({
     registers: [register]
 });
 
+// Push notification outcomes — observability for the session-event push path.
+// outcome: sent | suppressed | no_tokens | error   kind: done | permission | question
+export const pushNotificationsCounter = new Counter({
+    name: 'push_notifications_total',
+    help: 'Session-event push notifications by outcome and kind',
+    labelNames: ['outcome', 'kind'] as const,
+    registers: [register]
+});
+
 export const httpRequestsCounter = new Counter({
     name: 'http_requests_total',
     help: 'Total number of HTTP requests',
