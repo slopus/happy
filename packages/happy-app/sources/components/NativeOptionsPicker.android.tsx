@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { DropdownMenu, DropdownMenuItem } from '@expo/ui/jetpack-compose';
+import { DropdownMenu, DropdownMenuItem, Text as ComposeText } from '@expo/ui/jetpack-compose';
 import type { NativeOptionsPickerProps } from './NativeOptionsPicker';
 
 export function NativeOptionsPicker({
@@ -13,8 +13,12 @@ export function NativeOptionsPicker({
             <DropdownMenu.Items>
                 {options.map((option) => (
                     <DropdownMenuItem key={option.key} onClick={() => onSelect(option.key)}>
+                        {/* Native slot view: a bare string child throws "Text strings
+                            must be rendered within a <Text> component" mid-render. */}
                         <DropdownMenuItem.Text>
-                            {option.key === selectedKey ? `✓ ${option.label}` : option.label}
+                            <ComposeText>
+                                {option.key === selectedKey ? `✓ ${option.label}` : option.label}
+                            </ComposeText>
                         </DropdownMenuItem.Text>
                     </DropdownMenuItem>
                 ))}

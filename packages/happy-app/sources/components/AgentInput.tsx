@@ -331,6 +331,19 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         justifyContent: 'center',
         flexShrink: 0,
     },
+    // The native-menu wrapper only carries the slot's size; the visual button
+    // (padding, radius, gap) is the child inside it. Applying the full button
+    // style to both would inset the content twice.
+    mobileModeMenu: {
+        flex: 1,
+        minWidth: 0,
+        height: 40,
+    },
+    mobileEffortMenu: {
+        width: 64,
+        flexShrink: 0,
+        height: 40,
+    },
     mobileModeButton: {
         flex: 1,
         minWidth: 0,
@@ -697,7 +710,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // layout. Desktop web, Mac Catalyst, and tablet-width canvases retain the
     // existing composer affordances rather than inheriting it.
     const compactMobileComposer = Platform.OS !== 'web' && !isRunningOnMac() && screenWidth <= 700;
-    const useNativeSettingsMenus = compactMobileComposer;
+    // iOS only. On Android the settings/model/effort triggers are React Native
+    // subtrees hosted inside a Jetpack Compose DropdownMenu, and
+    // expo-modules-core pins such a child to `Modifier.size(view.width,
+    // view.height)` sampled once at composition with no layout listener
+    // (ExpoComposeAndroidView) — composed before React Native measures it, the
+    // trigger stays 0x0 and the control is invisible while still occupying its
+    // slot. The composer's own popup pickers below render identically and work,
+    // so Android uses those instead of the native menu.
+    const useNativeSettingsMenus = compactMobileComposer && Platform.OS === 'ios';
     const activeSendIconColor = compactMobileComposer ? theme.colors.text : theme.colors.button.primary.tint;
     const isSendBlocked = props.blockSend ?? false;
 
@@ -1980,7 +2001,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         {!props.zenMode ? (
                             <>
                                 {useNativeSettingsMenus && modelSettingsGroup ? (
-                                    <NativeSettingsMenu groups={[modelSettingsGroup]} flat style={styles.mobileModeButton}>
+                                    <NativeSettingsMenu groups={[modelSettingsGroup]} flat style={styles.mobileModeMenu}>
                                         <View style={styles.mobileModeButton}>
                                             {renderModelValue()}
                                         </View>
@@ -2003,7 +2024,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                                 {effortSettingsGroup && (
                                     useNativeSettingsMenus ? (
-                                        <NativeSettingsMenu groups={[effortSettingsGroup]} flat style={styles.mobileEffortButton}>
+                                        <NativeSettingsMenu groups={[effortSettingsGroup]} flat style={styles.mobileEffortMenu}>
                                             <View style={styles.mobileEffortButton}>
                                                 {renderEffortValue()}
                                             </View>
