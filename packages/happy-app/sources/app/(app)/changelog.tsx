@@ -46,8 +46,9 @@ export default function ChangelogScreen() {
                 ]}
                 showsVerticalScrollIndicator={false}
             >
-                {entries.map((entry) => (
+                {entries.map((entry, index) => (
                     <View key={entry.title} style={styles.entryContainer}>
+                        {index > 0 ? <View style={styles.entryDivider} /> : null}
                         <Text style={styles.titleText}>
                             {entry.title}
                         </Text>
@@ -76,6 +77,11 @@ const styles = StyleSheet.create((theme) => ({
         paddingTop: 16,
     },
     entryContainer: {
+        marginBottom: 32,
+    },
+    entryDivider: {
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: theme.colors.divider,
         marginBottom: 32,
     },
     titleText: {
