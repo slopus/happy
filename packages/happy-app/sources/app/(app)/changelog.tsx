@@ -7,7 +7,6 @@ import { getChangelogEntries, getLatestTitle, setLastViewedTitle } from '@/chang
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
-import { MobileGlassSurface } from '@/components/MobileGlass';
 
 export default function ChangelogScreen() {
     const insets = useSafeAreaInsets();
@@ -58,9 +57,7 @@ export default function ChangelogScreen() {
                             </Text>
                         ) : null}
                         {entry.markdown ? (
-                            <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={64} style={styles.card}>
-                                <MarkdownView markdown={entry.markdown} />
-                            </MobileGlassSurface>
+                            <MarkdownView markdown={entry.markdown} />
                         ) : null}
                     </View>
                 ))}
@@ -94,18 +91,6 @@ const styles = StyleSheet.create((theme) => ({
         lineHeight: 22,
         color: theme.colors.textSecondary,
         marginBottom: 16,
-    },
-    card: {
-        backgroundColor: Platform.select({ web: theme.colors.surfaceHigh, android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
-        borderRadius: Platform.select({ web: 12, default: 20 }),
-        padding: 16,
-        overflow: 'hidden',
-        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
-        borderColor: theme.colors.glass.border,
-        shadowColor: theme.colors.glass.shadow,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: Platform.select({ web: 0, default: 1 }),
-        shadowRadius: 20,
     },
     emptyState: {
         flex: 1,
