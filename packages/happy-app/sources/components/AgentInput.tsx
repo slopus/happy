@@ -2113,10 +2113,18 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             name="arrow-up"
                                             size={16}
                                             color={canPressSendButton ? activeSendIconColor : theme.colors.textSecondary}
-                                            style={[
-                                                styles.sendButtonIcon,
-                                                { marginTop: Platform.OS === 'web' ? 2 : 0 },
-                                            ]}
+                                            // The color has to travel in `style`, not just the
+                                            // `color` prop: @expo/vector-icons builds
+                                            // `[styleDefaults, style, ...]` (create-icon-set.js),
+                                            // so a `style` entry always wins over `color`. With
+                                            // styles.sendButtonIcon here — it hardcodes the
+                                            // primary tint (white) — the computed color was
+                                            // discarded and the arrow painted white on the
+                                            // near-white glass composer, i.e. invisible.
+                                            style={{
+                                                color: canPressSendButton ? activeSendIconColor : theme.colors.textSecondary,
+                                                marginTop: Platform.OS === 'web' ? 2 : 0,
+                                            }}
                                         />
                                     )}
                                 </BubblePressable>
