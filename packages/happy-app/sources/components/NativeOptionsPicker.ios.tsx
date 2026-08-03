@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 import {
     Button,
     Host,
@@ -51,6 +52,7 @@ export function NativeOptionsPicker({
     onSelect,
     children,
 }: NativeOptionsPickerProps) {
+    const { theme } = useUnistyles();
     return (
         <View style={styles.container}>
             <View
@@ -67,9 +69,12 @@ export function NativeOptionsPicker({
                 avoidance would drag the trigger off it. */}
             <Host ignoreSafeArea="keyboard" style={styles.host}>
                 <Menu
+                    // The tint is what colors the label, so it has to follow the
+                    // theme: SwiftUI draws the visible row here, and a fixed
+                    // white would render it invisible in light mode.
                     // No glass capsule: the plain style leaves the system less
                     // chrome to morph when the menu opens.
-                    modifiers={[tint('#FFFFFF'), buttonStyle('plain')]}
+                    modifiers={[tint(theme.colors.text), buttonStyle('plain')]}
                     label={(
                         // The whole row is the label, so every part of it opens
                         // the menu: the icon, the value, and the space between.

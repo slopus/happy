@@ -26,6 +26,17 @@ export type NativeSettingsMenuProps = {
     accessibilityLabel?: string;
     /** Render all options directly in the root menu without native section headers. */
     flat?: boolean;
+    /**
+     * Draw the trigger with SwiftUI instead of layering an invisible hit target
+     * over the React Native child. iOS morphs a menu's trigger into the menu and
+     * lenses whatever sits beneath it, so a React Native chip under the trigger
+     * is visibly distorted every time the menu opens or closes; a native trigger
+     * morphs cleanly. These must mirror the child exactly rather than decorate
+     * it: the child is kept for layout and hidden.
+     */
+    triggerLabel?: string;
+    triggerSystemImage?: string;
+    triggerAlignment?: 'leading' | 'trailing' | 'center';
 };
 
 const NativeSettingsMenuImpl = Platform.select<React.ComponentType<NativeSettingsMenuProps>>({

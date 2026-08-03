@@ -15,6 +15,12 @@ vi.mock('react-native', async () => {
     };
 });
 
+const THEME_TEXT_COLOR = '#101010';
+
+vi.mock('react-native-unistyles', () => ({
+    useUnistyles: () => ({ theme: { colors: { text: THEME_TEXT_COLOR } } }),
+}));
+
 vi.mock('@expo/ui/swift-ui', async () => {
     const ReactModule = await import('react');
     const component = (name: string) => (props: any) => ReactModule.createElement(name, props, props.children);
@@ -35,9 +41,10 @@ vi.mock('@expo/ui/swift-ui/modifiers', () => ({
     buttonStyle: (value: string) => ({ type: 'buttonStyle', value }),
     contentShape: (shape: unknown) => ({ type: 'contentShape', shape }),
     disabled: (value: boolean) => ({ type: 'disabled', value: { disabled: value } }),
-    fixedSize: (value?: unknown) => ({ type: 'fixedSize', value }),
+    font: (value: unknown) => ({ type: 'font', value }),
     frame: (value: unknown) => ({ type: 'frame', value }),
     foregroundColor: (value: string) => ({ type: 'foregroundColor', value }),
+    lineLimit: (value: number) => ({ type: 'lineLimit', value }),
     opacity: (value: number) => ({ type: 'opacity', value }),
     shapes: { rectangle: () => ({ type: 'rectangle' }) },
     tint: (value: string) => ({ type: 'tint', value }),
@@ -140,6 +147,38 @@ describe('iOS Expo-native menu triggers', () => {
         const icons = label.root.findAllByType('ExpoImage' as any);
         expect(icons).toHaveLength(1);
         expect(icons[0].props.systemName).toBe('desktopcomputer');
+    });
+
+    // The menu tint, not foregroundColor, is what paints a SwiftUI label. Once
+    // the label became the visible chip a fixed white turned every trigger
+    // invisible in light mode, so the tint has to track the theme.
+    it('paints both native triggers with the theme text color, not a fixed white', () => {
+        const picker = render(React.createElement(NativeOptionsPicker, {
+            title: 'Machine',
+            triggerLabel: 'Mac',
+            options: [{ key: 'mac', label: 'Mac' }],
+            selectedKey: 'mac',
+            onSelect: vi.fn(),
+            children: React.createElement('Trigger'),
+        }));
+        expect(picker.root.findByType('ExpoMenu' as any).props.modifiers)
+            .toContainEqual({ type: 'tint', value: THEME_TEXT_COLOR });
+
+        const settings = render(React.createElement(NativeSettingsMenu, {
+            accessibilityLabel: 'Model',
+            triggerLabel: 'Sonnet',
+            flat: true,
+            groups: [{
+                key: 'model',
+                label: 'Model',
+                selectedKey: 'sonnet',
+                options: [{ key: 'sonnet', label: 'Sonnet' }],
+                onSelect: vi.fn(),
+            }],
+            children: React.createElement('Chip'),
+        }));
+        expect(settings.root.findByType('ExpoMenu' as any).props.modifiers)
+            .toContainEqual({ type: 'tint', value: THEME_TEXT_COLOR });
     });
 
     it('heads the menu with a disabled item so the icon survives UIMenu', () => {
@@ -253,5 +292,49 @@ describe('iOS Expo-native menu triggers', () => {
 
         const locked = renderer.root.findAllByType('ExpoButton' as any).find((button: any) => button.props.label === 'Locked');
         expect(locked.props.modifiers).toContainEqual({ type: 'disabled', value: { disabled: true } });
+    });
+
+    it('draws the composer chip in SwiftUI when a native trigger is given', () => {
+        const renderer = render(React.createElement(NativeSettingsMenu, {
+            accessibilityLabel: 'Model',
+            groups: [{
+                key: 'model',
+                label: 'Opus',
+                options: [{ key: 'opus', label: 'Opus' }],
+                selectedKey: 'opus',
+                onSelect: vi.fn(),
+            }],
+            triggerLabel: 'Opus',
+            children: React.createElement('Trigger'),
+        }));
+
+        // iOS lenses whatever sits under the trigger it morphs, so the RN chip
+        // has to stop painting once SwiftUI draws the same content.
+        const trigger = renderer.root.findAllByType('View' as any).find((view: any) => view.props.pointerEvents === 'none');
+        expect(trigger?.props.style).toContainEqual({ opacity: 0 });
+
+        const label = render(renderer.root.findByType('ExpoMenu' as any).props.label);
+        expect(label.root.findByType('ExpoText' as any).props.children).toBe('Opus');
+        // The chip is the label itself now, so it must not be hidden.
+        expect(renderer.root.findByType('ExpoMenu' as any).props.label.props.modifiers)
+            .not.toContainEqual({ type: 'opacity', value: 0.01 });
+    });
+
+    it('keeps the trigger invisible when it stands over a React Native chip', () => {
+        const renderer = render(React.createElement(NativeSettingsMenu, {
+            accessibilityLabel: 'Model',
+            groups: [{
+                key: 'model',
+                label: 'Opus',
+                options: [{ key: 'opus', label: 'Opus' }],
+                selectedKey: 'opus',
+                onSelect: vi.fn(),
+            }],
+            children: React.createElement('Trigger'),
+        }));
+
+        const trigger = renderer.root.findAllByType('View' as any).find((view: any) => view.props.pointerEvents === 'none');
+        expect(trigger?.props.style).not.toContainEqual({ opacity: 0 });
+        expectInvisibleTrigger(renderer.root.findByType('ExpoMenu' as any).props.label);
     });
 });
