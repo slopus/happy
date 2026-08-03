@@ -1,6 +1,11 @@
 {
   "entries": [
     {
+      "title": "August 3 — Composer and tool calls",
+      "summary": "Shorter tool output and a composer that behaves again.",
+      "markdown": "- Tool calls show as one-line rows you can open for details — turn it off with Compact Tool Calls in Settings → Appearance.\n- The mic is back in the send button — voice when the composer is empty, send once you've typed, stop while the agent works.\n- Model and effort sit together next to the send button, and no longer get cut off when you switch.\n- Model, effort, and permission pickers are legible again on iOS 26.\n- The send button is visible again on the light theme.\n- Composer pickers stay tappable while the keyboard is open."
+    },
+    {
       "title": "July 28 — Liquid glass, Opus 5",
       "summary": "A full mobile refresh and a new top model.",
       "markdown": "- Liquid-glass mobile UI — glass surfaces across navigation, headers, modals, and session lists.\n- Opus 5 in the Claude model picker.\n- Side chats — fork a parallel conversation right next to your session.\n- Redesigned new-session screen — prompt, attachments, voice, model, effort, and permissions in one place. Drafts are preserved.\n- Pick your own sidebar panels, with keyboard shortcuts.\n- Session launch and resume are more reliable."
@@ -76,5 +81,5 @@
       "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],
-  "latestTitle": "July 28 — Liquid glass, Opus 5"
+  "latestTitle": "August 3 — Composer and tool calls"
 }
