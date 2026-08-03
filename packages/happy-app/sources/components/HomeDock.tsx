@@ -218,6 +218,7 @@ const styles = StyleSheet.create((theme) => ({
         ...Typography.default(),
     },
     focusedModeSeparator: {
+        flexShrink: 0,
         color: theme.colors.textSecondary,
         fontSize: 14,
         ...Typography.default(),
@@ -1079,17 +1080,23 @@ export const HomeDock = React.memo(({
                         <NativeSettingsMenu
                             accessibilityLabel={t('settings.title')}
                             groups={gearSettingsGroups}
+                            triggerSystemImage="gearshape"
                             style={styles.nativeIconMenuFrame}
                         >
                             <View style={styles.nativeIconMenuContent}>
                                 <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
                             </View>
                         </NativeSettingsMenu>
+                        {/* Pushes model/effort right so the pair sits against the
+                            send button instead of drifting when a label changes. */}
+                        <View style={{ flex: 1 }} />
                         {modelSettingsGroup ? (
                             <NativeSettingsMenu
                                 accessibilityLabel={t('agentInput.model.title')}
                                 groups={[modelSettingsGroup]}
                                 flat
+                                triggerLabel={currentModel?.name ?? currentAgent.name}
+                                triggerAlignment="trailing"
                                 style={styles.nativeModeMenu}
                             >
                                 <View style={styles.focusedModeButton}>
@@ -1107,15 +1114,22 @@ export const HomeDock = React.memo(({
                                 </View>
                             </View>
                         )}
+                        {/* The separator is its own element rather than part of the
+                            effort label, which would wrap it onto a second line
+                            inside the narrow trigger. */}
+                        {effortSettingsGroup && (
+                            <Text style={styles.focusedModeSeparator}>·</Text>
+                        )}
                         {effortSettingsGroup && (
                             <NativeSettingsMenu
                                 accessibilityLabel={t('agentInput.effort.title')}
                                 groups={[effortSettingsGroup]}
                                 flat
+                                triggerLabel={currentEffort?.name ?? t('agentInput.effort.title')}
+                                triggerAlignment="leading"
                                 style={styles.nativeEffortMenu}
                             >
                                 <View style={styles.focusedEffortButton}>
-                                    <Text style={styles.focusedModeSeparator}>·</Text>
                                     <Text style={styles.focusedModeText} numberOfLines={1}>
                                         {currentEffort?.name ?? t('agentInput.effort.title')}
                                     </Text>

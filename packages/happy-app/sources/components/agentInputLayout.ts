@@ -106,23 +106,27 @@ export function resolveMobileComposerMenuGeometry(
         };
     }
 
+    // The pair is right-aligned against the send button, so each chip keeps its
+    // slack on the outside of the separator: the model's padding sits to its
+    // left, the effort's to its right. Only the model shrinks, and the effort
+    // reserves the widest label's width so switching levels never reflows the
+    // row or clips the text.
     if (variant === 'model') {
         return {
             frame: {
-                flex: 1,
+                flexShrink: 1,
                 minWidth: 0,
                 height: MOBILE_COMPOSER_METRICS.secondaryActionHeight,
             },
             content: {
-                width: '100%',
                 minWidth: 0,
                 height: MOBILE_COMPOSER_METRICS.secondaryActionHeight,
                 borderRadius: MOBILE_COMPOSER_METRICS.secondaryActionHeight / 2,
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'flex-end',
-                paddingLeft: 8,
-                paddingRight: 0,
+                paddingLeft: 12,
+                paddingRight: 4,
                 gap: 7,
             },
         };
@@ -130,20 +134,19 @@ export function resolveMobileComposerMenuGeometry(
 
     return {
         frame: {
-            width: MOBILE_COMPOSER_METRICS.effortWidth,
             flexShrink: 0,
+            minWidth: MOBILE_COMPOSER_METRICS.effortWidth,
             height: MOBILE_COMPOSER_METRICS.secondaryActionHeight,
         },
         content: {
-            width: '100%',
             minWidth: 0,
             height: MOBILE_COMPOSER_METRICS.secondaryActionHeight,
             borderRadius: MOBILE_COMPOSER_METRICS.secondaryActionHeight / 2,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'flex-start',
-            paddingLeft: 2,
-            paddingRight: 0,
+            paddingLeft: 4,
+            paddingRight: 12,
             gap: 4,
         },
     };

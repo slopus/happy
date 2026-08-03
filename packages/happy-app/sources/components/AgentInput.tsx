@@ -365,6 +365,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         ...Typography.default(),
     },
     mobileModeSeparator: {
+        flexShrink: 0,
         color: theme.colors.textSecondary,
         fontSize: 14,
         ...Typography.default(),
@@ -770,8 +771,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         isSendDisabled: props.isSendDisabled ?? false,
         showAbortButton: props.showAbortButton ?? false,
         canAbort: !!props.onAbort && !stopRequested,
+        // Only the mobile composer folds the mic into the primary button; the
+        // desktop layout keeps its own send/mic resolution below. A live voice
+        // session stays in this state so the same button can end it.
+        canVoice: compactMobileComposer && !!props.onMicPress,
     });
     const shouldShowStopButton = primaryAction === 'stop';
+    const shouldShowVoiceButton = primaryAction === 'voice';
     const canSendMessage = primaryAction === 'send';
     const mobileCanPressSendButton = !isAborting && primaryAction !== 'idle';
     const desktopCanPressSendButton = !props.isSending
@@ -1070,6 +1076,30 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         props.onMicPress();
     }, [props.isSendDisabled, props.onMicPress]);
 
+    // Stop, voice and send share one button, so which one fires is resolved from
+    // the live text rather than from `hasText`, which is set in a transition and
+    // lags a fast type-then-tap. Without the live read that tap would abort the
+    // agent or open dictation instead of sending what was just typed.
+    const handleMobilePrimaryPress = React.useCallback(() => {
+        const liveHasContent = (inputRef.current?.getText() ?? '').trim().length > 0 || hasImages;
+        if (!liveHasContent && shouldShowStopButton) {
+            handleAbortPress();
+            return;
+        }
+        if (!liveHasContent && shouldShowVoiceButton) {
+            handleMicrophonePress();
+            return;
+        }
+        handleSendPress();
+    }, [
+        handleAbortPress,
+        handleMicrophonePress,
+        handleSendPress,
+        hasImages,
+        shouldShowStopButton,
+        shouldShowVoiceButton,
+    ]);
+
     const permissionSettingsGroups = React.useMemo<NativeSettingsMenuGroup[]>(() => {
         if (!props.onPermissionModeChange || availableModes.length === 0) {
             return [];
@@ -1136,21 +1166,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const effortSettingsGroup = modelSettingsGroups.find((group) => group.key === 'effort');
 
     const renderModelValue = () => (
-        <>
-            <Ionicons name="flash" size={18} color={theme.colors.text} />
-            <Text style={styles.mobileModeText} numberOfLines={1}>
-                {modelLabel}
-            </Text>
-        </>
+        <Text style={styles.mobileModeText} numberOfLines={1}>
+            {modelLabel}
+        </Text>
     );
 
     const renderEffortValue = () => (
-        <>
-            <Text style={styles.mobileModeSeparator}>·</Text>
-            <Text style={styles.mobileModeText} numberOfLines={1}>
-                {effortLabel ?? t('agentInput.effort.title')}
-            </Text>
-        </>
+        <Text style={styles.mobileModeText} numberOfLines={1}>
+            {effortLabel ?? t('agentInput.effort.title')}
+        </Text>
     );
 
     // Handle keyboard navigation
@@ -1983,6 +2007,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     accessibilityLabel={permissionSettingsGroups[0]?.label}
                                     groups={permissionSettingsGroups}
                                     flat
+                                    triggerSystemImage="gearshape"
                                     style={styles.mobileIconMenuFrame}
                                 >
                                     <View style={styles.mobileIconMenuContent}>
@@ -2006,11 +2031,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                         {!props.zenMode ? (
                             <>
+                                {/* Pushes model/effort right, so the effort chip
+                                    sits against the send button and the pair does
+                                    not drift when either label changes width. */}
+                                <View style={{ flex: 1 }} />
                                 {useNativeSettingsMenus && modelSettingsGroup ? (
                                     <NativeSettingsMenu
                                         accessibilityLabel={t('agentInput.model.title')}
                                         groups={[modelSettingsGroup]}
                                         flat
+                                        triggerLabel={modelLabel}
+                                        triggerAlignment="trailing"
                                         style={styles.mobileModelMenuFrame}
                                     >
                                         <View style={styles.mobileModelMenuContent}>
@@ -2033,12 +2064,21 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     </BubblePressable>
                                 )}
 
+                                {/* The separator lives between the two chips rather
+                                    than inside the effort label, which would wrap
+                                    it onto its own line in a narrow trigger. */}
+                                {effortSettingsGroup && (
+                                    <Text style={styles.mobileModeSeparator}>·</Text>
+                                )}
+
                                 {effortSettingsGroup && (
                                     useNativeSettingsMenus ? (
                                         <NativeSettingsMenu
                                             accessibilityLabel={t('agentInput.effort.title')}
                                             groups={[effortSettingsGroup]}
                                             flat
+                                            triggerLabel={effortLabel ?? t('agentInput.effort.title')}
+                                            triggerAlignment="leading"
                                             style={styles.mobileEffortMenuFrame}
                                         >
                                             <View style={styles.mobileEffortMenuContent}>
@@ -2083,34 +2123,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
                         )}
 
-                        {props.onMicPress && (
-                            <BubblePressable
-                                onPress={handleMicrophonePress}
-                                disabled={props.isSendDisabled}
-                                hitSlop={6}
-                                style={(p) => [
-                                    styles.mobileIconButton,
-                                    { opacity: p.pressed && !props.isSendDisabled ? 0.7 : props.isSendDisabled ? 0.45 : 1 },
-                                ]}
-                                accessibilityRole="button"
-                                accessibilityLabel="Voice"
-                            >
-                                <Ionicons
-                                    name={props.isMicActive ? 'mic' : 'mic-outline'}
-                                    size={23}
-                                    color={theme.colors.text}
-                                />
-                            </BubblePressable>
-                        )}
-
                         <Shaker ref={shakerRef}>
                             <View
                                 style={[
                                     styles.sendButton,
                                     styles.mobilePrimaryButton,
-                                    isSendBlocked ? styles.sendButtonLocked
-                                        : shouldShowStopButton ? styles.mobileStopButton
-                                            : canSendMessage ? styles.mobilePrimaryButtonActive
+                                    // Stop is checked first: a blank composer on a
+                                    // non-steerable agent is both blocked and
+                                    // abortable, and it must not look locked.
+                                    shouldShowStopButton ? styles.mobileStopButton
+                                        : isSendBlocked ? styles.sendButtonLocked
+                                            : canSendMessage || shouldShowVoiceButton ? styles.mobilePrimaryButtonActive
                                                 : styles.mobilePrimaryButtonInactive,
                                 ]}
                             >
@@ -2123,10 +2146,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         opacity: p.pressed ? 0.7 : 1,
                                     })}
                                     hitSlop={6}
-                                    onPress={shouldShowStopButton ? handleAbortPress : handleSendPress}
+                                    onPress={handleMobilePrimaryPress}
                                     disabled={!canPressSendButton}
                                     accessibilityRole="button"
-                                    accessibilityLabel={shouldShowStopButton ? 'Stop' : 'Send'}
+                                    accessibilityLabel={shouldShowStopButton ? 'Stop'
+                                        : shouldShowVoiceButton ? 'Voice'
+                                            : 'Send'}
                                 >
                                     {isAborting ? (
                                         <ActivityIndicator
@@ -2145,6 +2170,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             size={14}
                                             color={theme.colors.textSecondary}
                                         />
+                                    ) : shouldShowVoiceButton ? (
+                                        props.isMicActive ? (
+                                            <Ionicons name="mic" size={20} color={activeSendIconColor} />
+                                        ) : (
+                                            <Image
+                                                source={require('@/assets/images/icon-voice-white.png')}
+                                                style={{ width: 22, height: 22 }}
+                                                tintColor={activeSendIconColor}
+                                            />
+                                        )
                                     ) : (
                                         <Octicons
                                             name="arrow-up"
