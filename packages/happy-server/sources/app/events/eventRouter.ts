@@ -11,6 +11,34 @@ import type { SessionMessageContent } from "@slopus/happy-wire";
 // suppress pushes indefinitely. See hasActiveViewerSocket().
 const UNKNOWN_APP_STATE_GRACE_MS = 15_000;
 
+/** Minimal view of socket.data the viewer-presence decision depends on. */
+export interface ViewerSocketData {
+    clientType?: string;
+    appState?: string;
+    appStateAt?: number;
+    connectedAt?: number;
+}
+
+/**
+ * Pure predicate: is this socket a viewer client currently in the foreground?
+ * Extracted from hasActiveViewerSocket so the F1/F2 rules are unit-testable
+ * without a live socket.io server. See hasActiveViewerSocket() for rationale.
+ */
+export function isForegroundViewerSocket(data: ViewerSocketData, now: number): boolean {
+    // Rule 1 — only a user-scoped viewer counts (undefined defaults to
+    // user-scoped, matching how the connection itself is classified).
+    if (data.clientType === 'session-scoped' || data.clientType === 'machine-scoped') {
+        return false;
+    }
+    // Rule 2 — foreground = explicit `active`; background never suppresses.
+    if (data.appState === 'active') return true;
+    if (data.appState === 'background') return false;
+    // Unknown state: only within a short grace window after connect.
+    const ref = data.appStateAt ?? data.connectedAt;
+    if (ref === undefined) return false;
+    return (now - ref) < UNKNOWN_APP_STATE_GRACE_MS;
+}
+
 // === CONNECTION TYPES ===
 
 export interface SessionScopedConnection {
@@ -314,25 +342,7 @@ class EventRouter {
     async hasActiveViewerSocket(userId: string): Promise<boolean> {
         const sockets = await this.io.in(`user:${userId}`).fetchSockets();
         const now = Date.now();
-        return sockets.some(s => {
-            // Rule 1 — only a user-scoped viewer counts (undefined defaults to
-            // user-scoped, matching how the connection itself is classified).
-            const clientType = s.data.clientType as string | undefined;
-            if (clientType === 'session-scoped' || clientType === 'machine-scoped') {
-                return false;
-            }
-
-            // Rule 2 — foreground = explicit `active`; background never suppresses.
-            const appState = s.data.appState as string | undefined;
-            if (appState === 'active') return true;
-            if (appState === 'background') return false;
-
-            // Unknown state: only within a short grace window after connect.
-            const ref = (s.data.appStateAt as number | undefined)
-                ?? (s.data.connectedAt as number | undefined);
-            if (ref === undefined) return false;
-            return (now - ref) < UNKNOWN_APP_STATE_GRACE_MS;
-        });
+        return sockets.some(s => isForegroundViewerSocket(s.data as ViewerSocketData, now));
     }
 
     // === PRIVATE ROUTING LOGIC ===
