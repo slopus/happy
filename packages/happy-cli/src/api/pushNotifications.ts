@@ -275,7 +275,12 @@ export class PushNotificationClient {
 
         void (async () => {
             try {
-                await axios.post(
+                const response = await axios.post<{
+                    result?: string
+                    tokens?: number
+                    delivered?: number
+                    reason?: string
+                }>(
                     `${this.baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/push-event`,
                     {
                         kind: params.kind,
@@ -292,7 +297,19 @@ export class PushNotificationClient {
                         timeout: 15000,
                     }
                 )
-                logger.debug(`[PUSH] sendSessionNotification dispatched via server (kind=${params.kind})`)
+                // Report what the server actually did. Older servers return no
+                // `result`, so fall back to acknowledging the request only.
+                const { result, tokens, delivered, reason } = response.data ?? {}
+                const detail = [
+                    tokens !== undefined ? `tokens=${tokens}` : null,
+                    delivered !== undefined ? `delivered=${delivered}` : null,
+                    reason ? `reason=${reason}` : null,
+                ].filter(Boolean).join(' ')
+                logger.debug(
+                    result
+                        ? `[PUSH] sendSessionNotification ${result} (kind=${params.kind})${detail ? ` ${detail}` : ''}`
+                        : `[PUSH] sendSessionNotification accepted by server (kind=${params.kind})`
+                )
             } catch (error) {
                 logger.debug('[PUSH] sendSessionNotification failed:', error)
             }

@@ -87,12 +87,18 @@ class ApiSocket {
 
         this.socket = io(this.config.endpoint, {
             path: '/v1/updates',
-            auth: {
-                token: this.config.token,
+            // A callback, not an object literal: socket.io re-invokes it for
+            // every connect AND reconnect, so appState is read fresh each time.
+            // With a literal, a socket that first connected while foregrounded
+            // would keep announcing `active` on later reconnects, and the server
+            // would suppress pushes for a backgrounded user until the follow-up
+            // `app-state` event landed.
+            auth: (cb) => cb({
+                token: this.config!.token,
                 clientType: 'user-scoped' as const,
                 happyClient: getHappyClientId(),
                 appState: getCurrentAppState(),
-            },
+            }),
             transports: ['websocket'],
             reconnection: true,
             reconnectionDelay: 1000,

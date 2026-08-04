@@ -5,6 +5,12 @@ import { AccountProfile } from "@/types";
 import { getPublicUrl } from "@/storage/files";
 import type { SessionMessageContent } from "@slopus/happy-wire";
 
+/**
+ * Cross-replica presence lookups must stay well inside the CLI's 15s push
+ * timeout, and a stalled peer replica should degrade to "send" quickly.
+ */
+const PRESENCE_FETCH_TIMEOUT_MS = 2_000;
+
 // === CONNECTION TYPES ===
 
 export interface SessionScopedConnection {
@@ -281,20 +287,32 @@ class EventRouter {
     // === PRESENCE QUERIES ===
 
     /**
-     * Returns true if the user has any non-machine socket that hasn't
-     * reported `app-state: background`.  Old clients that never send
-     * `app-state` are treated as active (connected = present).
+     * Returns true if the user is demonstrably looking at a Happy UI client
+     * right now. Used to suppress a push they would only find redundant.
      *
-     * Uses fetchSockets() which works cross-replica via Redis streams adapter.
+     * Both conditions are deliberately positive — presence must be proven, not
+     * assumed. The costs are asymmetric: a redundant push is a buzz the user
+     * dismisses, while a missed push leaves an agent blocked on a permission
+     * prompt with nobody watching.
+     *
+     *   - Only `user-scoped` sockets are notification surfaces. `session-scoped`
+     *     is the coding agent itself and `machine-scoped` is the daemon; neither
+     *     displays anything. Counting `session-scoped` meant a running session's
+     *     own socket suppressed the very push that session was asking for, so
+     *     mobile push went silent whenever a session was live.
+     *   - Only an explicit `app-state: active` counts. A client that never
+     *     reported is unknown, not present.
+     *
+     * Uses fetchSockets() which works cross-replica via Redis streams adapter,
+     * bounded so an unresponsive peer replica cannot stall a push. On timeout
+     * this throws and the caller fails open — an infrastructure problem must
+     * never turn into silence.
      */
-    async hasActiveNonMachineSocket(userId: string): Promise<boolean> {
-        const sockets = await this.io.in(`user:${userId}`).fetchSockets();
-        return sockets.some(s => {
-            if (s.data.clientType === 'machine-scoped') return false;
-            // No app-state yet → old client or just connected; assume active
-            const appState = s.data.appState as string | undefined;
-            return appState !== 'background';
-        });
+    async hasActiveUiClient(userId: string): Promise<boolean> {
+        const sockets = await this.io.in(`user:${userId}`)
+            .timeout(PRESENCE_FETCH_TIMEOUT_MS)
+            .fetchSockets();
+        return sockets.some(s => s.data.clientType === 'user-scoped' && s.data.appState === 'active');
     }
 
     // === PRIVATE ROUTING LOGIC ===
