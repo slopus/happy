@@ -168,6 +168,9 @@ export function getOpenClawModelModes(): ModelMode[] {
 // Keys are the exact display names `agy --model` accepts (as printed by `agy models`).
 export function getAgyModelModes(): ModelMode[] {
     return [
+        { key: 'Gemini 3.6 Flash (High)', name: 'gemini 3.6 flash (high)', description: null },
+        { key: 'Gemini 3.6 Flash (Medium)', name: 'gemini 3.6 flash (medium)', description: null },
+        { key: 'Gemini 3.6 Flash (Low)', name: 'gemini 3.6 flash (low)', description: null },
         { key: 'Gemini 3.1 Pro (High)', name: 'gemini 3.1 pro (high)', description: null },
         { key: 'Gemini 3.1 Pro (Low)', name: 'gemini 3.1 pro (low)', description: null },
         { key: 'Gemini 3.5 Flash (High)', name: 'gemini 3.5 flash (high)', description: null },
