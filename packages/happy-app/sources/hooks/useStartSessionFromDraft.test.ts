@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-    machines: [] as Array<{ id: string; online: boolean; metadata?: { homeDir?: string } }>,
+    machines: [] as Array<{
+        id: string;
+        online: boolean;
+        metadata?: {
+            homeDir?: string;
+            cliAvailability?: Partial<Record<'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy', boolean>>;
+        };
+    }>,
     defaultOverrides: {},
     draft: null as any,
     navigateToSession: vi.fn(),
@@ -26,7 +33,10 @@ vi.mock('@/sync/storage', () => ({
 }));
 
 vi.mock('@/sync/agentDefaults', () => ({
-    resolveAgentDefaultConfig: () => ({
+    resolveAgentDefaultConfig: (
+        overrides: Record<string, unknown>,
+        agentType: string,
+    ) => overrides[agentType] ?? ({
         permissionMode: 'default',
         modelMode: 'default',
         effortLevel: null,
@@ -70,6 +80,7 @@ vi.mock('@/utils/worktree', () => ({
 vi.mock('@/components/modelModeOptions', () => ({
     getHardcodedPermissionModes: () => [
         { key: 'default', name: 'Default' },
+        { key: 'safe-yolo', name: 'Safe YOLO' },
         { key: 'yolo', name: 'YOLO' },
     ],
     getHardcodedModelModes: () => [
@@ -115,6 +126,7 @@ function createDraft(overrides: Record<string, unknown> = {}) {
 describe('useStartSessionFromDraft', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.defaultOverrides = {};
         mocks.machines = [{ id: 'machine-1', online: true, metadata: { homeDir: '/Users/dev' } }];
         mocks.draft = createDraft();
         mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'session-1' });
@@ -148,6 +160,45 @@ describe('useStartSessionFromDraft', () => {
         );
         expect(mocks.navigateToSession.mock.invocationCallOrder[0])
             .toBeLessThan(mocks.sendMessage.mock.invocationCallOrder[0]);
+    });
+
+    it('does not spawn a stale Claude draft when the machine only has Codex', async () => {
+        mocks.defaultOverrides = {
+            codex: {
+                permissionMode: 'safe-yolo',
+                modelMode: 'default',
+                effortLevel: 'medium',
+            },
+        };
+        mocks.machines = [{
+            id: 'machine-1',
+            online: true,
+            metadata: {
+                homeDir: '/Users/dev',
+                cliAvailability: {
+                    claude: false,
+                    codex: true,
+                    gemini: false,
+                    openclaw: false,
+                },
+            },
+        }];
+        mocks.draft = createDraft({
+            agentType: 'claude',
+            permissionMode: 'yolo',
+            modelMode: 'opus',
+        });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(true);
+
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+            agent: 'codex',
+            permissionMode: 'safe-yolo',
+            modelMode: undefined,
+            effortLevel: 'medium',
+        }));
     });
 
     it('retries creation after the user approves a new directory', async () => {

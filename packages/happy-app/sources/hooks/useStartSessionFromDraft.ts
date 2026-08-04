@@ -15,6 +15,7 @@ import {
 } from '@/components/modelModeOptions';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { resolveMachineAgent } from '@/utils/newSessionAgentSelection';
 
 function resolveOption<T extends { key: string }>(
     options: T[],
@@ -49,18 +50,32 @@ export function useStartSessionFromDraft() {
             return false;
         }
 
-        const defaults = resolveAgentDefaultConfig(defaultOverrides, draft.agentType);
+        // The draft survives machine changes and app upgrades. Resolve it again
+        // at launch time so a stale Claude selection cannot spawn Claude while
+        // the selected machine only reports Codex (the Android 1.7.0 regression).
+        const agentType = resolveMachineAgent(
+            draft.agentType,
+            machine.metadata?.cliAvailability,
+        );
+        const agentChanged = agentType !== draft.agentType;
+        const defaults = resolveAgentDefaultConfig(defaultOverrides, agentType);
         const permission = resolveOption(
-            getHardcodedPermissionModes(draft.agentType, t),
-            [draft.permissionMode, defaults.permissionMode],
+            getHardcodedPermissionModes(agentType, t),
+            agentChanged
+                ? [defaults.permissionMode]
+                : [draft.permissionMode, defaults.permissionMode],
         );
         const model = resolveOption(
-            getHardcodedModelModes(draft.agentType, t),
-            [draft.modelMode, defaults.modelMode],
+            getHardcodedModelModes(agentType, t),
+            agentChanged
+                ? [defaults.modelMode]
+                : [draft.modelMode, defaults.modelMode],
         );
         const effort = resolveOption(
-            getEffortLevelsForModel(draft.agentType, model?.key ?? 'default'),
-            [draft.effortLevel, defaults.effortLevel],
+            getEffortLevelsForModel(agentType, model?.key ?? 'default'),
+            agentChanged
+                ? [defaults.effortLevel]
+                : [draft.effortLevel, defaults.effortLevel],
         );
         if (!permission || !model) {
             Modal.alert(t('common.error'), 'The selected agent configuration is unavailable');
@@ -95,8 +110,8 @@ export function useStartSessionFromDraft() {
                     machineId: machine.id,
                     directory: spawnDirectory,
                     approvedNewDirectoryCreation,
-                    agent: draft.agentType,
-                    permissionMode: draft.agentType === 'codex' || permission.key !== 'default'
+                    agent: agentType,
+                    permissionMode: agentType === 'codex' || permission.key !== 'default'
                         ? permission.key
                         : undefined,
                     modelMode: model.key !== 'default' ? model.key : undefined,
