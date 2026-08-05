@@ -536,6 +536,19 @@ export const ca: TranslationStructure = {
 
     sessionInfo: {
         viewDetails: "Detalls de la sessió",
+        agentPanelRuntimeLocation: 'Ubicació d\'execució',
+        agentPanelCurrentExecution: 'Aquesta execució',
+        agentPanelSessionManagement: 'Gestió de la sessió',
+        agentPanelMachineStatus: 'Estat de la màquina',
+        agentPanelAddress: 'Adreça',
+        agentPanelWorkingDirectory: 'Directori de treball',
+        agentPanelAgent: 'Agent',
+        agentPanelModel: 'Model',
+        agentPanelEffort: 'Esforç de raonament',
+        agentPanelPermissions: 'Permisos',
+        agentPanelOfflineNotice: 'Aquesta màquina està fora de línia. La configuració es conserva, però l\'execució no està disponible.',
+        agentPanelReadOnly: 'Només lectura',
+        agentPanelEditable: 'Editable',
         // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
         killSession: 'Finalitza la sessió',
         killSessionConfirm: 'Segur que vols finalitzar aquesta sessió?',

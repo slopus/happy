@@ -537,6 +537,19 @@ export const zhHans: TranslationStructure = {
 
     sessionInfo: {
         viewDetails: "会话详情",
+        agentPanelRuntimeLocation: '运行位置',
+        agentPanelCurrentExecution: '本次执行',
+        agentPanelSessionManagement: '会话管理',
+        agentPanelMachineStatus: '机器状态',
+        agentPanelAddress: '地址',
+        agentPanelWorkingDirectory: '工作目录',
+        agentPanelAgent: 'Agent',
+        agentPanelModel: '模型',
+        agentPanelEffort: '推理强度',
+        agentPanelPermissions: '权限',
+        agentPanelOfflineNotice: '这台机器已离线。设置会保留，但无法执行。',
+        agentPanelReadOnly: '只读',
+        agentPanelEditable: '可编辑',
         // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
         killSession: '终止会话',
         killSessionConfirm: '您确定要终止此会话吗？',

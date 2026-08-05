@@ -536,6 +536,19 @@ export const zhHant: TranslationStructure = {
 
     sessionInfo: {
         viewDetails: "工作階段詳情",
+        agentPanelRuntimeLocation: '執行位置',
+        agentPanelCurrentExecution: '本次執行',
+        agentPanelSessionManagement: '工作階段管理',
+        agentPanelMachineStatus: '機器狀態',
+        agentPanelAddress: '位址',
+        agentPanelWorkingDirectory: '工作目錄',
+        agentPanelAgent: 'Agent',
+        agentPanelModel: '模型',
+        agentPanelEffort: '推理強度',
+        agentPanelPermissions: '權限',
+        agentPanelOfflineNotice: '這台機器已離線。設定會保留，但無法執行。',
+        agentPanelReadOnly: '唯讀',
+        agentPanelEditable: '可編輯',
         // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
         killSession: '終止工作階段',
         killSessionConfirm: '您確定要終止此工作階段嗎？',

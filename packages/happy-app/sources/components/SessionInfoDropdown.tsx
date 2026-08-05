@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, Pressable, Platform, Image as RNImage, LayoutAnimation } from 'react-native';
+import { View, Text, Pressable, Platform, LayoutAnimation } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -18,27 +18,6 @@ import {
 import { useSessionTaskPermission } from '@/hooks/useSessionTaskPermission';
 import type { TaskPermissionLevel } from '@/utils/taskPermissionModes';
 
-// Agent icon assets — mirrors SessionConfigPanel so the panel reads identically.
-const agentIcons = {
-    ask: require('@/assets/images/icon-claude.png'),
-    claude: require('@/assets/images/icon-claude.png'),
-    codex: require('@/assets/images/icon-gpt.png'),
-    opencode: require('@/assets/images/icon-gpt.png'),
-    openclaw: require('@/assets/images/icon-openclaw.png'),
-    gemini: require('@/assets/images/icon-gemini.png'),
-} as const;
-
-const AGENT_LABELS: Record<string, string> = {
-    ask: 'ask',
-    claude: 'claude code',
-    codex: 'codex',
-    opencode: 'opencode',
-    openclaw: 'openclaw',
-    gemini: 'gemini',
-};
-
-type AgentKey = keyof typeof agentIcons;
-
 // Permission glyph, matching SessionConfigPanel's getPermissionStyle.
 function permissionIcon(level: TaskPermissionLevel | null): 'warning-outline' | 'shield-checkmark-outline' {
     return level === 'full-access' ? 'warning-outline' : 'shield-checkmark-outline';
@@ -46,16 +25,15 @@ function permissionIcon(level: TaskPermissionLevel | null): 'warning-outline' | 
 
 /**
  * Session config panel that drops down under the chat header when the
- * SessionHeaderChip is tapped. Visually mirrors the particle home's inline
- * SessionConfigPanel (machine / folder / agent·model·effort / permission) and
- * reflects the *running* session's metadata.
+ * SessionHeaderChip is tapped. It groups the running session's metadata by
+ * responsibility: runtime location, next-turn execution, and management.
  *
  * Editability splits by what the running CLI process can actually change mid-
  * session: model / effort are per-turn meta (happy-cli re-reads them from each
  * outgoing message), so those rows are tappable and expand an inline option
  * list — the pick takes effect on the *next* turn. Permission mode also
  * persists onto future turns, and Codex can hot-apply it to the current turn
- * through a session RPC. machine / folder / agent are baked into the spawned
+ * through a session RPC. Machine / address / folder are baked into the spawned
  * process and can't change without a new session, so they stay read-only. Each
  * editable row only becomes tappable when it actually has more than one option
  * to choose from.
@@ -78,8 +56,15 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
     const { theme } = useUnistyles();
     const metadata = session.metadata;
     const flavor = metadata?.flavor ?? undefined;
-    const agentKey: AgentKey = (flavor && flavor in agentIcons ? flavor : 'claude') as AgentKey;
-    const agentLabel = AGENT_LABELS[agentKey] ?? agentKey;
+    const agentLabel = flavor === 'codex'
+        ? t('agentInput.agent.codex')
+        : flavor === 'gemini'
+            ? t('agentInput.agent.gemini')
+            : flavor === 'opencode'
+                ? t('agentInput.agent.opencode')
+                : flavor === 'openclaw'
+                    ? t('agentInput.agent.openclaw')
+                    : t('agentInput.agent.claude');
     const pathName = metadata?.path ? formatPathRelativeToHome(metadata.path, metadata.homeDir) : null;
     const infoExperience = React.useMemo(
         () => getRunningSessionInfoExperience(flavor),
@@ -99,6 +84,9 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
         : taskPermission.supported
             ? t('agentInput.taskPermission.confirm')
             : t('agentInput.taskPermission.unavailable');
+    const permissionValue = taskPermission.supported
+        ? permissionLabel
+        : taskPermission.unavailableReason ?? permissionLabel;
 
     const turnModes = React.useMemo(() => resolveRunningSessionTurnModes({
         session,
@@ -166,8 +154,85 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
     const copySessionId = React.useCallback(async () => {
         await Clipboard.setStringAsync(`Happy sessionId: ${session.id}`);
         onClose();
-        Modal.alert(t('common.copied'), 'Session ID copied to clipboard');
+        Modal.alert(t('common.copied'), t('sessionInfo.happySessionIdCopied'));
     }, [session.id, onClose]);
+
+    const renderRowText = (label: string, value: string) => (
+        <View style={styles.rowText}>
+            <Text style={styles.rowLabel} numberOfLines={1}>{label}</Text>
+            <Text style={styles.rowValue} numberOfLines={2}>{value}</Text>
+        </View>
+    );
+
+    const renderReadOnlyRow = (args: {
+        icon: React.ComponentProps<typeof Ionicons>['name'];
+        label: string;
+        testID: string;
+        value: string;
+    }) => (
+        <View
+            accessibilityLabel={`${args.label}: ${args.value}. ${t('sessionInfo.agentPanelReadOnly')}`}
+            style={styles.configRow}
+            testID={args.testID}
+        >
+            <Ionicons name={args.icon} size={16} color={theme.colors.textSecondary} />
+            {renderRowText(args.label, args.value)}
+            <Text style={styles.rowState}>{t('sessionInfo.agentPanelReadOnly')}</Text>
+        </View>
+    );
+
+    const renderEditableRow = (args: {
+        canEdit: boolean;
+        expanded: 'permission' | 'model' | 'effort';
+        icon: React.ComponentProps<typeof Ionicons>['name'];
+        label: string;
+        onPress: () => void;
+        testID: string;
+        value: string;
+    }) => {
+        const contents = (
+            <>
+                <Ionicons name={args.icon} size={16} color={theme.colors.textSecondary} />
+                {renderRowText(args.label, args.value)}
+                <Text style={[styles.rowState, args.canEdit && styles.rowStateEditable]}>
+                    {args.canEdit ? t('sessionInfo.agentPanelEditable') : t('sessionInfo.agentPanelReadOnly')}
+                </Text>
+                {args.canEdit ? (
+                    <Ionicons
+                        name={visibleExpanded === args.expanded ? 'chevron-up' : 'chevron-down'}
+                        size={13}
+                        color={theme.colors.textSecondary}
+                    />
+                ) : null}
+            </>
+        );
+
+        if (!args.canEdit) {
+            return (
+                <View
+                    accessibilityLabel={`${args.label}: ${args.value}. ${t('sessionInfo.agentPanelReadOnly')}`}
+                    style={styles.configRow}
+                    testID={args.testID}
+                >
+                    {contents}
+                </View>
+            );
+        }
+
+        return (
+            <Pressable
+                accessibilityHint={t('agentInput.taskPermission.changesNextMessages')}
+                accessibilityLabel={`${args.label}: ${args.value}`}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: visibleExpanded === args.expanded }}
+                style={(pressableState) => [styles.configRow, pressableState.pressed && styles.rowPressed]}
+                onPress={args.onPress}
+                testID={args.testID}
+            >
+                {contents}
+            </Pressable>
+        );
+    };
 
     // Inline option list shown under an expanded editable row.
     const renderOptions = (
@@ -183,6 +248,10 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                         key={opt.key}
                         style={(p) => [styles.optionRow, p.pressed && styles.rowPressed]}
                         onPress={() => void onSelect(opt.key)}
+                        accessibilityLabel={opt.name}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: isSelected }}
+                        testID={`session-agent-panel-${visibleExpanded}-option-${opt.key}`}
                     >
                         <Ionicons
                             name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
@@ -205,131 +274,119 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
         <>
             <Pressable style={[styles.backdrop, { top }]} onPress={onClose} />
             <View style={[styles.dropdown, { top }]}>
-                <View style={styles.configBox}>
-                    {/* Machine */}
-                    <View style={styles.configRow}>
-                        <Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} />
-                        <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
-                            {machineName ?? t('agentInput.noMachinesAvailable')}
-                        </Text>
-                        <View style={[styles.dot, { backgroundColor: online ? theme.colors.status.connected : theme.colors.status.disconnected }]} />
+                <View style={styles.configBox} testID="session-agent-panel">
+                    <View style={styles.section} testID="session-agent-panel-runtime-location">
+                        <Text style={styles.sectionTitle}>{t('sessionInfo.agentPanelRuntimeLocation')}</Text>
+                        <View style={styles.sectionBody}>
+                            {renderReadOnlyRow({
+                                icon: 'desktop-outline',
+                                label: t('sessionInfo.agentPanelMachineStatus'),
+                                testID: 'session-agent-panel-machine-status',
+                                value: `${machineName ?? t('agentInput.noMachinesAvailable')} · ${online ? t('status.online') : t('status.offline')}`,
+                            })}
+                            {renderReadOnlyRow({
+                                icon: 'globe-outline',
+                                label: t('sessionInfo.agentPanelAddress'),
+                                testID: 'session-agent-panel-address',
+                                value: metadata?.host ?? t('settingsAccount.notAvailable'),
+                            })}
+                            {renderReadOnlyRow({
+                                icon: 'folder-outline',
+                                label: t('sessionInfo.agentPanelWorkingDirectory'),
+                                testID: 'session-agent-panel-working-directory',
+                                value: pathName ?? t('settingsAccount.notAvailable'),
+                            })}
+                        </View>
                     </View>
 
-                    {/* Folder */}
-                    {infoExperience.showPath && pathName ? (
-                        <View style={styles.configRow}>
-                            <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
-                            <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
-                                {pathName}
-                            </Text>
-                        </View>
-                    ) : null}
-
-                    {/* Agent (read-only) · Model · Effort. Model/effort tap to expand. */}
-                    <View style={styles.configRow}>
-                        <View style={styles.configInlineField}>
-                            <RNImage
-                                source={agentIcons[agentKey]}
-                                style={[styles.agentIcon, { tintColor: theme.colors.textSecondary }]}
-                                resizeMode="contain"
-                            />
-                            <Text style={[styles.configLabel, styles.configInlineText]} numberOfLines={1}>
-                                {agentLabel}
-                            </Text>
-                        </View>
-                        {infoExperience.showModelDetails && modelMode?.name ? (
-                            <>
-                                <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
-                                {canEditModel ? (
-                                    <Pressable
-                                        onPress={() => toggle('model')}
-                                        style={(p) => [styles.configInlineField, p.pressed && styles.rowPressed]}
-                                    >
-                                        <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                            {modelMode.name}
-                                        </Text>
-                                        <Ionicons name={visibleExpanded === 'model' ? 'chevron-up' : 'chevron-down'} size={11} color={theme.colors.textSecondary} />
-                                    </Pressable>
-                                ) : (
-                                    <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                        {modelMode.name}
-                                    </Text>
-                                )}
-                            </>
-                        ) : null}
-                        {infoExperience.showModelDetails && effortLevel?.name ? (
-                            <>
-                                <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
-                                {canEditEffort ? (
-                                    <Pressable
-                                        onPress={() => toggle('effort')}
-                                        style={(p) => [styles.configInlineField, p.pressed && styles.rowPressed]}
-                                    >
-                                        <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                            {effortLevel.name}
-                                        </Text>
-                                        <Ionicons name={visibleExpanded === 'effort' ? 'chevron-up' : 'chevron-down'} size={11} color={theme.colors.textSecondary} />
-                                    </Pressable>
-                                ) : (
-                                    <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                        {effortLevel.name}
-                                    </Text>
-                                )}
-                            </>
-                        ) : null}
-                    </View>
-                    {infoExperience.showModelDetails && visibleExpanded === 'model' ? renderOptions(availableModels, modelMode?.key, applyModel) : null}
-                    {infoExperience.showModelDetails && visibleExpanded === 'effort' ? renderOptions(availableEffortLevels, effortLevel?.key, applyEffort) : null}
-
-                    {/* Permission mode — tap to expand when there's more than one. */}
-                    {infoExperience.showPermission ? (
-                        canEditPermission ? (
-                            <Pressable
-                                style={(p) => [styles.configRow, p.pressed && styles.rowPressed]}
-                                onPress={() => toggle('permission')}
-                            >
-                                <Ionicons name={permissionIcon(taskPermission.level)} size={15} color={theme.colors.textSecondary} />
-                                <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
-                                    {permissionLabel}
-                                </Text>
-                                <Ionicons name={visibleExpanded === 'permission' ? 'chevron-up' : 'chevron-down'} size={13} color={theme.colors.textSecondary} />
-                            </Pressable>
-                        ) : (
-                            <View style={styles.configRow}>
-                                <Ionicons name={permissionIcon(taskPermission.level)} size={15} color={theme.colors.textSecondary} />
-                                <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
-                                    {taskPermission.unavailableReason ?? permissionLabel}
-                                </Text>
+                    <View style={styles.section} testID="session-agent-panel-current-execution">
+                        <Text style={styles.sectionTitle}>{t('sessionInfo.agentPanelCurrentExecution')}</Text>
+                        {!online ? (
+                            <View style={styles.offlineNotice} testID="session-agent-panel-offline-notice">
+                                <Ionicons name="cloud-offline-outline" size={16} color={theme.colors.warning} />
+                                <Text style={styles.offlineNoticeText}>{t('sessionInfo.agentPanelOfflineNotice')}</Text>
                             </View>
-                        )
-                    ) : null}
-                    {infoExperience.showPermission && visibleExpanded === 'permission'
-                        ? renderOptions(permissionOptions, taskPermission.level ?? 'confirm', applyPermission)
-                        : null}
+                        ) : null}
+                        <View style={styles.sectionBody}>
+                            {renderReadOnlyRow({
+                                icon: 'terminal-outline',
+                                label: t('sessionInfo.agentPanelAgent'),
+                                testID: 'session-agent-panel-agent',
+                                value: agentLabel,
+                            })}
+                            {infoExperience.showModelDetails && modelMode?.name
+                                ? renderEditableRow({
+                                    canEdit: canEditModel,
+                                    expanded: 'model',
+                                    icon: 'hardware-chip-outline',
+                                    label: t('sessionInfo.agentPanelModel'),
+                                    onPress: () => toggle('model'),
+                                    testID: 'session-agent-panel-model',
+                                    value: modelMode.name,
+                                })
+                                : null}
+                            {infoExperience.showModelDetails && visibleExpanded === 'model'
+                                ? renderOptions(availableModels, modelMode?.key, applyModel)
+                                : null}
+                            {infoExperience.showModelDetails && effortLevel?.name
+                                ? renderEditableRow({
+                                    canEdit: canEditEffort,
+                                    expanded: 'effort',
+                                    icon: 'bulb-outline',
+                                    label: t('sessionInfo.agentPanelEffort'),
+                                    onPress: () => toggle('effort'),
+                                    testID: 'session-agent-panel-effort',
+                                    value: effortLevel.name,
+                                })
+                                : null}
+                            {infoExperience.showModelDetails && visibleExpanded === 'effort'
+                                ? renderOptions(availableEffortLevels, effortLevel?.key, applyEffort)
+                                : null}
+                            {infoExperience.showPermission
+                                ? renderEditableRow({
+                                    canEdit: canEditPermission,
+                                    expanded: 'permission',
+                                    icon: permissionIcon(taskPermission.level),
+                                    label: t('sessionInfo.agentPanelPermissions'),
+                                    onPress: () => toggle('permission'),
+                                    testID: 'session-agent-panel-permission',
+                                    value: permissionValue,
+                                })
+                                : null}
+                            {infoExperience.showPermission && visibleExpanded === 'permission'
+                                ? renderOptions(permissionOptions, taskPermission.level ?? 'confirm', applyPermission)
+                                : null}
+                        </View>
+                    </View>
 
-                    {/* Divider + entry into the full info screen (the one tappable row). */}
-                    <View style={styles.divider} />
-                    {canCopySessionId ? (
-                        <Pressable
-                            style={(p) => [styles.configRow, p.pressed && styles.rowPressed]}
-                            onPress={copySessionId}
-                        >
-                            <Ionicons name="copy-outline" size={15} color={theme.colors.text} />
-                            <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
-                                Copy Session ID
-                            </Text>
-                        </Pressable>
-                    ) : null}
-                    <Pressable
-                        style={(p) => [styles.configRow, p.pressed && styles.rowPressed]}
-                        onPress={onViewDetails}
-                    >
-                        <Ionicons name="information-circle-outline" size={15} color={theme.colors.text} />
-                        <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
-                            {t('sessionInfo.viewDetails')}
-                        </Text>
-                        <Ionicons name="chevron-forward" size={14} color={theme.colors.textSecondary} />
-                    </Pressable>
+                    <View style={styles.section} testID="session-agent-panel-session-management">
+                        <Text style={styles.sectionTitle}>{t('sessionInfo.agentPanelSessionManagement')}</Text>
+                        <View style={styles.sectionBody}>
+                            {canCopySessionId ? (
+                                <Pressable
+                                    accessibilityLabel={t('sessionInfo.happySessionId')}
+                                    accessibilityRole="button"
+                                    style={(p) => [styles.actionRow, p.pressed && styles.rowPressed]}
+                                    onPress={copySessionId}
+                                    testID="session-agent-panel-copy-session-id"
+                                >
+                                    <Ionicons name="copy-outline" size={16} color={theme.colors.text} />
+                                    <Text style={styles.actionLabel} numberOfLines={1}>{t('sessionInfo.happySessionId')}</Text>
+                                </Pressable>
+                            ) : null}
+                            <Pressable
+                                accessibilityLabel={t('sessionInfo.viewDetails')}
+                                accessibilityRole="button"
+                                style={(p) => [styles.actionRow, p.pressed && styles.rowPressed]}
+                                onPress={onViewDetails}
+                                testID="session-agent-panel-view-details"
+                            >
+                                <Ionicons name="information-circle-outline" size={16} color={theme.colors.text} />
+                                <Text style={styles.actionLabel} numberOfLines={1}>{t('sessionInfo.viewDetails')}</Text>
+                                <Ionicons name="chevron-forward" size={14} color={theme.colors.textSecondary} />
+                            </Pressable>
+                        </View>
+                    </View>
                 </View>
             </View>
         </>
@@ -348,17 +405,21 @@ const styles = StyleSheet.create((theme) => ({
         position: 'absolute',
         left: 0,
         right: 0,
+        alignItems: 'center',
         paddingHorizontal: 12,
         paddingTop: 8,
         zIndex: 11,
     },
     configBox: {
+        width: '100%',
+        maxWidth: 680,
         backgroundColor: theme.colors.input.background,
         borderRadius: Platform.select({ default: 16, android: 20 }),
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
-        paddingVertical: 4,
-        paddingHorizontal: 4,
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+        gap: 2,
         overflow: 'hidden',
         shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 4 },
@@ -366,13 +427,32 @@ const styles = StyleSheet.create((theme) => ({
         shadowRadius: 12,
         elevation: 8,
     },
+    section: {
+        gap: 4,
+    },
+    sectionTitle: {
+        paddingTop: 6,
+        paddingHorizontal: 10,
+        fontSize: 11,
+        lineHeight: 16,
+        letterSpacing: 0.5,
+        textTransform: 'uppercase',
+        color: theme.colors.textSecondary,
+        ...Typography.default('semiBold'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    },
+    sectionBody: {
+        borderRadius: 12,
+        backgroundColor: theme.colors.surface,
+        overflow: 'hidden',
+    },
     configRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
         minWidth: 0,
         paddingHorizontal: 12,
-        paddingVertical: 10,
+        paddingVertical: 8,
         borderRadius: 12,
     },
     rowPressed: {
@@ -389,34 +469,77 @@ const styles = StyleSheet.create((theme) => ({
         flex: 1,
         flexShrink: 1,
     },
-    configInlineField: {
+    rowText: {
+        flex: 1,
+        minWidth: 0,
+        gap: 1,
+    },
+    rowLabel: {
+        minWidth: 0,
+        fontSize: 11,
+        lineHeight: 14,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    },
+    rowValue: {
+        minWidth: 0,
+        fontSize: 14,
+        lineHeight: 18,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    },
+    rowState: {
+        flexShrink: 0,
+        fontSize: 10,
+        lineHeight: 14,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    },
+    rowStateEditable: {
+        color: theme.colors.accent,
+        ...Typography.default('semiBold'),
+    },
+    offlineNotice: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
+        gap: 8,
+        marginHorizontal: 2,
+        paddingHorizontal: 12,
+        paddingVertical: 9,
+        borderRadius: 12,
+        backgroundColor: theme.colors.warning + '14',
+    },
+    offlineNoticeText: {
+        flex: 1,
         minWidth: 0,
-        flexShrink: 1,
+        fontSize: 12,
+        lineHeight: 16,
+        color: theme.colors.text,
+        ...Typography.default('regular'),
     },
-    configInlineText: {
+    actionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
         minWidth: 0,
-        flexShrink: 1,
+        paddingHorizontal: 12,
+        paddingVertical: 11,
+        borderRadius: 12,
     },
-    agentIcon: {
-        width: 15,
-        height: 15,
-    },
-    dot: {
-        width: 7,
-        height: 7,
-        borderRadius: 3.5,
-    },
-    divider: {
-        height: StyleSheet.hairlineWidth,
-        backgroundColor: theme.colors.divider,
-        marginHorizontal: 12,
-        marginVertical: 2,
+    actionLabel: {
+        flex: 1,
+        minWidth: 0,
+        fontSize: 14,
+        lineHeight: 18,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
     },
     optionList: {
-        marginHorizontal: 8,
+        marginHorizontal: 6,
         marginBottom: 4,
         paddingVertical: 2,
         borderRadius: 12,
