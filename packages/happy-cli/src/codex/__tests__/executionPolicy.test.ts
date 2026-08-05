@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveCodexExecutionPolicy } from '../executionPolicy';
+import { isRemoteCodexPermissionMode, resolveCodexExecutionPolicy } from '../executionPolicy';
 
 describe('resolveCodexExecutionPolicy', () => {
     it('forces never + danger-full-access when sandbox is managed by Happy', () => {
@@ -41,6 +41,15 @@ describe('resolveCodexExecutionPolicy', () => {
         expect(policy).toEqual({
             approvalPolicy: 'never',
             sandbox: 'danger-full-access',
+        });
+    });
+
+    it('accepts the confirmation tier from remote messages and RPC calls', () => {
+        expect(isRemoteCodexPermissionMode('acceptEdits')).toBe(true);
+        expect(isRemoteCodexPermissionMode('totally-unsafe')).toBe(false);
+        expect(resolveCodexExecutionPolicy('acceptEdits', false)).toEqual({
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
         });
     });
 

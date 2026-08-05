@@ -133,12 +133,14 @@ type CreateE2ESessionOptions = {
     currentModelCode?: string;
     thoughtLevels?: Array<{ code: string; value: string; description?: string | null }>;
     currentThoughtLevelCode?: string;
+    currentOperatingModeCode?: string;
 };
 
 type CreateE2EUserMessageOptions = {
     text: string;
     model: string | null;
     effort: string | null;
+    permission: string;
 };
 
 async function createE2ESession(
@@ -163,6 +165,7 @@ async function createE2ESession(
         ...(options.currentModelCode ? { currentModelCode: options.currentModelCode } : {}),
         ...(options.thoughtLevels ? { thoughtLevels: options.thoughtLevels } : {}),
         ...(options.currentThoughtLevelCode ? { currentThoughtLevelCode: options.currentThoughtLevelCode } : {}),
+        ...(options.currentOperatingModeCode ? { currentOperatingModeCode: options.currentOperatingModeCode } : {}),
         lifecycleState: 'running',
         startedBy: 'terminal',
     }, encryptionKey));
@@ -208,6 +211,7 @@ async function createE2EUserMessage(
                             sentFrom: 'playwright-e2e',
                             model: options.model,
                             effort: options.effort,
+                            permissionMode: options.permission,
                         },
                     }, encryptionKey)),
                     localId: `composer-mode-e2e-${Date.now()}-${Math.random()}`,
@@ -708,13 +712,14 @@ test('跨项目命令搜索显示可执行命令与会话元数据', async ({ pa
     await expect(page.getByPlaceholder('Search files...')).toBeFocused();
 });
 
-test('每轮模型与推理强度在输入区、选择器和历史消息中保持一致', async ({ page, request }, testInfo) => {
+test('每轮权限、模型与推理强度在输入区、选择器和历史消息中保持一致', async ({ page, request }, testInfo) => {
     const sessionId = await createE2ESession(request, {
         path: '/workspace/composer-mode-e2e',
         host: 'playwright-model-host',
-        name: 'Composer model and effort visual regression',
-        summary: 'Validate per-turn model and reasoning effort',
+        name: 'Composer permission, model and effort visual regression',
+        summary: 'Validate per-turn permission, model and reasoning effort',
         flavor: 'codex',
+        currentOperatingModeCode: 'acceptEdits',
         models: [
             { code: 'gpt-5.5', value: 'gpt-5.5', description: 'Stable coding model' },
             { code: 'gpt-5.6-sol', value: 'gpt-5.6-sol', description: 'Current coding model' },
@@ -732,14 +737,16 @@ test('每轮模型与推理强度在输入区、选择器和历史消息中保�
         text: historicalMessage,
         model: 'gpt-5.5',
         effort: 'medium',
+        permission: 'acceptEdits',
     });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(authenticatedRoute(`/session/${sessionId}`));
     expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
     await expect(page.getByTestId('session-message-input')).toBeVisible();
-    await expect(page.getByTestId('message-composer-send-button')).toBeVisible();
+    await expect(page.locator('[data-testid="message-composer-send-button"]:visible')).toHaveCount(1);
     await expect(page.getByTestId('session-composer-mode-selector')).toHaveCount(0);
+    await expect(page.getByTestId('session-composer-permission-selector')).toHaveCount(0);
     await page.screenshot({
         path: testInfo.outputPath('mobile-composer-mode-001-after-390x844.png'),
         fullPage: true,
@@ -748,8 +755,14 @@ test('每轮模型与推理强度在输入区、选择器和历史消息中保�
     await page.setViewportSize({ width: 1280, height: 900 });
 
     const selector = page.locator('[data-testid="session-composer-mode-selector"]:visible');
+    const permissionSelector = page.locator('[data-testid="session-composer-permission-selector"]:visible');
+    const permissionTrigger = permissionSelector.getByTestId('session-composer-permission-trigger');
     const modelTrigger = selector.getByTestId('session-composer-model-trigger');
     const effortTrigger = selector.getByTestId('session-composer-effort-trigger');
+    await expect(permissionSelector).toBeVisible();
+    await expect(permissionTrigger).toContainText('Ask first');
+    await expect(permissionTrigger).toHaveAttribute('aria-label', 'Permissions: Needs confirmation');
+    await expect(permissionTrigger).toHaveAttribute('aria-expanded', 'false');
     await expect(selector).toBeVisible();
     await expect(modelTrigger).toContainText('gpt-5.6-sol');
     await expect(modelTrigger).toHaveAttribute('aria-label', 'MODEL: gpt-5.6-sol');
@@ -758,12 +771,75 @@ test('每轮模型与推理强度在输入区、选择器和历史消息中保�
 
     await expect(page.getByText(historicalMessage, { exact: true })).toBeVisible();
     const historicalModeLabel = page.getByTestId(/^message-user-mode-/).filter({
-        hasText: 'gpt-5.5 · medium',
+        hasText: 'Needs confirmation · gpt-5.5 · medium',
     });
     await expect(historicalModeLabel).toHaveCount(1);
-    await expect(historicalModeLabel).toHaveText('gpt-5.5 · medium');
+    await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
     await page.screenshot({
         path: testInfo.outputPath('pc-composer-mode-001-after-1280x900.png'),
+        fullPage: true,
+    });
+
+    await permissionTrigger.click();
+    const permissionPicker = page.getByTestId('session-composer-permission-picker');
+    const confirmPermission = page.getByTestId('session-composer-permission-option-confirm');
+    const fullAccessPermission = page.getByTestId('session-composer-permission-option-full-access');
+    await expect(permissionPicker).toBeVisible();
+    await expect(permissionTrigger).toHaveAttribute('aria-expanded', 'true');
+    await expect(confirmPermission).toBeChecked();
+    await expect(fullAccessPermission).not.toBeChecked();
+    await expect(permissionPicker.getByText(
+        'Uses the agent confirmation flow for actions that need extra permission. Device and outer sandbox limits still apply.',
+        { exact: true },
+    )).toBeVisible();
+    await expect(permissionPicker.getByText(
+        'Bypasses agent confirmations where supported. Device and outer sandbox limits still apply.',
+        { exact: true },
+    )).toBeVisible();
+    await page.waitForTimeout(350); // Let the picker fade-in finish before visual evidence capture.
+    await page.screenshot({
+        path: testInfo.outputPath('pc-composer-permission-001-after-1280x900.png'),
+        fullPage: true,
+    });
+
+    await fullAccessPermission.click();
+    await expect(page.getByText('Enable full access?', { exact: true })).toBeVisible();
+    await expect(page.getByText(
+        'Full access bypasses agent confirmations where supported, including for potentially high-risk actions. It does not override device or outer sandbox limits. Only continue if you trust this task.',
+        { exact: true },
+    )).toBeVisible();
+    await page.waitForTimeout(350); // Let the risk modal fade-in finish before visual evidence capture.
+    await page.screenshot({
+        path: testInfo.outputPath('pc-composer-permission-002-after-1280x900.png'),
+        fullPage: true,
+    });
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(page.getByText('Enable full access?', { exact: true })).toHaveCount(0);
+    await expect(permissionTrigger).toContainText('Ask first');
+    await expect(permissionTrigger).toBeFocused();
+
+    await permissionTrigger.click();
+    await page.getByTestId('session-composer-permission-option-full-access').click();
+    await expect(page.getByText('Enable full access?', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Enable full access', exact: true }).click();
+    await expect(permissionTrigger).toContainText('Full');
+    await expect(permissionTrigger).toHaveAttribute('aria-label', 'Permissions: Full access');
+    await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
+    await page.screenshot({
+        path: testInfo.outputPath('pc-composer-permission-003-after-1280x900.png'),
+        fullPage: true,
+    });
+
+    await permissionTrigger.click();
+    await page.getByTestId('session-composer-permission-option-confirm').click();
+    await expect(permissionTrigger).toContainText('Ask first');
+    await permissionTrigger.click();
+    await page.getByTestId('session-composer-permission-option-full-access').click();
+    await expect(page.getByText('Enable full access?', { exact: true })).toHaveCount(0);
+    await expect(permissionTrigger).toContainText('Full');
+    await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
+    await page.screenshot({
+        path: testInfo.outputPath('pc-composer-permission-004-after-1280x900.png'),
         fullPage: true,
     });
 

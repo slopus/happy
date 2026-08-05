@@ -17,6 +17,21 @@ describe('resolveMessageModeMeta', () => {
         });
     });
 
+    it.each(['openai', 'gpt'])('uses Codex permission defaults for legacy %s flavors', (flavor) => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor },
+        } as any, {
+            agentDefaultOverrides: {
+                codex: { permissionMode: 'acceptEdits' },
+            },
+        } as any);
+
+        expect(meta.permissionMode).toBe('acceptEdits');
+    });
+
     it('sends explicit per-session overrides', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: 'read-only',
@@ -27,6 +42,7 @@ describe('resolveMessageModeMeta', () => {
 
         expect(meta).toEqual({
             permissionMode: 'read-only',
+            permissionModeExplicit: true,
             model: 'gpt-5.4',
             effort: 'high',
         });
@@ -115,6 +131,7 @@ describe('resolveMessageModeMeta', () => {
 
         expect(meta).toEqual({
             permissionMode: 'default',
+            permissionModeExplicit: true,
             model: 'gpt-5.4',
             effort: 'xhigh',
         });
@@ -128,7 +145,7 @@ describe('resolveMessageModeMeta', () => {
             metadata: { flavor: 'claude' },
         } as any);
 
-        expect(meta).toEqual({ model: null, effort: 'medium' });
+        expect(meta).toEqual({ permissionMode: 'bypassPermissions', model: null, effort: 'medium' });
     });
 
     it('treats an explicit default effort as a reset override', () => {
@@ -169,9 +186,9 @@ describe('resolveMessageModeMeta', () => {
     });
 
     it.each([
-        { flavor: 'gemini', expectedModel: 'gemini-2.5-pro' },
-        { flavor: 'opencode', expectedModel: 'sub2api/gpt-5.5' },
-    ])('drops unsupported effort metadata for $flavor even when ACP reports thought levels', ({ flavor, expectedModel }) => {
+        { flavor: 'gemini', expected: { permissionMode: 'default', model: 'gemini-2.5-pro' } },
+        { flavor: 'opencode', expected: { model: 'sub2api/gpt-5.5' } },
+    ])('drops unsupported effort metadata for $flavor even when ACP reports thought levels', ({ flavor, expected }) => {
         const meta = resolveMessageModeMeta({
             permissionMode: null,
             modelMode: null,
@@ -186,6 +203,6 @@ describe('resolveMessageModeMeta', () => {
             },
         } as any);
 
-        expect(meta).toEqual({ model: expectedModel });
+        expect(meta).toEqual(expected);
     });
 });

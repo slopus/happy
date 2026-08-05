@@ -27,6 +27,10 @@ import {
     SessionComposerModeSelector,
     type SessionComposerModeSelectorConfig,
 } from './SessionComposerModeSelector';
+import {
+    SessionComposerPermissionSelector,
+    type SessionComposerPermissionSelectorConfig,
+} from './SessionComposerPermissionSelector';
 
 interface MessageComposerProps {
     // Drives layout differences between the home compose box and the in-session
@@ -82,6 +86,8 @@ interface MessageComposerProps {
     zenMode?: boolean;
     /** Running-session model/effort controls. Picks affect future messages only. */
     modeSelector?: SessionComposerModeSelectorConfig;
+    /** Friendly per-turn permission controls. Picks affect future messages only. */
+    permissionSelector?: SessionComposerPermissionSelectorConfig;
     /** Image attachments waiting to be sent (expImageUpload feature). */
     selectedImages?: AttachmentPreview[];
     selectedImagesPresentation?: AttachmentGalleryPresentation;
@@ -1110,8 +1116,15 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     </View>
                                 )}
 
-                                {/* The inline mode picker is a desktop affordance. Narrow Web and native
-                                    layouts keep the original composer and use the existing session menu. */}
+                                {/* Inline execution controls are desktop affordances. Narrow Web and native
+                                    layouts keep the compact composer and use the existing session menu. */}
+                                {isSession && props.permissionSelector && supportsDesktopComposerModeSelector({
+                                    isWeb: Platform.OS === 'web',
+                                    windowWidth: screenWidth,
+                                }) ? (
+                                    <SessionComposerPermissionSelector {...props.permissionSelector} />
+                                ) : null}
+
                                 {isSession && props.modeSelector && supportsDesktopComposerModeSelector({
                                     isWeb: Platform.OS === 'web',
                                     windowWidth: screenWidth,

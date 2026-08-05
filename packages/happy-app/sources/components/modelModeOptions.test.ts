@@ -5,6 +5,7 @@ import {
     getEffortLevelsForModel,
     getCodexModelModes,
     getClaudePermissionModes,
+    getGeminiPermissionModes,
     getDefaultEffortKey,
     getDefaultModelKey,
     getDefaultPermissionModeKey,
@@ -45,6 +46,16 @@ describe('modelModeOptions', () => {
         ]);
         expect(models[0].name).toBe('default model');
         expect(models[1].name).toBe('gpt-5.6-sol');
+    });
+
+    it('only exposes Gemini permission modes that the CLI accepts', () => {
+        expect(getGeminiPermissionModes(translate).map((mode) => mode.key)).toEqual(['default', 'yolo']);
+        expect(getAvailablePermissionModes('gemini', {
+            operatingModes: [
+                { code: 'auto_edit', value: 'Auto edit', description: null },
+                { code: 'plan', value: 'Plan', description: null },
+            ],
+        } as any, translate).map((mode) => mode.key)).toEqual(['default', 'yolo']);
     });
 
     it('uses code defaults for agent defaults', () => {
@@ -119,8 +130,8 @@ describe('modelModeOptions', () => {
         expect(modes.map((mode) => mode.key)).toEqual(['default', 'read-only', 'safe-yolo', 'yolo']);
     });
 
-    it('applies hacks to metadata-provided operating modes', () => {
-        const modes = getAvailablePermissionModes('gemini', {
+    it('applies hacks to metadata-provided operating modes for custom ACP agents', () => {
+        const modes = getAvailablePermissionModes('custom-acp', {
             operatingModes: [
                 { code: 'build', value: 'build, build', description: 'Do build steps' },
                 { code: 'plan', value: 'plan/plan', description: 'Plan first' },

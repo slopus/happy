@@ -14,7 +14,7 @@ import { layout } from "./layout";
 import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
 import { getAutoFoldPromptBodyRenderState, getAutoFoldPromptInfo } from '@/utils/autoFoldPrompt';
 import { ConversationActivityStrip } from './ConversationActivityStrip';
-import { getMessageModelEffortLabel } from '@/utils/messageModelEffort';
+import { getMessageExecutionModeLabel } from '@/utils/messageExecutionMode';
 
 
 export const MessageView = React.memo((props: {
@@ -100,7 +100,7 @@ function UserTextBlock(props: {
   const rewindPointId = props.message.claudeUuid ?? props.message.codexItemId;
   const canFork = Boolean(props.onForkFromUserMessage)
     && (Boolean(rewindPointId) || props.metadata?.flavor === 'codex');
-  const modeLabel = getMessageModelEffortLabel(props.message.meta, props.metadata?.flavor);
+  const modeLabel = getMessageExecutionModeLabel(props.message.meta, props.metadata?.flavor, t);
   const handleLongPress = React.useCallback(() => {
     if (props.onForkFromUserMessage) {
       props.onForkFromUserMessage(props.message.id, rewindPointId, props.message.text);

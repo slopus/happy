@@ -71,9 +71,7 @@ export function getCodexPermissionModes(translate: Translate): PermissionMode[] 
 export function getGeminiPermissionModes(translate: Translate): PermissionMode[] {
     return [
         { key: 'default', name: translate('agentInput.geminiPermissionMode.default'), description: null },
-        { key: 'auto_edit', name: translate('agentInput.geminiPermissionMode.autoEdit'), description: null },
         { key: 'yolo', name: translate('agentInput.geminiPermissionMode.yolo'), description: null },
-        { key: 'plan', name: translate('agentInput.geminiPermissionMode.plan'), description: null },
     ];
 }
 
@@ -204,7 +202,7 @@ export function getAvailablePermissionModes(
     metadata: Metadata | null | undefined,
     translate: Translate,
 ): PermissionMode[] {
-    if (flavor === 'claude' || flavor === 'codex' || flavor === 'opencode' || flavor === 'openclaw') {
+    if (flavor === 'claude' || flavor === 'codex' || flavor === 'gemini' || flavor === 'opencode' || flavor === 'openclaw') {
         return hackModes(getHardcodedPermissionModes(flavor, translate));
     }
 

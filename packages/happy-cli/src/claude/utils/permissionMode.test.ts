@@ -104,6 +104,18 @@ describe('resolveRemoteClaudePermissionMode', () => {
         expect(resolveRemoteClaudePermissionMode('yolo', 'default', false)).toBe('yolo');
     });
 
+    it('allows an explicit per-session selection to switch bypassPermissions back to default', () => {
+        expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'default', false, true)).toBe('default');
+    });
+
+    it('allows an explicit per-session selection to switch yolo back to default', () => {
+        expect(resolveRemoteClaudePermissionMode('yolo', 'default', false, true)).toBe('default');
+    });
+
+    it('keeps sandbox policy when an explicit selection requests default', () => {
+        expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'default', true, true)).toBe('bypassPermissions');
+    });
+
     it('still allows explicit plan mode after bypassPermissions was active', () => {
         expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'plan', false)).toBe('plan');
     });
