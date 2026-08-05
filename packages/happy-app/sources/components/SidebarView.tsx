@@ -7,7 +7,6 @@ import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus, useFriendRequests, useProfile, useLocalSetting } from '@/sync/storage';
 import { getDisplayName } from '@/sync/profile';
 import { MainView } from './MainView';
-import { ProfileAvatarControl } from './ProfileAvatarControl';
 import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +15,7 @@ import { useDrawerHaptics } from './useDrawerHaptics';
 import { AgentSheet } from './agents/AgentSheet';
 import { useAgentSpace } from '@/hooks/useAgentSpace';
 import { AgentSpaceWorkbench } from './agents/AgentSpaceWorkbench';
+import { SidebarAccountMenu } from './SidebarAccountMenu';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -98,53 +98,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         ...Typography.default('semiBold'),
     },
-    userCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginHorizontal: 16,
-        marginTop: 8,
-        marginBottom: 6,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: 12,
-        backgroundColor: theme.colors.surface,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.divider,
-        gap: 12,
-    },
-    userCardPressed: {
-        backgroundColor: theme.colors.surfacePressed,
-    },
-    userCardDesktop: {
-        marginHorizontal: 10,
-        marginTop: 3,
-        marginBottom: 2,
-        paddingVertical: 5,
-        paddingHorizontal: 9,
-        borderRadius: 10,
-        gap: 9,
-    },
-    userInfoButton: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        minHeight: 40,
-    },
-    userInfoButtonPressed: {
-        opacity: 0.7,
-    },
-    userInfoButtonDesktop: {
-        minHeight: 32,
-        gap: 8,
-    },
-    userName: {
-        flex: 1,
-        fontSize: 15,
-        fontWeight: '600',
-        color: theme.colors.text,
-        ...Typography.default('semiBold'),
-    },
     agentsCard: {
         marginHorizontal: 16,
         marginTop: 4,
@@ -218,6 +171,17 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         ...Typography.default(),
     },
+    accountMenuDismissLayer: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        zIndex: 10,
+    },
+    accountMenuFooterSlot: {
+        zIndex: 20,
+    },
 }));
 
 interface SidebarViewProps {
@@ -239,6 +203,7 @@ export const SidebarView = React.memo(({
     const profile = useProfile();
     const agents = useLocalSetting('agents');
     const [sheetOpen, setSheetOpen] = React.useState(false);
+    const [accountMenuOpen, setAccountMenuOpen] = React.useState(false);
     const { agent: spaceAgent, exit: exitSpace } = useAgentSpace();
     const displayName = getDisplayName(profile) ?? t('settings.title');
 
@@ -282,21 +247,15 @@ export const SidebarView = React.memo(({
             style={[styles.container, { paddingTop: safeArea.top + (desktopDensity ? 4 : 12) }]}
             testID={desktopDensity ? 'sidebar-desktop-density' : undefined}
         >
-            {/* User card — avatar opens the photo, camera changes it, the rest opens settings. */}
-            <View style={[styles.userCard, desktopDensity && styles.userCardDesktop]} testID="sidebar-user-card">
-                <ProfileAvatarControl profile={profile} size={desktopDensity ? 32 : 40} />
+            {accountMenuOpen ? (
                 <Pressable
-                    onPress={() => go('/settings')}
-                    style={({ pressed }) => [
-                        styles.userInfoButton,
-                        desktopDensity && styles.userInfoButtonDesktop,
-                        pressed && styles.userInfoButtonPressed,
-                    ]}
-                >
-                    <Text style={styles.userName} numberOfLines={1}>{displayName}</Text>
-                    <Ionicons name="settings-outline" size={18} color={stylesheet.userName.color} />
-                </Pressable>
-            </View>
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                    onPress={() => setAccountMenuOpen(false)}
+                    style={styles.accountMenuDismissLayer}
+                    testID="sidebar-account-menu-dismiss-layer"
+                />
+            ) : null}
 
             {/* Messages / friends (formerly the Inbox tab) */}
             <Pressable
@@ -378,6 +337,19 @@ export const SidebarView = React.memo(({
 
             {/* Sessions list */}
             <MainView variant="sidebar" />
+
+            {/* Low-frequency account and system actions stay anchored below the work list. */}
+            <View style={[styles.accountMenuFooterSlot, { paddingBottom: safeArea.bottom }]}>
+                <SidebarAccountMenu
+                    desktopDensity={desktopDensity}
+                    displayName={displayName}
+                    onNavigate={go}
+                    onOpenChange={setAccountMenuOpen}
+                    open={accountMenuOpen}
+                    profile={profile}
+                    unreadCount={friendRequests.length}
+                />
+            </View>
 
             {/* Bottom drawer listing the user's agents (RN Modal — placement in tree is irrelevant) */}
             <AgentSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} />

@@ -360,21 +360,21 @@ test('Web 账户页不会让用户触发不支持的推送重新注册', async (
     ).toHaveCount(0);
 });
 
-test('桌面侧栏导航控件不覆盖用户卡片', async ({ page }) => {
+test('桌面侧栏导航控件不覆盖底部账户入口', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(authenticatedWebUrl);
 
     await expect(page.getByRole('textbox')).toBeVisible();
 
     const zenButton = page.locator('[data-testid="desktop-navigation-controls"]');
-    const sidebarCard = page.locator('[data-testid="sidebar-user-card"]');
+    const accountFooter = page.locator('[data-testid="sidebar-account-footer"]');
     await expect(zenButton).toHaveCount(1);
-    await expect(sidebarCard).toHaveCount(1);
+    await expect(accountFooter).toHaveCount(1);
     const controls = await zenButton.boundingBox();
-    const card = await sidebarCard.boundingBox();
+    const footer = await accountFooter.boundingBox();
     expect(controls).not.toBeNull();
-    expect(card).not.toBeNull();
-    expect(controls!.x).toBeGreaterThanOrEqual(card!.x + card!.width);
+    expect(footer).not.toBeNull();
+    expect(controls!.x).toBeGreaterThanOrEqual(footer!.x + footer!.width);
 
     await page.screenshot({ path: 'test-results/desktop-sidebar-navigation.png', fullPage: true });
 });
@@ -386,7 +386,7 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
 
     const sidebarToggle = page.getByTestId('desktop-navigation-sidebar-button');
     const zenToggle = page.getByTestId('desktop-navigation-zen-button');
-    const sidebarCard = page.getByTestId('sidebar-user-card');
+    const accountFooter = page.getByTestId('sidebar-account-footer');
 
     if (await zenToggle.getAttribute('aria-selected') === 'true') {
         await zenToggle.click();
@@ -521,7 +521,7 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
     await sidebarToggle.click();
     await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'false');
     await expect.poll(async () => {
-        const box = await sidebarCard.boundingBox();
+        const box = await accountFooter.boundingBox();
         return box ? box.x + box.width : 0;
     }).toBeLessThanOrEqual(0);
 
@@ -687,14 +687,57 @@ test('手机首页保留菜单按钮并能打开抽屉', async ({ page }) => {
     await expect(page.getByRole('textbox')).toBeVisible();
 
     const phoneDrawerButton = page.getByTestId('compose-home-drawer-button');
-    const sidebarCard = page.getByTestId('sidebar-user-card');
+    const accountFooter = page.getByTestId('sidebar-account-footer');
     await expect(phoneDrawerButton).toBeVisible();
-    const closedSidebarBox = await sidebarCard.boundingBox();
+    const closedSidebarBox = await accountFooter.boundingBox();
     expect(closedSidebarBox).not.toBeNull();
     expect(closedSidebarBox!.x + closedSidebarBox!.width).toBeLessThanOrEqual(0);
 
     await phoneDrawerButton.click();
-    await expect.poll(async () => (await sidebarCard.boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
+    await expect.poll(async () => (await accountFooter.boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
+});
+
+test('侧栏底部账户菜单统一提供身份与系统操作并恢复焦点', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(authenticatedWebUrl);
+    await expect(page.getByRole('textbox')).toBeVisible();
+
+    const footer = page.getByTestId('sidebar-account-footer');
+    const trigger = page.getByTestId('sidebar-account-trigger');
+    await expect(footer).toBeVisible();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    const footerBox = await footer.boundingBox();
+    const viewport = page.viewportSize();
+    expect(footerBox).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(footerBox!.y + footerBox!.height).toBeLessThanOrEqual(viewport!.height);
+    expect(footerBox!.y).toBeGreaterThan(viewport!.height / 2);
+
+    await trigger.click();
+    const menu = page.getByTestId('sidebar-account-menu');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await expect(menu).toBeVisible();
+    await expect(page.getByTestId('sidebar-account-profile-action')).toBeFocused();
+    await expect(page.getByTestId('sidebar-account-settings-action')).toBeVisible();
+    await expect(page.getByTestId('sidebar-account-details-action')).toBeVisible();
+    await expect(page.getByTestId('sidebar-account-help-action')).toBeVisible();
+    await expect(page.getByTestId('sidebar-account-logout-action')).toBeVisible();
+    await page.screenshot({
+        path: testInfo.outputPath('desktop-account-menu-after-1280x900.png'),
+        fullPage: true,
+    });
+
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+
+    await page.setViewportSize({ width: 799, height: 900 });
+    await page.goto(authenticatedWebUrl);
+    await page.getByTestId('compose-home-drawer-button').click();
+    await expect(page.getByTestId('sidebar-account-trigger')).toBeVisible();
+    await page.getByTestId('sidebar-account-trigger').click();
+    await expect(page.getByTestId('sidebar-account-menu')).toBeVisible();
 });
 
 for (const width of [800, 1280]) {
