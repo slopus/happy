@@ -75,7 +75,6 @@ function AttachmentThumbnail({
     theme: any;
 }) {
     const windowDimensions = useWindowDimensions();
-    const isMedia = image.kind === 'audio' || image.kind === 'video';
     const [mediaExpanded, setMediaExpanded] = React.useState(false);
     // Build placeholder from thumbhash if available (hook must run before any
     // early return to keep hook order stable).
@@ -85,10 +84,40 @@ function AttachmentThumbnail({
         return uri ? { uri } : undefined;
     }, [image.thumbhash]);
 
-    // Audio/video have no thumbnail — render a compact card with an icon and the
-    // filename instead of trying (and failing) to load the file uri as an image.
-    if (isMedia) {
-        const kind = image.kind as 'audio' | 'video';
+    if (image.kind === 'video') {
+        const videoWidth = Math.max(240, Math.min(480, windowDimensions.width - 64));
+        return (
+            <View testID="media-attachment-inline-pending" style={[styles.inlineVideoContainer, { width: videoWidth }]}>
+                <MediaAttachmentPlayer
+                    uri={image.uri}
+                    headers={EMPTY_HEADERS}
+                    title={image.name}
+                    kind="video"
+                    mimeType={image.mimeType}
+                    testID="media-attachment-player-pending"
+                />
+                <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t('common.delete')}
+                    onPress={() => onRemove(image.id)}
+                    hitSlop={6}
+                    style={(p) => [
+                        styles.videoRemoveButton,
+                        {
+                            backgroundColor: theme.colors.surfaceHigh,
+                            borderColor: theme.colors.divider,
+                            opacity: p.pressed ? 0.7 : 1,
+                        },
+                    ]}
+                >
+                    <Ionicons name="close" size={12} color={theme.colors.text} />
+                </Pressable>
+            </View>
+        );
+    }
+
+    // Audio keeps its compact identity card because it has no visual frame.
+    if (image.kind === 'audio') {
         const cardLabel = mediaExpanded
             ? t('imageUpload.mediaCollapse', { name: image.name })
             : t('imageUpload.mediaPlay', { name: image.name });
@@ -108,7 +137,7 @@ function AttachmentThumbnail({
                     ]}
                 >
                     <Ionicons
-                        name={kind === 'audio' ? 'musical-notes' : 'videocam'}
+                        name="musical-notes"
                         size={22}
                         color={theme.colors.text}
                     />
@@ -117,7 +146,7 @@ function AttachmentThumbnail({
                             {image.name}
                         </Text>
                         <Text numberOfLines={1} style={[styles.mediaType, { color: theme.colors.textSecondary }]}>
-                            {kind === 'audio' ? t('imageUpload.mediaAudio') : t('imageUpload.mediaVideo')}
+                            {t('imageUpload.mediaAudio')}
                         </Text>
                     </View>
                     <Ionicons
@@ -132,7 +161,7 @@ function AttachmentThumbnail({
                             uri={image.uri}
                             headers={EMPTY_HEADERS}
                             title={image.name}
-                            kind={kind}
+                            kind="audio"
                             mimeType={image.mimeType}
                             testID="media-attachment-player-pending"
                         />
@@ -231,6 +260,11 @@ const styles = StyleSheet.create(() => ({
     mediaContainerExpanded: {
         height: 252,
     },
+    inlineVideoContainer: {
+        maxWidth: 480,
+        position: 'relative',
+        overflow: 'visible',
+    },
     mediaCard: {
         width: 300,
         height: THUMB_SIZE,
@@ -279,6 +313,18 @@ const styles = StyleSheet.create(() => ({
         position: 'absolute',
         top: -6,
         right: -6,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        borderWidth: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10,
+    },
+    videoRemoveButton: {
+        position: 'absolute',
+        top: -6,
+        left: -6,
         width: 20,
         height: 20,
         borderRadius: 10,

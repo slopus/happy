@@ -26,19 +26,6 @@ async function pauseForRecordedReview(page: Page, duration = 650): Promise<void>
     }
 }
 
-async function installFullscreenProbe(page: Page): Promise<void> {
-    await page.addInitScript(() => {
-        Object.defineProperty(Element.prototype, 'requestFullscreen', {
-            configurable: true,
-            value: function requestFullscreenProbe() {
-                const state = window as typeof window & { __pawsFullscreenRequests?: number };
-                state.__pawsFullscreenRequests = (state.__pawsFullscreenRequests ?? 0) + 1;
-                return Promise.resolve();
-            },
-        });
-    });
-}
-
 async function fulfillMp4Route(route: Route, fixture: Buffer): Promise<void> {
     const range = route.request().headers().range;
     const match = range?.match(/^bytes=(\d+)-(\d*)$/);
@@ -60,17 +47,14 @@ async function fulfillMp4Route(route: Route, fixture: Buffer): Promise<void> {
     });
 }
 
-async function exerciseVideoCard(page: Page, cardTestId: string, playerTestId: string): Promise<void> {
-    const card = page.getByTestId(cardTestId);
-    await expect(card).toBeVisible();
-    await expect(card).toHaveAttribute('aria-expanded', 'false');
-    await pauseForRecordedReview(page, 900);
-
-    await card.click();
-    await expect(card).toHaveAttribute('aria-expanded', 'true');
+async function exerciseInlineVideo(page: Page, playerTestId: string): Promise<void> {
     const player = page.getByTestId(playerTestId);
     const video = player.locator('video');
     await expect(player).toBeVisible();
+    const playerBox = await player.boundingBox();
+    if (!playerBox) throw new Error('找不到消息中的内联视频播放器');
+    expect(playerBox.width).toBeGreaterThanOrEqual(300);
+    expect(playerBox.width / playerBox.height).toBeCloseTo(16 / 9, 1);
     await expect(video).toHaveAttribute('controls', '');
     await expect.poll(() => video.evaluate((element) => {
         const media = element as HTMLVideoElement;
@@ -126,16 +110,17 @@ async function exerciseVideoCard(page: Page, cardTestId: string, playerTestId: s
     const timeAfterSeek = await video.evaluate((element) => (element as HTMLVideoElement).currentTime);
     expect(Math.abs(timeAfterSeek - seekedTime)).toBeLessThan(0.2);
 
-    await page.getByTestId(`${playerTestId}-fullscreen`).click();
-    await expect.poll(() => page.evaluate(() => (
-        window as typeof window & { __pawsFullscreenRequests?: number }
-    ).__pawsFullscreenRequests ?? 0)).toBeGreaterThan(0);
+    const nativeFullscreenPosition = { x: videoBox.width - 72, y: videoBox.height - 48 };
+    await video.hover({ position: nativeFullscreenPosition });
+    await video.click({ position: nativeFullscreenPosition });
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName ?? null)).toBe('VIDEO');
     await pauseForRecordedReview(page);
-
-    await card.click();
-    await expect(card).toHaveAttribute('aria-expanded', 'false');
-    await expect(player).toHaveCount(0);
-    await pauseForRecordedReview(page);
+    const fullscreenBox = await video.boundingBox();
+    if (!fullscreenBox) throw new Error('找不到全屏视频的原生控件区域');
+    const nativeExitFullscreenPosition = { x: fullscreenBox.width - 72, y: fullscreenBox.height - 48 };
+    await video.hover({ position: nativeExitFullscreenPosition });
+    await video.click({ position: nativeExitFullscreenPosition });
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName ?? null)).toBe(null);
 }
 
 type CreateE2ESessionOptions = {
@@ -1932,11 +1917,10 @@ test.describe('中文 Web 消息与工具演示', () => {
         });
     });
 
-    test('[MP4-AGENT] send_file 输出卡片支持展开播放、全屏入口与收起', async ({ page }, testInfo) => {
+    test('[MP4-AGENT] send_file 输出直接呈现裸视频并支持播放与跳播', async ({ page }, testInfo) => {
         const fixturePath = process.env.HAPPY_E2E_MP4_PATH;
         if (!fixturePath) throw new Error('缺少 HAPPY_E2E_MP4_PATH');
         const fixture = fs.readFileSync(fixturePath);
-        await installFullscreenProbe(page);
         await page.route('**/v1/sessions/demo-messages-session/attachments/request-download', async (route) => {
             await route.fulfill({
                 status: 200,
@@ -1948,23 +1932,19 @@ test.describe('中文 Web 消息与工具演示', () => {
 
         await page.setViewportSize({ width: 800, height: 900 });
         await page.goto(authenticatedRoute('/dev/messages-demo'));
-        await expect(page.getByText('agent-output.mp4', { exact: true })).toBeVisible();
-        await page.screenshot({ path: testInfo.outputPath('mp4-agent-before.png'), fullPage: true });
-
-        await exerciseVideoCard(page, 'media-attachment-card-generated', 'media-attachment-player-generated');
-
-        const card = page.getByTestId('media-attachment-card-generated');
-        await card.click();
         await expect(page.getByTestId('media-attachment-player-generated')).toBeVisible();
+        await expect(page.getByTestId('media-attachment-card-generated')).toHaveCount(0);
+        await expect(page.getByText('agent-output.mp4', { exact: true })).toHaveCount(0);
+        await expect(page.getByText('file', { exact: true })).toHaveCount(0);
+
+        await exerciseInlineVideo(page, 'media-attachment-player-generated');
         await pauseForRecordedReview(page, 1_100);
         await page.screenshot({ path: testInfo.outputPath('mp4-agent-after.png'), fullPage: true });
-        await card.click();
     });
 
-    test('[MP4-USER] 选择与发送 MP4 前后均支持卡片播放闭环', async ({ page, request }, testInfo) => {
+    test('[MP4-USER] 选择与发送 MP4 前后均直接呈现裸视频', async ({ page, request }, testInfo) => {
         const fixturePath = process.env.HAPPY_E2E_MP4_PATH;
         if (!fixturePath) throw new Error('缺少 HAPPY_E2E_MP4_PATH');
-        await installFullscreenProbe(page);
         const sessionId = await createE2ESession(request);
 
         await page.setViewportSize({ width: 1280, height: 720 });
@@ -1977,21 +1957,18 @@ test.describe('中文 Web 消息与工具演示', () => {
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles(fixturePath);
 
-        await expect(page.getByText(path.basename(fixturePath), { exact: true })).toBeVisible();
-        await page.screenshot({ path: testInfo.outputPath('mp4-user-before.png'), fullPage: true });
+        await expect(page.getByTestId('media-attachment-player-pending')).toBeVisible();
+        await expect(page.getByTestId('media-attachment-card-pending')).toHaveCount(0);
+        await expect(page.getByText(path.basename(fixturePath), { exact: true })).toHaveCount(0);
 
-        await exerciseVideoCard(page, 'media-attachment-card-pending', 'media-attachment-player-pending');
+        await exerciseInlineVideo(page, 'media-attachment-player-pending');
         await page.locator('[data-testid="message-composer-send-button"]:not([aria-disabled="true"])').click();
 
-        const sentCard = page.getByTestId('media-attachment-card-user');
-        await expect(sentCard).toBeVisible({ timeout: 20_000 });
-        await exerciseVideoCard(page, 'media-attachment-card-user', 'media-attachment-player-user');
-
-        await sentCard.click();
-        await expect(page.getByTestId('media-attachment-player-user')).toBeVisible();
+        await expect(page.getByTestId('media-attachment-player-user')).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByTestId('media-attachment-card-user')).toHaveCount(0);
+        await exerciseInlineVideo(page, 'media-attachment-player-user');
         await pauseForRecordedReview(page, 1_100);
         await page.screenshot({ path: testInfo.outputPath('mp4-user-after.png'), fullPage: true });
-        await sentCard.click();
     });
 
     test('宽屏图片消息与正文阅读列对齐，不再横向铺满', async ({ page }) => {

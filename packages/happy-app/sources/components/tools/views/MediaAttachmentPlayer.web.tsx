@@ -1,7 +1,5 @@
 import * as React from 'react';
-import { Pressable, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { t } from '@/text';
+import { View } from 'react-native';
 import type { MediaAttachmentPlayerProps } from './MediaAttachmentPlayer.types';
 
 export function MediaAttachmentPlayer(props: MediaAttachmentPlayerProps) {
@@ -42,13 +40,19 @@ export function MediaAttachmentPlayer(props: MediaAttachmentPlayerProps) {
         };
     }, [props.headers, props.mimeType, props.uri]);
 
-    const enterFullscreen = React.useCallback(() => {
-        void videoRef.current?.requestFullscreen?.();
-    }, []);
-
-    const height = props.kind === 'audio' ? 64 : 180;
+    const frameStyle = props.kind === 'audio'
+        ? { width: 300, maxWidth: '100%' as const, height: 64, backgroundColor: '#000' }
+        : {
+            width: '100%' as const,
+            maxWidth: 960,
+            aspectRatio: 16 / 9,
+            backgroundColor: '#000',
+            position: 'relative' as const,
+            borderRadius: 12,
+            overflow: 'hidden' as const,
+        };
     return (
-        <View testID={props.testID} style={{ width: 300, height, backgroundColor: '#000', position: 'relative' }}>
+        <View testID={props.testID} style={frameStyle}>
             {source ? React.createElement(props.kind === 'audio' ? 'audio' : 'video', {
                 ref: videoRef,
                 src: source,
@@ -56,30 +60,8 @@ export function MediaAttachmentPlayer(props: MediaAttachmentPlayerProps) {
                 playsInline: true,
                 preload: 'metadata',
                 title: props.title,
-                style: { width: '100%', height: '100%', backgroundColor: '#000' },
+                style: { width: '100%', height: '100%', backgroundColor: '#000', objectFit: 'contain', borderRadius: 12 },
             }) : null}
-            {props.kind === 'video' && source ? (
-                <Pressable
-                    testID={`${props.testID}-fullscreen`}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('imageUpload.mediaFullscreen', { name: props.title })}
-                    onPress={enterFullscreen}
-                    style={({ pressed }) => ({
-                        position: 'absolute',
-                        top: 8,
-                        right: 8,
-                        width: 34,
-                        height: 34,
-                        borderRadius: 17,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: 'rgba(0, 0, 0, 0.62)',
-                        opacity: pressed ? 0.7 : 1,
-                    })}
-                >
-                    <Ionicons name="expand" size={19} color="#fff" />
-                </Pressable>
-            ) : null}
         </View>
     );
 }

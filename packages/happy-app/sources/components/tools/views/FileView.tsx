@@ -1,8 +1,7 @@
 /**
  * View for image and media `file` events.
- * Images keep the eager encrypted thumbnail flow. Audio/video starts as an
- * explicit play card and resolves either a plaintext Agent artifact or a
- * decrypted user attachment only when the user expands it.
+ * Images keep the eager encrypted thumbnail flow. Video resolves directly to
+ * a bare inline player, while audio retains its compact identity card.
  *
  * Always renders inline when a ref is present — if dimensions are missing
  * (older messages, iOS picker that didn't report w/h), a default 4:3 aspect
@@ -53,9 +52,19 @@ function humanSize(bytes: number | undefined): string | null {
 export const FileView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
     const parsed = fileInputSchema.safeParse(tool.input);
     if (!parsed.success) return null;
-    // Audio/video have no visual thumbnail — render a compact card (icon +
-    // filename + size) instead of trying to load the blob as an image.
-    if (parsed.data.kind === 'audio' || parsed.data.kind === 'video') {
+    if (parsed.data.kind === 'video') {
+        return (
+            <InlineVideoFile
+                ref_={parsed.data.ref}
+                sessionId={sessionId}
+                name={parsed.data.name}
+                mimeType={parsed.data.mimeType}
+                encrypted={parsed.data.encrypted}
+                source={parsed.data.source}
+            />
+        );
+    }
+    if (parsed.data.kind === 'audio') {
         return (
             <MediaFileCard
                 ref_={parsed.data.ref}
@@ -71,6 +80,74 @@ export const FileView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
     }
     return <ImageFileView name={parsed.data.name} image={parsed.data.image} ref_={parsed.data.ref} sessionId={sessionId} />;
 });
+
+function InlineVideoFile({ ref_, sessionId, name, mimeType, encrypted, source: attachmentSource }: {
+    ref_: string;
+    sessionId?: string;
+    name: string;
+    mimeType?: string;
+    encrypted?: boolean;
+    source?: 'user' | 'generated';
+}) {
+    const { theme } = useUnistyles();
+    const [source, setSource] = React.useState<MediaPlaybackSource | null>(null);
+    const [error, setError] = React.useState(false);
+    const sourceType = attachmentSource === 'generated' ? 'generated' : 'user';
+    const resolvedMimeType = mimeType ?? 'video/mp4';
+
+    React.useEffect(() => {
+        if (!sessionId) return;
+        let cancelled = false;
+        setError(false);
+        void resolveMediaAttachmentSource({
+            sessionId,
+            ref: ref_,
+            mimeType: resolvedMimeType,
+            encrypted,
+        }).then((resolvedSource) => {
+            if (cancelled) {
+                void resolvedSource.release?.();
+                return;
+            }
+            setSource(resolvedSource);
+        }).catch((cause: unknown) => {
+            if (cancelled) return;
+            console.warn(`[media-attachment] failed to open ${name}`, cause);
+            setError(true);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [encrypted, name, ref_, resolvedMimeType, sessionId]);
+
+    React.useEffect(() => () => {
+        void source?.release?.();
+    }, [source]);
+
+    return (
+        <View testID={`media-attachment-inline-${sourceType}`} style={styles.inlineVideoContainer}>
+            {source ? (
+                <MediaAttachmentPlayer
+                    uri={source.uri}
+                    headers={source.headers}
+                    title={name}
+                    kind="video"
+                    mimeType={resolvedMimeType}
+                    testID={`media-attachment-player-${sourceType}`}
+                />
+            ) : (
+                <View style={styles.videoLoadingFrame}>
+                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                </View>
+            )}
+            {error ? (
+                <Text style={[styles.mediaError, { color: theme.colors.textDestructive }]}>
+                    {t('imageUpload.mediaLoadFailed')}
+                </Text>
+            ) : null}
+        </View>
+    );
+}
 
 function MediaFileCard({ ref_, sessionId, name, kind, size, mimeType, encrypted, source: attachmentSource }: {
     ref_: string;
@@ -257,6 +334,20 @@ const styles = StyleSheet.create(() => ({
     filename: {
         fontSize: 13,
         fontWeight: '500',
+    },
+    inlineVideoContainer: {
+        width: '100%',
+        maxWidth: 960,
+        alignSelf: 'stretch',
+    },
+    videoLoadingFrame: {
+        width: '100%',
+        aspectRatio: 16 / 9,
+        maxWidth: 960,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#000',
     },
     mediaCard: {
         flexDirection: 'row',

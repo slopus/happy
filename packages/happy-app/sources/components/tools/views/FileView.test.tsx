@@ -74,47 +74,40 @@ describe('FileView media playback', () => {
 
     afterEach(() => consoleWarnSpy.mockRestore());
 
-    it('opens and collapses a generated plaintext MP4 card', async () => {
+    it('renders a generated plaintext MP4 directly without a file card', async () => {
         let renderer: any;
-        act(() => {
+        await act(async () => {
             renderer = TestRenderer.create(
                 <FileView tool={videoTool({ encrypted: false, source: 'generated' })} sessionId="s1" metadata={null} messages={[]} />,
             );
         });
 
-        const card = renderer.root.findByProps({ testID: 'media-attachment-card-generated' });
-        expect(card.props.accessibilityState.expanded).toBe(false);
-        await act(async () => card.props.onPress());
-
         expect(mocks.resolveSource).toHaveBeenCalledWith(expect.objectContaining({ encrypted: false }));
+        expect(renderer.root.findAllByProps({ testID: 'media-attachment-card-generated' })).toHaveLength(0);
         expect(renderer.root.findByType('MediaAttachmentPlayer').props).toMatchObject({
             uri: 'https://files.test/acceptance.mp4',
             kind: 'video',
             testID: 'media-attachment-player-generated',
         });
 
-        await act(async () => renderer.root.findByProps({ testID: 'media-attachment-card-generated' }).props.onPress());
-        expect(renderer.root.findAllByType('MediaAttachmentPlayer')).toHaveLength(0);
-        expect(mocks.release).toHaveBeenCalledTimes(1);
         act(() => renderer.unmount());
+        expect(mocks.release).toHaveBeenCalledTimes(1);
     });
 
-    it('opens an encrypted user MP4 through the same player component', async () => {
+    it('renders an encrypted user MP4 directly through the same player component', async () => {
         let renderer: any;
-        act(() => {
+        await act(async () => {
             renderer = TestRenderer.create(
                 <FileView tool={videoTool()} sessionId="s1" metadata={null} messages={[]} />,
             );
         });
-
-        const card = renderer.root.findByProps({ testID: 'media-attachment-card-user' });
-        await act(async () => card.props.onPress());
 
         expect(mocks.resolveSource).toHaveBeenCalledWith(expect.objectContaining({
             sessionId: 's1',
             encrypted: undefined,
             mimeType: 'video/mp4',
         }));
+        expect(renderer.root.findAllByProps({ testID: 'media-attachment-card-user' })).toHaveLength(0);
         expect(renderer.root.findByType('MediaAttachmentPlayer').props.testID).toBe('media-attachment-player-user');
         act(() => renderer.unmount());
     });

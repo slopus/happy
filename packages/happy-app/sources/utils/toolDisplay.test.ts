@@ -4,6 +4,7 @@ import {
     getTerminalToolCommand,
     getToolSummaryCategory,
     getToolSummaryDetail,
+    isInlineVideoFileTool,
     isTerminalToolName,
     shouldRenderToolCardHeader,
 } from './toolDisplay';
@@ -53,6 +54,12 @@ describe('terminal tool display helpers', () => {
         expect(shouldRenderToolCardHeader('CodexPatch', 'ios')).toBe(true);
         expect(shouldRenderToolCardHeader('CodexPatch', 'android')).toBe(true);
         expect(shouldRenderToolCardHeader('CodexBash', 'web')).toBe(true);
+    });
+
+    it('identifies video file events that render as bare inline media', () => {
+        expect(isInlineVideoFileTool(tool('file', { kind: 'video' }))).toBe(true);
+        expect(isInlineVideoFileTool(tool('file', { kind: 'audio' }))).toBe(false);
+        expect(isInlineVideoFileTool(tool('Read', { kind: 'video' }))).toBe(false);
     });
 
     it('classifies tools for compact transcript rows', () => {
