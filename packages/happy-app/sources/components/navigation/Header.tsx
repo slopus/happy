@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, Platform, StatusBar, Pressable } from 'react-native';
+import { View, Text, Platform, StatusBar, Pressable, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,13 @@ import { layout } from '../layout';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet } from 'react-native-unistyles';
+import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
+import { isTauri } from '@/utils/isTauri';
+import {
+    getPersistentHeaderContentInset,
+    PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+    TAURI_HEADER_CONTROL_LEFT,
+} from '@/utils/desktopNavigationLayout';
 
 interface HeaderProps {
     title?: React.ReactNode;
@@ -117,6 +124,26 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
     const { options, route, back, navigation } = props;
     const extendedOptions = options as ExtendedNavigationOptions;
     const isTablet = useIsTablet();
+    const { width: windowWidth } = useWindowDimensions();
+    const {
+        leftVisible: desktopLeftSidebarVisible,
+        leftWidth: desktopLeftSidebarWidth,
+    } = useDesktopWorkspaceLayout();
+    const inTauri = isTauri();
+    const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
+    const persistentHeaderContentInset = isTablet
+        ? getPersistentHeaderContentInset({
+            windowWidth,
+            headerMaxWidth: layout.headerMaxWidth,
+            headerHorizontalPadding: Platform.OS === 'ios' ? 8 : 16,
+            sidebarVisible: desktopLeftSidebarVisible,
+            sidebarWidth: desktopLeftSidebarWidth,
+            controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
+            buttonCount: Platform.OS === 'web' ? 3 : 2,
+            controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+            targetHitSlop: 8,
+        })
+        : 0;
 
     // Hide back button on tablet — navigation is handled via sidebar and persistent header
     const shouldHideBackButton = isTablet;
@@ -180,6 +207,7 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
             headerSubtitleStyle={extendedOptions.headerSubtitleStyle}
             headerShadowVisible={options.headerShadowVisible}
             headerTransparent={options.headerTransparent}
+            headerContentLeftInset={persistentHeaderContentInset}
         />
     );
 });

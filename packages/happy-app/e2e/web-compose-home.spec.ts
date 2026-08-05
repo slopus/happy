@@ -1,5 +1,9 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
-import { encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { io } from 'socket.io-client';
+import { decodeBase64, decryptLegacy, encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
 import {
     expectProductionRedactionReady,
     installProductionRedaction,
@@ -54,6 +58,144 @@ async function createE2ESession(request: APIRequestContext): Promise<string> {
     expect(response.ok()).toBe(true);
     const body = await response.json() as { session: { id: string } };
     return body.session.id;
+}
+
+async function createConnectedE2EFileSession(request: APIRequestContext): Promise<{
+    client: { close: () => void };
+    fileContent: string;
+    fileName: string;
+    filePath: string;
+    sessionId: string;
+    workspace: string;
+}> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少创建文件详情 E2E 会话所需的本地认证配置。');
+    }
+
+    const workspace = mkdtempSync(join(tmpdir(), 'paws-file-layout-e2e-'));
+    const fileName = 'staged-cinematic-motion-blur-edit.md';
+    const filePath = join(workspace, fileName);
+    const fileContent = 'Keep the central photographer completely unchanged.';
+    writeFileSync(filePath, fileContent, 'utf8');
+
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+    const metadata = {
+        path: workspace,
+        homeDir: workspace,
+        host: 'playwright',
+        name: 'File viewer layout regression',
+        flavor: 'codex',
+        lifecycleState: 'running',
+        startedBy: 'terminal',
+    };
+    const response = await request.post(new URL('/v1/sessions', e2eServerUrl).toString(), {
+        data: {
+            tag: `file-viewer-e2e-${Date.now()}-${Math.random()}`,
+            metadata: encodeBase64(encryptLegacy(metadata, encryptionKey)),
+            agentState: null,
+            dataEncryptionKey: null,
+        },
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Happy-Client': 'playwright-e2e',
+        },
+    });
+    if (!response.ok()) {
+        rmSync(workspace, { force: true, recursive: true });
+        throw new Error(`创建文件详情 E2E 会话失败：HTTP ${response.status()}`);
+    }
+    const body = await response.json() as { session: { id: string } };
+
+    const sessionId = body.session.id;
+    const messageResponse = await request.post(
+        new URL(`/v3/sessions/${encodeURIComponent(sessionId)}/messages`, e2eServerUrl).toString(),
+        {
+            data: {
+                messages: [{
+                    content: encodeBase64(encryptLegacy({
+                        role: 'agent',
+                        content: {
+                            type: 'acp',
+                            provider: 'codex',
+                            data: {
+                                type: 'tool-call',
+                                callId: 'file-viewer-layout-write',
+                                id: 'file-viewer-layout-write',
+                                input: { file_path: filePath, content: fileContent },
+                                name: 'Write',
+                            },
+                        },
+                        meta: { sentFrom: 'cli' },
+                    }, encryptionKey)),
+                    localId: `file-viewer-layout-${Date.now()}`,
+                }],
+            },
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'X-Happy-Client': 'playwright-e2e',
+            },
+        },
+    );
+    if (!messageResponse.ok()) {
+        rmSync(workspace, { force: true, recursive: true });
+        throw new Error(`写入文件详情 E2E 消息失败：HTTP ${messageResponse.status()}`);
+    }
+
+    const rpcSocket = io(e2eServerUrl, {
+        auth: {
+            token,
+            clientType: 'session-scoped',
+            sessionId,
+            happyClient: 'playwright-file-rpc',
+        },
+        autoConnect: false,
+        path: '/v1/updates',
+        reconnection: false,
+        transports: ['websocket'],
+    });
+    rpcSocket.on('rpc-request', (data: { method: string; params: string }, callback: (response: string) => void) => {
+        const params = decryptLegacy(decodeBase64(data.params), encryptionKey) as { path?: string } | null;
+        const result = data.method === `${sessionId}:readFile` && params?.path === filePath
+            ? { success: true, content: Buffer.from(fileContent, 'utf8').toString('base64') }
+            : data.method === `${sessionId}:bash`
+                ? { success: true, stdout: '', stderr: '', exitCode: 0 }
+                : { success: false, error: 'Unknown E2E RPC request' };
+        callback(encodeBase64(encryptLegacy(result, encryptionKey)));
+    });
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('文件详情 E2E RPC 连接超时。')), 10_000);
+            const handleConnectError = (error: Error) => {
+                clearTimeout(timeout);
+                reject(error);
+            };
+            rpcSocket.once('connect_error', handleConnectError);
+            rpcSocket.once('connect', () => {
+                clearTimeout(timeout);
+                rpcSocket.off('connect_error', handleConnectError);
+                rpcSocket.emit('rpc-register', { method: `${sessionId}:readFile` });
+                rpcSocket.emit('rpc-register', { method: `${sessionId}:bash` });
+                resolve();
+            });
+            rpcSocket.connect();
+        });
+    } catch (error) {
+        rpcSocket.close();
+        rmSync(workspace, { force: true, recursive: true });
+        throw error;
+    }
+
+    return {
+        client: { close: () => rpcSocket.close() },
+        fileContent,
+        fileName,
+        filePath,
+        sessionId,
+        workspace,
+    };
 }
 
 async function dragHorizontalResizeHandle(page: Page, handle: Locator, deltaX: number): Promise<void> {
@@ -619,6 +761,58 @@ test('活跃会话页面复用左右拖拽与折叠约束', async ({ page, reque
     await rightRestore.click();
     await expect(leftPanel).toBeVisible();
     await expect(rightPanel).toBeVisible();
+});
+
+test('PC 从右侧文件列表打开详情后标题与正文保持正确对齐', async ({ page, request }, testInfo) => {
+    const fixture = await createConnectedE2EFileSession(request);
+
+    try {
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
+
+        const rightPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
+        await expect(rightPanel).toBeVisible();
+        await expect(rightPanel.getByText(fixture.fileName, { exact: true })).toBeVisible();
+
+        const filesLabels = rightPanel.getByText('Files', { exact: true });
+        await expect(filesLabels).toHaveCount(1);
+        await filesLabels.click();
+        await rightPanel.getByText(fixture.fileName, { exact: true }).click();
+
+        await expect.poll(() => new URL(page.url()).pathname).toBe(`/session/${fixture.sessionId}/file`);
+        const title = page.getByText('File Viewer', { exact: true });
+        const content = page.getByTestId('file-viewer-content');
+        const navigationControls = page.getByTestId('desktop-navigation-controls');
+        await expect(title).toBeVisible();
+        await expect(content).toBeVisible();
+        await expect(content).toContainText(fixture.fileContent);
+
+        const titleBox = await title.boundingBox();
+        const controlsBox = await navigationControls.boundingBox();
+        expect(titleBox).not.toBeNull();
+        expect(controlsBox).not.toBeNull();
+        expect(
+            titleBox!.x,
+            '文件详情标题不得与桌面导航控件重叠',
+        ).toBeGreaterThanOrEqual(controlsBox!.x + controlsBox!.width + 4);
+
+        const sidebarBox = await page.getByTestId('desktop-left-sidebar').boundingBox();
+        const contentBox = await content.boundingBox();
+        expect(sidebarBox).not.toBeNull();
+        expect(contentBox).not.toBeNull();
+        expect(
+            contentBox!.x - (sidebarBox!.x + sidebarBox!.width),
+            '文件正文应贴近主内容区左侧，而不是被 maxWidth 容器居中推远',
+        ).toBeLessThanOrEqual(24);
+
+        await page.screenshot({
+            path: testInfo.outputPath('pc-file-viewer-after-1280x720.png'),
+            fullPage: true,
+        });
+    } finally {
+        await fixture.client.close();
+        rmSync(fixture.workspace, { force: true, recursive: true });
+    }
 });
 
 test('桌面问候语与输入框内容列对齐且代表性中文标题保持单行', async ({ page }) => {

@@ -7,6 +7,7 @@ interface SimpleSyntaxHighlighterProps {
   code: string;
   language: string | null;
   selectable: boolean;
+  testID?: string;
 }
 
 // Get theme-aware colors
@@ -250,7 +251,8 @@ const tokenizeCode = (code: string, language: string | null) => {
 export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = ({
   code,
   language,
-  selectable
+  selectable,
+  testID,
 }) => {
   const { theme } = useUnistyles();
   const colors = getColors(theme);
@@ -295,6 +297,7 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
 
   return (
     <View
+      testID={testID}
       style={Platform.OS === 'web'
         ? ({ alignSelf: 'flex-start', width: 'max-content' } as any)
         : { alignSelf: 'flex-start' }}
