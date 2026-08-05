@@ -3,6 +3,9 @@ import { Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
+import { DesktopPanelResizeHandle } from './DesktopPanelResizeHandle';
+import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
+import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 
 export type DesktopRightPanelTab = {
     key: string;
@@ -28,9 +31,18 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
     tabs: readonly DesktopRightPanelTab[];
 }) {
     const { theme } = useUnistyles();
+    const { enabled: resizable } = useDesktopWorkspaceLayout();
+    const [tooltipVisible, setTooltipVisible] = React.useState(false);
 
     return (
         <View style={styles.container} testID="desktop-right-panel">
+            {resizable && (
+                <DesktopPanelResizeHandle
+                    accessibilityLabel={collapseAccessibilityLabel}
+                    offset={0}
+                    side="right"
+                />
+            )}
             <View style={styles.header}>
                 <View style={styles.tabs}>
                     {tabs.map((tab) => {
@@ -64,17 +76,34 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
                         );
                     })}
                 </View>
-                <Pressable
-                    accessibilityLabel={collapseAccessibilityLabel}
-                    accessibilityRole="button"
-                    hitSlop={8}
-                    onPress={onCollapse}
-                    style={({ pressed }) => [styles.collapseButton, pressed && styles.pressed]}
-                    testID="desktop-right-panel-collapse-button"
-                >
-                    <Text style={styles.collapseText}>{collapseLabel}</Text>
-                    <Ionicons name="chevron-forward" size={19} color={theme.colors.textSecondary} />
-                </Pressable>
+                <View style={styles.collapseButtonWrapper}>
+                    <Pressable
+                        accessibilityHint={`${collapseAccessibilityLabel} (⌥⌘B)`}
+                        accessibilityLabel={collapseAccessibilityLabel}
+                        accessibilityRole="button"
+                        {...({
+                            'aria-keyshortcuts': 'Alt+Meta+B',
+                        } as any)}
+                        hitSlop={8}
+                        onBlur={() => setTooltipVisible(false)}
+                        onFocus={() => setTooltipVisible(true)}
+                        onHoverIn={() => setTooltipVisible(true)}
+                        onHoverOut={() => setTooltipVisible(false)}
+                        onPress={onCollapse}
+                        style={({ pressed }) => [styles.collapseButton, pressed && styles.pressed]}
+                        testID="desktop-right-panel-collapse-button"
+                    >
+                        <Text style={styles.collapseText}>{collapseLabel}</Text>
+                        <Ionicons name="chevron-forward" size={19} color={theme.colors.textSecondary} />
+                    </Pressable>
+                    <DesktopShortcutTooltip
+                        align="right"
+                        label={collapseAccessibilityLabel}
+                        shortcut="⌥⌘B"
+                        testID="desktop-right-panel-collapse-tooltip"
+                        visible={tooltipVisible}
+                    />
+                </View>
             </View>
             <View style={styles.content}>
                 {children}
@@ -91,19 +120,37 @@ export const DesktopRightPanelRestoreButton = React.memo(function DesktopRightPa
     onPress: () => void;
 }) {
     const { theme } = useUnistyles();
+    const [tooltipVisible, setTooltipVisible] = React.useState(false);
 
     return (
-        <Pressable
-            accessibilityLabel={label}
-            accessibilityRole="button"
-            hitSlop={8}
-            onPress={onPress}
-            style={({ pressed }) => [styles.restoreButton, pressed && styles.pressed]}
-            testID="desktop-right-panel-restore-button"
-        >
-            <Ionicons name="albums-outline" size={16} color={theme.colors.header.tint} />
-            <Text numberOfLines={1} style={styles.restoreText}>{label}</Text>
-        </Pressable>
+        <View style={styles.restoreButtonWrapper}>
+            <Pressable
+                accessibilityHint={`${label} (⌥⌘B)`}
+                accessibilityLabel={label}
+                accessibilityRole="button"
+                {...({
+                    'aria-keyshortcuts': 'Alt+Meta+B',
+                } as any)}
+                hitSlop={8}
+                onBlur={() => setTooltipVisible(false)}
+                onFocus={() => setTooltipVisible(true)}
+                onHoverIn={() => setTooltipVisible(true)}
+                onHoverOut={() => setTooltipVisible(false)}
+                onPress={onPress}
+                style={({ pressed }) => [styles.restoreButton, pressed && styles.pressed]}
+                testID="desktop-right-panel-restore-button"
+            >
+                <Ionicons name="albums-outline" size={16} color={theme.colors.header.tint} />
+                <Text numberOfLines={1} style={styles.restoreText}>{label}</Text>
+            </Pressable>
+            <DesktopShortcutTooltip
+                align="right"
+                label={label}
+                shortcut="⌥⌘B"
+                testID="desktop-right-panel-restore-tooltip"
+                visible={tooltipVisible}
+            />
+        </View>
     );
 });
 
@@ -111,6 +158,7 @@ const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
         minHeight: 0,
+        position: 'relative',
         backgroundColor: theme.colors.groupped.background,
         borderLeftWidth: StyleSheet.hairlineWidth,
         borderLeftColor: theme.colors.divider,
@@ -166,6 +214,9 @@ const styles = StyleSheet.create((theme) => ({
         gap: 1,
         borderRadius: 8,
     },
+    collapseButtonWrapper: {
+        position: 'relative',
+    },
     collapseText: {
         fontSize: 11,
         color: theme.colors.textSecondary,
@@ -186,6 +237,10 @@ const styles = StyleSheet.create((theme) => ({
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
         backgroundColor: theme.colors.surface,
+    },
+    restoreButtonWrapper: {
+        position: 'relative',
+        maxWidth: 164,
     },
     restoreText: {
         flexShrink: 1,

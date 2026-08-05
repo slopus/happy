@@ -14,10 +14,9 @@ import { SessionConfigPanel, type SessionConfigPanelHandle } from './SessionConf
 import { ComposeHomeParticles } from './ComposeHomeParticles';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import {
+    DESKTOP_MAIN_MIN_WIDTH,
     getPersistentHeaderContentInset,
-    getDesktopRightPanelWidth,
     getDesktopRightPanelPresentation,
-    isDesktopRightPanelAvailable,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
 } from '@/utils/desktopNavigationLayout';
@@ -69,6 +68,7 @@ import type { AttachmentPreview } from '@/sync/attachmentTypes';
 import { machineSpawnNewSession, sessionArchive } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 
 // Agent display labels for the compose chip. Mirrors the list used in /new.
 const AGENT_LABELS: Record<string, string> = {
@@ -130,8 +130,13 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const machines = useAllMachines();
     const askApi = useLocalSetting('askApi');
     const zenMode = useLocalSetting('zenMode');
-    const desktopLeftSidebarCollapsed = useLocalSetting('desktopLeftSidebarCollapsed');
     const [desktopRightPanelCollapsed, setDesktopRightPanelCollapsed] = useLocalSettingMutable('desktopRightPanelCollapsed');
+    const {
+        leftVisible: desktopLeftSidebarVisible,
+        leftWidth: desktopLeftSidebarWidth,
+        rightPanelAvailable: desktopRightPanelAvailable,
+        rightWidth: desktopRightPanelWidth,
+    } = useDesktopWorkspaceLayout();
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const { sending, spawn } = useSpawnSession();
     const [text, setText] = React.useState('');
@@ -698,11 +703,6 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     // isSendDisabled) instead of letting a doomed spawn through.
     const canSpawn = online && worktreeKey !== '__new__';
     const canSubmit = canSpawn && (!activeImageAgent || activeImageStyles.length > 0);
-    const desktopRightPanelAvailable = isDesktopRightPanelAvailable({
-        isTablet,
-        supportsPersistentPanel: Platform.OS === 'web' || inTauri,
-        windowWidth,
-    });
     const desktopRightPanelPresentation = getDesktopRightPanelPresentation({
         available: desktopRightPanelAvailable,
         collapsed: desktopRightPanelCollapsed,
@@ -714,8 +714,9 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             windowWidth,
             headerMaxWidth: layout.headerMaxWidth,
             headerHorizontalPadding: Platform.select({ ios: 8, default: 16 }) ?? 16,
-            sidebarVisible: !zenMode && !desktopLeftSidebarCollapsed,
-            rightPanelWidth: showDesktopRightPanel ? getDesktopRightPanelWidth(windowWidth) : 0,
+            sidebarVisible: desktopLeftSidebarVisible,
+            sidebarWidth: desktopLeftSidebarWidth,
+            rightPanelWidth: showDesktopRightPanel ? desktopRightPanelWidth : 0,
             // SidebarNavigator 同时存在 `left: sidebar + 16` 和非 Tauri 环境下的
             // `paddingLeft: 16`，命中区域计算必须包含第二段偏移。
             controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
@@ -1075,10 +1076,9 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         );
     }
 
-    const desktopRightPanelWidth = getDesktopRightPanelWidth(windowWidth);
     return (
         <View style={styles.desktopWorkspace}>
-            <View style={styles.desktopWorkspaceMain}>
+            <View style={styles.desktopWorkspaceMain} testID="desktop-workspace-main">
                 {composeContent}
             </View>
             {showDesktopRightPanel && (
@@ -1112,7 +1112,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     desktopWorkspaceMain: {
         flex: 1,
-        minWidth: 0,
+        minWidth: DESKTOP_MAIN_MIN_WIDTH,
     },
     desktopWorkspacePanel: {
         flexShrink: 0,

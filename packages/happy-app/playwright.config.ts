@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL;
+const recordArtifacts = process.env.HAPPY_E2E_RECORD === '1';
 
 if (!authenticatedWebUrl) {
     throw new Error('缺少 HAPPY_E2E_WEB_URL；请通过 pnpm test:e2e:web 启动测试。');
@@ -20,8 +21,10 @@ export default defineConfig({
     use: {
         channel: process.env.HAPPY_E2E_BROWSER_CHANNEL ?? 'chrome',
         headless: process.env.HAPPY_E2E_HEADED !== '1',
-        trace: process.env.HAPPY_E2E_RECORD === '1' ? 'on' : 'retain-on-failure',
-        screenshot: process.env.HAPPY_E2E_RECORD === '1' ? 'on' : 'only-on-failure',
-        video: process.env.HAPPY_E2E_RECORD === '1' ? 'on' : 'retain-on-failure',
+        trace: recordArtifacts ? 'on' : 'retain-on-failure',
+        screenshot: recordArtifacts ? 'on' : 'only-on-failure',
+        video: recordArtifacts
+            ? { mode: 'on', size: { width: 1280, height: 720 } }
+            : 'retain-on-failure',
     },
 });

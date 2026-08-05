@@ -122,6 +122,23 @@ vi.mock('@/hooks/useSessionSelection', () => ({
         selector: (state: { active: boolean; clearSelection: () => void }) => unknown,
     ) => selector({ active: false, clearSelection: mocks.clearSelection }),
 }));
+vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({
+    DesktopWorkspaceLayoutProvider: ({ children }: { children: React.ReactNode }) => children,
+    useDesktopWorkspaceLayout: () => ({
+        enabled: mocks.isTablet,
+        leftVisible: mocks.isTablet && !mocks.zenMode && !mocks.desktopLeftSidebarCollapsed,
+        leftWidth: mocks.isTablet && !mocks.zenMode && !mocks.desktopLeftSidebarCollapsed ? 360 : 0,
+        rightPanelAvailable: false,
+        rightVisible: false,
+        rightWidth: 0,
+        resizingSide: null,
+        beginPanelResize: vi.fn(),
+        continuePanelResize: vi.fn(),
+        endPanelResize: vi.fn(),
+        toggleLeftSidebar: () => mocks.setDesktopLeftSidebarCollapsed(!mocks.desktopLeftSidebarCollapsed),
+        toggleRightSidebar: vi.fn(),
+    }),
+}));
 
 describe('SidebarNavigator drawer behavior', () => {
     const originalConsoleError = console.error;
