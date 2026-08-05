@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { localSettingsDefaults, localSettingsParse } from './localSettings';
 
+describe('localSettings web command palette', () => {
+    it('is available by default while preserving an explicit opt-out', () => {
+        expect(localSettingsDefaults.commandPaletteEnabled).toBe(true);
+        expect(localSettingsParse({}).commandPaletteEnabled).toBe(true);
+        expect(localSettingsParse({ commandPaletteEnabled: false }).commandPaletteEnabled).toBe(false);
+    });
+});
+
 describe('localSettings hapticFeedbackEnabled', () => {
     it('defaults to true', () => {
         expect(localSettingsDefaults.hapticFeedbackEnabled).toBe(true);

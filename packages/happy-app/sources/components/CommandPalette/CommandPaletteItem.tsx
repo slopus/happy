@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Platform, type StyleProp, type TextStyle } from 'react-native';
 import { Command } from './types';
 import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,12 +8,82 @@ import { multiplyColorOpacity } from '@/utils/colorOpacity';
 
 interface CommandPaletteItemProps {
     command: Command;
+    searchQuery?: string;
+    quickSelectNumber?: number;
     isSelected: boolean;
     onPress: () => void;
     onHover?: () => void;
 }
 
-export function CommandPaletteItem({ command, isSelected, onPress, onHover }: CommandPaletteItemProps) {
+export interface HighlightedTextSegment {
+    text: string;
+    matched: boolean;
+}
+
+export function splitHighlightedText(text: string, query: string): HighlightedTextSegment[] {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    if (!normalizedQuery) {
+        return [{ text, matched: false }];
+    }
+
+    const normalizedText = text.toLocaleLowerCase();
+    const segments: HighlightedTextSegment[] = [];
+    let cursor = 0;
+    let matchIndex = normalizedText.indexOf(normalizedQuery, cursor);
+
+    while (matchIndex !== -1) {
+        if (matchIndex > cursor) {
+            segments.push({ text: text.slice(cursor, matchIndex), matched: false });
+        }
+        const matchEnd = matchIndex + normalizedQuery.length;
+        segments.push({ text: text.slice(matchIndex, matchEnd), matched: true });
+        cursor = matchEnd;
+        matchIndex = normalizedText.indexOf(normalizedQuery, cursor);
+    }
+
+    if (cursor < text.length) {
+        segments.push({ text: text.slice(cursor), matched: false });
+    }
+
+    return segments.length > 0 ? segments : [{ text, matched: false }];
+}
+
+function HighlightedText({
+    text,
+    query,
+    style,
+    highlightColor,
+    numberOfLines,
+}: {
+    text: string;
+    query: string;
+    style: StyleProp<TextStyle>;
+    highlightColor: string;
+    numberOfLines?: number;
+}) {
+    return (
+        <Text style={style} numberOfLines={numberOfLines}>
+            {splitHighlightedText(text, query).map((segment, index) => (
+                <Text
+                    key={`${index}-${segment.text}`}
+                    testID={segment.matched ? 'command-palette-match' : undefined}
+                    style={segment.matched ? [styles.match, { color: highlightColor }] : undefined}
+                >
+                    {segment.text}
+                </Text>
+            ))}
+        </Text>
+    );
+}
+
+export function CommandPaletteItem({
+    command,
+    searchQuery = '',
+    quickSelectNumber,
+    isSelected,
+    onPress,
+    onHover,
+}: CommandPaletteItemProps) {
     const { theme } = useUnistyles();
     const [isHovered, setIsHovered] = React.useState(false);
     
@@ -44,6 +114,12 @@ export function CommandPaletteItem({ command, isSelected, onPress, onHover }: Co
             },
         ],
         onPress,
+        accessibilityRole: 'button',
+        accessibilityLabel: [
+            command.title,
+            command.subtitle,
+            ...(command.metadata?.map((item) => item.text) ?? []),
+        ].filter(Boolean).join(', '),
     };
     
     // Add mouse events only on web
@@ -65,15 +141,46 @@ export function CommandPaletteItem({ command, isSelected, onPress, onHover }: Co
                     </View>
                 )}
                 <View style={styles.textContainer}>
-                    <Text style={[styles.title, Typography.default(), { color: theme.colors.text }]}>
-                        {command.title}
-                    </Text>
+                    <HighlightedText
+                        text={command.title}
+                        query={searchQuery}
+                        style={[styles.title, Typography.default(), { color: theme.colors.text }]}
+                        highlightColor={theme.colors.accent}
+                        numberOfLines={1}
+                    />
                     {command.subtitle && (
-                        <Text style={[styles.subtitle, Typography.default(), { color: theme.colors.textSecondary }]}>
-                            {command.subtitle}
-                        </Text>
+                        <HighlightedText
+                            text={command.subtitle}
+                            query={searchQuery}
+                            style={[styles.subtitle, Typography.default(), { color: theme.colors.textSecondary }]}
+                            highlightColor={theme.colors.accent}
+                            numberOfLines={1}
+                        />
+                    )}
+                    {command.metadata && command.metadata.length > 0 && (
+                        <View style={styles.metadataRow}>
+                            {command.metadata.map((item, index) => (
+                                <View key={`${item.icon}-${item.text}-${index}`} style={styles.metadataItem}>
+                                    <Ionicons name={item.icon as any} size={12} color={theme.colors.textSecondary} />
+                                    <HighlightedText
+                                        text={item.text}
+                                        query={searchQuery}
+                                        style={[styles.metadataText, Typography.default(), { color: theme.colors.textSecondary }]}
+                                        highlightColor={theme.colors.accent}
+                                        numberOfLines={1}
+                                    />
+                                </View>
+                            ))}
+                        </View>
                     )}
                 </View>
+                {quickSelectNumber !== undefined && (
+                    <View style={[styles.shortcutContainer, { backgroundColor: theme.colors.surfaceHigh }]}>
+                        <Text style={[styles.shortcut, Typography.mono(), { color: theme.colors.textSecondary }]}>
+                            {`Alt+${quickSelectNumber}`}
+                        </Text>
+                    </View>
+                )}
                 {command.shortcut && (
                     <View style={[styles.shortcutContainer, { backgroundColor: theme.colors.surfaceHigh }]}>
                         <Text style={[styles.shortcut, Typography.mono(), { color: theme.colors.textSecondary }]}>
@@ -123,10 +230,33 @@ const styles = StyleSheet.create({
         fontSize: 13,
         letterSpacing: -0.1,
     },
+    metadataRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: 10,
+        marginTop: 5,
+    },
+    metadataItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        maxWidth: '100%',
+    },
+    metadataText: {
+        flexShrink: 1,
+        fontSize: 11,
+        letterSpacing: -0.1,
+    },
+    match: {
+        fontWeight: '700',
+        textDecorationLine: 'underline',
+    },
     shortcutContainer: {
         paddingHorizontal: 10,
         paddingVertical: 5,
         borderRadius: 6,
+        marginLeft: 6,
     },
     shortcut: {
         fontSize: 12,

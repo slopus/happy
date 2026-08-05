@@ -49,6 +49,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
             />
             <CommandPaletteResults
                 categories={filteredCategories}
+                searchQuery={searchQuery}
                 selectedIndex={selectedIndex}
                 onSelectCommand={handleSelectCommand}
                 onSelectionChange={setSelectedIndex}

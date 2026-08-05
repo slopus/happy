@@ -267,8 +267,7 @@ test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ p
     const featureSwitches = page.getByRole('switch');
     await expect(featureSwitches).toHaveCount(10);
     const commandPaletteSwitch = page.getByRole('switch', { name: 'Command Palette' });
-    await expect(commandPaletteSwitch).not.toBeChecked();
-    await commandPaletteSwitch.click();
+    await expect(commandPaletteSwitch).toBeChecked();
 
     await page.keyboard.press('Meta+KeyK');
     const commandInput = page.getByTestId('command-palette-input');
@@ -315,8 +314,7 @@ test.describe('中文 Web 命令面板', () => {
         await page.goto(new URL('/settings/features', authenticatedWebUrl).toString());
 
         const commandPaletteSwitch = page.getByRole('switch', { name: '命令面板' });
-        await expect(commandPaletteSwitch).not.toBeChecked();
-        await commandPaletteSwitch.click();
+        await expect(commandPaletteSwitch).toBeChecked();
         await page.keyboard.press('Meta+KeyK');
 
         const commandInput = page.getByTestId('command-palette-input');

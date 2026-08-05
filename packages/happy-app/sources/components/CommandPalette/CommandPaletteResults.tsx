@@ -8,6 +8,7 @@ import { t } from '@/text';
 
 interface CommandPaletteResultsProps {
     categories: CommandCategory[];
+    searchQuery: string;
     selectedIndex: number;
     onSelectCommand: (command: Command) => void;
     onSelectionChange: (index: number) => void;
@@ -15,6 +16,7 @@ interface CommandPaletteResultsProps {
 
 export function CommandPaletteResults({ 
     categories, 
+    searchQuery,
     selectedIndex, 
     onSelectCommand, 
     onSelectionChange 
@@ -79,6 +81,8 @@ export function CommandPaletteResults({
                         >
                             <CommandPaletteItem
                                 command={command}
+                                searchQuery={searchQuery}
+                                quickSelectNumber={commandIndex < 9 ? commandIndex + 1 : undefined}
                                 isSelected={isSelected}
                                 onPress={() => onSelectCommand(command)}
                                 onHover={() => onSelectionChange(commandIndex)}

@@ -14,18 +14,60 @@ const mocks = vi.hoisted(() => ({
         navigate: vi.fn(),
         push: vi.fn(),
     },
-    keyboardHandler: (() => {}) as () => void,
+    keyboardHandler: undefined as (() => void) | undefined,
     state: {
         sessions: {
             abc123456: {
                 id: 'abc123456',
                 updatedAt: 2,
-                metadata: {},
+                metadata: {
+                    summary: { text: 'Launch plan' },
+                    path: '/Users/jacky/projects/alpha',
+                    homeDir: '/Users/jacky',
+                    host: 'mac-mini.local',
+                    machineId: 'machine-1',
+                    flavor: 'codex',
+                },
+            },
+            history987: {
+                id: 'history987',
+                updatedAt: 1,
+                metadata: {
+                    summary: { text: 'Unloaded historical session' },
+                    path: '/Users/jacky/projects/archive',
+                    host: 'mac-mini.local',
+                    machineId: 'machine-1',
+                },
+            },
+        },
+        sessionMessages: {
+            abc123456: {
+                isLoaded: true,
+                messages: [{
+                    kind: 'user-text',
+                    id: 'message-1',
+                    localId: null,
+                    createdAt: 1,
+                    text: 'Investigate the payment timeout from the first report',
+                }],
+            },
+        },
+        machines: {
+            'machine-1': {
+                id: 'machine-1',
+                metadata: { displayName: 'Mac mini', host: 'mac-mini.local' },
             },
         },
         localSettings: {
             commandPaletteEnabled: true,
+            agents: [{
+                id: 'agent-1',
+                name: 'Release Agent',
+                machineId: 'machine-1',
+                path: '~/projects/alpha',
+            }],
         },
+        currentViewingSessionId: 'abc123456',
     },
 }));
 
@@ -61,7 +103,7 @@ vi.mock('@/hooks/useNavigateToSession', () => ({
 }));
 
 vi.mock('@/hooks/useGlobalKeyboard', () => ({
-    useGlobalKeyboard: (handler: () => void) => {
+    useGlobalKeyboard: (handler: (() => void) | undefined) => {
         mocks.keyboardHandler = handler;
     },
 }));
@@ -82,6 +124,8 @@ vi.mock('@/text', () => ({
             'commandPalette.navigation': '导航',
             'commandPalette.recentSessions': '最近会话',
             'commandPalette.system': '系统',
+            'rightPanelCapabilityHub.blocks.folderBrowser': '文件夹',
+            'tools.names.searchFiles': '搜索文件',
         };
         return translations[key] ?? `译文：${key}`;
     },
@@ -91,8 +135,15 @@ vi.mock('./CommandPalette', () => ({
     CommandPalette: () => null,
 }));
 
-import { CommandPaletteProvider } from './CommandPaletteProvider';
+import { CommandPaletteProvider, useCommandPaletteLauncher } from './CommandPaletteProvider';
 import type { Command } from './types';
+
+let latestLauncher: ReturnType<typeof useCommandPaletteLauncher> = null;
+
+function LauncherProbe() {
+    latestLauncher = useCommandPaletteLauncher();
+    return null;
+}
 
 describe('CommandPaletteProvider', () => {
     const originalConsoleError = console.error;
@@ -105,13 +156,16 @@ describe('CommandPaletteProvider', () => {
         mocks.navigateToSession.mockReset();
         mocks.router.navigate.mockReset();
         mocks.router.push.mockReset();
+        mocks.state.localSettings.commandPaletteEnabled = true;
+        mocks.keyboardHandler = undefined;
+        latestLauncher = null;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
             originalConsoleError(...values);
         });
     });
 
-    it('静态命令和无标题会话均通过翻译函数生成', () => {
+    it('静态命令和跨项目会话元数据均进入同一个面板', () => {
         act(() => {
             renderer = TestRenderer.create(
                 <CommandPaletteProvider>
@@ -121,7 +175,7 @@ describe('CommandPaletteProvider', () => {
         });
 
         act(() => {
-            mocks.keyboardHandler();
+            mocks.keyboardHandler?.();
         });
 
         expect(mocks.modalShow).toHaveBeenCalledOnce();
@@ -139,10 +193,58 @@ describe('CommandPaletteProvider', () => {
             subtitle: '译文：commandPalette.settingsSubtitle',
         });
         expect(byId.get('session-abc123456')).toMatchObject({
-            title: '无标题会话 abc123',
+            title: 'Launch plan',
+            subtitle: '/Users/jacky/projects/alpha',
             category: '最近会话',
-            subtitle: '译文：commandPalette.switchToSession',
+            showWhenEmpty: true,
+            keywords: expect.arrayContaining([
+                '/Users/jacky/projects/alpha',
+                'alpha',
+                'Mac mini',
+                'Release Agent',
+                'codex',
+                'Investigate the payment timeout from the first report',
+            ]),
+            metadata: expect.arrayContaining([
+                { icon: 'chatbubble-outline', text: 'Investigate the payment timeout from the first report' },
+                { icon: 'folder-outline', text: 'alpha' },
+                { icon: 'desktop-outline', text: 'Mac mini' },
+                { icon: 'sparkles-outline', text: 'Release Agent · Codex' },
+            ]),
         });
+        expect(byId.get('open-project-folder')).toMatchObject({
+            title: '文件夹',
+            subtitle: '/Users/jacky/projects/alpha',
+        });
+        expect(byId.get('search-project-files')).toMatchObject({
+            title: '搜索文件',
+            subtitle: '/Users/jacky/projects/alpha',
+        });
+        expect(byId.get('session-history987')).toMatchObject({
+            title: 'Unloaded historical session',
+            subtitle: '/Users/jacky/projects/archive',
+        });
+
+        act(() => byId.get('open-project-folder')?.action());
+        expect(mocks.router.push).toHaveBeenCalledWith('/session/abc123456/files');
+        act(() => byId.get('search-project-files')?.action());
+        expect(mocks.router.push).toHaveBeenCalledWith('/session/abc123456/files?focus=search');
+    });
+
+    it('keeps sidebar access available when the optional keyboard shortcut is disabled', () => {
+        mocks.state.localSettings.commandPaletteEnabled = false;
+        act(() => {
+            renderer = TestRenderer.create(
+                <CommandPaletteProvider>
+                    <LauncherProbe />
+                </CommandPaletteProvider>,
+            );
+        });
+
+        expect(mocks.keyboardHandler).toBeUndefined();
+        expect(latestLauncher?.isAvailable).toBe(true);
+        act(() => latestLauncher?.open());
+        expect(mocks.modalShow).toHaveBeenCalledOnce();
     });
 
     afterEach(() => {

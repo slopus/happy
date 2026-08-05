@@ -17,12 +17,19 @@ export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef 
     const handleKeyDown = React.useCallback((e: any) => {
         if (Platform.OS === 'web' && onKeyPress) {
             const key = e.nativeEvent.key;
+            const digitFromCode = /^(?:Digit|Numpad)([1-9])$/.exec(e.nativeEvent.code)?.[1];
+            const quickSelectDigit = e.nativeEvent.altKey
+                ? digitFromCode ?? (/^[1-9]$/.test(key) ? key : null)
+                : null;
+            const quickSelectKey = quickSelectDigit
+                ? `Alt+${quickSelectDigit}`
+                : null;
             
-            // Handle navigation keys
-            if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(key)) {
+            // Keep bare digits searchable; Alt/Option selects the first nine visible results.
+            if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(key) || quickSelectKey) {
                 e.preventDefault();
                 e.stopPropagation();
-                onKeyPress(key);
+                onKeyPress(quickSelectKey ?? key);
             }
         }
     }, [onKeyPress]);

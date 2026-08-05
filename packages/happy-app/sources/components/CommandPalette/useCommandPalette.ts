@@ -11,7 +11,7 @@ export function useCommandPalette(commands: Command[], onClose: () => void) {
     const filteredCategories = useMemo((): CommandCategory[] => {
         if (!searchQuery.trim()) {
             // Group commands by category
-            const grouped = commands.reduce((acc, command) => {
+            const grouped = commands.filter((command) => command.showWhenEmpty !== false).reduce((acc, command) => {
                 const category = command.category || 'General';
                 if (!acc[category]) {
                     acc[category] = [];
@@ -27,12 +27,15 @@ export function useCommandPalette(commands: Command[], onClose: () => void) {
             }));
         }
 
-        // Fuzzy search
-        const query = searchQuery.toLowerCase();
+        const query = searchQuery.trim().toLocaleLowerCase();
         const filtered = commands.filter(command => {
-            const titleMatch = command.title.toLowerCase().includes(query);
-            const subtitleMatch = command.subtitle?.toLowerCase().includes(query);
-            return titleMatch || subtitleMatch;
+            const searchableValues = [
+                command.title,
+                command.subtitle,
+                ...(command.keywords ?? []),
+                ...(command.metadata?.map((item) => item.text) ?? []),
+            ];
+            return searchableValues.some((value) => value?.toLocaleLowerCase().includes(query));
         });
 
         if (filtered.length === 0) {
@@ -72,12 +75,20 @@ export function useCommandPalette(commands: Command[], onClose: () => void) {
     }, [filteredCategories]);
 
     const handleKeyPress = useCallback((key: string) => {
+        if (/^Alt\+[1-9]$/.test(key)) {
+            const quickSelectIndex = Number(key.at(-1)) - 1;
+            if (allCommands[quickSelectIndex]) {
+                handleSelectCommand(allCommands[quickSelectIndex]);
+            }
+            return;
+        }
+
         switch(key) {
             case 'Escape':
                 onClose();
                 break;
             case 'ArrowDown':
-                setSelectedIndex(prev => Math.min(prev + 1, allCommands.length - 1));
+                setSelectedIndex(prev => Math.min(prev + 1, Math.max(allCommands.length - 1, 0)));
                 break;
             case 'ArrowUp':
                 setSelectedIndex(prev => Math.max(prev - 1, 0));
