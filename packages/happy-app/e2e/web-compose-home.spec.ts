@@ -1,5 +1,9 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
+import {
+    expectProductionRedactionReady,
+    installProductionRedaction,
+} from '../e2e-production/productionRedaction';
 
 const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL!;
 const e2eServerUrl = process.env.HAPPY_E2E_SERVER_URL!;
@@ -738,6 +742,14 @@ test('侧栏底部账户菜单统一提供身份与系统操作并恢复焦点',
     await expect(page.getByTestId('sidebar-account-trigger')).toBeVisible();
     await page.getByTestId('sidebar-account-trigger').click();
     await expect(page.getByTestId('sidebar-account-menu')).toBeVisible();
+});
+
+test('生产截图脱敏锚点随底部账户入口更新', async ({ page }) => {
+    await installProductionRedaction(page);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(authenticatedWebUrl);
+    await expect(page.getByRole('textbox')).toBeVisible();
+    await expectProductionRedactionReady(page);
 });
 
 for (const width of [800, 1280]) {
