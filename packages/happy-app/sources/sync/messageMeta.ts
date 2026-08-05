@@ -14,6 +14,7 @@ export function resolveMessageModeMeta(
     settings?: Pick<Settings, 'agentDefaultOverrides'>,
 ): MessageModeMeta {
     const agentOverrides = getAgentDefaultOverride(settings?.agentDefaultOverrides, session.metadata?.flavor);
+    const codeDefaults = getCodeAgentDefaults(session.metadata?.flavor);
     const meta: MessageModeMeta = {};
 
     if (session.permissionMode !== null && session.permissionMode !== undefined) {
@@ -24,13 +25,24 @@ export function resolveMessageModeMeta(
         meta.permissionMode = getCodeAgentDefaults('codex').permissionMode;
     }
 
-    const modelMode = session.modelMode ?? agentOverrides.modelMode;
+    const modelMode = session.modelMode
+        ?? session.metadata?.currentModelCode
+        ?? agentOverrides.modelMode
+        ?? codeDefaults.modelMode;
     if (modelMode !== undefined) {
         meta.model = modelMode === 'default' ? null : modelMode;
     }
 
-    const effort = session.effortLevel ?? agentOverrides.effortLevel;
-    if (effort !== undefined) {
+    const effort = session.effortLevel
+        ?? session.metadata?.currentThoughtLevelCode
+        ?? agentOverrides.effortLevel
+        ?? codeDefaults.effortLevel;
+    const flavor = session.metadata?.flavor;
+    const supportsEffort = !flavor
+        || flavor === 'claude'
+        || flavor === 'codex'
+        || (session.metadata?.thoughtLevels?.length ?? 0) > 0;
+    if (supportsEffort && effort !== undefined) {
         meta.effort = effort === 'default' ? null : effort;
     }
 

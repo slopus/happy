@@ -6,9 +6,7 @@ import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import {
-    getAvailableModels,
     getAvailablePermissionModes,
-    getEffortLevelsForModel,
     resolveCurrentOption,
 } from '@/components/modelModeOptions';
 import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
@@ -18,6 +16,7 @@ import { t } from '@/text';
 import { Modal } from '@/modal';
 import * as Clipboard from 'expo-clipboard';
 import { getRunningSessionInfoExperience } from '@/utils/newSessionExperience';
+import { resolveRunningSessionTurnModes } from '@/utils/runningSessionTurnModes';
 
 // Agent icon assets — mirrors SessionConfigPanel so the panel reads identically.
 const agentIcons = {
@@ -105,7 +104,6 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const effectiveAgentDefaults = React.useMemo(() => resolveAgentDefaultConfig(agentDefaultOverrides, flavor), [agentDefaultOverrides, flavor]);
 
-    const availableModels = React.useMemo(() => getAvailableModels(flavor, metadata, t), [flavor, metadata]);
     const availableModes = React.useMemo(() => getAvailablePermissionModes(flavor, metadata, t), [flavor, metadata]);
 
     const permissionMode = React.useMemo(() => resolveCurrentOption(availableModes, [
@@ -114,28 +112,23 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
         effectiveAgentDefaults.permissionMode,
     ]), [availableModes, session.permissionMode, effectiveAgentDefaults.permissionMode, metadata?.currentOperatingModeCode]);
 
-    const modelMode = React.useMemo(() => resolveCurrentOption(availableModels, [
-        session.modelMode,
-        metadata?.currentModelCode,
-        effectiveAgentDefaults.modelMode,
-    ]), [availableModels, session.modelMode, effectiveAgentDefaults.modelMode, metadata?.currentModelCode]);
-
-    const modelKey = modelMode?.key ?? 'default';
-    const availableEffortLevels = React.useMemo(
-        () => getEffortLevelsForModel(flavor, modelKey, metadata),
-        [flavor, modelKey, metadata],
-    );
-    const effortLevel = React.useMemo(() => resolveCurrentOption(availableEffortLevels, [
-        session.effortLevel,
-        metadata?.currentThoughtLevelCode,
-        effectiveAgentDefaults.effortLevel,
-    ]), [availableEffortLevels, session.effortLevel, metadata?.currentThoughtLevelCode, effectiveAgentDefaults.effortLevel]);
+    const turnModes = React.useMemo(() => resolveRunningSessionTurnModes({
+        session,
+        agentDefaultOverrides,
+        translate: t,
+    }), [agentDefaultOverrides, session]);
+    const {
+        availableModels,
+        modelMode,
+        availableEffortLevels,
+        effortLevel,
+    } = turnModes;
 
     // Only the rows with a real choice (>1 option) become tappable; otherwise
     // there's nothing to switch to and they stay read-only.
-    const canEditPermission = availableModes.length > 1;
-    const canEditModel = availableModels.length > 1;
-    const canEditEffort = availableEffortLevels.length > 1;
+    const canEditPermission = online && availableModes.length > 1;
+    const canEditModel = online && availableModels.length > 1;
+    const canEditEffort = online && availableEffortLevels.length > 1;
 
     // Which editable row is currently expanded into its option list (one at a time).
     // Animate every expand/collapse so the option list slides in/out smoothly.
@@ -152,6 +145,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
     // future turns via message meta; Codex also receives an immediate RPC update
     // so a turn already blocked on permissions can continue.
     const applyPermission = React.useCallback((key: string) => {
+        if (!online) return;
         storage.getState().updateSessionPermissionMode(session.id, key);
         if (flavor === 'codex') {
             void sessionSetPermissionMode(session.id, key).catch((error) => {
@@ -160,17 +154,19 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
         }
         animateNext();
         setExpanded(null);
-    }, [session.id, animateNext, flavor]);
+    }, [session.id, animateNext, flavor, online]);
     const applyModel = React.useCallback((key: string) => {
+        if (!online) return;
         storage.getState().updateSessionModelMode(session.id, key);
         animateNext();
         setExpanded(null);
-    }, [session.id, animateNext]);
+    }, [session.id, animateNext, online]);
     const applyEffort = React.useCallback((key: string) => {
+        if (!online) return;
         storage.getState().updateSessionEffortLevel(session.id, key);
         animateNext();
         setExpanded(null);
-    }, [session.id, animateNext]);
+    }, [session.id, animateNext, online]);
     const copySessionId = React.useCallback(async () => {
         await Clipboard.setStringAsync(`Happy sessionId: ${session.id}`);
         onClose();

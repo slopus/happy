@@ -17,6 +17,9 @@ export type ModelModeKey = string;
 
 export type AgentFlavor = 'claude' | 'codex' | 'gemini' | string | null | undefined;
 
+export const DEFAULT_MODEL_LABEL = 'default model';
+export const DEFAULT_EFFORT_LABEL = 'default effort';
+
 type Translate = (key: any) => string;
 
 type MetadataOption = {
@@ -82,7 +85,7 @@ export function getAskPermissionModes(translate: Translate): PermissionMode[] {
 
 export function getClaudeModelModes(): ModelMode[] {
     return [
-        { key: 'default', name: 'default model', description: null },
+        { key: 'default', name: DEFAULT_MODEL_LABEL, description: null },
         { key: 'opus', name: 'opus 4.8', description: null },
         { key: 'sonnet', name: 'sonnet 4.6', description: null },
         { key: 'haiku', name: 'haiku 4.5', description: null },
@@ -98,7 +101,7 @@ export function getAskModelModes(): ModelMode[] {
 
 export function getCodexModelModes(): ModelMode[] {
     return [
-        { key: 'default', name: 'default model', description: null },
+        { key: 'default', name: DEFAULT_MODEL_LABEL, description: null },
         { key: 'gpt-5.6-sol', name: 'gpt-5.6-sol', description: null },
         { key: 'gpt-5.6-terra', name: 'gpt-5.6-terra', description: null },
         { key: 'gpt-5.6-luna', name: 'gpt-5.6-luna', description: null },
@@ -147,13 +150,13 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
 
 export function getOpenClawModelModes(): ModelMode[] {
     return [
-        { key: 'default', name: 'default model', description: null },
+        { key: 'default', name: DEFAULT_MODEL_LABEL, description: null },
     ];
 }
 
 export function getOpenCodeModelModes(): ModelMode[] {
     return [
-        { key: 'default', name: 'default model', description: null },
+        { key: 'default', name: DEFAULT_MODEL_LABEL, description: null },
         { key: 'sub2api/gpt-5.5', name: 'sub2api gpt-5.5', description: 'local codex proxy' },
         { key: 'deepseek/deepseek-v4-pro', name: 'deepseek v4 pro', description: 'most capable' },
         { key: 'deepseek/deepseek-v4-flash', name: 'deepseek v4 flash', description: 'fast' },
@@ -189,7 +192,7 @@ export function getAvailableModels(
     const metadataModels = mapMetadataOptions(metadata?.models);
     if (metadataModels.length > 0) {
         if (flavor === 'codex' && !metadataModels.some((model) => model.key === 'default')) {
-            return [{ key: 'default', name: 'default model', description: null }, ...metadataModels];
+            return [{ key: 'default', name: DEFAULT_MODEL_LABEL, description: null }, ...metadataModels];
         }
         return metadataModels;
     }
@@ -255,7 +258,7 @@ export function getClaudeEffortLevels(): EffortLevel[] {
 
 export function getCodexEffortLevels(): EffortLevel[] {
     return [
-        { key: 'default', name: 'default effort' },
+        { key: 'default', name: DEFAULT_EFFORT_LABEL },
         { key: 'minimal', name: 'minimal' },
         { key: 'low', name: 'low' },
         { key: 'medium', name: 'medium' },
@@ -287,7 +290,7 @@ export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string, 
         const metadataEfforts = mapMetadataOptions(metadata?.thoughtLevels);
         if (metadataEfforts.length > 0) {
             return [
-                { key: 'default', name: 'default effort', description: null },
+                { key: 'default', name: DEFAULT_EFFORT_LABEL, description: null },
                 ...metadataEfforts.filter((level) => level.key !== 'default'),
             ];
         }

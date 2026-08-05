@@ -592,6 +592,13 @@ class Sync {
 
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
 
+        // Snapshot per-turn controls before the first possible await. If the
+        // user changes model/effort while attachment upload or initial sync is
+        // still pending, that new choice must apply to the next message rather
+        // than rewriting the turn that was already submitted.
+        const modeSessionSnapshot = storage.getState().sessions[sessionId];
+        const modeSettingsSnapshot = storage.getState().settings;
+
         // Get encryption — may not be ready yet if sessions are still syncing
         let encryption = this.encryption.getSessionEncryption(sessionId);
         if (!encryption) {
@@ -615,7 +622,7 @@ class Sync {
             }
         }
 
-        const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
+        const modeMeta = resolveMessageModeMeta(modeSessionSnapshot ?? session, modeSettingsSnapshot);
         const { displayText, source = 'chat', attachments } = options ?? {};
 
         // Image attachments are wired into the Claude and Codex pipelines; both

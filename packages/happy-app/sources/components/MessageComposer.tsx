@@ -22,6 +22,10 @@ import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import type { ComposerAutocompleteSuggestion } from './autocomplete/types';
+import {
+    SessionComposerModeSelector,
+    type SessionComposerModeSelectorConfig,
+} from './SessionComposerModeSelector';
 
 interface MessageComposerProps {
     // Drives layout differences between the home compose box and the in-session
@@ -75,6 +79,8 @@ interface MessageComposerProps {
     isSending?: boolean;
     minHeight?: number;
     zenMode?: boolean;
+    /** Running-session model/effort controls. Picks affect future messages only. */
+    modeSelector?: SessionComposerModeSelectorConfig;
     /** Image attachments waiting to be sent (expImageUpload feature). */
     selectedImages?: AttachmentPreview[];
     selectedImagesPresentation?: AttachmentGalleryPresentation;
@@ -1102,6 +1108,14 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                         </Modal>
                                     </View>
                                 )}
+
+                                {/* Future-turn model / effort, anchored immediately before send. */}
+                                {isSession && props.modeSelector ? (
+                                    <SessionComposerModeSelector
+                                        {...props.modeSelector}
+                                        compact={screenWidth < 520}
+                                    />
+                                ) : null}
 
                                 {/* Send button */}
                                 <View

@@ -145,7 +145,7 @@ function OptionListContainer({ embedded, children }: { embedded: boolean; childr
 }
 
 // Generic picker content — reused for machine, path, and worktree selection
-function PickerContent({
+export function PickerContent({
     title,
     fixedItems,
     items,
