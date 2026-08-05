@@ -65,6 +65,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
+import { resolveRunningSessionTurnModes } from '@/utils/runningSessionTurnModes';
 
 // Agent display labels for the header chip. Mirrors ComposeHome's map, but keyed
 // off the running session's `flavor` (an active session reports its agent there).
@@ -704,12 +705,34 @@ function SessionViewLoaded({
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
+    const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const experiments = useSetting('experiments');
     const expResumeSession = useSetting('expResumeSession');
     const desktopScreenshotEnabled = useSetting('expDesktopScreenshot');
     const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
     const isDisconnected = !sessionStatus.isConnected;
     const resumeCommandBlock = getResumeCommandBlock(session);
+
+    const nextTurnModes = React.useMemo(() => resolveRunningSessionTurnModes({
+        session,
+        agentDefaultOverrides,
+        translate: t,
+    }), [agentDefaultOverrides, session]);
+    const handleModelChange = React.useCallback((key: string) => {
+        storage.getState().updateSessionModelMode(sessionId, key);
+    }, [sessionId]);
+    const handleEffortChange = React.useCallback((key: string) => {
+        storage.getState().updateSessionEffortLevel(sessionId, key);
+    }, [sessionId]);
+    const modeSelector = React.useMemo(() => ({
+        online: !isDisconnected,
+        model: nextTurnModes.modelMode,
+        modelOptions: nextTurnModes.availableModels,
+        effort: nextTurnModes.effortLevel,
+        effortOptions: nextTurnModes.availableEffortLevels,
+        onModelChange: handleModelChange,
+        onEffortChange: handleEffortChange,
+    }), [handleEffortChange, handleModelChange, isDisconnected, nextTurnModes]);
 
     // Attachment state（图片/音视频，会话内默认可用）。pickAttachment 弹出
     // 图片/音视频选择器；音视频不支持的 flavor 由 sendMessage 兜底提示。
@@ -922,6 +945,7 @@ function SessionViewLoaded({
             usageData={usageData}
             alwaysShowContextSize={alwaysShowContextSize}
             zenMode={zenMode}
+            modeSelector={modeSelector}
         />
     );
 

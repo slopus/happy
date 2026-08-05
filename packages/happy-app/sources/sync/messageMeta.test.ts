@@ -10,7 +10,11 @@ describe('resolveMessageModeMeta', () => {
             metadata: { flavor: 'codex' },
         } as any);
 
-        expect(meta).toEqual({ permissionMode: 'yolo' });
+        expect(meta).toEqual({
+            permissionMode: 'yolo',
+            model: null,
+            effort: null,
+        });
     });
 
     it('sends explicit per-session overrides', () => {
@@ -65,7 +69,11 @@ describe('resolveMessageModeMeta', () => {
             },
         } as any);
 
-        expect(meta).toEqual({ permissionMode: 'yolo' });
+        expect(meta).toEqual({
+            permissionMode: 'yolo',
+            model: null,
+            effort: null,
+        });
     });
 
     it('ignores stale Codex settings-level CLI default overrides', () => {
@@ -82,7 +90,11 @@ describe('resolveMessageModeMeta', () => {
             },
         } as any);
 
-        expect(meta).toEqual({ permissionMode: 'yolo' });
+        expect(meta).toEqual({
+            permissionMode: 'yolo',
+            model: null,
+            effort: null,
+        });
     });
 
     it('lets session overrides beat settings-level overrides', () => {
@@ -116,7 +128,7 @@ describe('resolveMessageModeMeta', () => {
             metadata: { flavor: 'claude' },
         } as any);
 
-        expect(meta).toEqual({ model: null });
+        expect(meta).toEqual({ model: null, effort: 'medium' });
     });
 
     it('treats an explicit default effort as a reset override', () => {
@@ -127,6 +139,53 @@ describe('resolveMessageModeMeta', () => {
             metadata: { flavor: 'codex' },
         } as any);
 
-        expect(meta).toEqual({ permissionMode: 'yolo', effort: null });
+        expect(meta).toEqual({ permissionMode: 'yolo', model: null, effort: null });
+    });
+
+    it('records CLI-reported current values before falling back to settings defaults', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: {
+                flavor: 'codex',
+                currentModelCode: 'gpt-5.6-sol',
+                currentThoughtLevelCode: 'xhigh',
+            },
+        } as any, {
+            agentDefaultOverrides: {
+                codex: {
+                    modelMode: 'gpt-5.5',
+                    effortLevel: 'medium',
+                },
+            },
+        } as any);
+
+        expect(meta).toEqual({
+            permissionMode: 'yolo',
+            model: 'gpt-5.6-sol',
+            effort: 'xhigh',
+        });
+    });
+
+    it.each([
+        { flavor: 'gemini', expectedModel: 'gemini-2.5-pro' },
+        { flavor: 'opencode', expectedModel: 'sub2api/gpt-5.5' },
+    ])('drops unsupported effort metadata for $flavor even when ACP reports thought levels', ({ flavor, expectedModel }) => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: 'xhigh',
+            metadata: {
+                flavor,
+                thoughtLevels: [
+                    { code: 'medium', value: 'medium' },
+                    { code: 'xhigh', value: 'xhigh' },
+                ],
+                currentThoughtLevelCode: 'xhigh',
+            },
+        } as any);
+
+        expect(meta).toEqual({ model: expectedModel });
     });
 });

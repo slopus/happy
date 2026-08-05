@@ -14,6 +14,7 @@ import { layout } from "./layout";
 import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
 import { getAutoFoldPromptBodyRenderState, getAutoFoldPromptInfo } from '@/utils/autoFoldPrompt';
 import { ConversationActivityStrip } from './ConversationActivityStrip';
+import { getMessageModelEffortLabel } from '@/utils/messageModelEffort';
 
 
 export const MessageView = React.memo((props: {
@@ -99,6 +100,7 @@ function UserTextBlock(props: {
   const rewindPointId = props.message.claudeUuid ?? props.message.codexItemId;
   const canFork = Boolean(props.onForkFromUserMessage)
     && (Boolean(rewindPointId) || props.metadata?.flavor === 'codex');
+  const modeLabel = getMessageModelEffortLabel(props.message.meta, props.metadata?.flavor);
   const handleLongPress = React.useCallback(() => {
     if (props.onForkFromUserMessage) {
       props.onForkFromUserMessage(props.message.id, rewindPointId, props.message.text);
@@ -129,9 +131,10 @@ function UserTextBlock(props: {
   if (parsed.kind === 'command-run') {
     return (
       <View style={styles.userMessageContainer}>
-        <View style={styles.commandChip}>
+        <View style={[styles.commandChip, modeLabel && styles.userContentWithModeMeta]}>
           <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
         </View>
+        <UserMessageModeLabel messageId={props.message.id} label={modeLabel} />
       </View>
     );
   }
@@ -140,7 +143,7 @@ function UserTextBlock(props: {
   if (autoFoldPrompt) {
     return (
       <View style={styles.userMessageContainer}>
-        <View style={styles.userAutoFoldWrap}>
+        <View style={[styles.userAutoFoldWrap, modeLabel && styles.userContentWithModeMeta]}>
           <AutoFoldPromptBlock
             text={parsed.text}
             info={autoFoldPrompt}
@@ -148,6 +151,7 @@ function UserTextBlock(props: {
             sessionId={props.sessionId}
           />
         </View>
+        <UserMessageModeLabel messageId={props.message.id} label={modeLabel} />
       </View>
     );
   }
@@ -157,11 +161,24 @@ function UserTextBlock(props: {
       <Pressable
         onLongPress={canFork ? handleLongPress : undefined}
         delayLongPress={400}
-        style={styles.userMessageBubble}
+        style={[styles.userMessageBubble, modeLabel && styles.userContentWithModeMeta]}
       >
         <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
       </Pressable>
+      <UserMessageModeLabel messageId={props.message.id} label={modeLabel} />
     </View>
+  );
+}
+
+function UserMessageModeLabel(props: { messageId: string; label: string | null }) {
+  if (!props.label) {
+    return null;
+  }
+
+  return (
+    <Text testID={`message-user-mode-${props.messageId}`} style={styles.userMessageModeText} numberOfLines={1}>
+      {props.label}
+    </Text>
   );
 }
 
@@ -352,6 +369,15 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 12,
     marginBottom: 12,
     maxWidth: '100%',
+  },
+  userContentWithModeMeta: {
+    marginBottom: 4,
+  },
+  userMessageModeText: {
+    color: theme.colors.textSecondary,
+    fontSize: 11,
+    marginBottom: 12,
+    paddingHorizontal: 4,
   },
   commandChip: {
     backgroundColor: theme.colors.userMessageBackground,
