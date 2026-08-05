@@ -267,6 +267,8 @@ export const ca: TranslationStructure = {
         noRecent: 'Nothing recent yet',
         back: 'Back',
         blocks: {
+            outputs: 'Resultats',
+            sources: 'Fonts',
             sessionActions: 'Session Actions',
             skills: 'Skills',
             quickPrompts: 'Quick Prompts',
@@ -276,6 +278,8 @@ export const ca: TranslationStructure = {
             folderBrowser: 'Carpeta',
         },
         empty: {
+            outputs: 'Els fitxers, les previsualitzacions i altres resultats de la tasca apareixeran aquí.',
+            sources: 'Els enllaços web i els fitxers adjunts utilitzats en aquesta tasca apareixeran aquí.',
             sessionActions: 'No actions available for this session',
             skills: 'No skills available for this session',
             quickPrompts: 'No quick prompts yet',
@@ -294,6 +298,10 @@ export const ca: TranslationStructure = {
             image: 'Image attachment',
             generatedImage: 'Generated image',
             artifact: 'Linked artifact',
+            created: 'Creat',
+            updated: 'Actualitzat',
+            preview: 'Previsualització preparada',
+            source: 'Utilitzat com a font',
         },
         quickPrompt: {
             add: 'Add Prompt',

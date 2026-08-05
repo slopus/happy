@@ -226,6 +226,68 @@ async function createE2EUserMessage(
     expect(response.ok()).toBe(true);
 }
 
+async function createE2ECompletedToolCall(
+    request: APIRequestContext,
+    sessionId: string,
+    options: {
+        callId: string;
+        input: Record<string, unknown>;
+        name: string;
+        output?: unknown;
+    },
+): Promise<void> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少创建 E2E 工具消息所需的本地认证配置。');
+    }
+
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+    const encryptContent = (data: Record<string, unknown>) => encodeBase64(encryptLegacy({
+        role: 'agent',
+        content: {
+            type: 'acp',
+            provider: 'codex',
+            data,
+        },
+        meta: { sentFrom: 'cli' },
+    }, encryptionKey));
+    const response = await request.post(
+        new URL(`/v3/sessions/${encodeURIComponent(sessionId)}/messages`, e2eServerUrl).toString(),
+        {
+            data: {
+                messages: [
+                    {
+                        content: encryptContent({
+                            type: 'tool-call',
+                            callId: options.callId,
+                            id: options.callId,
+                            input: options.input,
+                            name: options.name,
+                        }),
+                        localId: `${options.callId}-call-${Date.now()}-${Math.random()}`,
+                    },
+                    {
+                        content: encryptContent({
+                            type: 'tool-result',
+                            callId: options.callId,
+                            id: `${options.callId}-result`,
+                            output: options.output ?? { success: true },
+                        }),
+                        localId: `${options.callId}-result-${Date.now()}-${Math.random()}`,
+                    },
+                ],
+            },
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'X-Happy-Client': 'playwright-e2e',
+            },
+        },
+    );
+    expect(response.ok()).toBe(true);
+}
+
 async function createConnectedE2EFileSession(request: APIRequestContext): Promise<{
     client: { close: () => void };
     fileContent: string;
@@ -276,39 +338,11 @@ async function createConnectedE2EFileSession(request: APIRequestContext): Promis
     const body = await response.json() as { session: { id: string } };
 
     const sessionId = body.session.id;
-    const messageResponse = await request.post(
-        new URL(`/v3/sessions/${encodeURIComponent(sessionId)}/messages`, e2eServerUrl).toString(),
-        {
-            data: {
-                messages: [{
-                    content: encodeBase64(encryptLegacy({
-                        role: 'agent',
-                        content: {
-                            type: 'acp',
-                            provider: 'codex',
-                            data: {
-                                type: 'tool-call',
-                                callId: 'file-viewer-layout-write',
-                                id: 'file-viewer-layout-write',
-                                input: { file_path: filePath, content: fileContent },
-                                name: 'Write',
-                            },
-                        },
-                        meta: { sentFrom: 'cli' },
-                    }, encryptionKey)),
-                    localId: `file-viewer-layout-${Date.now()}`,
-                }],
-            },
-            headers: {
-                Authorization: `Bearer ${token}`,
-                'X-Happy-Client': 'playwright-e2e',
-            },
-        },
-    );
-    if (!messageResponse.ok()) {
-        rmSync(workspace, { force: true, recursive: true });
-        throw new Error(`写入文件详情 E2E 消息失败：HTTP ${messageResponse.status()}`);
-    }
+    await createE2ECompletedToolCall(request, sessionId, {
+        callId: 'file-viewer-layout-write',
+        input: { file_path: filePath, content: fileContent },
+        name: 'Write',
+    });
 
     const rpcSocket = io(e2eServerUrl, {
         auth: {
@@ -1311,11 +1345,9 @@ test('PC 从右侧文件列表打开详情后标题与正文保持正确对齐',
 
         const rightPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
         await expect(rightPanel).toBeVisible();
-        await expect(rightPanel.getByText(fixture.fileName, { exact: true })).toBeVisible();
-
-        const filesLabels = rightPanel.getByText('Files', { exact: true });
-        await expect(filesLabels).toHaveCount(1);
-        await filesLabels.click();
+        const filesBlock = rightPanel.getByTestId('capability-block-files');
+        await expect(filesBlock).toContainText(fixture.fileName);
+        await filesBlock.click();
         await rightPanel.getByText(fixture.fileName, { exact: true }).click();
 
         await expect.poll(() => new URL(page.url()).pathname).toBe(`/session/${fixture.sessionId}/file`);
@@ -1352,6 +1384,118 @@ test('PC 从右侧文件列表打开详情后标题与正文保持正确对齐',
         await fixture.client.close();
         rmSync(fixture.workspace, { force: true, recursive: true });
     }
+});
+
+test('[TASK-CONTEXT] Capability Hub 投影当前会话的 Outputs 与 Sources 并实时持久更新', async ({ page, request }, testInfo) => {
+    const sessionId = await createE2ESession(request, { name: 'Task context active session' });
+    const otherSessionId = await createE2ESession(request, { name: 'Task context isolated session' });
+    const filePath = '/tmp/task-context-panel.md';
+    const otherFilePath = '/tmp/other-session-secret.md';
+
+    await createE2ECompletedToolCall(request, otherSessionId, {
+        callId: 'other-write',
+        input: { file_path: otherFilePath, content: 'isolated' },
+        name: 'Write',
+    });
+    await createE2ECompletedToolCall(request, otherSessionId, {
+        callId: 'other-fetch',
+        input: { url: 'https://other.example/context' },
+        name: 'WebFetch',
+    });
+
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(authenticatedRoute(`/session/${sessionId}`));
+    if (!await page.locator('[data-testid="desktop-right-panel"]:visible').isVisible()) {
+        await page.locator('[data-testid="desktop-right-panel-restore-button"]:visible').click();
+    }
+    const rightPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
+    const outputsBlock = rightPanel.getByTestId('capability-block-outputs');
+    const sourcesBlock = rightPanel.getByTestId('capability-block-sources');
+
+    await expect(outputsBlock).toBeVisible();
+    await expect(outputsBlock).toContainText('Files, previews, and other task results will appear here.');
+    await expect(sourcesBlock).toContainText('Web links and attachments used in this task will appear here.');
+    await page.screenshot({
+        path: testInfo.outputPath('task-context-empty-before-1280x720.png'),
+        fullPage: true,
+    });
+
+    await createE2ECompletedToolCall(request, sessionId, {
+        callId: 'task-context-write',
+        input: { file_path: filePath, content: 'first version' },
+        name: 'Write',
+    });
+    await createE2ECompletedToolCall(request, sessionId, {
+        callId: 'task-context-fetch',
+        input: { url: 'https://docs.example.com/happy/task-context' },
+        name: 'WebFetch',
+    });
+
+    await expect(outputsBlock.getByText('1', { exact: true })).toBeVisible();
+    await expect(outputsBlock).toContainText('task-context-panel.md');
+    await expect(sourcesBlock.getByText('1', { exact: true })).toBeVisible();
+    await expect(sourcesBlock).toContainText('docs.example.com');
+
+    await outputsBlock.click();
+    const outputRow = rightPanel.getByTestId('task-context-output-file');
+    await expect(outputRow).toContainText(filePath);
+
+    await createE2ECompletedToolCall(request, sessionId, {
+        callId: 'task-context-edit',
+        input: {
+            file_path: filePath,
+            old_string: 'first version',
+            new_string: 'second version',
+        },
+        name: 'Edit',
+    });
+    await expect(rightPanel.getByTestId('task-context-output-file')).toHaveCount(1);
+    await expect(outputRow).toContainText('Updated');
+    await expect(outputRow).toContainText('×2');
+    await page.screenshot({
+        path: testInfo.outputPath('task-context-output-detail-after-1280x720.png'),
+        fullPage: true,
+    });
+
+    await rightPanel.getByText('Back', { exact: true }).click();
+    await expect(outputsBlock.getByText('1', { exact: true })).toBeVisible();
+    await expect(sourcesBlock.getByText('1', { exact: true })).toBeVisible();
+    await page.screenshot({
+        path: testInfo.outputPath('task-context-summary-after-1280x720.png'),
+        fullPage: true,
+    });
+
+    await outputsBlock.click();
+    await rightPanel.getByTestId('task-context-output-file').click();
+    await expect.poll(() => new URL(page.url()).pathname).toBe(`/session/${sessionId}/file`);
+    await page.goBack();
+
+    await page.goto(authenticatedRoute(`/session/${otherSessionId}`));
+    const otherRightPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
+    await otherRightPanel.getByTestId('capability-block-outputs').click();
+    await expect(otherRightPanel.getByText('other-session-secret.md', { exact: true })).toBeVisible();
+    await expect(otherRightPanel.getByText('task-context-panel.md', { exact: true })).toHaveCount(0);
+    await otherRightPanel.getByText('Back', { exact: true }).click();
+    await otherRightPanel.getByTestId('capability-block-sources').click();
+    await expect(otherRightPanel.getByTestId('task-context-source-web')).toContainText('other.example');
+    await expect(otherRightPanel.getByTestId('task-context-source-web')).not.toContainText('docs.example.com');
+
+    await page.goto(authenticatedRoute(`/session/${sessionId}`));
+    await page.reload();
+    const reloadedRightPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
+    await reloadedRightPanel.getByTestId('capability-block-sources').click();
+    const sourceRow = reloadedRightPanel.getByTestId('task-context-source-web');
+    await expect(sourceRow).toContainText('docs.example.com');
+
+    await page.context().route('https://docs.example.com/**', (route) => route.fulfill({
+        contentType: 'text/html',
+        body: '<title>Task context source</title>',
+    }));
+    const popupPromise = page.waitForEvent('popup');
+    await sourceRow.click();
+    const popup = await popupPromise;
+    await expect.poll(() => popup.url()).toBe('https://docs.example.com/happy/task-context');
+    await popup.close();
 });
 
 test('桌面问候语与输入框内容列对齐且代表性中文标题保持单行', async ({ page }) => {

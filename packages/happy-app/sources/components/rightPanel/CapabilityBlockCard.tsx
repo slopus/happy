@@ -9,6 +9,7 @@ type Props = {
     preview?: string | null;
     title: string;
     onPress?: () => void;
+    testID?: string;
 };
 
 export const CapabilityBlockCard = React.memo(function CapabilityBlockCard({
@@ -18,6 +19,7 @@ export const CapabilityBlockCard = React.memo(function CapabilityBlockCard({
     preview,
     title,
     onPress,
+    testID,
 }: Props) {
     const { theme } = useUnistyles();
 
@@ -25,6 +27,7 @@ export const CapabilityBlockCard = React.memo(function CapabilityBlockCard({
         <Pressable
             disabled={disabled || !onPress}
             onPress={onPress}
+            testID={testID}
             style={({ pressed }) => [
                 styles.card,
                 {

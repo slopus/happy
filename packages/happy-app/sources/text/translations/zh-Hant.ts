@@ -267,6 +267,8 @@ export const zhHant: TranslationStructure = {
         noRecent: '目前還沒有最近資源',
         back: '返回',
         blocks: {
+            outputs: '輸出',
+            sources: '來源',
             sessionActions: '會話操作',
             skills: 'Skills',
             quickPrompts: '快捷指令',
@@ -276,6 +278,8 @@ export const zhHant: TranslationStructure = {
             folderBrowser: '資料夾',
         },
         empty: {
+            outputs: '目前任務產生的檔案、預覽和其他結果會顯示在這裡。',
+            sources: '目前任務使用的網頁連結和附件會顯示在這裡。',
             sessionActions: '目前會話還沒有可用操作',
             skills: '目前會話還沒有可用的 skills',
             quickPrompts: '目前還沒有快捷指令',
@@ -294,6 +298,10 @@ export const zhHant: TranslationStructure = {
             image: '圖片附件',
             generatedImage: '生成圖片',
             artifact: '關聯 Artifact',
+            created: '已建立',
+            updated: '已更新',
+            preview: '預覽已就緒',
+            source: '已用作來源',
         },
         quickPrompt: {
             add: '新增指令',

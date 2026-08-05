@@ -2,8 +2,12 @@ import type { DecryptedArtifact } from '@/sync/artifactTypes';
 import type { QuickPrompt } from '@/sync/settings';
 import type { Session } from '@/sync/storageTypes';
 import type { Message } from '@/sync/typesMessage';
+import {
+    projectTaskResourceEvents,
+    type TaskResourceEvent,
+} from '@/utils/taskResourceEvents';
 
-export type CapabilityKey = 'skills' | 'quickPrompts' | 'images' | 'artifacts' | 'files';
+export type CapabilityKey = 'outputs' | 'sources' | 'skills' | 'quickPrompts' | 'images' | 'artifacts' | 'files';
 
 export type SkillCapabilityItem = {
     id: string;
@@ -60,7 +64,16 @@ export type QuickPromptCapabilityItem = {
     updatedAt?: number;
 };
 
+export type TaskResourceCapabilityItem = {
+    id: string;
+    kind: 'taskResource';
+    title: string;
+    meta: 'session';
+    event: TaskResourceEvent;
+};
+
 export type CapabilityItem =
+    | TaskResourceCapabilityItem
     | SkillCapabilityItem
     | QuickPromptCapabilityItem
     | ImageCapabilityItem
@@ -68,6 +81,8 @@ export type CapabilityItem =
     | FileCapabilityItem;
 
 export type CapabilityItemsByKey = {
+    outputs: TaskResourceCapabilityItem;
+    sources: TaskResourceCapabilityItem;
     skills: SkillCapabilityItem;
     quickPrompts: QuickPromptCapabilityItem;
     images: ImageCapabilityItem;
@@ -75,7 +90,7 @@ export type CapabilityItemsByKey = {
     files: FileCapabilityItem;
 };
 
-type CapabilityDetails = {
+export type CapabilityDetails = {
     [K in CapabilityKey]: CapabilityItemsByKey[K][];
 };
 
@@ -88,7 +103,7 @@ export type CapabilityBlock = {
 
 export type SessionCapabilityHubModel = {
     blocks: CapabilityBlock[];
-    details: Record<CapabilityKey, CapabilityItem[]>;
+    details: CapabilityDetails;
 };
 
 type BuildArgs = {
@@ -102,190 +117,91 @@ type BuildArgs = {
     };
 };
 
-const DETAIL_KEYS: CapabilityKey[] = ['skills', 'quickPrompts', 'images', 'artifacts', 'files'];
+const DETAIL_KEYS: CapabilityKey[] = ['outputs', 'sources', 'skills', 'quickPrompts', 'images', 'artifacts', 'files'];
 const DEFAULT_DETAIL_LIMIT = Number.POSITIVE_INFINITY;
-const EDIT_TOOL_NAMES = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
-const PATCH_TOOL_NAMES = new Set(['CodexPatch', 'GeminiPatch']);
-
-type PatchEntry = {
-    path: string;
-};
-
-type FileImageInput = {
-    ref: string;
-    name?: string;
-    source?: 'user' | 'generated';
-    prompt?: string;
-    batchId?: string;
-    localPath?: string;
-    image?: {
-        width?: number;
-        height?: number;
-        thumbhash?: string;
-    };
-};
-
-function isToolMessage(message: Message): message is Extract<Message, { kind: 'tool-call' }> {
-    return message.kind === 'tool-call';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function getMetadataSkills(session: Session | null): string[] {
     const skills = session?.metadata?.skills;
     return Array.isArray(skills) ? skills.filter((value): value is string => typeof value === 'string' && value.length > 0) : [];
 }
 
-function getArtifactItems(session: Session | null, artifacts: DecryptedArtifact[], limit: number): ArtifactCapabilityItem[] {
-    if (!session) return [];
-    return artifacts
-        .filter((artifact) => !artifact.draft && Array.isArray(artifact.sessions) && artifact.sessions.includes(session.id))
-        .sort((a, b) => b.updatedAt - a.updatedAt)
+function getResourceEvents(args: BuildArgs): TaskResourceEvent[] {
+    if (!args.session) return [];
+    return projectTaskResourceEvents({
+        sessionId: args.session.id,
+        messages: args.messages,
+        artifacts: args.artifacts,
+    });
+}
+
+function getTaskResourceItems(
+    events: TaskResourceEvent[],
+    type: 'outputs' | 'sources',
+    limit: number,
+): TaskResourceCapabilityItem[] {
+    return events
+        .filter((event) => type === 'sources' ? event.kind === 'source_used' : event.kind !== 'source_used')
         .slice(0, limit)
-        .map((artifact) => ({
-            id: artifact.id,
-            kind: 'artifact',
-            title: artifact.title || 'Untitled',
+        .map((event) => ({
+            id: `${type}:${event.id}`,
+            kind: 'taskResource',
+            title: event.title,
             meta: 'session',
-            artifactId: artifact.id,
-            createdAt: artifact.createdAt,
-            updatedAt: artifact.updatedAt,
+            event,
         }));
 }
 
-function parseFileImageInput(input: unknown): FileImageInput | null {
-    if (!isRecord(input)) return null;
-    const ref = typeof input.ref === 'string' ? input.ref : null;
-    if (!ref) return null;
-    const image = isRecord(input.image) ? input.image : undefined;
-    return {
-        ref,
-        name: typeof input.name === 'string' ? input.name : undefined,
-        source: input.source === 'generated' || input.source === 'user' ? input.source : undefined,
-        prompt: typeof input.prompt === 'string' ? input.prompt : undefined,
-        batchId: typeof input.batchId === 'string' ? input.batchId : undefined,
-        localPath: typeof input.localPath === 'string' ? input.localPath : undefined,
-        image: image ? {
-            width: typeof image.width === 'number' ? image.width : undefined,
-            height: typeof image.height === 'number' ? image.height : undefined,
-            thumbhash: typeof image.thumbhash === 'string' ? image.thumbhash : undefined,
-        } : undefined,
-    };
-}
-
-function getImageItems(messages: Message[], limit: number): ImageCapabilityItem[] {
-    const items: ImageCapabilityItem[] = [];
-
-    for (const message of messages) {
-        if (!isToolMessage(message) || message.tool.name !== 'file') continue;
-        const parsed = parseFileImageInput(message.tool.input);
-        if (!parsed) continue;
-        items.push({
-            id: message.id,
+function getImageItems(events: TaskResourceEvent[], limit: number): ImageCapabilityItem[] {
+    return events
+        .flatMap((event) => event.resourceType === 'image' ? [event] : [])
+        .slice(0, limit)
+        .map((event) => ({
+            id: event.messageId,
             kind: 'image',
-            title: parsed.name || 'Image',
+            title: event.title,
             meta: 'session',
-            ref: parsed.ref,
-            ...(parsed.source ? { source: parsed.source } : {}),
-            ...(parsed.prompt ? { prompt: parsed.prompt } : {}),
-            ...(parsed.batchId ? { batchId: parsed.batchId } : {}),
-            ...(parsed.localPath ? { localPath: parsed.localPath } : {}),
-            messageId: message.id,
-            createdAt: message.createdAt,
-            ...(parsed.image?.width !== undefined ? { width: parsed.image.width } : {}),
-            ...(parsed.image?.height !== undefined ? { height: parsed.image.height } : {}),
-            ...(parsed.image?.thumbhash !== undefined ? { thumbhash: parsed.image.thumbhash } : {}),
-        });
-    }
-
-    return items.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
+            ref: event.uri,
+            ...(event.source ? { source: event.source } : {}),
+            ...(event.prompt ? { prompt: event.prompt } : {}),
+            ...(event.batchId ? { batchId: event.batchId } : {}),
+            ...(event.localPath ? { localPath: event.localPath } : {}),
+            messageId: event.messageId,
+            createdAt: event.createdAt,
+            ...(event.width !== undefined ? { width: event.width } : {}),
+            ...(event.height !== undefined ? { height: event.height } : {}),
+            ...(event.thumbhash !== undefined ? { thumbhash: event.thumbhash } : {}),
+        }));
 }
 
-function getPatchPaths(input: unknown): string[] {
-    const paths: string[] = [];
-
-    const collectFromObject = (value: unknown) => {
-        if (!isRecord(value)) return;
-        for (const key of Object.keys(value)) {
-            if (typeof key === 'string' && key.length > 0) {
-                paths.push(key);
-            }
-        }
-    };
-
-    const collectFromArray = (value: unknown) => {
-        if (!Array.isArray(value)) return;
-        for (const item of value) {
-            if (!isRecord(item)) continue;
-            if (typeof item.path === 'string' && item.path.length > 0) {
-                paths.push(item.path);
-            }
-        }
-    };
-
-    if (!isRecord(input)) return paths;
-    collectFromObject(input.changes);
-    collectFromObject(input.fileChanges);
-    collectFromArray(input.changes);
-    collectFromArray(input.fileChanges);
-    return paths;
+function getArtifactItems(events: TaskResourceEvent[], limit: number): ArtifactCapabilityItem[] {
+    return events
+        .filter((event) => event.resourceType === 'artifact' && event.artifactId)
+        .slice(0, limit)
+        .map((event) => ({
+            id: event.artifactId!,
+            kind: 'artifact',
+            title: event.title,
+            meta: 'session',
+            artifactId: event.artifactId!,
+            createdAt: event.resourceCreatedAt ?? event.firstSeenAt,
+            updatedAt: event.resourceUpdatedAt ?? event.createdAt,
+        }));
 }
 
-function getSingleFilePath(input: unknown): string | null {
-    if (!isRecord(input)) return null;
-    const direct = ['file_path', 'target_file', 'path', 'notebook_path'];
-    for (const key of direct) {
-        const value = input[key];
-        if (typeof value === 'string' && value.length > 0) {
-            return value;
-        }
-    }
-    return null;
-}
-
-function getFileItems(messages: Message[], limit: number): FileCapabilityItem[] {
-    const sorted = messages
-        .filter(isToolMessage)
-        .slice()
-        .sort((a, b) => b.createdAt - a.createdAt);
-
-    const items: FileCapabilityItem[] = [];
-    const seen = new Set<string>();
-
-    for (const message of sorted) {
-        const toolName = message.tool.name;
-        const paths: string[] = [];
-
-        if (EDIT_TOOL_NAMES.has(toolName)) {
-            const singlePath = getSingleFilePath(message.tool.input);
-            if (singlePath) paths.push(singlePath);
-        }
-        if (PATCH_TOOL_NAMES.has(toolName)) {
-            paths.push(...getPatchPaths(message.tool.input));
-        }
-
-        for (const path of paths) {
-            if (!path || seen.has(path)) continue;
-            seen.add(path);
-            items.push({
-                id: `${message.id}:${path}`,
-                kind: 'file',
-                title: path.split('/').pop() || path,
-                meta: 'session',
-                path,
-                toolName,
-                messageId: message.id,
-                createdAt: message.createdAt,
-            });
-            if (items.length >= limit) {
-                return items;
-            }
-        }
-    }
-
-    return items;
+function getFileItems(events: TaskResourceEvent[], limit: number): FileCapabilityItem[] {
+    return events
+        .filter((event) => event.resourceType === 'file')
+        .slice(0, limit)
+        .map((event) => ({
+            id: event.id,
+            kind: 'file',
+            title: event.title,
+            meta: 'session',
+            path: event.path,
+            toolName: event.toolName ?? '',
+            messageId: event.messageId,
+            createdAt: event.createdAt,
+        }));
 }
 
 function getSkillItems(session: Session | null, skillNames: string[] | null | undefined, limit: number): SkillCapabilityItem[] {
@@ -325,28 +241,37 @@ function getPreview(items: CapabilityItem[]): string | null {
 
 export function getCapabilityDetailItems<K extends CapabilityKey>(key: K, args: BuildArgs): CapabilityItemsByKey[K][] {
     const limit = args.limits?.details ?? DEFAULT_DETAIL_LIMIT;
+    const resourceEvents = getResourceEvents(args);
 
     switch (key) {
+        case 'outputs':
+            return getTaskResourceItems(resourceEvents, 'outputs', limit) as CapabilityItemsByKey[K][];
+        case 'sources':
+            return getTaskResourceItems(resourceEvents, 'sources', limit) as CapabilityItemsByKey[K][];
         case 'skills':
             return getSkillItems(args.session, args.skillNames, limit) as CapabilityItemsByKey[K][];
         case 'quickPrompts':
             return getQuickPromptItems(args.quickPrompts, limit) as CapabilityItemsByKey[K][];
         case 'images':
-            return getImageItems(args.messages, limit) as CapabilityItemsByKey[K][];
+            return getImageItems(resourceEvents, limit) as CapabilityItemsByKey[K][];
         case 'artifacts':
-            return getArtifactItems(args.session, args.artifacts, limit) as CapabilityItemsByKey[K][];
+            return getArtifactItems(resourceEvents, limit) as CapabilityItemsByKey[K][];
         case 'files':
-            return getFileItems(args.messages, limit) as CapabilityItemsByKey[K][];
+            return getFileItems(resourceEvents, limit) as CapabilityItemsByKey[K][];
     }
 }
 
 export function buildSessionCapabilityHubModel(args: BuildArgs): SessionCapabilityHubModel {
+    const resourceEvents = getResourceEvents(args);
+    const limit = args.limits?.details ?? DEFAULT_DETAIL_LIMIT;
     const details: CapabilityDetails = {
-        skills: getCapabilityDetailItems('skills', args),
-        quickPrompts: getCapabilityDetailItems('quickPrompts', args),
-        images: getCapabilityDetailItems('images', args),
-        artifacts: getCapabilityDetailItems('artifacts', args),
-        files: getCapabilityDetailItems('files', args),
+        outputs: getTaskResourceItems(resourceEvents, 'outputs', limit),
+        sources: getTaskResourceItems(resourceEvents, 'sources', limit),
+        skills: getSkillItems(args.session, args.skillNames, limit),
+        quickPrompts: getQuickPromptItems(args.quickPrompts, limit),
+        images: getImageItems(resourceEvents, limit),
+        artifacts: getArtifactItems(resourceEvents, limit),
+        files: getFileItems(resourceEvents, limit),
     };
 
     const blocks = DETAIL_KEYS.map((key) => {
