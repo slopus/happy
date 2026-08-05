@@ -4,20 +4,11 @@ import {
     downloadEncryptedAttachment,
     requestAttachmentDownloadSource,
 } from './apiAttachments';
-import {
-    createMediaPlaybackSource,
-    downloadMediaPlaybackSource,
-} from './createMediaPlaybackSource';
+import { createMediaPlaybackSource } from './createMediaPlaybackSource';
 import type { MediaPlaybackSource } from './mediaPlaybackSourceTypes';
+import type { ResolveMediaAttachmentSourceInput } from './resolveMediaAttachmentSource';
 
-export type ResolveMediaAttachmentSourceInput = {
-    sessionId: string;
-    ref: string;
-    mimeType: string;
-    encrypted?: boolean;
-};
-
-/** Resolve plaintext Agent output or decrypt user media only after the card opens. */
+/** Web can stream plaintext media from its signed URL instead of caching it. */
 export async function resolveMediaAttachmentSource(
     input: ResolveMediaAttachmentSourceInput,
 ): Promise<MediaPlaybackSource> {
@@ -25,8 +16,7 @@ export async function resolveMediaAttachmentSource(
     if (!credentials) throw new Error('Attachment credentials are unavailable');
 
     if (input.encrypted === false) {
-        const source = await requestAttachmentDownloadSource(credentials, input.sessionId, input.ref);
-        return downloadMediaPlaybackSource(source, input.mimeType);
+        return requestAttachmentDownloadSource(credentials, input.sessionId, input.ref);
     }
 
     const blobKey = sync.encryption.getSessionBlobKey(input.sessionId);
