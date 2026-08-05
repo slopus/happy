@@ -18,8 +18,9 @@ export function MediaAttachmentPlayer(props: MediaAttachmentPlayerProps) {
 
         let cancelled = false;
         let objectUrl: string | null = null;
+        const controller = new AbortController();
         setSource(null);
-        void fetch(props.uri, { headers: props.headers })
+        void fetch(props.uri, { headers: props.headers, signal: controller.signal })
             .then((response) => {
                 if (!response.ok) throw new Error(`media download failed: ${response.status}`);
                 return response.arrayBuffer();
@@ -29,12 +30,14 @@ export function MediaAttachmentPlayer(props: MediaAttachmentPlayerProps) {
                 objectUrl = URL.createObjectURL(new Blob([buffer], { type: props.mimeType }));
                 setSource(objectUrl);
             })
-            .catch(() => {
+            .catch((error: unknown) => {
+                if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) return;
                 if (!cancelled) setSource(null);
             });
 
         return () => {
             cancelled = true;
+            controller.abort();
             if (objectUrl) URL.revokeObjectURL(objectUrl);
         };
     }, [props.headers, props.mimeType, props.uri]);
