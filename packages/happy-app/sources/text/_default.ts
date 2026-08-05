@@ -484,6 +484,7 @@ export const en = {
             codex: 'Codex',
             gemini: 'Gemini',
             openclaw: 'OpenClaw',
+            kimi: 'Kimi',
         },
         model: {
             title: 'MODEL',
@@ -525,6 +526,17 @@ export const en = {
             badgeAutoEdit: 'auto edit',
             badgeYolo: 'yolo',
             badgePlan: 'plan',
+        },
+        kimiPermissionMode: {
+            title: 'KIMI PERMISSION MODE',
+            default: 'default permissions',
+            defaultDescription: 'manual approvals, tools run normally',
+            plan: 'plan',
+            planDescription: 'read-only planning, no tool execution',
+            auto: 'auto',
+            autoDescription: 'fully autonomous, never asks',
+            yolo: 'yolo',
+            yoloDescription: 'auto-approve tools, may still ask questions',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% left`,

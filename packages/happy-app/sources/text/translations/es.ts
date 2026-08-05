@@ -470,6 +470,7 @@ export const es: TranslationStructure = {
             codex: 'Codex',
             gemini: 'Gemini',
             openclaw: 'OpenClaw',
+            kimi: 'Kimi',
         },
         model: {
             title: 'MODELO',
@@ -511,6 +512,17 @@ export const es: TranslationStructure = {
             badgeAutoEdit: 'Edición automática',
             badgeYolo: 'YOLO',
             badgePlan: 'Planificación',
+        },
+        kimiPermissionMode: {
+            title: 'MODO DE PERMISOS KIMI',
+            default: 'Permisos predeterminados',
+            defaultDescription: 'aprobaciones manuales, las herramientas se ejecutan normalmente',
+            plan: 'Planificación',
+            planDescription: 'planificación de solo lectura, sin ejecutar herramientas',
+            auto: 'Auto',
+            autoDescription: 'totalmente autónomo, nunca pregunta',
+            yolo: 'YOLO',
+            yoloDescription: 'aprueba herramientas automáticamente, aún puede hacer preguntas',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,

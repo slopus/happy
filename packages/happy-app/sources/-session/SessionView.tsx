@@ -751,6 +751,8 @@ export function SessionViewLoaded({
         resolveCurrentOption(availableEffortLevels, [
             session.effortLevel,
             isRig ? getRigReasoningSelection(session.metadata, modelKey) : effectiveAgentDefaults.effortLevel,
+            // ACP agents (kimi) report the level they are actually running at.
+            isRig ? undefined : session.metadata?.currentThoughtLevelCode,
         ])
     ), [availableEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel, session.metadata, modelKey, isRig]);
 

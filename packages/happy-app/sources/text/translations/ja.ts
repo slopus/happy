@@ -471,6 +471,7 @@ export const ja: TranslationStructure = {
             codex: 'Codex',
             gemini: 'Gemini',
             openclaw: 'OpenClaw',
+            kimi: 'Kimi',
         },
         model: {
             title: 'モデル',
@@ -512,6 +513,17 @@ export const ja: TranslationStructure = {
             badgeAutoEdit: '自動編集',
             badgeYolo: 'YOLO',
             badgePlan: 'プラン',
+        },
+        kimiPermissionMode: {
+            title: 'KIMI権限モード',
+            default: 'デフォルト権限',
+            defaultDescription: '手動承認、ツールは通常どおり実行',
+            plan: 'プラン',
+            planDescription: '読み取り専用の計画、ツール実行なし',
+            auto: 'オート',
+            autoDescription: '完全自律、確認なし',
+            yolo: 'YOLO',
+            yoloDescription: 'ツールを自動承認、質問はする場合あり',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `残り ${percent}%`,

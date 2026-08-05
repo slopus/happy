@@ -41,14 +41,16 @@ const agentIcons = {
     codex: require('@/assets/images/icon-gpt.png'),
     openclaw: require('@/assets/images/icon-openclaw.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
+    kimi: require('@/assets/images/icon-kimi.png'),
 };
 
-type AgentKey = 'claude' | 'codex' | 'openclaw' | 'gemini';
+type AgentKey = 'claude' | 'codex' | 'openclaw' | 'gemini' | 'kimi';
 const AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'claude', label: 'claude code' },
     { key: 'codex', label: 'codex' },
     { key: 'openclaw', label: 'openclaw' },
     { key: 'gemini', label: 'gemini' },
+    { key: 'kimi', label: 'kimi code' },
 ];
 
 // Sample data for pickers

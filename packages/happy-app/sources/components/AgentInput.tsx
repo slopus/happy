@@ -99,7 +99,7 @@ interface AgentInputProps {
     sessionStatusModelLabel?: string | null;
     sessionStatusEffortLabel?: string | null;
     onFileViewerPress?: () => void;
-    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy';
+    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy' | 'kimi';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
@@ -714,6 +714,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const isCodex = !isRig && (props.metadata?.flavor === 'codex' || props.agentType === 'codex');
     const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
     const isOpenClaw = props.metadata?.flavor === 'openclaw' || props.agentType === 'openclaw';
+    const isKimi = props.metadata?.flavor === 'kimi' || props.agentType === 'kimi';
     const displayPermissionMode = React.useMemo(() => (
         props.permissionMode ? hackMode(props.permissionMode) : null
     ), [props.permissionMode]);
@@ -1110,7 +1111,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 ? t('agentInput.codexPermissionMode.title')
                 : isGemini
                     ? t('agentInput.geminiPermissionMode.title')
-                    : t('agentInput.permissionMode.title'),
+                    : isKimi
+                        ? t('agentInput.kimiPermissionMode.title')
+                        : t('agentInput.permissionMode.title'),
             systemImage: 'shield',
             options: availableModes.map((mode) => ({
                 key: mode.key,
@@ -1123,7 +1126,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 if (mode) handleSettingsSelect(mode);
             },
         }];
-    }, [availableModes, handleSettingsSelect, isCodex, isGemini, permissionModeKey, props.onPermissionModeChange, withSandboxSuffix]);
+    }, [availableModes, handleSettingsSelect, isCodex, isGemini, isKimi, permissionModeKey, props.onPermissionModeChange, withSandboxSuffix]);
 
     const modelSettingsGroups = React.useMemo<NativeSettingsMenuGroup[]>(() => {
         const groups: NativeSettingsMenuGroup[] = [];
@@ -1314,7 +1317,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             ? t('agentInput.agent.codex')
                                             : props.agentType === 'openclaw'
                                                 ? t('agentInput.agent.openclaw')
-                                                : t('agentInput.agent.gemini')}
+                                                : props.agentType === 'kimi'
+                                                    ? t('agentInput.agent.kimi')
+                                                    : t('agentInput.agent.gemini')}
                                 </Text>
                             </Pressable>
                         )}
@@ -1515,7 +1520,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 ? t('agentInput.codexPermissionMode.title')
                                 : isGemini
                                     ? t('agentInput.geminiPermissionMode.title')
-                                    : t('agentInput.permissionMode.title')}
+                                    : isKimi
+                                        ? t('agentInput.kimiPermissionMode.title')
+                                        : t('agentInput.permissionMode.title')}
                         </Text>
                         {availableModes.map((mode) => renderDesktopPickerOption(
                             mode.key,
@@ -1660,7 +1667,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 {openPicker === 'permission' ? (
                                     <View style={styles.overlaySection}>
                                         <Text style={styles.overlaySectionTitle}>
-                                            {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title')}
+                                            {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : isKimi ? t('agentInput.kimiPermissionMode.title') : t('agentInput.permissionMode.title')}
                                         </Text>
                                         {availableModes.map((mode) => {
                                             const isSelected = permissionModeKey === mode.key;

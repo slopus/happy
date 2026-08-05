@@ -65,6 +65,7 @@ const AGENTS: Array<{ key: NewSessionAgentType; name: string }> = [
     { key: 'openclaw', name: 'OpenClaw' },
     { key: 'gemini', name: 'Gemini' },
     { key: 'agy', name: 'Agy' },
+    { key: 'kimi', name: 'Kimi Code' },
 ];
 
 const MOBILE_ICON_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('icon');
