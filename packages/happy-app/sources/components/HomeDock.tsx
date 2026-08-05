@@ -42,6 +42,7 @@ import { useImagePicker } from '@/hooks/useImagePicker';
 import { Modal } from '@/modal';
 import { resolveMultiTextInputLayout } from './multiTextInputLayout';
 import { resolveCustomProjectPathSelection } from './homeDockInteraction';
+import { resolveMachineAgent } from '@/utils/newSessionAgentSelection';
 import {
     MOBILE_COMPOSER_LAYOUT,
     MOBILE_COMPOSER_METRICS,
@@ -573,9 +574,9 @@ export const HomeDock = React.memo(({
                 : { ...agent, disabled: true, description: 'Not installed on this machine' }
         ));
     }, [selectedMachine]);
-    const installedAgents = React.useMemo(
-        () => availableAgents.filter((agent) => !agent.disabled),
-        [availableAgents],
+    const resolvedAgentType = resolveMachineAgent(
+        agentType,
+        selectedMachine?.metadata?.cliAvailability,
     );
     const defaults = React.useMemo(
         () => resolveAgentDefaultConfig(defaultOverrides, agentType),
@@ -758,10 +759,10 @@ export const HomeDock = React.memo(({
     }, [defaultOverrides, setAgentType, setEffortLevel, setModelMode, setPermissionMode]);
 
     React.useEffect(() => {
-        if (installedAgents.length > 0 && !installedAgents.some((agent) => agent.key === agentType)) {
-            selectAgent(installedAgents[0].key as NewSessionAgentType);
+        if (resolvedAgentType !== agentType) {
+            selectAgent(resolvedAgentType);
         }
-    }, [agentType, installedAgents, selectAgent]);
+    }, [agentType, resolvedAgentType, selectAgent]);
 
     type SettingsRow = {
         page: string;
