@@ -32,6 +32,16 @@ type CreateE2ESessionOptions = {
     name?: string;
     summary?: string;
     flavor?: string;
+    models?: Array<{ code: string; value: string; description?: string | null }>;
+    currentModelCode?: string;
+    thoughtLevels?: Array<{ code: string; value: string; description?: string | null }>;
+    currentThoughtLevelCode?: string;
+};
+
+type CreateE2EUserMessageOptions = {
+    text: string;
+    model: string | null;
+    effort: string | null;
 };
 
 async function createE2ESession(
@@ -52,6 +62,10 @@ async function createE2ESession(
         name: options.name ?? 'Sidebar active-session regression',
         ...(options.summary ? { summary: { text: options.summary, updatedAt: Date.now() } } : {}),
         flavor: options.flavor ?? 'codex',
+        ...(options.models ? { models: options.models } : {}),
+        ...(options.currentModelCode ? { currentModelCode: options.currentModelCode } : {}),
+        ...(options.thoughtLevels ? { thoughtLevels: options.thoughtLevels } : {}),
+        ...(options.currentThoughtLevelCode ? { currentThoughtLevelCode: options.currentThoughtLevelCode } : {}),
         lifecycleState: 'running',
         startedBy: 'terminal',
     }, encryptionKey));
@@ -70,6 +84,45 @@ async function createE2ESession(
     expect(response.ok()).toBe(true);
     const body = await response.json() as { session: { id: string } };
     return body.session.id;
+}
+
+async function createE2EUserMessage(
+    request: APIRequestContext,
+    sessionId: string,
+    options: CreateE2EUserMessageOptions,
+): Promise<void> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少创建 E2E 用户消息所需的本地认证配置。');
+    }
+
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+    const response = await request.post(
+        new URL(`/v3/sessions/${encodeURIComponent(sessionId)}/messages`, e2eServerUrl).toString(),
+        {
+            data: {
+                messages: [{
+                    content: encodeBase64(encryptLegacy({
+                        role: 'user',
+                        content: { type: 'text', text: options.text },
+                        meta: {
+                            sentFrom: 'playwright-e2e',
+                            model: options.model,
+                            effort: options.effort,
+                        },
+                    }, encryptionKey)),
+                    localId: `composer-mode-e2e-${Date.now()}-${Math.random()}`,
+                }],
+            },
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'X-Happy-Client': 'playwright-e2e',
+            },
+        },
+    );
+    expect(response.ok()).toBe(true);
 }
 
 async function createConnectedE2EFileSession(request: APIRequestContext): Promise<{
@@ -556,6 +609,83 @@ test('跨项目命令搜索显示可执行命令与会话元数据', async ({ pa
     await sessionSearchFilesCommand.click();
     await expect(page).toHaveURL(new RegExp(`/session/${atlasSessionId}/files\\?focus=search$`));
     await expect(page.getByPlaceholder('Search files...')).toBeFocused();
+});
+
+test('每轮模型与推理强度在输入区、选择器和历史消息中保持一致', async ({ page, request }, testInfo) => {
+    const sessionId = await createE2ESession(request, {
+        path: '/workspace/composer-mode-e2e',
+        host: 'playwright-model-host',
+        name: 'Composer model and effort visual regression',
+        summary: 'Validate per-turn model and reasoning effort',
+        flavor: 'codex',
+        models: [
+            { code: 'gpt-5.5', value: 'gpt-5.5', description: 'Stable coding model' },
+            { code: 'gpt-5.6-sol', value: 'gpt-5.6-sol', description: 'Current coding model' },
+        ],
+        currentModelCode: 'gpt-5.6-sol',
+        thoughtLevels: [
+            { code: 'medium', value: 'medium', description: 'Balanced reasoning' },
+            { code: 'high', value: 'high', description: 'Deep reasoning' },
+            { code: 'xhigh', value: 'xhigh', description: 'Maximum reasoning' },
+        ],
+        currentThoughtLevelCode: 'xhigh',
+    });
+    const historicalMessage = 'Historical turn used the previous runtime configuration.';
+    await createE2EUserMessage(request, sessionId, {
+        text: historicalMessage,
+        model: 'gpt-5.5',
+        effort: 'medium',
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(authenticatedRoute(`/session/${sessionId}`));
+    expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+
+    const selector = page.locator('[data-testid="session-composer-mode-selector"]:visible');
+    const modelTrigger = selector.getByTestId('session-composer-model-trigger');
+    const effortTrigger = selector.getByTestId('session-composer-effort-trigger');
+    await expect(selector).toBeVisible();
+    await expect(modelTrigger).toContainText('gpt-5.6-sol');
+    await expect(modelTrigger).toHaveAttribute('aria-label', 'MODEL: gpt-5.6-sol');
+    await expect(effortTrigger).toContainText('xhigh');
+    await expect(effortTrigger).toHaveAttribute('aria-label', 'EFFORT: xhigh');
+
+    await expect(page.getByText(historicalMessage, { exact: true })).toBeVisible();
+    const historicalModeLabel = page.getByTestId(/^message-user-mode-/).filter({
+        hasText: 'gpt-5.5 · medium',
+    });
+    await expect(historicalModeLabel).toHaveCount(1);
+    await expect(historicalModeLabel).toHaveText('gpt-5.5 · medium');
+    await page.screenshot({
+        path: testInfo.outputPath('pc-composer-mode-001-after-1280x900.png'),
+        fullPage: true,
+    });
+
+    await modelTrigger.click();
+    const modelPicker = page.getByTestId('session-composer-model-picker');
+    await expect(modelPicker).toBeVisible();
+    await expect(modelTrigger).toHaveAttribute('aria-expanded', 'true');
+    await expect(modelPicker.getByRole('radio', { name: 'default model' })).toBeVisible();
+    await expect(modelPicker.getByRole('radio', { name: /^gpt-5\.5,/ })).toBeVisible();
+    await expect(modelPicker.getByRole('radio', { name: /^gpt-5\.6-sol,/ })).toBeChecked();
+    await page.waitForTimeout(350); // Let the picker fade-in finish before visual evidence capture.
+    await page.screenshot({
+        path: testInfo.outputPath('pc-composer-mode-002-after-1280x900.png'),
+        fullPage: true,
+    });
+
+    await page.getByTestId('session-composer-mode-picker-scrim').click({ position: { x: 8, y: 8 } });
+    await expect(modelPicker).toHaveCount(0);
+    await expect(modelTrigger).toHaveAttribute('aria-expanded', 'false');
+
+    await effortTrigger.click();
+    const effortPicker = page.getByTestId('session-composer-effort-picker');
+    await expect(effortPicker).toBeVisible();
+    await expect(effortTrigger).toHaveAttribute('aria-expanded', 'true');
+    await expect(effortPicker.getByRole('radio', { name: 'default effort' })).toBeVisible();
+    await expect(effortPicker.getByRole('radio', { name: /^medium,/ })).toBeVisible();
+    await expect(effortPicker.getByRole('radio', { name: /^high,/ })).toBeVisible();
+    await expect(effortPicker.getByRole('radio', { name: /^xhigh,/ })).toBeChecked();
 });
 
 test('Web 账户页不会让用户触发不支持的推送重新注册', async ({ page }) => {
