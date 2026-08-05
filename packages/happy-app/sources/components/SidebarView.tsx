@@ -183,6 +183,16 @@ const stylesheet = StyleSheet.create((theme) => ({
     accountMenuFooterSlot: {
         zIndex: 20,
     },
+    primaryNavigation: {
+        paddingTop: 2,
+    },
+    secondaryNavigation: {
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: theme.colors.divider,
+        marginHorizontal: 10,
+        marginTop: 5,
+        paddingTop: 3,
+    },
 }));
 
 interface SidebarViewProps {
@@ -268,80 +278,91 @@ export const SidebarView = React.memo(({
                 />
             ) : null}
 
-            {/* Messages / friends (formerly the Inbox tab) */}
-            <Pressable
-                onPress={() => go('/inbox')}
-                style={[styles.messagesRow, desktopDensity && styles.messagesRowDesktop]}
-            >
-                <Ionicons name="chatbubble-ellipses-outline" size={17} color={stylesheet.messagesText.color} />
-                <Text style={styles.messagesText}>{t('tabs.inbox')}</Text>
-                {friendRequests.length > 0 && (
-                    <View style={styles.badge}>
-                        <Text style={styles.badgeText}>{friendRequests.length}</Text>
+            {/* Stable primary work navigation. Keep these entries contiguous so
+                machines, Agents, and sessions remain context rather than peers. */}
+            <View style={styles.primaryNavigation} testID="sidebar-primary-navigation">
+                <Pressable
+                    onPress={() => go('/new')}
+                    testID="sidebar-new-session-button"
+                    style={({ pressed }) => [
+                        styles.newSessionButton,
+                        desktopDensity && styles.newSessionButtonDesktop,
+                        pressed && styles.newSessionButtonPressed,
+                    ]}
+                >
+                    <Ionicons name="create-outline" size={16} color={stylesheet.newSessionText.color} />
+                    <Text style={styles.newSessionText}>{t('sidebar.newSession')}</Text>
+                </Pressable>
+
+                <Pressable
+                    onPress={() => go('/inbox')}
+                    testID="sidebar-inbox-button"
+                    style={[styles.messagesRow, desktopDensity && styles.messagesRowDesktop]}
+                >
+                    <Ionicons name="chatbubble-ellipses-outline" size={17} color={stylesheet.messagesText.color} />
+                    <Text style={styles.messagesText}>{t('tabs.inbox')}</Text>
+                    {friendRequests.length > 0 && (
+                        <View style={styles.badge}>
+                            <Text style={styles.badgeText}>{friendRequests.length}</Text>
+                        </View>
+                    )}
+                </Pressable>
+
+                <Pressable
+                    onPress={openSessionSearch}
+                    testID="sidebar-command-palette-button"
+                    style={({ pressed }) => [
+                        styles.newSessionButton,
+                        desktopDensity && styles.newSessionButtonDesktop,
+                        pressed && styles.newSessionButtonPressed,
+                    ]}
+                >
+                    <Ionicons name="search-outline" size={16} color={stylesheet.newSessionText.color} />
+                    <Text style={styles.newSessionText}>{t('sidebar.searchSessions')}</Text>
+                </Pressable>
+            </View>
+
+            <View style={styles.secondaryNavigation} testID="sidebar-secondary-navigation">
+                {/* My Agents remains available, while its add action is a compact
+                    secondary affordance instead of another primary navigation row. */}
+                <Pressable
+                    onPress={() => (agents.length > 0 ? setSheetOpen(true) : go('/settings/my-agents'))}
+                    testID="sidebar-my-agents-button"
+                    style={({ pressed }) => [
+                        styles.agentsCard,
+                        desktopDensity && styles.agentsCardDesktop,
+                        pressed && styles.agentsCardPressed,
+                    ]}
+                >
+                    <View style={styles.agentsHeader}>
+                        <Text style={styles.agentsTitle} numberOfLines={1}>{t('agents.cardTitle')}</Text>
+                        <Pressable
+                            accessibilityLabel={t('agents.add')}
+                            accessibilityRole="button"
+                            onPress={(e) => { e.stopPropagation(); go('/settings/my-agents'); }}
+                            hitSlop={8}
+                            style={({ pressed }) => [styles.agentsAdd, pressed && styles.agentsAddPressed]}
+                            testID="sidebar-add-agent-button"
+                        >
+                            <Ionicons name="add" size={16} color={stylesheet.agentsAddText.color} />
+                            {!desktopDensity ? (
+                                <Text style={styles.agentsAddText}>{t('agents.add')}</Text>
+                            ) : null}
+                        </Pressable>
                     </View>
-                )}
-            </Pressable>
-
-            {/* New Session button */}
-            <Pressable
-                onPress={() => go('/new')}
-                testID="sidebar-new-session-button"
-                style={({ pressed }) => [
-                    styles.newSessionButton,
-                    desktopDensity && styles.newSessionButtonDesktop,
-                    pressed && styles.newSessionButtonPressed,
-                ]}
-            >
-                <Ionicons name="create-outline" size={16} color={stylesheet.newSessionText.color} />
-                <Text style={styles.newSessionText}>{t('sidebar.newSession')}</Text>
-            </Pressable>
-
-            {/* My Agents card — tap body to open the AgentSheet (or jump to config when empty) */}
-            <Pressable
-                onPress={() => (agents.length > 0 ? setSheetOpen(true) : go('/settings/my-agents'))}
-                style={({ pressed }) => [
-                    styles.agentsCard,
-                    desktopDensity && styles.agentsCardDesktop,
-                    pressed && styles.agentsCardPressed,
-                ]}
-            >
-                <View style={styles.agentsHeader}>
-                    <Text style={styles.agentsTitle} numberOfLines={1}>{t('agents.cardTitle')}</Text>
-                    <Pressable
-                        onPress={(e) => { e.stopPropagation(); go('/settings/my-agents'); }}
-                        hitSlop={8}
-                        style={({ pressed }) => [styles.agentsAdd, pressed && styles.agentsAddPressed]}
-                    >
-                        <Ionicons name="add" size={14} color={stylesheet.agentsAddText.color} />
-                        <Text style={styles.agentsAddText}>{t('agents.add')}</Text>
-                    </Pressable>
-                </View>
-                {!desktopDensity && agents.length > 0 ? (
-                    <View style={styles.agentsAvatars}>
-                        {agents.slice(0, 5).map((agent) => (
-                            <View key={agent.id} style={[styles.agentMiniAvatar, { backgroundColor: agent.color }]}>
-                                <Text style={styles.agentMiniGlyph}>{agent.glyph}</Text>
-                            </View>
-                        ))}
-                    </View>
-                ) : !desktopDensity ? (
-                    <Text style={styles.agentsEmpty} numberOfLines={1}>{t('agents.empty')}</Text>
-                ) : null}
-            </Pressable>
-
-            {/* Search history sessions */}
-            <Pressable
-                onPress={openSessionSearch}
-                testID="sidebar-command-palette-button"
-                style={({ pressed }) => [
-                    styles.newSessionButton,
-                    desktopDensity && styles.newSessionButtonDesktop,
-                    pressed && styles.newSessionButtonPressed,
-                ]}
-            >
-                <Ionicons name="search-outline" size={16} color={stylesheet.newSessionText.color} />
-                <Text style={styles.newSessionText}>{t('sidebar.searchSessions')}</Text>
-            </Pressable>
+                    {!desktopDensity && agents.length > 0 ? (
+                        <View style={styles.agentsAvatars}>
+                            {agents.slice(0, 5).map((agent) => (
+                                <View key={agent.id} style={[styles.agentMiniAvatar, { backgroundColor: agent.color }]}>
+                                    <Text style={styles.agentMiniGlyph}>{agent.glyph}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    ) : !desktopDensity ? (
+                        <Text style={styles.agentsEmpty} numberOfLines={1}>{t('agents.empty')}</Text>
+                    ) : null}
+                </Pressable>
+            </View>
 
             {realtimeStatus !== 'disconnected' && (
                 <VoiceAssistantStatusBar variant="sidebar" />

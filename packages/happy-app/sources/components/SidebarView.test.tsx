@@ -208,4 +208,31 @@ describe('SidebarView Agent space exit', () => {
 
         act(() => renderer.unmount());
     });
+
+    it('keeps primary work destinations contiguous and Agents secondary', () => {
+        mocks.spaceAgent = null;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(
+                <SidebarView closeDrawerOnNavigate={false} desktopDensity />,
+            );
+        });
+
+        const primary = renderer.root.findByProps({ testID: 'sidebar-primary-navigation' });
+        expect(primary.findAllByType('Pressable').map((node: any) => node.props.testID)).toEqual([
+            'sidebar-new-session-button',
+            'sidebar-inbox-button',
+            'sidebar-command-palette-button',
+        ]);
+        expect(primary.findAllByProps({ testID: 'sidebar-my-agents-button' })).toHaveLength(0);
+
+        const secondary = renderer.root.findByProps({ testID: 'sidebar-secondary-navigation' });
+        expect(secondary.findAllByProps({ testID: 'sidebar-my-agents-button' })).toHaveLength(1);
+        const addAgent = secondary.findByProps({ testID: 'sidebar-add-agent-button' });
+        expect(addAgent.props.accessibilityLabel).toBe('agents.add');
+        expect(addAgent.findAllByType('Text')).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
 });

@@ -1245,6 +1245,75 @@ test('跨项目命令搜索显示可执行命令与会话元数据', async ({ pa
     await expect(page.getByPlaceholder('Search files...')).toBeFocused();
 });
 
+test('左栏稳定导航、机器项目分组与折叠共同保持当前会话可辨识', async ({ page, request }, testInfo) => {
+    const atlasSessionId = await createE2ESession(request, {
+        path: '/workspace/atlas',
+        host: 'studio-mac',
+        machineId: 'studio-machine',
+        name: 'Atlas navigation refactor',
+        summary: 'Keep the selected session visible',
+    });
+    await createE2ESession(request, {
+        path: '/workspace/atlas',
+        host: 'studio-mac',
+        machineId: 'studio-machine',
+        name: 'Atlas release notes',
+    });
+    const betaSessionId = await createE2ESession(request, {
+        path: '/workspace/beta',
+        host: 'studio-mac',
+        machineId: 'studio-machine',
+        name: 'Beta integration checks',
+    });
+    await createE2ESession(request, {
+        path: '/srv/remote-ops',
+        host: 'remote-linux',
+        machineId: 'remote-machine',
+        name: 'Remote operations audit',
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(authenticatedRoute(`/session/${atlasSessionId}`));
+    expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+    await expect(page.getByTestId(`session-row-${atlasSessionId}`)).toBeVisible();
+    await expect(page.getByTestId('session-message-input')).toBeVisible();
+
+    const primary = page.getByTestId('sidebar-primary-navigation');
+    const newSession = primary.getByTestId('sidebar-new-session-button');
+    const inbox = primary.getByTestId('sidebar-inbox-button');
+    const sessionManagement = primary.getByTestId('sidebar-command-palette-button');
+    const myAgents = page.getByTestId('sidebar-my-agents-button');
+    await expect(newSession).toBeVisible();
+    await expect(inbox).toBeVisible();
+    await expect(sessionManagement).toBeVisible();
+    await expect(myAgents).toBeVisible();
+    const primaryOrder = await Promise.all([newSession, inbox, sessionManagement].map(async (item) => (
+        await item.boundingBox()
+    )?.y ?? -1));
+    expect(primaryOrder[0]).toBeLessThan(primaryOrder[1]);
+    expect(primaryOrder[1]).toBeLessThan(primaryOrder[2]);
+    expect((await sessionManagement.boundingBox())!.y).toBeLessThan((await myAgents.boundingBox())!.y);
+
+    const atlasRow = page.getByTestId(`session-row-${atlasSessionId}`);
+    await expect(atlasRow).toHaveAttribute('aria-current', 'page');
+    const betaToggle = page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fbeta');
+    await expect(betaToggle).toHaveAttribute('aria-expanded', 'true');
+    await betaToggle.click();
+    await expect(betaToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId(`session-row-${betaSessionId}`)).toHaveCount(0);
+    await page.waitForTimeout(350);
+
+    await page.screenshot({
+        path: testInfo.outputPath('navigation-ia-after-1280x900.png'),
+        fullPage: true,
+    });
+
+    await page.goto(authenticatedRoute(`/session/${betaSessionId}`));
+    await expect(page.getByTestId(`session-row-${betaSessionId}`)).toBeVisible();
+    await expect(page.getByTestId(`session-row-${betaSessionId}`)).toHaveAttribute('aria-current', 'page');
+    await expect(betaToggle).toHaveAttribute('aria-expanded', 'true');
+});
+
 test('每轮权限、模型与推理强度在输入区、选择器和历史消息中保持一致', async ({ page, request }, testInfo) => {
     const sessionId = await createE2ESession(request, {
         path: '/workspace/composer-mode-e2e',
