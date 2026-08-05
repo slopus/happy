@@ -6,6 +6,8 @@ import { Typography } from '@/constants/Typography';
 import { DesktopPanelResizeHandle } from './DesktopPanelResizeHandle';
 import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
+import { getDesktopPanelShortcutPresentation } from '@/utils/desktopNavigationLayout';
+import { t } from '@/text';
 
 export type DesktopRightPanelTab = {
     key: string;
@@ -33,12 +35,14 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
     const { theme } = useUnistyles();
     const { enabled: resizable } = useDesktopWorkspaceLayout();
     const [tooltipVisible, setTooltipVisible] = React.useState(false);
+    const shortcuts = getDesktopPanelShortcutPresentation();
+    const activePanelLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? tabs[0]?.label ?? 'Panel';
 
     return (
         <View style={styles.container} testID="desktop-right-panel">
             {resizable && (
                 <DesktopPanelResizeHandle
-                    accessibilityLabel={collapseAccessibilityLabel}
+                    accessibilityLabel={t('desktopWorkspace.resizePanel', { panel: activePanelLabel })}
                     offset={0}
                     side="right"
                 />
@@ -78,11 +82,11 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
                 </View>
                 <View style={styles.collapseButtonWrapper}>
                     <Pressable
-                        accessibilityHint={`${collapseAccessibilityLabel} (⌥⌘B)`}
+                        accessibilityHint={`${collapseAccessibilityLabel} (${shortcuts.rightLabel})`}
                         accessibilityLabel={collapseAccessibilityLabel}
                         accessibilityRole="button"
                         {...({
-                            'aria-keyshortcuts': 'Alt+Meta+B',
+                            'aria-keyshortcuts': shortcuts.rightAria,
                         } as any)}
                         hitSlop={8}
                         onBlur={() => setTooltipVisible(false)}
@@ -99,7 +103,7 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
                     <DesktopShortcutTooltip
                         align="right"
                         label={collapseAccessibilityLabel}
-                        shortcut="⌥⌘B"
+                        shortcut={shortcuts.rightLabel}
                         testID="desktop-right-panel-collapse-tooltip"
                         visible={tooltipVisible}
                     />
@@ -121,15 +125,16 @@ export const DesktopRightPanelRestoreButton = React.memo(function DesktopRightPa
 }) {
     const { theme } = useUnistyles();
     const [tooltipVisible, setTooltipVisible] = React.useState(false);
+    const shortcuts = getDesktopPanelShortcutPresentation();
 
     return (
         <View style={styles.restoreButtonWrapper}>
             <Pressable
-                accessibilityHint={`${label} (⌥⌘B)`}
+                accessibilityHint={`${label} (${shortcuts.rightLabel})`}
                 accessibilityLabel={label}
                 accessibilityRole="button"
                 {...({
-                    'aria-keyshortcuts': 'Alt+Meta+B',
+                    'aria-keyshortcuts': shortcuts.rightAria,
                 } as any)}
                 hitSlop={8}
                 onBlur={() => setTooltipVisible(false)}
@@ -146,7 +151,7 @@ export const DesktopRightPanelRestoreButton = React.memo(function DesktopRightPa
             <DesktopShortcutTooltip
                 align="right"
                 label={label}
-                shortcut="⌥⌘B"
+                shortcut={shortcuts.rightLabel}
                 testID="desktop-right-panel-restore-tooltip"
                 visible={tooltipVisible}
             />

@@ -24,14 +24,17 @@ type ResizeSession = {
 type DesktopWorkspaceLayoutValue = {
     enabled: boolean;
     leftVisible: boolean;
+    leftMaximumWidth: number;
     leftWidth: number;
     rightPanelAvailable: boolean;
     rightVisible: boolean;
+    rightMaximumWidth: number;
     rightWidth: number;
     resizingSide: DesktopPanelSide | null;
     beginPanelResize: (side: DesktopPanelSide, pointerX: number) => void;
     continuePanelResize: (pointerX: number) => void;
     endPanelResize: () => void;
+    resizePanelBy: (side: DesktopPanelSide, delta: number) => void;
     toggleLeftSidebar: () => void;
     toggleRightSidebar: () => void;
 };
@@ -39,14 +42,17 @@ type DesktopWorkspaceLayoutValue = {
 const EMPTY_LAYOUT: DesktopWorkspaceLayoutValue = {
     enabled: false,
     leftVisible: false,
+    leftMaximumWidth: 0,
     leftWidth: 0,
     rightPanelAvailable: false,
     rightVisible: false,
+    rightMaximumWidth: 0,
     rightWidth: 0,
     resizingSide: null,
     beginPanelResize: () => undefined,
     continuePanelResize: () => undefined,
     endPanelResize: () => undefined,
+    resizePanelBy: () => undefined,
     toggleLeftSidebar: () => undefined,
     toggleRightSidebar: () => undefined,
 };
@@ -108,6 +114,20 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
         rightVisible,
         windowWidth,
     }), [leftVisible, liveLeftWidth, liveRightWidth, rightVisible, windowWidth]);
+    const leftMaximumWidth = getDesktopPanelResizeWidth({
+        desiredWidth: Number.MAX_SAFE_INTEGER,
+        oppositePanelVisible: rightVisible,
+        oppositePanelWidth: panelWidths.right,
+        side: 'left',
+        windowWidth,
+    });
+    const rightMaximumWidth = getDesktopPanelResizeWidth({
+        desiredWidth: Number.MAX_SAFE_INTEGER,
+        oppositePanelVisible: leftVisible,
+        oppositePanelWidth: panelWidths.left,
+        side: 'right',
+        windowWidth,
+    });
 
     const toggleLeftSidebar = React.useCallback(() => {
         if (!enabled) return;
@@ -180,6 +200,37 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
         }
     }, [setStoredLeftWidth, setStoredRightWidth]);
 
+    const resizePanelBy = React.useCallback((side: DesktopPanelSide, delta: number) => {
+        const sideVisible = side === 'left' ? leftVisible : rightVisible;
+        if (!enabled || !sideVisible) return;
+        const currentWidth = side === 'left' ? panelWidths.left : panelWidths.right;
+        const nextWidth = getDesktopPanelResizeWidth({
+            desiredWidth: currentWidth + delta,
+            oppositePanelVisible: side === 'left' ? rightVisible : leftVisible,
+            oppositePanelWidth: side === 'left' ? panelWidths.right : panelWidths.left,
+            side,
+            windowWidth,
+        });
+        if (side === 'left') {
+            liveLeftWidthRef.current = nextWidth;
+            setLiveLeftWidth(nextWidth);
+            setStoredLeftWidth(nextWidth);
+        } else {
+            liveRightWidthRef.current = nextWidth;
+            setLiveRightWidth(nextWidth);
+            setStoredRightWidth(nextWidth);
+        }
+    }, [
+        enabled,
+        leftVisible,
+        panelWidths.left,
+        panelWidths.right,
+        rightVisible,
+        setStoredLeftWidth,
+        setStoredRightWidth,
+        windowWidth,
+    ]);
+
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !resizingSide || typeof document === 'undefined') return;
         const previousCursor = document.body.style.cursor;
@@ -195,14 +246,17 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
     const value = React.useMemo<DesktopWorkspaceLayoutValue>(() => ({
         enabled,
         leftVisible,
+        leftMaximumWidth,
         leftWidth: panelWidths.left,
         rightPanelAvailable,
         rightVisible,
+        rightMaximumWidth,
         rightWidth: panelWidths.right,
         resizingSide,
         beginPanelResize,
         continuePanelResize,
         endPanelResize,
+        resizePanelBy,
         toggleLeftSidebar,
         toggleRightSidebar,
     }), [
@@ -211,11 +265,14 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
         enabled,
         endPanelResize,
         leftVisible,
+        leftMaximumWidth,
         panelWidths.left,
         panelWidths.right,
         resizingSide,
         rightPanelAvailable,
+        resizePanelBy,
         rightVisible,
+        rightMaximumWidth,
         toggleLeftSidebar,
         toggleRightSidebar,
     ]);

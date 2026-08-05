@@ -190,16 +190,19 @@ vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({
     useDesktopWorkspaceLayout: () => ({
         enabled: mocks.isTablet,
         leftVisible: mocks.isTablet,
+        leftMaximumWidth: 640,
         leftWidth: mocks.isTablet ? Math.min(Math.max(Math.floor(mocks.windowWidth * 0.3), 250), 360) : 0,
         rightPanelAvailable: mocks.isTablet
             && (mocks.platformOS === 'web' || mocks.runningOnMac)
             && mocks.windowWidth >= 1100,
         rightVisible: !mocks.desktopRightPanelCollapsed,
+        rightMaximumWidth: 640,
         rightWidth: getDesktopRightPanelWidth(mocks.windowWidth),
         resizingSide: null,
         beginPanelResize: vi.fn(),
         continuePanelResize: vi.fn(),
         endPanelResize: vi.fn(),
+        resizePanelBy: vi.fn(),
         toggleLeftSidebar: vi.fn(),
         toggleRightSidebar: vi.fn(),
     }),

@@ -64,7 +64,10 @@ async function main(): Promise<void> {
         run(
             'pnpm',
             ['--filter', 'happy-app', 'exec', 'playwright', 'test', ...playwrightArgs],
-            { HAPPY_E2E_WEB_URL: config.authenticatedWebUrl },
+            {
+                HAPPY_E2E_SERVER_URL: `http://localhost:${config.serverPort}`,
+                HAPPY_E2E_WEB_URL: config.authenticatedWebUrl,
+            },
         );
     } catch (error) {
         if (environmentName) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     DESKTOP_MAIN_MIN_WIDTH,
     getDesktopPanelResizeWidth,
+    getDesktopPanelShortcutPresentation,
     getDesktopSidebarWidth,
     getDesktopRightPanelWidth,
     getDesktopRightPanelPresentation,
@@ -73,7 +74,29 @@ describe('desktopNavigationLayout', () => {
             oppositePanelWidth: 320,
             side: 'left',
             windowWidth: 1280,
-        })).toBe(640);
+        })).toBe(800);
+        expect(getDesktopPanelResizeWidth({
+            desiredWidth: 1500,
+            oppositePanelVisible: true,
+            oppositePanelWidth: 320,
+            side: 'left',
+            windowWidth: 1920,
+        })).toBe(1120);
+    });
+
+    it('renders platform-correct shortcut hints and ARIA tokens', () => {
+        expect(getDesktopPanelShortcutPresentation('MacIntel')).toEqual({
+            leftAria: 'Meta+B',
+            leftLabel: '⌘B',
+            rightAria: 'Alt+Meta+B',
+            rightLabel: '⌥⌘B',
+        });
+        expect(getDesktopPanelShortcutPresentation('Win32')).toEqual({
+            leftAria: 'Control+B',
+            leftLabel: 'Ctrl+B',
+            rightAria: 'Alt+Control+B',
+            rightLabel: 'Alt+Ctrl+B',
+        });
     });
 
     it.each([

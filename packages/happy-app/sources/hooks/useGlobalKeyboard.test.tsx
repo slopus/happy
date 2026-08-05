@@ -80,6 +80,16 @@ describe('useGlobalKeyboard', () => {
         expect(onToggleLeftSidebar).toHaveBeenCalledOnce();
     });
 
+    it('maps Ctrl+B and Alt+Ctrl+B on non-Mac keyboards', () => {
+        expect(keydown({ ctrlKey: true, key: 'b', metaKey: false }).preventDefault).toHaveBeenCalledOnce();
+        expect(onToggleLeftSidebar).toHaveBeenCalledOnce();
+        expect(onToggleRightSidebar).not.toHaveBeenCalled();
+
+        expect(keydown({ altKey: true, ctrlKey: true, key: 'B', metaKey: false }).preventDefault).toHaveBeenCalledOnce();
+        expect(onToggleRightSidebar).toHaveBeenCalledOnce();
+        expect(onToggleLeftSidebar).toHaveBeenCalledOnce();
+    });
+
     it('keeps Command+K mapped to the command palette', () => {
         keydown({ key: 'k' });
         expect(onCommandPalette).toHaveBeenCalledOnce();

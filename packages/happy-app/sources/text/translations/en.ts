@@ -69,6 +69,7 @@ export const en: TranslationStructure = {
         hideSessions: 'Hide sessions sidebar',
         showPanel: ({ panel }: { panel: string }) => `Show ${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `Hide ${panel}`,
+        resizePanel: ({ panel }: { panel: string }) => `Resize ${panel}`,
         hidePanelShort: 'Hide',
     },
     composeHome: {

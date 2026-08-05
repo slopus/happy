@@ -3,10 +3,8 @@ export const DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH = 1100;
 export const DESKTOP_SESSION_HEADER_COMPACT_WINDOW_WIDTH = 1180;
 export const DESKTOP_MAIN_MIN_WIDTH = 480;
 export const DESKTOP_LEFT_PANEL_MIN_WIDTH = 250;
-export const DESKTOP_LEFT_PANEL_MAX_WIDTH = 640;
 export const DESKTOP_LEFT_PANEL_DEFAULT_WIDTH = 360;
 export const DESKTOP_RIGHT_PANEL_MIN_WIDTH = 280;
-export const DESKTOP_RIGHT_PANEL_MAX_WIDTH = 640;
 export const DESKTOP_RIGHT_PANEL_DEFAULT_WIDTH = 320;
 export const PERSISTENT_NAVIGATION_HORIZONTAL_PADDING = 16;
 export const PERSISTENT_NAVIGATION_BUTTON_SIZE = 28;
@@ -45,15 +43,12 @@ export function getDesktopRightPanelWidth(windowWidth: number): number {
 
 export type DesktopPanelSide = 'left' | 'right';
 
-function getDesktopPanelBounds(side: DesktopPanelSide): { min: number; max: number } {
-    return side === 'left'
-        ? { min: DESKTOP_LEFT_PANEL_MIN_WIDTH, max: DESKTOP_LEFT_PANEL_MAX_WIDTH }
-        : { min: DESKTOP_RIGHT_PANEL_MIN_WIDTH, max: DESKTOP_RIGHT_PANEL_MAX_WIDTH };
+function getDesktopPanelMinimum(side: DesktopPanelSide): number {
+    return side === 'left' ? DESKTOP_LEFT_PANEL_MIN_WIDTH : DESKTOP_RIGHT_PANEL_MIN_WIDTH;
 }
 
 export function clampDesktopPanelWidth(side: DesktopPanelSide, width: number): number {
-    const { min, max } = getDesktopPanelBounds(side);
-    return Math.round(Math.min(Math.max(width, min), max));
+    return Math.round(Math.max(width, getDesktopPanelMinimum(side)));
 }
 
 export function getDesktopWorkspacePanelWidths({
@@ -116,14 +111,44 @@ export function getDesktopPanelResizeWidth({
     side: DesktopPanelSide;
     windowWidth: number;
 }): number {
-    const { min, max } = getDesktopPanelBounds(side);
+    const min = getDesktopPanelMinimum(side);
     const availableWidth = Math.max(
         0,
         windowWidth - DESKTOP_MAIN_MIN_WIDTH - (oppositePanelVisible ? oppositePanelWidth : 0),
     );
-    const constrainedMaximum = Math.min(max, availableWidth);
-    if (constrainedMaximum < min) return Math.round(constrainedMaximum);
-    return Math.round(Math.min(Math.max(desiredWidth, min), constrainedMaximum));
+    if (availableWidth < min) return Math.round(availableWidth);
+    return Math.round(Math.min(Math.max(desiredWidth, min), availableWidth));
+}
+
+export type DesktopPanelShortcutPresentation = {
+    leftAria: string;
+    leftLabel: string;
+    rightAria: string;
+    rightLabel: string;
+};
+
+export function getDesktopPanelShortcutPresentation(platform?: string): DesktopPanelShortcutPresentation {
+    const detectedPlatform = platform ?? (
+        typeof navigator !== 'undefined'
+            ? ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform
+                ?? navigator.platform)
+            : ''
+    );
+    const usesMacModifiers = /Mac|iPhone|iPad|iPod/i.test(detectedPlatform);
+
+    return usesMacModifiers
+        ? {
+            leftAria: 'Meta+B',
+            leftLabel: '⌘B',
+            rightAria: 'Alt+Meta+B',
+            rightLabel: '⌥⌘B',
+        }
+        : {
+            leftAria: 'Control+B',
+            leftLabel: 'Ctrl+B',
+            rightAria: 'Alt+Control+B',
+            rightLabel: 'Alt+Ctrl+B',
+        };
 }
 
 export function isDesktopRightPanelRoute(pathname: string): boolean {

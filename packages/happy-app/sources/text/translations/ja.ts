@@ -57,6 +57,7 @@ export const ja: TranslationStructure = {
         hideSessions: 'セッションサイドバーを非表示',
         showPanel: ({ panel }: { panel: string }) => `${panel}を表示`,
         hidePanel: ({ panel }: { panel: string }) => `${panel}を非表示`,
+        resizePanel: ({ panel }: { panel: string }) => `${panel}の幅を変更`,
         hidePanelShort: '非表示',
     },
     composeHome: {

@@ -1,6 +1,8 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
 
 const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL!;
+const e2eServerUrl = process.env.HAPPY_E2E_SERVER_URL!;
 
 function authenticatedRoute(pathname: string): string {
     const url = new URL(authenticatedWebUrl);
@@ -14,6 +16,51 @@ async function pauseForRecordedReview(page: Page, duration = 650): Promise<void>
     if (process.env.HAPPY_E2E_RECORD === '1') {
         await page.waitForTimeout(duration);
     }
+}
+
+async function createE2ESession(request: APIRequestContext): Promise<string> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少创建 E2E 会话所需的本地认证配置。');
+    }
+
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+    const metadata = encodeBase64(encryptLegacy({
+        path: '/tmp/paws-sidebar-e2e',
+        host: 'playwright',
+        name: 'Sidebar active-session regression',
+        flavor: 'codex',
+        lifecycleState: 'running',
+        startedBy: 'terminal',
+    }, encryptionKey));
+    const response = await request.post(new URL('/v1/sessions', e2eServerUrl).toString(), {
+        data: {
+            tag: `sidebar-e2e-${Date.now()}-${Math.random()}`,
+            metadata,
+            agentState: null,
+            dataEncryptionKey: null,
+        },
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Happy-Client': 'playwright-e2e',
+        },
+    });
+    expect(response.ok()).toBe(true);
+    const body = await response.json() as { session: { id: string } };
+    return body.session.id;
+}
+
+async function dragHorizontalResizeHandle(page: Page, handle: Locator, deltaX: number): Promise<void> {
+    const box = await handle.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + Math.min(100, box!.height / 2));
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 + deltaX, box!.y + Math.min(100, box!.height / 2), {
+        steps: 10,
+    });
+    await page.mouse.up();
 }
 
 async function renderedLineTexts(locator: Locator): Promise<string[]> {
@@ -391,13 +438,6 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
     const leftPanel = page.getByTestId('desktop-left-sidebar');
     const mainPanel = page.locator('[data-testid="desktop-workspace-main"]:visible');
     const leftWidthBefore = (await leftPanel.boundingBox())!.width;
-    await sidebarToggle.hover();
-    if (process.env.HAPPY_E2E_RECORD === '1') {
-        await page.screenshot({
-            path: 'test-results/pc-sidebar-left-before-1280x720.png',
-            clip: { x: 0, y: 0, width: 640, height: 720 },
-        });
-    }
     const leftHandleBox = await page.getByTestId('desktop-left-panel-resize-handle').boundingBox();
     expect(leftHandleBox).not.toBeNull();
     await page.mouse.move(leftHandleBox!.x + leftHandleBox!.width / 2, leftHandleBox!.y + 100);
@@ -406,40 +446,55 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
     await page.mouse.up();
     await expect.poll(async () => (await leftPanel.boundingBox())?.width ?? 0).toBeGreaterThan(leftWidthBefore + 60);
     const resizedLeftWidth = (await leftPanel.boundingBox())!.width;
+    const leftResizeHandle = page.getByTestId('desktop-left-panel-resize-handle');
+    await expect(leftResizeHandle).toHaveAttribute('aria-valuenow', String(Math.round(resizedLeftWidth)));
+    await leftResizeHandle.focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(async () => (await leftPanel.boundingBox())?.width ?? 0).toBeLessThan(resizedLeftWidth);
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(async () => Math.abs(((await leftPanel.boundingBox())?.width ?? 0) - resizedLeftWidth)).toBeLessThanOrEqual(1);
     await sidebarToggle.hover();
     if (process.env.HAPPY_E2E_RECORD === '1') {
         await page.screenshot({
             path: 'test-results/pc-sidebar-left-after-1280x720.png',
-            clip: { x: 0, y: 0, width: 640, height: 720 },
+            fullPage: true,
         });
     }
     await pauseForRecordedReview(page);
 
+    await page.keyboard.press('Meta+KeyB');
+    await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'false');
     const rightWidthBefore = (await rightPanel.boundingBox())!.width;
-    await rightPanelCollapse.hover();
-    if (process.env.HAPPY_E2E_RECORD === '1') {
-        await page.screenshot({
-            path: 'test-results/pc-sidebar-right-before-1280x720.png',
-            clip: { x: 640, y: 0, width: 640, height: 720 },
-        });
-    }
     const rightHandleBox = await rightPanel.getByTestId('desktop-right-panel-resize-handle').boundingBox();
     expect(rightHandleBox).not.toBeNull();
     await page.mouse.move(rightHandleBox!.x + rightHandleBox!.width / 2, rightHandleBox!.y + 100);
     await page.mouse.down();
-    await page.mouse.move(rightHandleBox!.x - 85, rightHandleBox!.y + 100, { steps: 6 });
+    await page.mouse.move(rightHandleBox!.x - 280, rightHandleBox!.y + 100, { steps: 10 });
     await page.mouse.up();
     await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? 0).toBeGreaterThan(rightWidthBefore + 20);
     const resizedRightWidth = (await rightPanel.boundingBox())!.width;
+    const rightResizeHandle = rightPanel.getByTestId('desktop-right-panel-resize-handle');
+    await expect(rightResizeHandle).toHaveAttribute('aria-valuenow', String(Math.round(resizedRightWidth)));
+    await rightResizeHandle.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? 0).toBeLessThan(resizedRightWidth);
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(async () => Math.abs(((await rightPanel.boundingBox())?.width ?? 0) - resizedRightWidth)).toBeLessThanOrEqual(1);
     await expect.poll(async () => (await mainPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
     await rightPanelCollapse.hover();
     if (process.env.HAPPY_E2E_RECORD === '1') {
         await page.screenshot({
             path: 'test-results/pc-sidebar-right-after-1280x720.png',
-            clip: { x: 640, y: 0, width: 640, height: 720 },
+            fullPage: true,
         });
     }
     await pauseForRecordedReview(page);
+    await page.keyboard.press('Meta+KeyB');
+    await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(async () => (await mainPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
+
+    const renderedLeftWidthAfterBoth = (await leftPanel.boundingBox())!.width;
+    const renderedRightWidthAfterBoth = (await rightPanel.boundingBox())!.width;
 
     await page.screenshot({
         path: 'test-results/pc-workspace-panels-after-1280x720.png',
@@ -456,7 +511,6 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
     const rightCollapsedMainBox = await mainPanel.boundingBox();
     expect(rightCollapsedMainBox).not.toBeNull();
     expect(rightCollapsedMainBox!.width).toBeGreaterThan(initialMainBox!.width + 100);
-    expect(Math.abs(rightCollapsedMainBox!.x - initialMainBox!.x)).toBeLessThanOrEqual(1);
     await pauseForRecordedReview(page);
 
     await page.locator('[data-testid="desktop-right-panel-restore-button"]:visible').click();
@@ -494,10 +548,73 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
     await page.reload();
     await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'true');
     await expect(rightPanel).toBeVisible();
-    await expect.poll(async () => Math.abs(((await leftPanel.boundingBox())?.width ?? 0) - resizedLeftWidth)).toBeLessThanOrEqual(1);
-    await expect.poll(async () => Math.abs(((await rightPanel.boundingBox())?.width ?? 0) - resizedRightWidth)).toBeLessThanOrEqual(1);
+    await expect.poll(async () => Math.abs(((await leftPanel.boundingBox())?.width ?? 0) - renderedLeftWidthAfterBoth)).toBeLessThanOrEqual(1);
+    await expect.poll(async () => Math.abs(((await rightPanel.boundingBox())?.width ?? 0) - renderedRightWidthAfterBoth)).toBeLessThanOrEqual(1);
     await expect.poll(async () => (await mainPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
+    await page.keyboard.press('Meta+KeyB');
+    await expect.poll(async () => Math.abs(((await rightPanel.boundingBox())?.width ?? 0) - resizedRightWidth)).toBeLessThanOrEqual(1);
+    await page.keyboard.press('Meta+KeyB');
     await pauseForRecordedReview(page, 900);
+});
+
+test('超宽桌面侧栏只受中间最小宽度约束', async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto(authenticatedRoute('/new'));
+    await expect(page.getByRole('textbox')).toBeVisible();
+
+    const leftPanel = page.getByTestId('desktop-left-sidebar');
+    const mainPanel = page.locator('[data-testid="desktop-workspace-main"]:visible');
+    const rightPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
+    const leftHandle = page.getByTestId('desktop-left-panel-resize-handle');
+    const sidebarToggle = page.getByTestId('desktop-navigation-sidebar-button');
+
+    const leftBefore = (await leftPanel.boundingBox())!.width;
+    await dragHorizontalResizeHandle(page, leftHandle, 520);
+    await expect.poll(async () => (await leftPanel.boundingBox())?.width ?? 0).toBeGreaterThan(leftBefore + 450);
+    await expect.poll(async () => (await leftPanel.boundingBox())?.width ?? 0).toBeGreaterThan(640);
+    await expect.poll(async () => (await mainPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
+
+    await sidebarToggle.click();
+    await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'false');
+    const rightBefore = (await rightPanel.boundingBox())!.width;
+    await dragHorizontalResizeHandle(page, rightPanel.getByTestId('desktop-right-panel-resize-handle'), -520);
+    await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? 0).toBeGreaterThan(rightBefore + 450);
+    await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? 0).toBeGreaterThan(640);
+    await expect.poll(async () => (await mainPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
+});
+
+test('活跃会话页面复用左右拖拽与折叠约束', async ({ page, request }) => {
+    const sessionId = await createE2ESession(request);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(authenticatedRoute(`/session/${sessionId}`));
+
+    const leftPanel = page.getByTestId('desktop-left-sidebar');
+    const mainPanel = page.locator('[data-testid="desktop-workspace-main"]:visible');
+    const rightPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
+    await expect(mainPanel).toBeVisible();
+    await expect(rightPanel).toBeVisible();
+
+    const leftBefore = (await leftPanel.boundingBox())!.width;
+    await dragHorizontalResizeHandle(page, page.getByTestId('desktop-left-panel-resize-handle'), 70);
+    await expect.poll(async () => (await leftPanel.boundingBox())?.width ?? 0).toBeGreaterThan(leftBefore + 40);
+
+    const rightBefore = (await rightPanel.boundingBox())!.width;
+    await dragHorizontalResizeHandle(page, rightPanel.getByTestId('desktop-right-panel-resize-handle'), -70);
+    await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? 0).toBeGreaterThan(rightBefore + 20);
+    await expect.poll(async () => (await mainPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
+
+    const sidebarToggle = page.getByTestId('desktop-navigation-sidebar-button');
+    await sidebarToggle.click();
+    await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'false');
+    const mainBeforeRightCollapse = (await mainPanel.boundingBox())!.width;
+    await rightPanel.getByTestId('desktop-right-panel-collapse-button').click();
+    const rightRestore = page.locator('[data-testid="desktop-right-panel-restore-button"]:visible');
+    await expect(rightRestore).toBeVisible();
+    await expect.poll(async () => (await mainPanel.boundingBox())?.width ?? 0).toBeGreaterThan(mainBeforeRightCollapse + 100);
+    await sidebarToggle.click();
+    await rightRestore.click();
+    await expect(leftPanel).toBeVisible();
+    await expect(rightPanel).toBeVisible();
 });
 
 test('桌面问候语与输入框内容列对齐且代表性中文标题保持单行', async ({ page }) => {

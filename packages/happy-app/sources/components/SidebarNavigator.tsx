@@ -22,6 +22,7 @@ import {
 import { DesktopPanelResizeHandle } from './DesktopPanelResizeHandle';
 import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import {
+    getDesktopPanelShortcutPresentation,
     getPersistentHeaderPointerEvents,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH,
@@ -173,7 +174,9 @@ const SidebarNavigatorContent = React.memo(() => {
             )}
             {isDesktopLayout && showSidebar && (
                 <DesktopPanelResizeHandle
-                    accessibilityLabel={t('desktopWorkspace.sessions')}
+                    accessibilityLabel={t('desktopWorkspace.resizePanel', {
+                        panel: t('desktopWorkspace.sessions'),
+                    })}
                     offset={leftWidth - 5}
                     side="left"
                 />
@@ -195,6 +198,7 @@ const PersistentHeader = React.memo(() => {
         toggleLeftSidebar,
     } = useDesktopWorkspaceLayout();
     const [sidebarTooltipVisible, setSidebarTooltipVisible] = React.useState(false);
+    const shortcuts = getDesktopPanelShortcutPresentation();
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
 
@@ -287,12 +291,12 @@ const PersistentHeader = React.memo(() => {
                             pressed && styles.togglePressed,
                         ]}
                         aria-expanded={sidebarVisible}
-                        accessibilityHint={`${sidebarToggleLabel} (⌘B)`}
+                        accessibilityHint={`${sidebarToggleLabel} (${shortcuts.leftLabel})`}
                         accessibilityLabel={sidebarToggleLabel}
                         accessibilityRole="button"
                         accessibilityState={{ expanded: sidebarVisible }}
                         {...({
-                            'aria-keyshortcuts': 'Meta+B',
+                            'aria-keyshortcuts': shortcuts.leftAria,
                         } as any)}
                         testID="desktop-navigation-sidebar-button"
                     >
@@ -310,7 +314,7 @@ const PersistentHeader = React.memo(() => {
                     </Pressable>
                     <DesktopShortcutTooltip
                         label={sidebarToggleLabel}
-                        shortcut="⌘B"
+                        shortcut={shortcuts.leftLabel}
                         testID="desktop-navigation-sidebar-tooltip"
                         visible={sidebarTooltipVisible}
                     />

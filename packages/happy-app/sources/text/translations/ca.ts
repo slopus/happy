@@ -54,6 +54,7 @@ export const ca: TranslationStructure = {
         hideSessions: 'Amaga la barra lateral de sessions',
         showPanel: ({ panel }: { panel: string }) => `Mostra ${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `Amaga ${panel}`,
+        resizePanel: ({ panel }: { panel: string }) => `Redimensiona ${panel}`,
         hidePanelShort: 'Amaga',
     },
     composeHome: {

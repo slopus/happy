@@ -1,7 +1,11 @@
 import * as React from 'react';
 import { type GestureResponderEvent, Platform, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { type DesktopPanelSide } from '@/utils/desktopNavigationLayout';
+import {
+    DESKTOP_LEFT_PANEL_MIN_WIDTH,
+    DESKTOP_RIGHT_PANEL_MIN_WIDTH,
+    type DesktopPanelSide,
+} from '@/utils/desktopNavigationLayout';
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 
 export const DesktopPanelResizeHandle = React.memo(function DesktopPanelResizeHandle({
@@ -18,23 +22,58 @@ export const DesktopPanelResizeHandle = React.memo(function DesktopPanelResizeHa
         beginPanelResize,
         continuePanelResize,
         endPanelResize,
+        leftMaximumWidth,
+        leftWidth,
+        resizePanelBy,
         resizingSide,
+        rightMaximumWidth,
+        rightWidth,
     } = useDesktopWorkspaceLayout();
+    const currentWidth = side === 'left' ? leftWidth : rightWidth;
+    const minimumWidth = side === 'left' ? DESKTOP_LEFT_PANEL_MIN_WIDTH : DESKTOP_RIGHT_PANEL_MIN_WIDTH;
+    const maximumWidth = side === 'left' ? leftMaximumWidth : rightMaximumWidth;
 
     const readPointerX = React.useCallback((event: GestureResponderEvent) => {
         return event.nativeEvent.pageX;
     }, []);
+    const handleKeyDown = React.useCallback((event: any) => {
+        const key = event.nativeEvent?.key ?? event.key;
+        let delta: number | undefined;
+        if (key === 'ArrowLeft') delta = side === 'left' ? -16 : 16;
+        if (key === 'ArrowRight') delta = side === 'left' ? 16 : -16;
+        if (key === 'Home') delta = minimumWidth - currentWidth;
+        if (key === 'End') delta = maximumWidth - currentWidth;
+        if (delta === undefined) return;
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        resizePanelBy(side, delta);
+    }, [currentWidth, maximumWidth, minimumWidth, resizePanelBy, side]);
 
     return (
         <View
             accessibilityLabel={accessibilityLabel}
             accessibilityRole="adjustable"
+            accessibilityValue={{
+                min: minimumWidth,
+                max: maximumWidth,
+                now: currentWidth,
+                text: `${currentWidth} px`,
+            }}
             onMoveShouldSetResponder={() => true}
             onResponderGrant={(event) => beginPanelResize(side, readPointerX(event))}
             onResponderMove={(event) => continuePanelResize(readPointerX(event))}
             onResponderRelease={endPanelResize}
             onResponderTerminate={endPanelResize}
             onStartShouldSetResponder={() => true}
+            {...(Platform.OS === 'web' ? ({
+                'aria-orientation': 'vertical',
+                'aria-valuemax': maximumWidth,
+                'aria-valuemin': minimumWidth,
+                'aria-valuenow': currentWidth,
+                'aria-valuetext': `${currentWidth} px`,
+                onKeyDown: handleKeyDown,
+                tabIndex: 0,
+            } as any) : {})}
             style={[
                 styles.handle,
                 { left: offset },

@@ -56,6 +56,7 @@ export const zhHans: TranslationStructure = {
         hideSessions: '收起会话侧栏',
         showPanel: ({ panel }: { panel: string }) => `展开${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `收起${panel}`,
+        resizePanel: ({ panel }: { panel: string }) => `调整${panel}宽度`,
         hidePanelShort: '收起',
     },
     composeHome: {
