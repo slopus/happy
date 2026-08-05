@@ -250,6 +250,8 @@ export const en: TranslationStructure = {
         hideInactiveSessionsSubtitle: 'Show only active chats in your list',
         groupToolCalls: 'Group Tool Calls',
         groupToolCallsSubtitle: 'Collapse consecutive tool calls into one container',
+        archivedSortByValueStarted: 'Started',
+        archivedSortByValueLastSeen: 'Last seen',
         privacy: 'Privacy',
         privacyDescription: 'Completely disables all analytics and telemetry. No data will be sent to PostHog or any other tracking service.',
         disableAnalytics: 'Disable Analytics',
@@ -257,6 +259,8 @@ export const en: TranslationStructure = {
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
         imageUploadSubtitle: 'Attach images to messages for supported agents to analyze',
+        archiveSortByLastSeen: 'Sort archived by last seen',
+        archiveSortByLastSeenSubtitle: 'Show a toggle to sort archived sessions by last activity instead of creation date',
     },
 
     errors: {

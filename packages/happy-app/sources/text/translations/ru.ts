@@ -222,6 +222,8 @@ export const ru: TranslationStructure = {
         hideInactiveSessionsSubtitle: 'Показывать в списке только активные чаты',
         groupToolCalls: 'Группировать вызовы инструментов',
         groupToolCallsSubtitle: 'Сворачивать подряд идущие вызовы инструментов в один блок',
+        archivedSortByValueStarted: 'Дате начала',
+        archivedSortByValueLastSeen: 'Последней активности',
         privacy: 'Конфиденциальность',
         privacyDescription: 'Полностью отключает всю аналитику и телеметрию. Никакие данные не будут отправляться в PostHog или другие сервисы отслеживания.',
         disableAnalytics: 'Отключить аналитику',
@@ -229,6 +231,8 @@ export const ru: TranslationStructure = {
         analyticsEnabled: 'Анонимная аналитика использования активна',
         imageUpload: 'Загрузка изображений',
         imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа поддерживаемыми агентами',
+        archiveSortByLastSeen: 'Сортировать архивные по последней активности',
+        archiveSortByLastSeenSubtitle: 'Показывать переключатель для сортировки архивных сессий по последней активности вместо даты создания',
     },
 
     errors: {

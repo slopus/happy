@@ -236,6 +236,8 @@ export const ca: TranslationStructure = {
         hideInactiveSessionsSubtitle: 'Mostra només els xats actius a la llista',
         groupToolCalls: 'Agrupa les crides a eines',
         groupToolCallsSubtitle: 'Replega les crides consecutives a eines en un sol contenidor',
+        archivedSortByValueStarted: 'Data d\'inici',
+        archivedSortByValueLastSeen: 'Última activitat',
         privacy: 'Privadesa',
         privacyDescription: 'Desactiva completament tota l\'analítica i telemetria. No s\'enviaran dades a PostHog ni a cap altre servei de seguiment.',
         disableAnalytics: 'Desactivar analítica',
@@ -243,6 +245,8 @@ export const ca: TranslationStructure = {
         analyticsEnabled: 'Analítica anònima d\'ús activa',
         imageUpload: 'Pujada d\'imatges',
         imageUploadSubtitle: 'Adjunta imatges als missatges perquè els agents compatibles les analitzin',
+        archiveSortByLastSeen: 'Ordena arxivades per última activitat',
+        archiveSortByLastSeenSubtitle: 'Mostra un commutador per ordenar les sessions arxivades per última activitat en lloc de la data de creació',
     },
 
     errors: {

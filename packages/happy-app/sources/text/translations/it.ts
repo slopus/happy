@@ -234,6 +234,8 @@ export const it: TranslationStructure = {
         hideInactiveSessionsSubtitle: 'Mostra solo le chat attive nella tua lista',
         groupToolCalls: 'Raggruppa chiamate agli strumenti',
         groupToolCallsSubtitle: 'Comprimi le chiamate consecutive agli strumenti in un unico contenitore',
+        archivedSortByValueStarted: 'Data di inizio',
+        archivedSortByValueLastSeen: 'Ultima attività',
         privacy: 'Privacy',
         privacyDescription: 'Disabilita completamente tutte le analisi e la telemetria. Nessun dato verrà inviato a PostHog o ad altri servizi di tracciamento.',
         disableAnalytics: 'Disabilita analisi',
@@ -241,6 +243,8 @@ export const it: TranslationStructure = {
         analyticsEnabled: 'Analisi anonime di utilizzo attive',
         imageUpload: 'Caricamento immagini',
         imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare dagli agenti supportati',
+        archiveSortByLastSeen: 'Ordina archiviate per ultima attività',
+        archiveSortByLastSeenSubtitle: 'Mostra un interruttore per ordinare le sessioni archiviate per ultima attività invece che per data di creazione',
     },
 
     errors: {

@@ -237,6 +237,8 @@ export const ja: TranslationStructure = {
         hideInactiveSessionsSubtitle: 'アクティブなチャットのみをリストに表示',
         groupToolCalls: 'ツール呼び出しをグループ化',
         groupToolCallsSubtitle: '連続するツール呼び出しを1つのコンテナにまとめる',
+        archivedSortByValueStarted: '開始日',
+        archivedSortByValueLastSeen: '最終アクセス',
         privacy: 'プライバシー',
         privacyDescription: 'すべての分析とテレメトリを完全に無効にします。PostHogやその他のトラッキングサービスにデータは送信されません。',
         disableAnalytics: '分析を無効化',
@@ -244,6 +246,8 @@ export const ja: TranslationStructure = {
         analyticsEnabled: '匿名の使用状況分析がアクティブ',
         imageUpload: '画像アップロード',
         imageUploadSubtitle: '対応エージェントに分析させるため、メッセージに画像を添付する',
+        archiveSortByLastSeen: 'アーカイブを最終アクセス順に並べ替え',
+        archiveSortByLastSeenSubtitle: 'アーカイブされたセッションを作成日ではなく最終アクティビティ順に並べ替えるトグルを表示する',
     },
 
     errors: {

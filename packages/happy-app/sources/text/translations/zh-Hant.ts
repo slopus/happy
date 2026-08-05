@@ -236,6 +236,8 @@ export const zhHant: TranslationStructure = {
         hideInactiveSessionsSubtitle: '僅在清單中顯示活躍的聊天',
         groupToolCalls: '分組工具呼叫',
         groupToolCallsSubtitle: '將連續的工具呼叫摺疊到單一容器中',
+        archivedSortByValueStarted: '開始時間',
+        archivedSortByValueLastSeen: '最近活躍',
         privacy: '隱私',
         privacyDescription: '完全停用所有分析和遙測。不會向 PostHog 或任何其他追蹤服務傳送資料。',
         disableAnalytics: '停用分析',
@@ -243,6 +245,8 @@ export const zhHant: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
         imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
+        archiveSortByLastSeen: '依最近活躍排序封存工作階段',
+        archiveSortByLastSeenSubtitle: '顯示一個開關，可依最近活動而非建立日期排序封存的工作階段',
     },
 
     errors: {

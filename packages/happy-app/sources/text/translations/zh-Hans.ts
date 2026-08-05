@@ -237,6 +237,8 @@ export const zhHans: TranslationStructure = {
         hideInactiveSessionsSubtitle: '仅在列表中显示活跃的聊天',
         groupToolCalls: '分组工具调用',
         groupToolCallsSubtitle: '将连续的工具调用折叠到一个容器中',
+        archivedSortByValueStarted: '开始时间',
+        archivedSortByValueLastSeen: '最近活跃',
         privacy: '隐私',
         privacyDescription: '完全禁用所有分析和遥测。不会向 PostHog 或任何其他跟踪服务发送数据。',
         disableAnalytics: '禁用分析',
@@ -244,6 +246,8 @@ export const zhHans: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
         imageUploadSubtitle: '将图片附加到消息中，以便受支持的代理进行分析',
+        archiveSortByLastSeen: '按最近活跃排序归档会话',
+        archiveSortByLastSeenSubtitle: '显示一个开关，可按最近活动而非创建日期对归档会话进行排序',
     },
 
     errors: {
