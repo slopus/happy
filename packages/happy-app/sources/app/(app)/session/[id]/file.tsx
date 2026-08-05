@@ -537,7 +537,7 @@ export default React.memo(function FileScreen() {
             <ScrollView
                 ref={scrollViewRef}
                 style={{ flex: 1 }}
-                contentContainerStyle={{ padding: 16, maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}
+                contentContainerStyle={{ padding: 16, maxWidth: layout.maxWidth, alignSelf: 'flex-start', width: '100%' }}
                 showsVerticalScrollIndicator={true}
             >
                 {effectiveDisplayMode === 'diff' && diffContent ? (
@@ -547,6 +547,7 @@ export default React.memo(function FileScreen() {
                         code={fileContent.content}
                         language={language}
                         selectable={true}
+                        testID="file-viewer-content"
                     />
                 ) : effectiveDisplayMode === 'file' && fileContent && !fileContent.content ? (
                     <Text style={{
