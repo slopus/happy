@@ -34,6 +34,12 @@ yarn-error.*
 test-results/
 playwright-report/
 
+# Acceptance recordings and media fixtures must stay outside Git. Playwright
+# receives/generated them through HAPPY_E2E_MP4_PATH at runtime instead.
+*.mp4
+*.mov
+*.webm
+
 # macOS
 .DS_Store
 *.pem

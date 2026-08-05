@@ -57,6 +57,10 @@ export function shouldRenderToolCardHeader(toolName: string, platformOS: string)
     return !(platformOS === 'web' && toolName === 'CodexPatch');
 }
 
+export function isInlineVideoFileTool(tool: Pick<ToolCall, 'name' | 'input'>): boolean {
+    return tool.name === 'file' && tool.input?.kind === 'video';
+}
+
 export function getToolSummaryCategory(toolName: string): ToolSummaryCategory {
     if (TERMINAL_TOOL_NAMES.has(toolName)) {
         return 'terminal';

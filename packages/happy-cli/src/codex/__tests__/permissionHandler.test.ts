@@ -95,6 +95,23 @@ describe('CodexPermissionHandler', () => {
         });
     });
 
+    it('auto-approves the first-party send_file tool by exact name', async () => {
+        const { session, getState } = createSessionMock();
+        const handler = new CodexPermissionHandler(session as any);
+
+        const result = await handler.handleToolCall(
+            'call_send_file_123',
+            'mcp__happy__send_file',
+            { path: '/tmp/acceptance.mp4' },
+        );
+
+        expect(result).toEqual({ decision: 'approved' });
+        expect(getState().completedRequests.call_send_file_123).toMatchObject({
+            tool: 'mcp__happy__send_file',
+            status: 'approved',
+        });
+    });
+
     it('keeps non-safe tools pending for user approval', async () => {
         const { session, getState } = createSessionMock();
         const handler = new CodexPermissionHandler(session as any);

@@ -34,7 +34,7 @@ function createServerMock(): { server: McpServer; registrations: ToolRegistratio
 }
 
 describe('registerHappyBridgeTools', () => {
-    it('registers every first-party Happy bridge tool, including send_image and finance_chart', () => {
+    it('registers every first-party Happy bridge tool, including media delivery and finance_chart', () => {
         const { server, registrations } = createServerMock();
 
         registerHappyBridgeTools(server, async () => ({}) as Client);
@@ -50,11 +50,31 @@ describe('registerHappyBridgeTools', () => {
             .toHaveProperty('path');
         expect(registrations.find((registration) => registration.name === 'send_image')?.config.inputSchema)
             .toHaveProperty('prompt');
+        expect(registrations.find((registration) => registration.name === 'send_file')?.config).toMatchObject({
+            title: 'Send File To Chat',
+        });
+        expect(registrations.find((registration) => registration.name === 'send_file')?.config.inputSchema)
+            .toHaveProperty('path');
         expect(registrations.find((registration) => registration.name === 'finance_chart')?.config).toMatchObject({
             title: 'Fetch Finance Chart',
         });
         expect(registrations.find((registration) => registration.name === 'finance_chart')?.config.inputSchema)
             .toHaveProperty('query');
+    });
+
+    it('forwards send_file calls to the per-session HTTP MCP server', async () => {
+        const { server, registrations } = createServerMock();
+        const callTool = vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'ok send_file' }], isError: false }));
+        registerHappyBridgeTools(server, async () => ({ callTool }) as unknown as Client);
+
+        const sendFile = registrations.find((registration) => registration.name === 'send_file');
+        const result = await sendFile?.handler({ path: '/tmp/acceptance.mp4', mimeType: 'video/mp4' });
+
+        expect(callTool).toHaveBeenCalledWith({
+            name: 'send_file',
+            arguments: { path: '/tmp/acceptance.mp4', mimeType: 'video/mp4' },
+        });
+        expect(result).toMatchObject({ content: [{ type: 'text', text: 'ok send_file' }], isError: false });
     });
 
     it('forwards send_image calls to the HTTP MCP client', async () => {

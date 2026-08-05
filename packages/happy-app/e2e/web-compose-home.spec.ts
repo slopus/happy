@@ -1,7 +1,7 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { expect, test, type APIRequestContext, type Locator, type Page, type Route } from '@playwright/test';
+import fs, { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import path, { join } from 'node:path';
 import { io } from 'socket.io-client';
 import { decodeBase64, decryptLegacy, encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
 import {
@@ -24,6 +24,103 @@ async function pauseForRecordedReview(page: Page, duration = 650): Promise<void>
     if (process.env.HAPPY_E2E_RECORD === '1') {
         await page.waitForTimeout(duration);
     }
+}
+
+async function fulfillMp4Route(route: Route, fixture: Buffer): Promise<void> {
+    const range = route.request().headers().range;
+    const match = range?.match(/^bytes=(\d+)-(\d*)$/);
+    const start = match ? Number(match[1]) : 0;
+    const requestedEnd = match?.[2] ? Number(match[2]) : fixture.length - 1;
+    const end = Math.min(requestedEnd, fixture.length - 1);
+    const body = fixture.subarray(start, end + 1);
+
+    await route.fulfill({
+        status: match ? 206 : 200,
+        contentType: 'video/mp4',
+        headers: {
+            'Accept-Ranges': 'bytes',
+            'Access-Control-Allow-Origin': '*',
+            'Content-Length': String(body.length),
+            ...(match ? { 'Content-Range': `bytes ${start}-${end}/${fixture.length}` } : {}),
+        },
+        body,
+    });
+}
+
+async function exerciseInlineVideo(page: Page, playerTestId: string): Promise<void> {
+    const player = page.getByTestId(playerTestId);
+    const video = player.locator('video');
+    await expect(player).toBeVisible();
+    const playerBox = await player.boundingBox();
+    if (!playerBox) throw new Error('找不到消息中的内联视频播放器');
+    expect(playerBox.width).toBeGreaterThanOrEqual(300);
+    expect(playerBox.width / playerBox.height).toBeCloseTo(16 / 9, 1);
+    await expect(video).toHaveAttribute('controls', '');
+    await expect.poll(() => video.evaluate((element) => {
+        const media = element as HTMLVideoElement;
+        return media.readyState >= HTMLMediaElement.HAVE_METADATA
+            && Number.isFinite(media.duration)
+            && media.duration > 1;
+    }), { timeout: 10_000 }).toBe(true);
+
+    const initialTime = await video.evaluate((element) => (element as HTMLVideoElement).currentTime);
+    expect(initialTime).toBeLessThan(0.25);
+
+    // Chromium's native media controls live in a closed user-agent shadow root,
+    // so Playwright cannot address the Play button by role. Hovering and clicking
+    // its visible bottom-left position still sends real pointer input to that control.
+    await video.hover();
+    await pauseForRecordedReview(page, 900);
+    const videoBox = await video.boundingBox();
+    if (!videoBox) throw new Error('找不到视频原生播放控件的可点击区域');
+    const nativePlayPausePosition = { x: 24, y: videoBox.height - 48 };
+    await video.click({ position: nativePlayPausePosition });
+    await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).paused)).toBe(false);
+    await pauseForRecordedReview(page, 1_800);
+    await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime), {
+        timeout: 5_000,
+    }).toBeGreaterThanOrEqual(initialTime + 1);
+
+    await video.hover();
+    await video.click({ position: nativePlayPausePosition });
+    await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).paused)).toBe(true);
+    const pausedTime = await video.evaluate((element) => (element as HTMLVideoElement).currentTime);
+    await pauseForRecordedReview(page, 900);
+    await page.waitForTimeout(300);
+    const timeAfterPause = await video.evaluate((element) => (element as HTMLVideoElement).currentTime);
+    expect(timeAfterPause - pausedTime).toBeLessThan(0.2);
+
+    const duration = await video.evaluate((element) => (element as HTMLVideoElement).duration);
+    const progressBarInset = 16;
+    const nativeSeekPosition = {
+        x: progressBarInset + ((videoBox.width - (progressBarInset * 2)) * 0.82),
+        y: videoBox.height - 24,
+    };
+    expect((duration * 0.82) - pausedTime).toBeGreaterThan(0.6);
+    await video.hover({ position: nativeSeekPosition });
+    await pauseForRecordedReview(page, 650);
+    await video.click({ position: nativeSeekPosition });
+    await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime), {
+        timeout: 5_000,
+    }).toBeGreaterThanOrEqual(Math.max(pausedTime + 0.6, duration * 0.7));
+    await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).paused)).toBe(true);
+    const seekedTime = await video.evaluate((element) => (element as HTMLVideoElement).currentTime);
+    await pauseForRecordedReview(page, 1_100);
+    await page.waitForTimeout(300);
+    const timeAfterSeek = await video.evaluate((element) => (element as HTMLVideoElement).currentTime);
+    expect(Math.abs(timeAfterSeek - seekedTime)).toBeLessThan(0.2);
+
+    const nativeFullscreenPosition = { x: videoBox.width - 72, y: videoBox.height - 48 };
+    await video.hover({ position: nativeFullscreenPosition });
+    await video.click({ position: nativeFullscreenPosition });
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName ?? null)).toBe('VIDEO');
+    await pauseForRecordedReview(page);
+    const fullscreenBox = await video.boundingBox();
+    if (!fullscreenBox) throw new Error('找不到全屏视频的原生控件区域');
+    const nativeExitFullscreenPosition = { x: fullscreenBox.width - 72, y: fullscreenBox.height - 48 };
+    await video.hover({ position: nativeExitFullscreenPosition });
+    await video.click({ position: nativeExitFullscreenPosition });
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName ?? null)).toBe(null);
 }
 
 type CreateE2ESessionOptions = {
@@ -1948,6 +2045,63 @@ test.describe('中文 Web 消息与工具演示', () => {
             path: testInfo.outputPath('chat-activity-status-after.png'),
             fullPage: true,
         });
+    });
+
+    test('[MP4-AGENT] send_file 输出直接呈现裸视频并支持播放与跳播', async ({ page }, testInfo) => {
+        const fixturePath = process.env.HAPPY_E2E_MP4_PATH;
+        if (!fixturePath) throw new Error('缺少 HAPPY_E2E_MP4_PATH');
+        const fixture = fs.readFileSync(fixturePath);
+        await page.route('**/v1/sessions/demo-messages-session/attachments/request-download', async (route) => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ downloadUrl: 'https://files.test/agent-output.mp4?X-Amz-Signature=e2e' }),
+            });
+        });
+        await page.route('https://files.test/agent-output.mp4**', (route) => fulfillMp4Route(route, fixture));
+
+        await page.setViewportSize({ width: 800, height: 900 });
+        await page.goto(authenticatedRoute('/dev/messages-demo'));
+        await expect(page.getByTestId('media-attachment-player-generated')).toBeVisible();
+        await expect(page.getByTestId('media-attachment-card-generated')).toHaveCount(0);
+        await expect(page.getByTestId('media-attachment-player-generated-fullscreen')).toHaveCount(0);
+        await expect(page.getByText('agent-output.mp4', { exact: true })).toHaveCount(0);
+        await expect(page.getByText('file', { exact: true })).toHaveCount(0);
+
+        await exerciseInlineVideo(page, 'media-attachment-player-generated');
+        await pauseForRecordedReview(page, 1_100);
+        await page.screenshot({ path: testInfo.outputPath('mp4-agent-after.png'), fullPage: true });
+    });
+
+    test('[MP4-USER] 选择与发送 MP4 前后均直接呈现裸视频', async ({ page, request }, testInfo) => {
+        const fixturePath = process.env.HAPPY_E2E_MP4_PATH;
+        if (!fixturePath) throw new Error('缺少 HAPPY_E2E_MP4_PATH');
+        const sessionId = await createE2ESession(request);
+
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.goto(authenticatedRoute(`/session/${sessionId}`));
+        await expect(page.getByTestId('session-message-input')).toBeVisible();
+
+        await page.getByRole('button', { name: /添加附件|Add attachment/i }).click();
+        const fileChooserPromise = page.waitForEvent('filechooser');
+        await page.getByRole('button', { name: /音频.*视频|Audio or video/i }).click();
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles(fixturePath);
+
+        await expect(page.getByTestId('media-attachment-player-pending')).toBeVisible();
+        await expect(page.getByTestId('media-attachment-card-pending')).toHaveCount(0);
+        await expect(page.getByTestId('media-attachment-player-pending-fullscreen')).toHaveCount(0);
+        await expect(page.getByText(path.basename(fixturePath), { exact: true })).toHaveCount(0);
+
+        await exerciseInlineVideo(page, 'media-attachment-player-pending');
+        await page.locator('[data-testid="message-composer-send-button"]:not([aria-disabled="true"])').click();
+
+        await expect(page.getByTestId('media-attachment-player-user')).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByTestId('media-attachment-card-user')).toHaveCount(0);
+        await expect(page.getByTestId('media-attachment-player-user-fullscreen')).toHaveCount(0);
+        await exerciseInlineVideo(page, 'media-attachment-player-user');
+        await pauseForRecordedReview(page, 1_100);
+        await page.screenshot({ path: testInfo.outputPath('mp4-user-after.png'), fullPage: true });
     });
 
     test('宽屏图片消息与正文阅读列对齐，不再横向铺满', async ({ page }) => {

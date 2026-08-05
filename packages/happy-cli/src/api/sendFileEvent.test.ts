@@ -32,6 +32,22 @@ describe('sendFileEvent envelope contract', () => {
         });
     });
 
+    it('accepts generated plaintext MP4 metadata', () => {
+        const envelope = createEnvelope('user', {
+            t: 'file',
+            ref: 'sessions/s1/attachments/clip.mp4',
+            name: 'clip.mp4',
+            size: 42,
+            source: 'generated',
+            kind: 'video',
+            mimeType: 'video/mp4',
+            encrypted: false,
+            localPath: '/tmp/clip.mp4',
+        });
+        expect(sessionEnvelopeSchema.safeParse(envelope).success).toBe(true);
+        expect(envelope.ev).toMatchObject({ kind: 'video', mimeType: 'video/mp4', encrypted: false });
+    });
+
     it('rejects a file event with image block missing thumbhash (why we omit image)', () => {
         const bad = { id: 'x', time: 1, role: 'user', ev: { t: 'file', ref: 'r', name: 'n', size: 1, image: { width: 10, height: 10 } } };
         expect(sessionEnvelopeSchema.safeParse(bad).success).toBe(false);

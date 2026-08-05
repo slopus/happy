@@ -1896,6 +1896,46 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
+        it('preserves encrypted user and plaintext generated video metadata', () => {
+            for (const [id, source, encrypted] of [
+                ['user-video', undefined, undefined],
+                ['generated-video', 'generated', false],
+            ] as const) {
+                const normalized = normalizeRawMessage(`db-${id}`, null, 1, {
+                    ...base,
+                    content: {
+                        type: 'session',
+                        data: {
+                            id: `env-${id}`,
+                            time: 1,
+                            role: 'user',
+                            ev: {
+                                t: 'file',
+                                ref: `sessions/s1/attachments/${id}.mp4`,
+                                name: `${id}.mp4`,
+                                size: 2048,
+                                kind: 'video',
+                                mimeType: 'video/mp4',
+                                ...(source ? { source } : {}),
+                                ...(encrypted !== undefined ? { encrypted } : {}),
+                            },
+                        },
+                    },
+                });
+
+                expect(normalized && normalized.role === 'agent' ? normalized.content[0] : null).toMatchObject({
+                    type: 'tool-call',
+                    name: 'file',
+                    input: {
+                        kind: 'video',
+                        mimeType: 'video/mp4',
+                        ...(source ? { source } : {}),
+                        ...(encrypted !== undefined ? { encrypted } : {}),
+                    },
+                });
+            }
+        });
+
         it('rejects file events without required size', () => {
             const normalized = normalizeRawMessage('db-file-missing-size', null, 1, {
                 ...base,

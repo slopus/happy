@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -30,8 +31,35 @@ function run(command: string, args: string[], env?: NodeJS.ProcessEnv): void {
     }
 }
 
+function prepareMp4Fixture(): { filePath: string; temporaryDirectory: string | null } {
+    const provided = process.env.HAPPY_E2E_MP4_PATH;
+    if (provided) {
+        const filePath = path.resolve(provided);
+        if (!fs.statSync(filePath, { throwIfNoEntry: false })?.isFile()) {
+            throw new Error(`HAPPY_E2E_MP4_PATH 不是可读文件：${filePath}`);
+        }
+        return { filePath, temporaryDirectory: null };
+    }
+
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'paws-chat-mp4-e2e-'));
+    const filePath = path.join(temporaryDirectory, 'chat-mp4-fixture.mp4');
+    run('ffmpeg', [
+        '-y',
+        '-f', 'lavfi',
+        '-i', 'testsrc2=s=640x360:r=25',
+        '-t', '4',
+        '-an',
+        '-c:v', 'libx264',
+        '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart',
+        filePath,
+    ]);
+    return { filePath, temporaryDirectory };
+}
+
 async function main(): Promise<void> {
     let environmentName: string | null = null;
+    let temporaryVideoDirectory: string | null = null;
     const playwrightArgs = process.argv.slice(2).filter((arg) => arg !== '--');
 
     try {
@@ -41,6 +69,9 @@ async function main(): Promise<void> {
 
         console.log('构建本地测试 CLI...');
         run('pnpm', ['--filter', '@wangjs-jacky/paws', 'build']);
+
+        const videoFixture = prepareMp4Fixture();
+        temporaryVideoDirectory = videoFixture.temporaryDirectory;
 
         const originalConsoleLog = console.log;
         console.log = (...values: unknown[]) => {
@@ -67,6 +98,7 @@ async function main(): Promise<void> {
             {
                 HAPPY_E2E_SERVER_URL: `http://localhost:${config.serverPort}`,
                 HAPPY_E2E_WEB_URL: config.authenticatedWebUrl,
+                HAPPY_E2E_MP4_PATH: videoFixture.filePath,
             },
         );
     } catch (error) {
@@ -90,6 +122,9 @@ async function main(): Promise<void> {
         if (environmentName) {
             stopEnvironment(environmentName);
             run('pnpm', ['exec', 'tsx', 'environments/environments.ts', 'remove', environmentName]);
+        }
+        if (temporaryVideoDirectory) {
+            fs.rmSync(temporaryVideoDirectory, { recursive: true, force: true });
         }
     }
 }

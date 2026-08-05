@@ -10,7 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
-export const HAPPY_MCP_BRIDGE_TOOL_NAMES = ['change_title', 'send_image', 'archive_session', 'finance_chart'] as const;
+export const HAPPY_MCP_BRIDGE_TOOL_NAMES = ['change_title', 'send_image', 'send_file', 'archive_session', 'finance_chart'] as const;
 
 type HappyMcpBridgeToolName = typeof HAPPY_MCP_BRIDGE_TOOL_NAMES[number];
 
@@ -74,6 +74,27 @@ export function registerHappyBridgeTools(
       },
       ensureHttpClient,
       'Failed to send image'
+    )
+  );
+
+  server.registerTool(
+    'send_file',
+    {
+      description: 'Send a locally generated audio or video file into the current chat as a playable media card. Provide an absolute local path.',
+      title: 'Send File To Chat',
+      inputSchema: {
+        path: z.string().describe('Absolute path to the local audio/video file'),
+        mimeType: z.string().optional().describe('Optional audio/* or video/* MIME type override'),
+      },
+    },
+    async (args) => forwardHappyToolCall(
+      'send_file',
+      {
+        path: args.path,
+        ...(args.mimeType ? { mimeType: args.mimeType } : {}),
+      },
+      ensureHttpClient,
+      'Failed to send file'
     )
   );
 

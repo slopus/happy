@@ -1,6 +1,6 @@
 import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
-import { readFile, unlink } from 'node:fs/promises'
+import { readFile, stat, unlink } from 'node:fs/promises'
 import { createWriteStream } from 'node:fs'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -8,7 +8,7 @@ import { basename } from 'node:path'
 import { io, Socket } from 'socket.io-client'
 import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSchema, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
 import { decodeBase64, decryptBlob, encryptBlob, decrypt, encodeBase64, encrypt } from './encryption';
-import { requestAttachmentUpload, uploadEncryptedBlob } from './attachmentUpload';
+import { requestAttachmentUpload, uploadEncryptedBlob, uploadMediaFile } from './attachmentUpload';
 import { backoff, delay } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
@@ -30,6 +30,7 @@ import { InvalidateSync } from '@/utils/sync';
 import { readImageSize } from './imageSize';
 import type { PendingAttachment } from '@/utils/MessageQueue2';
 import axios from 'axios';
+import { resolveMediaArtifact } from './mediaArtifact';
 
 function redactPresignedUrl(url: string): string {
     return url.replace(/([?&](?:X-Amz-Signature|Signature)=)[^&]+/g, '$1<redacted>');
@@ -471,6 +472,35 @@ export class ApiSessionClient extends EventEmitter {
         return { ref: descriptor.ref, name, size: raw.length, dims };
     }
 
+    /** Stream a locally generated media artifact through the plaintext lane. */
+    async uploadMediaAttachment(filePath: string, requestedMimeType?: string): Promise<{
+        ref: string;
+        name: string;
+        size: number;
+        kind: 'audio' | 'video';
+        mimeType: string;
+    }> {
+        const media = resolveMediaArtifact(filePath, requestedMimeType);
+        const info = await stat(filePath);
+        if (!info.isFile()) throw new Error(`Not a regular file: ${filePath}`);
+        const maxBytes = 500 * 1024 * 1024;
+        if (info.size > maxBytes) {
+            throw new Error(`Media file too large: ${info.size} bytes (max ${maxBytes})`);
+        }
+
+        const name = basename(filePath);
+        const descriptor = await requestAttachmentUpload(
+            configuration.serverUrl,
+            this.token,
+            this.sessionId,
+            name,
+            info.size,
+            media.kind,
+        );
+        await uploadMediaFile(descriptor, filePath, info.size, media.mimeType, this.token);
+        return { ref: descriptor.ref, name, size: info.size, ...media };
+    }
+
     /**
      * Emit a file event so the app renders the uploaded attachment inline (FileView).
      * When dims are provided we include an image{} block carrying the real width/height
@@ -482,12 +512,18 @@ export class ApiSessionClient extends EventEmitter {
      */
     sendFileEvent(ref: string, name: string, size: number, dims?: { width: number; height: number } | null, options?: {
         source?: 'user' | 'generated';
+        kind?: 'audio' | 'video';
+        mimeType?: string;
+        encrypted?: boolean;
         prompt?: string;
         batchId?: string;
         localPath?: string;
     }): void {
         const metadata = {
             ...(options?.source ? { source: options.source } : {}),
+            ...(options?.kind ? { kind: options.kind } : {}),
+            ...(options?.mimeType ? { mimeType: options.mimeType } : {}),
+            ...(options?.encrypted !== undefined ? { encrypted: options.encrypted } : {}),
             ...(options?.prompt ? { prompt: options.prompt } : {}),
             ...(options?.batchId ? { batchId: options.batchId } : {}),
             ...(options?.localPath ? { localPath: options.localPath } : {}),
