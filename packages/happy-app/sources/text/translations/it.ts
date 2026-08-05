@@ -265,6 +265,8 @@ export const it: TranslationStructure = {
         noRecent: 'Nothing recent yet',
         back: 'Back',
         blocks: {
+            outputs: 'Risultati',
+            sources: 'Fonti',
             sessionActions: 'Session Actions',
             skills: 'Skills',
             quickPrompts: 'Quick Prompts',
@@ -274,6 +276,8 @@ export const it: TranslationStructure = {
             folderBrowser: 'Cartella',
         },
         empty: {
+            outputs: 'File, anteprime e altri risultati dell\'attività appariranno qui.',
+            sources: 'I link web e gli allegati utilizzati in questa attività appariranno qui.',
             sessionActions: 'No actions available for this session',
             skills: 'No skills available for this session',
             quickPrompts: 'No quick prompts yet',
@@ -292,6 +296,10 @@ export const it: TranslationStructure = {
             image: 'Image attachment',
             generatedImage: 'Generated image',
             artifact: 'Linked artifact',
+            created: 'Creato',
+            updated: 'Aggiornato',
+            preview: 'Anteprima pronta',
+            source: 'Usato come fonte',
         },
         quickPrompt: {
             add: 'Add Prompt',

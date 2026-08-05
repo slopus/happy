@@ -266,6 +266,8 @@ export const pt: TranslationStructure = {
         noRecent: 'Nothing recent yet',
         back: 'Back',
         blocks: {
+            outputs: 'Resultados',
+            sources: 'Fontes',
             sessionActions: 'Session Actions',
             skills: 'Skills',
             quickPrompts: 'Quick Prompts',
@@ -275,6 +277,8 @@ export const pt: TranslationStructure = {
             folderBrowser: 'Pasta',
         },
         empty: {
+            outputs: 'Arquivos, prévias e outros resultados da tarefa aparecerão aqui.',
+            sources: 'Os links da web e anexos usados nesta tarefa aparecerão aqui.',
             sessionActions: 'No actions available for this session',
             skills: 'No skills available for this session',
             quickPrompts: 'No quick prompts yet',
@@ -293,6 +297,10 @@ export const pt: TranslationStructure = {
             image: 'Image attachment',
             generatedImage: 'Generated image',
             artifact: 'Linked artifact',
+            created: 'Criado',
+            updated: 'Atualizado',
+            preview: 'Prévia pronta',
+            source: 'Usado como fonte',
         },
         quickPrompt: {
             add: 'Add Prompt',

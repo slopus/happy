@@ -253,6 +253,8 @@ export const ru: TranslationStructure = {
         noRecent: 'Nothing recent yet',
         back: 'Back',
         blocks: {
+            outputs: 'Результаты',
+            sources: 'Источники',
             sessionActions: 'Session Actions',
             skills: 'Skills',
             quickPrompts: 'Quick Prompts',
@@ -262,6 +264,8 @@ export const ru: TranslationStructure = {
             folderBrowser: 'Папка',
         },
         empty: {
+            outputs: 'Файлы, предварительные просмотры и другие результаты задачи появятся здесь.',
+            sources: 'Использованные в этой задаче веб-ссылки и вложения появятся здесь.',
             sessionActions: 'No actions available for this session',
             skills: 'No skills available for this session',
             quickPrompts: 'No quick prompts yet',
@@ -280,6 +284,10 @@ export const ru: TranslationStructure = {
             image: 'Image attachment',
             generatedImage: 'Generated image',
             artifact: 'Linked artifact',
+            created: 'Создано',
+            updated: 'Обновлено',
+            preview: 'Предпросмотр готов',
+            source: 'Использовано как источник',
         },
         quickPrompt: {
             add: 'Add Prompt',

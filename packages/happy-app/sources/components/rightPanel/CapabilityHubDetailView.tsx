@@ -7,7 +7,8 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAttachmentImage } from '@/hooks/useAttachmentImage';
 import type { SessionActionItem } from '@/hooks/useSessionQuickActions';
 import { imageViewer } from '@/sync/imageViewer';
-import { t } from '@/text';
+import { getCurrentLanguage, t } from '@/text';
+import { openExternalUrl } from '@/utils/openExternalUrl';
 import { thumbhashToDataUri } from '@/utils/thumbhash';
 import type {
     ArtifactCapabilityItem,
@@ -16,6 +17,7 @@ import type {
     FileCapabilityItem,
     ImageCapabilityItem,
     QuickPromptCapabilityItem,
+    TaskResourceCapabilityItem,
 } from './sessionCapabilityHubModel';
 
 type Props = {
@@ -197,6 +199,9 @@ const CapabilityItemRow = React.memo(function CapabilityItemRow(props: {
             />
         );
     }
+    if (props.item.kind === 'taskResource') {
+        return <TaskResourceItemRow item={props.item} sessionId={props.sessionId} />;
+    }
     if (props.item.kind === 'image') {
         return <ImageItemRow item={props.item} sessionId={props.sessionId} />;
     }
@@ -208,6 +213,181 @@ const CapabilityItemRow = React.memo(function CapabilityItemRow(props: {
     }
     return <SkillItemRow title={props.item.title} />;
 });
+
+const TaskResourceItemRow = React.memo(function TaskResourceItemRow(props: {
+    item: TaskResourceCapabilityItem;
+    sessionId: string;
+}) {
+    if (props.item.event.resourceType === 'image') {
+        return <TaskResourceImageItemRow item={props.item} sessionId={props.sessionId} />;
+    }
+    return <TaskResourceTextItemRow item={props.item} sessionId={props.sessionId} />;
+});
+
+const TaskResourceTextItemRow = React.memo(function TaskResourceTextItemRow(props: {
+    item: TaskResourceCapabilityItem;
+    sessionId: string;
+}) {
+    const router = useRouter();
+    const { theme } = useUnistyles();
+    const event = props.item.event;
+    const onPress = event.resourceType === 'file'
+        ? () => router.push(`/session/${props.sessionId}/file?path=${btoa(event.path)}` as any)
+        : event.resourceType === 'artifact' && event.artifactId
+            ? () => router.push(`/artifacts/${event.artifactId}` as any)
+            : event.resourceType === 'web'
+                ? () => { void openExternalUrl(event.uri); }
+                : event.resourceType === 'attachment'
+                    ? () => router.push(`/session/${props.sessionId}/message/${event.messageId}` as any)
+                    : undefined;
+
+    return (
+        <Pressable
+            accessibilityRole={onPress ? 'button' : undefined}
+            disabled={!onPress}
+            onPress={onPress}
+            testID={`task-context-${event.kind === 'source_used' ? 'source' : 'output'}-${event.resourceType}`}
+            style={({ pressed }) => [
+                styles.rowCard,
+                {
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.divider,
+                    opacity: onPress ? 1 : 0.78,
+                    transform: [{ scale: pressed ? 0.99 : 1 }],
+                },
+            ]}
+        >
+            <View style={[styles.rowIconWrap, { backgroundColor: theme.colors.surfaceHigh }]}>
+                {renderTaskResourceIcon(event.resourceType, theme.colors.text)}
+            </View>
+            <View style={styles.rowCopy}>
+                <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.colors.text }]}>
+                    {event.title}
+                </Text>
+                <Text numberOfLines={1} style={[styles.rowMeta, { color: theme.colors.textSecondary }]}>
+                    {getTaskResourceLocator(event)}
+                </Text>
+                <Text numberOfLines={1} style={[styles.resourceStatus, { color: theme.colors.textSecondary }]}>
+                    {getTaskResourceStatus(event)} · {formatResourceTimestamp(event.createdAt)}{event.occurrences > 1 ? ` · ×${event.occurrences}` : ''}
+                </Text>
+            </View>
+            {onPress ? <Ionicons color={theme.colors.textSecondary} name={event.resourceType === 'web' ? 'open-outline' : 'chevron-forward'} size={16} /> : null}
+        </Pressable>
+    );
+});
+
+const TaskResourceImageItemRow = React.memo(function TaskResourceImageItemRow(props: {
+    item: TaskResourceCapabilityItem;
+    sessionId: string;
+}) {
+    const { theme } = useUnistyles();
+    const event = props.item.event;
+    const ref = event.resourceType === 'image' ? event.uri : undefined;
+    const { uri } = useAttachmentImage(props.sessionId, ref);
+    const placeholder = React.useMemo(() => {
+        if (!event.thumbhash) return undefined;
+        const placeholderUri = thumbhashToDataUri(event.thumbhash);
+        return placeholderUri ? { uri: placeholderUri } : undefined;
+    }, [event.thumbhash]);
+
+    return (
+        <Pressable
+            accessibilityRole="button"
+            disabled={!uri}
+            onPress={uri ? () => imageViewer.open({
+                uri,
+                width: event.width,
+                height: event.height,
+                filename: event.title,
+            }) : undefined}
+            testID={`task-context-${event.kind === 'source_used' ? 'source' : 'output'}-image`}
+            style={({ pressed }) => [
+                styles.rowCard,
+                styles.imageRowCard,
+                {
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.divider,
+                    opacity: uri ? 1 : 0.78,
+                    transform: [{ scale: pressed ? 0.99 : 1 }],
+                },
+            ]}
+        >
+            <View style={[styles.imageThumbWrap, { backgroundColor: theme.colors.surfaceHigh, borderColor: theme.colors.divider }]}>
+                <Image
+                    contentFit="cover"
+                    placeholder={placeholder}
+                    source={uri ? { uri } : undefined}
+                    style={styles.imageThumb}
+                    transition={150}
+                />
+                {!uri ? (
+                    <View style={styles.imageThumbOverlay}>
+                        <Ionicons color={theme.colors.textSecondary} name="image-outline" size={20} />
+                    </View>
+                ) : null}
+            </View>
+            <View style={styles.rowCopy}>
+                <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.colors.text }]}>{event.title}</Text>
+                <Text numberOfLines={1} style={[styles.rowMeta, { color: theme.colors.textSecondary }]}>
+                    {event.localPath ?? t('rightPanelCapabilityHub.meta.image')}
+                </Text>
+                <Text numberOfLines={1} style={[styles.resourceStatus, { color: theme.colors.textSecondary }]}>
+                    {getTaskResourceStatus(event)} · {formatResourceTimestamp(event.createdAt)}{event.occurrences > 1 ? ` · ×${event.occurrences}` : ''}
+                </Text>
+            </View>
+            {uri ? <Ionicons color={theme.colors.textSecondary} name="expand-outline" size={16} /> : null}
+        </Pressable>
+    );
+});
+
+function renderTaskResourceIcon(resourceType: TaskResourceCapabilityItem['event']['resourceType'], color: string) {
+    switch (resourceType) {
+        case 'file':
+            return <Octicons color={color} name="file-code" size={14} />;
+        case 'web':
+            return <Ionicons color={color} name="globe-outline" size={16} />;
+        case 'artifact':
+            return <Ionicons color={color} name="document-text-outline" size={15} />;
+        case 'attachment':
+            return <Ionicons color={color} name="attach-outline" size={16} />;
+        case 'image':
+            return <Ionicons color={color} name="image-outline" size={16} />;
+    }
+}
+
+function getTaskResourceLocator(event: TaskResourceCapabilityItem['event']): string {
+    if (event.resourceType === 'file') return event.path;
+    if (event.resourceType === 'web') {
+        try {
+            const hostname = new URL(event.uri).hostname;
+            return event.title === hostname ? event.uri : hostname;
+        } catch {
+            return event.uri;
+        }
+    }
+    if (event.resourceType === 'artifact') return t('rightPanelCapabilityHub.meta.artifact');
+    return event.localPath ?? event.title;
+}
+
+function getTaskResourceStatus(event: TaskResourceCapabilityItem['event']): string {
+    switch (event.kind) {
+        case 'file_created':
+            return t('rightPanelCapabilityHub.meta.created');
+        case 'file_modified':
+            return t('rightPanelCapabilityHub.meta.updated');
+        case 'preview_created':
+            return t('rightPanelCapabilityHub.meta.preview');
+        case 'source_used':
+            return t('rightPanelCapabilityHub.meta.source');
+    }
+}
+
+function formatResourceTimestamp(timestamp: number): string {
+    return new Intl.DateTimeFormat(getCurrentLanguage(), {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    }).format(new Date(timestamp));
+}
 
 const QuickPromptItemRow = React.memo(function QuickPromptItemRow(props: {
     item: QuickPromptCapabilityItem;
@@ -586,6 +766,11 @@ const styles = StyleSheet.create(() => ({
     rowMeta: {
         fontSize: 12,
         lineHeight: 16,
+    },
+    resourceStatus: {
+        fontSize: 11,
+        lineHeight: 15,
+        marginTop: 2,
     },
     sendText: {
         fontSize: 12,

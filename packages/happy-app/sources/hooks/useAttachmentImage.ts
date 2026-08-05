@@ -82,53 +82,61 @@ export type AttachmentImageState = {
     error: string | null;
 };
 
+type KeyedAttachmentImageState = AttachmentImageState & {
+    cacheKey: string | null;
+};
+
 export function useAttachmentImage(sessionId: string, ref: string | undefined): AttachmentImageState {
-    const [state, setState] = React.useState<AttachmentImageState>(() => {
-        if (!ref) return { uri: null, loading: false, error: null };
-        const cached = cache.get(ref);
+    const cacheKey = ref ? `${sessionId}:${ref}` : null;
+    const [state, setState] = React.useState<KeyedAttachmentImageState>(() => {
+        if (!cacheKey) return { cacheKey: null, uri: null, loading: false, error: null };
+        const cached = cache.get(cacheKey);
         return cached
-            ? { uri: cached, loading: false, error: null }
-            : { uri: null, loading: true, error: null };
+            ? { cacheKey, uri: cached, loading: false, error: null }
+            : { cacheKey, uri: null, loading: true, error: null };
     });
 
     React.useEffect(() => {
-        if (!ref) {
-            setState({ uri: null, loading: false, error: null });
+        if (!ref || !cacheKey) {
+            setState({ cacheKey: null, uri: null, loading: false, error: null });
             return;
         }
-        const cached = cache.get(ref);
+        const cached = cache.get(cacheKey);
         if (cached) {
-            cache.delete(ref);
-            cache.set(ref, cached);
-            setState({ uri: cached, loading: false, error: null });
+            cache.delete(cacheKey);
+            cache.set(cacheKey, cached);
+            setState({ cacheKey, uri: cached, loading: false, error: null });
             return;
         }
         let cancelled = false;
-        setState({ uri: null, loading: true, error: null });
+        setState({ cacheKey, uri: null, loading: true, error: null });
 
-        let promise = inFlight.get(ref);
+        let promise = inFlight.get(cacheKey);
         if (!promise) {
             promise = loadAttachmentDataUri(sessionId, ref)
-                .finally(() => { inFlight.delete(ref); });
-            inFlight.set(ref, promise);
+                .finally(() => { inFlight.delete(cacheKey); });
+            inFlight.set(cacheKey, promise);
         }
 
         promise.then((uri) => {
             if (cancelled) return;
             if (uri) {
-                rememberInCache(ref, uri);
-                setState({ uri, loading: false, error: null });
+                rememberInCache(cacheKey, uri);
+                setState({ cacheKey, uri, loading: false, error: null });
             } else {
-                setState({ uri: null, loading: false, error: 'decrypt_failed' });
+                setState({ cacheKey, uri: null, loading: false, error: 'decrypt_failed' });
             }
         }).catch((err) => {
             if (cancelled) return;
             const message = err instanceof Error ? err.message : 'unknown';
-            setState({ uri: null, loading: false, error: message });
+            setState({ cacheKey, uri: null, loading: false, error: message });
         });
 
         return () => { cancelled = true; };
-    }, [sessionId, ref]);
+    }, [cacheKey, ref, sessionId]);
 
+    if (state.cacheKey !== cacheKey) {
+        return { uri: null, loading: cacheKey !== null, error: null };
+    }
     return state;
 }

@@ -22,7 +22,7 @@ import { useSessionCapabilityHub } from './useSessionCapabilityHub';
 
 type CapabilityPanelKey = CapabilityKey | 'sessionActions' | 'folderBrowser';
 
-const BLOCK_ORDER: CapabilityPanelKey[] = ['sessionActions', 'skills', 'quickPrompts', 'images', 'folderBrowser', 'files'];
+const BLOCK_ORDER: CapabilityPanelKey[] = ['outputs', 'sources', 'sessionActions', 'skills', 'quickPrompts', 'images', 'folderBrowser', 'files'];
 
 export const SessionCapabilityHub = React.memo(function SessionCapabilityHub(props: {
     sessionId?: string;
@@ -231,7 +231,8 @@ const SessionCapabilityHubLoaded = React.memo(function SessionCapabilityHubLoade
                             icon={renderBlockIcon(key, theme.colors.text)}
                             key={key}
                             onPress={() => setSelectedKey(key)}
-                            preview={block.preview}
+                            preview={block.preview ?? getTaskContextEmptyPreview(key)}
+                            testID={`capability-block-${key}`}
                             title={t(`rightPanelCapabilityHub.blocks.${key}` as const)}
                         />
                     );
@@ -246,6 +247,13 @@ function getSessionActionsPreview(actionItems: SessionActionItem[]): string | nu
     const source = priority.length > 0 ? priority : actionItems;
     const labels = source.slice(0, 2).map((item) => item.label);
     return labels.length > 0 ? labels.join(' · ') : null;
+}
+
+function getTaskContextEmptyPreview(key: CapabilityKey): string | null {
+    if (key === 'outputs' || key === 'sources') {
+        return t(`rightPanelCapabilityHub.empty.${key}` as const);
+    }
+    return null;
 }
 
 const CapabilityHubPlaceholder = React.memo(function CapabilityHubPlaceholder() {
@@ -283,6 +291,10 @@ const CapabilityHubPlaceholder = React.memo(function CapabilityHubPlaceholder() 
 
 function renderBlockIcon(key: CapabilityKey, color: string) {
     switch (key) {
+        case 'outputs':
+            return <Ionicons color={color} name="sparkles-outline" size={16} />;
+        case 'sources':
+            return <Ionicons color={color} name="link-outline" size={16} />;
         case 'skills':
             return <Ionicons color={color} name="flash-outline" size={16} />;
         case 'quickPrompts':

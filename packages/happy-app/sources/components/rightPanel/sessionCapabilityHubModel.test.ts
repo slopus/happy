@@ -97,6 +97,8 @@ describe('sessionCapabilityHubModel', () => {
         const model = buildSessionCapabilityHubModel({ session, messages, artifacts });
 
         expect(model.blocks.map((block) => [block.key, block.count])).toEqual([
+            ['outputs', 3],
+            ['sources', 0],
             ['skills', 2],
             ['quickPrompts', 0],
             ['images', 1],
@@ -192,6 +194,71 @@ describe('sessionCapabilityHubModel', () => {
             'packages/happy-app/sources/index.ts',
             '/Users/jacky/project/docs/plan.md',
         ]);
+    });
+
+    it('partitions task outputs and sources while merging live updates for one resource', () => {
+        const session = createSession();
+        const messages: Message[] = [
+            createToolMessage('write-1', 2000, 'Write', {
+                file_path: '/Users/jacky/project/docs/context.md',
+                content: 'first',
+            }),
+            createToolMessage('fetch-1', 3000, 'WebFetch', {
+                url: 'https://docs.example.com/reference',
+            }),
+            createToolMessage('edit-1', 5000, 'Edit', {
+                file_path: '/Users/jacky/project/docs/context.md',
+                old_string: 'first',
+                new_string: 'second',
+            }),
+        ];
+
+        const model = buildSessionCapabilityHubModel({ session, messages, artifacts: [] });
+
+        expect(model.details.outputs).toHaveLength(1);
+        expect(model.details.outputs[0]?.event).toMatchObject({
+            kind: 'file_modified',
+            path: '/Users/jacky/project/docs/context.md',
+            messageId: 'edit-1',
+            messageIds: ['write-1', 'edit-1'],
+            occurrences: 2,
+        });
+        expect(model.details.sources).toHaveLength(1);
+        expect(model.details.sources[0]?.event).toMatchObject({
+            kind: 'source_used',
+            resourceType: 'web',
+            uri: 'https://docs.example.com/reference',
+        });
+        expect(model.blocks.find((block) => block.key === 'outputs')).toMatchObject({
+            count: 1,
+            preview: 'context.md',
+            empty: false,
+        });
+    });
+
+    it('keeps task context isolated to the selected session across session switches', () => {
+        const artifacts = [
+            createArtifact({ id: 'artifact-a', title: 'Session A preview', sessions: ['session-1'] }),
+            createArtifact({ id: 'artifact-b', title: 'Session B preview', sessions: ['session-2'] }),
+        ];
+        const sessionA = createSession({ id: 'session-1' });
+        const sessionB = createSession({ id: 'session-2' });
+
+        const modelA = buildSessionCapabilityHubModel({
+            session: sessionA,
+            messages: [createToolMessage('fetch-a', 2000, 'WebFetch', { url: 'https://a.example/source' })],
+            artifacts,
+        });
+        const modelB = buildSessionCapabilityHubModel({
+            session: sessionB,
+            messages: [createToolMessage('fetch-b', 3000, 'WebFetch', { url: 'https://b.example/source' })],
+            artifacts,
+        });
+
+        expect(modelA.details.outputs.map((item) => item.title)).toEqual(['Session A preview']);
+        expect(modelA.details.sources.map((item) => item.event.uri)).toEqual(['https://a.example/source']);
+        expect(modelB.details.outputs.map((item) => item.title)).toEqual(['Session B preview']);
+        expect(modelB.details.sources.map((item) => item.event.uri)).toEqual(['https://b.example/source']);
     });
 
     it('treats metadata.skills as available session skills context', () => {

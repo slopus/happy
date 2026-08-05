@@ -268,6 +268,8 @@ export const ja: TranslationStructure = {
         noRecent: 'Nothing recent yet',
         back: 'Back',
         blocks: {
+            outputs: '成果',
+            sources: '参照元',
             sessionActions: 'Session Actions',
             skills: 'Skills',
             quickPrompts: 'Quick Prompts',
@@ -277,6 +279,8 @@ export const ja: TranslationStructure = {
             folderBrowser: 'フォルダ',
         },
         empty: {
+            outputs: 'ファイル、プレビューなどのタスク成果がここに表示されます。',
+            sources: 'このタスクで使用したWebリンクと添付ファイルがここに表示されます。',
             sessionActions: 'No actions available for this session',
             skills: 'No skills available for this session',
             quickPrompts: 'No quick prompts yet',
@@ -295,6 +299,10 @@ export const ja: TranslationStructure = {
             image: 'Image attachment',
             generatedImage: 'Generated image',
             artifact: 'Linked artifact',
+            created: '作成済み',
+            updated: '更新済み',
+            preview: 'プレビュー準備完了',
+            source: '参照元として使用',
         },
         quickPrompt: {
             add: 'Add Prompt',

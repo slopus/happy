@@ -265,6 +265,8 @@ export const en = {
         noRecent: 'Nothing recent yet',
         back: 'Back',
         blocks: {
+            outputs: 'Outputs',
+            sources: 'Sources',
             sessionActions: 'Session Actions',
             skills: 'Skills',
             quickPrompts: 'Quick Prompts',
@@ -274,6 +276,8 @@ export const en = {
             folderBrowser: 'Folder',
         },
         empty: {
+            outputs: 'Files, previews, and other task results will appear here.',
+            sources: 'Web links and attachments used in this task will appear here.',
             sessionActions: 'No actions available for this session',
             skills: 'No skills available for this session',
             quickPrompts: 'No quick prompts yet',
@@ -292,6 +296,10 @@ export const en = {
             image: 'Image attachment',
             generatedImage: 'Generated image',
             artifact: 'Linked artifact',
+            created: 'Created',
+            updated: 'Updated',
+            preview: 'Preview ready',
+            source: 'Used as source',
         },
         quickPrompt: {
             add: 'Add Prompt',

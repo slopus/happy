@@ -268,6 +268,8 @@ export const zhHans: TranslationStructure = {
         noRecent: '还没有最近资源',
         back: '返回',
         blocks: {
+            outputs: '输出',
+            sources: '来源',
             sessionActions: '会话操作',
             skills: 'Skills',
             quickPrompts: '快捷指令',
@@ -277,6 +279,8 @@ export const zhHans: TranslationStructure = {
             folderBrowser: '文件夹',
         },
         empty: {
+            outputs: '当前任务产生的文件、预览和其他结果会显示在这里。',
+            sources: '当前任务使用的网页链接和附件会显示在这里。',
             sessionActions: '当前会话还没有可用操作',
             skills: '当前会话还没有可用的 skills',
             quickPrompts: '还没有快捷指令',
@@ -295,6 +299,10 @@ export const zhHans: TranslationStructure = {
             image: '图片附件',
             generatedImage: '生成图片',
             artifact: '关联 Artifact',
+            created: '已创建',
+            updated: '已更新',
+            preview: '预览已就绪',
+            source: '已用作来源',
         },
         quickPrompt: {
             add: '新增指令',
