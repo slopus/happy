@@ -21,7 +21,7 @@ import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
-import { useSettingMutable } from '@/sync/storage';
+import { useSettingMutable, useSetting } from '@/sync/storage';
 import { t } from '@/text';
 import { SessionShortcutHintBadge } from './ShortcutHints';
 import { ProviderIcon } from './ProviderIcon';
@@ -122,9 +122,18 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     sessionTitle: {
         fontSize: 15,
-        fontWeight: '500',
         flex: 1,
+    },
+    // Default title weight (upstream look) — used when the experimental
+    // bold-unread-title layout is off.
+    sessionTitleWeightDefault: {
+        fontWeight: '500',
         ...Typography.default('semiBold'),
+    },
+    // Lighter title weight for the experimental layout's read (non-unread) rows,
+    // so unread rows stand out by contrast.
+    sessionTitleWeightRegular: {
+        ...Typography.default('regular'),
     },
     sessionShortcutBadge: {
         flexShrink: 0,
@@ -135,6 +144,13 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     sessionTitleDisconnected: {
         color: theme.colors.textSecondary,
+    },
+    sessionTitleUnread: {
+        // Bold via the SemiBold face, not fontWeight: web sets
+        // `font-synthesis: none` and bundles no Bold(700) face, so a numeric
+        // fontWeight would render identically to the regular title.
+        ...Typography.default('semiBold'),
+        color: theme.colors.text,
     },
     sessionSubtitleRow: {
         flexDirection: 'row',
@@ -462,17 +478,25 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const styles = stylesheet;
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
+    // Experimental: show unread as a bold title instead of the blue status dot.
+    const expUnreadBoldTitle = useSetting('expUnreadBoldTitle');
     const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
-    const status = session.hasUnread
+    // With the experimental layout off, keep the upstream behavior: reuse the
+    // blue "thinking/running" color for the unread status dot. With it on, the
+    // dot reflects true liveness only.
+    const status = (!expUnreadBoldTitle && session.hasUnread)
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
+    // Bold-title unread (experimental) is shown only once the agent has
+    // stopped — never while it's still running (thinking), so a re-activated
+    // session doesn't read as unread mid-turn.
+    const showUnreadTitle = expUnreadBoldTitle && session.hasUnread && session.state !== 'thinking';
 
     const vibingMessage = React.useMemo(() => {
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
     }, [session.state]);
 
-    const statusText = session.hasUnread
+    const statusText = (!expUnreadBoldTitle && session.hasUnread)
         ? t('status.unread')
         : session.state === 'thinking'
             ? vibingMessage
@@ -537,7 +561,10 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 <View style={styles.sessionTitleRow}>
                     <Text style={[
                         styles.sessionTitle,
-                        status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                        status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected,
+                        expUnreadBoldTitle
+                            ? (showUnreadTitle ? styles.sessionTitleUnread : styles.sessionTitleWeightRegular)
+                            : styles.sessionTitleWeightDefault,
                     ]} numberOfLines={1}>
                         {session.name}
                     </Text>

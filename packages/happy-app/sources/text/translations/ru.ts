@@ -229,6 +229,8 @@ export const ru: TranslationStructure = {
         analyticsEnabled: 'Анонимная аналитика использования активна',
         imageUpload: 'Загрузка изображений',
         imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа поддерживаемыми агентами',
+        unreadBoldTitle: 'Жирные заголовки непрочитанных',
+        unreadBoldTitleSubtitle: 'Показывать непрочитанные сессии жирным заголовком вместо синей точки',
     },
 
     errors: {

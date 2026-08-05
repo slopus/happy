@@ -241,6 +241,8 @@ export const it: TranslationStructure = {
         analyticsEnabled: 'Analisi anonime di utilizzo attive',
         imageUpload: 'Caricamento immagini',
         imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare dagli agenti supportati',
+        unreadBoldTitle: 'Titoli in grassetto per le non lette',
+        unreadBoldTitleSubtitle: 'Mostra le sessioni non lette con un titolo in grassetto invece di un punto blu',
     },
 
     errors: {

@@ -260,6 +260,8 @@ export const pl: TranslationStructure = {
         analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
         imageUpload: 'Przesyłanie obrazów',
         imageUploadSubtitle: 'Dołączaj obrazy do wiadomości, aby obsługiwani agenci mogli je analizować',
+        unreadBoldTitle: 'Pogrubione tytuły nieprzeczytanych',
+        unreadBoldTitleSubtitle: 'Pokazuj nieprzeczytane sesje jako pogrubiony tytuł zamiast niebieskiej kropki',
     },
 
     errors: {

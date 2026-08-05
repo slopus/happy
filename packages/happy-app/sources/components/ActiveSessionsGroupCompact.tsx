@@ -8,7 +8,7 @@ import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLast
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSessionGitStatus } from '@/sync/storage';
+import { useAllMachines, useSessionGitStatus, useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -225,11 +225,19 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 export const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: SessionRowData; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
+    // Experimental: show unread as a bold title instead of the blue status dot.
+    const expUnreadBoldTitle = useSetting('expUnreadBoldTitle');
     const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
-    const status = session.hasUnread
+    // With the experimental layout off, keep the upstream behavior: reuse the
+    // blue "thinking/running" color for the unread status dot. With it on, the
+    // dot reflects true liveness only.
+    const status = (!expUnreadBoldTitle && session.hasUnread)
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
+    // Bold-title unread (experimental) is shown only once the agent has
+    // stopped — never while it's still running (thinking), so a re-activated
+    // session doesn't read as unread mid-turn.
+    const showUnreadTitle = expUnreadBoldTitle && session.hasUnread && session.state !== 'thinking';
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
@@ -271,7 +279,9 @@ export const CompactSessionRow = React.memo(({ session, selected, showBorder }: 
     const renderLeadingIndicator = () => {
         let indicator: React.ReactNode = null;
 
-        if (session.hasUnread) {
+        if (!expUnreadBoldTitle && session.hasUnread) {
+            // Upstream behavior when the experimental layout is off: unread is a
+            // solid blue dot.
             indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
         } else if (session.state === 'waiting' && session.hasDraft) {
             indicator = (
@@ -311,7 +321,8 @@ export const CompactSessionRow = React.memo(({ session, selected, showBorder }: 
                     <Text
                         style={[
                             styles.sessionTitle,
-                            status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                            status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected,
+                            showUnreadTitle && styles.sessionTitleUnread
                         ]}
                         numberOfLines={2}
                     >
@@ -524,6 +535,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
+    },
+    sessionTitleUnread: {
+        // Bold via the SemiBold face, not fontWeight: web sets
+        // `font-synthesis: none` and bundles no Bold(700) face, so a numeric
+        // fontWeight would render identically to the regular title.
+        ...Typography.default('semiBold'),
+        color: theme.colors.text,
     },
     leadingIndicatorSlot: {
         alignItems: 'center',
