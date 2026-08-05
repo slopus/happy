@@ -168,14 +168,24 @@ describe('resolveMessageModeMeta', () => {
         });
     });
 
-    it('drops stale effort metadata for an agent without effort options', () => {
+    it.each([
+        { flavor: 'gemini', expectedModel: 'gemini-2.5-pro' },
+        { flavor: 'opencode', expectedModel: 'sub2api/gpt-5.5' },
+    ])('drops unsupported effort metadata for $flavor even when ACP reports thought levels', ({ flavor, expectedModel }) => {
         const meta = resolveMessageModeMeta({
             permissionMode: null,
             modelMode: null,
             effortLevel: 'xhigh',
-            metadata: { flavor: 'gemini' },
+            metadata: {
+                flavor,
+                thoughtLevels: [
+                    { code: 'medium', value: 'medium' },
+                    { code: 'xhigh', value: 'xhigh' },
+                ],
+                currentThoughtLevelCode: 'xhigh',
+            },
         } as any);
 
-        expect(meta).toEqual({ model: 'gemini-2.5-pro' });
+        expect(meta).toEqual({ model: expectedModel });
     });
 });

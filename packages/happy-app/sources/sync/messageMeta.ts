@@ -40,8 +40,7 @@ export function resolveMessageModeMeta(
     const flavor = session.metadata?.flavor;
     const supportsEffort = !flavor
         || flavor === 'claude'
-        || flavor === 'codex'
-        || (session.metadata?.thoughtLevels?.length ?? 0) > 0;
+        || flavor === 'codex';
     if (supportsEffort && effort !== undefined) {
         meta.effort = effort === 'default' ? null : effort;
     }

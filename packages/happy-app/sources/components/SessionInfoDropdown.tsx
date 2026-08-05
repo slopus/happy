@@ -17,6 +17,10 @@ import { Modal } from '@/modal';
 import * as Clipboard from 'expo-clipboard';
 import { getRunningSessionInfoExperience } from '@/utils/newSessionExperience';
 import { resolveRunningSessionTurnModes } from '@/utils/runningSessionTurnModes';
+import {
+    canKeepSessionInfoExpansion,
+    type SessionInfoExpandedRow,
+} from '@/utils/sessionInfoDropdownState';
 
 // Agent icon assets — mirrors SessionConfigPanel so the panel reads identically.
 const agentIcons = {
@@ -132,7 +136,19 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
 
     // Which editable row is currently expanded into its option list (one at a time).
     // Animate every expand/collapse so the option list slides in/out smoothly.
-    const [expanded, setExpanded] = React.useState<'permission' | 'model' | 'effort' | null>(null);
+    const [expanded, setExpanded] = React.useState<SessionInfoExpandedRow>(null);
+    const canKeepExpansion = canKeepSessionInfoExpansion(expanded, {
+        permission: canEditPermission,
+        model: canEditModel,
+        effort: canEditEffort,
+    });
+    const visibleExpanded = canKeepExpansion ? expanded : null;
+
+    React.useEffect(() => {
+        if (!canKeepExpansion) {
+            setExpanded(null);
+        }
+    }, [canKeepExpansion]);
     const animateNext = React.useCallback(() => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     }, []);
@@ -252,7 +268,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                                         <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
                                             {modelMode.name}
                                         </Text>
-                                        <Ionicons name={expanded === 'model' ? 'chevron-up' : 'chevron-down'} size={11} color={theme.colors.textSecondary} />
+                                        <Ionicons name={visibleExpanded === 'model' ? 'chevron-up' : 'chevron-down'} size={11} color={theme.colors.textSecondary} />
                                     </Pressable>
                                 ) : (
                                     <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
@@ -272,7 +288,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                                         <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
                                             {effortLevel.name}
                                         </Text>
-                                        <Ionicons name={expanded === 'effort' ? 'chevron-up' : 'chevron-down'} size={11} color={theme.colors.textSecondary} />
+                                        <Ionicons name={visibleExpanded === 'effort' ? 'chevron-up' : 'chevron-down'} size={11} color={theme.colors.textSecondary} />
                                     </Pressable>
                                 ) : (
                                     <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
@@ -282,8 +298,8 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                             </>
                         ) : null}
                     </View>
-                    {infoExperience.showModelDetails && expanded === 'model' ? renderOptions(availableModels, modelMode?.key, applyModel) : null}
-                    {infoExperience.showModelDetails && expanded === 'effort' ? renderOptions(availableEffortLevels, effortLevel?.key, applyEffort) : null}
+                    {infoExperience.showModelDetails && visibleExpanded === 'model' ? renderOptions(availableModels, modelMode?.key, applyModel) : null}
+                    {infoExperience.showModelDetails && visibleExpanded === 'effort' ? renderOptions(availableEffortLevels, effortLevel?.key, applyEffort) : null}
 
                     {/* Permission mode — tap to expand when there's more than one. */}
                     {infoExperience.showPermission && permissionMode?.name ? (
@@ -296,7 +312,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                                 <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
                                     {permissionMode.name}
                                 </Text>
-                                <Ionicons name={expanded === 'permission' ? 'chevron-up' : 'chevron-down'} size={13} color={theme.colors.textSecondary} />
+                                <Ionicons name={visibleExpanded === 'permission' ? 'chevron-up' : 'chevron-down'} size={13} color={theme.colors.textSecondary} />
                             </Pressable>
                         ) : (
                             <View style={styles.configRow}>
@@ -307,7 +323,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                             </View>
                         )
                     ) : null}
-                    {infoExperience.showPermission && expanded === 'permission' ? renderOptions(availableModes, permissionMode?.key, applyPermission) : null}
+                    {infoExperience.showPermission && visibleExpanded === 'permission' ? renderOptions(availableModes, permissionMode?.key, applyPermission) : null}
 
                     {/* Divider + entry into the full info screen (the one tappable row). */}
                     <View style={styles.divider} />
