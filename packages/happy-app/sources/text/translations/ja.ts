@@ -537,6 +537,19 @@ export const ja: TranslationStructure = {
 
     sessionInfo: {
         viewDetails: "セッションの詳細",
+        agentPanelRuntimeLocation: '実行場所',
+        agentPanelCurrentExecution: 'この実行',
+        agentPanelSessionManagement: 'セッション管理',
+        agentPanelMachineStatus: 'マシンの状態',
+        agentPanelAddress: 'アドレス',
+        agentPanelWorkingDirectory: '作業ディレクトリ',
+        agentPanelAgent: 'エージェント',
+        agentPanelModel: 'モデル',
+        agentPanelEffort: '推論レベル',
+        agentPanelPermissions: '権限',
+        agentPanelOfflineNotice: 'このマシンはオフラインです。設定は保持されますが、実行できません。',
+        agentPanelReadOnly: '読み取り専用',
+        agentPanelEditable: '編集可能',
         // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
         killSession: 'セッションを終了',
         killSessionConfirm: 'このセッションを終了してもよろしいですか？',

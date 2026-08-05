@@ -247,6 +247,7 @@ vi.mock('@/sync/storage', () => ({
         }
         return [false, vi.fn()];
     },
+    useMachine: () => null,
     useSession: () => mocks.session,
     useSessionMessages: () => ({ messages: [], isLoaded: true }),
     useSessionUsage: () => undefined,

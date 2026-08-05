@@ -481,6 +481,19 @@ export const ru: TranslationStructure = {
 
     sessionInfo: {
         viewDetails: "Информация о сессии",
+        agentPanelRuntimeLocation: 'Расположение среды выполнения',
+        agentPanelCurrentExecution: 'Этот запуск',
+        agentPanelSessionManagement: 'Управление сессией',
+        agentPanelMachineStatus: 'Состояние машины',
+        agentPanelAddress: 'Адрес',
+        agentPanelWorkingDirectory: 'Рабочий каталог',
+        agentPanelAgent: 'Агент',
+        agentPanelModel: 'Модель',
+        agentPanelEffort: 'Уровень рассуждений',
+        agentPanelPermissions: 'Разрешения',
+        agentPanelOfflineNotice: 'Эта машина не в сети. Настройки сохранены, но выполнение недоступно.',
+        agentPanelReadOnly: 'Только чтение',
+        agentPanelEditable: 'Можно редактировать',
         // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
         killSession: 'Завершить сессию',
         killSessionConfirm: 'Вы уверены, что хотите завершить эту сессию?',

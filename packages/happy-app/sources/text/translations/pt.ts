@@ -535,6 +535,19 @@ export const pt: TranslationStructure = {
 
     sessionInfo: {
         viewDetails: "Detalhes da sessão",
+        agentPanelRuntimeLocation: 'Local de execução',
+        agentPanelCurrentExecution: 'Esta execução',
+        agentPanelSessionManagement: 'Gerenciamento da sessão',
+        agentPanelMachineStatus: 'Status da máquina',
+        agentPanelAddress: 'Endereço',
+        agentPanelWorkingDirectory: 'Diretório de trabalho',
+        agentPanelAgent: 'Agente',
+        agentPanelModel: 'Modelo',
+        agentPanelEffort: 'Esforço de raciocínio',
+        agentPanelPermissions: 'Permissões',
+        agentPanelOfflineNotice: 'Esta máquina está offline. As configurações são mantidas, mas a execução está indisponível.',
+        agentPanelReadOnly: 'Somente leitura',
+        agentPanelEditable: 'Editável',
         // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
         killSession: 'Encerrar sessão',
         killSessionConfirm: 'Tem certeza de que deseja encerrar esta sessão?',

@@ -27,7 +27,7 @@ import {
 import { ScreenshotGalleryDrawer } from '@/components/ScreenshotGalleryDrawer';
 import { imageViewer } from '@/sync/imageViewer';
 import { Modal } from '@/modal';
-import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useMachine, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -282,16 +282,20 @@ export const SessionView = React.memo((props: { id: string }) => {
     }, [session, isDataReady]);
 
     // Header chip (replaces the breadcrumb title): shows the running session's
-    // agent + machine + connection state. Tapping it drops down a read-only
-    // info panel — an active session can't switch machine/agent, so there's
-    // nothing to pick, just metadata to surface.
+    // agent + machine + connection state. The dropdown keeps runtime identity
+    // read-only while letting next-turn model, effort, and permissions update.
     const [infoPanelOpen, setInfoPanelOpen] = React.useState(false);
     const sessionOnline = session?.presence === 'online';
     const agentLabel = React.useMemo(() => {
         const flavor = session?.metadata?.flavor ?? 'claude';
         return AGENT_LABELS[flavor] ?? flavor;
     }, [session?.metadata?.flavor]);
-    const machineName = session?.metadata?.name || session?.metadata?.host || null;
+    const sessionMachine = useMachine(session?.metadata?.machineId ?? '');
+    const machineName = sessionMachine?.metadata?.displayName
+        || session?.metadata?.name
+        || sessionMachine?.metadata?.host
+        || session?.metadata?.host
+        || null;
     const showChip = isDataReady && !!session;
     // 会话内「进入空间/退出空间」：进入 = 设 agentSpaceId + 拉出工作台抽屉；退出 = 清空间并回首页。
     const { enter: enterSpace, exit: exitSpace } = useAgentSpace();
