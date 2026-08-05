@@ -41,6 +41,7 @@ export const sessionToolCallStartEventSchema = z.object({
 export const sessionToolCallEndEventSchema = z.object({
   t: z.literal('tool-call-end'),
   call: z.string(),
+  status: z.enum(['completed', 'failed', 'cancelled']).optional(),
 });
 
 export const sessionFileEventSchema = z.object({
@@ -86,6 +87,7 @@ export const sessionTurnEndEventSchema = z.object({
 
 export const sessionStopEventSchema = z.object({
   t: z.literal('stop'),
+  status: sessionTurnEndStatusSchema.optional(),
 });
 
 export const sessionEventSchema = z.discriminatedUnion('t', [

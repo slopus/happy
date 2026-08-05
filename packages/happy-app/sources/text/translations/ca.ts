@@ -803,6 +803,15 @@ export const ca: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => count === 1 ? 'S\'ha obtingut 1 URL' : `S'han obtingut ${count} URLs`,
         ranTasks: ({ count }: { count: number }) => count === 1 ? 'S\'ha executat 1 tasca' : `S'han executat ${count} tasques`,
         usedTools: ({ count }: { count: number }) => count === 1 ? 'S\'ha usat 1 eina' : `S'han usat ${count} eines`,
+        usedSkills: ({ names }: { names: string }) => `Habilitats (Skills): ${names}`,
+        skillLabel: 'Habilitat (Skill)',
+        subagentLabel: 'Subagent',
+        subagentStatus: {
+            running: 'En curs',
+            completed: 'Completat',
+            failed: 'Fallit',
+            cancelled: 'Cancel·lat',
+        },
         workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 

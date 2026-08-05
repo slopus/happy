@@ -23,6 +23,7 @@ describe('session protocol schemas', () => {
         args: { command: 'ls -la' },
       },
       { t: 'tool-call-end', call: 'call-1' },
+      { t: 'tool-call-end', call: 'call-2', status: 'failed' },
       { t: 'file', ref: 'upload-1', name: 'report.txt', size: 1024, mimeType: 'text/plain' },
       {
         t: 'file',
@@ -40,6 +41,7 @@ describe('session protocol schemas', () => {
       { t: 'start', title: 'Research agent' },
       { t: 'turn-end', status: 'completed' },
       { t: 'stop' },
+      { t: 'stop', status: 'failed' },
     ];
 
     for (const event of events) {
@@ -53,6 +55,8 @@ describe('session protocol schemas', () => {
     expect(sessionEventSchema.safeParse({ t: 'file', ref: 'x', name: 'x', size: 1, image: { width: 10, height: 10 } }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'turn-end' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'turn-end', status: 'canceled' }).success).toBe(false);
+    expect(sessionEventSchema.safeParse({ t: 'tool-call-end', call: '1', status: 'error' }).success).toBe(false);
+    expect(sessionEventSchema.safeParse({ t: 'stop', status: 'canceled' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'start', title: 1 }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'service' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'not-real' }).success).toBe(false);

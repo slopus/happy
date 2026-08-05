@@ -803,6 +803,15 @@ export const zhHant: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => `取得了 ${count} 個 URL`,
         ranTasks: ({ count }: { count: number }) => `執行了 ${count} 個任務`,
         usedTools: ({ count }: { count: number }) => `使用了 ${count} 個工具`,
+        usedSkills: ({ names }: { names: string }) => `使用的 Skills：${names}`,
+        skillLabel: '技能（Skill）',
+        subagentLabel: '子 Agent',
+        subagentStatus: {
+            running: '進行中',
+            completed: '已完成',
+            failed: '失敗',
+            cancelled: '已取消',
+        },
         workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 

@@ -1691,6 +1691,53 @@ test.describe('中文 Web 安全组件演示主题与语义', () => {
 test.describe('中文 Web 消息与工具演示', () => {
     test.use({ locale: 'zh-CN' });
 
+    test('对话明确展示 Skill 名称与子 Agent 生命周期状态', async ({ page }, testInfo) => {
+        await page.setViewportSize({ width: 1100, height: 820 });
+        const url = new URL(authenticatedRoute('/dev/messages-demo'));
+        url.searchParams.set('demo', 'activity-status');
+        await page.goto(url.toString());
+
+        const skill = page.getByTestId('activity-skill-obsidian-tools:ob-chat');
+        await expect(skill).toHaveCount(1);
+        await expect(skill).toContainText('技能（Skill）');
+        await expect(skill).toContainText('obsidian-tools:ob-chat');
+        await expect(skill).toContainText('已完成');
+        const runningAgent = page.getByTestId('activity-subagent-ax389dhoj1bran7p3s3fdh6n');
+        const completedAgent = page.getByTestId('activity-subagent-yghxp0tj8cat500passf65pq');
+        const nestedSkill = page.getByTestId('activity-skill-dev');
+        await expect(runningAgent).toHaveCount(1);
+        await expect(completedAgent).toHaveCount(1);
+        await expect(nestedSkill).toHaveCount(1);
+        await expect(runningAgent).toContainText('子 Agent');
+        await expect(runningAgent).toContainText('进行中');
+        await expect(completedAgent).toContainText('子 Agent');
+        await expect(completedAgent).toContainText('已完成');
+        const runningIndent = await runningAgent.evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingLeft));
+        const completedIndent = await completedAgent.evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingLeft));
+        const nestedSkillIndent = await nestedSkill.evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingLeft));
+        expect(completedIndent).toBeGreaterThan(runningIndent);
+        expect(nestedSkillIndent).toBeGreaterThan(runningIndent);
+        const parentPrecedesNestedSkill = await runningAgent.evaluate((element) => {
+            const nested = document.querySelector('[data-testid="activity-skill-dev"]');
+            return nested !== null
+                && Boolean(element.compareDocumentPosition(nested) & Node.DOCUMENT_POSITION_FOLLOWING);
+        });
+        expect(parentPrecedesNestedSkill).toBe(true);
+
+        const nestedToolGroupToggle = page.getByText(/使用的 Skills.*obsidian-tools:ob-chat/).last();
+        await expect(nestedToolGroupToggle).toBeVisible();
+        await nestedToolGroupToggle.click();
+        await expect(skill).toHaveCount(1);
+        await expect(nestedSkill).toHaveCount(1);
+        await expect(runningAgent).toHaveCount(1);
+        await expect(completedAgent).toHaveCount(1);
+
+        await page.screenshot({
+            path: testInfo.outputPath('chat-activity-status-after.png'),
+            fullPage: true,
+        });
+    });
+
     test('宽屏图片消息与正文阅读列对齐，不再横向铺满', async ({ page }) => {
         await page.setViewportSize({ width: 1600, height: 900 });
         await page.goto(authenticatedRoute('/dev/messages-demo'));

@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { ConversationActivityStrip } from '@/components/ConversationActivityStrip';
 
 interface FilteredTool {
     tool: ToolCall;
@@ -92,8 +93,12 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
         },
     });
 
+    const rootSubagentId = typeof tool.input?.sessionSubagent === 'string'
+        ? tool.input.sessionSubagent
+        : undefined;
+
     if (filtered.length === 0) {
-        return null;
+        return <ConversationActivityStrip messages={messages} nested rootSubagentId={rootSubagentId} />;
     }
 
     const visibleTools = filtered.slice(filtered.length - 3);
@@ -101,6 +106,7 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
 
     return (
         <View style={styles.container}>
+            <ConversationActivityStrip messages={messages} nested rootSubagentId={rootSubagentId} />
             {visibleTools.map((item, index) => (
                 <View key={`${item.tool.name}-${index}`} style={styles.toolItem}>
                     <Text style={styles.toolTitle}>{item.title}</Text>

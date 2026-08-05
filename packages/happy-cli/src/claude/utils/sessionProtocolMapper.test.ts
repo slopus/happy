@@ -319,7 +319,7 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
             expect.arrayContaining([
                 expect.objectContaining({
                     subagent: mappedSubagent,
-                    ev: { t: 'stop' },
+                    ev: { t: 'stop', status: 'completed' },
                 }),
             ]),
         );
@@ -327,6 +327,39 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
             return envelope.ev.t === 'tool-call-end'
                 && envelope.ev.call === 'task-2';
         })).toBe(false);
+    });
+
+    it('emits failed stop when a parent Task tool returns an error', () => {
+        const mappedSubagent = createId();
+        const state = {
+            currentTurnId: 'turn-failed',
+            providerSubagentToSessionSubagent: new Map<string, string>([['task-failed', mappedSubagent]]),
+            hiddenParentToolCalls: new Set<string>(['task-failed']),
+            startedSubagents: new Set<string>([mappedSubagent]),
+            activeSubagents: new Set<string>([mappedSubagent]),
+        };
+
+        const stopped = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user',
+            uuid: 'u-parent-failed',
+            isSidechain: false,
+            message: {
+                role: 'user',
+                content: [{
+                    type: 'tool_result',
+                    tool_use_id: 'task-failed',
+                    content: 'subagent failed',
+                    is_error: true,
+                }],
+            },
+        } as any, state);
+
+        expect(stopped.envelopes).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                subagent: mappedSubagent,
+                ev: { t: 'stop', status: 'failed' },
+            }),
+        ]));
     });
 
     it('does not emit envelopes for summary messages', () => {
@@ -362,5 +395,50 @@ describe('closeClaudeTurnWithStatus', () => {
         expect(result.currentTurnId).toBeNull();
         expect(result.envelopes).toHaveLength(1);
         expect(result.envelopes[0].ev).toEqual({ t: 'turn-end', status: 'cancelled' });
+    });
+
+    it('does not fabricate child completion when the root turn ends first', () => {
+        const mappedSubagent = createId();
+        const state = {
+            currentTurnId: 'turn-root-first',
+            providerSubagentToSessionSubagent: new Map<string, string>([['task-late', mappedSubagent]]),
+            hiddenParentToolCalls: new Set<string>(['task-late']),
+            startedSubagents: new Set<string>([mappedSubagent]),
+            activeSubagents: new Set<string>([mappedSubagent]),
+            subagentTurns: new Map<string, string>([[mappedSubagent, 'turn-root-first']]),
+        };
+
+        const closed = closeClaudeTurnWithStatus(state, 'completed');
+        expect(closed.envelopes).toEqual([
+            expect.objectContaining({
+                turn: 'turn-root-first',
+                ev: { t: 'turn-end', status: 'completed' },
+            }),
+        ]);
+        expect(state.activeSubagents.has(mappedSubagent)).toBe(true);
+
+        const lateChild = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user',
+            uuid: 'u-task-late',
+            isSidechain: false,
+            message: {
+                role: 'user',
+                content: [{
+                    type: 'tool_result',
+                    tool_use_id: 'task-late',
+                    content: 'late child failed',
+                    is_error: true,
+                }],
+            },
+        } as any, state);
+
+        expect(lateChild.currentTurnId).toBeNull();
+        expect(lateChild.envelopes).toEqual([
+            expect.objectContaining({
+                turn: 'turn-root-first',
+                subagent: mappedSubagent,
+                ev: { t: 'stop', status: 'failed' },
+            }),
+        ]);
     });
 });

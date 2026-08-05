@@ -61,6 +61,7 @@ describe('terminal tool display helpers', () => {
         expect(getToolSummaryCategory('Read')).toBe('read');
         expect(getToolSummaryCategory('Grep')).toBe('search');
         expect(getToolSummaryCategory('WebFetch')).toBe('web');
+        expect(getToolSummaryCategory('Skill')).toBe('skill');
     });
 
     it('extracts compact transcript row details', () => {
@@ -78,5 +79,9 @@ describe('terminal tool display helpers', () => {
         expect(getToolSummaryDetail(tool('MultiEdit', {
             file_path: '/repo/src/app.tsx',
         }))).toBe('/repo/src/app.tsx');
+
+        expect(getToolSummaryDetail(tool('Skill', {
+            skillNames: ['dev', 'obsidian-tools:ob-chat'],
+        }))).toBe('dev, obsidian-tools:ob-chat');
     });
 });

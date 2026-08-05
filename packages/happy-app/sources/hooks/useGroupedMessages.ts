@@ -4,6 +4,7 @@ import { knownTools } from '@/components/tools/knownTools';
 import { t } from '@/text';
 import { isGeneratedImageBatchPromptText } from '@/utils/autoFoldPrompt';
 import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLayout';
+import { getSkillNamesFromTool } from '@/utils/conversationActivity';
 
 // Display item types for the grouped message list
 export type TextItem = {
@@ -598,6 +599,7 @@ const TOOL_CATEGORIES: Record<string, string> = {
     Grep: 'search', Glob: 'search', LS: 'search', search: 'search', WebSearch: 'search',
     WebFetch: 'web',
     Task: 'task', Agent: 'task',
+    Skill: 'skill',
 };
 
 /** Generate a human-readable summary of tools in a group */
@@ -619,6 +621,16 @@ export function generateGroupSummary(messages: Message[]): string {
     if (counts.search) parts.push(t('toolGroup.searched', { count: counts.search }));
     if (counts.web) parts.push(t('toolGroup.fetchedUrls', { count: counts.web }));
     if (counts.task) parts.push(t('toolGroup.ranTasks', { count: counts.task }));
+    if (counts.skill) {
+        const names = messages
+            .flatMap((message) => message.kind === 'tool-call' && message.tool.name === 'Skill'
+                ? getSkillNamesFromTool(message.tool)
+                : [])
+            .filter((name, index, all) => all.indexOf(name) === index);
+        parts.push(names.length > 0
+            ? t('toolGroup.usedSkills', { names: names.join(', ') })
+            : t('toolGroup.usedTools', { count: counts.skill }));
+    }
     if (counts.other) parts.push(t('toolGroup.usedTools', { count: counts.other }));
 
     return parts.join(', ') || t('toolGroup.usedTools', { count: messages.length });

@@ -36,6 +36,160 @@ function createSectionTitle(id: string, text: string, timeOffset: number = 0): M
     return { id, localId: null, createdAt: Date.now() - timeOffset, kind: 'user-text', text }
 }
 
+const activityDemoBaseTime = Date.now() - 20_000;
+export const activityStatusDemoSubagents = {
+    implementation: 'ax389dhoj1bran7p3s3fdh6n',
+    review: 'yghxp0tj8cat500passf65pq',
+} as const;
+
+export const activityStatusDemoEnvelopes: Array<Record<string, unknown>> = [
+    {
+        id: 'activity-user',
+        time: activityDemoBaseTime,
+        role: 'user',
+        ev: { t: 'text', text: 'Read the Obsidian note with ob-chat, then delegate implementation and review to sub-agents.' },
+    },
+    {
+        id: 'activity-turn-start',
+        time: activityDemoBaseTime + 500,
+        role: 'agent',
+        turn: 'activity-turn',
+        ev: { t: 'turn-start' },
+    },
+    {
+        id: 'activity-agent-intro',
+        time: activityDemoBaseTime + 1_000,
+        role: 'agent',
+        turn: 'activity-turn',
+        ev: { t: 'text', text: 'I’ll use the note as context and keep each delegated task visible here.' },
+    },
+    {
+        id: 'activity-skill-start',
+        time: activityDemoBaseTime + 2_000,
+        role: 'agent',
+        turn: 'activity-turn',
+        ev: {
+            t: 'tool-call-start',
+            call: 'activity-skill-call',
+            name: 'Skill',
+            title: 'Use skill `obsidian-tools:ob-chat`',
+            description: 'Read the ob-chat skill instructions',
+            args: {
+                skillNames: ['obsidian-tools:ob-chat'],
+                command: "sed -n '1,240p' /plugins/obsidian-tools/skills/ob-chat/SKILL.md",
+            },
+        },
+    },
+    {
+        id: 'activity-skill-end',
+        time: activityDemoBaseTime + 2_500,
+        role: 'agent',
+        turn: 'activity-turn',
+        ev: { t: 'tool-call-end', call: 'activity-skill-call', status: 'completed' },
+    },
+    {
+        id: 'activity-agent-running',
+        time: activityDemoBaseTime + 3_000,
+        role: 'agent',
+        turn: 'activity-turn',
+        ev: {
+            t: 'tool-call-start',
+            call: 'activity-agent-running-call',
+            name: 'Agent',
+            title: 'Spawn implementation agent',
+            description: 'Implement chat activity indicators',
+            args: {
+                description: 'Implementation agent',
+                prompt: 'Implement the Skill and sub-agent status UI.',
+                sessionSubagent: activityStatusDemoSubagents.implementation,
+            },
+        },
+    },
+    {
+        id: 'activity-agent-running-start',
+        time: activityDemoBaseTime + 3_500,
+        role: 'agent',
+        turn: 'activity-turn',
+        subagent: activityStatusDemoSubagents.implementation,
+        ev: { t: 'start', title: 'Implementation agent' },
+    },
+    {
+        id: 'activity-nested-skill-start',
+        time: activityDemoBaseTime + 3_700,
+        role: 'agent',
+        turn: 'activity-turn',
+        subagent: activityStatusDemoSubagents.implementation,
+        ev: {
+            t: 'tool-call-start',
+            call: 'activity-nested-skill-call',
+            name: 'Skill',
+            title: 'Use skill `dev`',
+            description: 'Load repository development instructions',
+            args: {
+                skillNames: ['dev'],
+                command: 'sed -n 1,240p /repo/.agents/skills/dev/SKILL.md',
+            },
+        },
+    },
+    {
+        id: 'activity-nested-skill-end',
+        time: activityDemoBaseTime + 3_800,
+        role: 'agent',
+        turn: 'activity-turn',
+        subagent: activityStatusDemoSubagents.implementation,
+        ev: { t: 'tool-call-end', call: 'activity-nested-skill-call', status: 'completed' },
+    },
+    {
+        id: 'activity-agent-review',
+        time: activityDemoBaseTime + 4_000,
+        role: 'agent',
+        turn: 'activity-turn',
+        subagent: activityStatusDemoSubagents.implementation,
+        ev: {
+            t: 'tool-call-start',
+            call: 'activity-agent-review-call',
+            name: 'Agent',
+            title: 'Spawn review agent',
+            description: 'Review translations and status semantics',
+            args: {
+                description: 'Review agent',
+                prompt: 'Review the completed implementation.',
+                sessionSubagent: activityStatusDemoSubagents.review,
+            },
+        },
+    },
+    {
+        id: 'activity-agent-review-start',
+        time: activityDemoBaseTime + 4_500,
+        role: 'agent',
+        turn: 'activity-turn',
+        subagent: activityStatusDemoSubagents.review,
+        ev: { t: 'start', title: 'Review agent' },
+    },
+    {
+        id: 'activity-agent-review-stop',
+        time: activityDemoBaseTime + 5_000,
+        role: 'agent',
+        turn: 'activity-turn',
+        subagent: activityStatusDemoSubagents.review,
+        ev: { t: 'stop', status: 'completed' },
+    },
+    {
+        id: 'activity-root-final',
+        time: activityDemoBaseTime + 6_000,
+        role: 'agent',
+        turn: 'activity-turn',
+        ev: { t: 'text', text: 'The Skill is loaded, implementation is still running, and the nested review has completed.' },
+    },
+    {
+        id: 'activity-turn-end',
+        time: activityDemoBaseTime + 6_500,
+        role: 'agent',
+        turn: 'activity-turn',
+        ev: { t: 'turn-end', status: 'completed' },
+    },
+];
+
 export const debugMessages: Message[] = [
     // User message
     {

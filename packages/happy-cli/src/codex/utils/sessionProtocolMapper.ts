@@ -45,37 +45,66 @@ function getProviderSubagentToSessionSubagent(state: CodexTurnState): Map<string
     return state.providerSubagentToSessionSubagent ?? new Map<string, string>();
 }
 
+const SUBAGENT_TURN_KEY_PREFIX = '\u0000turn:';
+const COLLAB_CALL_KEY_PREFIX = '\u0000collab-call:';
+
+function rememberSubagentTurn(
+    mapping: Map<string, string>,
+    subagent: string,
+    turn: string | undefined,
+): void {
+    if (turn) {
+        mapping.set(`${SUBAGENT_TURN_KEY_PREFIX}${subagent}`, turn);
+    }
+}
+
+function getSubagentTurn(mapping: Map<string, string>, subagent: string): string | undefined {
+    return mapping.get(`${SUBAGENT_TURN_KEY_PREFIX}${subagent}`);
+}
+
+function rememberCollabCallSubagent(mapping: Map<string, string>, call: string, subagent: string): void {
+    mapping.set(`${COLLAB_CALL_KEY_PREFIX}${call}`, subagent);
+}
+
+function consumeCollabCallSubagent(mapping: Map<string, string>, call: string): string | undefined {
+    const key = `${COLLAB_CALL_KEY_PREFIX}${call}`;
+    const subagent = mapping.get(key);
+    mapping.delete(key);
+    return subagent;
+}
+
+function forgetSessionSubagent(mapping: Map<string, string>, subagent: string): void {
+    mapping.delete(`${SUBAGENT_TURN_KEY_PREFIX}${subagent}`);
+    for (const [key, value] of mapping) {
+        if (value === subagent) {
+            mapping.delete(key);
+        }
+    }
+}
+
 function maybeEmitSubagentStart(
     subagent: string | undefined,
     opts: CreateEnvelopeOptions,
     startedSubagents: Set<string>,
     activeSubagents: Set<string>,
+    providerSubagentToSessionSubagent: Map<string, string>,
     envelopes: SessionEnvelope[],
+    title?: string,
 ): void {
     if (!subagent || startedSubagents.has(subagent)) {
         return;
     }
 
-    envelopes.push(createEnvelope('agent', { t: 'start' }, { ...opts, subagent }));
+    envelopes.push(createEnvelope('agent', {
+        t: 'start',
+        ...(title ? { title } : {}),
+    }, { ...opts, subagent }));
     startedSubagents.add(subagent);
     activeSubagents.add(subagent);
+    rememberSubagentTurn(providerSubagentToSessionSubagent, subagent, opts.turn);
 }
 
-function emitSubagentStops(
-    opts: CreateEnvelopeOptions,
-    startedSubagents: Set<string>,
-    activeSubagents: Set<string>,
-): SessionEnvelope[] {
-    const envelopes: SessionEnvelope[] = [];
-    for (const subagent of activeSubagents) {
-        envelopes.push(createEnvelope('agent', { t: 'stop' }, { ...opts, subagent }));
-    }
-    activeSubagents.clear();
-    startedSubagents.clear();
-    return envelopes;
-}
-
-function buildEnvelopeOptions(currentTurnId: string | null, subagent?: string): CreateEnvelopeOptions {
+function buildEnvelopeOptions(currentTurnId: string | null | undefined, subagent?: string): CreateEnvelopeOptions {
     return {
         ...(currentTurnId ? { turn: currentTurnId } : {}),
         ...(subagent ? { subagent } : {}),
@@ -169,6 +198,79 @@ function commandToTitle(command: string | null): string {
     return `Run \`${short}\``;
 }
 
+export function extractSkillNamesFromCommand(command: string | null): string[] {
+    if (!command) {
+        return [];
+    }
+
+    const names = new Set<string>();
+    const normalizedCommand = command.replaceAll('\\', '/');
+    const shellWrapper = normalizedCommand.trim().match(
+        /^(?:(?:[^\s"']*\/)?(?:zsh|bash|sh)|(?:[^\s"']*\/)?(?:powershell(?:\.exe)?|pwsh))\s+(?:-[a-z]*c|-Command)\s+(["'])([\s\S]*)\1$/i,
+    );
+    const executableCommand = shellWrapper?.[2] ?? normalizedCommand;
+    const segments = executableCommand.split(/&&|\|\||;|\r?\n/);
+    for (const segment of segments) {
+        // A path mention is not proof that the skill was loaded. Only promote
+        // commands whose purpose is to read file content; e.g. `git diff --
+        // SKILL.md` must remain an ordinary terminal operation.
+        const executedReader = /^(?:(?:command|sudo|env)\s+)*(?:(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s]+))\s+)*(?:[^\s"']*\/)?(?:cat|sed|head|tail|less|more|bat|batcat|type|Get-Content)(?:\.exe)?(?:\s|$)/i;
+        if (!executedReader.test(segment.trim())) {
+            continue;
+        }
+
+        const pathPattern = /(["'])([^"'\r\n]*\/SKILL\.md)\1|([^\s"'`|&()<>]+\/SKILL\.md)/g;
+        for (const match of segment.matchAll(pathPattern)) {
+            const rawPath = match[2] ?? match[3];
+            const parts = rawPath.split('/').filter(Boolean);
+            const skillFileIndex = parts.lastIndexOf('SKILL.md');
+            const skillsIndex = parts.lastIndexOf('skills');
+            if (skillFileIndex < 1) {
+                continue;
+            }
+
+            const skillName = parts[skillFileIndex - 1];
+            const pluginsIndex = parts.lastIndexOf('plugins', skillFileIndex);
+            let pluginName: string | null = null;
+            if (pluginsIndex >= 0) {
+                const pluginPathEnd = skillsIndex > pluginsIndex && skillsIndex < skillFileIndex
+                    ? skillsIndex
+                    : skillFileIndex - 1;
+                const pluginPath = parts.slice(pluginsIndex + 1, pluginPathEnd);
+                if (pluginPath[0] === 'cache') {
+                    pluginPath.splice(0, Math.min(2, pluginPath.length));
+                }
+                if (pluginPath.length > 1 && /^\d+(?:\.\d+)*$/.test(pluginPath.at(-1) ?? '')) {
+                    pluginPath.pop();
+                }
+                pluginName = pluginPath.at(-1) ?? null;
+            }
+            names.add(pluginName ? `${pluginName}:${skillName}` : skillName);
+        }
+    }
+
+    return [...names];
+}
+
+function skillCommandTitle(skillNames: string[]): string {
+    const rendered = skillNames.map((name) => `\`${name}\``).join(', ');
+    return skillNames.length === 1 ? `Use skill ${rendered}` : `Use skills ${rendered}`;
+}
+
+function subagentTitle(message: Record<string, unknown>): string | undefined {
+    const candidates = [message.prompt, message.agent_path, message.agentPath];
+    for (const candidate of candidates) {
+        if (typeof candidate === 'string' && candidate.trim().length > 0) {
+            return candidate.trim();
+        }
+    }
+    return undefined;
+}
+
+function startsSubagentLifecycle(tool: unknown): boolean {
+    return tool === 'spawnAgent' || tool === 'resumeAgent' || tool === 'sendInput';
+}
+
 function turnTimestampMs(turn: ThreadTurn): number {
     const seconds = turn.startedAt ?? turn.completedAt;
     return typeof seconds === 'number' && Number.isFinite(seconds)
@@ -259,6 +361,7 @@ function emitHistoricalToolCall(
     envelopes.push(createEnvelope('agent', {
         t: 'tool-call-end',
         call: item.id,
+        status: pickTurnEndStatus(item as unknown as Record<string, unknown>, 'historical_tool_end'),
     }, {
         ...opts,
         id: `${item.id}:end`,
@@ -332,13 +435,14 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
                 }
                 case 'commandExecution': {
                     const command = typeof item.command === 'string' ? item.command : '';
+                    const skillNames = extractSkillNamesFromCommand(command);
                     emitHistoricalToolCall(
                         envelopes,
                         turn,
                         item,
-                        'CodexBash',
-                        commandToTitle(command),
-                        { command, cwd: item.cwd },
+                        skillNames.length > 0 ? 'Skill' : 'CodexBash',
+                        skillNames.length > 0 ? skillCommandTitle(skillNames) : commandToTitle(command),
+                        { command, cwd: item.cwd, ...(skillNames.length > 0 ? { skillNames } : {}) },
                         typeof item.aggregatedOutput === 'string' ? item.aggregatedOutput : null,
                     );
                     break;
@@ -405,8 +509,13 @@ function pickTurnEndStatus(message: Record<string, unknown>, type: unknown): Tur
     if (rawStatus === 'completed' || rawStatus === 'failed' || rawStatus === 'cancelled') {
         return rawStatus;
     }
-    if (rawStatus === 'canceled') {
+    if (rawStatus === 'canceled' || rawStatus === 'aborted' || rawStatus === 'interrupted') {
         return 'cancelled';
+    }
+
+    const exitCode = message.exit_code ?? message.exitCode;
+    if (typeof exitCode === 'number' && exitCode !== 0) {
+        return 'failed';
     }
 
     // Abort events are treated as cancelled unless they explicitly look like failures.
@@ -437,9 +546,10 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     if (type === 'task_started') {
         const turnId = createId();
         const turnStart = createEnvelope('agent', { t: 'turn-start' }, { turn: turnId });
-        startedSubagents.clear();
-        activeSubagents.clear();
-        providerSubagentToSessionSubagent.clear();
+        if (activeSubagents.size === 0) {
+            startedSubagents.clear();
+            providerSubagentToSessionSubagent.clear();
+        }
         return {
             currentTurnId: turnId,
             startedSubagents,
@@ -461,19 +571,16 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         }
 
         const lifecycleOpts = { turn: state.currentTurnId } satisfies CreateEnvelopeOptions;
-        providerSubagentToSessionSubagent.clear();
+        const status = pickTurnEndStatus(message, type);
         return {
             currentTurnId: null,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
-            envelopes: [
-                ...emitSubagentStops(lifecycleOpts, startedSubagents, activeSubagents),
-                createEnvelope('agent', {
-                    t: 'turn-end',
-                    status: pickTurnEndStatus(message, type),
-                }, lifecycleOpts),
-            ],
+            envelopes: [createEnvelope('agent', {
+                t: 'turn-end',
+                status,
+            }, lifecycleOpts)],
         };
     }
 
@@ -489,13 +596,26 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
 
     if (type === 'collab_agent_tool_begin' || type === 'collab_agent_tool_end') {
         const subagent = resolveSessionSubagent(message, providerSubagentToSessionSubagent);
-        const opts = buildEnvelopeOptions(state.currentTurnId, subagent);
+        const opts = buildEnvelopeOptions(
+            subagent ? (getSubagentTurn(providerSubagentToSessionSubagent, subagent) ?? state.currentTurnId) : state.currentTurnId,
+            subagent,
+        );
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, envelopes);
 
         const call = pickCallId(message);
         if (type === 'collab_agent_tool_end') {
-            envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, opts));
+            const status = pickTurnEndStatus(message, message.error ? 'turn_aborted' : 'task_complete');
+            envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call, status }, opts));
+            const startedSubagent = consumeCollabCallSubagent(providerSubagentToSessionSubagent, call);
+            if (startedSubagent && status !== 'completed' && activeSubagents.has(startedSubagent)) {
+                const lifecycleTurn = getSubagentTurn(providerSubagentToSessionSubagent, startedSubagent)
+                    ?? state.currentTurnId;
+                activeSubagents.delete(startedSubagent);
+                startedSubagents.delete(startedSubagent);
+                envelopes.push(createEnvelope('agent', { t: 'stop', status }, buildEnvelopeOptions(lifecycleTurn, startedSubagent)));
+                forgetSessionSubagent(providerSubagentToSessionSubagent, startedSubagent);
+            }
         } else {
             const receiverThreadIds = pickReceiverThreadIds(message);
             const receiverThreadId = receiverThreadIds.length === 1 ? receiverThreadIds[0] : undefined;
@@ -519,6 +639,18 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                     ...(sessionSubagent ? { sessionSubagent } : {}),
                 },
             }, opts));
+            if (sessionSubagent && startsSubagentLifecycle(tool)) {
+                maybeEmitSubagentStart(
+                    sessionSubagent,
+                    buildEnvelopeOptions(state.currentTurnId, sessionSubagent),
+                    startedSubagents,
+                    activeSubagents,
+                    providerSubagentToSessionSubagent,
+                    envelopes,
+                    subagentTitle(message),
+                );
+                rememberCollabCallSubagent(providerSubagentToSessionSubagent, call, sessionSubagent);
+            }
         }
 
         return {
@@ -530,8 +662,43 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         };
     }
 
+    if (type === 'subagent_completed') {
+        const subagent = resolveSessionSubagent(message, providerSubagentToSessionSubagent);
+        if (!subagent || !activeSubagents.has(subagent)) {
+            return {
+                currentTurnId: state.currentTurnId,
+                startedSubagents,
+                activeSubagents,
+                providerSubagentToSessionSubagent,
+                envelopes: [],
+            };
+        }
+
+        const status = pickTurnEndStatus(message, message.error ? 'turn_aborted' : 'task_complete');
+        const lifecycleTurn = getSubagentTurn(providerSubagentToSessionSubagent, subagent)
+            ?? state.currentTurnId;
+        activeSubagents.delete(subagent);
+        startedSubagents.delete(subagent);
+        const stopEnvelope = createEnvelope(
+            'agent',
+            { t: 'stop', status },
+            buildEnvelopeOptions(lifecycleTurn, subagent),
+        );
+        forgetSessionSubagent(providerSubagentToSessionSubagent, subagent);
+        return {
+            currentTurnId: state.currentTurnId,
+            startedSubagents,
+            activeSubagents,
+            providerSubagentToSessionSubagent,
+            envelopes: [stopEnvelope],
+        };
+    }
+
     const subagent = resolveSessionSubagent(message, providerSubagentToSessionSubagent);
-    const opts = buildEnvelopeOptions(state.currentTurnId, subagent);
+    const opts = buildEnvelopeOptions(
+        subagent ? (getSubagentTurn(providerSubagentToSessionSubagent, subagent) ?? state.currentTurnId) : state.currentTurnId,
+        subagent,
+    );
 
     if (type === 'agent_message') {
         if (typeof message.message !== 'string') {
@@ -545,7 +712,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         }
 
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, envelopes);
         envelopes.push(createEnvelope('agent', { t: 'text', text: message.message }, opts));
         return {
             currentTurnId: state.currentTurnId,
@@ -572,7 +739,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         }
 
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, envelopes);
         envelopes.push(createEnvelope('agent', { t: 'text', text, thinking: true }, opts));
         return {
             currentTurnId: state.currentTurnId,
@@ -591,20 +758,24 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         const { call_id: _callIdSnake, callId: _callIdCamel, type: _type, ...args } = message;
 
         const command = summarizeCommand((args as Record<string, unknown>).command);
+        const skillNames = extractSkillNamesFromCommand(command);
         const description = typeof (args as Record<string, unknown>).description === 'string'
             ? ((args as Record<string, string>).description)
             : (command ?? 'Execute command');
 
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, envelopes);
         envelopes.push(
             createEnvelope('agent', {
                 t: 'tool-call-start',
                 call,
-                name: 'CodexBash',
-                title: commandToTitle(command),
+                name: skillNames.length > 0 ? 'Skill' : 'CodexBash',
+                title: skillNames.length > 0 ? skillCommandTitle(skillNames) : commandToTitle(command),
                 description,
-                args: args as Record<string, unknown>,
+                args: {
+                    ...(args as Record<string, unknown>),
+                    ...(skillNames.length > 0 ? { skillNames } : {}),
+                },
             }, opts)
         );
         return {
@@ -618,9 +789,10 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
 
     if (type === 'exec_command_end') {
         const call = pickCallId(message);
+        const status = pickTurnEndStatus(message, type);
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
-        envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, opts));
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, envelopes);
+        envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call, status }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
@@ -636,7 +808,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         const changes = (message as { changes?: unknown }).changes;
 
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, envelopes);
         envelopes.push(
             createEnvelope('agent', {
                 t: 'tool-call-start',
@@ -662,7 +834,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     if (type === 'patch_apply_end') {
         const call = pickCallId(message);
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, envelopes);
         envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, opts));
         return {
             currentTurnId: state.currentTurnId,

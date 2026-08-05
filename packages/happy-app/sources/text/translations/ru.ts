@@ -819,6 +819,15 @@ export const ru: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => `${plural({ count, one: 'Загружен', few: 'Загружено', many: 'Загружено' })} ${count} URL`,
         ranTasks: ({ count }: { count: number }) => `${plural({ count, one: 'Выполнена', few: 'Выполнено', many: 'Выполнено' })} ${count} ${plural({ count, one: 'задача', few: 'задачи', many: 'задач' })}`,
         usedTools: ({ count }: { count: number }) => `${plural({ count, one: 'Использован', few: 'Использовано', many: 'Использовано' })} ${count} ${plural({ count, one: 'инструмент', few: 'инструмента', many: 'инструментов' })}`,
+        usedSkills: ({ names }: { names: string }) => `Навыки (Skills): ${names}`,
+        skillLabel: 'Навык (Skill)',
+        subagentLabel: 'Субагент',
+        subagentStatus: {
+            running: 'Выполняется',
+            completed: 'Завершён',
+            failed: 'Ошибка',
+            cancelled: 'Отменён',
+        },
         workedFor: ({ duration }: { duration: string }) => `Работало ${duration}`,
     },
 
