@@ -10,6 +10,14 @@ export const EXTRA_IMAGE_STYLE_PREVIEW_MANIFEST: Record<string, ImageStylePrevie
         "width": 480,
         "height": 640
     },
+    "reference-graphite-cyan/dark-urban-grade/1": {
+        "fileName": "graphite-cyan-dark-tone.jpg",
+        "sourceSet": "curated-reference-examples",
+        "sourceCaseId": "graphite-cyan-reference/01-dark-urban-grade",
+        "sourceIndex": 1,
+        "width": 640,
+        "height": 853
+    },
     "reference-tiramisu/vintage-film-cafe/1": {
         "fileName": "tiramisu-vintage-film-cafe-20260706-025730.jpg",
         "sourceSet": "curated-reference-examples",

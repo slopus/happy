@@ -3,6 +3,7 @@ import type { ImageSourcePropType } from 'react-native';
 
 export const EXTRA_IMAGE_STYLE_PREVIEW_ASSETS: Record<string, ImageSourcePropType> = {
     "reference-voxcat/wild-mountain-sketchbook/1": require('@/assets/images/gpt-image-2/reference-examples/voxcat-wild-mountain-sketchbook.jpg'),
+    "reference-graphite-cyan/dark-urban-grade/1": require('@/assets/images/gpt-image-2/reference-examples/graphite-cyan-dark-tone.jpg'),
     "reference-tiramisu/vintage-film-cafe/1": require('@/assets/images/gpt-image-2/reference-examples/tiramisu-vintage-film-cafe-20260706-025730.jpg'),
     "reference-tiramisu/premium-studio-food/1": require('@/assets/images/gpt-image-2/reference-examples/tiramisu-premium-studio-food-20260706-025730.jpg'),
     "reference-tiramisu/white-product/1": require('@/assets/images/gpt-image-2/reference-examples/tiramisu-white-product.jpg'),
