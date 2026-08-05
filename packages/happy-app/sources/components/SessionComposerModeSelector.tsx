@@ -18,7 +18,6 @@ export type SessionComposerModeSelectorConfig = {
     effortOptions: ModeOption[];
     onModelChange: (key: string) => void;
     onEffortChange: (key: string) => void;
-    compact?: boolean;
 };
 
 function toPickerItems(options: ModeOption[]): PickerItem[] {
@@ -104,10 +103,10 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                 pressed && styles.triggerPressed,
             ]}
         >
-            <Text style={[styles.triggerText, props.compact && styles.triggerTextCompact]} numberOfLines={1}>
+            <Text style={styles.triggerText} numberOfLines={1}>
                 {value}
             </Text>
-            {enabled && !props.compact ? (
+            {enabled ? (
                 <Ionicons
                     name={activePicker === type ? 'chevron-up' : 'chevron-down'}
                     size={11}
@@ -130,7 +129,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
             ref={triggerRef}
             collapsable={false}
             testID="session-composer-mode-selector"
-            style={[styles.container, { maxWidth: props.compact ? 132 : 220 }]}
+            style={[styles.container, { maxWidth: 220 }]}
         >
             <View style={styles.triggerRow}>
                 {renderTrigger(
@@ -239,9 +238,6 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         fontSize: 12,
         ...Typography.default('semiBold'),
-    },
-    triggerTextCompact: {
-        fontSize: 11,
     },
     separator: {
         color: theme.colors.textSecondary,

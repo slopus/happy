@@ -36,6 +36,16 @@ export function getDesktopSidebarWidth(windowWidth: number): number {
     return Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
 }
 
+export function supportsDesktopComposerModeSelector({
+    isWeb,
+    windowWidth,
+}: {
+    isWeb: boolean;
+    windowWidth: number;
+}): boolean {
+    return isWeb && windowWidth >= WEB_TABLET_MIN_WIDTH;
+}
+
 export function getDesktopRightPanelWidth(windowWidth: number): number {
     if (windowWidth < DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH) return 0;
     return Math.min(Math.max(Math.floor(windowWidth * 0.24), 280), 360);

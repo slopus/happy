@@ -14,9 +14,18 @@ import {
     getDesktopWorkspacePanelWidths,
     isDesktopRightPanelRoute,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+    supportsDesktopComposerModeSelector,
 } from './desktopNavigationLayout';
 
 describe('desktopNavigationLayout', () => {
+    it.each([
+        { isWeb: true, windowWidth: 799, expected: false },
+        { isWeb: true, windowWidth: 800, expected: true },
+        { isWeb: false, windowWidth: 1280, expected: false },
+    ])('shows desktop composer modes=$expected for web=$isWeb at $windowWidth px', ({ isWeb, windowWidth, expected }) => {
+        expect(supportsDesktopComposerModeSelector({ isWeb, windowWidth })).toBe(expected);
+    });
+
     it.each([
         { width: 799, expected: 0 },
         { width: 800, expected: 250 },

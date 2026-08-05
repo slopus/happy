@@ -150,13 +150,12 @@ describe('SessionComposerModeSelector', () => {
         act(() => renderer.unmount());
     });
 
-    it('uses a bounded compact value-only layout on narrow composers', () => {
+    it('keeps the full picker affordance for desktop composers', () => {
         let renderer: any;
         act(() => {
             renderer = TestRenderer.create(
                 <SessionComposerModeSelector
                     online
-                    compact
                     model={modelOptions[1]}
                     modelOptions={modelOptions}
                     effort={effortOptions[1]}
@@ -168,8 +167,8 @@ describe('SessionComposerModeSelector', () => {
         });
 
         const selector = renderer.root.findByProps({ testID: 'session-composer-mode-selector' });
-        expect(selector.props.style).toContainEqual({ maxWidth: 132 });
-        expect(renderer.root.findAllByType('Ionicons')).toHaveLength(0);
+        expect(selector.props.style).toContainEqual({ maxWidth: 220 });
+        expect(renderer.root.findAllByType('Ionicons')).toHaveLength(2);
 
         act(() => renderer.unmount());
     });

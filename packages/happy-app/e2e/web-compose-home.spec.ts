@@ -734,9 +734,18 @@ test('每轮模型与推理强度在输入区、选择器和历史消息中保�
         effort: 'medium',
     });
 
-    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(authenticatedRoute(`/session/${sessionId}`));
     expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+    await expect(page.getByTestId('session-message-input')).toBeVisible();
+    await expect(page.getByTestId('message-composer-send-button')).toBeVisible();
+    await expect(page.getByTestId('session-composer-mode-selector')).toHaveCount(0);
+    await page.screenshot({
+        path: testInfo.outputPath('mobile-composer-mode-001-after-390x844.png'),
+        fullPage: true,
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
 
     const selector = page.locator('[data-testid="session-composer-mode-selector"]:visible');
     const modelTrigger = selector.getByTestId('session-composer-model-trigger');

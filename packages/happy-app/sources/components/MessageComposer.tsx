@@ -22,6 +22,7 @@ import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import type { ComposerAutocompleteSuggestion } from './autocomplete/types';
+import { supportsDesktopComposerModeSelector } from '@/utils/desktopNavigationLayout';
 import {
     SessionComposerModeSelector,
     type SessionComposerModeSelectorConfig,
@@ -1109,12 +1110,13 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     </View>
                                 )}
 
-                                {/* Future-turn model / effort, anchored immediately before send. */}
-                                {isSession && props.modeSelector ? (
-                                    <SessionComposerModeSelector
-                                        {...props.modeSelector}
-                                        compact={screenWidth < 520}
-                                    />
+                                {/* The inline mode picker is a desktop affordance. Narrow Web and native
+                                    layouts keep the original composer and use the existing session menu. */}
+                                {isSession && props.modeSelector && supportsDesktopComposerModeSelector({
+                                    isWeb: Platform.OS === 'web',
+                                    windowWidth: screenWidth,
+                                }) ? (
+                                    <SessionComposerModeSelector {...props.modeSelector} />
                                 ) : null}
 
                                 {/* Send button */}
