@@ -4,7 +4,7 @@ import { Drawer } from 'expo-router/drawer';
 import { useIsTablet, useHeaderHeight } from '@/utils/responsive';
 import { SidebarView } from './SidebarView';
 import { useWindowDimensions, View, Pressable, Platform, BackHandler, Text } from 'react-native';
-import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
+import { useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +16,13 @@ import { canRouteBack, canRouteForward, canUseRouteBack, getNavigatorCanGoBack }
 import { useBrowserNavigationStore } from '@/navigation/browserNavigationStore';
 import { useSessionSelection } from '@/hooks/useSessionSelection';
 import {
-    getDesktopSidebarWidth,
+    DesktopWorkspaceLayoutProvider,
+    useDesktopWorkspaceLayout,
+} from '@/hooks/useDesktopWorkspaceLayout';
+import { DesktopPanelResizeHandle } from './DesktopPanelResizeHandle';
+import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
+import {
+    getDesktopPanelShortcutPresentation,
     getPersistentHeaderPointerEvents,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH,
@@ -27,20 +33,29 @@ import {
 export const SidebarNavigator = React.memo(() => {
     const auth = useAuth();
     const isTablet = useIsTablet();
+
+    return (
+        <DesktopWorkspaceLayoutProvider enabled={auth.isAuthenticated && isTablet}>
+            <SidebarNavigatorContent />
+        </DesktopWorkspaceLayoutProvider>
+    );
+});
+
+const SidebarNavigatorContent = React.memo(() => {
+    const auth = useAuth();
+    const isTablet = useIsTablet();
     const { theme } = useUnistyles();
-    const zenMode = useLocalSetting('zenMode');
-    const desktopLeftSidebarCollapsed = useLocalSetting('desktopLeftSidebarCollapsed');
+    const { leftVisible: showSidebar, leftWidth } = useDesktopWorkspaceLayout();
     const selectionMode = useSessionSelection((s) => s.active);
     const clearSelection = useSessionSelection((s) => s.clearSelection);
     const isDesktopLayout = auth.isAuthenticated && isTablet;
-    const showSidebar = isDesktopLayout && !zenMode && !desktopLeftSidebarCollapsed;
     const { width: windowWidth } = useWindowDimensions();
 
     // Calculate target drawer width
     const fullDrawerWidth = React.useMemo(() => {
         if (!isDesktopLayout) return 320;
-        return getDesktopSidebarWidth(windowWidth);
-    }, [windowWidth, isDesktopLayout]);
+        return leftWidth;
+    }, [isDesktopLayout, leftWidth]);
     const drawerWidth = showSidebar ? fullDrawerWidth : 0;
 
     React.useEffect(() => {
@@ -136,6 +151,7 @@ export const SidebarNavigator = React.memo(() => {
                     styles.drawerContent,
                     isDesktopLayout && !showSidebar && styles.drawerContentHidden,
                 ]}
+                testID={isDesktopLayout ? 'desktop-left-sidebar' : undefined}
             >
                 <SidebarView
                     closeDrawerOnNavigate={!isDesktopLayout}
@@ -156,6 +172,15 @@ export const SidebarNavigator = React.memo(() => {
             {isDesktopLayout && (
                 <PersistentHeader />
             )}
+            {isDesktopLayout && showSidebar && (
+                <DesktopPanelResizeHandle
+                    accessibilityLabel={t('desktopWorkspace.resizePanel', {
+                        panel: t('desktopWorkspace.sessions'),
+                    })}
+                    offset={leftWidth - 5}
+                    side="left"
+                />
+            )}
         </View>
     );
 });
@@ -166,9 +191,14 @@ const PersistentHeader = React.memo(() => {
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
     const router = useRouter();
-    const { width: windowWidth } = useWindowDimensions();
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
-    const [desktopLeftSidebarCollapsed, setDesktopLeftSidebarCollapsed] = useLocalSettingMutable('desktopLeftSidebarCollapsed');
+    const {
+        leftVisible: sidebarVisible,
+        leftWidth: sidebarWidth,
+        toggleLeftSidebar,
+    } = useDesktopWorkspaceLayout();
+    const [sidebarTooltipVisible, setSidebarTooltipVisible] = React.useState(false);
+    const shortcuts = getDesktopPanelShortcutPresentation();
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
 
@@ -185,10 +215,6 @@ const PersistentHeader = React.memo(() => {
     const handleZenToggle = React.useCallback(() => {
         setZenMode(!zenMode);
     }, [zenMode, setZenMode]);
-    const handleSidebarToggle = React.useCallback(() => {
-        setDesktopLeftSidebarCollapsed(!desktopLeftSidebarCollapsed);
-    }, [desktopLeftSidebarCollapsed, setDesktopLeftSidebarCollapsed]);
-
     const handleBack = React.useCallback(() => {
         // Intra-session overlay (file diff / file view) consumes back first,
         // so the chat → diff → file flow can be unwound without a close X.
@@ -217,8 +243,6 @@ const PersistentHeader = React.memo(() => {
 
     const canGoBackEffective = canGoBack || overlayCanBack;
     const canGoForwardEffective = canGoForward || overlayCanForward;
-    const sidebarVisible = !zenMode && !desktopLeftSidebarCollapsed;
-    const sidebarWidth = sidebarVisible ? getDesktopSidebarWidth(windowWidth) : 0;
     const sidebarToggleLabel = sidebarVisible
         ? t('desktopWorkspace.hideSessions')
         : t('desktopWorkspace.showSessions');
@@ -253,32 +277,48 @@ const PersistentHeader = React.memo(() => {
                 testID="desktop-navigation-controls"
                 {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
             >
-                <Pressable
-                    onPress={handleSidebarToggle}
-                    hitSlop={8}
-                    style={({ pressed }) => [
-                        styles.sidebarToggle,
-                        sidebarVisible && styles.toggleSelected,
-                        pressed && styles.togglePressed,
-                    ]}
-                    aria-expanded={sidebarVisible}
-                    accessibilityLabel={sidebarToggleLabel}
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: sidebarVisible }}
-                    testID="desktop-navigation-sidebar-button"
-                >
-                    <Ionicons
-                        name={sidebarVisible ? 'chevron-back' : 'albums-outline'}
-                        size={16}
-                        color={theme.colors.header.tint}
-                    />
-                    <Text
-                        numberOfLines={1}
-                        style={styles.sidebarToggleText}
+                <View style={styles.sidebarToggleWrapper}>
+                    <Pressable
+                        onBlur={() => setSidebarTooltipVisible(false)}
+                        onFocus={() => setSidebarTooltipVisible(true)}
+                        onHoverIn={() => setSidebarTooltipVisible(true)}
+                        onHoverOut={() => setSidebarTooltipVisible(false)}
+                        onPress={toggleLeftSidebar}
+                        hitSlop={8}
+                        style={({ pressed }) => [
+                            styles.sidebarToggle,
+                            sidebarVisible && styles.toggleSelected,
+                            pressed && styles.togglePressed,
+                        ]}
+                        aria-expanded={sidebarVisible}
+                        accessibilityHint={`${sidebarToggleLabel} (${shortcuts.leftLabel})`}
+                        accessibilityLabel={sidebarToggleLabel}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: sidebarVisible }}
+                        {...({
+                            'aria-keyshortcuts': shortcuts.leftAria,
+                        } as any)}
+                        testID="desktop-navigation-sidebar-button"
                     >
-                        {t('desktopWorkspace.sessions')}
-                    </Text>
-                </Pressable>
+                        <Ionicons
+                            name={sidebarVisible ? 'chevron-back' : 'albums-outline'}
+                            size={16}
+                            color={theme.colors.header.tint}
+                        />
+                        <Text
+                            numberOfLines={1}
+                            style={styles.sidebarToggleText}
+                        >
+                            {t('desktopWorkspace.sessions')}
+                        </Text>
+                    </Pressable>
+                    <DesktopShortcutTooltip
+                        label={sidebarToggleLabel}
+                        shortcut={shortcuts.leftLabel}
+                        testID="desktop-navigation-sidebar-tooltip"
+                        visible={sidebarTooltipVisible}
+                    />
+                </View>
                 <Pressable
                     onPress={handleZenToggle}
                     hitSlop={8}
@@ -346,8 +386,12 @@ const styles = StyleSheet.create((theme) => ({
         gap: 4,
         pointerEvents: 'auto',
     },
-    sidebarToggle: {
+    sidebarToggleWrapper: {
+        position: 'relative',
         width: PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH,
+    },
+    sidebarToggle: {
+        width: '100%',
         height: 30,
         paddingHorizontal: 8,
         flexDirection: 'row',

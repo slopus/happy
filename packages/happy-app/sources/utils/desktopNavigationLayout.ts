@@ -1,6 +1,11 @@
 export const WEB_TABLET_MIN_WIDTH = 800;
 export const DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH = 1100;
 export const DESKTOP_SESSION_HEADER_COMPACT_WINDOW_WIDTH = 1180;
+export const DESKTOP_MAIN_MIN_WIDTH = 480;
+export const DESKTOP_LEFT_PANEL_MIN_WIDTH = 250;
+export const DESKTOP_LEFT_PANEL_DEFAULT_WIDTH = 360;
+export const DESKTOP_RIGHT_PANEL_MIN_WIDTH = 280;
+export const DESKTOP_RIGHT_PANEL_DEFAULT_WIDTH = 320;
 export const PERSISTENT_NAVIGATION_HORIZONTAL_PADDING = 16;
 export const PERSISTENT_NAVIGATION_BUTTON_SIZE = 28;
 export const PERSISTENT_NAVIGATION_BUTTON_GAP = 4;
@@ -34,6 +39,125 @@ export function getDesktopSidebarWidth(windowWidth: number): number {
 export function getDesktopRightPanelWidth(windowWidth: number): number {
     if (windowWidth < DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH) return 0;
     return Math.min(Math.max(Math.floor(windowWidth * 0.24), 280), 360);
+}
+
+export type DesktopPanelSide = 'left' | 'right';
+
+function getDesktopPanelMinimum(side: DesktopPanelSide): number {
+    return side === 'left' ? DESKTOP_LEFT_PANEL_MIN_WIDTH : DESKTOP_RIGHT_PANEL_MIN_WIDTH;
+}
+
+export function clampDesktopPanelWidth(side: DesktopPanelSide, width: number): number {
+    return Math.round(Math.max(width, getDesktopPanelMinimum(side)));
+}
+
+export function getDesktopWorkspacePanelWidths({
+    leftVisible,
+    requestedLeftWidth,
+    requestedRightWidth,
+    rightVisible,
+    windowWidth,
+}: {
+    leftVisible: boolean;
+    requestedLeftWidth: number;
+    requestedRightWidth: number;
+    rightVisible: boolean;
+    windowWidth: number;
+}): { left: number; main: number; right: number } {
+    const availableForPanels = Math.max(0, windowWidth - DESKTOP_MAIN_MIN_WIDTH);
+    let left = leftVisible ? clampDesktopPanelWidth('left', requestedLeftWidth) : 0;
+    let right = rightVisible ? clampDesktopPanelWidth('right', requestedRightWidth) : 0;
+
+    if (left + right > availableForPanels) {
+        if (leftVisible && rightVisible) {
+            const minimumTotal = DESKTOP_LEFT_PANEL_MIN_WIDTH + DESKTOP_RIGHT_PANEL_MIN_WIDTH;
+            if (availableForPanels >= minimumTotal) {
+                const leftExtra = Math.max(0, left - DESKTOP_LEFT_PANEL_MIN_WIDTH);
+                const rightExtra = Math.max(0, right - DESKTOP_RIGHT_PANEL_MIN_WIDTH);
+                const desiredExtra = leftExtra + rightExtra;
+                const availableExtra = availableForPanels - minimumTotal;
+                const leftShare = desiredExtra > 0 ? leftExtra / desiredExtra : 0.5;
+                left = DESKTOP_LEFT_PANEL_MIN_WIDTH + Math.floor(availableExtra * leftShare);
+                right = availableForPanels - left;
+            } else {
+                const leftShare = DESKTOP_LEFT_PANEL_MIN_WIDTH / minimumTotal;
+                left = Math.floor(availableForPanels * leftShare);
+                right = availableForPanels - left;
+            }
+        } else if (leftVisible) {
+            left = Math.min(left, availableForPanels);
+        } else if (rightVisible) {
+            right = Math.min(right, availableForPanels);
+        }
+    }
+
+    return {
+        left,
+        main: Math.max(DESKTOP_MAIN_MIN_WIDTH, windowWidth - left - right),
+        right,
+    };
+}
+
+export function getDesktopPanelResizeWidth({
+    desiredWidth,
+    oppositePanelVisible,
+    oppositePanelWidth,
+    side,
+    windowWidth,
+}: {
+    desiredWidth: number;
+    oppositePanelVisible: boolean;
+    oppositePanelWidth: number;
+    side: DesktopPanelSide;
+    windowWidth: number;
+}): number {
+    const min = getDesktopPanelMinimum(side);
+    const availableWidth = Math.max(
+        0,
+        windowWidth - DESKTOP_MAIN_MIN_WIDTH - (oppositePanelVisible ? oppositePanelWidth : 0),
+    );
+    if (availableWidth < min) return Math.round(availableWidth);
+    return Math.round(Math.min(Math.max(desiredWidth, min), availableWidth));
+}
+
+export type DesktopPanelShortcutPresentation = {
+    leftAria: string;
+    leftLabel: string;
+    rightAria: string;
+    rightLabel: string;
+};
+
+export function getDesktopPanelShortcutPresentation(platform?: string): DesktopPanelShortcutPresentation {
+    const detectedPlatform = platform ?? (
+        typeof navigator !== 'undefined'
+            ? ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform
+                ?? navigator.platform)
+            : ''
+    );
+    const usesMacModifiers = /Mac|iPhone|iPad|iPod/i.test(detectedPlatform);
+
+    return usesMacModifiers
+        ? {
+            leftAria: 'Meta+B',
+            leftLabel: '⌘B',
+            rightAria: 'Alt+Meta+B',
+            rightLabel: '⌥⌘B',
+        }
+        : {
+            leftAria: 'Control+B',
+            leftLabel: 'Ctrl+B',
+            rightAria: 'Alt+Control+B',
+            rightLabel: 'Alt+Ctrl+B',
+        };
+}
+
+export function isDesktopRightPanelRoute(pathname: string): boolean {
+    return pathname === '/'
+        || pathname === '/new'
+        || (
+            /^\/session\/[^/]+\/?$/.test(pathname)
+            && !/^\/session\/search\/?$/.test(pathname)
+        );
 }
 
 export function isDesktopRightPanelAvailable({
@@ -88,6 +212,7 @@ export function getPersistentHeaderContentInset({
     windowWidth,
     headerMaxWidth,
     headerHorizontalPadding,
+    sidebarWidth,
     sidebarVisible = true,
     rightPanelWidth = 0,
     controlStartPadding = 0,
@@ -98,6 +223,7 @@ export function getPersistentHeaderContentInset({
     windowWidth: number;
     headerMaxWidth: number;
     headerHorizontalPadding: number;
+    sidebarWidth?: number;
     sidebarVisible?: boolean;
     /** 主内容右侧被占用的宽度，例如桌面端文件面板。 */
     rightPanelWidth?: number;
@@ -107,8 +233,10 @@ export function getPersistentHeaderContentInset({
     controlsWidth?: number;
     targetHitSlop?: number;
 }): number {
-    const sidebarWidth = sidebarVisible ? getDesktopSidebarWidth(windowWidth) : 0;
-    const mainWidth = Math.max(0, windowWidth - sidebarWidth - Math.max(0, rightPanelWidth));
+    const renderedSidebarWidth = sidebarVisible
+        ? sidebarWidth ?? getDesktopSidebarWidth(windowWidth)
+        : 0;
+    const mainWidth = Math.max(0, windowWidth - renderedSidebarWidth - Math.max(0, rightPanelWidth));
     const renderedHeaderWidth = Math.min(mainWidth, headerMaxWidth);
     const centeredHeaderInset = Math.max(0, (mainWidth - renderedHeaderWidth) / 2);
     const headerTargetHitLeft = centeredHeaderInset + headerHorizontalPadding - targetHitSlop;

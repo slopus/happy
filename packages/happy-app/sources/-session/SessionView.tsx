@@ -34,10 +34,9 @@ import { t } from '@/text';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import {
+    DESKTOP_MAIN_MIN_WIDTH,
     getPersistentHeaderContentInset,
-    getDesktopRightPanelWidth,
     getDesktopRightPanelPresentation,
-    isDesktopRightPanelAvailable,
     shouldUseCompactSessionHeader,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
@@ -65,6 +64,7 @@ import { ActivityIndicator, Platform, Pressable, Text, View, useWindowDimensions
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 
 // Agent display labels for the header chip. Mirrors ComposeHome's map, but keyed
 // off the running session's `flavor` (an active session reports its agent there).
@@ -129,17 +129,18 @@ export const SessionView = React.memo((props: { id: string }) => {
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
-    const desktopLeftSidebarCollapsed = useLocalSetting('desktopLeftSidebarCollapsed');
     const [desktopRightPanelCollapsed, setDesktopRightPanelCollapsed] = useLocalSettingMutable('desktopRightPanelCollapsed');
+    const {
+        leftVisible: desktopLeftSidebarVisible,
+        leftWidth: desktopLeftSidebarWidth,
+        rightPanelAvailable: layoutRightPanelAvailable,
+        rightWidth: layoutRightPanelWidth,
+    } = useDesktopWorkspaceLayout();
     const sessionComposerHandleRef = React.useRef<ChatComposerHandle | null>(null);
 
     // The capability hub is a first-class desktop panel. File browsing is an
     // optional mode inside that same panel instead of a separate fourth column.
-    const desktopRightPanelAvailable = isDesktopRightPanelAvailable({
-        isTablet,
-        supportsPersistentPanel: isRunningOnMac() || Platform.OS === 'web',
-        windowWidth,
-    }) && isDataReady && !!session;
+    const desktopRightPanelAvailable = layoutRightPanelAvailable && isDataReady && !!session;
     const canShowFilePanel = desktopRightPanelAvailable && fileDiffsSidebarEnabled;
     const desktopRightPanelPresentation = getDesktopRightPanelPresentation({
         available: desktopRightPanelAvailable,
@@ -148,8 +149,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     });
     const showDesktopRightPanel = desktopRightPanelPresentation === 'expanded';
 
-    // Match left sidebar width: 30% of window, clamped to 250–360px
-    const rightPanelWidth = getDesktopRightPanelWidth(windowWidth);
+    const rightPanelWidth = desktopRightPanelAvailable ? layoutRightPanelWidth : 0;
 
     // Animate diff sidebar width.
     //
@@ -366,7 +366,8 @@ export const SessionView = React.memo((props: { id: string }) => {
             windowWidth,
             headerMaxWidth: layout.headerMaxWidth,
             headerHorizontalPadding: Platform.OS === 'ios' ? 8 : 16,
-            sidebarVisible: !zenMode && !desktopLeftSidebarCollapsed,
+            sidebarVisible: desktopLeftSidebarVisible,
+            sidebarWidth: desktopLeftSidebarWidth,
             rightPanelWidth: showDesktopRightPanel ? rightPanelWidth : 0,
             // SidebarNavigator 同时存在 `left: sidebar + 16` 和非 Tauri 环境下的
             // `paddingLeft: 16`，命中区域计算必须包含第二段偏移。
@@ -505,6 +506,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                     // parent flex-row so right-panel layout work stays local.
                     Platform.OS === 'web' && ({ contain: 'layout style paint' } as any),
                 ]}
+                testID="desktop-workspace-main"
             >
                 {mainContent}
                 {diffViewOpen && canShowFilePanel && (
@@ -1206,7 +1208,7 @@ const workspaceStyles = StyleSheet.create((theme) => ({
     },
     desktopMain: {
         flex: 1,
-        minWidth: 0,
+        minWidth: DESKTOP_MAIN_MIN_WIDTH,
     },
     desktopPanelClip: {
         minWidth: 0,

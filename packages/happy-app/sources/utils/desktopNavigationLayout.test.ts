@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+    DESKTOP_MAIN_MIN_WIDTH,
+    getDesktopPanelResizeWidth,
+    getDesktopPanelShortcutPresentation,
     getDesktopSidebarWidth,
     getDesktopRightPanelWidth,
     getDesktopRightPanelPresentation,
@@ -8,6 +11,8 @@ import {
     getPersistentHeaderPointerEvents,
     getPersistentHeaderContentInset,
     getPersistentNavigationControlsWidth,
+    getDesktopWorkspacePanelWidths,
+    isDesktopRightPanelRoute,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
 } from './desktopNavigationLayout';
 
@@ -28,6 +33,82 @@ describe('desktopNavigationLayout', () => {
         { width: 1500, expected: 360 },
     ])('calculates a compact desktop right panel width at $width px', ({ width, expected }) => {
         expect(getDesktopRightPanelWidth(width)).toBe(expected);
+    });
+
+    it('keeps the middle workspace at its minimum while fitting both requested panel widths', () => {
+        const widths = getDesktopWorkspacePanelWidths({
+            leftVisible: true,
+            requestedLeftWidth: 640,
+            requestedRightWidth: 640,
+            rightVisible: true,
+            windowWidth: 1280,
+        });
+
+        expect(widths.left + widths.main + widths.right).toBe(1280);
+        expect(widths.main).toBe(DESKTOP_MAIN_MIN_WIDTH);
+        expect(widths.left).toBeGreaterThanOrEqual(250);
+        expect(widths.right).toBeGreaterThanOrEqual(280);
+    });
+
+    it('lets one visible panel use the space released by the other panel', () => {
+        expect(getDesktopWorkspacePanelWidths({
+            leftVisible: true,
+            requestedLeftWidth: 640,
+            requestedRightWidth: 640,
+            rightVisible: false,
+            windowWidth: 1280,
+        })).toEqual({ left: 640, main: 640, right: 0 });
+    });
+
+    it('clamps the actively resized panel without shrinking the opposite panel', () => {
+        expect(getDesktopPanelResizeWidth({
+            desiredWidth: 900,
+            oppositePanelVisible: true,
+            oppositePanelWidth: 320,
+            side: 'left',
+            windowWidth: 1280,
+        })).toBe(480);
+        expect(getDesktopPanelResizeWidth({
+            desiredWidth: 900,
+            oppositePanelVisible: false,
+            oppositePanelWidth: 320,
+            side: 'left',
+            windowWidth: 1280,
+        })).toBe(800);
+        expect(getDesktopPanelResizeWidth({
+            desiredWidth: 1500,
+            oppositePanelVisible: true,
+            oppositePanelWidth: 320,
+            side: 'left',
+            windowWidth: 1920,
+        })).toBe(1120);
+    });
+
+    it('renders platform-correct shortcut hints and ARIA tokens', () => {
+        expect(getDesktopPanelShortcutPresentation('MacIntel')).toEqual({
+            leftAria: 'Meta+B',
+            leftLabel: '⌘B',
+            rightAria: 'Alt+Meta+B',
+            rightLabel: '⌥⌘B',
+        });
+        expect(getDesktopPanelShortcutPresentation('Win32')).toEqual({
+            leftAria: 'Control+B',
+            leftLabel: 'Ctrl+B',
+            rightAria: 'Alt+Control+B',
+            rightLabel: 'Alt+Ctrl+B',
+        });
+    });
+
+    it.each([
+        ['/', true],
+        ['/new', true],
+        ['/session/abc', true],
+        ['/session/abc/', true],
+        ['/session/search', false],
+        ['/session/abc/info', false],
+        ['/settings', false],
+    ] as const)('resolves right-panel support for route %s', (pathname, expected) => {
+        expect(isDesktopRightPanelRoute(pathname)).toBe(expected);
     });
 
     it('only enables the persistent right panel for supported wide desktop layouts', () => {
@@ -124,6 +205,19 @@ describe('desktopNavigationLayout', () => {
             headerMaxWidth: Number.POSITIVE_INFINITY,
             headerHorizontalPadding: 16,
             sidebarVisible: false,
+            buttonCount: 3,
+            controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+            targetHitSlop: 8,
+        })).toBe(300);
+    });
+
+    it('uses a resized sidebar width when protecting header controls', () => {
+        expect(getPersistentHeaderContentInset({
+            windowWidth: 1280,
+            headerMaxWidth: 800,
+            headerHorizontalPadding: 16,
+            sidebarVisible: true,
+            sidebarWidth: 480,
             buttonCount: 3,
             controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
             targetHitSlop: 8,

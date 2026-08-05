@@ -21,6 +21,8 @@ describe('localSettings desktop workspace panels', () => {
     it('keeps both desktop panels expanded by default', () => {
         expect(localSettingsDefaults.desktopLeftSidebarCollapsed).toBe(false);
         expect(localSettingsDefaults.desktopRightPanelCollapsed).toBe(false);
+        expect(localSettingsDefaults.desktopLeftSidebarWidth).toBe(360);
+        expect(localSettingsDefaults.desktopRightPanelWidth).toBe(320);
     });
 
     it('preserves independent collapse preferences when older data only has Zen mode', () => {
@@ -29,6 +31,8 @@ describe('localSettings desktop workspace panels', () => {
         expect(parsed.zenMode).toBe(true);
         expect(parsed.desktopLeftSidebarCollapsed).toBe(false);
         expect(parsed.desktopRightPanelCollapsed).toBe(false);
+        expect(parsed.desktopLeftSidebarWidth).toBe(360);
+        expect(parsed.desktopRightPanelWidth).toBe(320);
     });
 
     it('restores independently stored panel preferences', () => {
@@ -36,10 +40,14 @@ describe('localSettings desktop workspace panels', () => {
             zenMode: false,
             desktopLeftSidebarCollapsed: true,
             desktopRightPanelCollapsed: false,
+            desktopLeftSidebarWidth: 412,
+            desktopRightPanelWidth: 388,
         });
 
         expect(parsed.desktopLeftSidebarCollapsed).toBe(true);
         expect(parsed.desktopRightPanelCollapsed).toBe(false);
+        expect(parsed.desktopLeftSidebarWidth).toBe(412);
+        expect(parsed.desktopRightPanelWidth).toBe(388);
     });
 });
 
