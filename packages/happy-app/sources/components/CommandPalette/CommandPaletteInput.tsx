@@ -4,25 +4,34 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { useUnistyles } from 'react-native-unistyles';
 import { multiplyColorOpacity } from '@/utils/colorOpacity';
+import { COMMAND_PALETTE_RESULTS_ID } from './types';
 
 interface CommandPaletteInputProps {
     value: string;
     onChangeText: (text: string) => void;
     onKeyPress?: (key: string) => void;
     inputRef?: React.RefObject<TextInput | null>;
+    activeDescendantId?: string;
 }
 
-export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef }: CommandPaletteInputProps) {
+export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef, activeDescendantId }: CommandPaletteInputProps) {
     const { theme } = useUnistyles();
     const handleKeyDown = React.useCallback((e: any) => {
         if (Platform.OS === 'web' && onKeyPress) {
             const key = e.nativeEvent.key;
+            const digitFromCode = /^(?:Digit|Numpad)([1-9])$/.exec(e.nativeEvent.code)?.[1];
+            const quickSelectDigit = e.nativeEvent.altKey
+                ? digitFromCode ?? (/^[1-9]$/.test(key) ? key : null)
+                : null;
+            const quickSelectKey = quickSelectDigit
+                ? `Alt+${quickSelectDigit}`
+                : null;
             
-            // Handle navigation keys
-            if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(key)) {
+            // Keep bare digits searchable; Alt/Option selects the first nine visible results.
+            if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(key) || quickSelectKey) {
                 e.preventDefault();
                 e.stopPropagation();
-                onKeyPress(key);
+                onKeyPress(quickSelectKey ?? key);
             }
         }
     }, [onKeyPress]);
@@ -51,6 +60,10 @@ export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef 
                 returnKeyType="go"
                 onKeyPress={handleKeyDown}
                 blurOnSubmit={false}
+                role="combobox"
+                aria-expanded
+                aria-controls={COMMAND_PALETTE_RESULTS_ID}
+                aria-activedescendant={activeDescendantId}
             />
         </View>
     );

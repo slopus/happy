@@ -19,7 +19,7 @@ import { usePrefetchFileContents } from '@/hooks/usePrefetchFileContents';
 
 export default React.memo(function FilesScreen() {
     const router = useRouter();
-    const { id: sessionId } = useLocalSearchParams<{ id: string }>();
+    const { id: sessionId, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
 
     const { data: gitStatusFiles, isLoading } = useGitStatusFiles(sessionId!);
 
@@ -28,8 +28,15 @@ export default React.memo(function FilesScreen() {
     const [searchQuery, setSearchQuery] = React.useState('');
     const [searchResults, setSearchResults] = React.useState<FileItem[]>([]);
     const [isSearching, setIsSearching] = React.useState(false);
+    const searchInputRef = React.useRef<TextInput>(null);
     const gitStatus = useSessionGitStatus(sessionId!);
     const { theme } = useUnistyles();
+
+    React.useEffect(() => {
+        if (focus === 'search') {
+            searchInputRef.current?.focus();
+        }
+    }, [focus]);
 
     // Refs for shaking deleted file items
     const shakerRefs = React.useRef(new Map<string, ShakeInstance>());
@@ -195,6 +202,8 @@ export default React.memo(function FilesScreen() {
                 }}>
                     <Octicons name="search" size={16} color={theme.colors.textSecondary} style={{ marginRight: 8 }} />
                     <TextInput
+                        ref={searchInputRef}
+                        autoFocus={focus === 'search'}
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         placeholder={t('files.searchPlaceholder')}

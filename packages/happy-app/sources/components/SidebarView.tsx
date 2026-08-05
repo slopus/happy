@@ -16,6 +16,7 @@ import { AgentSheet } from './agents/AgentSheet';
 import { useAgentSpace } from '@/hooks/useAgentSpace';
 import { AgentSpaceWorkbench } from './agents/AgentSpaceWorkbench';
 import { SidebarAccountMenu } from './SidebarAccountMenu';
+import { useCommandPaletteLauncher } from './CommandPalette/CommandPaletteProvider';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -205,6 +206,7 @@ export const SidebarView = React.memo(({
     const [sheetOpen, setSheetOpen] = React.useState(false);
     const [accountMenuOpen, setAccountMenuOpen] = React.useState(false);
     const { agent: spaceAgent, exit: exitSpace } = useAgentSpace();
+    const commandPaletteLauncher = useCommandPaletteLauncher();
     const displayName = getDisplayName(profile) ?? t('settings.title');
 
     const closeDrawer = React.useCallback(() => {
@@ -226,6 +228,15 @@ export const SidebarView = React.memo(({
         exitSpace();
         go('/');
     }, [exitSpace, go]);
+
+    const openSessionSearch = React.useCallback(() => {
+        if (commandPaletteLauncher?.isAvailable) {
+            closeDrawer();
+            commandPaletteLauncher.open();
+            return;
+        }
+        go('/session/search');
+    }, [closeDrawer, commandPaletteLauncher, go]);
 
     // 「Agent 空间模式」：进入某个 Agent 后，整个侧栏收敛为该 Agent 的专属工作台，
     // 隐藏全局用户卡/收件箱/会话列表，只看本空间。退出空间即回落到下面的常规侧栏。
@@ -320,7 +331,8 @@ export const SidebarView = React.memo(({
 
             {/* Search history sessions */}
             <Pressable
-                onPress={() => go('/session/search')}
+                onPress={openSessionSearch}
+                testID="sidebar-command-palette-button"
                 style={({ pressed }) => [
                     styles.newSessionButton,
                     desktopDensity && styles.newSessionButtonDesktop,

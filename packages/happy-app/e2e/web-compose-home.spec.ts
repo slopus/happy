@@ -26,7 +26,18 @@ async function pauseForRecordedReview(page: Page, duration = 650): Promise<void>
     }
 }
 
-async function createE2ESession(request: APIRequestContext): Promise<string> {
+type CreateE2ESessionOptions = {
+    path?: string;
+    host?: string;
+    name?: string;
+    summary?: string;
+    flavor?: string;
+};
+
+async function createE2ESession(
+    request: APIRequestContext,
+    options: CreateE2ESessionOptions = {},
+): Promise<string> {
     const authUrl = new URL(authenticatedWebUrl);
     const token = authUrl.searchParams.get('dev_token');
     const secret = authUrl.searchParams.get('dev_secret');
@@ -36,10 +47,11 @@ async function createE2ESession(request: APIRequestContext): Promise<string> {
 
     const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
     const metadata = encodeBase64(encryptLegacy({
-        path: '/tmp/paws-sidebar-e2e',
-        host: 'playwright',
-        name: 'Sidebar active-session regression',
-        flavor: 'codex',
+        path: options.path ?? '/tmp/paws-sidebar-e2e',
+        host: options.host ?? 'playwright',
+        name: options.name ?? 'Sidebar active-session regression',
+        ...(options.summary ? { summary: { text: options.summary, updatedAt: Date.now() } } : {}),
+        flavor: options.flavor ?? 'codex',
         lifecycleState: 'running',
         startedBy: 'terminal',
     }, encryptionKey));
@@ -409,8 +421,7 @@ test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ p
     const featureSwitches = page.getByRole('switch');
     await expect(featureSwitches).toHaveCount(10);
     const commandPaletteSwitch = page.getByRole('switch', { name: 'Command Palette' });
-    await expect(commandPaletteSwitch).not.toBeChecked();
-    await commandPaletteSwitch.click();
+    await expect(commandPaletteSwitch).toBeChecked();
 
     await page.keyboard.press('Meta+KeyK');
     const commandInput = page.getByTestId('command-palette-input');
@@ -457,8 +468,7 @@ test.describe('中文 Web 命令面板', () => {
         await page.goto(new URL('/settings/features', authenticatedWebUrl).toString());
 
         const commandPaletteSwitch = page.getByRole('switch', { name: '命令面板' });
-        await expect(commandPaletteSwitch).not.toBeChecked();
-        await commandPaletteSwitch.click();
+        await expect(commandPaletteSwitch).toBeChecked();
         await page.keyboard.press('Meta+KeyK');
 
         const commandInput = page.getByTestId('command-palette-input');
@@ -474,6 +484,78 @@ test.describe('中文 Web 命令面板', () => {
         await commandPaletteSwitch.click();
         await expect(commandPaletteSwitch).not.toBeChecked();
     });
+});
+
+test('跨项目命令搜索显示可执行命令与会话元数据', async ({ page, request }, testInfo) => {
+    const atlasSessionId = await createE2ESession(request, {
+        path: '/workspace/atlas-web',
+        host: 'studio-mac',
+        name: 'Atlas release workspace',
+        summary: 'Prepare Atlas release preview',
+    });
+    await createE2ESession(request, {
+        path: '/workspace/beta-services',
+        host: 'remote-linux',
+        name: 'Beta service workspace',
+        summary: 'Audit Beta service deployment',
+        flavor: 'claude',
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(authenticatedWebUrl);
+    await expect(page.getByText('Prepare Atlas release preview', { exact: true })).toBeVisible();
+
+    await page.getByTestId('sidebar-command-palette-button').click();
+    const commandInput = page.getByTestId('command-palette-input');
+    await expect(commandInput).toBeFocused();
+    await expect(commandInput).toHaveAttribute('role', 'combobox');
+    await expect(commandInput).toHaveAttribute('aria-activedescendant', 'command-palette-option-new-session');
+    await expect(page.getByRole('listbox')).toBeVisible();
+    await expect(page.getByRole('option', { selected: true })).toHaveCount(1);
+
+    await page.keyboard.press('Meta+KeyK');
+    await page.keyboard.press('Meta+KeyK');
+    await expect(page.getByTestId('command-palette')).toHaveCount(1);
+    await expect(page.getByTestId('command-palette-item-open-project-folder')).toContainText('Folder');
+    const searchFilesCommand = page.getByTestId('command-palette-item-search-project-files');
+    await expect(searchFilesCommand).toContainText('Search Files');
+    await searchFilesCommand.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(350); // Let the modal fade-in finish before visual evidence capture.
+    await page.screenshot({
+        path: testInfo.outputPath('pc-command-search-001-after-1280x900.png'),
+        fullPage: true,
+    });
+
+    await commandInput.fill('atlas-web');
+    const atlasResult = page.getByTestId(/command-palette-item-session-/).filter({
+        hasText: 'Prepare Atlas release preview',
+    });
+    await expect(atlasResult).toBeVisible();
+    await expect(atlasResult).toContainText('atlas-web');
+    await expect(atlasResult).toContainText('studio-mac');
+    await expect(atlasResult).toContainText('Codex');
+    await expect(atlasResult).toContainText('Alt+1');
+    await expect(atlasResult).toHaveAttribute('aria-selected', 'true');
+    await expect(commandInput).toHaveAttribute('aria-activedescendant', await atlasResult.getAttribute('id') ?? '');
+    await expect(atlasResult.getByTestId('command-palette-match').first()).toBeVisible();
+    await page.screenshot({
+        path: testInfo.outputPath('pc-command-search-002-after-1280x900.png'),
+        fullPage: true,
+    });
+
+    await commandInput.fill('2026');
+    await expect(commandInput).toHaveValue('2026');
+
+    await commandInput.fill('atlas-web');
+    await page.keyboard.press('Alt+Digit1');
+    await expect(page).toHaveURL(new RegExp(`/session/${atlasSessionId}$`));
+    await expect(page.getByTestId('session-message-input')).toBeVisible();
+
+    await page.getByTestId('sidebar-command-palette-button').click();
+    const sessionSearchFilesCommand = page.getByTestId('command-palette-item-search-project-files');
+    await sessionSearchFilesCommand.click();
+    await expect(page).toHaveURL(new RegExp(`/session/${atlasSessionId}/files\\?focus=search$`));
+    await expect(page.getByPlaceholder('Search files...')).toBeFocused();
 });
 
 test('Web 账户页不会让用户触发不支持的推送重新注册', async ({ page }) => {

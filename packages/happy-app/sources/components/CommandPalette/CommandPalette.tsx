@@ -3,13 +3,13 @@ import { View, StyleSheet, Platform } from 'react-native';
 import { CommandPaletteInput } from './CommandPaletteInput';
 import { CommandPaletteResults } from './CommandPaletteResults';
 import { useCommandPalette } from './useCommandPalette';
-import { Command } from './types';
+import { Command, CommandPaletteClose, getCommandPaletteOptionId } from './types';
 import { useUnistyles } from 'react-native-unistyles';
 import { multiplyColorOpacity } from '@/utils/colorOpacity';
 
 interface CommandPaletteProps {
     commands: Command[];
-    onClose: () => void;
+    onClose: CommandPaletteClose;
 }
 
 export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
@@ -24,6 +24,8 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
         handleKeyPress,
         setSelectedIndex,
     } = useCommandPalette(commands, onClose);
+    const activeCommand = filteredCategories.flatMap((category) => category.commands)[selectedIndex];
+    const activeDescendantId = activeCommand ? getCommandPaletteOptionId(activeCommand.id) : undefined;
 
     // Only render on web
     if (Platform.OS !== 'web') {
@@ -46,9 +48,11 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
                 onChangeText={handleSearchChange}
                 onKeyPress={handleKeyPress}
                 inputRef={inputRef}
+                activeDescendantId={activeDescendantId}
             />
             <CommandPaletteResults
                 categories={filteredCategories}
+                searchQuery={searchQuery}
                 selectedIndex={selectedIndex}
                 onSelectCommand={handleSelectCommand}
                 onSelectionChange={setSelectedIndex}

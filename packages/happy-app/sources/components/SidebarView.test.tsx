@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
     dispatch: vi.fn(),
     exitSpace: vi.fn(),
     navigate: vi.fn(),
+    openCommandPalette: vi.fn(),
+    commandPaletteAvailable: false,
     spaceAgent: {
         id: 'health',
         name: 'Health',
@@ -81,6 +83,12 @@ vi.mock('@/hooks/useAgentSpace', () => ({
     }),
 }));
 vi.mock('./agents/AgentSpaceWorkbench', () => ({ AgentSpaceWorkbench: 'AgentSpaceWorkbench' }));
+vi.mock('./CommandPalette/CommandPaletteProvider', () => ({
+    useCommandPaletteLauncher: () => ({
+        isAvailable: mocks.commandPaletteAvailable,
+        open: mocks.openCommandPalette,
+    }),
+}));
 
 describe('SidebarView Agent space exit', () => {
     const originalConsoleError = console.error;
@@ -101,6 +109,7 @@ describe('SidebarView Agent space exit', () => {
             imageVariantsPerStyle: 1,
             presets: [],
         };
+        mocks.commandPaletteAvailable = false;
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
@@ -178,6 +187,24 @@ describe('SidebarView Agent space exit', () => {
         expect(renderer.root.findAllByType('Text').some(
             (node: any) => node.props.children === 'agents.empty',
         )).toBe(true);
+
+        act(() => renderer.unmount());
+    });
+
+    it('opens the shared command palette from desktop Search without routing away', () => {
+        mocks.spaceAgent = null;
+        mocks.commandPaletteAvailable = true;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SidebarView closeDrawerOnNavigate={false} desktopDensity />);
+        });
+
+        const searchButton = renderer.root.findByProps({ testID: 'sidebar-command-palette-button' });
+        act(() => searchButton.props.onPress());
+
+        expect(mocks.openCommandPalette).toHaveBeenCalledOnce();
+        expect(mocks.navigate).not.toHaveBeenCalledWith('/session/search');
 
         act(() => renderer.unmount());
     });

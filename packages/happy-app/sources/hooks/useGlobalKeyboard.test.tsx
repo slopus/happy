@@ -90,8 +90,11 @@ describe('useGlobalKeyboard', () => {
         expect(onToggleLeftSidebar).toHaveBeenCalledOnce();
     });
 
-    it('keeps Command+K mapped to the command palette', () => {
+    it('maps both Command+K and Ctrl+K to the command palette', () => {
         keydown({ key: 'k' });
         expect(onCommandPalette).toHaveBeenCalledOnce();
+
+        keydown({ ctrlKey: true, key: 'K', metaKey: false });
+        expect(onCommandPalette).toHaveBeenCalledTimes(2);
     });
 });

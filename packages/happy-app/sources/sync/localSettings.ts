@@ -65,7 +65,7 @@ export const localSettingsDefaults: LocalSettings = {
     debugMode: false,
     devModeEnabled: false,
     voiceUpsellOverride: null,
-    commandPaletteEnabled: false,
+    commandPaletteEnabled: true,
     themePreference: 'adaptive',
     themePack: 'caramel',
     mascot: 'hoodie',

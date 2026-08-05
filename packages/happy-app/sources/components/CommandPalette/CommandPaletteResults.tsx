@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { View, ScrollView, Text, StyleSheet, Platform } from 'react-native';
-import { Command, CommandCategory } from './types';
+import { COMMAND_PALETTE_RESULTS_ID, Command, CommandCategory } from './types';
 import { CommandPaletteItem } from './CommandPaletteItem';
 import { Typography } from '@/constants/Typography';
 import { useUnistyles } from 'react-native-unistyles';
@@ -8,6 +8,7 @@ import { t } from '@/text';
 
 interface CommandPaletteResultsProps {
     categories: CommandCategory[];
+    searchQuery: string;
     selectedIndex: number;
     onSelectCommand: (command: Command) => void;
     onSelectionChange: (index: number) => void;
@@ -15,6 +16,7 @@ interface CommandPaletteResultsProps {
 
 export function CommandPaletteResults({ 
     categories, 
+    searchQuery,
     selectedIndex, 
     onSelectCommand, 
     onSelectionChange 
@@ -57,6 +59,8 @@ export function CommandPaletteResults({
     return (
         <ScrollView 
             ref={scrollViewRef}
+            nativeID={COMMAND_PALETTE_RESULTS_ID}
+            {...(Platform.OS === 'web' ? { role: 'listbox' } as any : {})}
             style={styles.container}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -79,6 +83,8 @@ export function CommandPaletteResults({
                         >
                             <CommandPaletteItem
                                 command={command}
+                                searchQuery={searchQuery}
+                                quickSelectNumber={commandIndex < 9 ? commandIndex + 1 : undefined}
                                 isSelected={isSelected}
                                 onPress={() => onSelectCommand(command)}
                                 onHover={() => onSelectionChange(commandIndex)}
