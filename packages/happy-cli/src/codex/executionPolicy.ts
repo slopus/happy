@@ -1,7 +1,21 @@
 import type { ApprovalPolicy, SandboxMode } from './codexAppServerTypes';
+import type { PermissionMode } from '@/api/types';
+
+const REMOTE_CODEX_PERMISSION_MODES: readonly PermissionMode[] = [
+    'default',
+    'acceptEdits',
+    'read-only',
+    'safe-yolo',
+    'yolo',
+];
+
+export function isRemoteCodexPermissionMode(value: string | null | undefined): value is PermissionMode {
+    return typeof value === 'string'
+        && REMOTE_CODEX_PERMISSION_MODES.includes(value as PermissionMode);
+}
 
 export function resolveCodexExecutionPolicy(
-    permissionMode: import('@/api/types').PermissionMode,
+    permissionMode: PermissionMode,
     sandboxManagedByHappy: boolean,
 ): { approvalPolicy?: ApprovalPolicy; sandbox?: SandboxMode } {
     if (sandboxManagedByHappy) {

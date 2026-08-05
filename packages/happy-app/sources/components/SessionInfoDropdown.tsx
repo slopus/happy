@@ -1,16 +1,10 @@
 import * as React from 'react';
 import { View, Text, Pressable, Platform, Image as RNImage, LayoutAnimation } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
-import {
-    getAvailablePermissionModes,
-    resolveCurrentOption,
-} from '@/components/modelModeOptions';
-import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
-import { sessionSetPermissionMode } from '@/sync/ops';
 import { storage, useSetting } from '@/sync/storage';
 import { t } from '@/text';
 import { Modal } from '@/modal';
@@ -21,6 +15,8 @@ import {
     canKeepSessionInfoExpansion,
     type SessionInfoExpandedRow,
 } from '@/utils/sessionInfoDropdownState';
+import { useSessionTaskPermission } from '@/hooks/useSessionTaskPermission';
+import type { TaskPermissionLevel } from '@/utils/taskPermissionModes';
 
 // Agent icon assets — mirrors SessionConfigPanel so the panel reads identically.
 const agentIcons = {
@@ -44,21 +40,8 @@ const AGENT_LABELS: Record<string, string> = {
 type AgentKey = keyof typeof agentIcons;
 
 // Permission glyph, matching SessionConfigPanel's getPermissionStyle.
-function permissionIcon(key: string | undefined): 'play-forward' | 'pause' | 'shield-outline' {
-    switch (key) {
-        case 'acceptEdits':
-        case 'auto_edit':
-        case 'dontAsk':
-        case 'safe-yolo':
-        case 'bypassPermissions':
-        case 'yolo':
-            return 'play-forward';
-        case 'plan':
-        case 'read-only':
-            return 'pause';
-        default:
-            return 'shield-outline';
-    }
+function permissionIcon(level: TaskPermissionLevel | null): 'warning-outline' | 'shield-checkmark-outline' {
+    return level === 'full-access' ? 'warning-outline' : 'shield-checkmark-outline';
 }
 
 /**
@@ -106,15 +89,16 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
     // Resolve the session's current model / permission / effort display names the
     // same way SessionViewLoaded does, so the panel matches the chat's selectors.
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
-    const effectiveAgentDefaults = React.useMemo(() => resolveAgentDefaultConfig(agentDefaultOverrides, flavor), [agentDefaultOverrides, flavor]);
-
-    const availableModes = React.useMemo(() => getAvailablePermissionModes(flavor, metadata, t), [flavor, metadata]);
-
-    const permissionMode = React.useMemo(() => resolveCurrentOption(availableModes, [
-        session.permissionMode,
-        metadata?.currentOperatingModeCode,
-        effectiveAgentDefaults.permissionMode,
-    ]), [availableModes, session.permissionMode, effectiveAgentDefaults.permissionMode, metadata?.currentOperatingModeCode]);
+    const taskPermission = useSessionTaskPermission(session, online);
+    const permissionOptions = [
+        { key: 'confirm', name: t('agentInput.taskPermission.confirm') },
+        { key: 'full-access', name: t('agentInput.taskPermission.fullAccess') },
+    ];
+    const permissionLabel = taskPermission.level === 'full-access'
+        ? t('agentInput.taskPermission.fullAccess')
+        : taskPermission.supported
+            ? t('agentInput.taskPermission.confirm')
+            : t('agentInput.taskPermission.unavailable');
 
     const turnModes = React.useMemo(() => resolveRunningSessionTurnModes({
         session,
@@ -130,7 +114,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
 
     // Only the rows with a real choice (>1 option) become tappable; otherwise
     // there's nothing to switch to and they stay read-only.
-    const canEditPermission = online && availableModes.length > 1;
+    const canEditPermission = online && taskPermission.supported;
     const canEditModel = online && availableModels.length > 1;
     const canEditEffort = online && availableEffortLevels.length > 1;
 
@@ -160,17 +144,13 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
     // Apply a pick to the running session. The value is always persisted for
     // future turns via message meta; Codex also receives an immediate RPC update
     // so a turn already blocked on permissions can continue.
-    const applyPermission = React.useCallback((key: string) => {
-        if (!online) return;
-        storage.getState().updateSessionPermissionMode(session.id, key);
-        if (flavor === 'codex') {
-            void sessionSetPermissionMode(session.id, key).catch((error) => {
-                console.error('Failed to push permission mode to running Codex session:', error);
-            });
+    const applyPermission = React.useCallback(async (key: string) => {
+        const applied = await taskPermission.onLevelChange(key as TaskPermissionLevel);
+        if (applied) {
+            animateNext();
+            setExpanded(null);
         }
-        animateNext();
-        setExpanded(null);
-    }, [session.id, animateNext, flavor, online]);
+    }, [animateNext, taskPermission.onLevelChange]);
     const applyModel = React.useCallback((key: string) => {
         if (!online) return;
         storage.getState().updateSessionModelMode(session.id, key);
@@ -193,7 +173,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
     const renderOptions = (
         options: { key: string; name: string }[],
         currentKey: string | undefined,
-        onSelect: (key: string) => void,
+        onSelect: (key: string) => void | Promise<void>,
     ) => (
         <View style={styles.optionList}>
             {options.map((opt) => {
@@ -202,7 +182,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                     <Pressable
                         key={opt.key}
                         style={(p) => [styles.optionRow, p.pressed && styles.rowPressed]}
-                        onPress={() => onSelect(opt.key)}
+                        onPress={() => void onSelect(opt.key)}
                     >
                         <Ionicons
                             name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
@@ -302,28 +282,30 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                     {infoExperience.showModelDetails && visibleExpanded === 'effort' ? renderOptions(availableEffortLevels, effortLevel?.key, applyEffort) : null}
 
                     {/* Permission mode — tap to expand when there's more than one. */}
-                    {infoExperience.showPermission && permissionMode?.name ? (
+                    {infoExperience.showPermission ? (
                         canEditPermission ? (
                             <Pressable
                                 style={(p) => [styles.configRow, p.pressed && styles.rowPressed]}
                                 onPress={() => toggle('permission')}
                             >
-                                <Ionicons name={permissionIcon(permissionMode.key)} size={15} color={theme.colors.textSecondary} />
+                                <Ionicons name={permissionIcon(taskPermission.level)} size={15} color={theme.colors.textSecondary} />
                                 <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
-                                    {permissionMode.name}
+                                    {permissionLabel}
                                 </Text>
                                 <Ionicons name={visibleExpanded === 'permission' ? 'chevron-up' : 'chevron-down'} size={13} color={theme.colors.textSecondary} />
                             </Pressable>
                         ) : (
                             <View style={styles.configRow}>
-                                <Ionicons name={permissionIcon(permissionMode.key)} size={15} color={theme.colors.textSecondary} />
+                                <Ionicons name={permissionIcon(taskPermission.level)} size={15} color={theme.colors.textSecondary} />
                                 <Text style={[styles.configLabel, styles.configValueText]} numberOfLines={1}>
-                                    {permissionMode.name}
+                                    {taskPermission.unavailableReason ?? permissionLabel}
                                 </Text>
                             </View>
                         )
                     ) : null}
-                    {infoExperience.showPermission && visibleExpanded === 'permission' ? renderOptions(availableModes, permissionMode?.key, applyPermission) : null}
+                    {infoExperience.showPermission && visibleExpanded === 'permission'
+                        ? renderOptions(permissionOptions, taskPermission.level ?? 'confirm', applyPermission)
+                        : null}
 
                     {/* Divider + entry into the full info screen (the one tappable row). */}
                     <View style={styles.divider} />

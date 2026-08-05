@@ -548,11 +548,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 currentPermissionMode,
                 message.meta.permissionMode,
                 sandboxEnabled,
+                message.meta.permissionModeExplicit === true,
             );
             currentPermissionMode = messagePermissionMode;
             const ignoredDefaultDowngrade =
                 (previousPermissionMode === 'bypassPermissions' || previousPermissionMode === 'yolo')
                 && message.meta.permissionMode === 'default'
+                && message.meta.permissionModeExplicit !== true
                 && currentPermissionMode === previousPermissionMode;
             if (ignoredDefaultDowngrade) {
                 logger.debug(`[loop] Ignoring permission mode downgrade from ${previousPermissionMode} to default`);

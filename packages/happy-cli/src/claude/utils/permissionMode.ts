@@ -111,20 +111,22 @@ function isClaudeBypassEquivalent(mode: PermissionMode | undefined): boolean {
  * Happy app versions can send `permissionMode: "default"` with every message
  * even when the CLI process was started in yolo/bypass mode. Since Claude maps
  * both `yolo` and `bypassPermissions` to bypass at the SDK boundary, do not let
- * that ambient default downgrade either mode, but still allow explicit modes
- * such as plan to take effect.
+ * that ambient default downgrade either mode. A newer app can mark a
+ * per-session selection as explicit, which makes switching back to default a
+ * real user request. Explicit modes such as plan continue to take effect.
  */
 export function resolveRemoteClaudePermissionMode(
     currentMode: PermissionMode | undefined,
     incomingMode: PermissionMode | undefined,
     sandboxEnabled: boolean,
+    incomingModeExplicit = false,
 ): PermissionMode | undefined {
     if (!incomingMode) {
         return currentMode;
     }
 
     const nextMode = applySandboxPermissionPolicy(incomingMode, sandboxEnabled);
-    if (isClaudeBypassEquivalent(currentMode) && nextMode === 'default') {
+    if (!incomingModeExplicit && isClaudeBypassEquivalent(currentMode) && nextMode === 'default') {
         return currentMode;
     }
 

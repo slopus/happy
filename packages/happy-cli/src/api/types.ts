@@ -239,6 +239,7 @@ export type Machine = {
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
+  permissionModeExplicit: z.boolean().optional(), // True when the user selected a per-session mode
   model: z.string().nullable().optional(), // Model name for this message (null = reset)
   effort: z.string().nullable().optional(), // Reasoning / thinking effort for this message (null = reset)
   fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)

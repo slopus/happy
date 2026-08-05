@@ -38,7 +38,7 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
-import { resolveCodexExecutionPolicy } from './executionPolicy';
+import { isRemoteCodexPermissionMode, resolveCodexExecutionPolicy } from './executionPolicy';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
@@ -477,13 +477,6 @@ export async function runCodex(opts: {
     // accepted and then fall through to the `default` branch in
     // resolveCodexExecutionPolicy() — or worse, an attacker-chosen valid value
     // could escalate sandbox scope (issue #1092).
-    const VALID_REMOTE_PERMISSION_MODES: readonly PermissionMode[] = [
-        'default',
-        'read-only',
-        'safe-yolo',
-        'yolo',
-    ];
-
     const applyPermissionMode = (mode: PermissionMode, source: string) => {
         currentPermissionMode = mode;
         permissionHandler?.setPermissionMode(mode);
@@ -559,7 +552,7 @@ export async function runCodex(opts: {
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
             const incoming = message.meta.permissionMode as PermissionMode;
-            if (VALID_REMOTE_PERMISSION_MODES.includes(incoming)) {
+            if (isRemoteCodexPermissionMode(incoming)) {
                 messagePermissionMode = incoming;
                 applyPermissionMode(messagePermissionMode, 'user message');
             } else {
@@ -839,7 +832,7 @@ export async function runCodex(opts: {
     permissionHandler.reset('Previous CLI process exited before responding');
     session.rpcHandlerManager.registerHandler<{ mode: string }, boolean>('setPermissionMode', async (request) => {
         const incoming = request?.mode;
-        if (!incoming || !VALID_REMOTE_PERMISSION_MODES.includes(incoming as PermissionMode)) {
+        if (!isRemoteCodexPermissionMode(incoming)) {
             logger.debug(`[Codex] Ignoring invalid RPC permission mode: ${String(incoming)}`);
             return false;
         }

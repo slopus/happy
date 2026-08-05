@@ -4,6 +4,7 @@ import { z } from 'zod';
 export const MessageMetaSchema = z.object({
     sentFrom: z.string().optional(), // Source identifier
     permissionMode: z.string().optional(), // Permission mode key for this message
+    permissionModeExplicit: z.boolean().optional(), // True when the user selected a per-session mode
     model: z.string().nullable().optional(), // Model name for this message (null = reset)
     fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)
     customSystemPrompt: z.string().nullable().optional(), // Custom system prompt for this message (null = reset)

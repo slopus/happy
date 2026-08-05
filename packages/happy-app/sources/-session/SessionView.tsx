@@ -52,6 +52,7 @@ import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { useOverlayNav } from '@/-session/sessionOverlayNav';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
+import { useSessionTaskPermission } from '@/hooks/useSessionTaskPermission';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import * as Application from 'expo-application';
 import * as Clipboard from 'expo-clipboard';
@@ -712,6 +713,7 @@ function SessionViewLoaded({
     const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
     const isDisconnected = !sessionStatus.isConnected;
     const resumeCommandBlock = getResumeCommandBlock(session);
+    const permissionSelector = useSessionTaskPermission(session, !isDisconnected);
 
     const nextTurnModes = React.useMemo(() => resolveRunningSessionTurnModes({
         session,
@@ -945,6 +947,7 @@ function SessionViewLoaded({
             usageData={usageData}
             alwaysShowContextSize={alwaysShowContextSize}
             zenMode={zenMode}
+            permissionSelector={permissionSelector}
             modeSelector={modeSelector}
         />
     );
