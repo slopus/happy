@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { expectProductionRedactionReady, installProductionRedaction } from './productionRedaction';
 
 const viewports = [
     { name: 'pc-narrow', width: 1470, height: 863 },
@@ -52,54 +53,6 @@ function safeText(value: string, maxLength = 500): string {
         .replace(/[A-Z2-7]{5}(?:-[A-Z2-7]{5}){5,}/gi, '<redacted-secret>')
         .replace(/(?:bearer|token|authorization)\s*[:=]?\s*[^\s,;]+/gi, '$1=<redacted>')
         .slice(0, maxLength);
-}
-
-async function installProductionRedaction(page: Page): Promise<void> {
-    await page.addInitScript(() => {
-        const install = () => {
-            if (document.getElementById('paws-e2e-redaction-style')) return;
-            const style = document.createElement('style');
-            style.id = 'paws-e2e-redaction-style';
-            style.textContent = `
-                [data-testid="sidebar-user-card"] {
-                    filter: blur(14px) !important;
-                }
-                [data-testid="session-files-sidebar"] > :not(:first-child) {
-                    filter: blur(14px) !important;
-                }
-            `;
-            document.documentElement.appendChild(style);
-
-            const sidebarMask = document.createElement('div');
-            sidebarMask.id = 'paws-e2e-sidebar-mask';
-            Object.assign(sidebarMask.style, {
-                position: 'fixed',
-                inset: '0 auto 0 0',
-                width: '0px',
-                background: '#111',
-                zIndex: '2147483647',
-                pointerEvents: 'none',
-            });
-            document.documentElement.appendChild(sidebarMask);
-            const updateSidebarMask = () => {
-                const userCard = document.querySelector('[data-testid="sidebar-user-card"]');
-                if (!(userCard instanceof HTMLElement)) return;
-                const rect = userCard.getBoundingClientRect();
-                sidebarMask.style.width = `${Math.ceil(rect.right + rect.left)}px`;
-            };
-            updateSidebarMask();
-            new MutationObserver(updateSidebarMask).observe(document.documentElement, {
-                childList: true,
-                subtree: true,
-            });
-            window.addEventListener('resize', updateSidebarMask);
-        };
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', install, { once: true });
-        } else {
-            install();
-        }
-    });
 }
 
 function captureSafeDiagnostics(page: Page): SafeDiagnostic[] {
@@ -259,6 +212,7 @@ async function assertRealFilePanelAndHeaderGeometry(
 ): Promise<void> {
     for (const viewport of viewports) {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await expectProductionRedactionReady(page);
 
         const filesSidebar = page.locator('[data-testid="session-files-sidebar"]:visible');
         await expect(filesSidebar).toBeVisible();

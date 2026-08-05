@@ -72,7 +72,7 @@ vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }
 vi.mock('./useDrawerHaptics', () => ({ useDrawerHaptics: () => undefined }));
 vi.mock('./VoiceAssistantStatusBar', () => ({ VoiceAssistantStatusBar: 'VoiceAssistantStatusBar' }));
 vi.mock('./MainView', () => ({ MainView: 'MainView' }));
-vi.mock('./ProfileAvatarControl', () => ({ ProfileAvatarControl: 'ProfileAvatarControl' }));
+vi.mock('./SidebarAccountMenu', () => ({ SidebarAccountMenu: 'SidebarAccountMenu' }));
 vi.mock('./agents/AgentSheet', () => ({ AgentSheet: 'AgentSheet' }));
 vi.mock('@/hooks/useAgentSpace', () => ({
     useAgentSpace: () => ({
@@ -154,7 +154,8 @@ describe('SidebarView Agent space exit', () => {
         });
 
         expect(renderer.root.findAllByProps({ testID: 'sidebar-desktop-density' })).toHaveLength(1);
-        expect(renderer.root.findByType('ProfileAvatarControl').props.size).toBe(32);
+        expect(renderer.root.findByType('SidebarAccountMenu').props.desktopDensity).toBe(true);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-user-card' })).toHaveLength(0);
         expect(renderer.root.findAllByType('MainView')).toHaveLength(1);
         expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'agents.empty')).toBe(false);
 
@@ -172,7 +173,8 @@ describe('SidebarView Agent space exit', () => {
         });
 
         expect(renderer.root.findAllByProps({ testID: 'sidebar-desktop-density' })).toHaveLength(0);
-        expect(renderer.root.findByType('ProfileAvatarControl').props.size).toBe(40);
+        expect(renderer.root.findByType('SidebarAccountMenu').props.desktopDensity).toBe(false);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-user-card' })).toHaveLength(0);
         expect(renderer.root.findAllByType('Text').some(
             (node: any) => node.props.children === 'agents.empty',
         )).toBe(true);
