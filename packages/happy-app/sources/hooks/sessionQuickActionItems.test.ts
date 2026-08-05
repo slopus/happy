@@ -13,6 +13,7 @@ const labels = {
     copyMetadata: 'Copy metadata',
     copyMetadataAndLogs: 'Copy metadata & logs',
     archive: 'Archive',
+    restore: 'Restore',
     delete: 'Delete',
     select: 'Select',
 };
@@ -28,6 +29,7 @@ const callbacks = {
     copySessionMetadata: vi.fn(),
     copySessionMetadataAndLogs: vi.fn(),
     archiveSession: vi.fn(),
+    restoreSession: vi.fn(),
     deleteSession: vi.fn(),
 };
 
@@ -45,6 +47,7 @@ describe('buildSessionQuickActionItems', () => {
             canCopySessionMetadata: false,
             sessionPinned: false,
             sessionActive: true,
+            sessionArchived: false,
             canSelect: true,
         });
 
@@ -68,6 +71,7 @@ describe('buildSessionQuickActionItems', () => {
             canCopySessionMetadata: false,
             sessionPinned: true,
             sessionActive: false,
+            sessionArchived: true,
             canSelect: false,
         });
 
@@ -75,23 +79,25 @@ describe('buildSessionQuickActionItems', () => {
             'unpin',
             'details',
             'rename',
+            'restore',
             'delete',
         ]);
     });
 
-    it('offers delete but not archive for inactive sessions', () => {
+    it('offers restore but neither archive nor resume for archived sessions', () => {
         const items = buildSessionQuickActionItems({
             labels,
             callbacks: {
                 ...callbacks,
                 selectSession: vi.fn(),
             },
-            canShowResume: false,
+            canShowResume: true,
             canRegenerateTitle: false,
             canFork: false,
             canCopySessionMetadata: false,
             sessionPinned: false,
             sessionActive: false,
+            sessionArchived: true,
             canSelect: false,
         });
 
@@ -99,6 +105,7 @@ describe('buildSessionQuickActionItems', () => {
             'pin',
             'details',
             'rename',
+            'restore',
             'delete',
         ]);
     });
@@ -113,6 +120,7 @@ describe('buildSessionQuickActionItems', () => {
             canCopySessionMetadata: false,
             sessionPinned: false,
             sessionActive: true,
+            sessionArchived: false,
         });
 
         expect(items.map(item => item.id)).toEqual([

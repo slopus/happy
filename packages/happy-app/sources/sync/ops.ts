@@ -5,7 +5,8 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
-import type { MachineMetadata, Metadata } from './storageTypes';
+import type { MachineMetadata, Metadata, Session } from './storageTypes';
+import { markSessionArchiveRequested, markSessionRestored } from '@/utils/sessionLifecycle';
 
 // Strict type definitions for all operations
 
@@ -620,6 +621,34 @@ export async function sessionUpdateMetadata(
     throw new Error(`Failed to update session metadata after ${maxRetries} retries due to version conflicts`);
 }
 
+export async function sessionRequestArchiveMetadata(
+    session: Pick<Session, 'id' | 'metadata' | 'metadataVersion'>,
+): Promise<{ version: number; metadata: Metadata }> {
+    if (!session.metadata) {
+        throw new Error('Session metadata is unavailable');
+    }
+    return sessionUpdateMetadata(
+        session.id,
+        session.metadata,
+        session.metadataVersion,
+        metadata => markSessionArchiveRequested(metadata, Date.now()),
+    );
+}
+
+export async function sessionRestoreMetadata(
+    session: Pick<Session, 'id' | 'metadata' | 'metadataVersion'>,
+): Promise<{ version: number; metadata: Metadata }> {
+    if (!session.metadata) {
+        throw new Error('Session metadata is unavailable');
+    }
+    return sessionUpdateMetadata(
+        session.id,
+        session.metadata,
+        session.metadataVersion,
+        metadata => markSessionRestored(metadata, Date.now()),
+    );
+}
+
 /**
  * Abort the current session operation
  */
@@ -871,8 +900,9 @@ export async function sessionRegenerateTitle(
 }
 
 /**
- * Archive a session by deactivating it on the server.
- * Use this when the CLI process is already dead and sessionKill can't reach it.
+ * Deactivate transport presence after encrypted lifecycle metadata has marked
+ * the session archived. Use when the CLI is already dead and cannot report its
+ * own shutdown; this endpoint never owns archive-list membership.
  */
 export async function sessionArchive(sessionId: string): Promise<{ success: boolean; message?: string }> {
     try {

@@ -17,7 +17,14 @@ import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
+import { SessionActionsAnchor } from './SessionActionsPopover';
+import {
+    SessionRowActions,
+    SessionRowDetails,
+    SessionRowLocation,
+    useSessionRowDisclosure,
+    useSessionRowPresentation,
+} from './SessionRowChrome';
 import { storage, useSettingMutable } from '@/sync/storage';
 import { hapticsLight } from './haptics';
 import { t } from '@/text';
@@ -74,10 +81,21 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 16,
         backgroundColor: theme.colors.surface,
     },
+    sessionPressTarget: {
+        alignItems: 'center',
+        flex: 1,
+        flexDirection: 'row',
+        minWidth: 0,
+    },
     sessionItemContainer: {
         marginHorizontal: 16,
         marginBottom: 1,
-        overflow: 'hidden',
+        overflow: 'visible',
+        position: 'relative',
+        zIndex: 0,
+    },
+    sessionItemContainerRaised: {
+        zIndex: 40,
     },
     sessionItemFirst: {
         borderTopLeftRadius: 12,
@@ -387,7 +405,12 @@ export function SessionsList() {
 
             case 'archive-toggle':
                 return (
-                    <Pressable style={styles.archiveToggle} onPress={toggleArchived}>
+                    <Pressable
+                        accessibilityRole="button"
+                        style={styles.archiveToggle}
+                        onPress={toggleArchived}
+                        testID="session-archive-toggle"
+                    >
                         <View style={styles.archiveToggleLine} />
                         <Text style={styles.archiveToggleText}>
                             {item.hidden ? t('sidebar.showArchived') : t('sidebar.hideArchived')}
@@ -538,6 +561,8 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
     const { theme } = useUnistyles();
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
+    const disclosure = useSessionRowDisclosure(session.name);
+    const presentation = useSessionRowPresentation(session);
     const baseStatus = STATUS_CONFIG[session.state];
     // Override to solid blue when session has unread results
     const status = session.hasUnread
@@ -593,14 +618,19 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
         onLongPress: handleLongPress,
     };
 
+    const titleHint = Platform.OS === 'web' && disclosure.titleOverflowing
+        ? { title: session.name } as any
+        : {};
+
     return (
         <View style={[
             styles.sessionItemContainer,
+            (disclosure.visible || !!actionsAnchor) && styles.sessionItemContainerRaised,
             isSingle ? styles.sessionItemContainerSingle :
                 isFirst ? styles.sessionItemContainerFirst :
                     isLast ? styles.sessionItemContainerLast : {}
-        ]}>
-        <Pressable
+        ]} ref={disclosure.wrapperRef} {...disclosure.interactionProps as any}>
+        <View
             style={[
                 styles.sessionItem,
                 (selected || bulkSelected || !!actionsAnchor) && styles.sessionItemSelected,
@@ -608,9 +638,16 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
                     isFirst ? styles.sessionItemFirst :
                         isLast ? styles.sessionItemLast : {}
             ]}
-            onPress={handlePress}
-            {...menuProps}
         >
+            <Pressable
+                accessibilityLabel={session.name}
+                accessibilityRole="button"
+                focusable
+                onPress={handlePress}
+                style={styles.sessionPressTarget}
+                testID={`session-row-${session.id}`}
+                {...menuProps}
+            >
             <View style={styles.avatarContainer}>
                 {selectionMode ? (
                     <View style={[styles.selectionCheckbox, bulkSelected && styles.selectionCheckboxSelected]}>
@@ -640,22 +677,12 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
                     <Text style={[
                         styles.sessionTitle,
                         status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
-                    ]} numberOfLines={1}>
+                    ]} numberOfLines={1} testID="session-row-title" {...titleHint}>
                         {session.name}
                     </Text>
                 </View>
 
-                {session.path ? (
-                    <View style={styles.sessionSubtitleRow}>
-                        <Text style={styles.sessionSubtitle} numberOfLines={1}>
-                            {session.path.split(/[/\\]/).filter(Boolean).pop()}
-                        </Text>
-                    </View>
-                ) : (
-                    <Text style={styles.sessionSubtitle} numberOfLines={1}>
-                        {session.subtitle}
-                    </Text>
-                )}
+                <SessionRowLocation presentation={presentation} />
 
                 <View style={styles.statusRow}>
                     <View style={styles.statusDotContainer}>
@@ -669,14 +696,18 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
                     </Text>
                 </View>
             </View>
-        </Pressable>
-        <SessionActionsPopover
-            anchor={actionsAnchor}
-            onClose={() => setActionsAnchor(null)}
-            onSelectSession={onStartSelection ? () => onStartSelection(session.id) : undefined}
-            sessionId={session.id}
-            visible={!!actionsAnchor}
-        />
+            </Pressable>
+            {!selectionMode ? (
+                <SessionRowActions
+                    contextAnchor={actionsAnchor}
+                    onContextAnchorChange={setActionsAnchor}
+                    onStartSelection={onStartSelection ? () => onStartSelection(session.id) : undefined}
+                    sessionId={session.id}
+                    visible={disclosure.visible}
+                />
+            ) : null}
+        </View>
+        <SessionRowDetails presentation={presentation} visible={!selectionMode && disclosure.visible} />
         </View>
     );
 });

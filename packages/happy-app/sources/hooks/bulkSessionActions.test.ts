@@ -7,12 +7,14 @@ const mocks = vi.hoisted(() => ({
     sessionArchive: vi.fn(),
     sessionDelete: vi.fn(),
     sessionKill: vi.fn(),
+    sessionRequestArchiveMetadata: vi.fn(),
 }));
 
 vi.mock('@/sync/ops', () => ({
     sessionArchive: mocks.sessionArchive,
     sessionDelete: mocks.sessionDelete,
     sessionKill: mocks.sessionKill,
+    sessionRequestArchiveMetadata: mocks.sessionRequestArchiveMetadata,
 }));
 
 vi.mock('@/sync/storage', () => ({

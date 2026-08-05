@@ -11,7 +11,7 @@ import { storage, useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionArchive, sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionArchive, sessionKill, sessionDelete, sessionRequestArchiveMetadata } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -167,6 +167,7 @@ function SessionInfoContent({ session }: { session: Session }) {
     const [archivingSession, performArchive] = useHappyAction(async () => {
         // Prompt for worktree cleanup before killing (needs an active machine connection)
         await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+        await sessionRequestArchiveMetadata(session);
 
         // Try to kill the CLI process; if it's already dead, force-archive via server
         const killResult = await sessionKill(session.id);

@@ -28,6 +28,7 @@ interface SessionActionsPopoverProps {
     onClose: () => void;
     sessionId: string;
     visible: boolean;
+    inline?: boolean;
 }
 
 
@@ -84,6 +85,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         position: 'absolute',
         width: WEB_MENU_WIDTH,
     },
+    inlineMenu: {
+        position: 'absolute',
+        right: 0,
+        top: 44,
+        width: WEB_MENU_WIDTH,
+        zIndex: 80,
+    },
 }));
 
 export function SessionActionsPopover({
@@ -94,6 +102,7 @@ export function SessionActionsPopover({
     onClose,
     sessionId,
     visible,
+    inline = false,
 }: SessionActionsPopoverProps) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -171,6 +180,14 @@ export function SessionActionsPopover({
 
     if (!position) {
         return null;
+    }
+
+    if (inline) {
+        return (
+            <View style={styles.inlineMenu} testID="session-actions-inline-menu">
+                {content}
+            </View>
+        );
     }
 
     // Anchored context menu — appears at the press point on all platforms

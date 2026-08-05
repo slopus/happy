@@ -11,19 +11,18 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
         }
 
         const result: SessionListViewItem[] = [];
-        let hasInactive = false;
+        let hasArchived = false;
 
-        // First pass: add active sessions group and check if inactive sessions exist
+        // First pass: add regular sessions and check for explicit lifecycle archives.
         for (const item of data) {
             if (item.type === 'active-sessions') {
                 result.push(item);
-            } else if (item.type === 'session' && !item.session.active) {
-                hasInactive = true;
+            } else if (item.type === 'session' && item.session.archived) {
+                hasArchived = true;
             }
         }
 
-        // Insert archive toggle if there are inactive sessions
-        if (hasInactive) {
+        if (hasArchived) {
             result.push({ type: 'archive-toggle', hidden: hideInactiveSessions });
         }
 
@@ -42,7 +41,7 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
                 }
 
                 if (item.type === 'session') {
-                    if (!item.session.active) {
+                    if (item.session.archived) {
                         if (pendingProjectGroup) {
                             result.push(pendingProjectGroup);
                             pendingProjectGroup = null;
