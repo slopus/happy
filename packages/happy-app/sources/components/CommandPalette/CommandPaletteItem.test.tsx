@@ -71,6 +71,9 @@ describe('CommandPaletteItem', () => {
         });
 
         const item = renderer.root.findByProps({ testID: 'command-palette-item-session-alpha' });
+        expect(item.props.nativeID).toBe('command-palette-option-session-alpha');
+        expect(item.props.role).toBe('option');
+        expect(item.props['aria-selected']).toBe(true);
         expect(item.props.accessibilityLabel).toContain('Mac mini');
         expect(item.props.accessibilityLabel).toContain('Release Agent');
         expect(renderer.root.findAllByProps({ testID: 'command-palette-match' }).map((node: any) => node.props.children))

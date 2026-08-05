@@ -345,7 +345,7 @@ test.describe('中文 Web 命令面板', () => {
 });
 
 test('跨项目命令搜索显示可执行命令与会话元数据', async ({ page, request }, testInfo) => {
-    await createE2ESession(request, {
+    const atlasSessionId = await createE2ESession(request, {
         path: '/workspace/atlas-web',
         host: 'studio-mac',
         name: 'Atlas release workspace',
@@ -366,6 +366,14 @@ test('跨项目命令搜索显示可执行命令与会话元数据', async ({ pa
     await page.getByTestId('sidebar-command-palette-button').click();
     const commandInput = page.getByTestId('command-palette-input');
     await expect(commandInput).toBeFocused();
+    await expect(commandInput).toHaveAttribute('role', 'combobox');
+    await expect(commandInput).toHaveAttribute('aria-activedescendant', 'command-palette-option-new-session');
+    await expect(page.getByRole('listbox')).toBeVisible();
+    await expect(page.getByRole('option', { selected: true })).toHaveCount(1);
+
+    await page.keyboard.press('Meta+KeyK');
+    await page.keyboard.press('Meta+KeyK');
+    await expect(page.getByTestId('command-palette')).toHaveCount(1);
     await expect(page.getByTestId('command-palette-item-open-project-folder')).toContainText('Folder');
     const searchFilesCommand = page.getByTestId('command-palette-item-search-project-files');
     await expect(searchFilesCommand).toContainText('Search Files');
@@ -385,6 +393,8 @@ test('跨项目命令搜索显示可执行命令与会话元数据', async ({ pa
     await expect(atlasResult).toContainText('studio-mac');
     await expect(atlasResult).toContainText('Codex');
     await expect(atlasResult).toContainText('Alt+1');
+    await expect(atlasResult).toHaveAttribute('aria-selected', 'true');
+    await expect(commandInput).toHaveAttribute('aria-activedescendant', await atlasResult.getAttribute('id') ?? '');
     await expect(atlasResult.getByTestId('command-palette-match').first()).toBeVisible();
     await page.screenshot({
         path: testInfo.outputPath('pc-command-search-002-after-1280x900.png'),
@@ -393,6 +403,17 @@ test('跨项目命令搜索显示可执行命令与会话元数据', async ({ pa
 
     await commandInput.fill('2026');
     await expect(commandInput).toHaveValue('2026');
+
+    await commandInput.fill('atlas-web');
+    await page.keyboard.press('Alt+Digit1');
+    await expect(page).toHaveURL(new RegExp(`/session/${atlasSessionId}$`));
+    await expect(page.getByTestId('session-message-input')).toBeVisible();
+
+    await page.getByTestId('sidebar-command-palette-button').click();
+    const sessionSearchFilesCommand = page.getByTestId('command-palette-item-search-project-files');
+    await sessionSearchFilesCommand.click();
+    await expect(page).toHaveURL(new RegExp(`/session/${atlasSessionId}/files\\?focus=search$`));
+    await expect(page.getByPlaceholder('Search files...')).toBeFocused();
 });
 
 test('Web 账户页不会让用户触发不支持的推送重新注册', async ({ page }) => {

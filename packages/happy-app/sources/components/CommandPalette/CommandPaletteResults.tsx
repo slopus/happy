@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { View, ScrollView, Text, StyleSheet, Platform } from 'react-native';
-import { Command, CommandCategory } from './types';
+import { COMMAND_PALETTE_RESULTS_ID, Command, CommandCategory } from './types';
 import { CommandPaletteItem } from './CommandPaletteItem';
 import { Typography } from '@/constants/Typography';
 import { useUnistyles } from 'react-native-unistyles';
@@ -59,6 +59,8 @@ export function CommandPaletteResults({
     return (
         <ScrollView 
             ref={scrollViewRef}
+            nativeID={COMMAND_PALETTE_RESULTS_ID}
+            {...(Platform.OS === 'web' ? { role: 'listbox' } as any : {})}
             style={styles.container}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"

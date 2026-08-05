@@ -36,7 +36,12 @@ describe('CommandPaletteInput keyboard handling', () => {
         vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
         act(() => {
             renderer = TestRenderer.create(
-                <CommandPaletteInput value="" onChangeText={() => {}} onKeyPress={onKeyPress} />,
+                <CommandPaletteInput
+                    value=""
+                    onChangeText={() => {}}
+                    onKeyPress={onKeyPress}
+                    activeDescendantId="command-palette-option-session-alpha"
+                />,
             );
         });
     });
@@ -66,5 +71,13 @@ describe('CommandPaletteInput keyboard handling', () => {
         expect(modifiedDigit.preventDefault).toHaveBeenCalledOnce();
         expect(modifiedDigit.stopPropagation).toHaveBeenCalledOnce();
         expect(onKeyPress).toHaveBeenCalledWith('Alt+1');
+    });
+
+    it('exposes the active option while DOM focus remains in the combobox', () => {
+        const input = renderer.root.findByType('TextInput');
+        expect(input.props.role).toBe('combobox');
+        expect(input.props['aria-expanded']).toBe(true);
+        expect(input.props['aria-controls']).toBe('command-palette-results');
+        expect(input.props['aria-activedescendant']).toBe('command-palette-option-session-alpha');
     });
 });

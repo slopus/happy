@@ -1,7 +1,7 @@
-import React, { createContext, useCallback, useContext, useMemo } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Modal } from '@/modal';
+import { Modal, useModal } from '@/modal';
 import { CommandPalette } from './CommandPalette';
 import { Command } from './types';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
@@ -63,6 +63,8 @@ export function firstUserMessageSummary(messages: Message[] | undefined): string
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const { logout } = useAuth();
+    const { state: modalState, showModal } = useModal();
+    const paletteOpeningRef = useRef(false);
     const sessions = storage(useShallow((state) => state.sessions));
     const firstUserMessageSummaries = storage(useShallow((state) => {
         const summaries: Record<string, string> = {};
@@ -77,6 +79,24 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
     const commandPaletteEnabled = storage(useShallow((state) => state.localSettings.commandPaletteEnabled));
     const currentViewingSessionId = storage(useShallow((state) => state.currentViewingSessionId));
     const navigateToSession = useNavigateToSession();
+    const paletteIsOpen = modalState.modals.some((modal) => (
+        modal.type === 'custom' && modal.component === CommandPalette
+    ));
+
+    useEffect(() => {
+        paletteOpeningRef.current = paletteIsOpen;
+    }, [paletteIsOpen]);
+
+    const confirmLogout = useCallback(async () => {
+        const confirmed = await Modal.confirm(
+            t('common.logout'),
+            t('settingsAccount.logoutConfirm'),
+            { confirmText: t('common.logout'), destructive: true },
+        );
+        if (confirmed) {
+            await logout();
+        }
+    }, [logout]);
 
     // Define available commands
     const commands = useMemo((): Command[] => {
@@ -229,9 +249,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             subtitle: t('settingsAccount.logoutSubtitle'),
             icon: 'log-out-outline',
             category: t('commandPalette.system'),
-            action: async () => {
-                await logout();
-            }
+            action: confirmLogout,
         });
 
         // Dev commands (if in development)
@@ -249,18 +267,22 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         }
 
         return cmds;
-    }, [router, logout, sessions, firstUserMessageSummaries, machines, agents, currentViewingSessionId, navigateToSession]);
+    }, [router, sessions, firstUserMessageSummaries, machines, agents, currentViewingSessionId, navigateToSession, confirmLogout]);
 
     const showCommandPalette = useCallback(() => {
-        if (Platform.OS !== 'web') return;
-        
-        Modal.show({
+        if (Platform.OS !== 'web' || paletteOpeningRef.current) return;
+
+        // Guard synchronously as well as from modal state so a held/repeated
+        // shortcut cannot enqueue two palettes before React re-renders.
+        paletteOpeningRef.current = true;
+        showModal({
+            type: 'custom',
             component: CommandPalette,
             props: {
                 commands,
             }
         } as any);
-    }, [commands]);
+    }, [commands, showModal]);
 
     // The sidebar launcher remains available; this preference only controls the global shortcut.
     useGlobalKeyboard(commandPaletteEnabled ? showCommandPalette : undefined);

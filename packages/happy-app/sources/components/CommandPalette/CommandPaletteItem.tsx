@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform, type StyleProp, type TextStyle } from 'react-native';
-import { Command } from './types';
+import { Command, getCommandPaletteOptionId } from './types';
 import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
@@ -114,7 +114,9 @@ export function CommandPaletteItem({
             },
         ],
         onPress,
-        accessibilityRole: 'button',
+        nativeID: getCommandPaletteOptionId(command.id),
+        role: 'option',
+        'aria-selected': isSelected,
         accessibilityLabel: [
             command.title,
             command.subtitle,

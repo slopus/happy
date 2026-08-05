@@ -3,6 +3,7 @@ import { BaseModal } from './BaseModal';
 import { CustomModalConfig } from '../types';
 import { CommandPaletteModal } from '@/components/CommandPalette/CommandPaletteModal';
 import { CommandPalette } from '@/components/CommandPalette';
+import type { CommandPaletteClose } from '@/components/CommandPalette/types';
 
 interface CustomModalProps {
     config: CustomModalConfig;
@@ -27,11 +28,20 @@ export function CustomModal({ config, onClose }: CustomModalProps) {
 // Helper component to manage CommandPalette animation state
 function CommandPaletteWithAnimation({ config, onClose }: CustomModalProps) {
     const [isClosing, setIsClosing] = React.useState(false);
+    const isClosingRef = React.useRef(false);
     
-    const handleClose = React.useCallback(() => {
+    const handleClose = React.useCallback<CommandPaletteClose>((afterClose) => {
+        if (isClosingRef.current) {
+            return;
+        }
+
+        isClosingRef.current = true;
         setIsClosing(true);
         // Wait for animation to complete before unmounting
-        setTimeout(onClose, 200);
+        setTimeout(() => {
+            onClose();
+            afterClose?.();
+        }, 200);
     }, [onClose]);
     
     return (

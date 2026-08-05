@@ -4,15 +4,17 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { useUnistyles } from 'react-native-unistyles';
 import { multiplyColorOpacity } from '@/utils/colorOpacity';
+import { COMMAND_PALETTE_RESULTS_ID } from './types';
 
 interface CommandPaletteInputProps {
     value: string;
     onChangeText: (text: string) => void;
     onKeyPress?: (key: string) => void;
     inputRef?: React.RefObject<TextInput | null>;
+    activeDescendantId?: string;
 }
 
-export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef }: CommandPaletteInputProps) {
+export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef, activeDescendantId }: CommandPaletteInputProps) {
     const { theme } = useUnistyles();
     const handleKeyDown = React.useCallback((e: any) => {
         if (Platform.OS === 'web' && onKeyPress) {
@@ -58,6 +60,10 @@ export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef 
                 returnKeyType="go"
                 onKeyPress={handleKeyDown}
                 blurOnSubmit={false}
+                role="combobox"
+                aria-expanded
+                aria-controls={COMMAND_PALETTE_RESULTS_ID}
+                aria-activedescendant={activeDescendantId}
             />
         </View>
     );

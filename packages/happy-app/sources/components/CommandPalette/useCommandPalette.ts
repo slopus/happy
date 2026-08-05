@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { TextInput } from 'react-native';
-import { Command, CommandCategory } from './types';
+import { Command, CommandCategory, CommandPaletteClose } from './types';
 
-export function useCommandPalette(commands: Command[], onClose: () => void) {
+export function useCommandPalette(commands: Command[], onClose: CommandPaletteClose) {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedIndex, setSelectedIndex] = useState(0);
     const inputRef = useRef<TextInput>(null);
@@ -65,8 +65,9 @@ export function useCommandPalette(commands: Command[], onClose: () => void) {
     }, [searchQuery]);
 
     const handleSelectCommand = useCallback((command: Command) => {
-        command.action();
-        onClose();
+        // Run navigation and other actions only after the modal has unmounted.
+        // This avoids the web modal restoring focus over the destination screen.
+        onClose(command.action);
     }, [onClose]);
 
     // Get flattened commands for keyboard navigation

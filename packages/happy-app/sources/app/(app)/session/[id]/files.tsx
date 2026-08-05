@@ -203,6 +203,7 @@ export default React.memo(function FilesScreen() {
                     <Octicons name="search" size={16} color={theme.colors.textSecondary} style={{ marginRight: 8 }} />
                     <TextInput
                         ref={searchInputRef}
+                        autoFocus={focus === 'search'}
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         placeholder={t('files.searchPlaceholder')}

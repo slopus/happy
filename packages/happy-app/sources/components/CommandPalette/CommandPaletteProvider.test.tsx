@@ -8,6 +8,8 @@ import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
     modalShow: vi.fn(),
+    modalConfirm: vi.fn(),
+    modalState: { modals: [] as any[] },
     logout: vi.fn(),
     navigateToSession: vi.fn(),
     router: {
@@ -83,7 +85,11 @@ vi.mock('expo-router', () => ({
 }));
 
 vi.mock('@/modal', () => ({
-    Modal: { show: mocks.modalShow },
+    Modal: { confirm: mocks.modalConfirm },
+    useModal: () => ({
+        state: mocks.modalState,
+        showModal: mocks.modalShow,
+    }),
 }));
 
 vi.mock('@/auth/AuthContext', () => ({
@@ -120,6 +126,8 @@ vi.mock('@/text', () => ({
             'settings.developer': '开发',
             'settingsAccount.linkNewDevice': '连接新设备',
             'settingsAccount.logout': '退出登录',
+            'settingsAccount.logoutConfirm': '确定退出登录吗？',
+            'common.logout': '退出登录',
             'machine.untitledSession': '无标题会话',
             'commandPalette.navigation': '导航',
             'commandPalette.recentSessions': '最近会话',
@@ -152,6 +160,13 @@ describe('CommandPaletteProvider', () => {
 
     beforeEach(() => {
         mocks.modalShow.mockReset();
+        mocks.modalShow.mockImplementation((config: any) => {
+            const id = `modal-${mocks.modalState.modals.length + 1}`;
+            mocks.modalState.modals = [...mocks.modalState.modals, { ...config, id }];
+            return id;
+        });
+        mocks.modalConfirm.mockReset();
+        mocks.modalState.modals = [];
         mocks.logout.mockReset();
         mocks.navigateToSession.mockReset();
         mocks.router.navigate.mockReset();
@@ -245,6 +260,59 @@ describe('CommandPaletteProvider', () => {
         expect(latestLauncher?.isAvailable).toBe(true);
         act(() => latestLauncher?.open());
         expect(mocks.modalShow).toHaveBeenCalledOnce();
+    });
+
+    it('does not stack repeated shortcut opens and can open again after the palette closes', () => {
+        const renderTree = (phase: string) => (
+            <CommandPaletteProvider>
+                <LauncherProbe key={phase} />
+            </CommandPaletteProvider>
+        );
+        act(() => {
+            renderer = TestRenderer.create(renderTree('initial'));
+        });
+
+        act(() => {
+            mocks.keyboardHandler?.();
+            mocks.keyboardHandler?.();
+        });
+        expect(mocks.modalShow).toHaveBeenCalledOnce();
+
+        act(() => renderer.update(renderTree('open')));
+        mocks.modalState.modals = [];
+        act(() => renderer.update(renderTree('closed')));
+        act(() => mocks.keyboardHandler?.());
+        expect(mocks.modalShow).toHaveBeenCalledTimes(2);
+    });
+
+    it('requires destructive confirmation before the sign-out command logs out', async () => {
+        act(() => {
+            renderer = TestRenderer.create(
+                <CommandPaletteProvider>
+                    <></>
+                </CommandPaletteProvider>,
+            );
+        });
+        act(() => mocks.keyboardHandler?.());
+        const commands = mocks.modalShow.mock.calls[0][0].props.commands as Command[];
+        const signOut = commands.find((command) => command.id === 'sign-out');
+
+        mocks.modalConfirm.mockResolvedValueOnce(false);
+        await act(async () => {
+            await signOut?.action();
+        });
+        expect(mocks.logout).not.toHaveBeenCalled();
+
+        mocks.modalConfirm.mockResolvedValueOnce(true);
+        await act(async () => {
+            await signOut?.action();
+        });
+        expect(mocks.modalConfirm).toHaveBeenCalledWith(
+            '退出登录',
+            '确定退出登录吗？',
+            { confirmText: '退出登录', destructive: true },
+        );
+        expect(mocks.logout).toHaveBeenCalledOnce();
     });
 
     afterEach(() => {

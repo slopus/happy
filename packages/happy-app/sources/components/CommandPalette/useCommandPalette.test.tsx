@@ -3,18 +3,18 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer is only used for this hook harness.
 import TestRenderer from 'react-test-renderer';
-import type { Command } from './types';
+import type { Command, CommandPaletteClose } from './types';
 import { useCommandPalette } from './useCommandPalette';
 
 let palette: ReturnType<typeof useCommandPalette>;
 
-function Harness({ commands, onClose }: { commands: Command[]; onClose: () => void }) {
+function Harness({ commands, onClose }: { commands: Command[]; onClose: CommandPaletteClose }) {
     palette = useCommandPalette(commands, onClose);
     return null;
 }
 
 describe('useCommandPalette', () => {
-    const onClose = vi.fn();
+    const onClose = vi.fn((afterClose?: () => void) => afterClose?.());
     const actions = [vi.fn(), vi.fn(), vi.fn()];
     let renderer: any;
     const commands: Command[] = [
