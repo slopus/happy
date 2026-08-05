@@ -106,6 +106,26 @@ async function exerciseVideoCard(page: Page, cardTestId: string, playerTestId: s
     const timeAfterPause = await video.evaluate((element) => (element as HTMLVideoElement).currentTime);
     expect(timeAfterPause - pausedTime).toBeLessThan(0.2);
 
+    const duration = await video.evaluate((element) => (element as HTMLVideoElement).duration);
+    const progressBarInset = 16;
+    const nativeSeekPosition = {
+        x: progressBarInset + ((videoBox.width - (progressBarInset * 2)) * 0.82),
+        y: videoBox.height - 24,
+    };
+    expect((duration * 0.82) - pausedTime).toBeGreaterThan(0.6);
+    await video.hover({ position: nativeSeekPosition });
+    await pauseForRecordedReview(page, 650);
+    await video.click({ position: nativeSeekPosition });
+    await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime), {
+        timeout: 5_000,
+    }).toBeGreaterThanOrEqual(Math.max(pausedTime + 0.6, duration * 0.7));
+    await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).paused)).toBe(true);
+    const seekedTime = await video.evaluate((element) => (element as HTMLVideoElement).currentTime);
+    await pauseForRecordedReview(page, 1_100);
+    await page.waitForTimeout(300);
+    const timeAfterSeek = await video.evaluate((element) => (element as HTMLVideoElement).currentTime);
+    expect(Math.abs(timeAfterSeek - seekedTime)).toBeLessThan(0.2);
+
     await page.getByTestId(`${playerTestId}-fullscreen`).click();
     await expect.poll(() => page.evaluate(() => (
         window as typeof window & { __pawsFullscreenRequests?: number }
