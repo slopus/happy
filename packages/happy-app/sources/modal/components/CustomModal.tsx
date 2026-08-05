@@ -29,6 +29,18 @@ export function CustomModal({ config, onClose }: CustomModalProps) {
 function CommandPaletteWithAnimation({ config, onClose }: CustomModalProps) {
     const [isClosing, setIsClosing] = React.useState(false);
     const isClosingRef = React.useRef(false);
+    const afterCloseRef = React.useRef<(() => void) | undefined>(undefined);
+
+    React.useEffect(() => () => {
+        const afterClose = afterCloseRef.current;
+        afterCloseRef.current = undefined;
+        if (afterClose) {
+            // The provider has committed the modal removal by the time this
+            // cleanup runs. Use the next task so RN Web can finish restoring
+            // focus before navigation or another modal begins.
+            setTimeout(afterClose, 0);
+        }
+    }, []);
     
     const handleClose = React.useCallback<CommandPaletteClose>((afterClose) => {
         if (isClosingRef.current) {
@@ -36,12 +48,10 @@ function CommandPaletteWithAnimation({ config, onClose }: CustomModalProps) {
         }
 
         isClosingRef.current = true;
+        afterCloseRef.current = afterClose;
         setIsClosing(true);
         // Wait for animation to complete before unmounting
-        setTimeout(() => {
-            onClose();
-            afterClose?.();
-        }, 200);
+        setTimeout(onClose, 200);
     }, [onClose]);
     
     return (
