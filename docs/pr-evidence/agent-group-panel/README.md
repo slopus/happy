@@ -1,6 +1,6 @@
 # Agent group panel visual evidence
 
-Baseline revision: `5ceb0b39271411881fb1e8aea84a1337ff508e04` (`origin/main` when this worktree was created).
+Baseline revision: `da92d233a00656b47f452e380248bfe8af6e67b2` (`origin/main` after the working-directory context change landed).
 
 All screenshots use Chromium, `1280x900`, DPR `1`, the same authenticated local Web route shape (`/session/:id`), and the same deterministic session metadata fixture. The local environment is isolated and removed after every run.
 
@@ -31,4 +31,4 @@ HAPPY_AGENT_PANEL_EVIDENCE_PHASE=after \
 pnpm test:e2e:web -- agent-group-panel-evidence.spec.ts
 ```
 
-The `before` PNGs were captured before product edits with the same spec's evidence-only assertions against the baseline revision. The committed spec contains the stronger post-change behavior and accessibility assertions.
+The `before` PNGs were captured before product edits with the same spec's evidence-only assertions against the baseline revision. The `after` phase contains the stronger post-change behavior and accessibility assertions. Both phases therefore include the same working-directory selector introduced by the baseline revision.

@@ -129,7 +129,7 @@ vi.mock('react-native-unistyles', () => {
     };
 });
 
-import { SessionInfoDropdown } from './SessionInfoDropdown';
+import { resolveSessionInfoAgentLabel, SessionInfoDropdown } from './SessionInfoDropdown';
 
 const session = {
     id: 'session-1',
@@ -173,6 +173,14 @@ describe('SessionInfoDropdown', () => {
         consoleErrorSpy.mockRestore();
     });
 
+    it('preserves Ask and third-party flavor identity instead of relabeling them as Claude', () => {
+        const translate = (key: string) => key === 'agentInput.agent.claude' ? 'Claude' : key;
+
+        expect(resolveSessionInfoAgentLabel('ask', translate)).toBe('ask');
+        expect(resolveSessionInfoAgentLabel('custom-acp-agent', translate)).toBe('custom-acp-agent');
+        expect(resolveSessionInfoAgentLabel(undefined, translate)).toBe('Claude');
+    });
+
     it('groups runtime, execution, and management while exposing honest row affordances', () => {
         const renderer = renderPanel(true);
 
@@ -195,6 +203,8 @@ describe('SessionInfoDropdown', () => {
         }
 
         act(() => renderer.root.findByProps({ testID: 'session-agent-panel-model' }).props.onPress());
+        const modelOptions = renderer.root.findByProps({ accessibilityRole: 'radiogroup' });
+        expect(modelOptions.props.accessibilityLabel).toBe('Model');
         const alternateModel = renderer.root.findByProps({ testID: 'session-agent-panel-model-option-gpt-5.5' });
         expect(alternateModel.props.accessibilityRole).toBe('radio');
         expect(alternateModel.props.accessibilityState).toEqual({ checked: false });

@@ -84,6 +84,14 @@ test('AGP-01 online panel evidence', async ({ page, request }, testInfo) => {
     await page.goto(authenticatedRoute(`/session/${sessionId}`));
     expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
     await page.getByTestId('session-header-chip').click();
+    if (evidencePhase === 'before') {
+        await expect(page.getByText('Session details', { exact: true })).toBeVisible();
+        await page.screenshot({
+            path: screenshotPath(testInfo, 1),
+            fullPage: true,
+        });
+        return;
+    }
     const panel = page.getByTestId('session-agent-panel');
     await expect(panel).toBeVisible();
     await expect(panel.getByText('Runtime location', { exact: true })).toBeVisible();
@@ -136,6 +144,14 @@ test('AGP-02 offline panel evidence', async ({ page, request }, testInfo) => {
     expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
     await expect(page.getByTestId('session-header-chip')).toHaveAccessibleName(/offline/);
     await page.getByTestId('session-header-chip').click();
+    if (evidencePhase === 'before') {
+        await expect(page.getByText('Session details', { exact: true })).toBeVisible();
+        await page.screenshot({
+            path: screenshotPath(testInfo, 2),
+            fullPage: true,
+        });
+        return;
+    }
     const panel = page.getByTestId('session-agent-panel');
     await expect(panel.getByTestId('session-agent-panel-offline-notice')).toContainText(
         'This machine is offline. Settings are kept, but execution is unavailable.',

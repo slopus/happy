@@ -23,6 +23,32 @@ function permissionIcon(level: TaskPermissionLevel | null): 'warning-outline' | 
     return level === 'full-access' ? 'warning-outline' : 'shield-checkmark-outline';
 }
 
+export function resolveSessionInfoAgentLabel(
+    flavor: string | null | undefined,
+    translate: (key: any) => string,
+): string {
+    switch (flavor) {
+        case 'ask':
+            return 'ask';
+        case 'codex':
+            return translate('agentInput.agent.codex');
+        case 'gemini':
+            return translate('agentInput.agent.gemini');
+        case 'opencode':
+            return translate('agentInput.agent.opencode');
+        case 'openclaw':
+            return translate('agentInput.agent.openclaw');
+        case 'claude':
+        case null:
+        case undefined:
+            return translate('agentInput.agent.claude');
+        default:
+            // Third-party ACP flavors must keep their reported identity rather
+            // than being mislabeled as one of the built-in agents.
+            return flavor;
+    }
+}
+
 /**
  * Session config panel that drops down under the chat header when the
  * SessionHeaderChip is tapped. It groups the running session's metadata by
@@ -56,15 +82,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
     const { theme } = useUnistyles();
     const metadata = session.metadata;
     const flavor = metadata?.flavor ?? undefined;
-    const agentLabel = flavor === 'codex'
-        ? t('agentInput.agent.codex')
-        : flavor === 'gemini'
-            ? t('agentInput.agent.gemini')
-            : flavor === 'opencode'
-                ? t('agentInput.agent.opencode')
-                : flavor === 'openclaw'
-                    ? t('agentInput.agent.openclaw')
-                    : t('agentInput.agent.claude');
+    const agentLabel = resolveSessionInfoAgentLabel(flavor, t);
     const pathName = metadata?.path ? formatPathRelativeToHome(metadata.path, metadata.homeDir) : null;
     const infoExperience = React.useMemo(
         () => getRunningSessionInfoExperience(flavor),
@@ -236,11 +254,16 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
 
     // Inline option list shown under an expanded editable row.
     const renderOptions = (
+        label: string,
         options: { key: string; name: string }[],
         currentKey: string | undefined,
         onSelect: (key: string) => void | Promise<void>,
     ) => (
-        <View style={styles.optionList}>
+        <View
+            accessibilityLabel={label}
+            accessibilityRole="radiogroup"
+            style={styles.optionList}
+        >
             {options.map((opt) => {
                 const isSelected = opt.key === currentKey;
                 return (
@@ -326,7 +349,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                                 })
                                 : null}
                             {infoExperience.showModelDetails && visibleExpanded === 'model'
-                                ? renderOptions(availableModels, modelMode?.key, applyModel)
+                                ? renderOptions(t('sessionInfo.agentPanelModel'), availableModels, modelMode?.key, applyModel)
                                 : null}
                             {infoExperience.showModelDetails && effortLevel?.name
                                 ? renderEditableRow({
@@ -340,7 +363,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                                 })
                                 : null}
                             {infoExperience.showModelDetails && visibleExpanded === 'effort'
-                                ? renderOptions(availableEffortLevels, effortLevel?.key, applyEffort)
+                                ? renderOptions(t('sessionInfo.agentPanelEffort'), availableEffortLevels, effortLevel?.key, applyEffort)
                                 : null}
                             {infoExperience.showPermission
                                 ? renderEditableRow({
@@ -354,7 +377,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                                 })
                                 : null}
                             {infoExperience.showPermission && visibleExpanded === 'permission'
-                                ? renderOptions(permissionOptions, taskPermission.level ?? 'confirm', applyPermission)
+                                ? renderOptions(t('sessionInfo.agentPanelPermissions'), permissionOptions, taskPermission.level ?? 'confirm', applyPermission)
                                 : null}
                         </View>
                     </View>
