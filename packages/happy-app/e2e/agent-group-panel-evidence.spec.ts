@@ -1,10 +1,15 @@
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import { expect, test, type APIRequestContext, type TestInfo } from '@playwright/test';
 import { encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
 
 const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL!;
 const e2eServerUrl = process.env.HAPPY_E2E_SERVER_URL!;
-const evidenceDirectory = process.env.HAPPY_AGENT_PANEL_EVIDENCE_DIR!;
-const evidencePhase = process.env.HAPPY_AGENT_PANEL_EVIDENCE_PHASE ?? 'before';
+const evidenceDirectory = process.env.HAPPY_AGENT_PANEL_EVIDENCE_DIR;
+const evidencePhase = process.env.HAPPY_AGENT_PANEL_EVIDENCE_PHASE ?? 'after';
+
+function screenshotPath(testInfo: TestInfo, caseId: number): string {
+    const filename = `case-${caseId}-${evidencePhase}.png`;
+    return evidenceDirectory ? `${evidenceDirectory}/${filename}` : testInfo.outputPath(filename);
+}
 
 function authenticatedRoute(pathname: string): string {
     const url = new URL(authenticatedWebUrl);
@@ -73,7 +78,7 @@ async function deactivateSession(request: APIRequestContext, sessionId: string):
     expect(response.ok()).toBe(true);
 }
 
-test('AGP-01 online panel evidence', async ({ page, request }) => {
+test('AGP-01 online panel evidence', async ({ page, request }, testInfo) => {
     const sessionId = await createSession(request, 'online');
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(authenticatedRoute(`/session/${sessionId}`));
@@ -118,12 +123,12 @@ test('AGP-01 online panel evidence', async ({ page, request }) => {
     await page.getByTestId('session-header-chip').click();
     await expect(panel.getByTestId('session-agent-panel-model')).toContainText('gpt-5.6-sol');
     await page.screenshot({
-        path: `${evidenceDirectory}/case-1-${evidencePhase}.png`,
+        path: screenshotPath(testInfo, 1),
         fullPage: true,
     });
 });
 
-test('AGP-02 offline panel evidence', async ({ page, request }) => {
+test('AGP-02 offline panel evidence', async ({ page, request }, testInfo) => {
     const sessionId = await createSession(request, 'offline');
     await deactivateSession(request, sessionId);
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -147,7 +152,7 @@ test('AGP-02 offline panel evidence', async ({ page, request }) => {
         await expect(panel.getByTestId(testID)).toContainText('Read-only');
     }
     await page.screenshot({
-        path: `${evidenceDirectory}/case-2-${evidencePhase}.png`,
+        path: screenshotPath(testInfo, 2),
         fullPage: true,
     });
 });
