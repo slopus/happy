@@ -161,6 +161,7 @@ interface SessionKillResponse {
 // Response types for spawn session
 export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
+    | { type: 'pending'; clientRequestId: string; retryAfterMs: number }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
     | { type: 'error'; errorMessage: string };
 
@@ -170,10 +171,16 @@ export interface SpawnSessionOptions {
     directory: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'agy';
+    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'agy' | 'rig';
     permissionMode?: string;
     modelMode?: string;
     effortLevel?: string;
+    /** Stable idempotency key required by Rig's machine RPC. */
+    clientRequestId?: string;
+    /** Rig-native provider/model selection. */
+    providerId?: string;
+    modelId?: string;
+    effort?: string;
     /**
      * If set, the daemon spawns the agent with `--resume <id>` so the new
      * Happy session attaches to a pre-existing on-disk Claude conversation
@@ -250,27 +257,48 @@ export interface ResumeSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, permissionMode, modelMode, effortLevel, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, permissionMode, modelMode, effortLevel, clientRequestId, providerId, modelId, effort, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat } = options;
 
     try {
-        const result = await apiSocket.machineRPC<SpawnSessionResult, {
+        if (agent === 'rig' && !clientRequestId) {
+            throw new Error('Rig session creation requires a client request ID');
+        }
+        type SpawnRequest = {
             type: 'spawn-in-directory'
             directory: string
             approvedNewDirectoryCreation?: boolean,
             token?: string,
-            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'agy',
+            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'agy' | 'rig',
             permissionMode?: string,
             modelMode?: string,
             effortLevel?: string,
+            clientRequestId?: string,
+            providerId?: string,
+            modelId?: string,
+            effort?: string,
             resumeClaudeSessionId?: string,
             resumeCodexThreadId?: string,
             parentSessionId?: string,
             forkedFromMessageId?: string,
             isSideChat?: boolean,
-        }>(
+        };
+        const request: SpawnRequest = agent === 'rig'
+            ? {
+                type: 'spawn-in-directory',
+                agent: 'rig',
+                directory,
+                approvedNewDirectoryCreation,
+                ...(clientRequestId ? { clientRequestId } : {}),
+                ...(permissionMode ? { permissionMode } : {}),
+                ...(providerId ? { providerId } : {}),
+                ...(modelId ? { modelId } : {}),
+                ...((effort ?? effortLevel) ? { effort: effort ?? effortLevel } : {}),
+            }
+            : { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, permissionMode, modelMode, effortLevel, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat };
+        const result = await apiSocket.machineRPC<SpawnSessionResult, SpawnRequest>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, permissionMode, modelMode, effortLevel, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat }
+            request,
         );
         return result;
     } catch (error) {

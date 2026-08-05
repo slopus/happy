@@ -13,9 +13,8 @@ interface ProjectGroupProps {
 }
 
 /**
- * A Rig project and every git worktree inside it, shown together the way Rig
- * itself groups them. Sessions from the Happy CLI never reach this component —
- * they keep the flat, date-grouped list.
+ * One project and its sessions. Rig projects may contain named worktrees;
+ * Happy CLI projects use a single workspace derived from their working path.
  */
 export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectGroupProps) => {
     const styles = stylesheet;

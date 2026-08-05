@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useUnistyles } from 'react-native-unistyles';
 
 export type MobileHeaderScrimVariant = 'subtle' | 'strong';
+export type MobileHeaderScrimEdge = 'top' | 'bottom';
 
 // Shared by headers that keep a strong material visible at rest and deepen it
 // slightly as scrolling content moves underneath.
@@ -18,9 +19,17 @@ export const MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY = 0.96;
  * into a glass surface. The strong variant is used for the chat title, where
  * the text must stay readable without its own capsule.
  */
-export function MobileHeaderScrim({ variant = 'subtle' }: { variant?: MobileHeaderScrimVariant }) {
+export function MobileHeaderScrim({
+    variant = 'subtle',
+    edge = 'top',
+}: {
+    variant?: MobileHeaderScrimVariant;
+    edge?: MobileHeaderScrimEdge;
+}) {
     const { theme } = useUnistyles();
     const isStrong = variant === 'strong';
+    const gradientStart = edge === 'bottom' ? { x: 0.5, y: 1 } : { x: 0.5, y: 0 };
+    const gradientEnd = edge === 'bottom' ? { x: 0.5, y: 0 } : { x: 0.5, y: 1 };
     const strongBlurMaskColors = [
         'rgba(255, 255, 255, 1)',
         'rgba(255, 255, 255, 0.94)',
@@ -45,8 +54,8 @@ export function MobileHeaderScrim({ variant = 'subtle' }: { variant?: MobileHead
                     <LinearGradient
                         colors={blurMaskColors}
                         locations={isStrong ? [0, 0.20, 0.68, 1] : [0, 0.34, 0.7, 1]}
-                        start={{ x: 0.5, y: 0 }}
-                        end={{ x: 0.5, y: 1 }}
+                        start={gradientStart}
+                        end={gradientEnd}
                         style={styles.fill}
                     />
                 )}
@@ -69,8 +78,8 @@ export function MobileHeaderScrim({ variant = 'subtle' }: { variant?: MobileHead
                         ? ['rgba(255, 255, 255, 0.34)', 'rgba(255, 255, 255, 0.22)', 'rgba(255, 255, 255, 0.07)', 'rgba(255, 255, 255, 0)']
                         : ['rgba(255, 255, 255, 0.68)', 'rgba(255, 255, 255, 0.50)', 'rgba(255, 255, 255, 0.18)', 'rgba(255, 255, 255, 0)']}
                 locations={isStrong ? [0, 0.34, 0.80, 1] : [0, 0.34, 0.7, 1]}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
+                start={gradientStart}
+                end={gradientEnd}
                 style={styles.fill}
             />
         </View>

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { SessionListViewItem, useSessionListViewData, useSetting } from '@/sync/storage';
+import { filterProjectGroupSessions } from '@/sync/projectGroups';
 
 export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
     const data = useSessionListViewData();
@@ -10,63 +11,56 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
             return data;
         }
 
+        const visibleProjects = new Map<number, SessionListViewItem>();
+        const visibleProjectSources = new Set<'rig' | 'happy'>();
+        data.forEach((item, index) => {
+            if (item.type !== 'project') return;
+            const project = hideInactiveSessions
+                ? filterProjectGroupSessions(item.project, (session) => !session.archived)
+                : item.project;
+            if (project) {
+                visibleProjects.set(index, { ...item, project });
+                visibleProjectSources.add(item.source);
+            }
+        });
+
         const result: SessionListViewItem[] = [];
-        let hasInactive = false;
-
-        // First pass: projects lead, then the active sessions group. Projects
-        // carry their own archived sessions, so the toggle below never hides
-        // them and they are not counted as inactive here.
-        for (const item of data) {
-            if (item.type === 'projects-header' || item.type === 'project') {
-                result.push(item);
+        data.forEach((item, index) => {
+            if (item.type === 'projects-header') {
+                if (visibleProjectSources.has(item.source)) result.push(item);
+                return;
             }
-        }
-        for (const item of data) {
-            if (item.type === 'active-sessions') {
-                result.push(item);
-            } else if (item.type === 'session' && !item.session.active) {
-                hasInactive = true;
+            if (item.type === 'project') {
+                const project = visibleProjects.get(index);
+                if (project) result.push(project);
+                return;
             }
-        }
+            if (item.type === 'active-sessions') result.push(item);
+        });
 
-        // Insert archive toggle if there are inactive sessions
-        if (hasInactive) {
-            result.push({ type: 'archive-toggle', hidden: hideInactiveSessions });
-        }
+        if (hideInactiveSessions) return result;
 
-        // If not hiding, add all remaining items (headers, project groups, inactive sessions)
-        if (!hideInactiveSessions) {
-            let pendingProjectGroup: SessionListViewItem | null = null;
-
-            for (const item of data) {
-                if (item.type === 'active-sessions' || item.type === 'projects-header' || item.type === 'project') {
-                    continue; // already added
-                }
-
-                if (item.type === 'project-group') {
-                    pendingProjectGroup = item;
-                    continue;
-                }
-
-                if (item.type === 'session') {
-                    if (!item.session.active) {
-                        if (pendingProjectGroup) {
-                            result.push(pendingProjectGroup);
-                            pendingProjectGroup = null;
-                        }
-                        result.push(item);
-                    }
-                    continue;
-                }
-
-                pendingProjectGroup = null;
-
-                if (item.type === 'header') {
-                    result.push(item);
-                }
+        for (const item of data) {
+            if (item.type === 'header' || (item.type === 'session' && !item.session.active)) {
+                result.push(item);
             }
         }
 
         return result;
     }, [data, hideInactiveSessions]);
+}
+
+export function useHasArchivedSessions(): boolean {
+    const data = useSessionListViewData();
+    return React.useMemo(() => {
+        if (!data) return false;
+        return data.some((item) => {
+            if (item.type === 'project') {
+                return item.project.workspaces.some((workspace) =>
+                    workspace.sessions.some((session) => session.archived),
+                );
+            }
+            return item.type === 'session' && item.session.archived;
+        });
+    }, [data]);
 }

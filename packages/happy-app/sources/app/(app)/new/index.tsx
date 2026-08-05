@@ -31,6 +31,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import Constants from 'expo-constants';
+import { randomUUID } from 'expo-crypto';
 import { useHeaderHeight } from '@/utils/responsive';
 import { t } from '@/text';
 import { useAllMachines, useLocalSetting, useSessions, useSetting, storage } from '@/sync/storage';
@@ -65,6 +66,11 @@ import {
     resolvePickerToggleAction,
 } from '@/utils/newSessionPickerInteraction';
 import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { delay } from '@/utils/time';
+import {
+    buildRigSpawnConfiguration,
+    getRigMachineSessionCreation,
+} from '@/sync/rigSessionCreation';
 import { MobileGlassSurface } from '@/components/MobileGlass';
 import { getNativeGlassInteractivity } from '@/components/glassInteractionPolicy';
 import { BubblePressable } from '@/components/BubblePressable';
@@ -78,6 +84,7 @@ import {
 
 // Agent icon assets
 const agentIcons = {
+    rig: require('@/assets/images/icon-rig.png'),
     claude: require('@/assets/images/icon-claude.png'),
     codex: require('@/assets/images/icon-gpt.png'),
     openclaw: require('@/assets/images/icon-openclaw.png'),
@@ -87,6 +94,7 @@ const agentIcons = {
 
 type AgentKey = NewSessionAgentType;
 const ALL_AGENTS: { key: AgentKey; label: string }[] = [
+    { key: 'rig', label: 'rig' },
     { key: 'claude', label: 'claude code' },
     { key: 'codex', label: 'codex' },
     { key: 'openclaw', label: 'openclaw' },
@@ -108,6 +116,7 @@ const NATIVE_PICKER_TOP: Record<PickerType, number> = {
     worktree: 144,
 };
 const NATIVE_PICKER_ESTIMATED_HEIGHT = 264;
+const MAX_RIG_PENDING_RESULTS = 3;
 const NATIVE_COMPOSER_RESERVED_HEIGHT = 98;
 
 type PermissionStyle = { color: string; icon: 'play-forward' | 'pause' };
@@ -788,10 +797,14 @@ function NewSessionScreen() {
     const [mobileConfigHeight, setMobileConfigHeight] = React.useState(0);
     const [nativePickerMeasuredHeight, setNativePickerMeasuredHeight] = React.useState<number | null>(null);
     const autoSubmitStartedRef = React.useRef(false);
+    const isMountedRef = React.useRef(true);
     const composerInputRef = React.useRef<import('@/components/MultiTextInput').MultiTextInputHandle>(null);
     const pendingPickerRef = React.useRef<PickerType | null>(null);
     const pickerKeyboardSubscriptionRef = React.useRef<ReturnType<typeof Keyboard.addListener> | null>(null);
     const pickerOpenTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    React.useEffect(() => () => {
+        isMountedRef.current = false;
+    }, []);
 
     // Config collapse — auto-collapses when typing, expands when empty
     const [isConfigExpanded, setIsConfigExpanded] = React.useState(true);
@@ -808,6 +821,14 @@ function NewSessionScreen() {
         () => allMachines.find(m => m.id === selectedMachineId) ?? null,
         [allMachines, selectedMachineId],
     );
+    const selectedRigCreation = React.useMemo(
+        () => getRigMachineSessionCreation(selectedMachine?.metadata),
+        [selectedMachine?.metadata],
+    );
+    const rigCreation = selectedAgent === 'rig' ? selectedRigCreation : null;
+    const supportsWorktree = selectedMachine?.metadata?.rigOnly === true
+        ? selectedRigCreation?.supportsWorktrees ?? false
+        : rigCreation?.supportsWorktrees ?? getSupportsWorktree(selectedAgent);
     const selectedHomeDir = selectedMachine?.metadata?.homeDir;
 
     // Build machine picker items: online first, then offline
@@ -874,7 +895,7 @@ function NewSessionScreen() {
     // Fetch existing worktrees from the selected machine/path
     const [worktreeItems, setWorktreeItems] = React.useState<PickerItem[]>([]);
     React.useEffect(() => {
-        if (!selectedMachineId || !debouncedResolvedSelectedPath) {
+        if (!supportsWorktree || !selectedMachineId || !debouncedResolvedSelectedPath) {
             setWorktreeItems([]);
             return;
         }
@@ -892,7 +913,7 @@ function NewSessionScreen() {
             })));
         });
         return () => { cancelled = true; };
-    }, [debouncedResolvedSelectedPath, selectedMachineId, selectedMachine]);
+    }, [debouncedResolvedSelectedPath, selectedMachineId, selectedMachine, supportsWorktree]);
 
     React.useEffect(() => {
         if (worktreeKey === '__none__' || worktreeKey === '__new__') {
@@ -907,9 +928,10 @@ function NewSessionScreen() {
     // Filter available agents based on CLI availability from machine metadata
     const availableAgents = React.useMemo(() => {
         const availability = selectedMachine?.metadata?.cliAvailability;
-        if (!availability) return ALL_AGENTS;
-        return ALL_AGENTS.filter(a => availability[a.key]);
-    }, [selectedMachine]);
+        return ALL_AGENTS.filter((agent) => agent.key === 'rig'
+            ? selectedRigCreation !== null
+            : !availability || availability[agent.key]);
+    }, [selectedMachine, selectedRigCreation]);
 
     // If current agent not available on this machine, switch to first available
     React.useEffect(() => {
@@ -920,26 +942,32 @@ function NewSessionScreen() {
 
     // Derive options from agent type
     const permissionModes = React.useMemo<PermissionMode[]>(
-        () => getHardcodedPermissionModes(selectedAgent, t),
-        [selectedAgent],
+        () => rigCreation?.permissionModes ?? getHardcodedPermissionModes(selectedAgent, t),
+        [selectedAgent, rigCreation],
     );
     const modelModes = React.useMemo<ModelMode[]>(
-        () => getHardcodedModelModes(selectedAgent, t),
-        [selectedAgent],
+        () => rigCreation?.models ?? getHardcodedModelModes(selectedAgent, t),
+        [selectedAgent, rigCreation],
     );
 
     const currentModel = modelModes[modelIndex] ?? modelModes[0];
     const currentModelKey = currentModel?.key ?? 'default';
 
     const effortLevels = React.useMemo<EffortLevel[]>(
-        () => getEffortLevelsForModel(selectedAgent, currentModelKey),
-        [selectedAgent, currentModelKey],
+        () => rigCreation
+            ? rigCreation.effortsForModel(currentModelKey).map((key) => ({ key, name: key }))
+            : getEffortLevelsForModel(selectedAgent, currentModelKey),
+        [selectedAgent, currentModelKey, rigCreation],
     );
-    const effectiveAgentDefaults = React.useMemo(() => (
-        resolveAgentDefaultConfig(agentDefaultOverrides, selectedAgent)
-    ), [agentDefaultOverrides, selectedAgent]);
-
-    const supportsWorktree = getSupportsWorktree(selectedAgent);
+    const effectiveAgentDefaults = React.useMemo(() => rigCreation
+        ? {
+            permissionMode: rigCreation.defaultPermissionMode ?? '',
+            modelMode: rigCreation.defaultModelKey ?? '',
+            effortLevel: rigCreation.defaultEffortForModel(rigCreation.defaultModelKey),
+        }
+        : resolveAgentDefaultConfig(agentDefaultOverrides, selectedAgent), [agentDefaultOverrides, selectedAgent, rigCreation]);
+    const effectiveEffortDefault = rigCreation?.defaultEffortForModel(currentModelKey)
+        ?? effectiveAgentDefaults.effortLevel;
     const showModel = modelModes.length > 1;
     const showEffort = effortLevels.length > 0;
     const showPermission = permissionModes.length > 1;
@@ -975,9 +1003,9 @@ function NewSessionScreen() {
         }
         setEffortIndex(findPreferredModeIndex(effortLevels, [
             draft.effortLevel,
-            effectiveAgentDefaults.effortLevel,
+            effectiveEffortDefault,
         ]));
-    }, [draft.effortLevel, effectiveAgentDefaults.effortLevel, currentModelKey, effortLevels]);
+    }, [draft.effortLevel, effectiveEffortDefault, currentModelKey, effortLevels]);
 
     // The reference keeps the context controls visible while the keyboard is
     // open. Preserve that on mobile and let users collapse them explicitly.
@@ -1244,7 +1272,10 @@ function NewSessionScreen() {
     }, [composerSettingsPage, draft.setEffortLevel, draft.setModelMode, draft.setPermissionMode, effortLevels, modelModes, permissionModes]);
 
     // Spawn session handler
-    const handleSend = React.useCallback(async (approvedNewDirectoryCreation: boolean = false) => {
+    const handleSend = React.useCallback(async (
+        approvedNewDirectoryCreation: boolean = false,
+        clientRequestId: string = randomUUID(),
+    ) => {
         if (!selectedMachineId || !selectedMachine) {
             Modal.alert(t('common.error'), 'Please select a machine');
             return;
@@ -1261,30 +1292,51 @@ function NewSessionScreen() {
 
             // Handle worktree selection
             let spawnDirectory = absolutePath;
-            if (worktreeKey === '__new__') {
+            if (supportsWorktree && worktreeKey === '__new__') {
                 const worktreeResult = await createWorktree(selectedMachineId, absolutePath);
                 if (!worktreeResult.success) {
                     Modal.alert(t('common.error'), worktreeResult.error || 'Failed to create worktree');
                     return;
                 }
                 spawnDirectory = worktreeResult.worktreePath;
-            } else if (worktreeKey !== '__none__') {
+            } else if (supportsWorktree && worktreeKey !== '__none__') {
                 // Existing worktree — use its path directly
                 spawnDirectory = worktreeKey;
             }
 
-            const result = await machineSpawnNewSession({
-                machineId: selectedMachineId,
-                directory: spawnDirectory,
-                approvedNewDirectoryCreation,
-                agent: selectedAgent,
-                // For codex, 'default' is a concrete ask-first mode (the codex
-                // launch default is yolo) — it must be forwarded. For other
-                // agents 'default' is the ambient no-override value.
-                permissionMode: selectedAgent === 'codex' || currentPermission.key !== 'default' ? currentPermission.key : undefined,
-                modelMode: currentModelKey !== 'default' ? currentModelKey : undefined,
-                effortLevel: currentEffort?.key,
-            });
+            const spawnOptions = rigCreation
+                ? {
+                    machineId: selectedMachineId,
+                    ...buildRigSpawnConfiguration(selectedMachine.metadata, {
+                        directory: spawnDirectory,
+                        clientRequestId,
+                        approvedNewDirectoryCreation,
+                        modelKey: currentModelKey,
+                        permissionMode: currentPermission.key,
+                        effort: currentEffort?.key,
+                    }),
+                }
+                : {
+                    machineId: selectedMachineId,
+                    directory: spawnDirectory,
+                    approvedNewDirectoryCreation,
+                    agent: selectedAgent,
+                    // For codex, 'default' is a concrete ask-first mode (the codex
+                    // launch default is yolo) — it must be forwarded. For other
+                    // agents 'default' is the ambient no-override value.
+                    permissionMode: selectedAgent === 'codex' || currentPermission.key !== 'default' ? currentPermission.key : undefined,
+                    modelMode: currentModelKey !== 'default' ? currentModelKey : undefined,
+                    effortLevel: currentEffort?.key,
+                };
+            let result = await machineSpawnNewSession(spawnOptions);
+            let pendingResults = 0;
+            while (result.type === 'pending' && pendingResults < MAX_RIG_PENDING_RESULTS) {
+                pendingResults += 1;
+                await delay(Math.min(10_000, Math.max(250, result.retryAfterMs)));
+                if (!isMountedRef.current) return;
+                result = await machineSpawnNewSession(spawnOptions);
+            }
+            if (!isMountedRef.current) return;
 
             switch (result.type) {
                 case 'success':
@@ -1305,12 +1357,14 @@ function NewSessionScreen() {
                     // Mode picks sync via session metadata (#1492). Nothing to
                     // push when they match the defaults — a fresh session has
                     // no picks in its metadata yet.
-                    const modesPatch: SessionAgentModesPatch = {};
-                    if (permissionOverride !== null) modesPatch.permissionMode = permissionOverride;
-                    if (modelOverride !== null) modesPatch.modelMode = modelOverride;
-                    if (effortOverride !== null) modesPatch.effortLevel = effortOverride;
-                    if (Object.keys(modesPatch).length > 0) {
-                        sessionSetAgentModes(result.sessionId, modesPatch);
+                    if (!rigCreation) {
+                        const modesPatch: SessionAgentModesPatch = {};
+                        if (permissionOverride !== null) modesPatch.permissionMode = permissionOverride;
+                        if (modelOverride !== null) modesPatch.modelMode = modelOverride;
+                        if (effortOverride !== null) modesPatch.effortLevel = effortOverride;
+                        if (Object.keys(modesPatch).length > 0) {
+                            sessionSetAgentModes(result.sessionId, modesPatch);
+                        }
                     }
 
                     // Pull live prompt and clear it. We read via getState() so this
@@ -1337,12 +1391,18 @@ function NewSessionScreen() {
                         { cancelText: t('common.cancel'), confirmText: t('common.create') },
                     );
                     if (approved) {
-                        await handleSend(true);
+                        await handleSend(true, clientRequestId);
                     }
                     break;
                 }
                 case 'error':
                     Modal.alert(t('common.error'), result.errorMessage);
+                    break;
+                case 'pending':
+                    Modal.alert(
+                        t('common.error'),
+                        'Rig created the session, but it is still syncing with Happy. It should appear shortly.',
+                    );
                     break;
             }
         } catch (error) {
@@ -1351,9 +1411,9 @@ function NewSessionScreen() {
                 : 'Failed to start session';
             Modal.alert(t('common.error'), errorMessage);
         } finally {
-            setIsSpawning(false);
+            if (isMountedRef.current) setIsSpawning(false);
         }
-    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession, currentPermission.key, currentModelKey, currentEffort?.key, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.effortLevel, worktreeKey]);
+    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession, currentPermission.key, currentModelKey, currentEffort?.key, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.effortLevel, worktreeKey, rigCreation, supportsWorktree]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
     React.useEffect(() => {

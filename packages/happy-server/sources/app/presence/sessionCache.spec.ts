@@ -77,4 +77,25 @@ describe("ActivityCache machine heartbeats", () => {
 
         activityCache.shutdown();
     });
+
+    it("discards a queued session heartbeat when the session is stopped", async () => {
+        const now = Date.parse("2026-01-01T00:00:00.000Z");
+        vi.setSystemTime(now);
+        dbMock.session.findUnique.mockResolvedValue({
+            id: "session-1",
+            accountId: "user-1",
+            lastActiveAt: new Date(now - 60_000),
+        });
+
+        const { activityCache } = await import("./sessionCache");
+
+        await expect(activityCache.isSessionValid("session-1", "user-1")).resolves.toBe(true);
+        expect(activityCache.queueSessionUpdate("session-1", now)).toBe(true);
+        activityCache.clearSessionUpdates("session-1");
+
+        await vi.advanceTimersByTimeAsync(5000);
+
+        expect(dbMock.session.update).not.toHaveBeenCalled();
+        activityCache.shutdown();
+    });
 });

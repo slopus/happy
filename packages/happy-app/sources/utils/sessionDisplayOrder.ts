@@ -98,6 +98,10 @@ export function getSessionShortcutIdsInDisplayOrder(
                         projectGroup.sessions.forEach((session) => sessionIds.push(session.id));
                     });
             });
+        } else if (item.type === 'project') {
+            item.project.workspaces.forEach((workspace) => {
+                workspace.sessions.forEach((session) => sessionIds.push(session.id));
+            });
         } else if (item.type === 'session') {
             sessionIds.push(item.session.id);
         }

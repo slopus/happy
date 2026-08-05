@@ -22,7 +22,7 @@ export const LocalSettingsSchema = z.object({
     // CLI version acknowledgments - keyed by machineId
     acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
     // Collapsed Rig projects in the session list - keyed by project id
-    collapsedProjects: z.record(z.string(), z.boolean()).describe('Collapsed state per Rig project'),
+    collapsedProjects: z.record(z.string(), z.boolean()).describe('Collapsed state per sidebar project'),
 });
 
 //

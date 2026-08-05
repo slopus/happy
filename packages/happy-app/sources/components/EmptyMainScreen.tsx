@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Platform } from 'react-native';
+import { View, Text, Platform, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
@@ -82,8 +83,22 @@ const stylesheet = StyleSheet.create((theme) => ({
         width: 240,
         marginBottom: 12,
     },
-    buttonWrapperSecondary: {
-        width: 240,
+    manualUrlButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 7,
+        minHeight: 40,
+        paddingHorizontal: 14,
+        borderRadius: 20,
+    },
+    manualUrlButtonPressed: {
+        backgroundColor: theme.colors.surfacePressedOverlay,
+    },
+    manualUrlButtonText: {
+        fontSize: 15,
+        color: theme.colors.textSecondary,
+        ...Typography.default('semiBold'),
     },
 }));
 
@@ -91,6 +106,21 @@ export function EmptyMainScreen() {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
     const { theme } = useUnistyles();
     const styles = stylesheet;
+    const enterUrlManually = React.useCallback(async () => {
+        const url = await Modal.prompt(
+            t('modals.authenticateTerminal'),
+            t('modals.pasteUrlFromTerminal'),
+            {
+                placeholder: 'happy://terminal?...',
+                cancelText: t('common.cancel'),
+                confirmText: t('common.authenticate'),
+            },
+        );
+
+        if (url?.trim()) {
+            connectWithUrl(url.trim());
+        }
+    }, [connectWithUrl]);
 
     return (
         <View style={styles.container}>
@@ -143,28 +173,20 @@ export function EmptyMainScreen() {
                                 onPress={connectTerminal}
                             />
                         </View>
-                        <View style={styles.buttonWrapperSecondary}>
-                            <RoundButton
-                                title={t('connect.enterUrlManually')}
-                                size="normal"
-                                display="inverted"
-                                onPress={async () => {
-                                    const url = await Modal.prompt(
-                                        t('modals.authenticateTerminal'),
-                                        t('modals.pasteUrlFromTerminal'),
-                                        {
-                                            placeholder: 'happy://terminal?...',
-                                            cancelText: t('common.cancel'),
-                                            confirmText: t('common.authenticate')
-                                        }
-                                    );
-
-                                    if (url?.trim()) {
-                                        connectWithUrl(url.trim());
-                                    }
-                                }}
-                            />
-                        </View>
+                        <Pressable
+                            onPress={enterUrlManually}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('connect.enterUrlManually')}
+                            style={({ pressed }) => [
+                                styles.manualUrlButton,
+                                pressed && styles.manualUrlButtonPressed,
+                            ]}
+                        >
+                            <Ionicons name="link-outline" size={17} color={theme.colors.textSecondary} />
+                            <Text style={styles.manualUrlButtonText}>
+                                {t('connect.enterUrlManually')}
+                            </Text>
+                        </Pressable>
                     </View>
                 </>
             )}

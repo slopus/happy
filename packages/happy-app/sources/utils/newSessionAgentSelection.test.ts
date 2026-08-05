@@ -19,6 +19,14 @@ describe('resolveMachineAgent', () => {
         })).toBe('codex');
     });
 
+    it('selects Rig on a Rig-only machine', () => {
+        expect(resolveMachineAgent('claude', {
+            rig: true,
+            claude: false,
+            codex: false,
+        })).toBe('rig');
+    });
+
     it('keeps the persisted selection when capability metadata is missing', () => {
         expect(resolveMachineAgent('claude', undefined)).toBe('claude');
     });

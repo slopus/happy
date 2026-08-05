@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AgentGoalStatusSchema, AgentStateSchema, MetadataSchema } from './storageTypes';
+import { AgentGoalStatusSchema, AgentStateSchema, MachineMetadataSchema, MetadataSchema } from './storageTypes';
 import { rigMetadataFixture } from './__testdata__/rigMetadata';
 
 describe('MetadataSchema', () => {
@@ -33,6 +33,69 @@ describe('MetadataSchema', () => {
         expect(metadata.models).toHaveLength(2);
         expect(metadata.activity?.subagents.queued).toBe(2);
         expect((metadata as any).futureCapability).toEqual({ supported: true });
+    });
+});
+
+describe('MachineMetadataSchema', () => {
+    it('preserves the Rig creation catalog and future machine fields', () => {
+        const metadata = MachineMetadataSchema.parse({
+            host: 'workstation',
+            platform: 'darwin',
+            happyCliVersion: '0.0.136',
+            happyHomeDir: '/Users/dev/.happy',
+            homeDir: '/Users/dev',
+            machineKind: 'rig',
+            rigOnly: true,
+            rigMetadataVersion: 1,
+            client: { id: 'rig', name: 'Rig', version: '0.0.136' },
+            cliAvailability: {
+                claude: false,
+                codex: false,
+                gemini: false,
+                openclaw: false,
+                agy: false,
+                rig: true,
+                detectedAt: 123,
+            },
+            capabilities: { newSession: true, resume: false, worktrees: false },
+            defaults: {
+                effort: 'high',
+                modelId: 'gpt-5.6-sol',
+                permissionMode: 'auto',
+                providerId: 'codex',
+            },
+            providers: [{ id: 'codex', kind: 'codex', name: 'OpenAI Codex' }],
+            models: [{
+                id: 'gpt-5.6-sol',
+                code: 'gpt-5.6-sol',
+                name: 'GPT-5.6 Sol',
+                value: 'GPT-5.6 Sol',
+                providerId: 'codex',
+                providerKind: 'codex',
+                providerName: 'OpenAI Codex',
+                provider: { id: 'codex', kind: 'codex', name: 'OpenAI Codex' },
+                serviceTiers: [],
+                thinkingLevels: ['low', 'high'],
+                defaultThinkingLevel: 'high',
+            }],
+            operatingModes: [{
+                code: 'auto',
+                value: 'Auto',
+                description: 'Reviews elevated actions automatically.',
+                kind: 'safe-yolo',
+            }],
+            sessionCreation: {
+                idempotencyKey: 'clientRequestId',
+                pendingRetryAfterMs: 2_000,
+                resultKinds: ['success', 'pending', 'requestToApproveDirectoryCreation', 'error'],
+            },
+            futureRigMachineField: { enabled: true },
+        });
+
+        expect(metadata.cliAvailability?.rig).toBe(true);
+        expect(metadata.defaults?.providerId).toBe('codex');
+        expect(metadata.models?.[0]?.thinkingLevels).toEqual(['low', 'high']);
+        expect((metadata as any).futureRigMachineField).toEqual({ enabled: true });
     });
 });
 

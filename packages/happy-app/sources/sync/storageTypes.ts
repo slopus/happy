@@ -428,8 +428,65 @@ export const MachineMetadataSchema = z.object({
         gemini: z.boolean(),
         openclaw: z.boolean(),
         agy: z.boolean().optional(), // optional: older CLIs don't report agy
+        rig: z.boolean().optional(), // Rig runs its own Happy-connected daemon
         detectedAt: z.number(),
     }).optional(),
+    // Rig registers as its own machine instead of being launched by happy-cli.
+    // Keep its creation catalog so the new-session UI can send Rig-native
+    // provider/model identifiers to the machine RPC.
+    machineKind: z.string().optional(),
+    rigOnly: z.boolean().optional(),
+    rigMetadataVersion: z.number().int().positive().optional(),
+    client: z.object({
+        id: z.string(),
+        name: z.string(),
+        version: z.string(),
+    }).passthrough().optional(),
+    capabilities: z.object({
+        newSession: z.boolean().optional(),
+        resume: z.boolean().optional(),
+        worktrees: z.boolean().optional(),
+    }).passthrough().optional(),
+    defaults: z.object({
+        effort: z.string(),
+        modelId: z.string(),
+        permissionMode: z.string(),
+        providerId: z.string(),
+    }).passthrough().optional(),
+    providers: z.array(z.object({
+        id: z.string(),
+        kind: z.string(),
+        name: z.string(),
+    }).passthrough()).optional(),
+    models: z.array(z.object({
+        id: z.string(),
+        code: z.string(),
+        name: z.string(),
+        value: z.string(),
+        providerId: z.string(),
+        providerKind: z.string(),
+        providerName: z.string(),
+        provider: z.object({
+            id: z.string(),
+            kind: z.string(),
+            name: z.string(),
+        }).passthrough(),
+        contextWindow: z.number().optional(),
+        serviceTiers: z.array(z.string()),
+        thinkingLevels: z.array(z.string()),
+        defaultThinkingLevel: z.string(),
+    }).passthrough()).optional(),
+    operatingModes: z.array(z.object({
+        code: z.string(),
+        value: z.string(),
+        description: z.string(),
+        kind: z.string(),
+    }).passthrough()).optional(),
+    sessionCreation: z.object({
+        idempotencyKey: z.string(),
+        pendingRetryAfterMs: z.number(),
+        resultKinds: z.array(z.string()),
+    }).passthrough().optional(),
     resumeSupport: z.object({
         rpcAvailable: z.boolean(),
         requiresSameMachine: z.boolean(),
@@ -437,7 +494,7 @@ export const MachineMetadataSchema = z.object({
         happyAgentAuthenticated: z.boolean(),
         detectedAt: z.number(),
     }).optional(),
-});
+}).passthrough();
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>;
 

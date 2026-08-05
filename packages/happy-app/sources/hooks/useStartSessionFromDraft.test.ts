@@ -4,10 +4,7 @@ const mocks = vi.hoisted(() => ({
     machines: [] as Array<{
         id: string;
         online: boolean;
-        metadata?: {
-            homeDir?: string;
-            cliAvailability?: Partial<Record<'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy', boolean>>;
-        };
+        metadata?: any;
     }>,
     defaultOverrides: {},
     draft: null as any,
@@ -19,12 +16,16 @@ const mocks = vi.hoisted(() => ({
     createWorktree: vi.fn(),
     alert: vi.fn(),
     confirm: vi.fn(),
+    delay: vi.fn(),
 }));
+
+vi.mock('expo-crypto', () => ({ randomUUID: () => 'rig-request-1' }));
 
 vi.mock('react', () => ({
     useState: <T,>(value: T) => [value, vi.fn()] as const,
     useRef: <T,>(value: T) => ({ current: value }),
     useCallback: <T,>(callback: T) => callback,
+    useEffect: (effect: () => void | (() => void)) => { effect(); },
 }));
 
 vi.mock('@/sync/storage', () => ({
@@ -76,6 +77,8 @@ vi.mock('@/utils/pathUtils', () => ({
 vi.mock('@/utils/worktree', () => ({
     createWorktree: mocks.createWorktree,
 }));
+
+vi.mock('@/utils/time', () => ({ delay: mocks.delay }));
 
 vi.mock('@/components/modelModeOptions', () => ({
     getHardcodedPermissionModes: () => [
@@ -218,6 +221,122 @@ describe('useStartSessionFromDraft', () => {
             approvedNewDirectoryCreation: true,
         }));
         expect(mocks.navigateToSession).toHaveBeenCalledWith('session-2');
+    });
+
+    it('creates a Rig session from its machine catalog and retries pending idempotently', async () => {
+        mocks.machines = [{
+            id: 'machine-1',
+            online: true,
+            metadata: {
+                homeDir: '/Users/dev',
+                machineKind: 'rig',
+                rigOnly: true,
+                cliAvailability: {
+                    rig: true,
+                    claude: false,
+                    codex: false,
+                    gemini: false,
+                    openclaw: false,
+                    detectedAt: 1,
+                },
+                capabilities: { newSession: true, resume: false, worktrees: false },
+                defaults: {
+                    providerId: 'codex',
+                    modelId: 'gpt-5.6-sol',
+                    permissionMode: 'auto',
+                    effort: 'high',
+                },
+                models: [{
+                    providerId: 'codex',
+                    id: 'gpt-5.6-sol',
+                    name: 'GPT-5.6 Sol',
+                    providerName: 'OpenAI Codex',
+                    thinkingLevels: ['low', 'high'],
+                    defaultThinkingLevel: 'high',
+                }],
+                operatingModes: [{
+                    code: 'auto',
+                    value: 'Auto',
+                    description: 'Reviews elevated actions.',
+                    kind: 'safe-yolo',
+                }],
+            },
+        }];
+        mocks.draft = createDraft({
+            agentType: 'claude',
+            sessionType: 'worktree',
+            worktreeKey: null,
+        });
+        mocks.machineSpawnNewSession
+            .mockResolvedValueOnce({ type: 'pending', clientRequestId: 'rig-request-1', retryAfterMs: 0 })
+            .mockResolvedValueOnce({ type: 'success', sessionId: 'rig-session-1' });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(true);
+
+        const expected = expect.objectContaining({
+            machineId: 'machine-1',
+            agent: 'rig',
+            clientRequestId: 'rig-request-1',
+            directory: '/absolute/project',
+            providerId: 'codex',
+            modelId: 'gpt-5.6-sol',
+            permissionMode: 'auto',
+            effort: 'high',
+        });
+        expect(mocks.machineSpawnNewSession).toHaveBeenNthCalledWith(1, expected);
+        expect(mocks.machineSpawnNewSession).toHaveBeenNthCalledWith(2, expected);
+        expect(mocks.delay).toHaveBeenCalledWith(250);
+        expect(mocks.createWorktree).not.toHaveBeenCalled();
+        expect(mocks.sessionSetAgentModes).not.toHaveBeenCalled();
+        expect(mocks.navigateToSession).toHaveBeenCalledWith('rig-session-1');
+    });
+
+    it('stops polling when a created Rig session remains pending', async () => {
+        mocks.machines = [{
+            id: 'machine-1',
+            online: true,
+            metadata: {
+                homeDir: '/Users/dev',
+                machineKind: 'rig',
+                rigOnly: true,
+                cliAvailability: {
+                    rig: true,
+                    claude: false,
+                    codex: false,
+                    gemini: false,
+                    openclaw: false,
+                    detectedAt: 1,
+                },
+                capabilities: { newSession: true, resume: false, worktrees: false },
+                defaults: {
+                    providerId: 'codex', modelId: 'model', permissionMode: 'auto', effort: 'high',
+                },
+                models: [{
+                    providerId: 'codex', id: 'model', name: 'Model', providerName: 'Codex',
+                    thinkingLevels: ['high'], defaultThinkingLevel: 'high',
+                }],
+                operatingModes: [{
+                    code: 'auto', value: 'Auto', description: 'Automatic review', kind: 'safe-yolo',
+                }],
+            },
+        }];
+        mocks.draft = createDraft({ agentType: 'rig' });
+        mocks.machineSpawnNewSession.mockResolvedValue({
+            type: 'pending', clientRequestId: 'rig-request-1', retryAfterMs: 2_000,
+        });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(false);
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(4);
+        expect(mocks.delay).toHaveBeenCalledTimes(3);
+        expect(mocks.alert).toHaveBeenCalledWith(
+            'common.error',
+            'Rig created the session, but it is still syncing with Happy. It should appear shortly.',
+        );
+        expect(mocks.navigateToSession).not.toHaveBeenCalled();
     });
 
     it('keeps the draft in place when creation fails', async () => {

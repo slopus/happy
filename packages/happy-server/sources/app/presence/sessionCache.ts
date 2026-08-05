@@ -142,6 +142,14 @@ class ActivityCache {
         return false; // No update needed
     }
 
+    /**
+     * Forget queued heartbeats before a session is stopped, archived, or deleted.
+     * Otherwise the next batch flush can overwrite active=false with stale activity.
+     */
+    clearSessionUpdates(sessionId: string): void {
+        this.sessionCache.delete(sessionId);
+    }
+
     queueMachineUpdate(machineId: string, timestamp: number): boolean {
         const cached = this.machineCache.get(machineId);
         if (!cached) {

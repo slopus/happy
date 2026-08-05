@@ -83,6 +83,39 @@ export interface MobileComposerMenuGeometry {
     content: MobileComposerGeometryStyle;
 }
 
+export interface MobileCollapsedComposerGeometry {
+    shellHeight: number;
+    shellRadius: number;
+    contentPaddingLeft: number;
+    contentPaddingRight: number;
+    inputPaddingLeft: number;
+    inputPaddingRight: number;
+    textInset: number;
+}
+
+/**
+ * Places collapsed-composer text at the tangent where the capsule's rounded
+ * end meets its straight edge, rather than halfway through the rounded end.
+ */
+export function resolveMobileCollapsedComposerGeometry(
+    shellHeight = 56,
+    contentPaddingHorizontal = 7,
+    inputPaddingRight = 4,
+): MobileCollapsedComposerGeometry {
+    const shellRadius = shellHeight / 2;
+    const inputPaddingLeft = shellRadius - contentPaddingHorizontal;
+
+    return {
+        shellHeight,
+        shellRadius,
+        contentPaddingLeft: contentPaddingHorizontal,
+        contentPaddingRight: contentPaddingHorizontal,
+        inputPaddingLeft,
+        inputPaddingRight,
+        textInset: contentPaddingHorizontal + inputPaddingLeft,
+    };
+}
+
 /**
  * Keeps the Expo native-menu host frame free of visual padding. Padding and
  * alignment belong exclusively to the visible React Native label inside it.

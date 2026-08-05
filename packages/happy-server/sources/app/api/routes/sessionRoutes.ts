@@ -7,6 +7,7 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
+import { activityCache } from "@/app/presence/sessionCache";
 
 export function sessionRoutes(app: Fastify) {
 
@@ -366,6 +367,8 @@ export function sessionRoutes(app: Fastify) {
         const userId = request.userId;
         const { sessionId } = request.params;
 
+        activityCache.clearSessionUpdates(sessionId);
+
         const result = await db.session.updateMany({
             where: { id: sessionId, accountId: userId },
             data: { active: false, lastActiveAt: new Date() }
@@ -397,6 +400,8 @@ export function sessionRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
+
+        activityCache.clearSessionUpdates(sessionId);
 
         const deleted = await sessionDelete({ uid: userId }, sessionId);
 
