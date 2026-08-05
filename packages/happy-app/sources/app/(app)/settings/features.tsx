@@ -19,6 +19,7 @@ export default function FeaturesSettingsScreen() {
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [expImageUpload, setExpImageUpload] = useSettingMutable('expImageUpload');
     const [sortSessionsByActivity, setSortSessionsByActivity] = useSettingMutable('sortSessionsByActivity');
+    const [expForkNesting, setExpForkNesting] = useSettingMutable('expForkNesting');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -126,6 +127,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={expImageUpload}
                             onValueChange={setExpImageUpload}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.forkNesting')}
+                    subtitle={t('settingsFeatures.forkNestingSubtitle')}
+                    icon={<Ionicons name="git-branch-outline" size={29} color="#5AC8FA" />}
+                    rightElement={
+                        <Switch
+                            value={expForkNesting}
+                            onValueChange={setExpForkNesting}
                         />
                     }
                     showChevron={false}

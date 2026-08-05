@@ -243,6 +243,8 @@ export const zhHant: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
         imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
+        forkNesting: '巢狀顯示分叉工作階段',
+        forkNestingSubtitle: '將分叉工作階段縮排顯示在其分支來源的工作階段下方',
     },
 
     errors: {

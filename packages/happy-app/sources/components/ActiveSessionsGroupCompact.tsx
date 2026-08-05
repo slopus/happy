@@ -8,10 +8,11 @@ import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLast
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSessionGitStatus } from '@/sync/storage';
+import { useAllMachines, useSessionGitStatus, useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { ForkLineageConnector, forkIndentPadding } from './ForkLineageConnector';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
@@ -168,12 +169,14 @@ const MachineSeparator = React.memo(({ machineName, machineId }: { machineName: 
 export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
     const machines = useAllMachines();
+    const expForkNesting = useSetting('expForkNesting');
 
     const machineGroups = React.useMemo(() => buildActiveSessionDisplayGroups(
         sessions,
         machines,
         t('status.unknown'),
-    ), [machines, sessions]);
+        expForkNesting,
+    ), [machines, sessions, expForkNesting]);
     const hasMultipleMachines = machineGroups.length > 1;
 
     return (
@@ -299,11 +302,13 @@ export const CompactSessionRow = React.memo(({ session, selected, showBorder }: 
             style={[
                 styles.sessionRow,
                 showBorder && styles.sessionRowWithBorder,
-                selected && styles.sessionRowSelected
+                selected && styles.sessionRowSelected,
+                { paddingLeft: forkIndentPadding(session.forkDepth, 16) },
             ]}
             onPress={handlePress}
             {...menuProps}
         >
+            <ForkLineageConnector forkDepth={session.forkDepth} rowHeight={56} basePadding={16} />
             <View style={styles.sessionContent}>
                 <View style={styles.sessionTitleRow}>
                     {renderLeadingIndicator()}

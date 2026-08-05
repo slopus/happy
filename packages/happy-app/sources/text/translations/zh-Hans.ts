@@ -244,6 +244,8 @@ export const zhHans: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
         imageUploadSubtitle: '将图片附加到消息中，以便受支持的代理进行分析',
+        forkNesting: '嵌套分叉会话',
+        forkNestingSubtitle: '将分叉会话缩进显示在其分支来源的会话下方',
     },
 
     errors: {

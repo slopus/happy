@@ -260,6 +260,8 @@ export const pl: TranslationStructure = {
         analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
         imageUpload: 'Przesyłanie obrazów',
         imageUploadSubtitle: 'Dołączaj obrazy do wiadomości, aby obsługiwani agenci mogli je analizować',
+        forkNesting: 'Zagnieżdżaj rozgałęzione sesje',
+        forkNestingSubtitle: 'Wcina rozgałęzione sesje pod sesją, z której się rozgałęziły',
     },
 
     errors: {
