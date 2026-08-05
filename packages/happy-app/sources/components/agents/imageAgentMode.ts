@@ -1,4 +1,11 @@
-import { IMAGE_AGENT_STYLE_PRESETS, normalizeImageAgentVariantCount, type ImageAgentStylePreset } from './imageAgentPrompt';
+import {
+    IMAGE_AGENT_STYLE_PRESETS,
+    getImageAgentStyleCategoryLabel,
+    getImageAgentStyleLabel,
+    getImageAgentStylePromptHint,
+    normalizeImageAgentVariantCount,
+    type ImageAgentStylePreset,
+} from './imageAgentPrompt';
 import type { AgentLauncher } from './launchAgent';
 
 export const IMAGE_STYLE_MODE_PARAM = 'image-styles';
@@ -84,10 +91,10 @@ export function createImageStyleSelectionPrompt(style: ImageAgentStylePreset): s
         '使用 $gpt-image-2 skill 生成或编辑图片，并以下面选中的 Garden 案例作为目标风格。',
         '',
         `已选择的 Garden 案例：${style.id}`,
-        `案例标题：${style.title}`,
+        `案例标题：${getImageAgentStyleLabel(style)}`,
         `模板：${style.templateRef}`,
-        `分类：${style.categoryLabel}`,
-        `风格说明：${style.promptHint}`,
+        `分类：${getImageAgentStyleCategoryLabel(style)}`,
+        `风格说明：${getImageAgentStylePromptHint(style)}`,
         '',
         '除非我明确要求改变，否则请保留上传主体的身份特征、关键几何结构、重要文字，以及用户提供的所有约束。',
         '请把上面的案例风格转写成中文图像生成 prompt 后执行，不要在最终 prompt 中保留英文 JSON 字段名。',

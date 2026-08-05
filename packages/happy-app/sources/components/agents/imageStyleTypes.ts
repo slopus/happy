@@ -1,6 +1,7 @@
 export interface ImageAgentStyleCategory {
     id: string;
     label: string;
+    labelKey?: ImageAgentStyleLabelKey;
     accent: string;
     count: number;
 }
@@ -11,14 +12,24 @@ export interface ImageAgentStylePreset {
     labelKey?: ImageAgentStyleLabelKey;
     categoryId: string;
     categoryLabel: string;
+    categoryLabelKey?: ImageAgentStyleLabelKey;
     categoryAccent: string;
     templateRef: string;
     templateLabel: string;
+    templateLabelKey?: ImageAgentStyleLabelKey;
     promptHint: string;
+    promptHintKey?: ImageAgentStyleLabelKey;
     promptContent: string;
     promptPath: string;
     sourceCaseId: string;
-    sourceRepository: 'ConardLi/gpt-image-2-101' | 'curated-reference-examples' | 'user-reference';
+    sourceRepository: string;
+    sourceRevision?: string;
+    sourceLicenseNotice?: string;
+    executionKind?: 'gpt-image-2' | 'deterministic-grade';
+    inputMode?: 'text-or-image' | 'image-required';
+    multiInputMode?: 'single' | 'batch';
+    supportedInputFormats?: Array<'jpeg' | 'png'>;
+    responseInstructions?: string;
     referenceImages?: ImageAgentStyleReferenceImage[];
     analysisStatus?: UserImageStyleAnalysisStatus;
     analysisError?: string;
@@ -64,6 +75,17 @@ export type UserImageStyleAnalysisStatus = 'reference-ready' | 'analyzing' | 'pr
 export type UserImageStylePromptSource = 'reference-image' | 'extracted-prompt' | 'manual';
 
 export type ImageAgentStyleLabelKey =
+    | 'agents.imageStyleGithubSkills'
+    | 'agents.imageStyleMinimalZinePoster'
+    | 'agents.imageStyleMinimalZinePosterHint'
+    | 'agents.imageStyleSceneDistillationZine'
+    | 'agents.imageStyleSceneDistillationZineHint'
+    | 'agents.imageStyleGradeImages'
+    | 'agents.imageStyleGradeImagesHint'
+    | 'agents.imageStyleScenesGatheredZine'
+    | 'agents.imageStyleScenesGatheredZineHint'
+    | 'agents.imageStyleScenesGatheredZineSea'
+    | 'agents.imageStyleScenesGatheredZineSeaHint'
     | 'agents.imageStyleVintageFilm'
     | 'agents.imageStylePremiumStudio'
     | 'agents.imageStyleWhiteProduct'

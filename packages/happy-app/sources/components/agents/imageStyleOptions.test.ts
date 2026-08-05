@@ -50,4 +50,73 @@ describe('imageStyleOptions', () => {
         expect(prompt).toContain('同一个 batchId 内重试一次');
         expect(prompt).toContain('不得减少参考信息、缩短风格分析、简化完整 prompt 或降低最终生成质量');
     });
+
+    it('keeps the complete Minimal Zine Poster compiler in continuation batches', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/minimal-zine-poster/1');
+        expect(style).toBeTruthy();
+
+        const prompt = buildImageStyleContinuationPrompt([style!]);
+
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('Minimal Zine Poster v0.1 Standard Mode compiler');
+        expect(prompt).toContain('70%-90% plain paper');
+        expect(prompt).toContain('variation recipe');
+        expect(prompt).toContain('high-chroma hue');
+    });
+
+    it('keeps the complete Scene Distillation compiler in continuation batches', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/scene-distillation-zine/1');
+        expect(style).toBeTruthy();
+
+        const prompt = buildImageStyleContinuationPrompt([style!]);
+
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('Scene Distillation Zine v1.3 visual compiler');
+        expect(prompt).toContain('semantic evidence and creative stimulus');
+        expect(prompt).toContain('exact trigger 单色块模式');
+        expect(prompt).toContain('exactly one contiguous fully saturated color field');
+        expect(prompt).toContain('Do not browse, search, share, or upload the source anywhere else');
+        expect(prompt).toContain('without visual inspection, quality-gate review, or automatic regeneration');
+        expect(prompt).toContain("user's current conversation language");
+        expect(prompt).toContain('creative-concept and art-direction notes');
+        expect(prompt).toContain('generation service received the final prompt and reference image');
+    });
+
+    it('keeps grade-images deterministic in continuation batches', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/grade-images/1');
+        expect(style).toBeTruthy();
+
+        const prompt = buildImageStyleContinuationPrompt([style!]);
+
+        expect(prompt).toContain('使用 $grade-images skill 继续执行一次确定性、非生成式照片调色批处理');
+        expect(prompt).toContain('engine=deterministic-grade');
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('Never use GPT Image, image_gen, neural style transfer');
+        expect(prompt).toContain('版本化 recipe、质量报告和对比图');
+        expect(prompt).not.toContain('第一次调用 native image_gen 前');
+        expect(prompt).toContain('必须有源图片');
+    });
+
+    it('keeps the complete Gathered Scenes compiler in continuation batches', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/scenes-gathered-zine/1');
+        expect(style).toBeTruthy();
+
+        const prompt = buildImageStyleContinuationPrompt([style!]);
+
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('Gathered Scenes Zine v1.3 visual compiler');
+        expect(prompt).toContain('truthful photography as anchor');
+        expect(prompt).toContain('hand-torn fibrous edge');
+        expect(prompt).toContain('exactly one high-chroma print hue');
+        expect(prompt).toContain("user's current conversation language");
+        expect(prompt).toContain('一次只能处理一张源图片');
+        expect(prompt).toContain('如果无法唯一确定，应先请用户选择');
+
+        const seaStyle = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/scenes-gathered-zine/2');
+        expect(seaStyle).toBeTruthy();
+        const seaPrompt = buildImageStyleContinuationPrompt([seaStyle!]);
+        expect(seaPrompt).toContain(seaStyle!.promptContent);
+        expect(seaPrompt).toContain('github-skills/scenes-gathered-zine/2');
+        expect(seaPrompt).toContain('truthful coastal photo anchor');
+    });
 });

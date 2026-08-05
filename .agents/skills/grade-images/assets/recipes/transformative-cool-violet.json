@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.2",
+  "intent": "Transform a warm night scene toward pale violet highlights and a cold, austere atmosphere while preserving source geometry, texture, objects, faces, text, and native light structure",
+  "strategy": {
+    "intensity": "transformative",
+    "style": "custom",
+    "selection": "template"
+  },
+  "preservation": {
+    "mode": "strict",
+    "allow_geometry_changes": false,
+    "allow_texture_changes": false,
+    "allow_generative_changes": false
+  },
+  "correction": {
+    "exposure_ev": -0.08,
+    "white_balance": {"rgb_gains": [0.95, 1.0, 1.06]},
+    "black_point": 0.002,
+    "white_point": 1.02,
+    "highlight_rolloff": 0.22
+  },
+  "look": {
+    "tone_curve": {"strength": 0.39},
+    "cdl": {
+      "slope": [0.98, 1.0, 1.025],
+      "offset": [0.0, 0.0, 0.0],
+      "power": [1.015, 1.0, 0.985],
+      "saturation": 1.0
+    },
+    "vibrance": -0.85,
+    "hue_ranges": [
+      {
+        "label": "warm pale subjects toward violet",
+        "center_degrees": 38.0,
+        "width_degrees": 92.0,
+        "feather_degrees": 28.0,
+        "hue_shift_degrees": -108.0,
+        "saturation_scale": 0.65,
+        "luminance_scale": 1.03,
+        "saturation_range": [0.035, 0.82],
+        "luminance_range": [0.018, 0.92],
+        "range_feather": 0.045,
+        "strength": 0.9
+      }
+    ],
+    "split_tone": {
+      "shadows": [0.5, 0.5, 0.5],
+      "highlights": [0.72, 0.64, 0.84],
+      "balance": 0.18,
+      "strength": 0.035
+    }
+  },
+  "protection": {"skin": {"enabled": false, "strength": 0.0}},
+  "quality_tolerances": {
+    "intentional_near_black_increase": 0.22,
+    "reason": "The explicit cold restrained night treatment darkens non-subject warm surroundings to match the intended tonal hierarchy; this adjusts only the near-black warning baseline and does not relax clipping, structure, edge, texture, or content gates"
+  },
+  "output": {"format": "png", "quality": 95, "profile": "sRGB", "preserve_metadata": true}
+}

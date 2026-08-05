@@ -6,7 +6,12 @@ import { StyleSheet } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import type { ImageAgentStylePreset } from './imageAgentPrompt';
-import { IMAGE_AGENT_STYLE_CATEGORIES, getImageAgentStyleLabel } from './imageAgentPrompt';
+import {
+    IMAGE_AGENT_STYLE_CATEGORIES,
+    getImageAgentStyleCategoryLabel,
+    getImageAgentStyleLabel,
+    getImageAgentStylePromptHint,
+} from './imageAgentPrompt';
 import { getImageStylePreviewAsset } from './imageStylePreviewAssets';
 import {
     IMAGE_STYLE_GALLERY_COLUMN_GAP,
@@ -33,6 +38,22 @@ type Props = {
 
 const ALL_CATEGORY_ID = 'all';
 const SHEET_HORIZONTAL_PADDING = 28;
+
+function getLocalizedStyleLabel(style: ImageAgentStylePreset): string {
+    return style.labelKey ? t(style.labelKey) : getImageAgentStyleLabel(style);
+}
+
+function getLocalizedStyleCategoryLabel(style: ImageAgentStylePreset): string {
+    return style.categoryLabelKey ? t(style.categoryLabelKey) : getImageAgentStyleCategoryLabel(style);
+}
+
+function getLocalizedStylePromptHint(style: ImageAgentStylePreset): string {
+    return style.promptHintKey ? t(style.promptHintKey) : getImageAgentStylePromptHint(style);
+}
+
+function getLocalizedStyleTemplateLabel(style: ImageAgentStylePreset): string {
+    return style.templateLabelKey ? t(style.templateLabelKey) : style.templateLabel;
+}
 
 function StylePreview({ style, cardWidth }: { style: ImageAgentStylePreset; cardWidth: number }) {
     const customReference = style.referenceImages?.[0];
@@ -197,7 +218,7 @@ export const ImageStyleGallerySheet = React.memo(function ImageStyleGallerySheet
                 <Pressable
                     onPress={() => props.onToggle(style)}
                     accessibilityRole="checkbox"
-                    accessibilityLabel={getImageAgentStyleLabel(style)}
+                    accessibilityLabel={getLocalizedStyleLabel(style)}
                     accessibilityState={{ checked: selected }}
                     style={({ pressed }) => [
                         styles.card,
@@ -207,13 +228,13 @@ export const ImageStyleGallerySheet = React.memo(function ImageStyleGallerySheet
                 >
                     <StylePreview style={style} cardWidth={cardWidth} />
                     <View style={styles.cardCopy}>
-                        <Text style={styles.cardTitle} numberOfLines={2}>{getImageAgentStyleLabel(style)}</Text>
+                        <Text style={styles.cardTitle} numberOfLines={2}>{getLocalizedStyleLabel(style)}</Text>
                         <Text style={styles.cardMeta} numberOfLines={1}>
-                            {style.custom ? t(getCustomStyleStatusKey(style.analysisStatus)) : style.categoryLabel}
+                            {style.custom ? t(getCustomStyleStatusKey(style.analysisStatus)) : getLocalizedStyleCategoryLabel(style)}
                             {' · '}
-                            {style.templateLabel}
+                            {getLocalizedStyleTemplateLabel(style)}
                         </Text>
-                        <Text style={styles.cardHint} numberOfLines={2}>{style.promptHint}</Text>
+                        <Text style={styles.cardHint} numberOfLines={2}>{getLocalizedStylePromptHint(style)}</Text>
                         {customStatusLine && (
                             <Text style={styles.cardStatusLine} numberOfLines={1}>
                                 {customStatusLine}
@@ -351,7 +372,7 @@ export const ImageStyleGallerySheet = React.memo(function ImageStyleGallerySheet
                             ]}
                             numberOfLines={1}
                         >
-                            {category.label}
+                            {category.labelKey ? t(category.labelKey) : category.label}
                         </Text>
                         <Text style={styles.categoryCount} numberOfLines={1}>{category.count}</Text>
                     </Pressable>

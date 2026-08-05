@@ -2,6 +2,46 @@
 import type { ImageStylePreviewEntry } from './imageStylePreviewManifest';
 
 export const EXTRA_IMAGE_STYLE_PREVIEW_MANIFEST: Record<string, ImageStylePreviewEntry> = {
+    "github-skills/scenes-gathered-zine/2": {
+        "fileName": "scenes-gathered-zine-sea-user-reference.jpg",
+        "sourceSet": "github-skill",
+        "sourceCaseId": "scenes-gathered-zine-v1-3/user-reference-sea",
+        "sourceIndex": 5,
+        "width": 1256,
+        "height": 2808
+    },
+    "github-skills/scenes-gathered-zine/1": {
+        "fileName": "scenes-gathered-zine-user-reference.jpg",
+        "sourceSet": "github-skill",
+        "sourceCaseId": "scenes-gathered-zine-v1-3/user-reference",
+        "sourceIndex": 4,
+        "width": 1256,
+        "height": 2808
+    },
+    "github-skills/grade-images/1": {
+        "fileName": "grade-images-v0-3-0-user-reference.jpg",
+        "sourceSet": "github-skill",
+        "sourceCaseId": "grade-images-v0-3-0/user-reference-natural-standard",
+        "sourceIndex": 3,
+        "width": 1256,
+        "height": 2808
+    },
+    "github-skills/scene-distillation-zine/1": {
+        "fileName": "scene-distillation-zine-user-reference.jpg",
+        "sourceSet": "github-skill",
+        "sourceCaseId": "scene-distillation-zine-v1-3/user-reference",
+        "sourceIndex": 2,
+        "width": 1256,
+        "height": 2808
+    },
+    "github-skills/minimal-zine-poster/1": {
+        "fileName": "gc-minimal-zine-poster-pause-map.jpg",
+        "sourceSet": "github-skill",
+        "sourceCaseId": "gc-minimal-zine-poster-v0-1/pause-map",
+        "sourceIndex": 1,
+        "width": 686,
+        "height": 1144
+    },
     "reference-voxcat/wild-mountain-sketchbook/1": {
         "fileName": "voxcat-wild-mountain-sketchbook.jpg",
         "sourceSet": "curated-reference-examples",

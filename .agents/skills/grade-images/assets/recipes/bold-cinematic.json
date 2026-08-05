@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "intent": "Bold cinematic starting point with unmistakable tonal density and cool-shadow/warm-highlight separation",
+  "strategy": {
+    "intensity": "bold",
+    "style": "cinematic",
+    "selection": "template"
+  },
+  "preservation": {
+    "mode": "strict",
+    "allow_geometry_changes": false,
+    "allow_texture_changes": false,
+    "allow_generative_changes": false
+  },
+  "correction": {
+    "exposure_ev": 0.0,
+    "white_balance": {"rgb_gains": [1.0, 1.0, 1.0]},
+    "black_point": 0.006,
+    "white_point": 1.03,
+    "highlight_rolloff": 0.3
+  },
+  "look": {
+    "tone_curve": {"strength": 0.4},
+    "cdl": {
+      "slope": [1.025, 1.0, 0.972],
+      "offset": [0.0, 0.0, 0.0],
+      "power": [0.98, 1.0, 1.025],
+      "saturation": 1.0
+    },
+    "saturation": 1.06,
+    "split_tone": {
+      "shadows": [0.24, 0.47, 0.6],
+      "highlights": [0.8, 0.58, 0.22],
+      "balance": 0.1,
+      "strength": 0.13
+    }
+  },
+  "protection": {"skin": {"enabled": true, "strength": 0.62}},
+  "output": {"format": "png", "quality": 95, "profile": "sRGB", "preserve_metadata": true}
+}

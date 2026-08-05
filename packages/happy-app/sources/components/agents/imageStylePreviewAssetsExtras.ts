@@ -2,6 +2,11 @@
 import type { ImageSourcePropType } from 'react-native';
 
 export const EXTRA_IMAGE_STYLE_PREVIEW_ASSETS: Record<string, ImageSourcePropType> = {
+    "github-skills/scenes-gathered-zine/2": require('@/assets/images/gpt-image-2/reference-examples/scenes-gathered-zine-sea-user-reference.jpg'),
+    "github-skills/scenes-gathered-zine/1": require('@/assets/images/gpt-image-2/reference-examples/scenes-gathered-zine-user-reference.jpg'),
+    "github-skills/grade-images/1": require('@/assets/images/gpt-image-2/reference-examples/grade-images-v0-3-0-user-reference.jpg'),
+    "github-skills/scene-distillation-zine/1": require('@/assets/images/gpt-image-2/reference-examples/scene-distillation-zine-user-reference.jpg'),
+    "github-skills/minimal-zine-poster/1": require('@/assets/images/gpt-image-2/reference-examples/gc-minimal-zine-poster-pause-map.jpg'),
     "reference-voxcat/wild-mountain-sketchbook/1": require('@/assets/images/gpt-image-2/reference-examples/voxcat-wild-mountain-sketchbook.jpg'),
     "reference-graphite-cyan/dark-urban-grade/1": require('@/assets/images/gpt-image-2/reference-examples/graphite-cyan-dark-tone.jpg'),
     "reference-tiramisu/vintage-film-cafe/1": require('@/assets/images/gpt-image-2/reference-examples/tiramisu-vintage-film-cafe-20260706-025730.jpg'),

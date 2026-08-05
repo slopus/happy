@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.1",
+  "intent": "Soft dream starting point with lifted midtones, compressed highlights, restrained chroma, and explicitly permitted source-derived highlight diffusion; no synthetic light source or scene content is added",
+  "strategy": {
+    "intensity": "standard",
+    "style": "custom",
+    "selection": "template"
+  },
+  "preservation": {
+    "mode": "strict",
+    "allow_geometry_changes": false,
+    "allow_texture_changes": false,
+    "allow_generative_changes": false
+  },
+  "correction": {
+    "exposure_ev": 0.35,
+    "white_balance": {"rgb_gains": [1.02, 1.0, 0.98]},
+    "black_point": 0.0,
+    "white_point": 1.15,
+    "highlight_rolloff": 0.65
+  },
+  "look": {
+    "tone_curve": {"strength": -0.48},
+    "cdl": {
+      "slope": [1.0, 1.0, 1.0],
+      "offset": [0.018, 0.018, 0.022],
+      "power": [0.94, 0.95, 0.93],
+      "saturation": 1.0
+    },
+    "saturation": 1.0,
+    "vibrance": -0.55,
+    "split_tone": {
+      "shadows": [0.42, 0.44, 0.58],
+      "highlights": [0.70, 0.62, 0.50],
+      "balance": 0.1,
+      "strength": 0.06
+    }
+  },
+  "effects": {
+    "permission": "source-derived",
+    "selection": "explicit-user",
+    "source_glow": {
+      "enabled": true,
+      "threshold": 0.52,
+      "knee": 0.16,
+      "radius_fraction": 0.018,
+      "strength": 0.12
+    }
+  },
+  "protection": {"skin": {"enabled": true, "strength": 0.62}},
+  "output": {"format": "png", "quality": 95, "profile": "sRGB", "preserve_metadata": true}
+}
