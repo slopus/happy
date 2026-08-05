@@ -1934,6 +1934,7 @@ test.describe('中文 Web 消息与工具演示', () => {
         await page.goto(authenticatedRoute('/dev/messages-demo'));
         await expect(page.getByTestId('media-attachment-player-generated')).toBeVisible();
         await expect(page.getByTestId('media-attachment-card-generated')).toHaveCount(0);
+        await expect(page.getByTestId('media-attachment-player-generated-fullscreen')).toHaveCount(0);
         await expect(page.getByText('agent-output.mp4', { exact: true })).toHaveCount(0);
         await expect(page.getByText('file', { exact: true })).toHaveCount(0);
 
@@ -1959,6 +1960,7 @@ test.describe('中文 Web 消息与工具演示', () => {
 
         await expect(page.getByTestId('media-attachment-player-pending')).toBeVisible();
         await expect(page.getByTestId('media-attachment-card-pending')).toHaveCount(0);
+        await expect(page.getByTestId('media-attachment-player-pending-fullscreen')).toHaveCount(0);
         await expect(page.getByText(path.basename(fixturePath), { exact: true })).toHaveCount(0);
 
         await exerciseInlineVideo(page, 'media-attachment-player-pending');
@@ -1966,6 +1968,7 @@ test.describe('中文 Web 消息与工具演示', () => {
 
         await expect(page.getByTestId('media-attachment-player-user')).toBeVisible({ timeout: 20_000 });
         await expect(page.getByTestId('media-attachment-card-user')).toHaveCount(0);
+        await expect(page.getByTestId('media-attachment-player-user-fullscreen')).toHaveCount(0);
         await exerciseInlineVideo(page, 'media-attachment-player-user');
         await pauseForRecordedReview(page, 1_100);
         await page.screenshot({ path: testInfo.outputPath('mp4-user-after.png'), fullPage: true });
