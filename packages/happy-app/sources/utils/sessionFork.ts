@@ -43,7 +43,11 @@ export function getSessionForkSource(session: Session): ForkSource | null {
         };
     }
 
-    const claudeSessionId = session.metadata?.claudeSessionId;
+    if (session.metadata?.flavor !== 'claude') {
+        return null;
+    }
+
+    const claudeSessionId = session.metadata.claudeSessionId;
     if (!nonEmpty(claudeSessionId)) {
         return null;
     }

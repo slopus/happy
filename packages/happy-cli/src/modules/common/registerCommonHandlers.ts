@@ -3,7 +3,7 @@ import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
 import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { createHash } from 'crypto';
-import { join, resolve, sep } from 'path';
+import { join } from 'path';
 import { homedir } from 'os';
 import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
@@ -12,6 +12,7 @@ import { validatePath, validateReadPath } from './pathSecurity';
 import { registerScreenshotHandler } from './registerScreenshotHandler';
 import { registerGetScreenshotByIdHandler } from './registerGetScreenshotByIdHandler';
 import type { ScreenshotStore } from '@/utils/screenshotStore';
+import { browseHomeDirectory } from './browseHomeDirectory';
 
 const execAsync = promisify(exec);
 
@@ -81,21 +82,6 @@ interface ListDirectoryResponse {
 interface BrowseDirectoryRequest {
     // Absolute path to browse. Empty / omitted / '~' resolves to the home dir.
     path?: string;
-}
-
-interface BrowseDirectoryEntry {
-    name: string;
-    path: string; // absolute path, ready to browse into
-    isProjectRoot: boolean; // has a .git entry — i.e. looks like a repo root
-}
-
-interface BrowseDirectoryResponse {
-    success: boolean;
-    path?: string; // resolved absolute path actually listed
-    parent?: string | null; // parent path, or null when at the home root
-    home?: string; // user's home directory (browse root)
-    directories?: BrowseDirectoryEntry[];
-    error?: string;
 }
 
 interface GetDirectoryTreeRequest {
@@ -429,60 +415,12 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
     // Browse directory handler - home-rooted directory navigation for the
     // mobile new-session path picker. Returns only sub-directories so the user
     // can point-and-click drill down to a working directory.
-    rpcHandlerManager.registerHandler<BrowseDirectoryRequest, BrowseDirectoryResponse>('browseDirectory', async (data) => {
-        const home = resolve(homedir());
-
-        // Resolve the requested path, defaulting to (and never escaping above) home.
-        const raw = (data.path ?? '').trim();
-        let target: string;
-        if (raw === '' || raw === '~') {
-            target = home;
-        } else if (raw.startsWith('~/')) {
-            target = resolve(home, raw.slice(2));
-        } else {
-            target = resolve(home, raw);
+    rpcHandlerManager.registerHandler<BrowseDirectoryRequest, Awaited<ReturnType<typeof browseHomeDirectory>>>('browseDirectory', async (data) => {
+        const result = await browseHomeDirectory(homedir(), data.path);
+        if (!result.success) {
+            logger.debug('Failed to browse directory:', result.error);
         }
-
-        logger.debug('Browse directory request:', target);
-
-        // Containment check: only allow browsing inside the home directory.
-        if (target !== home && !target.startsWith(home + sep)) {
-            return { success: false, error: `Access denied: Path is outside the home directory` };
-        }
-
-        try {
-            const entries = await readdir(target, { withFileTypes: true });
-
-            const directories: BrowseDirectoryEntry[] = await Promise.all(
-                entries
-                    // Directories only, hide dot-directories to cut noise.
-                    .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
-                    .map(async (entry) => {
-                        const fullPath = join(target, entry.name);
-                        let isProjectRoot = false;
-                        try {
-                            await stat(join(fullPath, '.git'));
-                            isProjectRoot = true;
-                        } catch {
-                            // No .git — just a regular directory.
-                        }
-                        return { name: entry.name, path: fullPath, isProjectRoot };
-                    })
-            );
-
-            directories.sort((a, b) => a.name.localeCompare(b.name));
-
-            return {
-                success: true,
-                path: target,
-                parent: target === home ? null : resolve(target, '..'),
-                home,
-                directories,
-            };
-        } catch (error) {
-            logger.debug('Failed to browse directory:', error);
-            return { success: false, error: error instanceof Error ? error.message : 'Failed to browse directory' };
-        }
+        return result;
     });
 
     // Get directory tree handler - recursive with depth control

@@ -196,15 +196,22 @@ export class ApiMachineClient {
         // `resumeClaudeSessionId` set so `claude --resume <newUuid>`
         // continues the conversation.
         this.rpcHandlerManager.registerHandler('claude-fork-session', async (params: any) => {
-            const { directory, claudeSessionId } = params || {};
+            const { directory, targetDirectory, claudeSessionId } = params || {};
             if (typeof directory !== 'string' || directory.length === 0) {
                 throw new Error('directory is required');
             }
             if (typeof claudeSessionId !== 'string' || !UUID_RE.test(claudeSessionId)) {
                 throw new Error('claudeSessionId must be a valid UUID');
             }
+            if (targetDirectory !== undefined && (typeof targetDirectory !== 'string' || targetDirectory.length === 0)) {
+                throw new Error('targetDirectory must be a non-empty string');
+            }
             try {
-                const newClaudeSessionId = await claudeForkSession(getProjectPath(directory), claudeSessionId);
+                const newClaudeSessionId = await claudeForkSession(
+                    getProjectPath(directory),
+                    claudeSessionId,
+                    getProjectPath(targetDirectory ?? directory),
+                );
                 return { type: 'success', newClaudeSessionId };
             } catch (error) {
                 if (error instanceof ForkSourceMissingError) {

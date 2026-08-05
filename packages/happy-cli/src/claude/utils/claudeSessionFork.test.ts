@@ -57,6 +57,20 @@ describe('claudeSessionFork', () => {
             expect(copy.equals(original)).toBe(true);
         });
 
+        it('can place the copied transcript in a different project directory', async () => {
+            await writeSource([
+                { type: 'user', uuid: 'u1', message: { role: 'user', content: 'keep history' } },
+            ]);
+            const destinationProjectDir = join(projectDir, 'new-project');
+
+            const newId = await forkSession(projectDir, sourceId, destinationProjectDir);
+
+            const original = await readFile(join(projectDir, `${sourceId}.jsonl`));
+            const copy = await readFile(join(destinationProjectDir, `${newId}.jsonl`));
+            expect(copy.equals(original)).toBe(true);
+            expect(existsSync(join(projectDir, `${newId}.jsonl`))).toBe(false);
+        });
+
         it('throws ForkSourceMissingError when source jsonl is absent', async () => {
             await expect(forkSession(projectDir, 'does-not-exist'))
                 .rejects.toBeInstanceOf(ForkSourceMissingError);

@@ -113,6 +113,87 @@ describe('codex fork ops', () => {
         expect(refreshSessions).toHaveBeenCalledTimes(1);
     });
 
+    it('forks Codex history into the selected next-turn working directory', async () => {
+        machineRPC.mockImplementation(async (_machineId: string, method: string) => {
+            if (method === 'codex-fork-thread') {
+                return { type: 'success', newCodexThreadId: 'thread-moved' };
+            }
+            if (method === 'spawn-happy-session') {
+                return { type: 'success', sessionId: 'happy-moved' };
+            }
+            throw new Error(`unexpected method ${method}`);
+        });
+
+        const { forkAndSpawn } = await import('./ops');
+        const result = await forkAndSpawn({
+            kind: 'codex',
+            sessionId: 'happy-source',
+            machineId: 'machine-1',
+            directory: '/tmp/old-project',
+            codexThreadId: 'thread-source',
+        }, { targetDirectory: '/tmp/new-project' });
+
+        expect(result).toEqual({ type: 'success', sessionId: 'happy-moved' });
+        expect(machineRPC).toHaveBeenNthCalledWith(
+            1,
+            'machine-1',
+            'codex-fork-thread',
+            { directory: '/tmp/new-project', codexThreadId: 'thread-source' },
+        );
+        expect(machineRPC).toHaveBeenNthCalledWith(
+            2,
+            'machine-1',
+            'spawn-happy-session',
+            expect.objectContaining({
+                directory: '/tmp/new-project',
+                resumeCodexThreadId: 'thread-moved',
+                parentSessionId: 'happy-source',
+            }),
+        );
+    });
+
+    it('copies Claude history into the selected directory before spawning there', async () => {
+        machineRPC.mockImplementation(async (_machineId: string, method: string) => {
+            if (method === 'claude-fork-session') {
+                return { type: 'success', newClaudeSessionId: 'claude-moved' };
+            }
+            if (method === 'spawn-happy-session') {
+                return { type: 'success', sessionId: 'happy-moved' };
+            }
+            throw new Error(`unexpected method ${method}`);
+        });
+
+        const { forkAndSpawn } = await import('./ops');
+        await forkAndSpawn({
+            kind: 'claude',
+            sessionId: 'happy-source',
+            machineId: 'machine-1',
+            directory: '/tmp/old-project',
+            claudeSessionId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        }, { targetDirectory: '/tmp/new-project' });
+
+        expect(machineRPC).toHaveBeenNthCalledWith(
+            1,
+            'machine-1',
+            'claude-fork-session',
+            {
+                directory: '/tmp/old-project',
+                targetDirectory: '/tmp/new-project',
+                claudeSessionId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            },
+        );
+        expect(machineRPC).toHaveBeenNthCalledWith(
+            2,
+            'machine-1',
+            'spawn-happy-session',
+            expect.objectContaining({
+                directory: '/tmp/new-project',
+                resumeClaudeSessionId: 'claude-moved',
+                parentSessionId: 'happy-source',
+            }),
+        );
+    });
+
     it('duplicates a Codex thread from a selected user item before spawning', async () => {
         machineRPC.mockImplementation(async (_machineId: string, method: string) => {
             if (method === 'codex-duplicate-thread') {

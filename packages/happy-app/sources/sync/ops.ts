@@ -200,6 +200,8 @@ export interface ClaudeForkSessionOptions {
     machineId: string;
     /** Working directory of the source session — used to derive the Claude project dir. */
     directory: string;
+    /** Optional working directory where the forked transcript should continue. */
+    targetDirectory?: string;
     /** Source Claude session UUID (Session.metadata.claudeSessionId on the parent). */
     claudeSessionId: string;
 }
@@ -288,15 +290,16 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
  * session row to the copied conversation.
  */
 export async function claudeForkSession(options: ClaudeForkSessionOptions): Promise<ClaudeForkSessionResult> {
-    const { machineId, directory, claudeSessionId } = options;
+    const { machineId, directory, targetDirectory, claudeSessionId } = options;
     try {
         const result = await apiSocket.machineRPC<ClaudeForkSessionResult, {
             directory: string;
+            targetDirectory?: string;
             claudeSessionId: string;
         }>(
             machineId,
             'claude-fork-session',
-            { directory, claudeSessionId },
+            { directory, targetDirectory, claudeSessionId },
         );
         return result;
     } catch (error) {
@@ -972,6 +975,8 @@ type ForkOptions = {
     cutAfterUuid?: string;
     cutAfterItemId?: string;
     forkedFromMessageId?: string;
+    /** Continue the fork in a different validated working directory. */
+    targetDirectory?: string;
 };
 
 /**
@@ -990,17 +995,18 @@ export async function forkAndSpawn(
     source: ForkSource,
     opts: ForkOptions = {},
 ): Promise<SpawnSessionResult> {
+    const spawnDirectory = opts.targetDirectory ?? source.directory;
     if (source.kind === 'codex') {
         const forkResult = opts.cutAfterItemId
             ? await codexDuplicateThread({
                 machineId: source.machineId,
-                directory: source.directory,
+                directory: spawnDirectory,
                 codexThreadId: source.codexThreadId,
                 cutAfterItemId: opts.cutAfterItemId,
             })
             : await codexForkThread({
                 machineId: source.machineId,
-                directory: source.directory,
+                directory: spawnDirectory,
                 codexThreadId: source.codexThreadId,
             });
 
@@ -1010,7 +1016,7 @@ export async function forkAndSpawn(
 
         const spawnResult = await machineSpawnNewSession({
             machineId: source.machineId,
-            directory: source.directory,
+            directory: spawnDirectory,
             agent: 'codex',
             approvedNewDirectoryCreation: false,
             resumeCodexThreadId: forkResult.newCodexThreadId,
@@ -1039,6 +1045,7 @@ export async function forkAndSpawn(
         : await claudeForkSession({
             machineId: source.machineId,
             directory: source.directory,
+            targetDirectory: spawnDirectory,
             claudeSessionId: source.claudeSessionId,
         });
 
@@ -1048,7 +1055,7 @@ export async function forkAndSpawn(
 
     const spawnResult = await machineSpawnNewSession({
         machineId: source.machineId,
-        directory: source.directory,
+        directory: spawnDirectory,
         agent: 'claude',
         approvedNewDirectoryCreation: false,
         resumeClaudeSessionId: forkResult.newClaudeSessionId,

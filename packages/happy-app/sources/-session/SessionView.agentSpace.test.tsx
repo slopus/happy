@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => ({
     routerBack: vi.fn(),
     navigationDispatch: vi.fn(),
     styleUseVariants: vi.fn(),
+    switchDirectory: vi.fn(),
     session: {
         id: 'session-1',
         seq: 1,
@@ -185,6 +186,19 @@ vi.mock('@/hooks/useImagePicker', () => ({
 }));
 vi.mock('@/hooks/useSessionQuickActions', () => ({
     useSessionQuickActions: () => ({ canResume: false, resumeSession: vi.fn(), resumingSession: false }),
+}));
+vi.mock('@/hooks/useSessionWorkingDirectory', () => ({
+    useSessionWorkingDirectory: () => ({
+        currentPath: mocks.session.metadata.path,
+        currentPathLabel: '~/health',
+        fullPath: mocks.session.metadata.path,
+        homeDir: '/Users/jacky',
+        machineId: mocks.session.metadata.machineId,
+        machineOnline: true,
+        recentPaths: [],
+        switching: false,
+        switchDirectory: mocks.switchDirectory,
+    }),
 }));
 vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({
     useDesktopWorkspaceLayout: () => ({
