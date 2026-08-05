@@ -31,6 +31,10 @@ import {
     SessionComposerPermissionSelector,
     type SessionComposerPermissionSelectorConfig,
 } from './SessionComposerPermissionSelector';
+import {
+    SessionComposerDirectorySelector,
+    type SessionComposerDirectorySelectorConfig,
+} from './SessionComposerDirectorySelector';
 
 interface MessageComposerProps {
     // Drives layout differences between the home compose box and the in-session
@@ -88,6 +92,8 @@ interface MessageComposerProps {
     modeSelector?: SessionComposerModeSelectorConfig;
     /** Friendly per-turn permission controls. Picks affect future messages only. */
     permissionSelector?: SessionComposerPermissionSelectorConfig;
+    /** Working directory for the next and subsequent messages. */
+    directorySelector?: SessionComposerDirectorySelectorConfig;
     /** Image attachments waiting to be sent (expImageUpload feature). */
     selectedImages?: AttachmentPreview[];
     selectedImagesPresentation?: AttachmentGalleryPresentation;
@@ -515,7 +521,10 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-    const isSendBlocked = props.blockSend ?? false;
+    const [directoryInvalid, setDirectoryInvalid] = React.useState(false);
+    const isSendBlocked = (props.blockSend ?? false)
+        || directoryInvalid
+        || Boolean(props.directorySelector?.switching);
     const isSession = props.mode === 'session';
     const autocompletePrefixes = props.autocompletePrefixes ?? EMPTY_AUTOCOMPLETE_PREFIXES;
     const autocompleteSuggestions = props.autocompleteSuggestions ?? EMPTY_AUTOCOMPLETE_SUGGESTIONS;
@@ -528,6 +537,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     const hasPayload = hasText || hasImages;
     const canPressSendButton = !props.isSending
         && !props.isSendDisabled
+        && !isSendBlocked
         && hasPayload;
 
     // Calculate context warning
@@ -902,6 +912,16 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                 {props.zenMode && <View style={{ flex: 1 }} />}
                                 {!props.zenMode && <View style={styles.actionButtonsLeft}>
 
+                                {isSession && props.directorySelector && supportsDesktopComposerModeSelector({
+                                    isWeb: Platform.OS === 'web',
+                                    windowWidth: screenWidth,
+                                }) ? (
+                                    <SessionComposerDirectorySelector
+                                        {...props.directorySelector}
+                                        onInvalidStateChange={setDirectoryInvalid}
+                                    />
+                                ) : null}
+
                                 {/* Agent selector button (session only) */}
                                 {isSession && props.agentType && props.onAgentClick && (
                                     <Pressable
@@ -1136,7 +1156,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                 <View
                                     style={[
                                         styles.sendButton,
-                                        (hasPayload || props.isSending)
+                                        (canPressSendButton || props.isSending)
                                             ? styles.sendButtonActive
                                             : styles.sendButtonInactive
                                     ]}

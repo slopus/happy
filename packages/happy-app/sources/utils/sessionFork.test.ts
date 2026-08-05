@@ -49,4 +49,16 @@ describe('getSessionForkSource', () => {
             },
         } as any)).toBeNull();
     });
+
+    it('does not reinterpret another Agent flavor as Claude continuation', () => {
+        expect(getSessionForkSource({
+            id: 'happy-gemini',
+            metadata: {
+                flavor: 'gemini',
+                machineId: 'machine-1',
+                path: '/tmp/project',
+                claudeSessionId: '93a9705e-bc6a-406d-8dce-8acc014dedbd',
+            },
+        } as any)).toBeNull();
+    });
 });

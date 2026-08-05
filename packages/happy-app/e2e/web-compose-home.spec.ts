@@ -129,6 +129,11 @@ type CreateE2ESessionOptions = {
     name?: string;
     summary?: string;
     flavor?: string;
+    machineId?: string;
+    homeDir?: string;
+    parentSessionId?: string;
+    claudeSessionId?: string;
+    codexThreadId?: string;
     models?: Array<{ code: string; value: string; description?: string | null }>;
     currentModelCode?: string;
     thoughtLevels?: Array<{ code: string; value: string; description?: string | null }>;
@@ -161,6 +166,11 @@ async function createE2ESession(
         name: options.name ?? 'Sidebar active-session regression',
         ...(options.summary ? { summary: { text: options.summary, updatedAt: Date.now() } } : {}),
         flavor: options.flavor ?? 'codex',
+        ...(options.machineId ? { machineId: options.machineId } : {}),
+        ...(options.homeDir ? { homeDir: options.homeDir } : {}),
+        ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
+        ...(options.claudeSessionId ? { claudeSessionId: options.claudeSessionId } : {}),
+        ...(options.codexThreadId ? { codexThreadId: options.codexThreadId } : {}),
         ...(options.models ? { models: options.models } : {}),
         ...(options.currentModelCode ? { currentModelCode: options.currentModelCode } : {}),
         ...(options.thoughtLevels ? { thoughtLevels: options.thoughtLevels } : {}),
@@ -394,6 +404,249 @@ async function createConnectedE2EFileSession(request: APIRequestContext): Promis
         fileName,
         filePath,
         sessionId,
+        workspace,
+    };
+}
+
+async function createConnectedE2EWorkingDirectorySession(request: APIRequestContext): Promise<{
+    client: { close: () => Promise<void>; pulse: () => void };
+    currentPath: string;
+    invalidPath: string;
+    recentPath: string;
+    rpcCalls: Array<{
+        method: string;
+        params: {
+            agent?: string;
+            codexThreadId?: string;
+            directory?: string;
+            parentSessionId?: string;
+            path?: string;
+            resumeCodexThreadId?: string;
+        } | null;
+    }>;
+    sessionId: string;
+    sourceCodexThreadId: string;
+    forkedCodexThreadId: string;
+    workspace: string;
+}> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少创建工作目录 E2E 会话所需的本地认证配置。');
+    }
+
+    const workspace = mkdtempSync(join(tmpdir(), 'paws-cwd-e2e-'));
+    const currentPath = join(workspace, 'current-project');
+    const recentPath = join(workspace, 'recent-project');
+    const invalidPath = join(workspace, 'missing-project');
+    fs.mkdirSync(currentPath, { recursive: true });
+    fs.mkdirSync(recentPath, { recursive: true });
+
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+    const machineId = `cwd-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const sourceCodexThreadId = `cwd-source-thread-${Date.now()}`;
+    const forkedCodexThreadId = `cwd-forked-thread-${Date.now()}`;
+    const rpcCalls: Array<{
+        method: string;
+        params: {
+            agent?: string;
+            codexThreadId?: string;
+            directory?: string;
+            parentSessionId?: string;
+            path?: string;
+            resumeCodexThreadId?: string;
+        } | null;
+    }> = [];
+    const headers = {
+        Authorization: `Bearer ${token}`,
+        'X-Happy-Client': 'playwright-cwd-e2e',
+    };
+    const machineResponse = await request.post(new URL('/v1/machines', e2eServerUrl).toString(), {
+        data: {
+            id: machineId,
+            metadata: encodeBase64(encryptLegacy({
+                host: 'playwright-cwd-agent',
+                platform: 'darwin',
+                happyCliVersion: '0.0.0-e2e',
+                happyHomeDir: join(workspace, '.happy'),
+                homeDir: workspace,
+                cliAvailability: {
+                    ask: true,
+                    claude: true,
+                    codex: true,
+                    gemini: true,
+                    opencode: true,
+                    openclaw: true,
+                    detectedAt: Date.now(),
+                },
+            }, encryptionKey)),
+            dataEncryptionKey: null,
+        },
+        headers,
+    });
+    if (!machineResponse.ok()) {
+        rmSync(workspace, { force: true, recursive: true });
+        throw new Error(`创建工作目录 E2E Agent 失败：HTTP ${machineResponse.status()}`);
+    }
+
+    await createE2ESession(request, {
+        path: recentPath,
+        host: 'playwright-cwd-agent',
+        name: 'Recent working directory fixture',
+        summary: 'A recent project on the same Agent',
+        flavor: 'codex',
+        machineId,
+        homeDir: workspace,
+    });
+    const sessionId = await createE2ESession(request, {
+        path: currentPath,
+        host: 'playwright-cwd-agent',
+        name: 'Working directory context regression',
+        summary: 'Select and validate the next working directory',
+        flavor: 'codex',
+        machineId,
+        homeDir: workspace,
+        codexThreadId: sourceCodexThreadId,
+    });
+
+    const rpcSocket = io(e2eServerUrl, {
+        auth: {
+            token,
+            clientType: 'machine-scoped',
+            machineId,
+            happyClient: 'playwright-cwd-rpc',
+        },
+        autoConnect: false,
+        path: '/v1/updates',
+        reconnection: false,
+        transports: ['websocket'],
+    });
+    rpcSocket.on('rpc-request', (
+        data: { method: string; params: string },
+        callback: (response: string) => void,
+    ) => {
+        void (async () => {
+            const params = decryptLegacy(decodeBase64(data.params), encryptionKey) as {
+                agent?: string;
+                codexThreadId?: string;
+                directory?: string;
+                parentSessionId?: string;
+                path?: string;
+                resumeCodexThreadId?: string;
+            } | null;
+            rpcCalls.push({ method: data.method, params });
+            let result: unknown;
+
+            if (data.method === `${machineId}:browseDirectory`) {
+                const rawPath = params?.path?.trim() ?? '';
+                const target = rawPath === '' || rawPath === '~'
+                    ? workspace
+                    : rawPath.startsWith('~/')
+                        ? path.resolve(workspace, rawPath.slice(2))
+                        : path.resolve(workspace, rawPath);
+                const contained = target === workspace || target.startsWith(`${workspace}${path.sep}`);
+                if (!contained) {
+                    result = { success: false, error: 'Access denied: Path is outside this Agent home directory.' };
+                } else if (!fs.existsSync(target) || !fs.statSync(target).isDirectory()) {
+                    result = { success: false, error: 'Directory does not exist or cannot be accessed on this Agent.' };
+                } else {
+                    const directories = fs.readdirSync(target, { withFileTypes: true })
+                        .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+                        .map((entry) => ({
+                            name: entry.name,
+                            path: join(target, entry.name),
+                            isProjectRoot: false,
+                        }))
+                        .sort((left, right) => left.name.localeCompare(right.name));
+                    result = {
+                        success: true,
+                        path: target,
+                        parent: target === workspace ? null : path.dirname(target),
+                        home: workspace,
+                        directories,
+                    };
+                }
+            } else if (data.method === `${machineId}:codex-fork-thread`
+                && params?.codexThreadId === sourceCodexThreadId
+                && params.directory === recentPath) {
+                result = { type: 'success', newCodexThreadId: forkedCodexThreadId };
+            } else if (data.method === `${machineId}:spawn-happy-session` && params?.directory) {
+                const spawnedSessionId = await createE2ESession(request, {
+                    path: params.directory,
+                    host: 'playwright-cwd-agent',
+                    name: 'Continued working directory session',
+                    summary: 'Continued in the selected working directory',
+                    flavor: params.agent ?? 'codex',
+                    machineId,
+                    homeDir: workspace,
+                    parentSessionId: params.parentSessionId,
+                    codexThreadId: params.resumeCodexThreadId,
+                });
+                result = { type: 'success', sessionId: spawnedSessionId };
+            } else {
+                result = { success: false, error: 'Unknown working directory E2E RPC request.' };
+            }
+
+            callback(encodeBase64(encryptLegacy(result, encryptionKey)));
+        })().catch((error) => {
+            callback(encodeBase64(encryptLegacy({
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+            }, encryptionKey)));
+        });
+    });
+
+    const pulse = () => rpcSocket.emit('machine-alive', { machineId, time: Date.now() });
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('工作目录 E2E RPC 连接超时。')), 10_000);
+            const handleConnectError = (error: Error) => {
+                clearTimeout(timeout);
+                reject(error);
+            };
+            rpcSocket.once('connect_error', handleConnectError);
+            rpcSocket.once('connect', () => {
+                clearTimeout(timeout);
+                rpcSocket.off('connect_error', handleConnectError);
+                rpcSocket.emit('rpc-register', { method: `${machineId}:browseDirectory` });
+                rpcSocket.emit('rpc-register', { method: `${machineId}:codex-fork-thread` });
+                rpcSocket.emit('rpc-register', { method: `${machineId}:spawn-happy-session` });
+                pulse();
+                resolve();
+            });
+            rpcSocket.connect();
+        });
+    } catch (error) {
+        rpcSocket.close();
+        await request.delete(new URL(`/v1/machines/${machineId}`, e2eServerUrl).toString(), { headers });
+        rmSync(workspace, { force: true, recursive: true });
+        throw error;
+    }
+
+    const keepAlive = setInterval(pulse, 500);
+    return {
+        client: {
+            pulse,
+            close: async () => {
+                clearInterval(keepAlive);
+                rpcSocket.close();
+                try {
+                    await request.delete(new URL(`/v1/machines/${machineId}`, e2eServerUrl).toString(), { headers });
+                } catch {
+                    // The request fixture is already closed when Playwright aborts on timeout.
+                } finally {
+                    rmSync(workspace, { force: true, recursive: true });
+                }
+            },
+        },
+        currentPath,
+        forkedCodexThreadId,
+        invalidPath,
+        recentPath,
+        rpcCalls,
+        sessionId,
+        sourceCodexThreadId,
         workspace,
     };
 }
@@ -672,6 +925,107 @@ test('Web 启动不会注册无效的 push token listener', async ({ page }) => 
     await expect(page.getByRole('textbox')).toBeVisible();
 
     expect(unsupportedPushTokenWarnings).toEqual([]);
+});
+
+test('CWD-03-01：PC 输入区展示、验证并切换后续消息的 Agent 工作目录', async ({ page, request }, testInfo) => {
+    const fixture = await createConnectedE2EWorkingDirectorySession(request);
+    const draft = 'Keep this draft when continuing in the selected directory.';
+
+    try {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
+        fixture.client.pulse();
+
+        const input = page.getByTestId('session-message-input');
+        const sendButton = page.locator('[data-testid="message-composer-send-button"]:visible');
+        const directoryTrigger = page.getByTestId('session-working-directory-trigger');
+        await expect(input).toBeVisible();
+        await input.fill(draft);
+        await expect(sendButton).not.toHaveAttribute('aria-disabled', 'true');
+        await expect(directoryTrigger).toBeVisible();
+        await expect(directoryTrigger).toContainText('~/current-project');
+        await expect(directoryTrigger).toHaveAttribute(
+            'aria-label',
+            `Working directory: ${fixture.currentPath}`,
+        );
+
+        await directoryTrigger.hover();
+        await expect(page.getByTestId('session-working-directory-tooltip')).toHaveText(fixture.currentPath);
+        await directoryTrigger.click();
+
+        const dialog = page.getByTestId('session-working-directory-dialog');
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByText('Working directory', { exact: true })).toBeVisible();
+        await expect(dialog.getByText(
+            'Changing it continues in a new session and affects the next and future messages. This session stays unchanged.',
+            { exact: true },
+        )).toBeVisible();
+        await expect(dialog.getByTestId('session-working-directory-input')).toHaveValue(fixture.currentPath);
+        await expect(dialog.getByTestId('session-working-directory-browse')).toContainText('Browse folders');
+        const recentDirectory = dialog.getByTestId('session-working-directory-recent-~/recent-project');
+        await expect(recentDirectory).toContainText('~/recent-project');
+        await expect(recentDirectory).toContainText(fixture.recentPath);
+        await page.waitForTimeout(350);
+        await page.screenshot({
+            path: testInfo.outputPath('cwd-context-001-after-1280x900.png'),
+            fullPage: true,
+        });
+
+        await dialog.getByTestId('session-working-directory-browse').click();
+        await expect(dialog.getByTestId('session-working-directory-use-current')).toContainText('Use ~/current-project');
+        await dialog.getByLabel('Back').click();
+        await expect(dialog.getByTestId('session-working-directory-browse-recent-project')).toBeVisible();
+        await dialog.getByLabel('Cancel').click();
+
+        await directoryTrigger.click();
+        const directoryInput = dialog.getByTestId('session-working-directory-input');
+        await directoryInput.fill(fixture.invalidPath);
+        await expect(sendButton).toHaveAttribute('aria-disabled', 'true');
+        await dialog.getByTestId('session-working-directory-continue').click();
+        const error = dialog.getByTestId('session-working-directory-error');
+        await expect(error).toContainText('This directory cannot be used. Check the path and access, then try again.');
+        await expect(error).toContainText('Directory does not exist or cannot be accessed on this Agent.');
+        await expect(sendButton).toHaveAttribute('aria-disabled', 'true');
+        await page.waitForTimeout(350);
+        await page.screenshot({
+            path: testInfo.outputPath('cwd-context-002-after-1280x900.png'),
+            fullPage: true,
+        });
+
+        await recentDirectory.click();
+        await expect.poll(() => new URL(page.url()).pathname, { timeout: 15_000 })
+            .not.toBe(`/session/${fixture.sessionId}`);
+        await expect(page.getByTestId('session-message-input')).toHaveValue(draft);
+        await expect(page.getByTestId('session-working-directory-trigger')).toContainText('~/recent-project');
+
+        const continuationCalls = fixture.rpcCalls.filter((call) => (
+            call.method.endsWith(':codex-fork-thread')
+            || call.method.endsWith(':spawn-happy-session')
+        ));
+        expect(continuationCalls).toHaveLength(2);
+        expect(continuationCalls[0]).toMatchObject({
+            method: expect.stringMatching(/:codex-fork-thread$/),
+            params: {
+                codexThreadId: fixture.sourceCodexThreadId,
+                directory: fixture.recentPath,
+            },
+        });
+        expect(continuationCalls[1]).toMatchObject({
+            method: expect.stringMatching(/:spawn-happy-session$/),
+            params: {
+                agent: 'codex',
+                directory: fixture.recentPath,
+                parentSessionId: fixture.sessionId,
+                resumeCodexThreadId: fixture.forkedCodexThreadId,
+            },
+        });
+
+        await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
+        fixture.client.pulse();
+        await expect(page.getByTestId('session-working-directory-trigger')).toContainText('~/current-project');
+    } finally {
+        await fixture.client.close();
+    }
 });
 
 test('Web 启动不会使用已弃用的 pointerEvents 组件属性', async ({ page }) => {

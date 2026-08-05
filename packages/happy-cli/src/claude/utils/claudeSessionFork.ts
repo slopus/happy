@@ -14,7 +14,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { copyFile, rename, readFile, unlink } from "node:fs/promises";
+import { copyFile, mkdir, rename, readFile, unlink } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -57,17 +57,22 @@ function isUserPrompt(parsed: any): boolean {
 }
 
 /**
- * Copy the source JSONL to a new file under the same project dir.
+ * Copy the source JSONL to a new file under the requested project dir.
  * Returns the new Claude session UUID. The file copy is atomic at the FS
  * level (single copyFile call), so concurrent writes by Claude to the
  * source do not corrupt the destination.
  */
-export async function forkSession(projectDir: string, sourceClaudeSessionId: string): Promise<string> {
+export async function forkSession(
+    projectDir: string,
+    sourceClaudeSessionId: string,
+    destinationProjectDir: string = projectDir,
+): Promise<string> {
     const newId = randomUUID();
     const src = jsonlPath(projectDir, sourceClaudeSessionId);
-    const dst = jsonlPath(projectDir, newId);
+    const dst = jsonlPath(destinationProjectDir, newId);
 
     try {
+        await mkdir(destinationProjectDir, { recursive: true });
         await copyFile(src, dst);
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -76,7 +81,7 @@ export async function forkSession(projectDir: string, sourceClaudeSessionId: str
         throw error;
     }
 
-    logger.debug(`[CLAUDE FORK] Forked ${sourceClaudeSessionId} -> ${newId}`);
+    logger.debug(`[CLAUDE FORK] Forked ${sourceClaudeSessionId} -> ${newId} in ${destinationProjectDir}`);
     return newId;
 }
 

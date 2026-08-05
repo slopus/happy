@@ -1,5 +1,6 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { MessageComposer } from '@/components/MessageComposer';
+import type { SessionComposerDirectorySelectorConfig } from '@/components/SessionComposerDirectorySelector';
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
@@ -53,6 +54,7 @@ import { useOverlayNav } from '@/-session/sessionOverlayNav';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { useSessionTaskPermission } from '@/hooks/useSessionTaskPermission';
+import { useSessionWorkingDirectory } from '@/hooks/useSessionWorkingDirectory';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import * as Application from 'expo-application';
 import * as Clipboard from 'expo-clipboard';
@@ -714,6 +716,29 @@ function SessionViewLoaded({
     const isDisconnected = !sessionStatus.isConnected;
     const resumeCommandBlock = getResumeCommandBlock(session);
     const permissionSelector = useSessionTaskPermission(session, !isDisconnected);
+    const getCurrentDraft = React.useCallback(
+        () => composerHandleRef.current?.getMessage() ?? '',
+        [composerHandleRef],
+    );
+    const workingDirectory = useSessionWorkingDirectory(session, getCurrentDraft);
+    const directorySelector = React.useMemo<SessionComposerDirectorySelectorConfig | undefined>(() => {
+        if (!workingDirectory.currentPath || !workingDirectory.machineId) {
+            return undefined;
+        }
+        return {
+            currentPath: workingDirectory.currentPath,
+            currentPathLabel: workingDirectory.currentPathLabel,
+            homeDir: workingDirectory.homeDir,
+            machineId: workingDirectory.machineId,
+            machineOnline: workingDirectory.machineOnline,
+            recentPaths: workingDirectory.recentPaths,
+            switching: workingDirectory.switching,
+            onSwitch: async (path: string) => {
+                const result = await workingDirectory.switchDirectory(path);
+                return result.success ? { success: true } : result;
+            },
+        };
+    }, [workingDirectory]);
 
     const nextTurnModes = React.useMemo(() => resolveRunningSessionTurnModes({
         session,
@@ -949,6 +974,7 @@ function SessionViewLoaded({
             zenMode={zenMode}
             permissionSelector={permissionSelector}
             modeSelector={modeSelector}
+            directorySelector={directorySelector}
         />
     );
 
