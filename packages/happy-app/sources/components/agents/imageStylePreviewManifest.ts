@@ -3,7 +3,7 @@ import { EXTRA_IMAGE_STYLE_PREVIEW_MANIFEST } from './imageStylePreviewManifestE
 
 export type ImageStylePreviewEntry = {
     fileName: `${string}.jpg` | `${string}.png`;
-    sourceSet: 'gpt-image-2-101' | 'curated-reference-examples';
+    sourceSet: 'gpt-image-2-101' | 'curated-reference-examples' | 'github-skill';
     sourceCaseId: string;
     sourceIndex: number;
     width: number;

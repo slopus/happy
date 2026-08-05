@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "intent": "Low-light-safe cinematic color without an additional S-curve; skin protection disabled until visually confirmed",
+  "strategy": {
+    "intensity": "standard",
+    "style": "cinematic",
+    "selection": "template"
+  },
+  "preservation": {
+    "mode": "strict",
+    "allow_geometry_changes": false,
+    "allow_texture_changes": false,
+    "allow_generative_changes": false
+  },
+  "correction": {
+    "exposure_ev": 0.0,
+    "white_balance": {
+      "rgb_gains": [1.0, 1.0, 1.0]
+    },
+    "black_point": 0.0,
+    "white_point": 1.0,
+    "highlight_rolloff": 0.2
+  },
+  "look": {
+    "tone_curve": {
+      "strength": 0.0
+    },
+    "cdl": {
+      "slope": [1.005, 1.0, 0.995],
+      "offset": [0.0, 0.0, 0.0],
+      "power": [1.0, 1.0, 1.0],
+      "saturation": 1.0
+    },
+    "saturation": 0.96,
+    "split_tone": {
+      "shadows": [0.34, 0.48, 0.52],
+      "highlights": [0.62, 0.53, 0.42],
+      "balance": 0.05,
+      "strength": 0.045
+    }
+  },
+  "protection": {
+    "skin": {
+      "enabled": false,
+      "strength": 0.72
+    }
+  },
+  "output": {
+    "format": "png",
+    "quality": 95,
+    "profile": "sRGB",
+    "preserve_metadata": true
+  }
+}

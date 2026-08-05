@@ -1,0 +1,4 @@
+interface:
+  display_name: "Import Gallery Image Skill"
+  short_description: "Import a GitHub image Skill into Happy gallery"
+  default_prompt: "Use $import-gallery-image-skill to integrate a GitHub image-generation Skill into the Happy effect gallery."

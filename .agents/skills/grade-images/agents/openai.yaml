@@ -1,0 +1,4 @@
+interface:
+  display_name: "Grade Images"
+  short_description: "Deterministic grades from subtle to transformative"
+  default_prompt: "Use $grade-images to choose the closest safe preset first, render a single-pass preview, honor explicit transformative color intent without chasing unrelated global thresholds, ask before source-derived glow, and never alter scene content."
