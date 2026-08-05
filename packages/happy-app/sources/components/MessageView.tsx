@@ -100,7 +100,7 @@ function UserTextBlock(props: {
   const rewindPointId = props.message.claudeUuid ?? props.message.codexItemId;
   const canFork = Boolean(props.onForkFromUserMessage)
     && (Boolean(rewindPointId) || props.metadata?.flavor === 'codex');
-  const modeLabel = getMessageModelEffortLabel(props.message.meta);
+  const modeLabel = getMessageModelEffortLabel(props.message.meta, props.metadata?.flavor);
   const handleLongPress = React.useCallback(() => {
     if (props.onForkFromUserMessage) {
       props.onForkFromUserMessage(props.message.id, rewindPointId, props.message.text);

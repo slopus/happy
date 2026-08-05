@@ -11,6 +11,7 @@ import type { MessageMeta } from '@/sync/typesMessageMeta';
  */
 export function getMessageModelEffortLabel(
     meta: Pick<MessageMeta, 'model' | 'effort'> | null | undefined,
+    flavor?: string | null,
 ): string | null {
     if (!meta) {
         return null;
@@ -20,7 +21,12 @@ export function getMessageModelEffortLabel(
     if (meta.model !== undefined) {
         parts.push(meta.model ?? DEFAULT_MODEL_LABEL);
     }
-    if (meta.effort !== undefined) {
+    // ACP runners currently apply per-turn model but not effort. Filter stale
+    // or externally supplied effort metadata for those sessions so a historic
+    // label never claims a configuration the agent did not receive. Missing
+    // flavor follows the repository's legacy convention and means Claude.
+    const supportsEffort = !flavor || flavor === 'claude' || flavor === 'codex';
+    if (supportsEffort && meta.effort !== undefined) {
         parts.push(meta.effort ?? DEFAULT_EFFORT_LABEL);
     }
 

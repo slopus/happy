@@ -20,4 +20,15 @@ describe('getMessageModelEffortLabel', () => {
         expect(getMessageModelEffortLabel({})).toBeNull();
         expect(getMessageModelEffortLabel({ effort: 'medium' })).toBe('medium');
     });
+
+    it.each(['gemini', 'opencode'])(
+        'keeps the applied model but hides unsupported historical effort for %s',
+        (flavor) => {
+            expect(getMessageModelEffortLabel({
+                model: 'acp-model',
+                effort: 'xhigh',
+            }, flavor)).toBe('acp-model');
+            expect(getMessageModelEffortLabel({ effort: 'xhigh' }, flavor)).toBeNull();
+        },
+    );
 });
