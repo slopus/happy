@@ -99,7 +99,7 @@ interface AgentInputProps {
     sessionStatusModelLabel?: string | null;
     sessionStatusEffortLabel?: string | null;
     onFileViewerPress?: () => void;
-    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy';
+    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy' | 'hermes' | 'crush';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
