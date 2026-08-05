@@ -191,6 +191,25 @@ export const activityStatusDemoEnvelopes: Array<Record<string, unknown>> = [
 ];
 
 export const debugMessages: Message[] = [
+    // Generated plaintext MP4 event matching the Happy MCP send_file output.
+    // Playwright routes its ref to a repository-external fixture at runtime.
+    {
+        id: 'generated-video-demo',
+        localId: null,
+        createdAt: Date.now() - 205000,
+        kind: 'tool-call',
+        tool: createToolCall('file', 'completed', {
+            ref: 'sessions/demo-messages-session/attachments/agent-output.mp4',
+            name: 'agent-output.mp4',
+            size: 87415,
+            kind: 'video',
+            mimeType: 'video/mp4',
+            encrypted: false,
+            source: 'generated',
+        }, null, 'Attached video: agent-output.mp4'),
+        children: [],
+    },
+
     // User message
     {
         id: 'user-1',

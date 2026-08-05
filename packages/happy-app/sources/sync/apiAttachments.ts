@@ -50,6 +50,11 @@ export type RequestUploadResult = {
     formFields?: Record<string, string>;
 };
 
+export type AttachmentDownloadSource = {
+    uri: string;
+    headers: Record<string, string>;
+};
+
 /**
  * Request a presigned (or server-hosted) upload URL for an attachment.
  * Returns the ref (storage path) and uploadUrl to PUT the encrypted blob.
@@ -233,8 +238,29 @@ export async function downloadEncryptedAttachment(
     sessionId: string,
     ref: string,
 ): Promise<Uint8Array> {
-    const API_ENDPOINT = getServerUrl();
+    const source = await requestAttachmentDownloadSource(credentials, sessionId, ref);
 
+    let blobRes: Response;
+    try {
+        blobRes = await fetch(source.uri, { headers: source.headers });
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`Attachment download network error from ${source.uri}: ${message}`);
+    }
+    if (!blobRes.ok) {
+        throw new Error(`Attachment download failed: ${blobRes.status} ${blobRes.statusText} from ${source.uri}`);
+    }
+    const buffer = await blobRes.arrayBuffer();
+    return new Uint8Array(buffer);
+}
+
+/** Resolve an authenticated local URL or a presigned object-storage URL. */
+export async function requestAttachmentDownloadSource(
+    credentials: AuthCredentials,
+    sessionId: string,
+    ref: string,
+): Promise<AttachmentDownloadSource> {
+    const API_ENDPOINT = getServerUrl();
     const requestRes = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/attachments/request-download`, {
         method: 'POST',
         headers: {
@@ -254,16 +280,5 @@ export async function downloadEncryptedAttachment(
     if (isServerUrl) {
         headers['Authorization'] = `Bearer ${credentials.token}`;
     }
-    let blobRes: Response;
-    try {
-        blobRes = await fetch(downloadUrl, { headers });
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`Attachment download network error from ${downloadUrl}: ${message}`);
-    }
-    if (!blobRes.ok) {
-        throw new Error(`Attachment download failed: ${blobRes.status} ${blobRes.statusText} from ${downloadUrl}`);
-    }
-    const buffer = await blobRes.arrayBuffer();
-    return new Uint8Array(buffer);
+    return { uri: downloadUrl, headers };
 }

@@ -16,12 +16,34 @@ import { Fastify } from '../types';
 import { db } from '@/storage/db';
 import { s3client, s3bucket, isLocalStorage, getLocalFilesDir, putLocalFile } from '@/storage/files';
 
-// Images travel E2E-encrypted and are read whole into memory on both ends, so
-// they stay capped at 50MB. Audio/video travel plaintext and are streamed to
-// disk on both ends (never buffered), so they get a much larger ceiling.
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB — image lane / local PUT endpoint
-const MAX_MEDIA_SIZE = 500 * 1024 * 1024; // 500MB — plaintext audio/video lane
+// Images stay capped at 50MB. S3 media uploads stream from the client and get
+// the larger ceiling; local PUT is still buffered by Fastify and remains 50MB.
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB — image lane / local PUT
+const MAX_MEDIA_SIZE = 500 * 1024 * 1024; // 500MB — S3 plaintext media lane
 const PRESIGNED_TTL_SECONDS = 15 * 60; // 15 minutes (design spec)
+
+const MEDIA_MIME_BY_EXTENSION: Readonly<Record<string, { kind: 'audio' | 'video'; mimeType: string }>> = {
+    '.mp4': { kind: 'video', mimeType: 'video/mp4' },
+    '.m4v': { kind: 'video', mimeType: 'video/x-m4v' },
+    '.mov': { kind: 'video', mimeType: 'video/quicktime' },
+    '.webm': { kind: 'video', mimeType: 'video/webm' },
+    '.mp3': { kind: 'audio', mimeType: 'audio/mpeg' },
+    '.m4a': { kind: 'audio', mimeType: 'audio/mp4' },
+    '.aac': { kind: 'audio', mimeType: 'audio/aac' },
+    '.wav': { kind: 'audio', mimeType: 'audio/wav' },
+    '.flac': { kind: 'audio', mimeType: 'audio/flac' },
+    '.ogg': { kind: 'audio', mimeType: 'audio/ogg' },
+    '.opus': { kind: 'audio', mimeType: 'audio/opus' },
+};
+
+function mediaExtension(filename: string, kind: 'audio' | 'video'): string {
+    const extension = path.extname(filename).toLowerCase();
+    return MEDIA_MIME_BY_EXTENSION[extension]?.kind === kind ? extension : '.media';
+}
+
+function attachmentContentType(filename: string): string {
+    return MEDIA_MIME_BY_EXTENSION[path.extname(filename).toLowerCase()]?.mimeType ?? 'application/octet-stream';
+}
 
 function maxSizeForKind(kind: 'image' | 'audio' | 'video' | undefined): number {
     return kind === 'audio' || kind === 'video' ? MAX_MEDIA_SIZE : MAX_FILE_SIZE;
@@ -135,16 +157,16 @@ export function attachmentRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
-        const maxSize = maxSizeForKind(kind);
+        const maxSize = isLocalStorage() ? MAX_FILE_SIZE : maxSizeForKind(kind);
         if (size > maxSize) {
             return reply.code(413).send({ error: `File too large (max ${Math.floor(maxSize / (1024 * 1024))}MB)` });
         }
 
-        // Images are encrypted opaque blobs (.enc). Audio/video are plaintext
-        // (.media); either way the ref is a random UUID path — never trust the
-        // client filename for the storage key.
+        // Images are opaque .enc blobs. Media keeps only an allowlisted suffix
+        // so presigned/local download responses remain directly playable.
         const attachmentId = crypto.randomUUID();
-        const attachmentFile = isMedia ? `${attachmentId}.media` : `${attachmentId}.enc`;
+        const mediaKind = kind === 'audio' ? 'audio' : 'video';
+        const attachmentFile = isMedia ? `${attachmentId}${mediaExtension(request.body.filename, mediaKind)}` : `${attachmentId}.enc`;
         const ref = `sessions/${sessionId}/attachments/${attachmentFile}`;
 
         if (isLocalStorage()) {
@@ -325,8 +347,9 @@ export function attachmentRoutes(app: Fastify) {
             if (!fs.existsSync(fullPath)) {
                 return reply.code(404).send({ error: 'Attachment not found' });
             }
-            reply.header('Content-Type', 'application/octet-stream');
-            return reply.type('application/octet-stream').send(fs.readFileSync(fullPath));
+            const contentType = attachmentContentType(attachmentFile);
+            reply.header('Content-Type', contentType);
+            return reply.type(contentType).send(fs.readFileSync(fullPath));
         } else {
             // S3 mode: redirect to presigned GET URL (15 min, per design).
             const url = await s3client.presignedGetObject(s3bucket, ref, PRESIGNED_TTL_SECONDS);

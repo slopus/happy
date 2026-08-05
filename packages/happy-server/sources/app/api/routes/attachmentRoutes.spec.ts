@@ -209,7 +209,7 @@ describe("attachmentRoutes — request-upload", () => {
         expect([400, 413]).toContain(res.statusCode);
     });
 
-    it("returns a presigned PUT + .media ref for an audio attachment in S3 mode", async () => {
+    it("returns a presigned PUT and preserves an allowlisted media extension in S3 mode", async () => {
         seedSession("s1", "u1");
         state.useLocalStorage = false;
         app = await createApp();
@@ -226,7 +226,7 @@ describe("attachmentRoutes — request-upload", () => {
         expect(body.method).toBe("PUT");
         expect(body.uploadUrl).toBe("https://s3.test/put-url");
         expect(body.formFields).toBeUndefined();
-        expect(body.ref).toMatch(/^sessions\/s1\/attachments\/[A-Fa-f0-9-]+\.media$/);
+        expect(body.ref).toMatch(/^sessions\/s1\/attachments\/[A-Fa-f0-9-]+\.mp3$/);
     });
 
     it("allows video up to 500MB but still rejects it above that", async () => {
@@ -250,6 +250,21 @@ describe("attachmentRoutes — request-upload", () => {
             payload: { filename: "clip.mp4", size: 500 * 1024 * 1024 + 1, kind: "video" },
         });
         expect([400, 413]).toContain(tooBig.statusCode);
+    });
+
+    it("caps local-mode video at the buffered 50MB PUT limit", async () => {
+        seedSession("s1", "u1");
+        state.useLocalStorage = true;
+        app = await createApp();
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v1/sessions/s1/attachments/request-upload",
+            headers: { "x-user-id": "u1" },
+            payload: { filename: "clip.mp4", size: 50 * 1024 * 1024 + 1, kind: "video" },
+        });
+        expect(res.statusCode).toBe(413);
+        expect(res.json().error).toContain("max 50MB");
     });
 
     it("still caps images at 50MB even though the media ceiling is higher", async () => {
@@ -449,6 +464,21 @@ describe("attachmentRoutes — GET (download)", () => {
         expect(res.statusCode).toBe(200);
         expect(res.headers["content-type"]).toContain("application/octet-stream");
         expect(res.rawPayload).toEqual(Buffer.from("payload"));
+    });
+
+    it("serves MP4 with a directly playable content type in local mode", async () => {
+        seedSession("s1", "u1");
+        state.useLocalStorage = true;
+        state.uploads.set("sessions/s1/attachments/clip.mp4", Buffer.from("video-bytes"));
+        app = await createApp();
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/v1/sessions/s1/attachments/clip.mp4",
+            headers: { "x-user-id": "u1" },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.headers["content-type"]).toContain("video/mp4");
     });
 
     it("redirects to a presigned GET URL in S3 mode for the session owner", async () => {

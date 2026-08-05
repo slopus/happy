@@ -180,6 +180,34 @@ describe('useGroupedMessages', () => {
         expect(items.map((item) => item.id)).toEqual(['tool-a', 'agent', 'user']);
     });
 
+    it('keeps user and generated videos as individual playable cards', () => {
+        const userVideo = fileMessage('user-video', 2);
+        userVideo.tool.input = {
+            ref: 'sessions/s1/attachments/user.mp4',
+            name: 'user.mp4',
+            size: 4096,
+            kind: 'video',
+            mimeType: 'video/mp4',
+        };
+        const generatedVideo = fileMessage('generated-video', 3);
+        generatedVideo.tool.input = {
+            ref: 'sessions/s1/attachments/generated.mp4',
+            name: 'generated.mp4',
+            size: 4096,
+            kind: 'video',
+            mimeType: 'video/mp4',
+            encrypted: false,
+            source: 'generated',
+        };
+
+        for (const enabled of [false, true]) {
+            const grouped = groupMessagesForDisplay([generatedVideo, userVideo], enabled);
+            expect(grouped).toHaveLength(2);
+            expect(grouped.map((item) => item.type)).toEqual(['message', 'message']);
+            expect(grouped.map((item) => item.id)).toEqual(['generated-video', 'user-video']);
+        }
+    });
+
     it('stores grouped tools in chronological render order', () => {
         const messages: Message[] = [
             {

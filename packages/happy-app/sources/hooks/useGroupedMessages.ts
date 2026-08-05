@@ -102,7 +102,7 @@ export function groupMessagesForDisplay(
         // false (which is the default), silently undoing the gallery feature.
         const attachmentRuns = collectToolRuns(
             messages,
-            (msg, index) => !hiddenWorkIndexes.has(index) && isUserAttachment(msg),
+            (msg, index) => !hiddenWorkIndexes.has(index) && isImageAttachment(msg),
         );
         const result: DisplayItem[] = [];
         for (let i = 0; i < messages.length; i++) {
@@ -118,7 +118,7 @@ export function groupMessagesForDisplay(
                 }
                 continue;
             }
-            if (isUserAttachment(msg)) {
+            if (isImageAttachment(msg)) {
                 const run = attachmentRuns.get(i);
                 // Emit the whole run once, at its oldest member, so visual order
                 // (newest-first array → oldest pushed first) stays correct.
@@ -160,7 +160,7 @@ export function groupMessagesForDisplay(
     // Consecutive user image attachments collapse into one horizontal gallery.
     const attachmentRuns = collectToolRuns(
         messages,
-        (msg, index) => !hiddenWorkIndexes.has(index) && isUserAttachment(msg),
+        (msg, index) => !hiddenWorkIndexes.has(index) && isImageAttachment(msg),
     );
 
     // Build display items — groups are emitted at their oldest hidden member
@@ -183,7 +183,7 @@ export function groupMessagesForDisplay(
             continue;
         }
 
-        if (isUserAttachment(msg)) {
+        if (isImageAttachment(msg)) {
             const run = attachmentRuns.get(i);
             // Emit the whole run once, at its oldest member, so visual order
             // (newest-first array → oldest pushed first) stays correct.
@@ -251,7 +251,7 @@ function getImageAgentPresentationState(
         if (msg.kind !== 'user-text' || !isGeneratedImageBatchPromptText(msg.text)) continue;
 
         const turn = turnOf[i];
-        for (let j = i + 1; j < messages.length && isUserAttachment(messages[j]); j++) {
+        for (let j = i + 1; j < messages.length && isImageAttachment(messages[j]); j++) {
             featuredAttachmentIds.add(messages[j].id);
         }
 
@@ -260,7 +260,7 @@ function getImageAgentPresentationState(
         for (let j = 0; j < messages.length; j++) {
             const candidate = messages[j];
             if (turnOf[j] !== turn) continue;
-            if (isUserAttachment(candidate)) {
+            if (isImageAttachment(candidate)) {
                 featuredAttachmentIds.add(candidate.id);
                 generatedIndexes.push(j);
             }
@@ -492,7 +492,7 @@ function collectAgentWorkGroups(
         const isCurrentTurn = turn === 0;
 
         if (isImageAgentTurn) {
-            const hasGeneratedAttachment = indexes.some((index) => isUserAttachment(messages[index]));
+            const hasGeneratedAttachment = indexes.some((index) => isImageAttachment(messages[index]));
             const isActiveTurn = isCurrentTurn && !collapseCurrentTurn;
             if (hasGeneratedAttachment || isActiveTurn) {
                 const hiddenIndexes = visibleAgentIndexes;
@@ -580,6 +580,12 @@ function isInvisibleMessage(msg: Message): boolean {
 /** User-sent file/image attachments should never be collapsed into a group */
 function isUserAttachment(msg: Message): boolean {
     return msg.kind === 'tool-call' && msg.tool.name === 'file';
+}
+
+function isImageAttachment(msg: Message): boolean {
+    if (msg.kind !== 'tool-call' || msg.tool.name !== 'file') return false;
+    const kind = msg.tool.input?.kind;
+    return kind !== 'audio' && kind !== 'video';
 }
 
 function hasPendingPermission(messages: Message[]): boolean {

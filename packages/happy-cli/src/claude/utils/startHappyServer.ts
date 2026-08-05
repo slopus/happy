@@ -25,6 +25,7 @@ import { fetchFinanceChart } from "@/finance/financeChart";
 type HappyMcpHandlers = {
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
     sendImage: (input: SendImageInput) => Promise<{ success: boolean; error?: string }>;
+    sendFile: (input: SendFileInput) => Promise<{ success: boolean; error?: string }>;
     archiveSession: (reason?: string) => Promise<{ success: boolean; error?: string }>;
     financeChart: (input: {
         query: string;
@@ -37,6 +38,11 @@ type SendImageInput = {
     path: string;
     prompt?: string;
     batchId?: string;
+};
+
+type SendFileInput = {
+    path: string;
+    mimeType?: string;
 };
 
 /** 带外图库三工具的依赖注入接口（便于纯函数单测，且给 Task 2.2/3.1 留注入点） */
@@ -153,6 +159,30 @@ function createMcpServer(handlers: HappyMcpHandlers, screenshotTools: ReturnType
                 isError: true,
             };
         }
+    });
+
+    mcp.registerTool('send_file', {
+        description: 'Send a locally generated audio or video file into the current chat. Phone and desktop clients render a playable media card. Provide an absolute path to MP4/MOV/WebM/MP3/M4A/WAV or another supported media file.',
+        title: 'Send File To Chat',
+        inputSchema: {
+            path: z.string().describe('Absolute path to the local audio/video file'),
+            mimeType: z.string().optional().describe('Optional audio/* or video/* MIME type override'),
+        },
+    }, async (args) => {
+        const response = await handlers.sendFile({
+            path: args.path,
+            ...(args.mimeType ? { mimeType: args.mimeType } : {}),
+        });
+        logger.debug('[happyMCP] Response:', response);
+        return response.success
+            ? {
+                content: [{ type: 'text', text: `Sent file to chat: ${args.path}` }],
+                isError: false,
+            }
+            : {
+                content: [{ type: 'text', text: `Failed to send file: ${response.error || 'Unknown error'}` }],
+                isError: true,
+            };
     });
 
     // 带外图库：take 只回文本引用、图不进上下文；get 才把字节取进上下文
@@ -314,6 +344,22 @@ export async function startHappyServer(
                 return { success: false, error: String(error) };
             }
         },
+        sendFile: async (input: SendFileInput) => {
+            logger.debug('[happyMCP] Sending file:', input.path);
+            try {
+                const uploaded = await client.uploadMediaAttachment(input.path, input.mimeType);
+                client.sendFileEvent(uploaded.ref, uploaded.name, uploaded.size, null, {
+                    source: 'generated',
+                    kind: uploaded.kind,
+                    mimeType: uploaded.mimeType,
+                    encrypted: false,
+                    localPath: input.path,
+                });
+                return { success: true };
+            } catch (error) {
+                return { success: false, error: String(error) };
+            }
+        },
         archiveSession: async (reason?: string) => {
             logger.debug('[happyMCP] Archiving current session:', reason);
             if (!options?.archiveSession) {
@@ -391,6 +437,7 @@ export async function startHappyServer(
         toolNames: [
             'change_title',
             'send_image',
+            'send_file',
             'take_screenshot',
             'get_screenshot',
             'list_screenshots',

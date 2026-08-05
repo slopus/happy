@@ -1,14 +1,15 @@
 /**
- * View for 'file' tool calls (image attachments sent by user).
- * Downloads and decrypts the encrypted blob via apiAttachments + sessionBlobKey,
- * then renders the full image inline with the thumbhash as placeholder.
+ * View for image and media `file` events.
+ * Images keep the eager encrypted thumbnail flow. Audio/video starts as an
+ * explicit play card and resolves either a plaintext Agent artifact or a
+ * decrypted user attachment only when the user expands it.
  *
  * Always renders inline when a ref is present — if dimensions are missing
  * (older messages, iOS picker that didn't report w/h), a default 4:3 aspect
  * ratio is used until the actual image lands and contentFit shows it.
  */
 import * as React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { ActivityIndicator, View, Text, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -17,6 +18,10 @@ import { z } from 'zod';
 import { useAttachmentImage } from '@/hooks/useAttachmentImage';
 import { thumbhashToDataUri } from '@/utils/thumbhash';
 import { imageViewer } from '@/sync/imageViewer';
+import { resolveMediaAttachmentSource } from '@/sync/resolveMediaAttachmentSource';
+import type { MediaPlaybackSource } from '@/sync/mediaPlaybackSourceTypes';
+import { MediaAttachmentPlayer } from './MediaAttachmentPlayer';
+import { t } from '@/text';
 
 const fileInputSchema = z.object({
     ref: z.string(),
@@ -24,6 +29,8 @@ const fileInputSchema = z.object({
     size: z.number().optional(),
     kind: z.enum(['image', 'audio', 'video']).optional(),
     mimeType: z.string().optional(),
+    encrypted: z.boolean().optional(),
+    source: z.enum(['user', 'generated']).optional(),
     image: z.object({
         width: z.number(),
         height: z.number(),
@@ -49,25 +56,116 @@ export const FileView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
     // Audio/video have no visual thumbnail — render a compact card (icon +
     // filename + size) instead of trying to load the blob as an image.
     if (parsed.data.kind === 'audio' || parsed.data.kind === 'video') {
-        return <MediaFileCard name={parsed.data.name} kind={parsed.data.kind} size={parsed.data.size} />;
+        return (
+            <MediaFileCard
+                ref_={parsed.data.ref}
+                sessionId={sessionId}
+                name={parsed.data.name}
+                kind={parsed.data.kind}
+                size={parsed.data.size}
+                mimeType={parsed.data.mimeType}
+                encrypted={parsed.data.encrypted}
+                source={parsed.data.source}
+            />
+        );
     }
     return <ImageFileView name={parsed.data.name} image={parsed.data.image} ref_={parsed.data.ref} sessionId={sessionId} />;
 });
 
-function MediaFileCard({ name, kind, size }: { name: string; kind: 'audio' | 'video'; size?: number }) {
+function MediaFileCard({ ref_, sessionId, name, kind, size, mimeType, encrypted, source: attachmentSource }: {
+    ref_: string;
+    sessionId?: string;
+    name: string;
+    kind: 'audio' | 'video';
+    size?: number;
+    mimeType?: string;
+    encrypted?: boolean;
+    source?: 'user' | 'generated';
+}) {
     const { theme } = useUnistyles();
     const sizeLabel = humanSize(size);
+    const [source, setSource] = React.useState<MediaPlaybackSource | null>(null);
+    const [loading, setLoading] = React.useState(false);
+    const [error, setError] = React.useState(false);
+    const sourceType = attachmentSource === 'generated' ? 'generated' : 'user';
+    const playerTestID = `media-attachment-player-${sourceType}`;
+    const resolvedMimeType = mimeType ?? (kind === 'video' ? 'video/mp4' : 'audio/mpeg');
+    const playable = !!sessionId;
+
+    React.useEffect(() => () => {
+        void source?.release?.();
+    }, [source]);
+
+    const handleToggle = React.useCallback(async () => {
+        if (source) {
+            setSource(null);
+            return;
+        }
+        if (!sessionId || loading) return;
+        setLoading(true);
+        setError(false);
+        try {
+            setSource(await resolveMediaAttachmentSource({
+                sessionId,
+                ref: ref_,
+                mimeType: resolvedMimeType,
+                encrypted,
+            }));
+        } catch (cause) {
+            console.warn(`[media-attachment] failed to open ${name}`, cause);
+            setError(true);
+        } finally {
+            setLoading(false);
+        }
+    }, [encrypted, loading, name, ref_, resolvedMimeType, sessionId, source]);
+
+    const label = source
+        ? t('imageUpload.mediaCollapse', { name })
+        : t('imageUpload.mediaPlay', { name });
     return (
         <View style={styles.inlineContainer}>
-            <View style={[styles.mediaCard, { borderColor: theme.colors.divider, backgroundColor: theme.colors.surfaceHigh }]}>
+            <Pressable
+                testID={`media-attachment-card-${sourceType}`}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                accessibilityState={{ expanded: !!source, disabled: !playable || loading }}
+                aria-expanded={!!source}
+                onPress={playable ? handleToggle : undefined}
+                disabled={!playable || loading}
+                style={(press) => [
+                    styles.mediaCard,
+                    { borderColor: theme.colors.divider, backgroundColor: theme.colors.surfaceHigh },
+                    press.pressed && styles.mediaCardPressed,
+                ]}
+            >
                 <Ionicons name={kind === 'audio' ? 'musical-notes' : 'videocam'} size={20} color={theme.colors.text} />
                 <View style={styles.mediaMeta}>
                     <Text style={[styles.filename, { color: theme.colors.text }]} numberOfLines={1}>{name}</Text>
                     <Text style={[styles.mediaSub, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                        {kind === 'audio' ? '音频' : '视频'}{sizeLabel ? ` · ${sizeLabel}` : ''}
+                        {kind === 'audio' ? t('imageUpload.mediaAudio') : t('imageUpload.mediaVideo')}{sizeLabel ? ` · ${sizeLabel}` : ''}
                     </Text>
                 </View>
-            </View>
+                {loading
+                    ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    : <Ionicons name={source ? 'chevron-up' : 'play-circle'} size={26} color={theme.colors.textSecondary} />}
+            </Pressable>
+            {source ? (
+                <View style={styles.playerFrame}>
+                    <MediaAttachmentPlayer
+                        uri={source.uri}
+                        headers={source.headers}
+                        title={name}
+                        kind={kind}
+                        mimeType={resolvedMimeType}
+                        testID={playerTestID}
+                    />
+                </View>
+            ) : null}
+            {error ? (
+                <Text style={[styles.mediaError, { color: theme.colors.textDestructive }]}>
+                    {t('imageUpload.mediaLoadFailed')}
+                </Text>
+            ) : null}
         </View>
     );
 }
@@ -169,7 +267,18 @@ const styles = StyleSheet.create(() => ({
         paddingHorizontal: 12,
         paddingVertical: 10,
         alignSelf: 'flex-start',
-        maxWidth: 260,
+        width: 300,
+        maxWidth: '100%',
+    },
+    mediaCardPressed: {
+        opacity: 0.78,
+    },
+    playerFrame: {
+        width: 300,
+        maxWidth: '100%',
+        overflow: 'hidden',
+        borderRadius: BORDER_RADIUS,
+        backgroundColor: '#000',
     },
     mediaMeta: {
         flexShrink: 1,
@@ -177,5 +286,9 @@ const styles = StyleSheet.create(() => ({
     mediaSub: {
         fontSize: 11,
         marginTop: 1,
+    },
+    mediaError: {
+        maxWidth: 300,
+        fontSize: 11,
     },
 }));

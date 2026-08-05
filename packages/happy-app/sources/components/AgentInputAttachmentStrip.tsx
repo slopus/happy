@@ -14,11 +14,14 @@ import { imageViewer } from '@/sync/imageViewer';
 import { HorizontalScrollView } from '@/components/HorizontalScrollView';
 import { computeInputAttachmentImageSize } from '@/utils/attachmentGalleryLayout';
 import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLayout';
+import { MediaAttachmentPlayer } from '@/components/tools/views/MediaAttachmentPlayer';
+import { t } from '@/text';
 
 const THUMB_SIZE = 72;
 const FEATURED_MAX_WIDTH = 320;
 const FEATURED_MAX_HEIGHT = 220;
 const BORDER_RADIUS = 12;
+const EMPTY_HEADERS: Record<string, string> = {};
 
 interface AgentInputAttachmentStripProps {
     images: AttachmentPreview[];
@@ -73,6 +76,7 @@ function AttachmentThumbnail({
 }) {
     const windowDimensions = useWindowDimensions();
     const isMedia = image.kind === 'audio' || image.kind === 'video';
+    const [mediaExpanded, setMediaExpanded] = React.useState(false);
     // Build placeholder from thumbhash if available (hook must run before any
     // early return to keep hook order stable).
     const placeholder = React.useMemo(() => {
@@ -84,17 +88,59 @@ function AttachmentThumbnail({
     // Audio/video have no thumbnail — render a compact card with an icon and the
     // filename instead of trying (and failing) to load the file uri as an image.
     if (isMedia) {
+        const kind = image.kind as 'audio' | 'video';
+        const cardLabel = mediaExpanded
+            ? t('imageUpload.mediaCollapse', { name: image.name })
+            : t('imageUpload.mediaPlay', { name: image.name });
         return (
-            <View style={[styles.thumbContainer, styles.mediaCard, { borderColor: theme.colors.divider, backgroundColor: theme.colors.surfaceHigh }]}>
-                <Ionicons
-                    name={image.kind === 'audio' ? 'musical-notes' : 'videocam'}
-                    size={22}
-                    color={theme.colors.text}
-                />
-                <Text numberOfLines={2} style={[styles.mediaName, { color: theme.colors.text }]}>
-                    {image.name}
-                </Text>
+            <View style={[styles.mediaContainer, mediaExpanded && styles.mediaContainerExpanded]}>
                 <Pressable
+                    testID="media-attachment-card-pending"
+                    accessibilityRole="button"
+                    accessibilityLabel={cardLabel}
+                    accessibilityState={{ expanded: mediaExpanded }}
+                    aria-expanded={mediaExpanded}
+                    onPress={() => setMediaExpanded((value) => !value)}
+                    style={(p) => [
+                        styles.mediaCard,
+                        { borderColor: theme.colors.divider, backgroundColor: theme.colors.surfaceHigh },
+                        p.pressed && styles.mediaCardPressed,
+                    ]}
+                >
+                    <Ionicons
+                        name={kind === 'audio' ? 'musical-notes' : 'videocam'}
+                        size={22}
+                        color={theme.colors.text}
+                    />
+                    <View style={styles.mediaMeta}>
+                        <Text numberOfLines={1} style={[styles.mediaName, { color: theme.colors.text }]}>
+                            {image.name}
+                        </Text>
+                        <Text numberOfLines={1} style={[styles.mediaType, { color: theme.colors.textSecondary }]}>
+                            {kind === 'audio' ? t('imageUpload.mediaAudio') : t('imageUpload.mediaVideo')}
+                        </Text>
+                    </View>
+                    <Ionicons
+                        name={mediaExpanded ? 'chevron-up' : 'play-circle'}
+                        size={26}
+                        color={theme.colors.textSecondary}
+                    />
+                </Pressable>
+                {mediaExpanded ? (
+                    <View style={styles.mediaPlayerFrame}>
+                        <MediaAttachmentPlayer
+                            uri={image.uri}
+                            headers={EMPTY_HEADERS}
+                            title={image.name}
+                            kind={kind}
+                            mimeType={image.mimeType}
+                            testID="media-attachment-player-pending"
+                        />
+                    </View>
+                ) : null}
+                <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t('common.delete')}
                     onPress={() => onRemove(image.id)}
                     hitSlop={6}
                     style={(p) => [
@@ -178,19 +224,46 @@ const styles = StyleSheet.create(() => ({
         overflow: 'visible',
         position: 'relative',
     },
+    mediaContainer: {
+        width: 300,
+        position: 'relative',
+    },
+    mediaContainerExpanded: {
+        height: 252,
+    },
     mediaCard: {
-        width: 140,
+        width: 300,
+        height: THUMB_SIZE,
         borderWidth: 1,
         borderRadius: BORDER_RADIUS,
         paddingHorizontal: 10,
         paddingVertical: 8,
-        alignItems: 'flex-start',
+        flexDirection: 'row',
+        alignItems: 'center',
         justifyContent: 'center',
-        gap: 6,
+        gap: 10,
+    },
+    mediaCardPressed: {
+        opacity: 0.78,
+    },
+    mediaMeta: {
+        flex: 1,
     },
     mediaName: {
         fontSize: 12,
         lineHeight: 15,
+    },
+    mediaType: {
+        fontSize: 11,
+        marginTop: 2,
+    },
+    mediaPlayerFrame: {
+        width: 300,
+        height: 180,
+        overflow: 'hidden',
+        borderBottomLeftRadius: BORDER_RADIUS,
+        borderBottomRightRadius: BORDER_RADIUS,
+        backgroundColor: '#000',
     },
     thumbPressable: {
         width: THUMB_SIZE,
