@@ -46,8 +46,7 @@ function prepareMp4Fixture(): { filePath: string; temporaryDirectory: string | n
     run('ffmpeg', [
         '-y',
         '-f', 'lavfi',
-        '-i', 'color=c=0x1d4ed8:s=640x360:r=25',
-        '-vf', 'drawbox=x=80:y=80:w=480:h=200:color=0x38bdf8:t=fill',
+        '-i', 'testsrc2=s=640x360:r=25',
         '-t', '4',
         '-an',
         '-c:v', 'libx264',

@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Locator, type Page, type Route } from '@playwright/test';
 import fs, { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import path, { join } from 'node:path';
 import { io } from 'socket.io-client';
 import { decodeBase64, decryptLegacy, encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
 import {
@@ -64,6 +64,7 @@ async function exerciseVideoCard(page: Page, cardTestId: string, playerTestId: s
     const card = page.getByTestId(cardTestId);
     await expect(card).toBeVisible();
     await expect(card).toHaveAttribute('aria-expanded', 'false');
+    await pauseForRecordedReview(page, 900);
 
     await card.click();
     await expect(card).toHaveAttribute('aria-expanded', 'true');
@@ -71,42 +72,39 @@ async function exerciseVideoCard(page: Page, cardTestId: string, playerTestId: s
     const video = player.locator('video');
     await expect(player).toBeVisible();
     await expect(video).toHaveAttribute('controls', '');
-    await pauseForRecordedReview(page);
+    await expect.poll(() => video.evaluate((element) => {
+        const media = element as HTMLVideoElement;
+        return media.readyState >= HTMLMediaElement.HAVE_METADATA
+            && Number.isFinite(media.duration)
+            && media.duration > 1;
+    }), { timeout: 10_000 }).toBe(true);
 
-    await video.evaluate(async (element) => {
-        const media = element as HTMLVideoElement;
-        if (media.readyState < HTMLMediaElement.HAVE_METADATA) {
-            await new Promise<void>((resolve, reject) => {
-                const timeout = window.setTimeout(() => reject(new Error('video metadata timeout')), 10_000);
-                media.addEventListener('loadedmetadata', () => {
-                    window.clearTimeout(timeout);
-                    resolve();
-                }, { once: true });
-                media.addEventListener('error', () => {
-                    window.clearTimeout(timeout);
-                    reject(new Error('video failed to load'));
-                }, { once: true });
-            });
-        }
-        media.muted = true;
-        await media.play();
-    });
+    const initialTime = await video.evaluate((element) => (element as HTMLVideoElement).currentTime);
+    expect(initialTime).toBeLessThan(0.25);
+
+    // Chromium's native media controls live in a closed user-agent shadow root,
+    // so Playwright cannot address the Play button by role. Hovering and clicking
+    // its visible bottom-left position still sends real pointer input to that control.
+    await video.hover();
+    await pauseForRecordedReview(page, 900);
+    const videoBox = await video.boundingBox();
+    if (!videoBox) throw new Error('找不到视频原生播放控件的可点击区域');
+    const nativePlayPausePosition = { x: 24, y: videoBox.height - 48 };
+    await video.click({ position: nativePlayPausePosition });
     await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).paused)).toBe(false);
-    await pauseForRecordedReview(page);
-    await video.evaluate((element) => (element as HTMLVideoElement).pause());
+    await pauseForRecordedReview(page, 1_800);
+    await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime), {
+        timeout: 5_000,
+    }).toBeGreaterThanOrEqual(initialTime + 1);
+
+    await video.hover();
+    await video.click({ position: nativePlayPausePosition });
     await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).paused)).toBe(true);
-    const seekTarget = await video.evaluate((element) => {
-        const media = element as HTMLVideoElement;
-        if (!Number.isFinite(media.duration) || media.duration <= 0) {
-            throw new Error(`invalid video duration: ${media.duration}`);
-        }
-        const target = Math.min(1, Math.max(0.1, media.duration / 2));
-        media.currentTime = target;
-        return target;
-    });
-    await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime))
-        .toBeGreaterThanOrEqual(seekTarget - 0.05);
-    await pauseForRecordedReview(page);
+    const pausedTime = await video.evaluate((element) => (element as HTMLVideoElement).currentTime);
+    await pauseForRecordedReview(page, 900);
+    await page.waitForTimeout(300);
+    const timeAfterPause = await video.evaluate((element) => (element as HTMLVideoElement).currentTime);
+    expect(timeAfterPause - pausedTime).toBeLessThan(0.2);
 
     await page.getByTestId(`${playerTestId}-fullscreen`).click();
     await expect.poll(() => page.evaluate(() => (
@@ -1959,7 +1957,7 @@ test.describe('中文 Web 消息与工具演示', () => {
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles(fixturePath);
 
-        await expect(page.getByText(/paws-native-mp4-card-acceptance\.mp4|chat-mp4-fixture\.mp4/)).toBeVisible();
+        await expect(page.getByText(path.basename(fixturePath), { exact: true })).toBeVisible();
         await page.screenshot({ path: testInfo.outputPath('mp4-user-before.png'), fullPage: true });
 
         await exerciseVideoCard(page, 'media-attachment-card-pending', 'media-attachment-player-pending');
