@@ -5,15 +5,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
-import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
+import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage, ModeSwitchMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
 import { ToolView } from "./tools/ToolView";
-import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 import { layout } from "./layout";
 import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
 import { getAutoFoldPromptBodyRenderState, getAutoFoldPromptInfo } from '@/utils/autoFoldPrompt';
+import { ConversationActivityStrip } from './ConversationActivityStrip';
 
 
 export const MessageView = React.memo((props: {
@@ -76,7 +76,7 @@ function RenderBlock(props: {
       />;
 
     case 'agent-event':
-      return <AgentEventBlock event={props.message.event} metadata={props.metadata} />;
+      return <AgentEventBlock message={props.message} metadata={props.metadata} />;
 
 
     default:
@@ -257,24 +257,28 @@ function AutoFoldPromptBlock(props: {
 }
 
 function AgentEventBlock(props: {
-  event: AgentEvent;
+  message: ModeSwitchMessage;
   metadata: Metadata | null;
 }) {
-  if (props.event.type === 'switch') {
+  const { event } = props.message;
+  if (event.type === 'subagent-status') {
+    return <ConversationActivityStrip messages={[props.message]} />;
+  }
+  if (event.type === 'switch') {
     return (
       <View style={styles.agentEventContainer}>
-        <Text style={styles.agentEventText}>{t('message.switchedToMode', { mode: props.event.mode })}</Text>
+        <Text style={styles.agentEventText}>{t('message.switchedToMode', { mode: event.mode })}</Text>
       </View>
     );
   }
-  if (props.event.type === 'message') {
+  if (event.type === 'message') {
     return (
       <View style={styles.agentEventContainer}>
-        <Text style={styles.agentEventText}>{props.event.message}</Text>
+        <Text style={styles.agentEventText}>{event.message}</Text>
       </View>
     );
   }
-  if (props.event.type === 'limit-reached') {
+  if (event.type === 'limit-reached') {
     const formatTime = (timestamp: number): string => {
       try {
         const date = new Date(timestamp * 1000); // Convert from Unix timestamp
@@ -287,7 +291,7 @@ function AgentEventBlock(props: {
     return (
       <View style={styles.agentEventContainer}>
         <Text style={styles.agentEventText}>
-          {t('message.usageLimitUntil', { time: formatTime(props.event.endsAt) })}
+          {t('message.usageLimitUntil', { time: formatTime(event.endsAt) })}
         </Text>
       </View>
     );

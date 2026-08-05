@@ -146,6 +146,7 @@ type StoredPermission = {
 type PendingToolResult = {
     content: unknown;
     isError: boolean;
+    status?: 'completed' | 'failed' | 'cancelled';
     permissions?: {
         date: number;
         result: 'approved' | 'denied';
@@ -225,6 +226,35 @@ function getSidechainOwner(state: ReducerState, sidechainId: string): ReducerMes
     return null;
 }
 
+function getTopLevelSidechainOwner(state: ReducerState, sidechainId: string): ReducerMessage | null {
+    let owner = getSidechainOwner(state, sidechainId);
+    const visited = new Set<string>();
+
+    while (owner && !visited.has(owner.id)) {
+        visited.add(owner.id);
+
+        let parentSidechainId: string | null = null;
+        for (const [candidateSidechainId, children] of state.sidechains) {
+            if (children.some((child) => child.id === owner?.id)) {
+                parentSidechainId = candidateSidechainId;
+                break;
+            }
+        }
+
+        if (!parentSidechainId) {
+            return owner;
+        }
+
+        const parentOwner = getSidechainOwner(state, parentSidechainId);
+        if (!parentOwner) {
+            return owner;
+        }
+        owner = parentOwner;
+    }
+
+    return owner;
+}
+
 function getVisibleSidechainPrompt(owner: ReducerMessage | null): string | null {
     const prompt = owner?.tool?.input?.prompt;
     if (typeof prompt !== 'string') {
@@ -283,11 +313,18 @@ function applyToolResult(
         return false;
     }
 
-    message.tool.state = result.isError ? 'error' : 'completed';
+    message.tool.state = result.status === 'failed' || result.isError ? 'error' : 'completed';
     message.tool.result = result.content;
     message.tool.completedAt = result.createdAt;
 
-    if (result.permissions) {
+    if (result.status === 'cancelled') {
+        message.tool.permission = {
+            ...(message.tool.permission ?? { id: toolUseId }),
+            id: toolUseId,
+            status: 'canceled',
+            date: result.createdAt,
+        };
+    } else if (result.permissions) {
         const existingDecision = message.tool.permission?.decision;
         message.tool.permission = {
             ...(message.tool.permission ?? {
@@ -882,6 +919,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     const pendingResult: PendingToolResult = {
                         content: c.content,
                         isError: c.is_error,
+                        status: c.status,
                         permissions: c.permissions,
                         createdAt: msg.createdAt,
                     };
@@ -1027,12 +1065,19 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     if (sidechainMessageId) {
                         let sidechainMessage = state.messages.get(sidechainMessageId);
                         if (sidechainMessage && sidechainMessage.tool && sidechainMessage.tool.state === 'running') {
-                            sidechainMessage.tool.state = c.is_error ? 'error' : 'completed';
+                            sidechainMessage.tool.state = c.status === 'failed' || c.is_error ? 'error' : 'completed';
                             sidechainMessage.tool.result = c.content;
                             sidechainMessage.tool.completedAt = msg.createdAt;
                             
                             // Update permission data if provided by backend
-                            if (c.permissions) {
+                            if (c.status === 'cancelled') {
+                                sidechainMessage.tool.permission = {
+                                    ...(sidechainMessage.tool.permission ?? { id: c.tool_use_id }),
+                                    id: c.tool_use_id,
+                                    status: 'canceled',
+                                    date: msg.createdAt,
+                                };
+                            } else if (c.permissions) {
                                 // Merge with existing permission to preserve decision field from agentState
                                 if (sidechainMessage.tool.permission) {
                                     const existingDecision = sidechainMessage.tool.permission.decision;
@@ -1064,12 +1109,19 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     if (permissionMessageId) {
                         let permissionMessage = state.messages.get(permissionMessageId);
                         if (permissionMessage && permissionMessage.tool && permissionMessage.tool.state === 'running') {
-                            permissionMessage.tool.state = c.is_error ? 'error' : 'completed';
+                            permissionMessage.tool.state = c.status === 'failed' || c.is_error ? 'error' : 'completed';
                             permissionMessage.tool.result = c.content;
                             permissionMessage.tool.completedAt = msg.createdAt;
                             
                             // Update permission data if provided by backend
-                            if (c.permissions) {
+                            if (c.status === 'cancelled') {
+                                permissionMessage.tool.permission = {
+                                    ...(permissionMessage.tool.permission ?? { id: c.tool_use_id }),
+                                    id: c.tool_use_id,
+                                    status: 'canceled',
+                                    date: msg.createdAt,
+                                };
+                            } else if (c.permissions) {
                                 // Merge with existing permission to preserve decision field from agentState
                                 if (permissionMessage.tool.permission) {
                                     const existingDecision = permissionMessage.tool.permission.decision;
@@ -1097,6 +1149,25 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             changed.add(permissionMessageId);
                         }
                     }
+                } else if (c.type === 'subagent-status') {
+                    const mid = allocateId();
+                    const statusMessage: ReducerMessage = {
+                        id: mid,
+                        realID: msg.id,
+                        role: 'agent',
+                        createdAt: msg.createdAt,
+                        text: null,
+                        tool: null,
+                        event: {
+                            type: 'subagent-status',
+                            subagent: c.subagent,
+                            ...(c.title ? { title: c.title } : {}),
+                            status: c.status,
+                        },
+                        meta: msg.meta,
+                    };
+                    state.messages.set(mid, statusMessage);
+                    existingSidechain.push(statusMessage);
                 }
             }
         }
@@ -1104,13 +1175,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         // Update the sidechain in state
         state.sidechains.set(msg.sidechainId, existingSidechain);
 
-        // Find the Task tool message that owns this sidechain and mark it as changed
-        // msg.sidechainId is the realID of the Task message
-        for (const [internalId, message] of state.messages) {
-            if (message.realID === msg.sidechainId && message.tool) {
-                changed.add(internalId);
-                break;
-            }
+        // Return only the root owner. Nested sidechain owners are already rendered as
+        // children, and returning one here would also insert it into the top-level map.
+        const topLevelOwner = getTopLevelSidechainOwner(state, msg.sidechainId);
+        if (topLevelOwner) {
+            changed.add(topLevelOwner.id);
         }
     }
 

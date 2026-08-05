@@ -19,6 +19,10 @@ import { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { getToolSummaryCategory, getToolSummaryDetail, ToolSummaryCategory } from '@/utils/toolDisplay';
 import { useRouter } from 'expo-router';
 import { formatMCPTitle } from './tools/views/MCPToolView';
+import {
+    ConversationActivityStrip,
+    ConversationActivitySuppressedContext,
+} from './ConversationActivityStrip';
 
 interface ToolGroupViewProps {
     group: ToolGroupItem;
@@ -200,10 +204,13 @@ export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) =>
                     label={label}
                     onPress={onToggle}
                 />
+                <ConversationActivityStrip messages={group.messages} />
                 {expanded && (
-                    <View style={styles.content}>
-                        {nestedItems.map(renderNestedItem)}
-                    </View>
+                    <ConversationActivitySuppressedContext.Provider value>
+                        <View style={styles.content}>
+                            {nestedItems.map(renderNestedItem)}
+                        </View>
+                    </ConversationActivitySuppressedContext.Provider>
                 )}
             </View>
         </View>
@@ -382,6 +389,8 @@ function ToolSummaryIcon(props: {
             return <Ionicons name="globe-outline" size={13} color={props.color} />;
         case 'task':
             return <Octicons name="rocket" size={12} color={props.color} />;
+        case 'skill':
+            return <Ionicons name="sparkles-outline" size={13} color={props.color} />;
         default:
             return <Ionicons name="construct-outline" size={13} color={props.color} />;
     }
@@ -418,6 +427,8 @@ function getToolRowTitle(category: ToolSummaryCategory, toolName: string): strin
             return t('tools.names.fetchUrl');
         case 'task':
             return t('tools.names.task');
+        case 'skill':
+            return t('toolGroup.skillLabel');
         default:
             return toolName;
     }

@@ -801,6 +801,15 @@ export const it: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => count === 1 ? 'Recuperato 1 URL' : `Recuperati ${count} URL`,
         ranTasks: ({ count }: { count: number }) => count === 1 ? 'Eseguito 1 task' : `Eseguiti ${count} task`,
         usedTools: ({ count }: { count: number }) => count === 1 ? 'Usato 1 strumento' : `Usati ${count} strumenti`,
+        usedSkills: ({ names }: { names: string }) => `Skill utilizzate: ${names}`,
+        skillLabel: 'Skill',
+        subagentLabel: 'Subagente',
+        subagentStatus: {
+            running: 'In corso',
+            completed: 'Completato',
+            failed: 'Non riuscito',
+            cancelled: 'Annullato',
+        },
         workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 

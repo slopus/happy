@@ -366,6 +366,15 @@ export class CodexAppServerClient {
 
         if (method === 'turn/completed') {
             if (!this.isRootThreadNotification(params)) {
+                const threadId = this.extractThreadId(params);
+                if (threadId) {
+                    this.eventHandler?.({
+                        type: 'subagent_completed',
+                        subagent: threadId,
+                        status: this.extractTurnStatus(params),
+                        error: params?.turn?.error ?? params?.error,
+                    });
+                }
                 return true;
             }
             this.emitRawTurnCompletion(

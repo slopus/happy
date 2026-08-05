@@ -804,6 +804,15 @@ export const zhHans: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => `获取了 ${count} 个 URL`,
         ranTasks: ({ count }: { count: number }) => `执行了 ${count} 个任务`,
         usedTools: ({ count }: { count: number }) => `使用了 ${count} 个工具`,
+        usedSkills: ({ names }: { names: string }) => `使用的 Skills：${names}`,
+        skillLabel: '技能（Skill）',
+        subagentLabel: '子 Agent',
+        subagentStatus: {
+            running: '进行中',
+            completed: '已完成',
+            failed: '失败',
+            cancelled: '已取消',
+        },
         workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 

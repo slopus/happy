@@ -804,6 +804,15 @@ export const ja: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => `${count}個のURLを取得`,
         ranTasks: ({ count }: { count: number }) => `${count}個のタスクを実行`,
         usedTools: ({ count }: { count: number }) => `${count}個のツールを使用`,
+        usedSkills: ({ names }: { names: string }) => `使用したSkill：${names}`,
+        skillLabel: 'Skill',
+        subagentLabel: 'サブエージェント',
+        subagentStatus: {
+            running: '実行中',
+            completed: '完了',
+            failed: '失敗',
+            cancelled: 'キャンセル',
+        },
         workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 

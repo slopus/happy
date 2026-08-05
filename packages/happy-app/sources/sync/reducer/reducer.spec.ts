@@ -4,6 +4,7 @@ import { NormalizedMessage, normalizeRawMessage } from '../typesRaw';
 import { createReducer } from './reducer';
 import { reducer } from './reducer';
 import { AgentState } from '../storageTypes';
+import { collectConversationActivities } from '@/utils/conversationActivity';
 
 describe('reducer', () => {
     // it('should process golden cases', () => {
@@ -3113,7 +3114,7 @@ describe('reducer', () => {
                     role: 'agent',
                     turn,
                     subagent: sessionSubagent,
-                    ev: { t: 'start' },
+                    ev: { t: 'start', title: 'Review implementation' },
                 },
                 {
                     id: 'env-child-text',
@@ -3122,6 +3123,14 @@ describe('reducer', () => {
                     turn,
                     subagent: sessionSubagent,
                     ev: { t: 'text', text: 'Child review complete' },
+                },
+                {
+                    id: 'env-child-stop',
+                    time: 1250,
+                    role: 'agent',
+                    turn,
+                    subagent: sessionSubagent,
+                    ev: { t: 'stop', status: 'completed' },
                 },
                 {
                     id: 'env-root-final',
@@ -3161,8 +3170,27 @@ describe('reducer', () => {
             expect(parentMessage?.kind).toBe('tool-call');
             if (parentMessage?.kind === 'tool-call') {
                 expect(parentMessage.tool.name).toBe('Agent');
-                expect(parentMessage.children).toHaveLength(1);
-                expect(parentMessage.children[0]).toMatchObject({
+                expect(parentMessage.children).toHaveLength(3);
+                expect(parentMessage.children).toEqual(expect.arrayContaining([
+                    expect.objectContaining({
+                        kind: 'agent-event',
+                        event: expect.objectContaining({
+                            type: 'subagent-status',
+                            subagent: sessionSubagent,
+                            title: 'Review implementation',
+                            status: 'running',
+                        }),
+                    }),
+                    expect.objectContaining({
+                        kind: 'agent-event',
+                        event: expect.objectContaining({
+                            type: 'subagent-status',
+                            subagent: sessionSubagent,
+                            status: 'completed',
+                        }),
+                    }),
+                ]));
+                expect(parentMessage.children.find((message) => message.kind === 'agent-text')).toMatchObject({
                     kind: 'agent-text',
                     text: 'Child review complete',
                 });
@@ -3173,6 +3201,145 @@ describe('reducer', () => {
                 kind: 'agent-text',
                 text: 'Root final answer',
             });
+        });
+
+        it('returns the root Agent when a nested subagent lifecycle changes', () => {
+            const turn = 'nested-session-turn';
+            const firstSubagent = createId();
+            const nestedSubagent = createId();
+            const normalizeEnvelope = (envelope: Record<string, unknown>, index: number) => normalizeRawMessage(
+                `nested-db-${index}`,
+                null,
+                Number(envelope.time),
+                { role: 'session', content: envelope } as any,
+            );
+
+            const initial = [
+                {
+                    id: 'nested-root-agent',
+                    time: 1000,
+                    role: 'agent',
+                    turn,
+                    ev: {
+                        t: 'tool-call-start',
+                        call: 'nested-root-call',
+                        name: 'Agent',
+                        title: 'Spawn implementation agent',
+                        description: 'Implementation agent',
+                        args: {
+                            description: 'Implementation agent',
+                            sessionSubagent: firstSubagent,
+                        },
+                    },
+                },
+                {
+                    id: 'nested-child-agent',
+                    time: 1100,
+                    role: 'agent',
+                    turn,
+                    subagent: firstSubagent,
+                    ev: {
+                        t: 'tool-call-start',
+                        call: 'nested-child-call',
+                        name: 'Agent',
+                        title: 'Spawn review agent',
+                        description: 'Review agent',
+                        args: {
+                            description: 'Review agent',
+                            sessionSubagent: nestedSubagent,
+                        },
+                    },
+                },
+            ]
+                .map(normalizeEnvelope)
+                .filter((message): message is NormalizedMessage => message !== null);
+
+            const state = createReducer();
+            const initialResult = reducer(state, initial);
+            expect(initialResult.messages).toHaveLength(1);
+
+            const nestedStatus = normalizeEnvelope({
+                id: 'nested-child-start',
+                time: 1200,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: { t: 'start', title: 'Review agent' },
+            }, 2);
+            expect(nestedStatus).not.toBeNull();
+
+            const updateResult = reducer(state, [nestedStatus!]);
+            expect(updateResult.messages).toHaveLength(1);
+            expect(updateResult.messages[0].id).toBe(initialResult.messages[0].id);
+            expect(updateResult.messages[0].kind).toBe('tool-call');
+            if (updateResult.messages[0].kind === 'tool-call') {
+                const nestedAgent = updateResult.messages[0].children.find((message) => (
+                    message.kind === 'tool-call' && message.tool.input?.sessionSubagent === nestedSubagent
+                ));
+                expect(nestedAgent?.kind).toBe('tool-call');
+                if (nestedAgent?.kind === 'tool-call') {
+                    expect(nestedAgent.children).toEqual(expect.arrayContaining([
+                        expect.objectContaining({
+                            kind: 'agent-event',
+                            event: expect.objectContaining({
+                                type: 'subagent-status',
+                                subagent: nestedSubagent,
+                                status: 'running',
+                            }),
+                        }),
+                    ]));
+                }
+            }
+        });
+
+        it('preserves cancelled tool status through normalization, reducer, and activity display', () => {
+            const envelopes = [
+                {
+                    id: 'cancelled-skill-start',
+                    time: 1000,
+                    role: 'agent',
+                    turn: 'cancelled-skill-turn',
+                    ev: {
+                        t: 'tool-call-start',
+                        call: 'cancelled-skill-call',
+                        name: 'Skill',
+                        title: 'Use skill `dev`',
+                        description: 'Read dev skill',
+                        args: { skillNames: ['dev'] },
+                    },
+                },
+                {
+                    id: 'cancelled-skill-end',
+                    time: 1100,
+                    role: 'agent',
+                    turn: 'cancelled-skill-turn',
+                    ev: {
+                        t: 'tool-call-end',
+                        call: 'cancelled-skill-call',
+                        status: 'cancelled',
+                    },
+                },
+            ]
+                .map((envelope, index) => normalizeRawMessage(
+                    `cancelled-skill-db-${index}`,
+                    null,
+                    envelope.time,
+                    { role: 'session', content: envelope } as any,
+                ))
+                .filter((message): message is NormalizedMessage => message !== null);
+
+            const result = reducer(createReducer(), envelopes);
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0]).toMatchObject({
+                kind: 'tool-call',
+                tool: {
+                    state: 'completed',
+                    permission: { status: 'canceled' },
+                },
+            });
+            expect(collectConversationActivities(result.messages).skills).toEqual([
+                expect.objectContaining({ name: 'dev', status: 'cancelled' }),
+            ]);
         });
     });
 

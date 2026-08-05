@@ -835,6 +835,15 @@ export const en = {
         fetchedUrls: ({ count }: { count: number }) => count === 1 ? 'Fetched 1 URL' : `Fetched ${count} URLs`,
         ranTasks: ({ count }: { count: number }) => count === 1 ? 'Ran 1 task' : `Ran ${count} tasks`,
         usedTools: ({ count }: { count: number }) => count === 1 ? 'Used 1 tool' : `Used ${count} tools`,
+        usedSkills: ({ names }: { names: string }) => `Used Skills: ${names}`,
+        skillLabel: 'Skill',
+        subagentLabel: 'Sub-agent',
+        subagentStatus: {
+            running: 'Running',
+            completed: 'Completed',
+            failed: 'Failed',
+            cancelled: 'Cancelled',
+        },
         workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 

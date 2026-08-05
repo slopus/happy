@@ -1144,6 +1144,11 @@ describe('CodexAppServerClient sandbox integration', () => {
                 message: 'Child review complete',
                 subagent: 'thread-child',
             }),
+            expect.objectContaining({
+                type: 'subagent_completed',
+                subagent: 'thread-child',
+                status: 'interrupted',
+            }),
         ]));
 
         emitNotification({

@@ -6,6 +6,7 @@ import * as z from 'zod';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import React from 'react';
 import { t } from '@/text';
+import { getSkillNamesFromTool } from '@/utils/conversationActivity';
 
 // Icon factory functions
 const ICON_TASK = (size: number = 24, color: string = '#000') => <Octicons name="rocket" size={size} color={color} />;
@@ -18,6 +19,7 @@ const ICON_EXIT = (size: number = 24, color: string = '#000') => <Ionicons name=
 const ICON_TODO = (size: number = 24, color: string = '#000') => <Ionicons name="bulb-outline" size={size} color={color} />;
 const ICON_REASONING = (size: number = 24, color: string = '#000') => <Octicons name="light-bulb" size={size} color={color} />;
 const ICON_QUESTION = (size: number = 24, color: string = '#000') => <Ionicons name="help-circle-outline" size={size} color={color} />;
+const ICON_SKILL = (size: number = 24, color: string = '#000') => <Ionicons name="sparkles-outline" size={size} color={color} />;
 
 function getPatchFiles(input: any): string[] {
     if (input?.changes && typeof input.changes === 'object' && !Array.isArray(input.changes)) {
@@ -41,6 +43,9 @@ const taskLikeTool = {
     minimal: (opts: { metadata: Metadata | null, tool: ToolCall, messages?: Message[] }) => {
         const messages = opts.messages || [];
         for (let m of messages) {
+            if (m.kind === 'agent-event' && m.event.type === 'subagent-status') {
+                return false;
+            }
             if (m.kind === 'tool-call'
                 && (m.tool.state === 'running' || m.tool.state === 'completed' || m.tool.state === 'error')) {
                 return false;
@@ -57,6 +62,21 @@ const taskLikeTool = {
 export const knownTools = {
     'Task': taskLikeTool,
     'Agent': taskLikeTool,
+    'Skill': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            const names = getSkillNamesFromTool(opts.tool).join(', ');
+            return names ? t('toolGroup.usedSkills', { names }) : t('toolGroup.skillLabel');
+        },
+        icon: ICON_SKILL,
+        minimal: true,
+        input: z.object({
+            skillNames: z.array(z.string()).optional(),
+            skills: z.array(z.string()).optional(),
+            skill: z.string().optional(),
+            skillName: z.string().optional(),
+            name: z.string().optional(),
+        }).partial().passthrough(),
+    },
     'Bash': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (opts.tool.description) {

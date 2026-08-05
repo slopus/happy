@@ -1704,6 +1704,60 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     is_error: false
                 });
             }
+
+            const failedEnd = normalizeRawMessage('db-4-failed', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-4-failed',
+                        time: 2,
+                        role: 'agent',
+                        turn: 'turn-1',
+                        ev: {
+                            t: 'tool-call-end',
+                            call: 'call-failed',
+                            status: 'failed'
+                        }
+                    }
+                }
+            });
+            expect(failedEnd).toBeTruthy();
+            if (failedEnd && failedEnd.role === 'agent') {
+                expect(failedEnd.content[0]).toMatchObject({
+                    type: 'tool-result',
+                    tool_use_id: 'call-failed',
+                    is_error: true,
+                    status: 'failed'
+                });
+            }
+
+            const cancelledEnd = normalizeRawMessage('db-4-cancelled', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-4-cancelled',
+                        time: 3,
+                        role: 'agent',
+                        turn: 'turn-1',
+                        ev: {
+                            t: 'tool-call-end',
+                            call: 'call-cancelled',
+                            status: 'cancelled'
+                        }
+                    }
+                }
+            });
+            expect(cancelledEnd).toBeTruthy();
+            if (cancelledEnd && cancelledEnd.role === 'agent') {
+                expect(cancelledEnd.content[0]).toMatchObject({
+                    type: 'tool-result',
+                    tool_use_id: 'call-cancelled',
+                    is_error: false,
+                    status: 'cancelled'
+                });
+            }
         });
 
         it('maps turn-end to ready event and drops turn-start', () => {
@@ -1890,7 +1944,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
-        it('drops start/stop lifecycle markers', () => {
+        it('normalizes start/stop lifecycle markers into subagent status content', () => {
             const subagent = createId();
             const start = normalizeRawMessage('db-start-1', null, 1, {
                 ...base,
@@ -1906,7 +1960,17 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     }
                 }
             });
-            expect(start).toBeNull();
+            expect(start).toMatchObject({
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'subagent-status',
+                    subagent,
+                    title: 'Research agent',
+                    status: 'running',
+                    parentUUID: subagent,
+                }],
+            });
 
             const stop = normalizeRawMessage('db-stop-1', null, 1, {
                 ...base,
@@ -1918,11 +1982,20 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         role: 'agent',
                         turn: 'turn-1',
                         subagent,
-                        ev: { t: 'stop' }
+                        ev: { t: 'stop', status: 'cancelled' }
                     }
                 }
             });
-            expect(stop).toBeNull();
+            expect(stop).toMatchObject({
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'subagent-status',
+                    subagent,
+                    status: 'cancelled',
+                    parentUUID: subagent,
+                }],
+            });
         });
 
         it('returns null for non-cuid subagent identifiers', () => {

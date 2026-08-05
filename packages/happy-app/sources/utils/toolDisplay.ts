@@ -1,5 +1,6 @@
 import { ToolCall } from '@/sync/typesMessage';
 import { stringifyToolCommand } from './toolCommand';
+import { getSkillNamesFromTool } from './conversationActivity';
 
 const TERMINAL_TOOL_NAMES = new Set([
     'Bash',
@@ -42,7 +43,11 @@ const TASK_TOOL_NAMES = new Set([
     'Agent',
 ]);
 
-export type ToolSummaryCategory = 'terminal' | 'edit' | 'read' | 'search' | 'web' | 'task' | 'other';
+const SKILL_TOOL_NAMES = new Set([
+    'Skill',
+]);
+
+export type ToolSummaryCategory = 'terminal' | 'edit' | 'read' | 'search' | 'web' | 'task' | 'skill' | 'other';
 
 export function isTerminalToolName(name: string): boolean {
     return TERMINAL_TOOL_NAMES.has(name);
@@ -70,6 +75,9 @@ export function getToolSummaryCategory(toolName: string): ToolSummaryCategory {
     }
     if (TASK_TOOL_NAMES.has(toolName)) {
         return 'task';
+    }
+    if (SKILL_TOOL_NAMES.has(toolName)) {
+        return 'skill';
     }
     return 'other';
 }
@@ -106,6 +114,13 @@ export function getToolSummaryDetail(tool: Pick<ToolCall, 'name' | 'input' | 'de
     const url = tool.input?.url;
     if (typeof url === 'string' && url.trim().length > 0) {
         return url.trim();
+    }
+
+    if (tool.name === 'Skill') {
+        const skillNames = getSkillNamesFromTool(tool);
+        if (skillNames.length > 0) {
+            return skillNames.join(', ');
+        }
     }
 
     return tool.description?.trim() || null;

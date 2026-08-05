@@ -819,6 +819,15 @@ export const pl: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => `${plural({ count, one: 'Pobrano 1 URL', few: `Pobrano ${count} URLe`, many: `Pobrano ${count} URLi` })}`,
         ranTasks: ({ count }: { count: number }) => `${plural({ count, one: 'Wykonano 1 zadanie', few: `Wykonano ${count} zadania`, many: `Wykonano ${count} zadań` })}`,
         usedTools: ({ count }: { count: number }) => `${plural({ count, one: 'Użyto 1 narzędzie', few: `Użyto ${count} narzędzia`, many: `Użyto ${count} narzędzi` })}`,
+        usedSkills: ({ names }: { names: string }) => `Użyte umiejętności (Skills): ${names}`,
+        skillLabel: 'Umiejętność (Skill)',
+        subagentLabel: 'Subagent',
+        subagentStatus: {
+            running: 'W toku',
+            completed: 'Ukończony',
+            failed: 'Nieudany',
+            cancelled: 'Anulowany',
+        },
         workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 
