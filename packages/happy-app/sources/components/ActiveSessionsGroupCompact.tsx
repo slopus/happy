@@ -12,7 +12,14 @@ import { useAllMachines, useSessionGitStatus } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
+import { SessionActionsAnchor } from './SessionActionsPopover';
+import {
+    SessionRowActions,
+    SessionRowDetails,
+    SessionRowLocation,
+    useSessionRowDisclosure,
+    useSessionRowPresentation,
+} from './SessionRowChrome';
 import { hapticsLight } from './haptics';
 import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
@@ -306,6 +313,8 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
         : baseStatus;
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
+    const disclosure = useSessionRowDisclosure(session.name);
+    const presentation = useSessionRowPresentation(session);
 
     const handlePress = React.useCallback(() => {
         if (selectionMode) {
@@ -388,45 +397,67 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
         );
     };
 
+    const titleHint = Platform.OS === 'web' && disclosure.titleOverflowing
+        ? { title: session.name } as any
+        : {};
+
     const itemContent = (
-        <Pressable
+        <View
             style={[
                 styles.sessionRow,
                 showBorder && styles.sessionRowWithBorder,
                 (selected || bulkSelected || !!actionsAnchor) && styles.sessionRowSelected
             ]}
-            onPress={handlePress}
-            {...menuProps}
         >
-            <View style={styles.sessionContent}>
-                <View style={styles.sessionTitleRow}>
-                    {renderLeadingIndicator()}
+            <Pressable
+                accessibilityLabel={session.name}
+                accessibilityRole="button"
+                focusable
+                onPress={handlePress}
+                style={styles.sessionPressTarget}
+                testID={`session-row-${session.id}`}
+                {...menuProps}
+            >
+                <View style={styles.sessionContent}>
+                    <View style={styles.sessionTitleRow}>
+                        {renderLeadingIndicator()}
 
-                    <Text
-                        style={[
-                            styles.sessionTitle,
-                            status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
-                        ]}
-                        numberOfLines={2}
-                    >
-                        {session.name}
-                    </Text>
+                        <Text
+                            style={[
+                                styles.sessionTitle,
+                                status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                            ]}
+                            numberOfLines={1}
+                            testID="session-row-title"
+                            {...titleHint}
+                        >
+                            {session.name}
+                        </Text>
+                    </View>
+                    <SessionRowLocation presentation={presentation} />
                 </View>
-            </View>
-        </Pressable>
+            </Pressable>
+            {!selectionMode ? (
+                <SessionRowActions
+                    contextAnchor={actionsAnchor}
+                    onContextAnchorChange={setActionsAnchor}
+                    onStartSelection={onStartSelection ? () => onStartSelection(session.id) : undefined}
+                    sessionId={session.id}
+                    visible={disclosure.visible}
+                />
+            ) : null}
+        </View>
     );
 
     return (
-        <>
+        <View
+            ref={disclosure.wrapperRef}
+            style={[styles.sessionRowWrapper, (disclosure.visible || !!actionsAnchor) && styles.sessionRowWrapperRaised]}
+            {...disclosure.interactionProps as any}
+        >
             {itemContent}
-            <SessionActionsPopover
-                anchor={actionsAnchor}
-                onClose={() => setActionsAnchor(null)}
-                onSelectSession={onStartSelection ? () => onStartSelection(session.id) : undefined}
-                sessionId={session.id}
-                visible={!!actionsAnchor}
-            />
-        </>
+            <SessionRowDetails presentation={presentation} visible={!selectionMode && disclosure.visible} />
+        </View>
     );
 });
 
@@ -522,7 +553,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 8,
         marginHorizontal: Platform.select({ ios: 16, default: 12 }),
         borderRadius: Platform.select({ ios: 10, default: 16 }),
-        overflow: 'hidden',
+        overflow: 'visible',
         shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 0.33 },
         shadowOpacity: theme.colors.shadow.opacity,
@@ -531,7 +562,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     // Session row styles
     sessionRow: {
-        height: 56,
+        minHeight: 64,
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
@@ -547,6 +578,17 @@ const stylesheet = StyleSheet.create((theme) => ({
     sessionContent: {
         flex: 1,
         justifyContent: 'center',
+    },
+    sessionPressTarget: {
+        flex: 1,
+        minWidth: 0,
+    },
+    sessionRowWrapper: {
+        position: 'relative',
+        zIndex: 0,
+    },
+    sessionRowWrapperRaised: {
+        zIndex: 40,
     },
     sessionTitleRow: {
         flexDirection: 'row',

@@ -1,9 +1,10 @@
-import { sessionArchive, sessionDelete, sessionKill } from '@/sync/ops';
+import { sessionArchive, sessionDelete, sessionKill, sessionRequestArchiveMetadata } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 
 export async function bulkArchiveSessions(sessions: Session[]): Promise<void> {
     for (const session of sessions) {
+        await sessionRequestArchiveMetadata(session);
         const killResult = await sessionKill(session.id);
         if (!killResult.success) {
             const archiveResult = await sessionArchive(session.id);

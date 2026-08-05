@@ -33,6 +33,7 @@ import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
 import { selectAgentSpaceSessions } from '@/utils/agentSpaceIdentity';
+import { isSessionArchived } from '@/utils/sessionLifecycle';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -90,6 +91,7 @@ export interface SessionRowData {
     createdAt?: number;
     hasDraft: boolean;
     active: boolean;
+    archived: boolean;
     machineId: string | null;
     path: string | null;
     homeDir: string | null;
@@ -120,9 +122,11 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         avatarId: getSessionAvatarId(session),
         flavor: session.metadata?.flavor ?? null,
         state,
-        ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
+        createdAt: session.createdAt,
+        ...(!session.active && { activeAt: session.activeAt }),
         hasDraft: !!session.draft,
         active: session.active,
+        archived: isSessionArchived(session),
         machineId: session.metadata?.machineId ?? null,
         path: session.metadata?.path ?? null,
         homeDir: session.metadata?.homeDir ?? null,
@@ -238,28 +242,30 @@ function buildSessionListViewData(
     sessions: Record<string, Session>,
     unreadSessionIds?: Set<string>,
 ): SessionListViewItem[] {
-    // Separate active and inactive sessions
-    const activeSessions: Session[] = [];
-    const inactiveSessions: Session[] = [];
+    // Lifecycle metadata owns archive membership; transport `active` only
+    // represents online presence. Disconnected but resumable sessions stay in
+    // the regular list instead of being mislabeled as archived.
+    const regularSessions: Session[] = [];
+    const archivedSessions: Session[] = [];
 
     Object.values(sessions).forEach(session => {
-        if (isSessionActive(session)) {
-            activeSessions.push(session);
+        if (isSessionArchived(session)) {
+            archivedSessions.push(session);
         } else {
-            inactiveSessions.push(session);
+            regularSessions.push(session);
         }
     });
 
     // Sort by creation date (newest first) — matches applySessions behavior
-    activeSessions.sort((a, b) => b.createdAt - a.createdAt);
-    inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
+    regularSessions.sort((a, b) => b.createdAt - a.createdAt);
+    archivedSessions.sort((a, b) => b.createdAt - a.createdAt);
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
 
     // Add active sessions as a single item at the top (if any)
-    if (activeSessions.length > 0) {
-        listData.push({ type: 'active-sessions', sessions: activeSessions.map(s => buildSessionRowData(s, unreadSessionIds)) });
+    if (regularSessions.length > 0) {
+        listData.push({ type: 'active-sessions', sessions: regularSessions.map(s => buildSessionRowData(s, unreadSessionIds)) });
     }
 
     // Group inactive sessions by date
@@ -270,7 +276,7 @@ function buildSessionListViewData(
     let currentDateGroup: Session[] = [];
     let currentDateString: string | null = null;
 
-    for (const session of inactiveSessions) {
+    for (const session of archivedSessions) {
         const sessionDate = new Date(session.createdAt);
         const dateString = sessionDate.toDateString();
 

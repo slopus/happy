@@ -12,6 +12,7 @@ interface SessionQuickActionLabels {
     copyMetadata: string;
     copyMetadataAndLogs: string;
     archive: string;
+    restore: string;
     delete: string;
     select?: string;
 }
@@ -27,6 +28,7 @@ interface SessionQuickActionCallbacks {
     copySessionMetadata: () => void;
     copySessionMetadataAndLogs: () => void;
     archiveSession: () => void;
+    restoreSession: () => void;
     deleteSession: () => void;
     selectSession?: () => void;
 }
@@ -40,6 +42,7 @@ interface BuildSessionQuickActionItemsOptions {
     canCopySessionMetadata: boolean;
     sessionPinned: boolean;
     sessionActive: boolean;
+    sessionArchived: boolean;
     canSelect?: boolean;
 }
 
@@ -52,6 +55,7 @@ export function buildSessionQuickActionItems({
     canCopySessionMetadata,
     sessionPinned,
     sessionActive,
+    sessionArchived,
     canSelect,
 }: BuildSessionQuickActionItemsOptions): SessionActionItem[] {
     const items: SessionActionItem[] = [];
@@ -76,7 +80,7 @@ export function buildSessionQuickActionItems({
         items.push({ id: 'regenerate-title', icon: 'refresh-outline', label: labels.regenerateTitle, onPress: callbacks.regenerateTitle });
     }
 
-    if (canShowResume) {
+    if (canShowResume && !sessionArchived) {
         items.push({ id: 'resume', icon: 'play-circle-outline', label: labels.resume, onPress: callbacks.resumeSession });
     }
 
@@ -92,6 +96,8 @@ export function buildSessionQuickActionItems({
 
     if (sessionActive) {
         items.push({ id: 'archive', icon: 'archive-outline', label: labels.archive, onPress: callbacks.archiveSession, destructive: true });
+    } else if (sessionArchived) {
+        items.push({ id: 'restore', icon: 'arrow-undo-outline', label: labels.restore, onPress: callbacks.restoreSession });
     }
     items.push({ id: 'delete', icon: 'trash-outline', label: labels.delete, onPress: callbacks.deleteSession, destructive: true });
 

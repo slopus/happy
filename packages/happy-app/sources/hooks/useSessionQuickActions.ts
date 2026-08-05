@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionKill, sessionDelete, sessionRegenerateTitle, sessionUpdateMetadata, forkAndSpawn, type ForkSource } from '@/sync/ops';
+import { machineResumeSession, sessionArchive, sessionRequestArchiveMetadata, sessionRestoreMetadata, sessionKill, sessionDelete, sessionRegenerateTitle, sessionUpdateMetadata, forkAndSpawn, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -23,6 +23,7 @@ import { buildSessionTitleTranscript } from '@/utils/sessionTitleTranscript';
 import { canRegenerateSessionTitle } from '@/utils/sessionTitleRegeneration';
 import { buildSessionQuickActionItems } from './sessionQuickActionItems';
 import { useSessionManagementPreferences } from './useSessionManagementPreferences';
+import { isSessionArchived } from '@/utils/sessionLifecycle';
 
 export interface SessionActionItem {
     id: string;
@@ -227,17 +228,40 @@ export function useSessionQuickActions(
     const [archivingSession, performArchive] = useHappyAction(async () => {
         await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
 
-        // Try to kill the CLI process; if it's already dead, force-archive via server
-        const killResult = await sessionKill(session.id);
+        // Archive is durable encrypted lifecycle metadata. Transport `active`
+        // remains presence-only, so an offline but resumable session is never
+        // mistaken for an archived row.
+        await sessionRequestArchiveMetadata(session);
+
+        // Only wait for the kill RPC when presence proves the agent is
+        // connected. Archived/offline rows have no responder, so calling the
+        // RPC first would make this inline action stall until its ack timeout.
+        const killResult = sessionStatus.isConnected && Boolean(session.metadata?.machineId)
+            ? await sessionKill(session.id)
+            : { success: false };
         if (!killResult.success) {
-            await sessionArchive(session.id);
+            const archiveResult = await sessionArchive(session.id);
+            if (!archiveResult.success) {
+                throw new HappyError(archiveResult.message || t('sessionInfo.failedToArchiveSession'), false);
+            }
         }
+        await sync.refreshSessions();
         onAfterArchive?.();
     });
 
     const archiveSession = React.useCallback(() => {
         performArchive();
     }, [performArchive]);
+
+    const [restoringSession, performRestore] = useHappyAction(async () => {
+        await sessionRestoreMetadata(session);
+        await sync.refreshSessions();
+        hapticsSuccess();
+    });
+
+    const restoreSession = React.useCallback(() => {
+        performRestore();
+    }, [performRestore]);
 
     const [renamingSession, performRename] = useHappyAction(async () => {
         if (!session.metadata) {
@@ -390,6 +414,7 @@ export function useSessionQuickActions(
     const canCopySessionMetadata = false;
 
     const actionItems = React.useMemo<SessionActionItem[]>(() => {
+        const sessionArchived = isSessionArchived(session);
         return buildSessionQuickActionItems({
             labels: {
                 pin: t('sessionInfo.pinSession'),
@@ -403,6 +428,7 @@ export function useSessionQuickActions(
                 copyMetadata: t('sessionInfo.copyMetadata'),
                 copyMetadataAndLogs: t('sessionInfo.copyMetadata') + ' & Client Logs',
                 archive: t('sessionInfo.archiveSession'),
+                restore: t('sessionInfo.restoreSession'),
                 delete: t('sessionInfo.deleteSession'),
                 select: t('sessionInfo.selectSession'),
             },
@@ -417,6 +443,7 @@ export function useSessionQuickActions(
                 copySessionMetadata,
                 copySessionMetadataAndLogs,
                 archiveSession,
+                restoreSession,
                 deleteSession,
                 selectSession: onSelectSession,
             },
@@ -425,7 +452,8 @@ export function useSessionQuickActions(
             canFork,
             canCopySessionMetadata,
             sessionPinned,
-            sessionActive: session.active,
+            sessionActive: !sessionArchived,
+            sessionArchived,
             canSelect: Boolean(onSelectSession),
         });
     }, [
@@ -444,7 +472,9 @@ export function useSessionQuickActions(
         renameSession,
         resumeAvailability.canShowResume,
         resumeSession,
+        restoreSession,
         session.active,
+        session.metadata?.lifecycleState,
         sessionPinned,
         togglePinSession,
     ]);
@@ -474,6 +504,7 @@ export function useSessionQuickActions(
         canFork,
         canRegenerateTitle,
         sessionPinned,
+        togglePinSession,
         copySessionMetadata,
         copySessionMetadataAndLogs,
         forkSession,
@@ -487,6 +518,8 @@ export function useSessionQuickActions(
         resumeSession,
         resumeSessionSubtitle: resumeAvailability.subtitle,
         resumingSession,
+        restoreSession,
+        restoringSession,
     };
 }
 

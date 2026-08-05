@@ -454,6 +454,151 @@ test('中文欢迎页在四档桌面视口没有孤字收尾', async ({ browser 
     }
 });
 
+test.describe('会话行组织可见回归', () => {
+    test('NAV-13-01：桌面悬停显示诚实位置、溢出标题与完整详情', async ({ page, request }, testInfo) => {
+        const title = 'Session row title that is intentionally long enough to overflow the compact navigation column';
+        const sessionId = await createE2ESession(request, {
+            path: '/workspace/session-row-location-details',
+            summary: title,
+            flavor: 'codex',
+        });
+
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.goto(authenticatedRoute('/new'));
+        const row = page.getByTestId(`session-row-${sessionId}`);
+        await expect(row).toBeVisible();
+        await expect(row.getByLabel('Location unknown/local')).toBeVisible();
+
+        await row.hover();
+        const details = page.getByTestId('session-row-details');
+        await expect(details).toBeVisible();
+        await expect(details).toContainText(title);
+        await expect(details).toContainText('/workspace/session-row-location-details');
+        await expect(details).toContainText('Codex');
+        await expect(row.locator(`[title="${title}"]`)).toHaveCount(1);
+        await page.screenshot({
+            path: testInfo.outputPath('nav-13-01-hover-details-1280x900.png'),
+            fullPage: true,
+        });
+
+        await page.mouse.move(1270, 890);
+        await expect(details).toHaveCount(0);
+    });
+
+    test('NAV-13-02：键盘焦点显示详情，快捷操作不触发行导航', async ({ page, request }, testInfo) => {
+        const sessionId = await createE2ESession(request, {
+            path: '/workspace/session-row-keyboard',
+            summary: 'Keyboard focus session row',
+        });
+
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.goto(authenticatedRoute('/new'));
+        const row = page.getByTestId(`session-row-${sessionId}`);
+        await row.focus();
+        await expect(row).toBeFocused();
+        await expect(page.getByTestId('session-row-details')).toBeVisible();
+
+        const pinAction = page.getByTestId('session-row-pin-action');
+        await expect(pinAction).toHaveAccessibleName('Pin Session');
+        await pinAction.click();
+        await expect.poll(() => new URL(page.url()).pathname).toBe('/new');
+        await expect(pinAction).toHaveAccessibleName('Unpin Session');
+        await page.screenshot({
+            path: testInfo.outputPath('nav-13-02-keyboard-actions-1280x900.png'),
+            fullPage: true,
+        });
+
+        await page.keyboard.press('Escape');
+        await expect(page.getByTestId('session-row-details')).toHaveCount(0);
+    });
+
+    test('NAV-13-03：归档后默认消失，归档筛选提供 Restore 而非 Resume', async ({ page, request }, testInfo) => {
+        const sessionId = await createE2ESession(request, {
+            path: '/workspace/session-row-restore',
+            summary: 'Archive and restore this session row',
+        });
+
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.goto(authenticatedWebUrl);
+        let row = page.getByTestId(`session-row-${sessionId}`);
+        await row.hover();
+        await page.getByTestId(`session-row-actions-${sessionId}`)
+            .getByTestId('session-row-archive-action')
+            .click();
+        await expect(row).toHaveCount(0);
+
+        await page.getByTestId('session-archive-toggle').click();
+        row = page.getByTestId(`session-row-${sessionId}`);
+        await expect(row).toBeVisible();
+        await row.hover();
+        const restoreAction = page.getByTestId(`session-row-actions-${sessionId}`)
+            .getByTestId('session-row-restore-action');
+        await expect(restoreAction).toHaveAccessibleName('Restore Session');
+        await expect(page.getByRole('button', { name: 'Resume Session' })).toHaveCount(0);
+        await page.screenshot({
+            path: testInfo.outputPath('nav-13-03-archived-restore-1280x900.png'),
+            fullPage: true,
+        });
+
+        await restoreAction.click();
+        const restoredRow = page.getByTestId(`session-row-${sessionId}`);
+        await expect(restoredRow).toBeVisible();
+        await restoredRow.hover();
+        await expect(page.getByTestId('session-row-details')).toContainText(/disconnected/i);
+    });
+
+    test('NAV-13-04：799px 窄屏 More 菜单具备置顶和归档权限', async ({ page, request }, testInfo) => {
+        const sessionId = await createE2ESession(request, {
+            path: '/workspace/session-row-more-menu',
+            summary: 'Narrow row action parity',
+        });
+
+        await page.setViewportSize({ width: 799, height: 900 });
+        await page.goto(authenticatedWebUrl);
+        await page.locator('[data-testid="compose-home-drawer-button"]:visible').click();
+        const row = page.getByTestId(`session-row-${sessionId}`);
+        await expect(row).toBeVisible();
+        const more = page.getByTestId(`session-row-actions-${sessionId}`)
+            .getByTestId('session-row-more-action');
+        await expect(more).toBeVisible();
+        await more.click();
+        await expect(page.getByTestId('session-actions-inline-menu')).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Pin Session' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Archive Session' })).toBeVisible();
+        await page.screenshot({
+            path: testInfo.outputPath('nav-13-04-narrow-more-799x900.png'),
+            fullPage: true,
+        });
+        await page.keyboard.press('Escape');
+        await expect(page.getByTestId('session-actions-inline-menu')).toHaveCount(0);
+    });
+
+    test('NAV-13-05：宽屏触控 Web 仍提供 More，不依赖 hover', async ({ browser, request }) => {
+        const sessionId = await createE2ESession(request, {
+            path: '/workspace/session-row-wide-touch',
+            summary: 'Wide touch row action parity',
+        });
+        const context = await browser.newContext({
+            deviceScaleFactor: 1,
+            hasTouch: true,
+            locale: 'en-US',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+        try {
+            await page.goto(authenticatedRoute('/new'));
+            await expect.poll(() => page.evaluate(() => (
+                window.matchMedia('(hover: hover) and (pointer: fine)').matches
+            ))).toBe(false);
+            const actions = page.getByTestId(`session-row-actions-${sessionId}`);
+            await expect(actions.getByTestId('session-row-more-action')).toBeVisible();
+            await expect(actions.getByTestId('session-row-pin-action')).toHaveCount(0);
+        } finally {
+            await context.close();
+        }
+    });
+});
+
 for (const viewport of viewports) {
     test(`${viewport.name}首页可输入且没有 OTA 蒙层`, async ({ page }) => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
