@@ -2235,6 +2235,8 @@ export const en = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'GitHub Skills',
+        imageStylePhotoIllustrationDiptych: 'Photo–Illustration Diptych',
+        imageStylePhotoIllustrationDiptychHint: 'Pair one supplied photo with a composition-matched illustration in a calm 3:5 paper poster.\nPreserves landmark count, horizon, spatial order, and movement; medium adapts from ink wash to flat editorial, geometric skyline, or Art Deco.',
         imageStyleMinimalZinePoster: 'Minimal Zine Paper Poster',
         imageStyleMinimalZinePosterHint: 'Theme, short line, object, mood, article idea, or photo → 3:5 vertical minimal paper poster.\nAged-paper negative space, small torn-paper/photo anchor, sparse typewriter text, one vivid accent, and photocopy/scan texture.',
         imageStyleSceneDistillationZine: 'Scene Distillation Zine',

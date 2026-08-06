@@ -1686,6 +1686,8 @@ export const ru: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Навыки GitHub',
+        imageStylePhotoIllustrationDiptych: 'Диптих: фото и иллюстрация',
+        imageStylePhotoIllustrationDiptychHint: 'Объедините предоставленную фотографию с иллюстрацией, повторяющей её композицию, в спокойном бумажном постере формата 3:5.\nСохраните число достопримечательностей, линию горизонта, пространственный порядок и движение; техника адаптируется от рисунка тушью с размывкой до плоской редакционной графики, геометрического силуэта города или Art Deco.',
         imageStyleMinimalZinePoster: 'Минималистичный бумажный Zine-постер',
         imageStyleMinimalZinePosterHint: 'Тема, короткая фраза, предмет, настроение, идея статьи или фото → вертикальный минималистичный постер 3:5.\nСостаренная бумага с пустым пространством, небольшой акцент из рваной бумаги/фото, редкий машинописный текст, один яркий цвет и фактура ксерокопии/скана.',
         imageStyleSceneDistillationZine: 'Zine-дистилляция сцены',

@@ -2227,6 +2227,8 @@ export const zhHans: TranslationStructure = {
         customImageStyleDeleteTitle: '删除自定义风格？',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `确定删除“${name}”吗？`,
         imageStyleGithubSkills: 'GitHub Skills',
+        imageStylePhotoIllustrationDiptych: '实景插画对照海报',
+        imageStylePhotoIllustrationDiptychHint: '将一张实景照片与构图对应的插画上下并置，生成安静的 3:5 纸张海报。\n保留地标数量、地平线、空间顺序与动势；根据题材自适应钢笔淡彩、扁平编辑插画、几何城市或装饰艺术。',
         imageStyleMinimalZinePoster: '极简 Zine 纸张海报',
         imageStyleMinimalZinePosterHint: '将主题、短句、物件、情绪、文章点子或照片变成 3:5 竖版极简纸张海报。\n做旧纸张留白、小幅撕纸/照片锚点、稀疏打字机排版、单一高饱和强调色与复印/扫描质感。',
         imageStyleSceneDistillationZine: '场景提炼 Zine',
