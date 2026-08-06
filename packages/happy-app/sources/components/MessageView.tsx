@@ -1,5 +1,5 @@
 import * as React from "react";
-import { View, Text, Pressable, Platform } from "react-native";
+import { View, Text, Pressable, Platform, TextInput } from "react-native";
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -27,6 +27,9 @@ export const MessageView = React.memo((props: {
    * the active session screen and used by the fork-from-message flow.
    */
   onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
+  showUserMessageActions?: boolean;
+  canEditUserMessage?: boolean;
+  onEditUserMessage?: (messageId: string, messageText: string) => Promise<void> | void;
 }) => {
   return (
     <View
@@ -40,6 +43,9 @@ export const MessageView = React.memo((props: {
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
           onForkFromUserMessage={props.onForkFromUserMessage}
+          showUserMessageActions={props.showUserMessageActions}
+          canEditUserMessage={props.canEditUserMessage}
+          onEditUserMessage={props.onEditUserMessage}
         />
       </View>
     </View>
@@ -53,6 +59,9 @@ function RenderBlock(props: {
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
   onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
+  showUserMessageActions?: boolean;
+  canEditUserMessage?: boolean;
+  onEditUserMessage?: (messageId: string, messageText: string) => Promise<void> | void;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -62,6 +71,9 @@ function RenderBlock(props: {
           metadata={props.metadata}
           sessionId={props.sessionId}
           onForkFromUserMessage={props.onForkFromUserMessage}
+          showUserMessageActions={props.showUserMessageActions}
+          canEditUserMessage={props.canEditUserMessage}
+          onEditUserMessage={props.onEditUserMessage}
         />
       );
 
@@ -92,7 +104,14 @@ function UserTextBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
+  showUserMessageActions?: boolean;
+  canEditUserMessage?: boolean;
+  onEditUserMessage?: (messageId: string, messageText: string) => Promise<void> | void;
 }) {
+  const { theme } = useUnistyles();
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [editText, setEditText] = React.useState('');
+  const [isSendingEdit, setIsSendingEdit] = React.useState(false);
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
@@ -106,6 +125,32 @@ function UserTextBlock(props: {
       props.onForkFromUserMessage(props.message.id, rewindPointId, props.message.text);
     }
   }, [props.message.id, props.message.text, props.onForkFromUserMessage, rewindPointId]);
+  const visibleText = props.message.displayText || props.message.text;
+  const showActions = Platform.OS === 'web' && props.showUserMessageActions;
+  const canEdit = showActions && props.canEditUserMessage && Boolean(props.onEditUserMessage);
+  const startEditing = React.useCallback(() => {
+    setEditText(visibleText);
+    setIsEditing(true);
+  }, [visibleText]);
+  const cancelEditing = React.useCallback(() => {
+    setEditText('');
+    setIsEditing(false);
+  }, []);
+  const copyMessage = React.useCallback(() => {
+    void Clipboard.setStringAsync(visibleText);
+  }, [visibleText]);
+  const sendEditedMessage = React.useCallback(async () => {
+    const trimmed = editText.trim();
+    if (!trimmed || !props.onEditUserMessage || isSendingEdit) return;
+
+    setIsSendingEdit(true);
+    try {
+      await props.onEditUserMessage(props.message.localId ?? props.message.id, trimmed);
+      setIsEditing(false);
+    } finally {
+      setIsSendingEdit(false);
+    }
+  }, [editText, isSendingEdit, props.message.id, props.message.localId, props.onEditUserMessage]);
 
   // Claude Agent SDK emits synthetic user messages wrapped in tags like
   // <local-command-caveat>…</local-command-caveat> and
@@ -124,7 +169,7 @@ function UserTextBlock(props: {
     return null;
   }
 
-  const parsed = parseLocalCommandMessage(props.message.displayText || props.message.text);
+  const parsed = parseLocalCommandMessage(visibleText);
   if (parsed.kind === 'caveat') {
     return null;
   }
@@ -156,15 +201,93 @@ function UserTextBlock(props: {
     );
   }
 
+  if (isEditing) {
+    const canSend = editText.trim().length > 0 && !isSendingEdit;
+    return (
+      <View testID={`message-user-${props.message.id}`} style={styles.userMessageContainer}>
+        <View style={styles.userMessageEditor}>
+          <TextInput
+            testID={`message-user-edit-input-${props.message.id}`}
+            accessibilityLabel={t('message.editInput')}
+            autoFocus
+            editable={!isSendingEdit}
+            multiline
+            onChangeText={setEditText}
+            placeholderTextColor={theme.colors.input.placeholder}
+            selectionColor={theme.colors.textLink}
+            style={styles.userMessageEditorInput}
+            value={editText}
+          />
+          <View style={styles.userMessageEditorActions}>
+            <Pressable
+              testID={`message-user-edit-cancel-${props.message.id}`}
+              accessibilityLabel={t('common.cancel')}
+              accessibilityRole="button"
+              disabled={isSendingEdit}
+              onPress={cancelEditing}
+              style={({ pressed }) => [styles.userMessageEditorButton, pressed && styles.userMessageActionPressed]}
+            >
+              <Text style={styles.userMessageEditorCancelText}>{t('common.cancel')}</Text>
+            </Pressable>
+            <Pressable
+              testID={`message-user-edit-send-${props.message.id}`}
+              accessibilityLabel={t('message.sendEdit')}
+              accessibilityRole="button"
+              disabled={!canSend}
+              onPress={() => { void sendEditedMessage(); }}
+              style={({ pressed }) => [
+                styles.userMessageEditorButton,
+                styles.userMessageEditorSendButton,
+                !canSend && styles.userMessageEditorSendButtonDisabled,
+                pressed && canSend && styles.userMessageActionPressed,
+              ]}
+            >
+              <Text style={styles.userMessageEditorSendText}>{t('message.sendEdit')}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View testID={`message-user-${props.message.id}`} style={styles.userMessageContainer}>
       <Pressable
         onLongPress={canFork ? handleLongPress : undefined}
         delayLongPress={400}
-        style={[styles.userMessageBubble, modeLabel && styles.userContentWithModeMeta]}
+        style={[
+          styles.userMessageBubble,
+          (modeLabel || showActions) && styles.userContentWithModeMeta,
+        ]}
       >
         <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
       </Pressable>
+      {showActions && (
+        <View style={[styles.userMessageActions, modeLabel && styles.userMessageActionsWithMode]}>
+          <Pressable
+            testID={`message-user-copy-${props.message.id}`}
+            accessibilityLabel={t('common.copy')}
+            accessibilityRole="button"
+            hitSlop={6}
+            onPress={copyMessage}
+            style={({ pressed }) => [styles.userMessageAction, pressed && styles.userMessageActionPressed]}
+          >
+            <Ionicons name="copy-outline" size={16} color={theme.colors.textSecondary} />
+          </Pressable>
+          {canEdit && (
+            <Pressable
+              testID={`message-user-edit-${props.message.id}`}
+              accessibilityLabel={t('message.editInput')}
+              accessibilityRole="button"
+              hitSlop={6}
+              onPress={startEditing}
+              style={({ pressed }) => [styles.userMessageAction, pressed && styles.userMessageActionPressed]}
+            >
+              <Ionicons name="pencil-outline" size={16} color={theme.colors.textSecondary} />
+            </Pressable>
+          )}
+        </View>
+      )}
       <UserMessageModeLabel messageId={props.message.id} label={modeLabel} />
     </View>
   );
@@ -372,6 +495,82 @@ const styles = StyleSheet.create((theme) => ({
   },
   userContentWithModeMeta: {
     marginBottom: 4,
+  },
+  userMessageActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginBottom: 12,
+    paddingHorizontal: 2,
+  },
+  userMessageActionsWithMode: {
+    marginBottom: 2,
+  },
+  userMessageAction: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  userMessageActionPressed: {
+    opacity: 0.58,
+  },
+  userMessageEditor: {
+    width: '88%',
+    minWidth: 320,
+    maxWidth: 900,
+    minHeight: 156,
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+    borderRadius: 20,
+    backgroundColor: theme.colors.userMessageBackground,
+  },
+  userMessageEditorInput: {
+    flex: 1,
+    minHeight: 88,
+    padding: 0,
+    color: theme.colors.input.text,
+    fontSize: 16,
+    lineHeight: 23,
+    textAlignVertical: 'top',
+    outlineStyle: 'none',
+  } as any,
+  userMessageEditorActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  userMessageEditorButton: {
+    minWidth: 64,
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.divider,
+  },
+  userMessageEditorCancelText: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  userMessageEditorSendButton: {
+    borderColor: theme.colors.text,
+    backgroundColor: theme.colors.text,
+  },
+  userMessageEditorSendButtonDisabled: {
+    opacity: 0.45,
+  },
+  userMessageEditorSendText: {
+    color: theme.colors.surface,
+    fontSize: 15,
+    fontWeight: '600',
   },
   userMessageModeText: {
     color: theme.colors.textSecondary,

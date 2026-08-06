@@ -95,6 +95,39 @@ function fileMessage(id: string, createdAt: number): ToolCallMessage {
 }
 
 describe('useGroupedMessages', () => {
+    it('renders only the latest version of an edited user message', () => {
+        const messages: Message[] = [
+            {
+                kind: 'user-text',
+                id: 'edit-2',
+                localId: null,
+                createdAt: 3,
+                text: 'final prompt',
+                meta: { editedFromMessageId: 'edit-1-stable' },
+            },
+            {
+                kind: 'user-text',
+                id: 'edit-1',
+                localId: 'edit-1-stable',
+                createdAt: 2,
+                text: 'revised prompt',
+                meta: { editedFromMessageId: 'original-stable' },
+            },
+            {
+                kind: 'user-text',
+                id: 'original',
+                localId: 'original-stable',
+                createdAt: 1,
+                text: 'original prompt',
+            },
+        ];
+
+        for (const groupingEnabled of [true, false]) {
+            const items = groupMessagesForDisplay(messages, groupingEnabled);
+            expect(items.map((item) => item.id)).toEqual(['edit-2']);
+        }
+    });
+
     it('collapses consecutive user image attachments into one chronological image-group', () => {
         const messages: Message[] = [
             fileMessage('img-3', 4),

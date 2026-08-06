@@ -110,6 +110,7 @@ type OutboxMessage = {
 
 type SendMessageOptions = {
     displayText?: string;
+    editedFromMessageId?: string;
     source?: MessageSentSource;
     /** Optional image attachments to send before the text message. */
     attachments?: AttachmentPreview[];
@@ -625,7 +626,7 @@ class Sync {
         }
 
         const modeMeta = resolveMessageModeMeta(modeSessionSnapshot ?? session, modeSettingsSnapshot);
-        const { displayText, source = 'chat', attachments } = options ?? {};
+        const { displayText, editedFromMessageId, source = 'chat', attachments } = options ?? {};
 
         // Image attachments are wired into the Claude and Codex pipelines; both
         // runners drain file events and forward the images to the model. Other
@@ -748,7 +749,8 @@ class Sync {
                 ...(modeMeta.permissionModeExplicit ? { permissionModeExplicit: true } : {}),
                 ...(modeMeta.model !== undefined ? { model: modeMeta.model } : {}),
                 ...(modeMeta.effort !== undefined ? { effort: modeMeta.effort } : {}),
-                ...(displayText && { displayText }) // Add displayText if provided
+                ...(displayText && { displayText }), // Add displayText if provided
+                ...(editedFromMessageId && { editedFromMessageId })
             }
         };
         const encryptedRawRecord = await encryption.encryptRawRecord(content);

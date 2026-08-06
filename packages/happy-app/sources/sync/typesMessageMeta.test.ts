@@ -13,4 +13,10 @@ describe('MessageMetaSchema', () => {
         expect(parsed.permissionModeExplicit).toBe(true);
         expect(parsed.model).toBe('custom-model');
     });
+
+    it('preserves the user message replaced by an edited resend', () => {
+        const parsed = MessageMetaSchema.parse({ editedFromMessageId: 'message-1' });
+
+        expect(parsed.editedFromMessageId).toBe('message-1');
+    });
 });

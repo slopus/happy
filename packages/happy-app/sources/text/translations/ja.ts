@@ -1267,6 +1267,8 @@ export const ja: TranslationStructure = {
         foldedPromptSummary: ({ lines, chars }: { lines: number; chars: number }) => `${lines}行 · ${chars}文字`,
         showPrompt: '表示',
         hidePrompt: '隠す',
+        editInput: '編集',
+        sendEdit: '送信',
     },
 
     codex: {

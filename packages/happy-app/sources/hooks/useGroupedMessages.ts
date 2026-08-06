@@ -84,6 +84,7 @@ export function groupMessagesForDisplay(
     options: { collapseCurrentTurn?: boolean } = {},
 ): DisplayItem[] {
     const collapseCurrentTurn = options.collapseCurrentTurn ?? true;
+    messages = filterSupersededUserMessages(messages);
 
     if (!enabled) {
         const turnOf = getTurnAssignments(messages);
@@ -229,6 +230,30 @@ export function groupMessagesForDisplay(
     }
 
     return result;
+}
+
+/**
+ * Editing a paused prompt is represented as a new user message so the agent
+ * receives the correction without mutating encrypted history. The new
+ * message points at the version it replaces; hiding every referenced version
+ * makes chained edits render as a single persistent prompt after reload.
+ */
+export function filterSupersededUserMessages(messages: Message[]): Message[] {
+    const supersededIds = new Set<string>();
+    for (const message of messages) {
+        if (message.kind === 'user-text' && message.meta?.editedFromMessageId) {
+            supersededIds.add(message.meta.editedFromMessageId);
+        }
+    }
+
+    if (supersededIds.size === 0) {
+        return messages;
+    }
+
+    return messages.filter((message) => (
+        message.kind !== 'user-text'
+        || (!supersededIds.has(message.id) && (!message.localId || !supersededIds.has(message.localId)))
+    ));
 }
 
 function getImageAgentPresentationState(

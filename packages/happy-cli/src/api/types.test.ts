@@ -13,4 +13,10 @@ describe('MessageMetaSchema', () => {
       effort: 'xhigh',
     });
   });
+
+  it('preserves edited user message metadata', () => {
+    const meta = MessageMetaSchema.parse({ editedFromMessageId: 'message-1' });
+
+    expect(meta.editedFromMessageId).toBe('message-1');
+  });
 });

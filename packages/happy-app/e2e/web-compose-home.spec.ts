@@ -408,6 +408,103 @@ async function createConnectedE2EFileSession(request: APIRequestContext): Promis
     };
 }
 
+async function createConnectedE2EAbortSession(request: APIRequestContext): Promise<{
+    abortCalls: Array<{ reason?: string } | null>;
+    client: { close: () => void };
+    sessionId: string;
+    setThinking: (thinking: boolean) => void;
+}> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少创建停止快捷键 E2E 会话所需的本地认证配置。');
+    }
+
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+    const sessionId = await createE2ESession(request, {
+        name: 'Double Escape abort regression',
+        summary: 'Confirm abort only after pressing Escape twice',
+    });
+    const abortCalls: Array<{ reason?: string } | null> = [];
+    const rpcSocket = io(e2eServerUrl, {
+        auth: {
+            token,
+            clientType: 'session-scoped',
+            sessionId,
+            happyClient: 'playwright-abort-rpc',
+        },
+        autoConnect: false,
+        path: '/v1/updates',
+        reconnection: false,
+        transports: ['websocket'],
+    });
+
+    rpcSocket.on('rpc-request', (
+        data: { method: string; params: string },
+        callback: (response: string) => void,
+    ) => {
+        const params = decryptLegacy(
+            decodeBase64(data.params),
+            encryptionKey,
+        ) as { reason?: string } | null;
+        const isAbort = data.method === `${sessionId}:abort`;
+        if (isAbort) {
+            abortCalls.push(params);
+        }
+        callback(encodeBase64(encryptLegacy(
+            isAbort ? { success: true } : { success: false, error: 'Unknown E2E RPC request' },
+            encryptionKey,
+        )));
+    });
+    let thinking = true;
+    const pulse = () => rpcSocket.emit('session-alive', {
+        sid: sessionId,
+        time: Date.now(),
+        thinking,
+    });
+
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('停止快捷键 E2E RPC 连接超时。')), 10_000);
+            const handleConnectError = (error: Error) => {
+                clearTimeout(timeout);
+                reject(error);
+            };
+            rpcSocket.once('connect_error', handleConnectError);
+            rpcSocket.once('connect', () => {
+                rpcSocket.off('connect_error', handleConnectError);
+                rpcSocket.once('rpc-registered', () => {
+                    clearTimeout(timeout);
+                    pulse();
+                    resolve();
+                });
+                rpcSocket.emit('rpc-register', { method: `${sessionId}:abort` });
+            });
+            rpcSocket.connect();
+        });
+    } catch (error) {
+        rpcSocket.close();
+        throw error;
+    }
+    const keepAlive = setInterval(pulse, 500);
+
+    return {
+        abortCalls,
+        client: {
+            close: () => {
+                clearInterval(keepAlive);
+                rpcSocket.close();
+            },
+        },
+        sessionId,
+        setThinking: (nextThinking: boolean) => {
+            thinking = nextThinking;
+            pulse();
+        },
+    };
+}
+
 async function createConnectedE2EWorkingDirectorySession(request: APIRequestContext): Promise<{
     client: { close: () => Promise<void>; pulse: () => void };
     currentPath: string;
@@ -1829,6 +1926,119 @@ test('超宽桌面左右侧栏保持各自最大宽度', async ({ page }) => {
         path: 'test-results/pc-panel-bounds-after-1920x1080.png',
         fullPage: true,
     });
+});
+
+test('PC 端连续按两次 Esc 才发送停止指令', async ({ page, request }, testInfo) => {
+    const fixture = await createConnectedE2EAbortSession(request);
+
+    try {
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
+
+        const input = page.getByTestId('session-message-input');
+        await expect(input).toBeVisible();
+        await expect(page.locator('[data-testid="message-composer-abort-button"]:visible')).toBeVisible();
+        await page.screenshot({
+            path: testInfo.outputPath('pc-double-escape-before.png'),
+            fullPage: true,
+        });
+
+        await input.press('Escape');
+        const armedAbortButton = page.locator('[data-testid="message-composer-abort-button"]:visible');
+        await expect(armedAbortButton).toHaveText('Esc');
+        expect(fixture.abortCalls).toHaveLength(0);
+        await page.screenshot({
+            path: testInfo.outputPath('pc-double-escape-after-first-escape.png'),
+            fullPage: true,
+        });
+
+        await input.press('Escape');
+        await expect.poll(() => fixture.abortCalls.length).toBe(1);
+        const readyAbortButton = page.locator('[data-testid="message-composer-abort-button"]:visible');
+        await expect(readyAbortButton).toBeVisible();
+        await expect(readyAbortButton).toBeEnabled();
+
+        // A running task can still be stopped with the shortcut while a
+        // supplemental message has temporarily changed the primary action to send.
+        await input.fill('Additional context while the task is running');
+        await expect(page.locator('[data-testid="message-composer-send-button"]:visible')).toBeVisible();
+        await input.press('Escape');
+        await expect(page.locator('[data-testid="message-composer-abort-button"]:visible')).toHaveText('Esc');
+        expect(fixture.abortCalls).toHaveLength(1);
+        await input.press('Escape');
+        await expect.poll(() => fixture.abortCalls.length).toBe(2);
+    } finally {
+        fixture.client.close();
+    }
+});
+
+test('PC 暂停后可复制并原位编辑最后一条输入', async ({ context, page, request }, testInfo) => {
+    const fixture = await createConnectedE2EAbortSession(request);
+    const originalMessage = 'Please verify the paused task using the original instructions.';
+    const editedMessage = 'Please verify the paused task and include the browser evidence.';
+
+    try {
+        fixture.setThinking(false);
+        await createE2EUserMessage(request, fixture.sessionId, {
+            text: originalMessage,
+            model: 'gpt-5.6-sol',
+            effort: 'xhigh',
+            permission: 'default',
+        });
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+            origin: new URL(authenticatedWebUrl).origin,
+        });
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
+
+        const originalText = page.getByText(originalMessage, { exact: true });
+        await expect(originalText).toBeVisible();
+        const originalContainer = page.locator('[data-testid^="message-user-"]').filter({ has: originalText }).first();
+        const copyButton = originalContainer.getByRole('button', { name: 'Copy' });
+        const editButton = originalContainer.getByRole('button', { name: 'Edit' });
+        await expect(copyButton).toBeVisible();
+        await expect(editButton).toBeVisible();
+        await page.screenshot({
+            path: testInfo.outputPath('pc-paused-message-actions-after.png'),
+            fullPage: true,
+        });
+        await pauseForRecordedReview(page, 900);
+
+        await copyButton.click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(originalMessage);
+        await pauseForRecordedReview(page, 650);
+
+        await editButton.click();
+        const editor = page.getByRole('textbox', { name: 'Edit' });
+        await expect(editor).toHaveValue(originalMessage);
+        await pauseForRecordedReview(page, 900);
+        await editor.fill('Temporary edit that should be cancelled.');
+        await pauseForRecordedReview(page, 900);
+        await page.getByRole('button', { name: 'Cancel' }).click();
+        await expect(originalText).toBeVisible();
+        await expect(editor).toHaveCount(0);
+        await pauseForRecordedReview(page, 900);
+
+        await originalContainer.getByRole('button', { name: 'Edit' }).click();
+        const reopenedEditor = page.getByRole('textbox', { name: 'Edit' });
+        await reopenedEditor.fill(editedMessage);
+        await page.screenshot({
+            path: testInfo.outputPath('pc-paused-message-editor-after.png'),
+            fullPage: true,
+        });
+        await pauseForRecordedReview(page, 900);
+        await page.getByRole('button', { name: 'Send' }).click();
+
+        await expect(page.getByText(editedMessage, { exact: true })).toBeVisible();
+        await expect(page.getByText(originalMessage, { exact: true })).toHaveCount(0);
+        await pauseForRecordedReview(page, 1200);
+        await page.reload();
+        await expect(page.getByText(editedMessage, { exact: true })).toBeVisible();
+        await expect(page.getByText(originalMessage, { exact: true })).toHaveCount(0);
+        await pauseForRecordedReview(page, 900);
+    } finally {
+        fixture.client.close();
+    }
 });
 
 test('活跃会话页面复用左右拖拽与折叠约束', async ({ page, request }) => {

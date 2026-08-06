@@ -1836,6 +1836,8 @@ export const zhHans: TranslationStructure = {
         foldedPromptSummary: ({ lines, chars }: { lines: number; chars: number }) => `${lines} 行 · ${chars} 字符`,
         showPrompt: '展开',
         hidePrompt: '收起',
+        editInput: '编辑',
+        sendEdit: '发送',
     },
 
     codex: {

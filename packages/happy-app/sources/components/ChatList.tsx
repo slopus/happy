@@ -103,6 +103,14 @@ const ChatListInternal = React.memo((props: {
         [collapseCurrentTurn],
     );
     const displayItems = useGroupedMessages(props.messages, groupToolCalls, groupingOptions);
+    const latestVisibleUserMessageId = React.useMemo(() => {
+        for (const item of displayItems) {
+            if (item.type === 'message' && item.message.kind === 'user-text') {
+                return item.message.id;
+            }
+        }
+        return null;
+    }, [displayItems]);
 
     // The user's own messages are the chat's natural chapters — surface them
     // as jump anchors. `displayIndex` indexes back into `displayItems`.
@@ -246,6 +254,13 @@ const ChatListInternal = React.memo((props: {
         } as any);
     }, [props.sessionId]);
 
+    const handleEditUserMessage = useCallback(async (messageId: string, messageText: string) => {
+        await sync.sendMessage(props.sessionId, messageText, {
+            source: 'chat',
+            editedFromMessageId: messageId,
+        });
+    }, [props.sessionId]);
+
     const renderItem = useCallback(({ item }: { item: DisplayItem }) => {
         if (item.type === 'tool-group') {
             return (
@@ -286,9 +301,29 @@ const ChatListInternal = React.memo((props: {
                 metadata={props.metadata}
                 sessionId={props.sessionId}
                 onForkFromUserMessage={canFork ? handleForkFromMessage : undefined}
+                showUserMessageActions={Platform.OS === 'web'}
+                canEditUserMessage={
+                    Platform.OS === 'web'
+                    && item.message.kind === 'user-text'
+                    && item.message.id === latestVisibleUserMessageId
+                    && session?.thinking !== true
+                    && !hasPendingPermission
+                }
+                onEditUserMessage={handleEditUserMessage}
             />
         );
-    }, [props.metadata, props.sessionId, canFork, handleForkFromMessage, collapsedGroups, handleToggleGroup]);
+    }, [
+        props.metadata,
+        props.sessionId,
+        canFork,
+        handleForkFromMessage,
+        collapsedGroups,
+        handleToggleGroup,
+        latestVisibleUserMessageId,
+        session?.thinking,
+        hasPendingPermission,
+        handleEditUserMessage,
+    ]);
 
     // In inverted FlatList, offset 0 = latest messages (visual bottom).
     // Offset increases as user scrolls up to see older messages.

@@ -1264,6 +1264,8 @@ export const it: TranslationStructure = {
         foldedPromptSummary: ({ lines, chars }: { lines: number; chars: number }) => `${lines} righe · ${chars} caratteri`,
         showPrompt: 'Mostra',
         hidePrompt: 'Nascondi',
+        editInput: 'Modifica',
+        sendEdit: 'Invia',
     },
 
     codex: {
