@@ -142,8 +142,20 @@ const styles = StyleSheet.create((theme) => ({
     submitButtonDisabled: {
         opacity: 0.5,
     },
+    // Once every question has an answer the button is genuinely actionable, so
+    // give it the same accent outline the selected radio/checkbox uses instead
+    // of leaving it on the neutral divider border.
+    submitButtonReady: {
+        borderColor: theme.colors.radio.active,
+    },
     submitButtonText: {
-        color: theme.colors.button.primary.tint,
+        // Web paints the button with button.primary.background (near-black), so
+        // the primary tint (white) is the readable foreground there. Native was
+        // switched to the neutral surfaceHighest chip without switching the
+        // foreground, leaving #FFFFFF on #f0f0f0 in the light theme — the label
+        // disappeared and the button read as permanently disabled. Same pairing
+        // the SessionView resume button uses.
+        color: Platform.select({ web: theme.colors.button.primary.tint, default: theme.colors.text }),
         fontSize: 14,
         fontWeight: '600',
     },
@@ -339,6 +351,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
                         <TouchableOpacity
                             style={[
                                 styles.submitButton,
+                                allQuestionsAnswered && !isSubmitting && styles.submitButtonReady,
                                 (!allQuestionsAnswered || isSubmitting) && styles.submitButtonDisabled,
                             ]}
                             onPress={handleSubmit}
@@ -346,7 +359,12 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
                             activeOpacity={0.7}
                         >
                             {isSubmitting ? (
-                                <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
+                                // Matches submitButtonText: the primary tint is only
+                                // readable on web's near-black button background.
+                                <ActivityIndicator
+                                    size="small"
+                                    color={Platform.select({ web: theme.colors.button.primary.tint, default: theme.colors.text })}
+                                />
                             ) : (
                                 <Text style={styles.submitButtonText}>{t('tools.askUserQuestion.submit')}</Text>
                             )}
