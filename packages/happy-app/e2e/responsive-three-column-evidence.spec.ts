@@ -689,6 +689,12 @@ test('T08-03 all locked widths keep exactly one reachable right-panel presentati
 
         await page.setViewportSize({ width: 1280, height: 768 });
         await expect(page.getByRole('dialog', { name: 'Capability Hub' })).toHaveCount(0);
+        const restoredPersistentToggle = page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible');
+        await expect(restoredPersistentToggle).toBeVisible();
+        await expect(restoredPersistentToggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(page.locator('[data-testid="desktop-right-panel"]:visible')).toHaveCount(0);
+        await restoredPersistentToggle.click();
+        await expect(restoredPersistentToggle).toHaveAttribute('aria-expanded', 'true');
         await expect(page.locator('[data-testid="desktop-right-panel"]:visible')).toHaveCount(1);
         await page.setViewportSize({ width: 1024, height: 768 });
         await expect(page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible')).toHaveAttribute('aria-expanded', 'false');
