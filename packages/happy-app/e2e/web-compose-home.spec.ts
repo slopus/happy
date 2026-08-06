@@ -2058,8 +2058,21 @@ test('桌面图片效果使用有边界的居中弹窗且支持 Escape 关闭', 
     await expect(dialog).toHaveCount(0);
 });
 
-test('手机首页保留菜单按钮并能打开抽屉', async ({ page }) => {
-    await page.setViewportSize({ width: 799, height: 900 });
+test('手机首页抽屉、Agent 卡片与账户菜单保持全宽对齐', async ({ page, request }, testInfo) => {
+    const sessionId = await createE2ESession(request, {
+        path: '/workspace/mobile-layout',
+        host: 'mobile-e2e',
+        machineId: 'mobile-e2e-machine',
+        name: 'Mobile sidebar layout review',
+    });
+    await createE2ESession(request, {
+        path: '/workspace/mobile-layout',
+        host: 'mobile-e2e',
+        machineId: 'mobile-e2e-machine',
+        name: 'Mobile account menu spacing',
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(authenticatedWebUrl);
     await expect(page.getByRole('textbox')).toBeVisible();
 
@@ -2072,6 +2085,59 @@ test('手机首页保留菜单按钮并能打开抽屉', async ({ page }) => {
 
     await phoneDrawerButton.click();
     await expect.poll(async () => (await accountFooter.boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
+
+    const newSession = page.getByTestId('sidebar-new-session-button');
+    const myAgents = page.getByTestId('sidebar-my-agents-button');
+    const accountTrigger = page.getByTestId('sidebar-account-trigger');
+    const firstSession = page.getByTestId(`session-row-${sessionId}`);
+    await expect(newSession).toBeVisible();
+    await expect(myAgents).toBeVisible();
+    await expect(accountTrigger).toBeVisible();
+    await expect(firstSession).toBeVisible();
+
+    const newSessionBox = await newSession.boundingBox();
+    const myAgentsBox = await myAgents.boundingBox();
+    const accountTriggerBox = await accountTrigger.boundingBox();
+    const firstSessionBox = await firstSession.boundingBox();
+    expect(newSessionBox).not.toBeNull();
+    expect(myAgentsBox).not.toBeNull();
+    expect(accountTriggerBox).not.toBeNull();
+    expect(firstSessionBox).not.toBeNull();
+    expect(Math.abs(myAgentsBox!.x - newSessionBox!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(myAgentsBox!.width - newSessionBox!.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(accountTriggerBox!.x - newSessionBox!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(accountTriggerBox!.width - newSessionBox!.width)).toBeLessThanOrEqual(1);
+    expect(firstSessionBox!.y).toBeGreaterThanOrEqual(myAgentsBox!.y + myAgentsBox!.height);
+    await pauseForRecordedReview(page, 900);
+
+    await page.screenshot({
+        path: testInfo.outputPath('mobile-sidebar-open-390x844.png'),
+        fullPage: true,
+    });
+
+    await accountTrigger.click();
+    const accountMenu = page.getByTestId('sidebar-account-menu');
+    await expect(accountMenu).toBeVisible();
+    await expect(newSession).toBeInViewport();
+    await expect(accountTrigger).toBeInViewport();
+    const accountMenuBox = await accountMenu.boundingBox();
+    const expandedTriggerBox = await accountTrigger.boundingBox();
+    const expandedNewSessionBox = await newSession.boundingBox();
+    expect(accountMenuBox).not.toBeNull();
+    expect(expandedTriggerBox).not.toBeNull();
+    expect(expandedNewSessionBox).not.toBeNull();
+    expect(Math.abs(accountMenuBox!.x - expandedTriggerBox!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(accountMenuBox!.width - expandedTriggerBox!.width)).toBeLessThanOrEqual(1);
+    expect(accountMenuBox!.y).toBeGreaterThanOrEqual(0);
+    expect(accountMenuBox!.y + accountMenuBox!.height).toBeLessThanOrEqual(expandedTriggerBox!.y);
+    expect(expandedNewSessionBox!.y).toBeGreaterThanOrEqual(0);
+    expect(expandedTriggerBox!.y + expandedTriggerBox!.height).toBeLessThanOrEqual(844);
+    await pauseForRecordedReview(page, 1100);
+
+    await page.screenshot({
+        path: testInfo.outputPath('mobile-account-menu-open-390x844.png'),
+        fullPage: true,
+    });
 });
 
 test('侧栏底部账户菜单统一提供身份与系统操作并恢复焦点', async ({ page }, testInfo) => {
