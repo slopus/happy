@@ -105,7 +105,7 @@ function SessionNewSessionAction({
 }) {
     const { theme } = useUnistyles();
     const [pressed, setPressed] = React.useState(false);
-    workspaceStyles.useVariants({ pressState: pressed ? 'pressed' : 'idle' });
+    sessionNewActionStyles.useVariants({ pressState: pressed ? 'pressed' : 'idle' });
 
     return (
         <Pressable
@@ -115,7 +115,7 @@ function SessionNewSessionAction({
             onPressIn={() => setPressed(true)}
             onPressOut={() => setPressed(false)}
             hitSlop={10}
-            style={workspaceStyles.headerAction}
+            style={sessionNewActionStyles.headerAction}
             testID="session-header-new-session-button"
         >
             <Ionicons
@@ -124,7 +124,7 @@ function SessionNewSessionAction({
                 color={theme.colors.button.primary.tint}
                 testID="session-header-new-session-icon"
             />
-            <Text numberOfLines={1} ellipsizeMode="tail" style={workspaceStyles.headerActionText}>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={sessionNewActionStyles.headerActionText}>
                 {t('sidebar.newSession')}
             </Text>
         </Pressable>
@@ -185,10 +185,11 @@ function SessionHeaderTitle({
         draftTitleRef.current = value;
         setDraftTitle(value);
     }, []);
+    sessionHeaderTitleStyles.useVariants({ headerTitleDensity: compact ? 'compact' : 'regular' });
 
     return (
-        <View style={[workspaceStyles.headerTitleWrapper, compact && workspaceStyles.headerTitleWrapperCompact]}>
-            <View style={[workspaceStyles.headerTitleLine, compact && workspaceStyles.headerTitleLineCompact]}>
+        <View style={sessionHeaderTitleStyles.headerTitleWrapper}>
+            <View style={sessionHeaderTitleStyles.headerTitleLine}>
                 {editing ? (
                     <TextInput
                         accessibilityLabel={t('sessionInfo.renameSession')}
@@ -204,7 +205,7 @@ function SessionHeaderTitle({
                         returnKeyType="done"
                         selectTextOnFocus
                         style={[
-                            workspaceStyles.headerTitleInput,
+                            sessionHeaderTitleStyles.headerTitleInput,
                             tintColor ? { color: tintColor, borderColor: tintColor } : null,
                         ]}
                         testID="session-header-title-input"
@@ -220,13 +221,13 @@ function SessionHeaderTitle({
                         onHoverIn={() => setTooltipVisible(true)}
                         onHoverOut={() => setTooltipVisible(false)}
                         onPress={beginEditing}
-                        style={workspaceStyles.headerTitleTarget}
+                        style={sessionHeaderTitleStyles.headerTitleTarget}
                         testID="session-header-title"
                     >
                         <Text
                             numberOfLines={1}
                             ellipsizeMode="tail"
-                            style={[workspaceStyles.headerTitleText, tintColor ? { color: tintColor } : null]}
+                            style={[sessionHeaderTitleStyles.headerTitleText, tintColor ? { color: tintColor } : null]}
                         >
                             {title}
                         </Text>
@@ -237,13 +238,13 @@ function SessionHeaderTitle({
                 ) : null}
                 <View
                     accessibilityLabel={sessionStatus.statusText}
-                    style={workspaceStyles.headerRunStatus}
+                    style={sessionHeaderTitleStyles.headerRunStatus}
                     testID="session-header-run-status"
                 >
-                    <View style={[workspaceStyles.headerRunStatusDot, { backgroundColor: sessionStatus.statusDotColor }]} />
+                    <View style={[sessionHeaderTitleStyles.headerRunStatusDot, { backgroundColor: sessionStatus.statusDotColor }]} />
                     <Text
                         numberOfLines={1}
-                        style={[workspaceStyles.headerRunStatusText, { color: sessionStatus.statusColor }]}
+                        style={[sessionHeaderTitleStyles.headerRunStatusText, { color: sessionStatus.statusColor }]}
                     >
                         {sessionStatus.statusText}
                     </Text>
@@ -515,6 +516,10 @@ export const SessionView = React.memo((props: { id: string }) => {
     // Resolve the session's persisted Agent once through the canonical matcher,
     // then share that identity between the header skin and the phone panel.
     const spaceAgent = useSpaceAgentForSession(session);
+    workspaceStyles.useVariants({
+        agentChipDensity: constrainedDrawerHeader ? 'constrained' : 'regular',
+        headerDensity: compactSessionHeader ? 'compact' : 'regular',
+    });
 
     const sessionHeaderChip = showChip ? (
         <SessionHeaderChip
@@ -530,13 +535,13 @@ export const SessionView = React.memo((props: { id: string }) => {
     const desktopWebHeader = Platform.OS === 'web' && isTablet;
     const headerTitleSlot = showChip ? (
         desktopWebHeader ? (
-            <View style={[workspaceStyles.headerIdentity, compactSessionHeader && workspaceStyles.headerIdentityCompact]}>
+            <View style={workspaceStyles.headerIdentity}>
                 <SessionHeaderTitle compact={compactSessionHeader} session={session!} title={headerProps.title} />
             </View>
         ) : isTablet ? (
-            <View style={[workspaceStyles.headerIdentity, compactSessionHeader && workspaceStyles.headerIdentityCompact]}>
+            <View style={workspaceStyles.headerIdentity}>
                 <SessionHeaderTitle compact={compactSessionHeader} session={session!} title={headerProps.title} />
-                <View style={[workspaceStyles.headerAgentChip, constrainedDrawerHeader && workspaceStyles.headerAgentChipConstrained]}>
+                <View style={workspaceStyles.headerAgentChip}>
                     {sessionHeaderChip}
                 </View>
             </View>
@@ -614,7 +619,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         <SessionNewSessionAction onPress={() => router.navigate('/new')} />
     ) : null;
     const defaultHeaderRightSlot = (
-        <View style={[workspaceStyles.headerActions, compactSessionHeader && workspaceStyles.headerActionsCompact]}>
+        <View style={workspaceStyles.headerActions}>
             {moreButton}
             {rightPanelToggleButton}
             {spaceAgent ? exitSpaceButton : null}
@@ -622,7 +627,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         </View>
     );
     const overlayHeaderRightSlot = (
-        <View style={[workspaceStyles.headerActions, compactSessionHeader && workspaceStyles.headerActionsCompact]}>
+        <View style={workspaceStyles.headerActions}>
             {moreButton}
             {rightPanelToggleButton}
             {headerRightSlot}
@@ -1506,7 +1511,7 @@ function CenteredInputWidth(props: {
     );
 }
 
-const workspaceStyles = StyleSheet.create((theme) => ({
+const sessionNewActionStyles = StyleSheet.create((theme) => ({
     headerAction: {
         minHeight: 32,
         flexDirection: 'row',
@@ -1533,33 +1538,37 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         fontSize: 12,
         fontWeight: '600',
     },
-    headerIdentity: {
-        flex: 1,
-        alignSelf: 'stretch',
-        minWidth: 0,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-    },
-    headerIdentityCompact: {
-        gap: 0,
-    },
+}));
+
+const sessionHeaderTitleStyles = StyleSheet.create((theme) => ({
     headerTitleWrapper: {
         position: 'relative',
         flex: 1,
-        minWidth: 64,
-    },
-    headerTitleWrapperCompact: {
-        minWidth: 39,
+        variants: {
+            headerTitleDensity: {
+                regular: {
+                    minWidth: 64,
+                },
+                compact: {
+                    minWidth: 39,
+                },
+            },
+        },
     },
     headerTitleLine: {
         minWidth: 0,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
-    },
-    headerTitleLineCompact: {
-        gap: 0,
+        variants: {
+            headerTitleDensity: {
+                regular: {
+                    gap: 8,
+                },
+                compact: {
+                    gap: 0,
+                },
+            },
+        },
     },
     headerTitleTarget: {
         minHeight: 40,
@@ -1610,24 +1619,56 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         fontSize: 11,
         fontWeight: '600',
     },
-    headerAgentChip: {
-        flexBasis: 160,
-        flexShrink: 1,
-        minWidth: 116,
-        maxWidth: 220,
+}));
+
+const workspaceStyles = StyleSheet.create((theme) => ({
+    headerIdentity: {
+        flex: 1,
+        alignSelf: 'stretch',
+        minWidth: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        variants: {
+            headerDensity: {
+                regular: {
+                    gap: 10,
+                },
+                compact: {
+                    gap: 0,
+                },
+            },
+        },
     },
-    headerAgentChipConstrained: {
-        flexBasis: 60,
-        minWidth: 60,
-        maxWidth: 60,
+    headerAgentChip: {
+        flexShrink: 1,
+        variants: {
+            agentChipDensity: {
+                regular: {
+                    flexBasis: 160,
+                    minWidth: 116,
+                    maxWidth: 220,
+                },
+                constrained: {
+                    flexBasis: 60,
+                    minWidth: 60,
+                    maxWidth: 60,
+                },
+            },
+        },
     },
     headerActions: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 5,
-    },
-    headerActionsCompact: {
-        gap: 3,
+        variants: {
+            headerDensity: {
+                regular: {
+                    gap: 5,
+                },
+                compact: {
+                    gap: 3,
+                },
+            },
+        },
     },
     headerIconWrapper: {
         position: 'relative',

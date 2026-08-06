@@ -475,12 +475,21 @@ describe('SessionView Agent-space boundary', () => {
         const host = renderer.root.findByType('RightSwipePanelHost');
         expect(host.props.open).toBe(false);
         expect(renderer.root.findByType('ChatHeaderView').props.compactRightSlot).toBe(true);
+        expect(mocks.styleUseVariants).toHaveBeenCalledWith({
+            agentChipDensity: 'regular',
+            headerDensity: 'compact',
+        });
+        expect(mocks.styleUseVariants).toHaveBeenCalledWith({ headerTitleDensity: 'compact' });
         const toggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
         expect(toggle.props['aria-expanded']).toBe(false);
 
         act(() => toggle.props.onPress());
         expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
         expect(renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' }).props['aria-expanded']).toBe(true);
+        expect(mocks.styleUseVariants).toHaveBeenCalledWith({
+            agentChipDensity: 'constrained',
+            headerDensity: 'compact',
+        });
 
         expect(mocks.globalRightSidebarShortcut).toEqual(expect.any(Function));
         act(() => mocks.globalRightSidebarShortcut?.());
@@ -787,6 +796,13 @@ describe('SessionView Agent-space boundary', () => {
         });
 
         expect(renderer.root.findByType('SessionHeaderChip').props.compact).toBe(compact);
+        expect(mocks.styleUseVariants).toHaveBeenCalledWith({
+            agentChipDensity: 'regular',
+            headerDensity: compact ? 'compact' : 'regular',
+        });
+        expect(mocks.styleUseVariants).toHaveBeenCalledWith({
+            headerTitleDensity: compact ? 'compact' : 'regular',
+        });
 
         act(() => renderer.unmount());
     });
