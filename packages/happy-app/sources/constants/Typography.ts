@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 /**
  * Typography system for Paws app
  * 
- * Default typography: IBM Plex Sans
+ * Default typography: IBM Plex Sans on native, system UI stack on web
  * Monospace typography: IBM Plex Mono  
  * Logo typography: Bricolage Grotesque (specific use only)
  * 
@@ -64,9 +64,13 @@ export const FontFamilies = {
   }
 };
 
+// Web uses the platform UI family so Latin and CJK glyphs come from one
+// coherent system stack. Native keeps the bundled IBM Plex family.
+export const WEB_DEFAULT_FONT_FAMILY = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+
 // Helper functions for easy access to font families
 export const getDefaultFont = (weight: 'regular' | 'italic' | 'semiBold' = 'regular') => {
-  return FontFamilies.default[weight];
+  return Platform.OS === 'web' ? WEB_DEFAULT_FONT_FAMILY : FontFamilies.default[weight];
 };
 
 export const getMonoFont = (weight: 'regular' | 'italic' | 'semiBold' = 'regular') => {
@@ -88,12 +92,25 @@ export const FontWeights = {
   bold: '700',
 } as const;
 
+type DefaultTypographyStyle = {
+  fontFamily: string;
+  fontStyle?: 'italic';
+  fontWeight?: '600';
+};
+
+function getDefaultTypographyStyle(weight: 'regular' | 'italic' | 'semiBold' = 'regular'): DefaultTypographyStyle {
+  const style: DefaultTypographyStyle = { fontFamily: getDefaultFont(weight) };
+  if (Platform.OS !== 'web') return style;
+
+  if (weight === 'semiBold') style.fontWeight = FontWeights.semiBold;
+  if (weight === 'italic') style.fontStyle = 'italic';
+  return style;
+}
+
 // Style utilities for easy inline usage
 export const Typography = {
-  // Default font styles (IBM Plex Sans)
-  default: (weight: 'regular' | 'italic' | 'semiBold' = 'regular') => ({
-    fontFamily: getDefaultFont(weight),
-  }),
+  // Default font styles (IBM Plex Sans on native, system UI stack on web)
+  default: getDefaultTypographyStyle,
   
   // Monospace font styles (IBM Plex Mono)
   mono: (weight: 'regular' | 'italic' | 'semiBold' = 'regular') => ({
@@ -111,14 +128,10 @@ export const Typography = {
   }),
   
   // Header text style
-  header: () => ({
-    fontFamily: getDefaultFont('semiBold'),
-  }),
+  header: () => getDefaultTypographyStyle('semiBold'),
   
   // Body text style
-  body: () => ({
-    fontFamily: getDefaultFont('regular'),
-  }),
+  body: () => getDefaultTypographyStyle('regular'),
   
   // Legacy font styles (for backward compatibility)
   legacy: {
@@ -129,4 +142,4 @@ export const Typography = {
       fontFamily: FontFamilies.legacy.systemMono,
     }),
   }
-}; 
+};

@@ -11,6 +11,7 @@ import {
 } from './sessionRowPresentation';
 
 const labels = {
+    disconnected: 'Disconnected',
     remoteLocation: (machine: string) => `Remote · ${machine}`,
     unknownLocation: 'Location unknown/local',
     unknownAgent: 'Unknown agent',
@@ -60,7 +61,7 @@ describe('buildSessionRowPresentation', () => {
             relativeTime: '123ms',
             status: 'Idle',
             location: {
-                icon: 'desktop-outline',
+                icon: 'monitor',
                 kind: 'remote',
                 text: 'Remote · Mac mini',
                 tooltip: 'Remote · Mac mini',
@@ -69,14 +70,15 @@ describe('buildSessionRowPresentation', () => {
     });
 
     it('does not claim an exact local machine when machineId is absent', () => {
-        const result = buildSessionRowPresentation(session({ machineId: null }), null, labels);
+        const result = buildSessionRowPresentation(session({ machineId: null, isConnected: false }), null, labels);
 
         expect(result.location).toEqual({
-            icon: 'location-outline',
+            icon: 'map-pin',
             kind: 'unknown',
             text: 'Location unknown/local',
             tooltip: 'Location unknown/local',
         });
+        expect(result.status).toBe('Idle · Disconnected');
     });
 });
 

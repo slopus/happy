@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { Platform, Pressable, View, useWindowDimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Platform, Pressable, View, useWindowDimensions, type PressableProps } from 'react-native';
+import { createPortal } from 'react-dom';
+import { Feather } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
@@ -19,6 +20,7 @@ import {
     type SessionRowPresentation,
 } from '@/utils/sessionRowPresentation';
 import { isSessionArchived } from '@/utils/sessionLifecycle';
+import { DesktopShortcutTooltip } from '@/components/DesktopShortcutTooltip';
 
 const INITIAL_INTERACTION = { focused: false, hovered: false };
 
@@ -56,6 +58,7 @@ function anchorFromEvent(event: any): SessionActionsAnchor {
 
 export function useSessionRowDisclosure(title: string) {
     const [interaction, dispatch] = React.useReducer(reduceSessionRowInteraction, INITIAL_INTERACTION);
+    const [detailsAnchor, setDetailsAnchor] = React.useState<Extract<SessionActionsAnchor, { type: 'rect' }> | null>(null);
     const [titleOverflowing, setTitleOverflowing] = React.useState(false);
     const wrapperRef = React.useRef<any>(null);
     const { width: viewportWidth } = useWindowDimensions();
@@ -63,9 +66,10 @@ export function useSessionRowDisclosure(title: string) {
 
     const refreshTitleOverflow = React.useCallback((root?: any) => {
         const node = (root ?? wrapperRef.current)?.querySelector?.('[data-testid="session-row-title"]');
+        const content = node?.querySelector?.('[data-testid="session-row-title-text"]');
         const overflowing = isSessionTitleOverflowing(node ? {
             clientWidth: node.clientWidth ?? 0,
-            scrollWidth: node.scrollWidth ?? 0,
+            scrollWidth: Math.max(node.scrollWidth ?? 0, content?.scrollWidth ?? 0),
         } : null);
         if (node?.setAttribute && node?.removeAttribute) {
             if (overflowing) node.setAttribute('title', title);
@@ -77,11 +81,22 @@ export function useSessionRowDisclosure(title: string) {
     const interactionProps = React.useMemo(() => Platform.OS === 'web' ? ({
         onMouseEnter: (event: any) => {
             refreshTitleOverflow(event.currentTarget);
+            const rect = event.currentTarget?.getBoundingClientRect?.();
+            if (rect) {
+                setDetailsAnchor({ type: 'rect', x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+            }
             dispatch('mouse-enter');
         },
-        onMouseLeave: () => dispatch('mouse-leave'),
+        onMouseLeave: () => {
+            setDetailsAnchor(null);
+            dispatch('mouse-leave');
+        },
         onFocus: (event: any) => {
             refreshTitleOverflow(event.currentTarget);
+            const rect = event.currentTarget?.getBoundingClientRect?.();
+            if (rect) {
+                setDetailsAnchor({ type: 'rect', x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+            }
             dispatch('focus');
         },
         onBlur: (event: any) => {
@@ -92,12 +107,31 @@ export function useSessionRowDisclosure(title: string) {
         onKeyDown: (event: any) => {
             if (event.key === 'Escape') {
                 stopSessionRowActionPropagation(event);
+                setDetailsAnchor(null);
                 dispatch('escape');
             }
         },
     }) : {}, [refreshTitleOverflow]);
 
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || !visible || typeof document === 'undefined') return;
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            setDetailsAnchor(null);
+            dispatch('escape');
+        };
+        document.addEventListener('keydown', closeOnEscape, true);
+        return () => document.removeEventListener('keydown', closeOnEscape, true);
+    }, [visible]);
+
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || !visible || typeof requestAnimationFrame === 'undefined') return;
+        const frame = requestAnimationFrame(() => refreshTitleOverflow());
+        return () => cancelAnimationFrame(frame);
+    }, [refreshTitleOverflow, visible]);
+
     return {
+        detailsAnchor,
         interactionProps,
         titleOverflowing,
         visible,
@@ -110,6 +144,7 @@ export function useSessionRowPresentation(session: SessionRowData): SessionRowPr
     const machineName = machine?.metadata?.displayName || machine?.metadata?.host || null;
 
     return React.useMemo(() => buildSessionRowPresentation(session, machineName, {
+        disconnected: t('status.disconnected'),
         remoteLocation: (name) => t('sessionInfo.sessionRowRemoteLocation', { name }),
         unknownLocation: t('sessionInfo.sessionRowUnknownLocation'),
         unknownAgent: t('sessionInfo.sessionRowUnknownAgent'),
@@ -139,10 +174,10 @@ export const SessionRowLocation = React.memo(function SessionRowLocation({
             style={styles.locationRow}
             {...webTitle}
         >
-            <Ionicons
+            <Feather
                 color={theme.colors.textSecondary}
                 name={presentation.location.icon}
-                size={12}
+                size={14}
             />
             <Text numberOfLines={1} style={styles.locationText}>
                 {presentation.location.text}
@@ -152,39 +187,67 @@ export const SessionRowLocation = React.memo(function SessionRowLocation({
 });
 
 export const SessionRowDetails = React.memo(function SessionRowDetails({
+    anchor,
     presentation,
     visible,
 }: {
+    anchor: Extract<SessionActionsAnchor, { type: 'rect' }> | null;
     presentation: SessionRowPresentation;
     visible: boolean;
 }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    if (!visible) return null;
+    const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
+    if (!visible || !anchor) return null;
 
+    const projectName = (presentation.path || presentation.project)
+        .split(/[/\\]/)
+        .filter(Boolean)
+        .pop() || presentation.project;
     const details = [
-        { icon: 'folder-outline', label: t('sessionInfo.sessionRowProjectPath'), value: presentation.path || presentation.project },
-        { icon: 'desktop-outline', label: t('sessionInfo.sessionRowMachineAgent'), value: `${presentation.machine} · ${presentation.agent}` },
-        { icon: 'time-outline', label: t('sessionInfo.sessionRowRelativeTime'), value: presentation.relativeTime || t('status.unknown') },
-        { icon: 'pulse-outline', label: t('sessionInfo.sessionRowRunningStatus'), value: presentation.status },
+        { icon: 'folder', value: projectName, strong: true },
+        { icon: 'git-branch', value: presentation.project || presentation.path, strong: false },
+        { icon: 'check-square', value: presentation.status, strong: false },
+        { icon: 'monitor', value: `${presentation.machine} · ${presentation.agent}`, strong: false },
     ] as const;
 
-    return (
+    const cardWidth = 340;
+    const estimatedHeight = 150;
+    const left = Math.min(viewportWidth - cardWidth - 12, anchor.x + anchor.width + 10);
+    const top = Math.max(12, Math.min(viewportHeight - estimatedHeight - 12, anchor.y - 4));
+
+    const card = (
         <View
             accessibilityLiveRegion="polite"
-            style={styles.detailsCard}
+            pointerEvents="none"
+            style={[styles.detailsCard, { left, top, position: 'fixed' as any }]}
             testID="session-row-details"
         >
-            <Text numberOfLines={2} style={styles.detailsTitle}>{presentation.title}</Text>
+            <View style={styles.detailsHeader}>
+                <Text numberOfLines={1} style={styles.detailsTitle}>{presentation.title}</Text>
+                <Text numberOfLines={1} style={styles.detailsTime}>
+                    {presentation.relativeTime || t('status.unknown')}
+                </Text>
+            </View>
             {details.map((detail) => (
-                <View key={detail.label} style={styles.detailRow}>
-                    <Ionicons color={theme.colors.textSecondary} name={detail.icon} size={14} />
-                    <Text style={styles.detailLabel}>{detail.label}</Text>
-                    <Text numberOfLines={1} style={styles.detailValue}>{detail.value}</Text>
+                <View key={`${detail.icon}-${detail.value}`} style={styles.detailRow}>
+                    <View style={styles.detailIconSlot}>
+                        <Feather color={theme.colors.textSecondary} name={detail.icon} size={15} />
+                    </View>
+                    <Text
+                        numberOfLines={1}
+                        style={[styles.detailValue, detail.strong && styles.detailValueStrong]}
+                    >
+                        {detail.value}
+                    </Text>
                 </View>
             ))}
         </View>
     );
+
+    return Platform.OS === 'web' && typeof document !== 'undefined'
+        ? createPortal(card, document.body)
+        : null;
 });
 
 export const SessionRowActions = React.memo(function SessionRowActions({
@@ -192,16 +255,17 @@ export const SessionRowActions = React.memo(function SessionRowActions({
     onContextAnchorChange,
     onStartSelection,
     sessionId,
+    statusLabel,
     visible,
 }: {
     contextAnchor: SessionActionsAnchor | null;
     onContextAnchorChange: (anchor: SessionActionsAnchor | null) => void;
     onStartSelection?: () => void;
     sessionId: string;
+    statusLabel: string;
     visible: boolean;
 }) {
     const styles = stylesheet;
-    const { theme } = useUnistyles();
     const { width: viewportWidth } = useWindowDimensions();
     const canHover = useWebHoverCapability();
     const session = useSession(sessionId);
@@ -250,45 +314,32 @@ export const SessionRowActions = React.memo(function SessionRowActions({
             <View style={styles.actions} testID={`session-row-actions-${sessionId}`}>
                 {showInline ? (
                     <>
-                        <Pressable
-                            accessibilityLabel={quickActions.sessionPinned ? t('sessionInfo.unpinSession') : t('sessionInfo.pinSession')}
-                            accessibilityRole="button"
+                        <Text numberOfLines={1} style={styles.actionStatus} testID="session-row-hover-status">
+                            {statusLabel}
+                        </Text>
+                        <SessionRowActionButton
+                            active={quickActions.sessionPinned}
+                            icon="star"
+                            label={quickActions.sessionPinned ? t('sessionInfo.unpinSession') : t('sessionInfo.pinSession')}
                             onPress={handleAction(quickActions.togglePinSession)}
-                            style={styles.actionButton}
                             testID="session-row-pin-action"
-                        >
-                            <Ionicons
-                                color={theme.colors.textSecondary}
-                                name={quickActions.sessionPinned ? 'pin' : 'pin-outline'}
-                                size={18}
-                            />
-                        </Pressable>
-                        <Pressable
-                            accessibilityLabel={sessionArchived ? t('sessionInfo.restoreSession') : t('sessionInfo.archiveSession')}
-                            accessibilityRole="button"
+                        />
+                        <SessionRowActionButton
                             disabled={quickActions.archivingSession || quickActions.restoringSession}
+                            icon={sessionArchived ? 'rotate-ccw' : 'archive'}
+                            label={sessionArchived ? t('sessionInfo.restoreSession') : t('sessionInfo.archiveSession')}
                             onPress={handleAction(sessionArchived ? quickActions.restoreSession : quickActions.archiveSession)}
-                            style={styles.actionButton}
                             testID={sessionArchived ? 'session-row-restore-action' : 'session-row-archive-action'}
-                        >
-                            <Ionicons
-                                color={theme.colors.textSecondary}
-                                name={sessionArchived ? 'arrow-undo-outline' : 'archive-outline'}
-                                size={18}
-                            />
-                        </Pressable>
+                        />
                     </>
                 ) : null}
                 {useMoreAction ? (
-                    <Pressable
-                        accessibilityLabel={t('sessionInfo.sessionRowMoreActions')}
-                        accessibilityRole="button"
+                    <SessionRowActionButton
+                        icon="more-horizontal"
+                        label={t('sessionInfo.sessionRowMoreActions')}
                         onPress={openMenu}
-                        style={styles.actionButton}
                         testID="session-row-more-action"
-                    >
-                        <Ionicons color={theme.colors.textSecondary} name="ellipsis-horizontal" size={20} />
-                    </Pressable>
+                    />
                 ) : null}
             </View>
             <SessionActionsPopover
@@ -298,6 +349,63 @@ export const SessionRowActions = React.memo(function SessionRowActions({
                 onSelectSession={onStartSelection}
                 sessionId={sessionId}
                 visible={!!contextAnchor}
+            />
+        </View>
+    );
+});
+
+const SessionRowActionButton = React.memo(function SessionRowActionButton({
+    active = false,
+    disabled = false,
+    icon,
+    label,
+    onPress,
+    testID,
+}: {
+    active?: boolean;
+    disabled?: boolean;
+    icon: React.ComponentProps<typeof Feather>['name'];
+    label: string;
+    onPress: NonNullable<PressableProps['onPress']>;
+    testID: string;
+}) {
+    const styles = stylesheet;
+    const { theme } = useUnistyles();
+    const [tooltipVisible, setTooltipVisible] = React.useState(false);
+
+    return (
+        <View style={styles.actionButtonWrapper}>
+            <Pressable
+                accessibilityLabel={label}
+                accessibilityRole="button"
+                accessibilityState={{ disabled, selected: active }}
+                disabled={disabled}
+                onBlur={() => setTooltipVisible(false)}
+                onFocus={() => setTooltipVisible(true)}
+                onHoverIn={() => setTooltipVisible(true)}
+                onHoverOut={() => setTooltipVisible(false)}
+                onPress={onPress}
+                style={({ pressed }) => [
+                    styles.actionButton,
+                    (active || tooltipVisible) && styles.actionButtonHighlighted,
+                    pressed && styles.actionButtonPressed,
+                    disabled && styles.actionButtonDisabled,
+                ]}
+                testID={testID}
+            >
+                <Feather
+                    color={active ? theme.colors.accent : theme.colors.textSecondary}
+                    name={icon}
+                    size={17}
+                />
+            </Pressable>
+            <DesktopShortcutTooltip
+                align="right"
+                compact
+                label={label}
+                placement="above"
+                testID={`${testID}-tooltip`}
+                visible={Platform.OS === 'web' && tooltipVisible}
             />
         </View>
     );
@@ -313,65 +421,101 @@ const stylesheet = StyleSheet.create((theme) => ({
     locationText: {
         color: theme.colors.textSecondary,
         flexShrink: 1,
-        fontSize: 11,
-        lineHeight: 15,
+        fontSize: 12,
+        lineHeight: 16,
         ...Typography.default(),
     },
     detailsCard: {
-        backgroundColor: theme.colors.header.background,
-        borderColor: theme.colors.divider,
-        borderRadius: 12,
-        borderWidth: StyleSheet.hairlineWidth,
-        elevation: 12,
-        left: 12,
-        padding: 12,
+        backgroundColor: theme.colors.surfaceHigh,
+        borderRadius: 16,
+        elevation: 18,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
         position: 'absolute',
-        right: 12,
         shadowColor: theme.colors.shadow.color,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: theme.colors.shadow.opacity,
-        shadowRadius: 16,
-        top: '100%',
-        zIndex: 50,
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: Platform.OS === 'web' ? 0.34 : theme.colors.shadow.opacity,
+        shadowRadius: 28,
+        width: 340,
+        zIndex: 80,
+    },
+    detailsHeader: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 10,
     },
     detailsTitle: {
         color: theme.colors.text,
-        fontSize: 13,
-        lineHeight: 18,
-        marginBottom: 8,
+        flex: 1,
+        fontSize: 14,
+        lineHeight: 20,
         ...Typography.default('semiBold'),
+    },
+    detailsTime: {
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        lineHeight: 18,
+        ...Typography.default(),
     },
     detailRow: {
         alignItems: 'center',
         flexDirection: 'row',
-        gap: 6,
-        minHeight: 22,
+        minHeight: 24,
     },
-    detailLabel: {
-        color: theme.colors.textSecondary,
-        fontSize: 11,
-        width: 72,
-        ...Typography.default(),
+    detailIconSlot: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 8,
+        width: 18,
     },
     detailValue: {
         color: theme.colors.text,
         flex: 1,
-        fontSize: 11,
+        fontSize: 13,
+        lineHeight: 20,
         ...Typography.default(),
+    },
+    detailValueStrong: {
+        ...Typography.default('semiBold'),
     },
     actions: {
         alignItems: 'center',
         flexDirection: 'row',
+        flexShrink: 0,
+        gap: 2,
         marginLeft: 4,
     },
+    actionStatus: {
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        lineHeight: 18,
+        marginHorizontal: 4,
+        maxWidth: 70,
+        ...Typography.default(),
+    },
     actionCluster: {
+        flexShrink: 0,
         position: 'relative',
         zIndex: 60,
     },
+    actionButtonWrapper: {
+        position: 'relative',
+    },
     actionButton: {
         alignItems: 'center',
-        height: 40,
+        borderRadius: 8,
+        height: 30,
         justifyContent: 'center',
-        width: 40,
+        width: 30,
+    },
+    actionButtonHighlighted: {
+        backgroundColor: theme.colors.surfaceSelected,
+    },
+    actionButtonPressed: {
+        opacity: 0.72,
+    },
+    actionButtonDisabled: {
+        opacity: 0.45,
     },
 }));
