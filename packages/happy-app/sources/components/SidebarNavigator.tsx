@@ -337,9 +337,11 @@ const PersistentHeader = React.memo(() => {
                         testID="desktop-navigation-zen-button"
                     >
                         <Ionicons
-                            name={zenMode ? 'contract-outline' : 'leaf-outline'}
+                            name="leaf-outline"
                             size={19}
-                            color={zenMode ? theme.colors.textLink : theme.colors.header.tint}
+                            color={theme.colors.status.connected}
+                            dataSet={{ iconName: 'leaf-outline' }}
+                            testID="desktop-navigation-zen-icon"
                         />
                     </Pressable>
                     <DesktopShortcutTooltip
@@ -445,7 +447,7 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 10,
     },
     zenToggleSelected: {
-        borderColor: theme.colors.textLink,
+        borderColor: theme.colors.status.connected,
         backgroundColor: theme.colors.surfacePressed,
     },
     historyButton: {

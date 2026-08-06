@@ -205,7 +205,7 @@ test('T09-01 first message creates a protected editable title and permanent head
         const title = page.locator('[data-testid="session-header-title"]:visible');
         if (evidencePhase === 'after') {
             await expect(title).toHaveAccessibleName(new RegExp(prompt));
-            await expect(page.getByTestId('session-header-title-edit-icon')).toBeVisible();
+            await expect(page.getByTestId('session-header-title-edit-icon')).toHaveCount(0);
             await expect(page.getByTestId('session-header-run-status')).toContainText(/running/i);
         } else {
             await expect(title).toHaveAccessibleName(/New chat/i);
@@ -215,12 +215,12 @@ test('T09-01 first message creates a protected editable title and permanent head
 
         if (evidencePhase === 'after') {
             await title.click();
-            await expect(page.getByText('Rename Session', { exact: true })).toBeVisible();
             const manualTitle = 'Manual title wins permanently';
             const followUpPrompt = 'This second message must not replace the manual title';
-            const promptInput = page.getByPlaceholder('Session title');
-            await promptInput.fill(manualTitle);
-            await page.getByRole('button', { name: 'Rename', exact: true }).click();
+            const inlineTitleInput = page.getByTestId('session-header-title-input');
+            await expect(inlineTitleInput).toBeVisible();
+            await inlineTitleInput.fill(manualTitle);
+            await inlineTitleInput.press('Enter');
             await expect(title).toHaveAccessibleName(new RegExp(manualTitle));
 
             // Exercise the real message queue again after the manual rename. The
@@ -353,7 +353,6 @@ test('T09-03 compact header remains hit-testable at 800/1024 and phone keeps the
             const controls = [
                 page.locator('[data-testid="session-header-title"]:visible'),
                 page.locator('[data-testid="session-header-run-status"]:visible'),
-                page.locator('[data-testid="session-header-chip"]:visible'),
                 page.locator('[data-testid="session-header-more-button"]:visible'),
             ];
             if (width === 1440) {
@@ -365,7 +364,6 @@ test('T09-03 compact header remains hit-testable at 800/1024 and phone keeps the
             }
             const boxes = await Promise.all(controls.map(control => control.boundingBox()));
             expect(boxes[0]!.width).toBeGreaterThanOrEqual(32);
-            expect(boxes[2]!.width).toBeGreaterThanOrEqual(116);
             if (width === 1440) {
                 expect(boxes[0]!.width).toBeGreaterThanOrEqual(120);
                 expect(boxes[1]!.width).toBeGreaterThanOrEqual(44);

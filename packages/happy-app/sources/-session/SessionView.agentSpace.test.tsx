@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => ({
     styleUseVariants: vi.fn(),
     switchDirectory: vi.fn(),
     renameSession: vi.fn(),
+    renameSessionToTitle: vi.fn(),
     session: {
         id: 'session-1',
         seq: 1,
@@ -77,6 +78,7 @@ vi.mock('react-native', () => ({
     Pressable: 'Pressable',
     ScrollView: 'ScrollView',
     Text: 'Text',
+    TextInput: 'TextInput',
     View: 'View',
     useWindowDimensions: () => ({ width: mocks.windowWidth, height: 844 }),
 }));
@@ -189,6 +191,7 @@ vi.mock('@/hooks/useSessionQuickActions', () => ({
     useSessionQuickActions: () => ({
         canResume: false,
         renameSession: mocks.renameSession,
+        renameSessionToTitle: mocks.renameSessionToTitle,
         renamingSession: false,
         resumeSession: vi.fn(),
         resumingSession: false,
@@ -551,7 +554,7 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
-    it('keeps title, Agent panel, and More while removing the desktop new-session action', () => {
+    it('edits the desktop title inline while keeping status and the More menu', () => {
         mocks.isDataReady = true;
         mocks.windowWidth = 1400;
         mocks.isTablet = true;
@@ -563,7 +566,7 @@ describe('SessionView Agent-space boundary', () => {
         });
 
         expect(renderer.root.findAllByProps({ testID: 'session-header-new-session-button' })).toHaveLength(0);
-        expect(renderer.root.findAllByType('SessionHeaderChip')).toHaveLength(1);
+        expect(renderer.root.findAllByType('SessionHeaderChip')).toHaveLength(0);
 
         const title = renderer.root.findByProps({ testID: 'session-header-title' });
         expect(title.props.accessibilityRole).toBe('button');
@@ -571,10 +574,8 @@ describe('SessionView Agent-space boundary', () => {
             `sessionInfo.renameSession: ${renderer.root.findByType('ChatHeaderView').props.title}`,
         );
         expect(title.props.style).toMatchObject({ minHeight: 40, overflow: 'hidden' });
-        expect(renderer.root.findByProps({ testID: 'session-header-title-edit-icon' })).toBeTruthy();
+        expect(renderer.root.findAllByProps({ testID: 'session-header-title-edit-icon' })).toHaveLength(0);
         expect(renderer.root.findByProps({ testID: 'session-header-run-status' }).props.accessibilityLabel).toBe('Online');
-        act(() => title.props.onPress());
-        expect(mocks.renameSession).toHaveBeenCalledTimes(1);
         expect(title.parent.props.style).not.toMatchObject({ overflow: 'hidden' });
         act(() => title.props.onFocus());
         const titleTooltip = renderer.root.findAllByType('View').find(
@@ -584,9 +585,24 @@ describe('SessionView Agent-space boundary', () => {
         expect(titleTooltip!.props.style).toContainEqual(expect.objectContaining({ width: 380, maxWidth: 380 }));
         expect(titleTooltip!.findByType('Text').props.numberOfLines).toBeUndefined();
 
+        act(() => title.props.onPress());
+        const titleInput = renderer.root.findByProps({ testID: 'session-header-title-input' });
+        expect(titleInput.props.selectTextOnFocus).toBe(true);
+        act(() => titleInput.props.onChangeText('Renamed inline'));
+        act(() => titleInput.props.onSubmitEditing());
+        expect(mocks.renameSessionToTitle).toHaveBeenCalledWith('Renamed inline');
+
+        const updatedTitle = renderer.root.findByProps({ testID: 'session-header-title' });
+        act(() => updatedTitle.props.onPress());
+        const cancelledTitleInput = renderer.root.findByProps({ testID: 'session-header-title-input' });
+        act(() => cancelledTitleInput.props.onChangeText('Cancelled rename'));
+        act(() => cancelledTitleInput.props.onKeyPress({ nativeEvent: { key: 'Escape' } }));
+        expect(mocks.renameSessionToTitle).toHaveBeenCalledTimes(1);
+
         const more = renderer.root.findByProps({ testID: 'session-header-more-button' });
         expect(more.props.accessibilityLabel).toBe('sessionInfo.viewDetails');
         expect(more.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ width: 40, height: 40 }));
+        expect(renderer.root.findAllByProps({ testID: 'session-header-more-tooltip' })).toHaveLength(0);
         act(() => more.props.onPress());
         expect(renderer.root.findAllByType('SessionInfoDropdown')).toHaveLength(1);
 
@@ -596,10 +612,10 @@ describe('SessionView Agent-space boundary', () => {
     it.each([
         { windowWidth: 1100, compact: true },
         { windowWidth: 1280, compact: false },
-    ])('sets session metadata compact=$compact at $windowWidth px', ({ windowWidth, compact }) => {
+    ])('keeps the native tablet metadata chip compact=$compact at $windowWidth px', ({ windowWidth, compact }) => {
         mocks.isDataReady = true;
         mocks.isTablet = true;
-        mocks.platformOS = 'web';
+        mocks.platformOS = 'android';
         mocks.windowWidth = windowWidth;
         let renderer: any;
 

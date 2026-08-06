@@ -2,10 +2,10 @@ import * as React from 'react';
 import { Modal } from '@/modal';
 import { HappyError } from '@/utils/errors';
 
-export function useHappyAction(action: () => Promise<void>) {
+export function useHappyAction<TArgs extends unknown[]>(action: (...args: TArgs) => Promise<void>) {
     const [loading, setLoading] = React.useState(false);
     const loadingRef = React.useRef(false);
-    const doAction = React.useCallback(() => {
+    const doAction = React.useCallback((...args: TArgs) => {
         if (loadingRef.current) {
             return;
         }
@@ -15,7 +15,7 @@ export function useHappyAction(action: () => Promise<void>) {
             try {
                 while (true) {
                     try {
-                        await action();
+                        await action(...args);
                         break;
                     } catch (e) {
                         if (e instanceof HappyError) {

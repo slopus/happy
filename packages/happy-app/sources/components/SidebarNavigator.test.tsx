@@ -65,6 +65,7 @@ vi.mock('react-native-unistyles', () => ({
                 divider: '#333',
                 header: { tint: '#fff' },
                 textLink: '#88f',
+                status: { connected: '#34a853' },
                 text: '#fff',
                 textSecondary: '#aaa',
             },
@@ -78,6 +79,7 @@ vi.mock('react-native-unistyles', () => ({
                 divider: '#333',
                 header: { tint: '#fff' },
                 textLink: '#88f',
+                status: { connected: '#34a853' },
             },
         }),
     },
@@ -223,7 +225,7 @@ describe('SidebarNavigator drawer behavior', () => {
         act(() => renderer.unmount());
     });
 
-    it('keeps an icon-only selected Zen exit affordance with a focus tooltip', () => {
+    it('keeps the Zen leaf green without swapping to a resize icon', () => {
         mocks.zenMode = true;
         let renderer: any;
         act(() => {
@@ -234,7 +236,8 @@ describe('SidebarNavigator drawer behavior', () => {
         expect(zenToggle.props['aria-selected']).toBe(true);
         expect(zenToggle.props.accessibilityState).toEqual({ selected: true });
         expect(zenToggle.findAllByType('Text')).toHaveLength(0);
-        expect(zenToggle.findByType('Ionicons').props.name).toBe('contract-outline');
+        expect(zenToggle.findByType('Ionicons').props.name).toBe('leaf-outline');
+        expect(zenToggle.findByType('Ionicons').props.color).toBe('#34a853');
         act(() => zenToggle.props.onFocus());
         expect(renderer.root.findByProps({ testID: 'desktop-navigation-zen-tooltip' })).toBeDefined();
 
