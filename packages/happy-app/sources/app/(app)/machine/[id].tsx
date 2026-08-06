@@ -545,7 +545,7 @@ export default function MachineDetailScreen() {
                             }
                         />
                         <Item
-                            title="Gemini"
+                            title="Gemini (deprecated)"
                             showChevron={false}
                             rightElement={
                                 <Text style={{ color: metadata.cliAvailability.gemini ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>

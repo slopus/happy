@@ -63,7 +63,6 @@ const AGENTS: Array<{ key: NewSessionAgentType; name: string }> = [
     { key: 'claude', name: 'Claude Code' },
     { key: 'codex', name: 'Codex' },
     { key: 'openclaw', name: 'OpenClaw' },
-    { key: 'gemini', name: 'Gemini' },
     { key: 'agy', name: 'Agy' },
 ];
 

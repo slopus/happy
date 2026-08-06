@@ -140,7 +140,10 @@ export default function AgentDefaultsSettingsScreen() {
                 />
             </ItemGroup>
 
-            {agentKeys.map((agent) => {
+            {/* The gemini backend is deprecated in favor of agy, so no defaults
+                section for it — but 'gemini' stays in the schema so stored
+                overrides and existing sessions keep resolving. */}
+            {agentKeys.filter((agent) => agent !== 'gemini').map((agent) => {
                 const codeDefaults = getCodeAgentDefaults(agent);
                 const effectiveDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, agent);
                 const permissionOptions = getHardcodedPermissionModes(agent, t);
