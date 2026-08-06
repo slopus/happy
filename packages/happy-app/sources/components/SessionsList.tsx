@@ -642,6 +642,8 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
             <Pressable
                 accessibilityLabel={session.name}
                 accessibilityRole="button"
+                accessibilityState={{ selected: !!selected }}
+                aria-current={selected ? 'page' : undefined}
                 focusable
                 onPress={handlePress}
                 style={styles.sessionPressTarget}

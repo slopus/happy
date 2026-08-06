@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Pressable, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
-import { Machine } from '@/sync/storageTypes';
 import { SessionRowData } from '@/sync/storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLastSeen } from '@/utils/sessionUtils';
@@ -25,7 +24,7 @@ import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
 import { useSessionManagementPreferences } from '@/hooks/useSessionManagementPreferences';
-import { sortSessionsForList } from '@/utils/sessionPinning';
+import { buildSessionNavigationGroups } from '@/utils/sessionNavigationGroups';
 
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
     disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
@@ -64,7 +63,21 @@ function useSectionGitInfo(sessionId: string) {
 }
 
 // Section header: avatar | path + branch + tree icon + line changes | + button
-const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRowData; displayPath: string }) => {
+const SectionHeader = React.memo(({
+    current,
+    displayPath,
+    expanded,
+    onToggle,
+    session,
+    testID,
+}: {
+    current: boolean;
+    displayPath: string;
+    expanded: boolean;
+    onToggle: () => void;
+    session: SessionRowData;
+    testID: string;
+}) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const router = useRouter();
@@ -99,47 +112,77 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRo
 
     return (
         <View
-            style={hasBranch ? styles.sectionHeader : styles.sectionHeaderSingleLine}
+            style={[
+                hasBranch ? styles.sectionHeader : styles.sectionHeaderSingleLine,
+                current && styles.sectionHeaderCurrent,
+            ]}
             // @ts-ignore - Web only events
             onMouseEnter={() => setIsHovered(true)}
             // @ts-ignore - Web only events
             onMouseLeave={() => setIsHovered(false)}
         >
-            {/* Avatar — vertically centered */}
-            <View style={styles.sectionHeaderAvatar}>
-                <Avatar id={session.avatarId} size={24} flavor={null} />
-            </View>
+            <Pressable
+                accessibilityLabel={repoFolderName}
+                accessibilityRole="button"
+                accessibilityState={{ expanded }}
+                aria-expanded={expanded}
+                onPress={onToggle}
+                style={styles.sectionHeaderPressTarget}
+                testID={testID}
+            >
+                <Ionicons
+                    name={expanded ? 'chevron-down' : 'chevron-forward'}
+                    size={14}
+                    color={current ? theme.colors.textLink : theme.colors.textSecondary}
+                    style={styles.sectionChevron}
+                />
 
-            {/* Path + branch */}
-            <View style={styles.sectionHeaderContent}>
-                <Text style={styles.sectionHeaderPath} numberOfLines={1}>
-                    {repoFolderName}
-                </Text>
-                {hasBranch && (
-                    <View style={styles.branchRow}>
-                        <Text style={styles.branchText} numberOfLines={1}>
-                            {branchName}
-                        </Text>
-                        {isWorktree && (
-                            <MaterialCommunityIcons
-                                name="tree"
-                                size={11}
-                                color={theme.colors.textSecondary}
-                                style={styles.worktreeIcon}
-                            />
-                        )}
-                        {gitInfo.linesAdded > 0 && (
-                            <Text style={styles.addedText}>+{gitInfo.linesAdded}</Text>
-                        )}
-                        {gitInfo.linesRemoved > 0 && (
-                            <Text style={styles.removedText}>-{gitInfo.linesRemoved}</Text>
-                        )}
-                    </View>
-                )}
-            </View>
+                {/* Avatar — vertically centered */}
+                <View style={styles.sectionHeaderAvatar}>
+                    <Avatar id={session.avatarId} size={24} flavor={null} />
+                </View>
+
+                {/* Path + branch */}
+                <View style={styles.sectionHeaderContent}>
+                    <Text style={styles.sectionHeaderPath} numberOfLines={1}>
+                        {repoFolderName}
+                    </Text>
+                    {hasBranch && (
+                        <View style={styles.branchRow}>
+                            <Text style={styles.branchText} numberOfLines={1}>
+                                {branchName}
+                            </Text>
+                            {isWorktree && (
+                                <MaterialCommunityIcons
+                                    name="tree"
+                                    size={11}
+                                    color={theme.colors.textSecondary}
+                                    style={styles.worktreeIcon}
+                                />
+                            )}
+                            {gitInfo.linesAdded > 0 && (
+                                <Text style={styles.addedText}>+{gitInfo.linesAdded}</Text>
+                            )}
+                            {gitInfo.linesRemoved > 0 && (
+                                <Text style={styles.removedText}>-{gitInfo.linesRemoved}</Text>
+                            )}
+                        </View>
+                    )}
+                </View>
+                {current ? (
+                    <Ionicons
+                        name="ellipse"
+                        size={7}
+                        color={theme.colors.textLink}
+                        style={styles.currentProjectIndicator}
+                    />
+                ) : null}
+            </Pressable>
 
             {/* + button — vertically centered, large hit area; desktop: hover-only */}
             <Pressable
+                accessibilityLabel={t('sidebar.newSession')}
+                accessibilityRole="button"
                 onPress={handleAdd}
                 hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                 style={[styles.addButton, { opacity: Platform.OS !== 'web' || isHovered ? 1 : 0 }]}
@@ -185,71 +228,57 @@ export function ActiveSessionsGroupCompact({
     const sessionIds = React.useMemo(() => sessions.map(session => session.id), [sessions]);
     const sessionManagement = useSessionManagementPreferences(sessionIds, { prune: false });
 
-    const machinesMap = React.useMemo(() => {
-        const map: Record<string, Machine> = {};
-        machines.forEach(machine => {
-            map[machine.id] = machine;
-        });
-        return map;
-    }, [machines]);
+    // Machines are an explicit grouping dimension; projects are the compact,
+    // collapsible units users scan to find recent sessions.
+    const machineGroups = React.useMemo(() => buildSessionNavigationGroups({
+        machines,
+        pinnedOrder: sessionManagement.preferences.pinnedOrder,
+        sessions,
+        unknownLabel: t('status.unknown'),
+    }), [machines, sessionManagement.preferences.pinnedOrder, sessions]);
+    const hasMultipleMachines = machineGroups.length > 1;
+    const [collapsedProjects, setCollapsedProjects] = React.useState<Set<string>>(() => new Set());
 
-    // Group sessions by machine, then by project within each machine
-    const { machineGroups, hasMultipleMachines } = React.useMemo(() => {
-        const unknownText = t('status.unknown');
-        const byMachine = new Map<string, {
-            machineId: string;
-            machineName: string;
-            projects: Map<string, {
-                displayPath: string;
-                sessions: SessionRowData[];
-            }>;
-        }>();
-
-        sessions.forEach(session => {
-            const machineId = session.machineId || unknownText;
-            const machine = machineId !== unknownText ? machinesMap[machineId] : null;
-            const machineName = machine?.metadata?.displayName ||
-                machine?.metadata?.host ||
-                (machineId !== unknownText ? machineId : `<${unknownText}>`);
-
-            let machineGroup = byMachine.get(machineId);
-            if (!machineGroup) {
-                machineGroup = { machineId, machineName, projects: new Map() };
-                byMachine.set(machineId, machineGroup);
+    const selectedProjectKey = React.useMemo(() => {
+        if (!selectedSessionId) return null;
+        for (const machineGroup of machineGroups) {
+            for (const project of machineGroup.projects) {
+                if (project.sessions.some((session) => session.id === selectedSessionId)) {
+                    return project.key;
+                }
             }
+        }
+        return null;
+    }, [machineGroups, selectedSessionId]);
 
-            const projectPath = session.path || '';
-            let projectGroup = machineGroup.projects.get(projectPath);
-            if (!projectGroup) {
-                const displayPath = formatPathRelativeToHome(projectPath, session.homeDir ?? undefined);
-                projectGroup = { displayPath, sessions: [] };
-                machineGroup.projects.set(projectPath, projectGroup);
+    // A navigation to another session always reveals its project. Users may
+    // still collapse the currently selected project afterwards; the header's
+    // accent marker preserves the active context while collapsed.
+    React.useEffect(() => {
+        if (!selectedProjectKey) return;
+        setCollapsedProjects((current) => {
+            if (!current.has(selectedProjectKey)) return current;
+            const next = new Set(current);
+            next.delete(selectedProjectKey);
+            return next;
+        });
+    }, [selectedProjectKey]);
+
+    const toggleProject = React.useCallback((projectKey: string) => {
+        setCollapsedProjects((current) => {
+            const next = new Set(current);
+            if (next.has(projectKey)) {
+                next.delete(projectKey);
+            } else {
+                next.add(projectKey);
             }
-
-            projectGroup.sessions.push(session);
+            return next;
         });
-
-        // Sort sessions within each project group
-        byMachine.forEach(mg => {
-            mg.projects.forEach(pg => {
-                pg.sessions = sortSessionsForList(pg.sessions, sessionManagement.preferences.pinnedOrder);
-            });
-        });
-
-        const sorted = Array.from(byMachine.values()).sort((a, b) =>
-            a.machineName.localeCompare(b.machineName)
-        );
-
-        return { machineGroups: sorted, hasMultipleMachines: byMachine.size > 1 };
-    }, [sessions, machinesMap, sessionManagement.preferences.pinnedOrder]);
+    }, []);
 
     return (
         <View style={styles.container}>
             {machineGroups.map(machineGroup => {
-                const sortedProjects = Array.from(machineGroup.projects.entries()).sort(
-                    ([, a], [, b]) => a.displayPath.localeCompare(b.displayPath)
-                );
-
                 return (
                     <React.Fragment key={machineGroup.machineId}>
                         {hasMultipleMachines && (
@@ -258,31 +287,39 @@ export function ActiveSessionsGroupCompact({
                                 machineId={machineGroup.machineId}
                             />
                         )}
-                        {sortedProjects.map(([projectPath, projectGroup]) => {
+                        {machineGroup.projects.map((projectGroup) => {
                             const firstSession = projectGroup.sessions[0];
                             if (!firstSession) return null;
+                            const expanded = !collapsedProjects.has(projectGroup.key);
+                            const current = projectGroup.key === selectedProjectKey;
 
                             return (
-                                <View key={projectPath}>
+                                <View key={projectGroup.key}>
                                     <SectionHeader
+                                        current={current}
                                         session={firstSession}
                                         displayPath={projectGroup.displayPath}
+                                        expanded={expanded}
+                                        onToggle={() => toggleProject(projectGroup.key)}
+                                        testID={`sidebar-project-toggle-${projectGroup.key}`}
                                     />
-                                    <View style={styles.projectCard}>
-                                        {projectGroup.sessions.map((session, index) => (
-                                            <CompactSessionRow
-                                                key={session.id}
-                                                session={session}
-                                                selected={selectedSessionId === session.id}
-                                                bulkSelected={selectedIds?.has(session.id) ?? false}
-                                                selectionMode={selectionMode}
-                                                showBorder={index < projectGroup.sessions.length - 1}
-                                                pinned={sessionManagement.isPinned(session.id)}
-                                                onStartSelection={onStartSelection}
-                                                onToggleSelection={onToggleSelection}
-                                            />
-                                        ))}
-                                    </View>
+                                    {expanded ? (
+                                        <View style={styles.projectCard} testID={`sidebar-project-sessions-${projectGroup.key}`}>
+                                            {projectGroup.sessions.map((session, index) => (
+                                                <CompactSessionRow
+                                                    key={session.id}
+                                                    session={session}
+                                                    selected={selectedSessionId === session.id}
+                                                    bulkSelected={selectedIds?.has(session.id) ?? false}
+                                                    selectionMode={selectionMode}
+                                                    showBorder={index < projectGroup.sessions.length - 1}
+                                                    pinned={sessionManagement.isPinned(session.id)}
+                                                    onStartSelection={onStartSelection}
+                                                    onToggleSelection={onToggleSelection}
+                                                />
+                                            ))}
+                                        </View>
+                                    ) : null}
                                 </View>
                             );
                         })}
@@ -412,6 +449,8 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
             <Pressable
                 accessibilityLabel={session.name}
                 accessibilityRole="button"
+                accessibilityState={{ selected: !!selected }}
+                aria-current={selected ? 'page' : undefined}
                 focusable
                 onPress={handlePress}
                 style={styles.sessionPressTarget}
@@ -481,6 +520,19 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
     },
+    sectionHeaderCurrent: {
+        backgroundColor: theme.colors.surfaceSelected,
+    },
+    sectionHeaderPressTarget: {
+        alignItems: 'center',
+        flex: 1,
+        flexDirection: 'row',
+        minHeight: 40,
+        minWidth: 0,
+    },
+    sectionChevron: {
+        marginRight: 4,
+    },
     sectionHeaderAvatar: {
         marginRight: 8,
     },
@@ -527,6 +579,9 @@ const stylesheet = StyleSheet.create((theme) => ({
     addButton: {
         marginLeft: 4,
         padding: 8,
+    },
+    currentProjectIndicator: {
+        marginLeft: 6,
     },
     // Machine separator styles
     machineSeparator: {
