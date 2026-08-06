@@ -5,20 +5,46 @@ description: >
   bumping, building, testing, publishing, and deploying. Replaces the old
   interactive release-it flow with a Claude Code-native experience.
   Use when user types /release or asks to release, publish, deploy, or ship
-  any component.
+  any component, or after a PR merge when the next delivery action must be
+  chosen from the merged change surface.
 ---
 
 # Release
 
 You are the release operator for the Happy monorepo. When invoked, walk the user through releasing the component they choose.
 
+## Post-merge delivery routing
+
+When this skill is invoked after a PR merge, inspect the merged PR diff before
+offering the next action. Do not infer the target from `packages/happy-app`
+alone: the same Expo package ships the mobile app and PC Web.
+
+1. Read the merged file list and the relevant code branches. Look for explicit
+   platform signals such as `.web.*`, `Platform.OS === 'web'`, Tauri/desktop
+   entry points, responsive desktop layouts, browser-only APIs, and mobile-only
+   native code.
+2. Classify the user-visible delivery surface:
+   - **Mobile App only, OTA-compatible JS/assets** -> offer `发布 App preview OTA`.
+   - **PC/Web only** -> offer `部署 Happy Web`.
+   - **Shared App + PC/Web behavior** -> offer `同时发布 App preview OTA 和 Happy Web`
+     first, followed by the two single-target choices when partial delivery is
+     useful.
+   - **No user-visible App/Web runtime change** -> do not offer either action.
+3. If the evidence is ambiguous, treat the change as shared rather than
+   silently defaulting to mobile.
+
+An already explicit request to publish or deploy is authorization for that
+named target; execute it without asking again. A request to merge a PR alone is
+not production-deploy authorization: present only the relevant options and
+wait. Never present preview OTA as the only follow-up for a PC/Web change.
+
 ## Step 1: Pick a target
 
-Ask which component to release:
+If there is no just-merged PR or other target evidence, ask which component to release:
 
 - **CLI** — npm package `happy`
 - **Mobile** — Expo/EAS builds for iOS + Android
-- **Web** — Docker image + K8s deploy via TeamCity
+- **Web** — Paws self-hosted Web at `https://47.115.228.20:8443`
 - **Server** — Docker image + K8s deploy via TeamCity
 - **Docs** — GitHub Pages (separate repo)
 
@@ -329,18 +355,74 @@ Runtime version "20" — bump when native code changes to invalidate OTA.
 
 ## Web Release
 
-    Package:     packages/happy-app (same Expo app, web export)
-    Dockerfile:  Dockerfile.webapp
-    Image:       docker.korshakov.com/happy-app:{version}
-    K8s:         packages/happy-app/deploy/happy-app.yaml (3 replicas)
+    Package:      packages/happy-app (same Expo app, web export)
+    Public URL:   https://47.115.228.20:8443
+    Server path:  /var/www/happy-web
+    Static OSS:   oss://happy-app-ota-jacky
 
-Web releases go through TeamCity (`Lab_HappyWeb`). The config is in the TeamCity UI, not in the repo.
+Paws Web is self-hosted. `scripts/deploy-web.sh` atomically switches the server
+directory, but Caddy redirects hashed Expo resources and top-level Web assets to
+OSS. A valid release therefore requires both the OSS upload and the server
+switch; an HTTP 200 from the entry HTML alone is not sufficient.
 
-Flow: `expo export --platform web` -> nginx:alpine static serve -> Docker build -> push -> K8s deploy.
+### Build from the merged main revision
 
-Build args: `POSTHOG_API_KEY`, `REVENUE_CAT_STRIPE`.
+Release only from a clean root `main` exactly equal to `origin/main`. Perform a
+cache-cleared export so build metadata such as `buildCommitSha` cannot be reused
+from an older bundle:
 
-Guide the user to trigger the TeamCity build, or help with manual Docker builds if needed.
+```bash
+RELEASE_REVISION="$(git rev-parse HEAD)"
+RELEASE_TIMESTAMP="$(git show -s --format=%cI "$RELEASE_REVISION")"
+
+CI=1 \
+APP_ENV=production \
+EXPO_PUBLIC_HAPPY_SERVER_URL=https://47.115.228.20:8443 \
+HAPPY_BUILD_COMMIT_SHA="$RELEASE_REVISION" \
+HAPPY_BUILD_COMMIT_TIMESTAMP="$RELEASE_TIMESTAMP" \
+pnpm --filter happy-app exec expo export --platform web --clear
+
+pnpm --filter happy-app exec tsx sources/scripts/injectWebLoading.ts
+printf '%s\n' "$RELEASE_REVISION" > packages/happy-app/dist/.paws-release-revision
+```
+
+### Upload redirected resources before switching the entry
+
+Sync `packages/happy-app/dist/_expo/` to the OSS `/_expo/` prefix and
+`dist/assets/` to `/assets/`. Force-upload `canvaskit.wasm`, `favicon.ico`,
+`favicon-active.ico`, and `metadata.json` to the bucket root. Then parse every
+CSS/JS reference from the new local `dist/index.html` and verify it returns HTTP
+200 through `https://47.115.228.20:8443/<asset-path>` before switching the entry.
+
+Do not skip this ordering: switching the HTML first can expose a bundle hash
+that Caddy redirects to an OSS 404.
+
+### Atomically switch the server entry
+
+Reuse the verified cache-cleared artifact:
+
+```bash
+PAWS_WEB_ORIGIN=https://47.115.228.20:8443 \
+PAWS_DEPLOY_HOST=root@47.115.228.20 \
+PAWS_DEPLOY_PATH=/var/www/happy-web \
+PAWS_SKIP_BUILD=1 \
+pnpm web:deploy
+```
+
+Keep the backup path printed by the script for rollback.
+
+### Verify the live release
+
+The release is complete only when all checks agree:
+
+- `/var/www/happy-web/.paws-release-revision` equals the merged `origin/main` SHA.
+- The live `index.html`, its CSS/JS references, `metadata.json`, and
+  `canvaskit.wasm` all return HTTP 200; a representative SPA route returns the
+  Paws entry HTML.
+- A fresh Chrome/Playwright context with service workers blocked renders the
+  production URL with no console errors, page errors, failed requests, or 4xx/5xx.
+- Runtime config reports the expected `buildCommitSha`; checking only the
+  server marker is insufficient.
 
 ---
 
@@ -383,6 +465,7 @@ Separate repo, not part of this monorepo. Guide the user to push to that repo.
 ## Rules
 
 - **Release notes: investigate with subagents, exclude default-off, ask when unsure** — see "Writing release notes" above.
+- **After a merged PR, route by delivery surface** — mobile gets preview OTA, PC/Web gets the self-hosted Web deploy, and shared changes get both choices.
 - **Always present options** — never assume which component, channel, or version.
 - **Always verify before publishing** — show the user what will be published and get confirmation.
 - **Do not bundle self-host server/webapp into `happy`** — self-host runtime and the bundled webapp ship through `happy-server-self-host`, not the main CLI package.
