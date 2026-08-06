@@ -17,6 +17,7 @@ function toolMessage(
         pendingPermission?: boolean;
         state?: ToolCallMessage['tool']['state'];
         completedAt?: number | null;
+        name?: string;
     } = {},
 ): ToolCallMessage {
     const state = options.state ?? 'completed';
@@ -26,7 +27,7 @@ function toolMessage(
         localId: null,
         createdAt,
         tool: {
-            name: 'CodexBash',
+            name: options.name ?? 'CodexBash',
             state,
             input: { command: id },
             createdAt,
@@ -523,7 +524,7 @@ describe('useGroupedMessages', () => {
         });
     });
 
-    it('does not collapse the current turn while the agent is still working', () => {
+    it('keeps current-turn text visible while compacting standalone tools', () => {
         const messages: Message[] = [
             {
                 kind: 'agent-text',
@@ -554,16 +555,16 @@ describe('useGroupedMessages', () => {
 
         expect(items.map((item) => item.type)).toEqual([
             'message',
+            'tool-group',
             'message',
-            'message',
-            'message',
+            'tool-group',
             'message',
         ]);
         expect(items.map((item) => item.id)).toEqual([
             'agent-streaming',
-            'tool-latest',
+            'group-tool-latest',
             'agent-progress',
-            'tool-earliest',
+            'group-tool-earliest',
             'user',
         ]);
     });
@@ -620,7 +621,7 @@ describe('useGroupedMessages', () => {
         });
     });
 
-    it('does not collapse a single standalone tool call into a tool group', () => {
+    it('collapses a single standalone tool call into a compact tool group', () => {
         const messages: Message[] = [
             toolMessage('tool-only', 2),
             {
@@ -634,8 +635,21 @@ describe('useGroupedMessages', () => {
 
         const items = groupMessagesForDisplay(messages, true);
 
-        expect(items.map((item) => item.type)).toEqual(['message', 'message']);
-        expect(items[0]).toMatchObject({ type: 'message', id: 'tool-only' });
+        expect(items.map((item) => item.type)).toEqual(['tool-group', 'message']);
+        expect(items[0]).toMatchObject({
+            type: 'tool-group',
+            id: 'group-tool-only',
+            hasPendingPermission: false,
+        });
+    });
+
+    it('keeps a standalone question visible so it remains interactive', () => {
+        const question = toolMessage('question-only', 2, { name: 'AskUserQuestion' });
+        const items = groupMessagesForDisplay([question], true);
+
+        expect(items).toEqual([
+            { type: 'message', id: 'question-only', message: question },
+        ]);
     });
 
     it('can collapse single standalone tool calls for nested work details', () => {
