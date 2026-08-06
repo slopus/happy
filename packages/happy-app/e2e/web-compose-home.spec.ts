@@ -2002,17 +2002,22 @@ test('PC 暂停后可复制并原位编辑最后一条输入', async ({ context,
             path: testInfo.outputPath('pc-paused-message-actions-after.png'),
             fullPage: true,
         });
+        await pauseForRecordedReview(page, 900);
 
         await copyButton.click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(originalMessage);
+        await pauseForRecordedReview(page, 650);
 
         await editButton.click();
         const editor = page.getByRole('textbox', { name: 'Edit' });
         await expect(editor).toHaveValue(originalMessage);
+        await pauseForRecordedReview(page, 900);
         await editor.fill('Temporary edit that should be cancelled.');
+        await pauseForRecordedReview(page, 900);
         await page.getByRole('button', { name: 'Cancel' }).click();
         await expect(originalText).toBeVisible();
         await expect(editor).toHaveCount(0);
+        await pauseForRecordedReview(page, 900);
 
         await originalContainer.getByRole('button', { name: 'Edit' }).click();
         const reopenedEditor = page.getByRole('textbox', { name: 'Edit' });
@@ -2021,13 +2026,16 @@ test('PC 暂停后可复制并原位编辑最后一条输入', async ({ context,
             path: testInfo.outputPath('pc-paused-message-editor-after.png'),
             fullPage: true,
         });
+        await pauseForRecordedReview(page, 900);
         await page.getByRole('button', { name: 'Send' }).click();
 
         await expect(page.getByText(editedMessage, { exact: true })).toBeVisible();
         await expect(page.getByText(originalMessage, { exact: true })).toHaveCount(0);
+        await pauseForRecordedReview(page, 1200);
         await page.reload();
         await expect(page.getByText(editedMessage, { exact: true })).toBeVisible();
         await expect(page.getByText(originalMessage, { exact: true })).toHaveCount(0);
+        await pauseForRecordedReview(page, 900);
     } finally {
         fixture.client.close();
     }
