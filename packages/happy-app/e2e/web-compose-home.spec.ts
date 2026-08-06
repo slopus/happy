@@ -1982,6 +1982,45 @@ test('桌面图片效果使用有边界的居中弹窗且支持 Escape 关闭', 
     }));
     expect(categoriesFit).toEqual({ horizontal: true, vertical: true });
 
+    await page.getByRole('button', { name: /GitHub Skills/ }).click();
+    const githubSkillCovers = dialog.locator('img');
+    await expect(githubSkillCovers).toHaveCount(5);
+    await expect.poll(async () => githubSkillCovers.evaluateAll((images) => images.every((image) => {
+        const element = image as HTMLImageElement;
+        return element.complete && element.naturalWidth > 0 && element.naturalHeight > 0;
+    }))).toBe(true);
+    const coverLayout = await githubSkillCovers.evaluateAll((images) => images.map((image) => {
+        const element = image as HTMLImageElement;
+        const imageBox = element.getBoundingClientRect();
+        const parentBox = element.parentElement!.getBoundingClientRect();
+        return {
+            naturalRatio: element.naturalWidth / element.naturalHeight,
+            displayedRatio: imageBox.width / imageBox.height,
+            fillsParent: Math.abs(imageBox.width - parentBox.width) <= 1
+                && Math.abs(imageBox.height - parentBox.height) <= 1,
+        };
+    }));
+    for (const cover of coverLayout) {
+        expect(cover.naturalRatio).toBeCloseTo(4 / 3, 2);
+        expect(cover.displayedRatio).toBeCloseTo(cover.naturalRatio, 1);
+        expect(cover.fillsParent).toBe(true);
+    }
+    if (process.env.HAPPY_E2E_EVIDENCE_PATH) {
+        await page.screenshot({ path: process.env.HAPPY_E2E_EVIDENCE_PATH });
+    }
+    if (process.env.HAPPY_E2E_EVIDENCE_BOTTOM_PATH) {
+        await githubSkillCovers.last().evaluate((image) => {
+            let element: HTMLElement | null = image.parentElement;
+            while (element) {
+                if (element.scrollHeight > element.clientHeight) {
+                    element.scrollTop = element.scrollHeight;
+                }
+                element = element.parentElement;
+            }
+        });
+        await page.screenshot({ path: process.env.HAPPY_E2E_EVIDENCE_BOTTOM_PATH });
+    }
+
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
 });
