@@ -200,6 +200,7 @@ export function ActiveSessionsGroupCompact({
     const layoutActionLabel = layoutMode === 'projects'
         ? t('sidebar.sortSessionsByTime')
         : t('sidebar.groupSessionsByProject');
+    const layoutActionIcon = layoutMode === 'projects' ? 'clock' : 'folder';
 
     const getTimeGroupLabel = React.useCallback((dayOffset: number) => {
         if (dayOffset === 0) return t('sessionHistory.today');
@@ -231,8 +232,10 @@ export function ActiveSessionsGroupCompact({
                     >
                         <Feather
                             color={theme.colors.textSecondary}
-                            name={layoutMode === 'projects' ? 'folder' : 'clock'}
+                            dataSet={{ iconName: layoutActionIcon }}
+                            name={layoutActionIcon}
                             size={16}
+                            testID="session-list-layout-toggle-icon"
                         />
                     </Pressable>
                     <DesktopShortcutTooltip

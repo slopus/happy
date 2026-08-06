@@ -1361,10 +1361,12 @@ test('[SESSION-LAYOUT] 左栏在项目分组与时间排序之间切换并记住
     expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
 
     const layoutToggle = page.getByTestId('session-list-layout-toggle');
+    const layoutIcon = page.getByTestId('session-list-layout-toggle-icon');
     const projectScreenshot = testInfo.outputPath('session-list-project-layout-1280x900.png');
     const timeScreenshot = testInfo.outputPath('session-list-time-layout-1280x900.png');
 
     await expect(layoutToggle).toHaveAccessibleName('Sort sessions by time');
+    await expect(layoutIcon).toHaveAttribute('data-icon-name', 'clock');
     await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
     await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fbeta')).toBeVisible();
     await page.screenshot({ path: projectScreenshot, fullPage: true });
@@ -1374,6 +1376,7 @@ test('[SESSION-LAYOUT] 左栏在项目分组与时间排序之间切换并记住
     await layoutToggle.click();
 
     await expect(layoutToggle).toHaveAccessibleName('Group sessions by project');
+    await expect(layoutIcon).toHaveAttribute('data-icon-name', 'folder');
     await expect(page.getByTestId('session-list-layout-tooltip')).toHaveText('Group sessions by project');
     await expect(page.getByTestId('session-time-group-0')).toBeVisible();
     await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toHaveCount(0);
@@ -1392,8 +1395,10 @@ test('[SESSION-LAYOUT] 左栏在项目分组与时间排序之间切换并记住
 
     await page.reload();
     await expect(page.getByTestId('session-time-group-0')).toBeVisible();
+    await expect(layoutIcon).toHaveAttribute('data-icon-name', 'folder');
     await layoutToggle.click();
     await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
+    await expect(layoutIcon).toHaveAttribute('data-icon-name', 'clock');
     await page.reload();
     await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
 });
