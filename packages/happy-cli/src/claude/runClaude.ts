@@ -243,6 +243,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 claudeArgs: options.claudeArgs,
                 mcpServers: {},
                 allowedTools: [],
+                permissionMode: initialPermissionMode,
                 sandboxConfig,
             });
         } finally {
