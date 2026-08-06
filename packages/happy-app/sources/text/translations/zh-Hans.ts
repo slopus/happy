@@ -244,6 +244,8 @@ export const zhHans: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
         imageUploadSubtitle: '将图片附加到消息中，以便受支持的代理进行分析',
+        mathRendering: '数学公式渲染',
+        mathRenderingSubtitle: '在消息中渲染 LaTeX 数学公式（$…$、$$…$$）',
     },
 
     errors: {

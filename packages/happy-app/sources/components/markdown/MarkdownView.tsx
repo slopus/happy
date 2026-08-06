@@ -8,12 +8,13 @@ import { Text } from '../StyledText';
 import { Typography } from '@/constants/Typography';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 import { Modal } from '@/modal';
-import { useLocalSetting } from '@/sync/storage';
+import { useLocalSetting, useSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 import { MermaidRenderer } from './MermaidRenderer';
+import { MathBlock, InlineMathRun, MathInline } from './MathView';
 import { t } from '@/text';
 import { isHttpMarkdownLink } from './linkUtils';
 import { openExternalUrl } from '@/utils/openExternalUrl';
@@ -28,7 +29,10 @@ export const MarkdownView = React.memo((props: {
     onOptionPress?: (option: Option) => void;
     sessionId?: string;
 }) => {
-    const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
+    // Experimental: render `$…$` / `$$…$$` LaTeX as math (KaTeX). Off by default,
+    // so the delimiters otherwise show as literal text (upstream behavior).
+    const enableMath = useSetting('expMathRendering');
+    const blocks = React.useMemo(() => parseMarkdown(props.markdown, enableMath), [props.markdown, enableMath]);
     
     // Backwards compatibility: The original version just returned the view, wrapping the list of blocks.
     // It made each of the individual text elements selectable. When we enable the markdownCopyV2 feature,
@@ -74,6 +78,8 @@ export const MarkdownView = React.memo((props: {
                         return <RenderCodeBlock content={block.content} language={block.language} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
                     } else if (block.type === 'mermaid') {
                         return <MermaidRenderer content={block.content} key={index} />;
+                    } else if (block.type === 'math') {
+                        return <MathBlock content={block.content} key={index} />;
                     } else if (block.type === 'options') {
                         return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} />;
                     } else if (block.type === 'table') {
@@ -121,13 +127,26 @@ type RenderSpanProps = {
     onLinkPress: (url: string) => void;
 };
 
+const spansHaveMath = (spans: MarkdownSpan[]) => spans.some(s => s.math);
+
+// RN <Text> can't hold a WebView, so on native a run containing inline math is
+// rendered by InlineMathRun (a single WebView). On web, inline math flows inside
+// the normal <Text>/RenderSpans path, so it keeps the native selectable text.
+const useInlineMathRun = (spans: MarkdownSpan[]) => Platform.OS !== 'web' && spansHaveMath(spans);
+
 function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
+    if (useInlineMathRun(props.spans)) {
+        return <InlineMathRun spans={props.spans} textStyle={{ fontSize: 16, lineHeight: 24 }} onLinkPress={props.onLinkPress} />;
+    }
     return <Text selectable={props.selectable} style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>;
 }
 
 function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
     const s = (style as any)[`header${props.level}`];
     const headerStyle = [style.header, s, props.first && style.first, props.last && style.last];
+    if (useInlineMathRun(props.spans)) {
+        return <InlineMathRun spans={props.spans} textStyle={{ fontSize: props.level === 2 ? 20 : 16, bold: true, lineHeight: 28 }} onLinkPress={props.onLinkPress} />;
+    }
     return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>;
 }
 
@@ -140,7 +159,9 @@ function RenderListBlock(props: { items: { depth: number, spans: MarkdownSpan[] 
             {props.items.map((item, index) => (
                 <View key={index} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingLeft: item.depth * 16 }}>
                     <Text selectable={false} style={[listStyle, { marginRight: 8, marginTop: 1 }]}>{BULLETS[Math.min(item.depth, BULLETS.length - 1)]}</Text>
-                    <Text selectable={props.selectable} style={[listStyle, { flex: 1 }]}><RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>
+                    {useInlineMathRun(item.spans)
+                        ? <View style={{ flex: 1 }}><InlineMathRun spans={item.spans} textStyle={{ fontSize: 16, lineHeight: 24 }} compact onLinkPress={props.onLinkPress} /></View>
+                        : <Text selectable={props.selectable} style={[listStyle, { flex: 1 }]}><RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>}
                 </View>
             ))}
         </View>
@@ -154,7 +175,9 @@ function RenderNumberedListBlock(props: { items: { number: number, depth: number
             {props.items.map((item, index) => (
                 <View key={index} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingLeft: item.depth * 16 }}>
                     <Text selectable={false} style={[listStyle, { marginRight: 8, marginTop: 1 }]}>{item.number}.</Text>
-                    <Text selectable={props.selectable} style={[listStyle, { flex: 1 }]}><RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>
+                    {useInlineMathRun(item.spans)
+                        ? <View style={{ flex: 1 }}><InlineMathRun spans={item.spans} textStyle={{ fontSize: 16, lineHeight: 24 }} compact onLinkPress={props.onLinkPress} /></View>
+                        : <Text selectable={props.selectable} style={[listStyle, { flex: 1 }]}><RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>}
                 </View>
             ))}
         </View>
@@ -264,6 +287,11 @@ function RenderOptionsBlock(props: {
 function RenderSpans(props: RenderSpanProps) {
     return (<>
         {props.spans.map((span, index) => {
+            if (span.math) {
+                // Web: inline KaTeX that flows inside this Text. Native: reached only
+                // for contexts not routed to InlineMathRun (e.g. table cells) → raw TeX.
+                return <MathInline key={index} tex={span.text} />;
+            }
             if (span.url) {
                 const isExternalLink = isHttpMarkdownLink(span.url);
                 return (

@@ -257,6 +257,8 @@ export const en: TranslationStructure = {
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
         imageUploadSubtitle: 'Attach images to messages for supported agents to analyze',
+        mathRendering: 'Math Rendering',
+        mathRenderingSubtitle: 'Render LaTeX math ($…$, $$…$$) in messages',
     },
 
     errors: {

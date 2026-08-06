@@ -242,6 +242,8 @@ export const pt: TranslationStructure = {
         analyticsEnabled: 'Análises anônimas de uso ativas',
         imageUpload: 'Upload de imagens',
         imageUploadSubtitle: 'Anexe imagens às mensagens para que agentes compatíveis as analisem',
+        mathRendering: 'Renderização de matemática',
+        mathRenderingSubtitle: 'Renderiza fórmulas matemáticas LaTeX ($…$, $$…$$) nas mensagens',
     },
 
     errors: {

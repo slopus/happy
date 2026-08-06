@@ -241,6 +241,8 @@ export const it: TranslationStructure = {
         analyticsEnabled: 'Analisi anonime di utilizzo attive',
         imageUpload: 'Caricamento immagini',
         imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare dagli agenti supportati',
+        mathRendering: 'Rendering matematico',
+        mathRenderingSubtitle: 'Renderizza le formule matematiche LaTeX ($…$, $$…$$) nei messaggi',
     },
 
     errors: {

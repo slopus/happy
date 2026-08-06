@@ -10,7 +10,7 @@ function splitTableRow(line: string): string[] {
     return cells;
 }
 
-function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock | null; nextIndex: number } {
+function parseTable(lines: string[], startIndex: number, enableMath: boolean): { table: MarkdownBlock | null; nextIndex: number } {
     let index = startIndex;
     const tableLines: string[] = [];
 
@@ -40,7 +40,7 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
     }
 
     const headers = splitTableRow(tableLines[0])
-        .map(cell => parseMarkdownSpans(cell, false));
+        .map(cell => parseMarkdownSpans(cell, false, enableMath));
 
     if (headers.length === 0) {
         return { table: null, nextIndex: startIndex };
@@ -50,7 +50,7 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
     const rows: MarkdownSpan[][][] = [];
     for (let i = 2; i < tableLines.length; i++) {
         const rowCells = splitTableRow(tableLines[i])
-            .map(cell => parseMarkdownSpans(cell, false));
+            .map(cell => parseMarkdownSpans(cell, false, enableMath));
         if (rowCells.length > 0) {
             rows.push(rowCells);
         }
@@ -65,7 +65,53 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
     return { table, nextIndex: index };
 }
 
-export function parseMarkdownBlock(markdown: string) {
+// Detect a display (block) math region opened on `lines[openIndex]` with `$$` or `\[`.
+// Handles both single-line (`$$ x $$`) and multi-line (`$$` / equation / `$$`) forms.
+// Returns null when the region never closes (e.g. a mid-stream partial, or a stray
+// `$$`/`\[` that is really prose) so the caller falls through to normal text parsing.
+function tryParseMathBlock(lines: string[], openIndex: number): { content: string; nextIndex: number } | null {
+    const openLine = lines[openIndex].trim();
+    const openTok = openLine.startsWith('$$') ? '$$' : '\\[';
+    const closeTok = openTok === '$$' ? '$$' : '\\]';
+    const afterOpen = openLine.slice(openTok.length);
+
+    // Same-line close: `$$ x $$` or `\[ x \]`
+    const sameLineClose = afterOpen.indexOf(closeTok);
+    if (sameLineClose !== -1) {
+        const content = afterOpen.slice(0, sameLineClose).trim();
+        const trailing = afterOpen.slice(sameLineClose + closeTok.length).trim();
+        if (content.length === 0) return null; // empty `$$$$` / `\[\]` — not math
+        // Trailing text after the close (`$$x$$ and more`) means this isn't a
+        // standalone equation — fall through so the span parser renders it as
+        // inline math and keeps the trailing text.
+        if (trailing.length > 0) return null;
+        return { content, nextIndex: openIndex + 1 };
+    }
+
+    // Multi-line: collect until a line that contains the closing token. A blank
+    // line ends the region (paragraph boundary), so an unclosed opener falls
+    // through to text instead of greedily swallowing across paragraphs into a
+    // later equation's delimiter.
+    const collected: string[] = [afterOpen];
+    let i = openIndex + 1;
+    while (i < lines.length) {
+        if (lines[i].trim() === '') return null;
+        const closeAt = lines[i].indexOf(closeTok);
+        if (closeAt !== -1) {
+            const trailing = lines[i].slice(closeAt + closeTok.length).trim();
+            if (trailing.length > 0) return null; // trailing text after close → not a standalone block
+            collected.push(lines[i].slice(0, closeAt));
+            const content = collected.join('\n').trim();
+            if (content.length === 0) return null;
+            return { content, nextIndex: i + 1 };
+        }
+        collected.push(lines[i]);
+        i++;
+    }
+    return null; // unclosed → let the caller treat the opening line as text
+}
+
+export function parseMarkdownBlock(markdown: string, enableMath: boolean = true) {
     const blocks: MarkdownBlock[] = [];
     const lines = markdown.split('\n');
     let index = 0;
@@ -76,7 +122,7 @@ export function parseMarkdownBlock(markdown: string) {
         // Headers
         for (let i = 1; i <= 6; i++) {
             if (line.startsWith(`${'#'.repeat(i)} `)) {
-                blocks.push({ type: 'header', level: i as 1 | 2 | 3 | 4 | 5 | 6, content: parseMarkdownSpans(line.slice(i + 1).trim(), true) });
+                blocks.push({ type: 'header', level: i as 1 | 2 | 3 | 4 | 5 | 6, content: parseMarkdownSpans(line.slice(i + 1).trim(), true, enableMath) });
                 continue outer;
             }
         }
@@ -106,6 +152,19 @@ export function parseMarkdownBlock(markdown: string) {
                 blocks.push({ type: 'code-block', language, content: contentString });
             }
             continue;
+        }
+
+        // Display (block) math: `$$ ... $$` or `\[ ... \]`. A stray/unclosed
+        // opener returns null and falls through to normal text handling.
+        // Gated behind the experimental math setting — when off, the delimiters
+        // are left to normal text parsing (shown literally).
+        if (enableMath && (trimmed.startsWith('$$') || trimmed.startsWith('\\['))) {
+            const math = tryParseMathBlock(lines, index - 1);
+            if (math) {
+                blocks.push({ type: 'math', content: math.content });
+                index = math.nextIndex;
+                continue outer;
+            }
         }
 
         // Horizontal rule
@@ -158,7 +217,7 @@ export function parseMarkdownBlock(markdown: string) {
                 index++;
             }
             const baseIndent = allLines[0].indent;
-            blocks.push({ type: 'numbered-list', items: allLines.map((l) => ({ number: l.number, depth: Math.floor((l.indent - baseIndent) / 2), spans: parseMarkdownSpans(l.content, false) })) });
+            blocks.push({ type: 'numbered-list', items: allLines.map((l) => ({ number: l.number, depth: Math.floor((l.indent - baseIndent) / 2), spans: parseMarkdownSpans(l.content, false, enableMath) })) });
             continue;
         }
 
@@ -177,13 +236,13 @@ export function parseMarkdownBlock(markdown: string) {
                 index++;
             }
             const baseIndent = allLines[0].indent;
-            blocks.push({ type: 'list', items: allLines.map((l) => ({ depth: Math.floor((l.indent - baseIndent) / 2), spans: parseMarkdownSpans(l.content, false) })) });
+            blocks.push({ type: 'list', items: allLines.map((l) => ({ depth: Math.floor((l.indent - baseIndent) / 2), spans: parseMarkdownSpans(l.content, false, enableMath) })) });
             continue;
         }
 
         // Check for table
         if (trimmed.includes('|') && !trimmed.startsWith('```')) {
-            const { table, nextIndex } = parseTable(lines, index - 1);
+            const { table, nextIndex } = parseTable(lines, index - 1, enableMath);
             if (table) {
                 blocks.push(table);
                 index = nextIndex;
@@ -193,7 +252,7 @@ export function parseMarkdownBlock(markdown: string) {
 
         // Fallback
         if (trimmed.length > 0) {
-            blocks.push({ type: 'text', content: parseMarkdownSpans(trimmed, false) });
+            blocks.push({ type: 'text', content: parseMarkdownSpans(trimmed, false, enableMath) });
         }
     }
     return blocks;

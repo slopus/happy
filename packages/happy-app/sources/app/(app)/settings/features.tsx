@@ -18,6 +18,7 @@ export default function FeaturesSettingsScreen() {
     const [fileDiffsSidebar, setFileDiffsSidebar] = useSettingMutable('fileDiffsSidebar');
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [expImageUpload, setExpImageUpload] = useSettingMutable('expImageUpload');
+    const [expMathRendering, setExpMathRendering] = useSettingMutable('expMathRendering');
     const [sortSessionsByActivity, setSortSessionsByActivity] = useSettingMutable('sortSessionsByActivity');
 
     return (
@@ -126,6 +127,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={expImageUpload}
                             onValueChange={setExpImageUpload}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.mathRendering')}
+                    subtitle={t('settingsFeatures.mathRenderingSubtitle')}
+                    icon={<Ionicons name="calculator-outline" size={29} color="#FF9F0A" />}
+                    rightElement={
+                        <Switch
+                            value={expMathRendering}
+                            onValueChange={setExpMathRendering}
                         />
                     }
                     showChevron={false}
