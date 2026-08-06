@@ -29,7 +29,7 @@ Viewport: 1920 × 1080.
 pnpm --filter happy-app exec vitest run \
   sources/utils/desktopNavigationLayout.test.ts \
   sources/components/SidebarView.test.tsx \
-  sources/components/SessionView.agentSpace.test.tsx
+  sources/-session/SessionView.agentSpace.test.tsx
 pnpm --filter happy-app typecheck
 pnpm test:e2e:web -- --grep '桌面三栏工作区支持独立折叠并保留禅模式前的偏好|超宽桌面左右侧栏保持各自最大宽度'
 ```
