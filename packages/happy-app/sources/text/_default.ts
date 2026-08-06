@@ -218,6 +218,8 @@ export const en = {
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
         imageUploadSubtitle: 'Attach images to messages for supported agents to analyze',
+        bashMode: 'Bash Command Mode',
+        bashModeSubtitle: 'Start a message with ! or $ to run it as a shell command',
     },
 
     imageUpload: {
@@ -233,6 +235,13 @@ export const en = {
             : `${count} images could not be uploaded and were not sent.`,
         notSupportedTitle: 'Images Not Supported',
         notSupportedMessage: 'This agent does not support image attachments. Images were not sent.',
+    },
+
+    bashMode: {
+        // !-prefix bash command mode in the chat input
+        noOutput: 'no output',
+        exitCode: ({ code }: { code: number }) => `exited with code ${code}`,
+        failed: ({ error }: { error: string }) => `Could not run command: ${error}`,
     },
 
     errors: {

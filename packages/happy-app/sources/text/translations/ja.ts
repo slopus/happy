@@ -221,6 +221,14 @@ export const ja: TranslationStructure = {
         analyticsEnabled: '匿名の使用状況分析がアクティブ',
         imageUpload: '画像アップロード',
         imageUploadSubtitle: '対応エージェントに分析させるため、メッセージに画像を添付する',
+        bashMode: 'Bashコマンドモード',
+        bashModeSubtitle: 'メッセージを ! または $ で始めるとシェルコマンドとして実行します',
+    },
+
+    bashMode: {
+        noOutput: '出力なし',
+        exitCode: ({ code }: { code: number }) => `コード ${code} で終了しました`,
+        failed: ({ error }: { error: string }) => `コマンドを実行できませんでした: ${error}`,
     },
 
     errors: {
