@@ -65,7 +65,7 @@ import { useRouter, useNavigation } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -128,48 +128,98 @@ function SessionHeaderTitle({
     tintColor?: string;
 }) {
     const { theme } = useUnistyles();
+    const [editing, setEditing] = React.useState(false);
+    const [draftTitle, setDraftTitle] = React.useState(title);
     const [tooltipVisible, setTooltipVisible] = React.useState(false);
-    const { renameSession, renamingSession } = useSessionQuickActions(session);
+    const editingRef = React.useRef(false);
+    const draftTitleRef = React.useRef(title);
+    const { renameSessionToTitle, renamingSession } = useSessionQuickActions(session);
     const sessionStatus = useSessionStatus(session);
 
-    const handleRename = React.useCallback(() => {
+    React.useEffect(() => {
+        if (!editingRef.current) {
+            draftTitleRef.current = title;
+            setDraftTitle(title);
+        }
+    }, [title]);
+
+    const beginEditing = React.useCallback(() => {
         setTooltipVisible(false);
-        renameSession();
-    }, [renameSession]);
+        draftTitleRef.current = title;
+        setDraftTitle(title);
+        editingRef.current = true;
+        setEditing(true);
+    }, [title]);
+
+    const finishEditing = React.useCallback((save: boolean) => {
+        if (!editingRef.current) {
+            return;
+        }
+        editingRef.current = false;
+        setEditing(false);
+
+        if (save) {
+            renameSessionToTitle(draftTitleRef.current);
+        } else {
+            draftTitleRef.current = title;
+            setDraftTitle(title);
+        }
+    }, [renameSessionToTitle, title]);
+
+    const handleDraftTitleChange = React.useCallback((value: string) => {
+        draftTitleRef.current = value;
+        setDraftTitle(value);
+    }, []);
 
     return (
         <View style={workspaceStyles.headerTitleWrapper}>
             <View style={workspaceStyles.headerTitleLine}>
-                <Pressable
-                    accessibilityLabel={`${t('sessionInfo.renameSession')}: ${title}`}
-                    accessibilityRole="button"
-                    {...({ tabIndex: 0 } as any)}
-                    onBlur={() => setTooltipVisible(false)}
-                    onFocus={() => setTooltipVisible(true)}
-                    onHoverIn={() => setTooltipVisible(true)}
-                    onHoverOut={() => setTooltipVisible(false)}
-                    onPress={handleRename}
-                    style={workspaceStyles.headerTitleTarget}
-                    testID="session-header-title"
-                >
-                    <Text
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
-                        style={[workspaceStyles.headerTitleText, tintColor ? { color: tintColor } : null]}
+                {editing ? (
+                    <TextInput
+                        accessibilityLabel={t('sessionInfo.renameSession')}
+                        autoFocus
+                        onBlur={() => finishEditing(true)}
+                        onChangeText={handleDraftTitleChange}
+                        onKeyPress={(event) => {
+                            if (event.nativeEvent.key === 'Escape') {
+                                finishEditing(false);
+                            }
+                        }}
+                        onSubmitEditing={() => finishEditing(true)}
+                        returnKeyType="done"
+                        selectTextOnFocus
+                        style={[
+                            workspaceStyles.headerTitleInput,
+                            tintColor ? { color: tintColor, borderColor: tintColor } : null,
+                        ]}
+                        testID="session-header-title-input"
+                        value={draftTitle}
+                    />
+                ) : (
+                    <Pressable
+                        accessibilityLabel={`${t('sessionInfo.renameSession')}: ${title}`}
+                        accessibilityRole="button"
+                        {...({ tabIndex: 0 } as any)}
+                        onBlur={() => setTooltipVisible(false)}
+                        onFocus={() => setTooltipVisible(true)}
+                        onHoverIn={() => setTooltipVisible(true)}
+                        onHoverOut={() => setTooltipVisible(false)}
+                        onPress={beginEditing}
+                        style={workspaceStyles.headerTitleTarget}
+                        testID="session-header-title"
                     >
-                        {title}
-                    </Text>
-                    {renamingSession ? (
-                        <ActivityIndicator size="small" color={tintColor ?? theme.colors.header.tint} />
-                    ) : (
-                        <Ionicons
-                            name="create-outline"
-                            size={14}
-                            color={tintColor ?? theme.colors.textSecondary}
-                            testID="session-header-title-edit-icon"
-                        />
-                    )}
-                </Pressable>
+                        <Text
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                            style={[workspaceStyles.headerTitleText, tintColor ? { color: tintColor } : null]}
+                        >
+                            {title}
+                        </Text>
+                    </Pressable>
+                )}
+                {renamingSession ? (
+                    <ActivityIndicator size="small" color={tintColor ?? theme.colors.header.tint} />
+                ) : null}
                 <View
                     accessibilityLabel={sessionStatus.statusText}
                     style={workspaceStyles.headerRunStatus}
@@ -189,7 +239,7 @@ function SessionHeaderTitle({
                 label={title}
                 multiline
                 testID="session-header-title-tooltip"
-                visible={tooltipVisible}
+                visible={tooltipVisible && !editing}
             />
         </View>
     );
@@ -203,7 +253,6 @@ function SessionHeaderMoreAction({
     onPress: () => void;
 }) {
     const { theme } = useUnistyles();
-    const [tooltipVisible, setTooltipVisible] = React.useState(false);
     const label = t('sessionInfo.viewDetails');
 
     return (
@@ -213,10 +262,6 @@ function SessionHeaderMoreAction({
                 accessibilityRole="button"
                 accessibilityState={{ expanded }}
                 aria-expanded={expanded}
-                onBlur={() => setTooltipVisible(false)}
-                onFocus={() => setTooltipVisible(true)}
-                onHoverIn={() => setTooltipVisible(true)}
-                onHoverOut={() => setTooltipVisible(false)}
                 onPress={onPress}
                 hitSlop={8}
                 style={({ pressed }) => [
@@ -232,12 +277,6 @@ function SessionHeaderMoreAction({
                     color={theme.colors.header.tint}
                 />
             </Pressable>
-            <DesktopShortcutTooltip
-                align="right"
-                label={label}
-                testID="session-header-more-tooltip"
-                visible={tooltipVisible}
-            />
         </View>
     );
 }
@@ -440,8 +479,13 @@ export const SessionView = React.memo((props: { id: string }) => {
             onPress={() => setInfoPanelOpen(v => !v)}
         />
     ) : undefined;
+    const desktopWebHeader = Platform.OS === 'web' && isTablet;
     const headerTitleSlot = showChip ? (
-        isTablet ? (
+        desktopWebHeader ? (
+            <View style={workspaceStyles.headerIdentity}>
+                <SessionHeaderTitle session={session!} title={headerProps.title} />
+            </View>
+        ) : isTablet ? (
             <View style={workspaceStyles.headerIdentity}>
                 <SessionHeaderTitle session={session!} title={headerProps.title} />
                 <View style={workspaceStyles.headerAgentChip}>
@@ -1447,6 +1491,20 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         color: theme.colors.header.tint,
         fontSize: 14,
         fontWeight: '600',
+    },
+    headerTitleInput: {
+        minHeight: 32,
+        flex: 1,
+        minWidth: 0,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderWidth: 1,
+        borderRadius: 8,
+        borderColor: theme.colors.textLink,
+        color: theme.colors.header.tint,
+        fontSize: 14,
+        fontWeight: '600',
+        ...Platform.select({ web: { outlineStyle: 'none' } as any, default: {} }),
     },
     headerRunStatus: {
         maxWidth: 122,

@@ -2441,12 +2441,10 @@ for (const width of [800, 1280]) {
         await expect(page.getByTestId('compose-home-back-button')).toHaveCount(0);
         const navigationControls = page.getByTestId('desktop-navigation-controls');
         const backButton = page.getByTestId('desktop-navigation-back-button');
-        const modelChip = page.locator('[data-testid="compose-home-model-chip"]:visible');
         const controlsBox = await navigationControls.boundingBox();
-        const modelChipBox = await modelChip.boundingBox();
         expect(controlsBox).not.toBeNull();
-        expect(modelChipBox).not.toBeNull();
-        expect(modelChipBox!.x - 8).toBeGreaterThanOrEqual(controlsBox!.x + controlsBox!.width + 10);
+        await expect(page.locator('[data-testid="compose-home-model-chip"]:visible')).toHaveCount(1);
+        await expect(page.locator('[data-testid="new-session-composer-controls"]:visible')).toBeVisible();
         await expect(backButton).toBeEnabled();
         await backButton.click();
 
@@ -2455,13 +2453,25 @@ for (const width of [800, 1280]) {
     });
 }
 
+test('窄屏新建会话保留头部配置下拉且不重复渲染底栏入口', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(authenticatedRoute('/new'));
+    await expect(page.getByRole('textbox')).toBeVisible();
+
+    const modelChip = page.locator('[data-testid="compose-home-model-chip"]:visible');
+    await expect(modelChip).toBeVisible();
+    await expect(page.getByTestId('new-session-composer-controls')).toHaveCount(0);
+    await modelChip.click();
+    await expect(page.getByTestId('compose-home-config-panel')).toBeVisible();
+});
+
 for (const width of [1024, 1280, 1440]) {
     test(`宽度 ${width}px 的模型选择器使用有边界的 PC 弹窗`, async ({ page }) => {
         await page.setViewportSize({ width, height: 720 });
         await page.goto(authenticatedRoute('/new'));
         await expect(page.getByRole('textbox')).toBeVisible();
 
-        await page.locator('[data-testid="compose-home-model-chip"]:visible').click();
+        await page.locator('[data-testid="new-session-composer-controls"]:visible [data-testid="compose-home-model-chip"]:visible').click();
         const configPanel = page.getByTestId('compose-home-config-panel');
         await expect(configPanel).toBeVisible();
         const configBox = await configPanel.boundingBox();
@@ -2503,7 +2513,7 @@ test('桌面 Machine Picker 各关闭入口重复退出后都把焦点返回触�
 
     const machineTrigger = page.getByTestId('session-config-machine-trigger');
     if (!await machineTrigger.isVisible()) {
-        await page.locator('[data-testid="compose-home-model-chip"]:visible').click();
+        await page.locator('[data-testid="new-session-composer-controls"]:visible [data-testid="compose-home-model-chip"]:visible').click();
     }
     await expect(machineTrigger).toBeVisible();
 
@@ -2536,7 +2546,7 @@ test('桌面 Machine 与 Agent Picker 支持标准键盘激活并在关闭后回
 
     const machineTrigger = page.getByTestId('session-config-machine-trigger');
     if (!await machineTrigger.isVisible()) {
-        await page.locator('[data-testid="compose-home-model-chip"]:visible').click();
+        await page.locator('[data-testid="new-session-composer-controls"]:visible [data-testid="compose-home-model-chip"]:visible').click();
     }
 
     for (const picker of [
@@ -2593,11 +2603,9 @@ for (const width of [1024, 1280, 1440]) {
         await zenButton.click();
 
         const controlsBox = await page.getByTestId('desktop-navigation-controls').boundingBox();
-        const targetBox = await page.locator('[data-testid="compose-home-model-chip"]:visible').boundingBox();
         expect(controlsBox).not.toBeNull();
-        expect(targetBox).not.toBeNull();
         expect(controlsBox!.x).toBeLessThanOrEqual(32);
-        expect(targetBox!.x - 8).toBeGreaterThanOrEqual(controlsBox!.x + controlsBox!.width + 10);
+        await expect(page.locator('[data-testid="new-session-composer-controls"]:visible')).toBeVisible();
 
         await zenButton.click();
     });

@@ -96,7 +96,11 @@ test('[TITLE-ZEN-UX] PC title, header, new-session controls, and zen icon match 
     }
     await pauseForRecordedReview(page);
     await captureCase(page, testInfo, 1);
-    await page.keyboard.press('Escape');
+    if (evidencePhase === 'before') {
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    } else {
+        await page.keyboard.press('Escape');
+    }
 
     if (evidencePhase === 'before') {
         const agentChip = page.locator('[data-testid="session-header-chip"]:visible');
@@ -141,7 +145,7 @@ test('[TITLE-ZEN-UX] PC title, header, new-session controls, and zen icon match 
         await expect(selectedZenIcon).toHaveAttribute('data-icon-name', 'leaf-outline');
         expect(await selectedZenIcon.evaluate(element => window.getComputedStyle(element).color)).toBe(initialIconColor);
         expect(await zenButton.textContent()).toBe(initialZenGlyph);
-        await expect(page.locator('[data-testid="new-session-composer-controls"]:visible')).toHaveCount(0);
+        await expect(page.locator('[data-testid="new-session-composer-controls"]:visible')).toBeVisible();
     }
     await pauseForRecordedReview(page);
     await captureCase(page, testInfo, 4);

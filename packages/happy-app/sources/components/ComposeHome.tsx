@@ -127,6 +127,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const { width: windowWidth } = useWindowDimensions();
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
+    const useDesktopComposerConfig = Platform.OS === 'web' && isTablet;
     const profile = useProfile();
     const machines = useAllMachines();
     const askApi = useLocalSetting('askApi');
@@ -785,7 +786,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const composeContent = (
         <View style={styles.container}>
             <Header
-                title={modelChip}
+                title={useDesktopComposerConfig ? undefined : modelChip}
                 headerShadowVisible={false}
                 headerTransparent={true}
                 headerContentLeftInset={persistentHeaderContentInset}
@@ -1034,6 +1035,11 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         onPickImages={canAttach ? (activeImageAgent ? pickImages : pickAttachment) : undefined}
                         onRemoveImage={canAttach ? removeImage : undefined}
                         onAddImages={canAttach ? addImages : undefined}
+                        leadingControls={useDesktopComposerConfig ? (
+                            <View testID="new-session-composer-controls">
+                                {modelChip}
+                            </View>
+                        ) : undefined}
                     />
                     <Text style={styles.byline}>{t('composeHome.byline')}</Text>
                 </View>

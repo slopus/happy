@@ -263,7 +263,31 @@ export function useSessionQuickActions(
         performRestore();
     }, [performRestore]);
 
-    const [renamingSession, performRename] = useHappyAction(async () => {
+    const updateSessionTitle = React.useCallback(async (nextTitle: string) => {
+        if (!session.metadata) {
+            throw new HappyError(t('sessionInfo.renameSessionMissingMetadata'), false);
+        }
+
+        const trimmedTitle = nextTitle.trim();
+        if (!trimmedTitle || trimmedTitle === getSessionName(session)) {
+            return;
+        }
+
+        await sessionUpdateMetadata(
+            session.id,
+            session.metadata,
+            session.metadataVersion,
+            metadata => ({
+                ...metadata,
+                summary: {
+                    text: trimmedTitle,
+                    updatedAt: Date.now(),
+                },
+            }),
+        );
+    }, [session]);
+
+    const [renamingFromPrompt, performRename] = useHappyAction(async () => {
         if (!session.metadata) {
             throw new HappyError(t('sessionInfo.renameSessionMissingMetadata'), false);
         }
@@ -284,28 +308,19 @@ export function useSessionQuickActions(
             return;
         }
 
-        const trimmedTitle = nextTitle.trim();
-        if (!trimmedTitle) {
-            return;
-        }
-
-        await sessionUpdateMetadata(
-            session.id,
-            session.metadata,
-            session.metadataVersion,
-            metadata => ({
-                ...metadata,
-                summary: {
-                    text: trimmedTitle,
-                    updatedAt: Date.now(),
-                },
-            }),
-        );
+        await updateSessionTitle(nextTitle);
     });
+
+    const [renamingInline, performInlineRename] = useHappyAction(updateSessionTitle);
+    const renamingSession = renamingFromPrompt || renamingInline;
 
     const renameSession = React.useCallback(() => {
         performRename();
     }, [performRename]);
+
+    const renameSessionToTitle = React.useCallback((nextTitle: string) => {
+        performInlineRename(nextTitle);
+    }, [performInlineRename]);
 
     const [regeneratingTitle, performRegenerateTitle] = useHappyAction(async () => {
         if (!session.metadata || !sessionStatus.isConnected) {
@@ -514,6 +529,7 @@ export function useSessionQuickActions(
         regenerateTitle,
         regeneratingTitle,
         renameSession,
+        renameSessionToTitle,
         renamingSession,
         resumeSession,
         resumeSessionSubtitle: resumeAvailability.subtitle,

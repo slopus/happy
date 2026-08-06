@@ -90,6 +90,8 @@ interface MessageComposerProps {
     isSending?: boolean;
     minHeight?: number;
     zenMode?: boolean;
+    /** Optional controls rendered at the leading edge of the composer's footer. */
+    leadingControls?: React.ReactNode;
     /** Running-session model/effort controls. Picks affect future messages only. */
     modeSelector?: SessionComposerModeSelectorConfig;
     /** Friendly per-turn permission controls. Picks affect future messages only. */
@@ -942,6 +944,8 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                 {props.zenMode && <View style={{ flex: 1 }} />}
                                 {!props.zenMode && <View style={styles.actionButtonsLeft}>
+
+                                {props.leadingControls}
 
                                 {isSession && props.directorySelector && supportsDesktopComposerModeSelector({
                                     isWeb: Platform.OS === 'web',
