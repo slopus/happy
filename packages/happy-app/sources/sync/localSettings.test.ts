@@ -59,6 +59,14 @@ describe('localSettings desktop workspace panels', () => {
     });
 });
 
+describe('localSettings session list layout', () => {
+    it('defaults older installs to project grouping and restores the time layout', () => {
+        expect(localSettingsDefaults.sessionListLayout).toBe('projects');
+        expect(localSettingsParse({}).sessionListLayout).toBe('projects');
+        expect(localSettingsParse({ sessionListLayout: 'time' }).sessionListLayout).toBe('time');
+    });
+});
+
 describe('localSettings ask API config', () => {
     it('defaults to an unconfigured ask API', () => {
         expect(localSettingsDefaults.askApi).toEqual({

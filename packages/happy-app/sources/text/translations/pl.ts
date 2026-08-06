@@ -808,6 +808,8 @@ export const pl: TranslationStructure = {
         showArchived: 'Pokaż zarchiwizowane',
         hideArchived: 'Ukryj zarchiwizowane',
         newSession: 'Nowa sesja',
+        sortSessionsByTime: 'Sortuj sesje według czasu',
+        groupSessionsByProject: 'Grupuj sesje według projektu',
         emptySessionsTitle: 'Brak aktywnych sesji',
         emptySessionsOnlineDescription: 'Rozpocznij nową sesję na dowolnej z połączonych maszyn.',
         emptySessionsOfflineDescription: 'Otwórz nowy terminal na komputerze, aby rozpocząć sesję.',

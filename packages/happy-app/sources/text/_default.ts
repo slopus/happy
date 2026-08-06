@@ -831,6 +831,8 @@ export const en = {
         showArchived: 'Show archived',
         hideArchived: 'Hide archived',
         newSession: 'New session',
+        sortSessionsByTime: 'Sort sessions by time',
+        groupSessionsByProject: 'Group sessions by project',
         emptySessionsTitle: 'No active sessions',
         emptySessionsOnlineDescription: 'Start a new session on any of your connected machines.',
         emptySessionsOfflineDescription: 'Open a new terminal on your computer to start a session.',

@@ -791,6 +791,8 @@ export const pt: TranslationStructure = {
         showArchived: 'Mostrar arquivadas',
         hideArchived: 'Ocultar arquivadas',
         newSession: 'Nova sessão',
+        sortSessionsByTime: 'Ordenar sessões por data',
+        groupSessionsByProject: 'Agrupar sessões por projeto',
         emptySessionsTitle: 'Nenhuma sessão ativa',
         emptySessionsOnlineDescription: 'Inicie uma nova sessão em qualquer uma das suas máquinas conectadas.',
         emptySessionsOfflineDescription: 'Abra um novo terminal no computador para iniciar uma sessão.',
