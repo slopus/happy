@@ -7,6 +7,7 @@ import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import type { MachineMetadata, Metadata, Session } from './storageTypes';
 import { markSessionArchiveRequested, markSessionRestored } from '@/utils/sessionLifecycle';
+import { updateEncryptedSessionMetadata } from './sessionMetadata';
 
 // Strict type definitions for all operations
 
@@ -579,49 +580,18 @@ export async function sessionUpdateMetadata(
     update: (metadata: Metadata) => Metadata,
     maxRetries: number = 3,
 ): Promise<{ version: number; metadata: Metadata }> {
-    let currentVersion = expectedVersion;
-    let currentMetadata = { ...metadata };
-
     const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
     if (!sessionEncryption) {
         throw new Error(`Session encryption not found for ${sessionId}`);
     }
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-        const nextMetadata = update(currentMetadata);
-        const encryptedMetadata = await sessionEncryption.encryptRaw(nextMetadata);
-
-        const result = await apiSocket.emitWithAck<{
-            result: 'success' | 'version-mismatch' | 'error';
-            version?: number;
-            metadata?: string;
-            message?: string;
-        }>('update-metadata', {
-            sid: sessionId,
-            expectedVersion: currentVersion,
-            metadata: encryptedMetadata,
-        });
-
-        if (result.result === 'success') {
-            return {
-                version: result.version!,
-                metadata: await sessionEncryption.decryptRaw(result.metadata!) as Metadata,
-            };
-        }
-
-        if (result.result === 'version-mismatch') {
-            if (typeof result.version !== 'number' || typeof result.metadata !== 'string') {
-                throw new Error('Session metadata version mismatch');
-            }
-            currentVersion = result.version;
-            currentMetadata = await sessionEncryption.decryptRaw(result.metadata) as Metadata;
-            continue;
-        }
-
-        throw new Error(result.message || 'Failed to update session metadata');
-    }
-
-    throw new Error(`Failed to update session metadata after ${maxRetries} retries due to version conflicts`);
+    return updateEncryptedSessionMetadata(
+        sessionId,
+        metadata,
+        expectedVersion,
+        sessionEncryption,
+        update,
+        maxRetries,
+    );
 }
 
 export async function sessionRequestArchiveMetadata(

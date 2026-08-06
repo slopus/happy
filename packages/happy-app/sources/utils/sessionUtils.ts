@@ -1,10 +1,14 @@
-import * as React from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
 
-export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
+export type SessionState = 'idle' | 'running' | 'permission_required' | 'failed' | 'completed';
+
+export interface ResolvedSessionState {
+    state: SessionState;
+    isConnected: boolean;
+}
 
 export interface SessionStatus {
     state: SessionState;
@@ -16,62 +20,57 @@ export interface SessionStatus {
     isPulsing?: boolean;
 }
 
-/**
- * Get the current state of a session based on presence and thinking status.
- * Uses centralized session state from storage.ts
- */
+export function getSessionStateLabel(state: SessionState): string {
+    return {
+        idle: t('status.idle'),
+        running: t('status.running'),
+        permission_required: t('status.permissionRequired'),
+        failed: t('status.failed'),
+        completed: t('status.completed'),
+    }[state];
+}
+
+export function resolveSessionState(session: Pick<Session, 'agentState' | 'presence' | 'thinking'>): ResolvedSessionState {
+    const isOnline = session.presence === "online";
+    const hasPermissions = !!(session.agentState?.requests && Object.keys(session.agentState.requests).length > 0);
+    if (hasPermissions) {
+        return { state: 'permission_required', isConnected: isOnline };
+    }
+    const persisted = session.agentState?.turnStatus?.status;
+    if (isOnline && (session.thinking === true || persisted === 'running')) {
+        return { state: 'running', isConnected: true };
+    }
+    if (persisted === 'failed') {
+        return { state: 'failed', isConnected: isOnline };
+    }
+    if (persisted === 'completed') {
+        return { state: 'completed', isConnected: isOnline };
+    }
+    return { state: 'idle', isConnected: isOnline };
+}
+
+/** Resolve the canonical five-state outcome plus an orthogonal connection state. */
 export function useSessionStatus(session: Session): SessionStatus {
     const { theme } = useUnistyles();
-    const isOnline = session.presence === "online";
-    const hasPermissions = (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
-
-    const vibingMessage = React.useMemo(() => {
-        return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
-    }, [isOnline, hasPermissions, session.thinking]);
-
-    if (!isOnline) {
-        return {
-            state: 'disconnected',
-            isConnected: false,
-            statusText: t('status.lastSeen', { time: formatLastSeen(session.activeAt, false) }),
-            shouldShowStatus: true,
-            statusColor: '#999',
-            statusDotColor: '#999'
-        };
-    }
-
-    // Check if permission is required
-    if (hasPermissions) {
-        return {
-            state: 'permission_required',
-            isConnected: true,
-            statusText: t('status.permissionRequired'),
-            shouldShowStatus: true,
-            statusColor: '#FF9500',
-            statusDotColor: '#FF9500',
-            isPulsing: true
-        };
-    }
-
-    if (session.thinking === true) {
-        return {
-            state: 'thinking',
-            isConnected: true,
-            statusText: vibingMessage,
-            shouldShowStatus: true,
-            statusColor: theme.colors.accent,
-            statusDotColor: theme.colors.accent,
-            isPulsing: true
-        };
-    }
+    const resolved = resolveSessionState(session);
+    const colors: Record<SessionState, string> = {
+        idle: resolved.isConnected ? '#34C759' : '#999999',
+        running: theme.colors.accent,
+        permission_required: '#FF9500',
+        failed: '#FF3B30',
+        completed: '#34C759',
+    };
+    const offlineText = resolved.isConnected
+        ? ''
+        : ` · ${t('status.lastSeen', { time: formatLastSeen(session.activeAt, false) })}`;
 
     return {
-        state: 'waiting',
-        isConnected: true,
-        statusText: t('status.online'),
-        shouldShowStatus: false,
-        statusColor: '#34C759',
-        statusDotColor: '#34C759'
+        ...resolved,
+        statusText: `${getSessionStateLabel(resolved.state)}${offlineText}`,
+        shouldShowStatus: true,
+        statusColor: colors[resolved.state],
+        statusDotColor: colors[resolved.state],
+        isPulsing: resolved.state === 'running' || resolved.state === 'permission_required',
     };
 }
 

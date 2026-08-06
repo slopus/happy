@@ -559,6 +559,113 @@ describe('ApiSessionClient v3 messages API migration', () => {
         });
     });
 
+    it('persists root protocol lifecycle outcomes and keeps them after the normal ready event', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValue({ data: { messages: [] } });
+        let version = 0;
+        mockSocket.emitWithAck.mockImplementation(async (event: string, payload: any) => {
+            if (event !== 'update-state') return { result: 'error' };
+            version += 1;
+            return { result: 'success', version, agentState: payload.agentState };
+        });
+
+        client.sendSessionProtocolMessage({
+            id: 'start-1', time: 100, role: 'agent', turn: 'turn-1', ev: { t: 'turn-start' },
+        });
+        client.sendSessionProtocolMessage({
+            id: 'end-1', time: 101, role: 'agent', turn: 'turn-1', ev: { t: 'turn-end', status: 'completed' },
+        });
+
+        await waitForCheck(() => expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2));
+        const terminalPayload = mockSocket.emitWithAck.mock.calls[1][1];
+        expect(decrypt(session.encryptionKey, session.encryptionVariant, decodeBase64(terminalPayload.agentState))).toEqual({
+            turnStatus: { status: 'completed', updatedAt: 101, turnId: 'turn-1' },
+        });
+
+        client.sendSessionEvent({ type: 'ready' });
+        await new Promise(resolve => setTimeout(resolve, 10));
+        expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
+    });
+
+    it('ignores subagent lifecycle envelopes for the root persisted status', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValue({ data: { messages: [] } });
+
+        client.sendSessionProtocolMessage({
+            id: 'child-start',
+            time: 100,
+            role: 'agent',
+            turn: 'child-turn',
+            subagent: 'child-1',
+            ev: { t: 'turn-start' },
+        });
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        expect(mockSocket.emitWithAck).not.toHaveBeenCalled();
+    });
+
+    it('fresh ready clears stale running while preserving permission state through a version retry', async () => {
+        (session as any).agentState = { turnStatus: { status: 'running', updatedAt: 50, turnId: 'stale-turn' } };
+        session.agentStateVersion = 2;
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValue({ data: { messages: [] } });
+        const latest = {
+            requests: { permission: { tool: 'Bash', arguments: {}, createdAt: 1 } },
+            turnStatus: { status: 'running', updatedAt: 50, turnId: 'stale-turn' },
+        };
+        mockSocket.emitWithAck
+            .mockResolvedValueOnce({
+                result: 'version-mismatch',
+                version: 3,
+                agentState: encryptContent(session, latest),
+            })
+            .mockImplementationOnce(async (_event: string, payload: any) => ({
+                result: 'success',
+                version: 4,
+                agentState: payload.agentState,
+            }));
+
+        client.sendSessionEvent({ type: 'ready' });
+
+        await waitForCheck(() => expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2));
+        expect(mockSocket.emitWithAck.mock.calls[1][1].expectedVersion).toBe(3);
+        expect(decrypt(
+            session.encryptionKey,
+            session.encryptionVariant,
+            decodeBase64(mockSocket.emitWithAck.mock.calls[1][1].agentState),
+        )).toEqual({ requests: latest.requests });
+    });
+
+    it('maps legacy Gemini aborts conservatively while preserving explicit failures', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValue({ data: { messages: [] } });
+        mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: any) => ({
+            result: 'success',
+            version: 1,
+            agentState: payload.agentState,
+        }));
+
+        client.sendAgentMessage('gemini', { type: 'turn_aborted', id: 'legacy-abort' });
+        await waitForCheck(() => expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1));
+        expect(decrypt(
+            session.encryptionKey,
+            session.encryptionVariant,
+            decodeBase64(mockSocket.emitWithAck.mock.calls[0][1].agentState),
+        )).toEqual({
+            turnStatus: expect.objectContaining({ status: 'cancelled', turnId: 'legacy-abort' }),
+        });
+
+        client.sendAgentMessage('gemini', { type: 'turn_aborted', id: 'error-abort', status: 'failed' });
+        await waitForCheck(() => expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2));
+        expect(decrypt(
+            session.encryptionKey,
+            session.encryptionVariant,
+            decodeBase64(mockSocket.emitWithAck.mock.calls[1][1].agentState),
+        )).toEqual({
+            turnStatus: expect.objectContaining({ status: 'failed', turnId: 'error-abort' }),
+        });
+    });
+
     it('fetchMessages uses after_seq=0 initially and routes user messages to callback', async () => {
         const client = new ApiSessionClient('fake-token', session);
         const onUserMessage = vi.fn();

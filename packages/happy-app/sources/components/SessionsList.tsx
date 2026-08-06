@@ -4,7 +4,7 @@ import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem, SessionRowData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
+import { type SessionState, getSessionStateLabel } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -539,11 +539,12 @@ export function SessionsList() {
     );
 }
 
-const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
-    disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
-    thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
-    waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
-    permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
+const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean }> = {
+    idle: { color: '#6B7280', dotColor: '#9CA3AF', isPulsing: false },
+    running: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true },
+    permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true },
+    failed: { color: '#FF3B30', dotColor: '#FF3B30', isPulsing: false },
+    completed: { color: '#34C759', dotColor: '#34C759', isPulsing: false },
 };
 
 const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, bulkSelected, selectionMode, onStartSelection, onToggleSelection }: {
@@ -566,22 +567,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
     const baseStatus = STATUS_CONFIG[session.state];
     // Override to solid blue when session has unread results
     const status = session.hasUnread
-        ? { ...baseStatus, color: theme.colors.accent, dotColor: theme.colors.accent, isPulsing: false, isConnected: baseStatus.isConnected }
+        ? { ...baseStatus, dotColor: theme.colors.accent, isPulsing: false }
         : baseStatus;
-
-    const vibingMessage = React.useMemo(() => {
-        return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
-    }, [session.state]);
-
-    const statusText = session.hasUnread
-        ? t('status.unread')
-        : session.state === 'thinking'
-            ? vibingMessage
-            : session.state === 'disconnected'
-                ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
-                : session.state === 'permission_required'
-                    ? t('status.permissionRequired')
-                    : t('status.online');
+    const statusText = `${getSessionStateLabel(session.state)}${session.isConnected ? '' : ` · ${t('status.disconnected')}`}`;
 
     const handlePress = React.useCallback(() => {
         if (selectionMode) {
@@ -640,7 +628,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
             ]}
         >
             <Pressable
-                accessibilityLabel={session.name}
+                accessibilityLabel={`${session.name}, ${statusText}`}
                 accessibilityRole="button"
                 accessibilityState={{ selected: !!selected }}
                 aria-current={selected ? 'page' : undefined}
@@ -662,7 +650,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
                         ) : null}
                     </View>
                 ) : (
-                    <Avatar id={session.avatarId} size={48} monochrome={!status.isConnected} flavor={session.flavor} />
+                    <Avatar id={session.avatarId} size={48} monochrome={!session.isConnected} flavor={session.flavor} />
                 )}
                 {!selectionMode && session.hasDraft && (
                     <View style={styles.draftIconContainer}>
@@ -678,7 +666,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
                 <View style={styles.sessionTitleRow}>
                     <Text style={[
                         styles.sessionTitle,
-                        status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                        session.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
                     ]} numberOfLines={1} testID="session-row-title" {...titleHint}>
                         {session.name}
                     </Text>

@@ -114,10 +114,11 @@ export function useSessionRowPresentation(session: SessionRowData): SessionRowPr
         unknownLocation: t('sessionInfo.sessionRowUnknownLocation'),
         unknownAgent: t('sessionInfo.sessionRowUnknownAgent'),
         status: {
-            disconnected: t('status.disconnected'),
-            thinking: t('status.activeNow'),
-            waiting: t('status.online'),
+            idle: t('status.idle'),
+            running: t('status.running'),
             permission_required: t('status.permissionRequired'),
+            failed: t('status.failed'),
+            completed: t('status.completed'),
         },
         relativeTime: (timestamp) => formatLastSeen(timestamp, false),
     }), [machineName, session]);

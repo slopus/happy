@@ -9,14 +9,16 @@ import { layout } from '../layout';
 import { useLocalSetting } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
+import { PermissionFooter } from './PermissionFooter';
 
 interface ToolFullViewProps {
     tool: ToolCall;
     metadata?: Metadata | null;
     messages?: Message[];
+    sessionId?: string;
 }
 
-export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProps) {
+export function ToolFullView({ tool, metadata, messages = [], sessionId }: ToolFullViewProps) {
     // Check if there's a specialized content view for this tool
     const SpecializedFullView = getToolFullViewComponent(tool.name);
     const screenWidth = useWindowDimensions().width;
@@ -26,6 +28,17 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
     return (
         <ScrollView style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
             <View style={styles.contentWrapper}>
+                {tool.permission && sessionId && tool.name !== 'AskUserQuestion' ? (
+                    <View style={styles.permissionFooter}>
+                        <PermissionFooter
+                            metadata={metadata}
+                            permission={tool.permission}
+                            sessionId={sessionId}
+                            toolInput={tool.input}
+                            toolName={tool.name}
+                        />
+                    </View>
+                ) : null}
                 {/* Tool-specific content or generic fallback */}
                 {SpecializedFullView ? (
                     <SpecializedFullView tool={tool} metadata={metadata || null} messages={messages} />
@@ -131,6 +144,10 @@ const styles = StyleSheet.create((theme) => ({
         maxWidth: layout.maxWidth,
         alignSelf: 'center',
         width: '100%',
+    },
+    permissionFooter: {
+        paddingHorizontal: 4,
+        paddingTop: 4,
     },
     section: {
         marginBottom: 28,

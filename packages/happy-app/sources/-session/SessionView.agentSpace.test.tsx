@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
     navigationDispatch: vi.fn(),
     styleUseVariants: vi.fn(),
     switchDirectory: vi.fn(),
+    renameSession: vi.fn(),
     session: {
         id: 'session-1',
         seq: 1,
@@ -185,7 +186,13 @@ vi.mock('@/hooks/useImagePicker', () => ({
     }),
 }));
 vi.mock('@/hooks/useSessionQuickActions', () => ({
-    useSessionQuickActions: () => ({ canResume: false, resumeSession: vi.fn(), resumingSession: false }),
+    useSessionQuickActions: () => ({
+        canResume: false,
+        renameSession: mocks.renameSession,
+        renamingSession: false,
+        resumeSession: vi.fn(),
+        resumingSession: false,
+    }),
 }));
 vi.mock('@/hooks/useSessionWorkingDirectory', () => ({
     useSessionWorkingDirectory: () => ({
@@ -370,6 +377,8 @@ describe('SessionView Agent-space boundary', () => {
         expect(title).toBeDefined();
         expect(title.props.style).toMatchObject({ flex: 1, minWidth: 0 });
         expect(title.parent.props.style).toMatchObject({ flex: 1, minWidth: 0 });
+        expect(renderer.root.findAllByProps({ testID: 'session-header-title' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-header-run-status' })).toHaveLength(0);
 
         act(() => renderer.unmount());
     });
@@ -397,6 +406,7 @@ describe('SessionView Agent-space boundary', () => {
 
         expect(renderer.root.findAllByType('SessionHeaderChip')).toHaveLength(1);
         expect(renderer.root.findAllByProps({ testID: 'session-header-title' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-header-run-status' })).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'session-header-more-button' })).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-toggle-button' })).toHaveLength(0);
 
@@ -553,10 +563,15 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByType('SessionHeaderChip')).toHaveLength(1);
 
         const title = renderer.root.findByProps({ testID: 'session-header-title' });
+        expect(title.props.accessibilityRole).toBe('button');
         expect(title.props.accessibilityLabel).toBe(
-            renderer.root.findByType('ChatHeaderView').props.title,
+            `sessionInfo.renameSession: ${renderer.root.findByType('ChatHeaderView').props.title}`,
         );
         expect(title.props.style).toMatchObject({ minHeight: 40, overflow: 'hidden' });
+        expect(renderer.root.findByProps({ testID: 'session-header-title-edit-icon' })).toBeTruthy();
+        expect(renderer.root.findByProps({ testID: 'session-header-run-status' }).props.accessibilityLabel).toBe('Online');
+        act(() => title.props.onPress());
+        expect(mocks.renameSession).toHaveBeenCalledTimes(1);
         expect(title.parent.props.style).not.toMatchObject({ overflow: 'hidden' });
         act(() => title.props.onFocus());
         const titleTooltip = renderer.root.findAllByType('View').find(

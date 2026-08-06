@@ -81,6 +81,11 @@ export type Metadata = z.infer<typeof MetadataSchema>;
 
 export const AgentStateSchema = z.object({
     controlledByUser: z.boolean().nullish(),
+    turnStatus: z.object({
+        status: z.enum(['running', 'completed', 'failed', 'cancelled']),
+        updatedAt: z.number(),
+        turnId: z.string().optional(),
+    }).optional(),
     requests: z.record(z.string(), z.object({
         tool: z.string(),
         arguments: z.any(),

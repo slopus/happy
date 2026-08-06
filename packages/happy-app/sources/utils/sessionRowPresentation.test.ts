@@ -15,10 +15,11 @@ const labels = {
     unknownLocation: 'Location unknown/local',
     unknownAgent: 'Unknown agent',
     status: {
-        disconnected: 'Disconnected',
-        thinking: 'Thinking',
-        waiting: 'Online',
+        idle: 'Idle',
+        running: 'Running',
         permission_required: 'Permission required',
+        failed: 'Failed',
+        completed: 'Completed',
     },
     relativeTime: (timestamp: number) => `${timestamp}ms`,
 };
@@ -30,7 +31,8 @@ function session(overrides: Partial<SessionRowData> = {}): SessionRowData {
         subtitle: 'happy',
         avatarId: 'avatar',
         flavor: 'codex',
-        state: 'waiting',
+        state: 'idle',
+        isConnected: true,
         createdAt: 123,
         hasDraft: false,
         archived: false,
@@ -56,7 +58,7 @@ describe('buildSessionRowPresentation', () => {
             machine: 'Mac mini',
             agent: 'Codex',
             relativeTime: '123ms',
-            status: 'Online',
+            status: 'Idle',
             location: {
                 icon: 'desktop-outline',
                 kind: 'remote',

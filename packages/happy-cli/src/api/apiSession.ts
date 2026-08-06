@@ -31,6 +31,7 @@ import { readImageSize } from './imageSize';
 import type { PendingAttachment } from '@/utils/MessageQueue2';
 import axios from 'axios';
 import { resolveMediaArtifact } from './mediaArtifact';
+import { applyPersistedTurnStatus, clearStaleRunningTurnStatus } from './sessionTurnStatus';
 
 function redactPresignedUrl(url: string): string {
     return url.replace(/([?&](?:X-Amz-Signature|Signature)=)[^&]+/g, '$1<redacted>');
@@ -108,7 +109,7 @@ export type ACPMessageData =
     // Task lifecycle events
     | { type: 'task_started'; id: string }
     | { type: 'task_complete'; id: string }
-    | { type: 'turn_aborted'; id: string }
+    | { type: 'turn_aborted'; id: string; status?: 'failed' | 'cancelled' }
     // Permissions
     | { type: 'permission-request'; permissionId: string; toolName: string; description: string; options?: unknown }
     // Usage/metrics
@@ -174,6 +175,7 @@ export class ApiSessionClient extends EventEmitter {
     private reconnectInterval: NodeJS.Timeout | null = null;
     private ignoreArchiveSignal = false;
     private skipInitialMessages = false;
+    private hasObservedRootTurnLifecycle = false;
     private claudeSessionProtocolState: ClaudeSessionProtocolState = {
         currentTurnId: null,
         uuidToProviderSubagent: new Map<string, string>(),
@@ -763,6 +765,16 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     sendSessionProtocolMessage(envelope: SessionEnvelope) {
+        if (!envelope.subagent && envelope.role !== 'user') {
+            if (envelope.ev.t === 'turn-start') {
+                this.hasObservedRootTurnLifecycle = true;
+                this.persistTurnStatus('running', envelope.time, envelope.turn);
+            } else if (envelope.ev.t === 'turn-end') {
+                this.hasObservedRootTurnLifecycle = true;
+                this.persistTurnStatus(envelope.ev.status, envelope.time, envelope.turn);
+            }
+        }
+
         if (envelope.role !== 'user') {
             this.enqueueSessionProtocolEnvelope(envelope);
             return;
@@ -784,6 +796,17 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - The message payload (type: 'message' | 'reasoning' | 'tool-call' | 'tool-result')
      */
     sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode' | 'openclaw', body: ACPMessageData) {
+        if (body.type === 'task_started') {
+            this.hasObservedRootTurnLifecycle = true;
+            this.persistTurnStatus('running', Date.now(), body.id);
+        } else if (body.type === 'task_complete') {
+            this.hasObservedRootTurnLifecycle = true;
+            this.persistTurnStatus('completed', Date.now(), body.id);
+        } else if (body.type === 'turn_aborted') {
+            this.hasObservedRootTurnLifecycle = true;
+            this.persistTurnStatus(body.status ?? 'cancelled', Date.now(), body.id);
+        }
+
         let content = {
             role: 'agent',
             content: {
@@ -810,6 +833,9 @@ export class ApiSessionClient extends EventEmitter {
     } | {
         type: 'ready'
     }, id?: string) {
+        if (event.type === 'ready' && !this.hasObservedRootTurnLifecycle) {
+            this.updateAgentState(clearStaleRunningTurnStatus);
+        }
         let content = {
             role: 'agent',
             content: {
@@ -819,6 +845,18 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
         this.enqueueMessage(content);
+    }
+
+    private persistTurnStatus(
+        status: 'running' | 'completed' | 'failed' | 'cancelled',
+        updatedAt: number,
+        turnId?: string,
+    ) {
+        this.updateAgentState(currentState => applyPersistedTurnStatus(currentState, {
+            status,
+            updatedAt,
+            ...(turnId ? { turnId } : {}),
+        }));
     }
 
     /**
@@ -925,7 +963,11 @@ export class ApiSessionClient extends EventEmitter {
         logger.debugLargeJson('Updating agent state', this.agentState);
         this.agentStateLock.inLock(async () => {
             await backoff(async () => {
-                let updated = handler(this.agentState || {});
+                const current = this.agentState || {};
+                let updated = handler(current);
+                if (updated === current) {
+                    return;
+                }
                 const answer = await this.socket.emitWithAck('update-state', { sid: this.sessionId, expectedVersion: this.agentStateVersion, agentState: updated ? encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) : null });
                 if (answer.result === 'success') {
                     this.agentState = answer.agentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState)) : null;

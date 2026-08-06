@@ -119,29 +119,71 @@ function SessionNewSessionAction({
 }
 
 function SessionHeaderTitle({
+    session,
     title,
+    tintColor,
 }: {
+    session: Session;
     title: string;
+    tintColor?: string;
 }) {
+    const { theme } = useUnistyles();
     const [tooltipVisible, setTooltipVisible] = React.useState(false);
+    const { renameSession, renamingSession } = useSessionQuickActions(session);
+    const sessionStatus = useSessionStatus(session);
+
+    const handleRename = React.useCallback(() => {
+        setTooltipVisible(false);
+        renameSession();
+    }, [renameSession]);
 
     return (
         <View style={workspaceStyles.headerTitleWrapper}>
-            <Pressable
-                accessibilityLabel={title}
-                accessibilityRole="text"
-                {...({ tabIndex: 0 } as any)}
-                onBlur={() => setTooltipVisible(false)}
-                onFocus={() => setTooltipVisible(true)}
-                onHoverIn={() => setTooltipVisible(true)}
-                onHoverOut={() => setTooltipVisible(false)}
-                style={workspaceStyles.headerTitleTarget}
-                testID="session-header-title"
-            >
-                <Text numberOfLines={1} ellipsizeMode="tail" style={workspaceStyles.headerTitleText}>
-                    {title}
-                </Text>
-            </Pressable>
+            <View style={workspaceStyles.headerTitleLine}>
+                <Pressable
+                    accessibilityLabel={`${t('sessionInfo.renameSession')}: ${title}`}
+                    accessibilityRole="button"
+                    {...({ tabIndex: 0 } as any)}
+                    onBlur={() => setTooltipVisible(false)}
+                    onFocus={() => setTooltipVisible(true)}
+                    onHoverIn={() => setTooltipVisible(true)}
+                    onHoverOut={() => setTooltipVisible(false)}
+                    onPress={handleRename}
+                    style={workspaceStyles.headerTitleTarget}
+                    testID="session-header-title"
+                >
+                    <Text
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        style={[workspaceStyles.headerTitleText, tintColor ? { color: tintColor } : null]}
+                    >
+                        {title}
+                    </Text>
+                    {renamingSession ? (
+                        <ActivityIndicator size="small" color={tintColor ?? theme.colors.header.tint} />
+                    ) : (
+                        <Ionicons
+                            name="create-outline"
+                            size={14}
+                            color={tintColor ?? theme.colors.textSecondary}
+                            testID="session-header-title-edit-icon"
+                        />
+                    )}
+                </Pressable>
+                <View
+                    accessibilityLabel={sessionStatus.statusText}
+                    style={workspaceStyles.headerRunStatus}
+                    testID="session-header-run-status"
+                >
+                    <View style={[workspaceStyles.headerRunStatusDot, { backgroundColor: sessionStatus.statusDotColor }]} />
+                    <Text
+                        numberOfLines={1}
+                        style={[workspaceStyles.headerRunStatusText, { color: sessionStatus.statusColor }]}
+                    >
+                        {sessionStatus.statusText}
+                    </Text>
+                </View>
+            </View>
             <DesktopShortcutTooltip
                 align="right"
                 label={title}
@@ -401,7 +443,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerTitleSlot = showChip ? (
         isTablet ? (
             <View style={workspaceStyles.headerIdentity}>
-                <SessionHeaderTitle title={headerProps.title} />
+                <SessionHeaderTitle session={session!} title={headerProps.title} />
                 <View style={workspaceStyles.headerAgentChip}>
                     {sessionHeaderChip}
                 </View>
@@ -432,7 +474,13 @@ export const SessionView = React.memo((props: { id: string }) => {
             <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontSize: 15 }}>{spaceAgent.glyph}</Text>
             </View>
-            <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, color: spaceTint, fontSize: 15, fontWeight: '600' }}>{headerProps.title}</Text>
+            {isTablet ? (
+                <SessionHeaderTitle session={session!} title={headerProps.title} tintColor={spaceTint} />
+            ) : (
+                <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, color: spaceTint, fontSize: 15, fontWeight: '600' }}>
+                    {headerProps.title}
+                </Text>
+            )}
         </View>
     ) : undefined;
 
@@ -1068,7 +1116,7 @@ function SessionViewLoaded({
             blockSend={false}
             onSend={handleSend}
             onAbort={isDisconnected ? undefined : handleAbort}
-            showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
+            showAbortButton={sessionStatus.state === 'running'}
             onFileViewerPress={experiments && !isTablet ? handleFileViewerPress : undefined}
             selectedImages={selectedImages}
             onPickImages={pickAttachment}
@@ -1367,7 +1415,7 @@ const workspaceStyles = StyleSheet.create((theme) => ({
     },
     headerIdentity: {
         flex: 1,
-        width: '100%',
+        alignSelf: 'stretch',
         minWidth: 0,
         flexDirection: 'row',
         alignItems: 'center',
@@ -1378,21 +1426,52 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         flex: 1,
         minWidth: 64,
     },
+    headerTitleLine: {
+        minWidth: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
     headerTitleTarget: {
         minHeight: 40,
-        justifyContent: 'center',
+        minWidth: 32,
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
         overflow: 'hidden',
     },
     headerTitleText: {
+        flex: 1,
+        minWidth: 0,
         color: theme.colors.header.tint,
         fontSize: 14,
         fontWeight: '600',
     },
-    headerAgentChip: {
-        flexBasis: 250,
+    headerRunStatus: {
+        maxWidth: 122,
+        minWidth: 0,
         flexShrink: 1,
-        minWidth: 130,
-        maxWidth: 290,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    headerRunStatusDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        flexShrink: 0,
+    },
+    headerRunStatusText: {
+        flexShrink: 1,
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    headerAgentChip: {
+        flexBasis: 160,
+        flexShrink: 1,
+        minWidth: 116,
+        maxWidth: 220,
     },
     headerActions: {
         flexDirection: 'row',
