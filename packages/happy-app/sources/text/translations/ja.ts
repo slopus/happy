@@ -793,6 +793,8 @@ export const ja: TranslationStructure = {
         showArchived: 'アーカイブを表示',
         hideArchived: 'アーカイブを非表示',
         newSession: '新しいセッション',
+        sortSessionsByTime: 'セッションを時間順に並べ替え',
+        groupSessionsByProject: 'セッションをプロジェクト別にグループ化',
         emptySessionsTitle: 'アクティブなセッションはありません',
         emptySessionsOnlineDescription: '接続済みのマシンのいずれかで新しいセッションを開始してください。',
         emptySessionsOfflineDescription: 'コンピューターで新しいターミナルを開き、セッションを開始してください。',

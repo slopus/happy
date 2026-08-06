@@ -16,6 +16,46 @@ export interface SessionNavigationMachineGroup {
     projects: SessionNavigationProjectGroup[];
 }
 
+export interface SessionNavigationTimeGroup {
+    dayOffset: number;
+    key: string;
+    sessions: SessionRowData[];
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function getLocalDayIndex(timestamp: number): number {
+    const date = new Date(timestamp);
+    return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS);
+}
+
+function getSessionRecency(session: SessionRowData): number {
+    return session.activeAt ?? session.createdAt ?? 0;
+}
+
+export function buildSessionNavigationTimeGroups(
+    sessions: SessionRowData[],
+    now: number = Date.now(),
+): SessionNavigationTimeGroup[] {
+    const currentDay = getLocalDayIndex(now);
+    const grouped = new Map<number, SessionRowData[]>();
+
+    for (const session of [...sessions].sort((a, b) => getSessionRecency(b) - getSessionRecency(a))) {
+        const day = getLocalDayIndex(getSessionRecency(session));
+        const group = grouped.get(day) ?? [];
+        group.push(session);
+        grouped.set(day, group);
+    }
+
+    return Array.from(grouped.entries())
+        .sort(([a], [b]) => b - a)
+        .map(([day, groupedSessions]) => ({
+            dayOffset: Math.max(0, currentDay - day),
+            key: String(day),
+            sessions: groupedSessions,
+        }));
+}
+
 export function getSessionNavigationProjectKey(machineId: string, projectPath: string): string {
     return `${encodeURIComponent(machineId)}--${encodeURIComponent(projectPath)}`;
 }

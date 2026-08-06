@@ -1331,6 +1331,72 @@ test('左栏稳定导航、机器项目分组与折叠共同保持当前会话�
     await expect(betaToggle).toHaveAttribute('aria-expanded', 'true');
 });
 
+test('[SESSION-LAYOUT] 左栏在项目分组与时间排序之间切换并记住选择', async ({ page, request }, testInfo) => {
+    const oldestSessionId = await createE2ESession(request, {
+        path: '/workspace/atlas',
+        host: 'studio-mac',
+        machineId: 'studio-machine',
+        homeDir: '/workspace',
+        name: 'Atlas dependency review',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const middleSessionId = await createE2ESession(request, {
+        path: '/workspace/beta',
+        host: 'studio-mac',
+        machineId: 'studio-machine',
+        homeDir: '/workspace',
+        name: 'Beta integration checks',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const newestSessionId = await createE2ESession(request, {
+        path: '/workspace/atlas',
+        host: 'studio-mac',
+        machineId: 'studio-machine',
+        homeDir: '/workspace',
+        name: 'Atlas navigation polish',
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(authenticatedRoute(`/session/${newestSessionId}`));
+    expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+
+    const layoutToggle = page.getByTestId('session-list-layout-toggle');
+    const projectScreenshot = testInfo.outputPath('session-list-project-layout-1280x900.png');
+    const timeScreenshot = testInfo.outputPath('session-list-time-layout-1280x900.png');
+
+    await expect(layoutToggle).toHaveAccessibleName('Sort sessions by time');
+    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
+    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fbeta')).toBeVisible();
+    await page.screenshot({ path: projectScreenshot, fullPage: true });
+
+    await layoutToggle.hover();
+    await expect(page.getByTestId('session-list-layout-tooltip')).toHaveText('Sort sessions by time');
+    await layoutToggle.click();
+
+    await expect(layoutToggle).toHaveAccessibleName('Group sessions by project');
+    await expect(page.getByTestId('session-time-group-0')).toBeVisible();
+    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toHaveCount(0);
+    await expect(page.getByTestId(`session-row-${newestSessionId}`)).toContainText('~/atlas · studio-machine');
+    await expect(page.getByTestId(`session-row-${middleSessionId}`)).toContainText('~/beta · studio-machine');
+
+    const recencyOrder = await Promise.all([
+        newestSessionId,
+        middleSessionId,
+        oldestSessionId,
+    ].map(async (sessionId) => (await page.getByTestId(`session-row-${sessionId}`).boundingBox())?.y ?? -1));
+    expect(recencyOrder[0]).toBeGreaterThan(0);
+    expect(recencyOrder[0]).toBeLessThan(recencyOrder[1]);
+    expect(recencyOrder[1]).toBeLessThan(recencyOrder[2]);
+    await page.screenshot({ path: timeScreenshot, fullPage: true });
+
+    await page.reload();
+    await expect(page.getByTestId('session-time-group-0')).toBeVisible();
+    await layoutToggle.click();
+    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
+});
+
 test('每轮权限、模型与推理强度在输入区、选择器和历史消息中保持一致', async ({ page, request }, testInfo) => {
     const sessionId = await createE2ESession(request, {
         path: '/workspace/composer-mode-e2e',

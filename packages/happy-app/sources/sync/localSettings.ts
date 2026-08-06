@@ -27,6 +27,7 @@ export const LocalSettingsSchema = z.object({
     desktopRightPanelCollapsed: z.boolean().describe('Collapse the desktop capability panel independently of Zen mode'),
     desktopLeftSidebarWidth: z.number().finite().describe('Preferred width of the desktop session sidebar'),
     desktopRightPanelWidth: z.number().finite().describe('Preferred width of the desktop capability panel'),
+    sessionListLayout: z.enum(['projects', 'time']).describe('Preferred session sidebar grouping'),
     // 「Agent 空间模式」：进入某个「我的 Agent」后，左侧侧栏收敛为该 Agent 的专属工作台
     // （仅本空间会话 + 预设快捷指令 + 退出空间）。存 agent id；null 为全局视图。刻意放设备本地、
     // 不随账号同步（同 agents/zenMode），避免被同步 churn 冲掉。
@@ -77,6 +78,7 @@ export const localSettingsDefaults: LocalSettings = {
     desktopRightPanelCollapsed: false,
     desktopLeftSidebarWidth: DESKTOP_LEFT_PANEL_DEFAULT_WIDTH,
     desktopRightPanelWidth: DESKTOP_RIGHT_PANEL_DEFAULT_WIDTH,
+    sessionListLayout: 'projects',
     agentSpaceId: null,
     hapticFeedbackEnabled: true,
     askApi: {

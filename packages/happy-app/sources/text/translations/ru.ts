@@ -808,6 +808,8 @@ export const ru: TranslationStructure = {
         showArchived: 'Показать архив',
         hideArchived: 'Скрыть архив',
         newSession: 'Новая сессия',
+        sortSessionsByTime: 'Сортировать сессии по времени',
+        groupSessionsByProject: 'Группировать сессии по проектам',
         emptySessionsTitle: 'Нет активных сессий',
         emptySessionsOnlineDescription: 'Начните новую сессию на любой из подключённых машин.',
         emptySessionsOfflineDescription: 'Откройте новый терминал на компьютере, чтобы начать сессию.',
