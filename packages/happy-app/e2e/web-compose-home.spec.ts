@@ -864,8 +864,18 @@ test.describe('会话行组织可见回归', () => {
         await expect(details).toContainText('Codex');
         await expect(titleViewport).toHaveAttribute('data-marquee-active', 'true');
         await expect(page.getByTestId('session-row-hover-status')).toBeVisible();
-        await expect(page.getByTestId(`session-row-actions-${sessionId}`).getByTestId('session-row-pin-action')).toBeVisible();
-        await expect(page.getByTestId(`session-row-actions-${sessionId}`).getByTestId('session-row-archive-action')).toBeVisible();
+        const pinAction = page.getByTestId(`session-row-actions-${sessionId}`).getByTestId('session-row-pin-action');
+        const deleteAction = page.getByTestId(`session-row-actions-${sessionId}`).getByTestId('session-row-delete-action');
+        const archiveAction = page.getByTestId(`session-row-actions-${sessionId}`).getByTestId('session-row-archive-action');
+        await expect(pinAction).toBeVisible();
+        await expect(deleteAction).toBeVisible();
+        await expect(archiveAction).toBeVisible();
+        await expect(pinAction.getByTestId('session-row-pin-action-icon')).toHaveAttribute('data-icon-name', 'pin');
+        await expect(deleteAction.getByTestId('session-row-delete-action-icon')).toHaveAttribute('data-icon-name', 'trash');
+        await expect(archiveAction.getByTestId('session-row-archive-action-icon')).toHaveAttribute('data-icon-name', 'archive');
+        await expect(deleteAction).toHaveAccessibleName('Delete Session');
+        await deleteAction.hover();
+        await expect(page.getByTestId('session-row-delete-action-tooltip')).toContainText('Delete Session');
         const sidebarBox = await page.getByTestId('desktop-left-sidebar').boundingBox();
         const detailsBox = await details.boundingBox();
         const actionsBox = await page.getByTestId(`session-row-actions-${sessionId}`).boundingBox();
@@ -935,6 +945,7 @@ test.describe('会话行组织可见回归', () => {
         const restoreAction = page.getByTestId(`session-row-actions-${sessionId}`)
             .getByTestId('session-row-restore-action');
         await expect(restoreAction).toHaveAccessibleName('Restore Session');
+        await expect(restoreAction.getByTestId('session-row-restore-action-icon')).toHaveAttribute('data-icon-name', 'undo');
         await expect(page.getByRole('button', { name: 'Resume Session' })).toHaveCount(0);
         await page.screenshot({
             path: testInfo.outputPath('nav-13-03-archived-restore-1280x900.png'),
@@ -962,10 +973,12 @@ test.describe('会话行组织可见回归', () => {
         const more = page.getByTestId(`session-row-actions-${sessionId}`)
             .getByTestId('session-row-more-action');
         await expect(more).toBeVisible();
+        await expect(more.getByTestId('session-row-more-action-icon')).toHaveAttribute('data-icon-name', 'kebab-horizontal');
         await more.click();
         await expect(page.getByTestId('session-actions-inline-menu')).toBeVisible();
         await expect(page.getByRole('button', { name: 'Pin Session' })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Archive Session' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Delete Session' })).toBeVisible();
         await page.screenshot({
             path: testInfo.outputPath('nav-13-04-narrow-more-799x900.png'),
             fullPage: true,
