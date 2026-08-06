@@ -1,5 +1,5 @@
 /**
- * Server API for image attachment upload/download.
+ * Server API for attachment upload/download descriptors and encrypted blobs.
  *
  * Two storage modes are transparent to the client:
  * - Local: uploadUrl points to the server itself (PUT endpoint)
@@ -7,10 +7,9 @@
  *
  * The client always follows the same flow:
  *   1. POST request-upload → get { ref, uploadUrl }
- *   2. PUT encrypted blob to uploadUrl
+ *   2. Upload the encrypted image blob or stream plaintext media to uploadUrl
  *   3. Embed ref in the file event sent to the CLI
  */
-import { uploadAsync, FileSystemUploadType } from 'expo-file-system/legacy';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { getServerUrl } from './serverConfig';
 import { appendFormFile } from './uploadFormFile';
@@ -57,7 +56,7 @@ export type AttachmentDownloadSource = {
 
 /**
  * Request a presigned (or server-hosted) upload URL for an attachment.
- * Returns the ref (storage path) and uploadUrl to PUT the encrypted blob.
+ * Returns the storage ref and the correct upload method for its lane.
  */
 export async function requestAttachmentUpload(
     credentials: AuthCredentials,
@@ -92,47 +91,6 @@ export async function requestAttachmentUpload(
 
     const result = await response.json() as RequestUploadResult;
     return { ...result, uploadUrl: rewriteLoopbackHost(result.uploadUrl) };
-}
-
-/**
- * Stream a plaintext audio/video file straight from disk to the upload URL,
- * never reading it into JS memory. Uses expo-file-system uploadAsync in BINARY
- * mode so a 500MB file uploads with constant memory — the whole reason the
- * audio/video lane is plaintext (an in-memory encrypt of 500MB would OOM the
- * phone). Server signs a presigned PUT for the media lane, so we PUT the raw
- * bytes with the file's real Content-Type.
- */
-export async function uploadMediaFile(
-    upload: { uploadUrl: string; method: 'PUT' | 'POST' },
-    fileUri: string,
-    mimeType: string,
-    credentials: AuthCredentials,
-): Promise<void> {
-    if (upload.method !== 'PUT') {
-        // Media always uses presigned PUT (S3) or the local PUT endpoint; a POST
-        // policy would force a multipart form buffer, defeating the streaming.
-        throw new Error(`Media upload expected PUT, got ${upload.method}`);
-    }
-    const serverUrl = getServerUrl();
-    const headers: Record<string, string> = { 'Content-Type': mimeType };
-    if (upload.uploadUrl.startsWith(serverUrl)) {
-        headers['Authorization'] = `Bearer ${credentials.token}`;
-    }
-
-    let result;
-    try {
-        result = await uploadAsync(upload.uploadUrl, fileUri, {
-            httpMethod: 'PUT',
-            uploadType: FileSystemUploadType.BINARY_CONTENT,
-            headers,
-        });
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`Media upload (PUT) network error to ${upload.uploadUrl}: ${message}`);
-    }
-    if (result.status < 200 || result.status >= 300) {
-        throw new Error(`Media upload (PUT) failed: ${result.status} at ${upload.uploadUrl}`);
-    }
 }
 
 /**

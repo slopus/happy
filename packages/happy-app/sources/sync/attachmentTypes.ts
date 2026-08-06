@@ -37,4 +37,6 @@ export type UploadedAttachment = {
     thumbhash?: string;
     kind?: AttachmentKind;
     mimeType?: string;
+    /** Explicit false selects the plaintext streaming media lane. */
+    encrypted?: boolean;
 };
