@@ -552,6 +552,22 @@ export const zhHans: TranslationStructure = {
         projects: "项目",
     },
 
+    batch: {
+        select: '选择',
+        selectAll: '全选',
+        clear: '清除',
+        archive: '归档',
+        selectedCount: ({ count }: { count: number }) => `已选 ${count} 个`,
+        archiveConfirm: ({ count }: { count: number }) =>
+            count === 1
+                ? '归档该会话？运行中的进程将被停止。'
+                : `归档 ${count} 个会话？运行中的进程将被停止。`,
+        archivingProgress: ({ done, total }: { done: number; total: number }) =>
+            `正在归档 ${done}/${total}…`,
+        archiveResult: ({ ok, failed }: { ok: number; failed: number }) =>
+            failed === 0 ? `已归档 ${ok} 个` : `已归档 ${ok} 个，${failed} 个失败`,
+    },
+
     zen: {
         toggle: '禅模式',
     },
