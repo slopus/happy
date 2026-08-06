@@ -191,7 +191,7 @@ export const activityStatusDemoEnvelopes: Array<Record<string, unknown>> = [
             call: 'activity-standalone-bash-call',
             name: 'Bash',
             title: 'Render the Blender demo preview',
-            description: 'Render the Blender demo preview',
+            description: '',
             args: {
                 command: 'DEMO_RENDER_ANIMATION=0 ./render_demo.sh',
             },
