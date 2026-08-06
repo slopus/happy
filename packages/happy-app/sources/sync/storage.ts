@@ -17,7 +17,7 @@ import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
-import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
+import { getSessionName, getSessionSubtitle, getSessionAvatarId, resolveSessionState, type SessionState } from '@/utils/sessionUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
@@ -85,6 +85,7 @@ export interface SessionRowData {
     avatarId: string;
     flavor: string | null;
     state: SessionState;
+    isConnected: boolean;
     // Only present on inactive sessions — active sessions never show "last seen"
     // and activeAt updates on every heartbeat, causing needless deep-equal diffs
     activeAt?: number;
@@ -101,19 +102,7 @@ export interface SessionRowData {
 }
 
 function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): SessionRowData {
-    const isOnline = session.presence === "online";
-    const hasPermissions = !!(session.agentState?.requests && Object.keys(session.agentState.requests).length > 0);
-
-    let state: SessionState;
-    if (!isOnline) {
-        state = 'disconnected';
-    } else if (hasPermissions) {
-        state = 'permission_required';
-    } else if (session.thinking) {
-        state = 'thinking';
-    } else {
-        state = 'waiting';
-    }
+    const resolved = resolveSessionState(session);
 
     return {
         id: session.id,
@@ -121,9 +110,10 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         subtitle: getSessionSubtitle(session),
         avatarId: getSessionAvatarId(session),
         flavor: session.metadata?.flavor ?? null,
-        state,
+        state: resolved.state,
+        isConnected: resolved.isConnected,
         createdAt: session.createdAt,
-        ...(!session.active && { activeAt: session.activeAt }),
+        ...(!resolved.isConnected && { activeAt: session.activeAt }),
         hasDraft: !!session.draft,
         active: session.active,
         archived: isSessionArchived(session),

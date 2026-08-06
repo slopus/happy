@@ -400,6 +400,11 @@ export type Metadata = {
 
 export type AgentState = {
   controlledByUser?: boolean | null | undefined
+  turnStatus?: {
+    status: 'running' | 'completed' | 'failed' | 'cancelled'
+    updatedAt: number
+    turnId?: string
+  }
   requests?: {
     [id: string]: {
       tool: string,

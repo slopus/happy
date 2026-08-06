@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Platform }
 import { Ionicons } from '@expo/vector-icons';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
-import { storage } from '@/sync/storage';
+import { storage, useSession } from '@/sync/storage';
 import { t } from '@/text';
 
 interface PermissionFooterProps {
@@ -27,12 +27,15 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
     const [loadingBypass, setLoadingBypass] = useState(false);
     const [loadingForSession, setLoadingForSession] = useState(false);
+    const session = useSession(sessionId);
+    const isConnected = session?.presence === 'online';
+    const canRespond = permission.status === 'pending' && isConnected;
     
     // Check if this is a Codex session - check both metadata.flavor and tool name prefix
     const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
 
     const handleApprove = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
+        if (!canRespond || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
 
         setLoadingButton('allow');
         try {
@@ -45,7 +48,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
 
     const handleApproveAllEdits = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
+        if (!canRespond || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
 
         setLoadingAllEdits(true);
         try {
@@ -60,7 +63,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
 
     const handleBypassPermissions = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
+        if (!canRespond || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
 
         setLoadingBypass(true);
         try {
@@ -74,7 +77,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
 
     const handleApproveForSession = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession || !toolName) return;
+        if (!canRespond || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession || !toolName) return;
 
         setLoadingForSession(true);
         try {
@@ -94,7 +97,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
 
     const handleDeny = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
+        if (!canRespond || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
 
         setLoadingButton('deny');
         try {
@@ -108,7 +111,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     
     // Codex-specific handlers
     const handleCodexApprove = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
+        if (!canRespond || loadingButton !== null || loadingForSession) return;
         
         setLoadingButton('allow');
         try {
@@ -121,7 +124,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
     
     const handleCodexApproveForSession = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
+        if (!canRespond || loadingButton !== null || loadingForSession) return;
         
         setLoadingForSession(true);
         try {
@@ -134,7 +137,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
     
     const handleCodexAbort = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
+        if (!canRespond || loadingButton !== null || loadingForSession) return;
         
         setLoadingButton('abort');
         try {
@@ -189,6 +192,22 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             flexWrap: 'wrap',
             gap: 6,
             alignItems: 'center',
+        },
+        offlineNotice: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            marginBottom: 8,
+            paddingHorizontal: 8,
+            paddingVertical: 7,
+            borderRadius: 8,
+            backgroundColor: theme.colors.surfacePressed,
+        },
+        offlineNoticeText: {
+            flex: 1,
+            color: theme.colors.textSecondary,
+            fontSize: 12,
+            lineHeight: 17,
         },
         button: {
             paddingHorizontal: 9,
@@ -283,6 +302,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     if (isCodex) {
         return (
             <View style={styles.container}>
+                {isPending && !isConnected ? (
+                    <View style={styles.offlineNotice} testID="permission-offline-notice">
+                        <Ionicons name="cloud-offline-outline" size={15} color={theme.colors.textSecondary} />
+                        <Text style={styles.offlineNoticeText}>{t('status.permissionUnavailableOffline')}</Text>
+                    </View>
+                ) : null}
                 <View style={styles.buttonContainer}>
                     {/* Codex: Yes button */}
                     <TouchableOpacity
@@ -293,8 +318,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             (isCodexAborted || isCodexApprovedForSession) && styles.buttonInactive
                         ]}
                         onPress={handleCodexApprove}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
-                        activeOpacity={isPending ? 0.7 : 1}
+                        disabled={!canRespond || loadingButton !== null || loadingForSession}
+                        activeOpacity={canRespond ? 0.7 : 1}
+                        testID="permission-approve-button"
                     >
                         {loadingButton === 'allow' && isPending ? (
                             <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
@@ -322,8 +348,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             (isCodexAborted || isCodexApproved) && styles.buttonInactive
                         ]}
                         onPress={handleCodexApproveForSession}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
-                        activeOpacity={isPending ? 0.7 : 1}
+                        disabled={!canRespond || loadingButton !== null || loadingForSession}
+                        activeOpacity={canRespond ? 0.7 : 1}
+                        testID="permission-approve-session-button"
                     >
                         {loadingForSession && isPending ? (
                             <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
@@ -351,8 +378,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             (isCodexApproved || isCodexApprovedForSession) && styles.buttonInactive
                         ]}
                         onPress={handleCodexAbort}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
-                        activeOpacity={isPending ? 0.7 : 1}
+                        disabled={!canRespond || loadingButton !== null || loadingForSession}
+                        activeOpacity={canRespond ? 0.7 : 1}
+                        testID="permission-abort-button"
                     >
                         {loadingButton === 'abort' && isPending ? (
                             <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
@@ -378,6 +406,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     // Render Claude buttons (existing behavior)
     return (
         <View style={styles.container}>
+            {isPending && !isConnected ? (
+                <View style={styles.offlineNotice} testID="permission-offline-notice">
+                    <Ionicons name="cloud-offline-outline" size={15} color={theme.colors.textSecondary} />
+                    <Text style={styles.offlineNoticeText}>{t('status.permissionUnavailableOffline')}</Text>
+                </View>
+            ) : null}
             <View style={styles.buttonContainer}>
                 <TouchableOpacity
                     style={[
@@ -387,8 +421,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         (isDenied || isApprovedViaAllEdits || isApprovedViaBypass || isApprovedForSession) && styles.buttonInactive
                     ]}
                     onPress={handleApprove}
-                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
-                    activeOpacity={isPending ? 0.7 : 1}
+                    disabled={!canRespond || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
+                    activeOpacity={canRespond ? 0.7 : 1}
+                    testID="permission-approve-button"
                 >
                     {loadingButton === 'allow' && isPending ? (
                         <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
@@ -417,8 +452,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             (isDenied || isApprovedViaAllow || isApprovedViaBypass || isApprovedForSession) && styles.buttonInactive
                         ]}
                         onPress={handleApproveAllEdits}
-                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
-                        activeOpacity={isPending ? 0.7 : 1}
+                        disabled={!canRespond || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
+                        activeOpacity={canRespond ? 0.7 : 1}
+                        testID="permission-approve-edits-button"
                     >
                         {loadingAllEdits && isPending ? (
                             <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
@@ -448,8 +484,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             (isDenied || isApprovedViaAllow || isApprovedViaAllEdits || isApprovedForSession) && styles.buttonInactive
                         ]}
                         onPress={handleBypassPermissions}
-                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
-                        activeOpacity={isPending ? 0.7 : 1}
+                        disabled={!canRespond || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
+                        activeOpacity={canRespond ? 0.7 : 1}
+                        testID="permission-bypass-button"
                     >
                         {loadingBypass && isPending ? (
                             <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
@@ -479,8 +516,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             (isDenied || isApprovedViaAllow || isApprovedViaAllEdits || isApprovedViaBypass) && styles.buttonInactive
                         ]}
                         onPress={handleApproveForSession}
-                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
-                        activeOpacity={isPending ? 0.7 : 1}
+                        disabled={!canRespond || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
+                        activeOpacity={canRespond ? 0.7 : 1}
+                        testID="permission-approve-session-button"
                     >
                         {loadingForSession && isPending ? (
                             <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
@@ -508,8 +546,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         (isApproved) && styles.buttonInactive
                     ]}
                     onPress={handleDeny}
-                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
-                    activeOpacity={isPending ? 0.7 : 1}
+                    disabled={!canRespond || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
+                    activeOpacity={canRespond ? 0.7 : 1}
+                    testID="permission-deny-button"
                 >
                     {loadingButton === 'deny' && isPending ? (
                         <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>

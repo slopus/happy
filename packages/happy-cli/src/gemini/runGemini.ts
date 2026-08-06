@@ -357,6 +357,7 @@ export async function runGemini(opts: {
     session.sendAgentMessage('gemini', {
       type: 'turn_aborted',
       id: randomUUID(),
+      status: 'cancelled',
     });
     
     // Abort reasoning processor and reset diff processor
@@ -592,6 +593,7 @@ export async function runGemini(opts: {
           session.sendAgentMessage('gemini', {
             type: 'turn_aborted',
             id: randomUUID(),
+            status: 'failed',
           });
         }
         

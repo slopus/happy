@@ -3,11 +3,11 @@ import { View, Pressable, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { SessionRowData } from '@/sync/storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLastSeen } from '@/utils/sessionUtils';
+import { type SessionState, formatPathRelativeToHome, getSessionStateLabel } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSessionGitStatus } from '@/sync/storage';
+import { storage, useAllMachines, useSessionGitStatus } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -25,12 +25,15 @@ import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
 import { useSessionManagementPreferences } from '@/hooks/useSessionManagementPreferences';
 import { buildSessionNavigationGroups } from '@/utils/sessionNavigationGroups';
+import { sync } from '@/sync/sync';
+import { loadPendingPermissionMessageId } from '@/utils/pendingPermission';
 
-const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
-    disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
-    thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
-    waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
-    permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
+const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean }> = {
+    idle: { color: '#6B7280', dotColor: '#9CA3AF', isPulsing: false },
+    running: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true },
+    permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true },
+    failed: { color: '#FF3B30', dotColor: '#FF3B30', isPulsing: false },
+    completed: { color: '#34C759', dotColor: '#34C759', isPulsing: false },
 };
 
 interface ActiveSessionsGroupProps {
@@ -344,22 +347,37 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
-    const status = session.hasUnread
-        ? { ...baseStatus, color: theme.colors.accent, dotColor: theme.colors.accent, isPulsing: false, isConnected: baseStatus.isConnected }
+    // Runtime outcomes keep their own marker priority, while an otherwise-idle
+    // unread session retains the existing blue unread marker.
+    const status = session.hasUnread && session.state === 'idle'
+        ? { ...baseStatus, dotColor: theme.colors.accent, isPulsing: false }
         : baseStatus;
     const navigateToSession = useNavigateToSession();
+    const router = useRouter();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const disclosure = useSessionRowDisclosure(session.name);
     const presentation = useSessionRowPresentation(session);
 
-    const handlePress = React.useCallback(() => {
+    const handlePress = React.useCallback(async () => {
         if (selectionMode) {
             onToggleSelection?.(session.id);
             return;
         }
+        if (session.state === 'permission_required') {
+            const messageId = await loadPendingPermissionMessageId({
+                ensureLoaded: () => sync.ensureMessagesLoaded(session.id),
+                getMessages: () => storage.getState().sessionMessages[session.id]?.messages ?? [],
+            });
+            if (messageId) {
+                if (router.canDismiss()) {
+                    router.dismissTo('/');
+                }
+                router.navigate(`/session/${encodeURIComponent(session.id)}/message/${encodeURIComponent(messageId)}` as any);
+                return;
+            }
+        }
         navigateToSession(session.id);
-    }, [navigateToSession, onToggleSelection, selectionMode, session.id]);
+    }, [navigateToSession, onToggleSelection, router, selectionMode, session.id, session.state]);
 
     const handleContextMenu = React.useCallback((event: any) => {
         event.preventDefault?.();
@@ -403,6 +421,10 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
                     ) : null}
                 </View>
             );
+        } else if (session.state === 'permission_required' || session.state === 'running') {
+            indicator = <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />;
+        } else if (session.state === 'failed' || session.state === 'completed') {
+            indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
         } else if (pinned) {
             indicator = (
                 <Ionicons
@@ -413,7 +435,7 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
             );
         } else if (session.hasUnread) {
             indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
-        } else if (session.state === 'waiting' && session.hasDraft) {
+        } else if (session.state === 'idle' && session.hasDraft) {
             indicator = (
                 <Ionicons
                     name="create-outline"
@@ -421,9 +443,7 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
                     color={theme.colors.textSecondary}
                 />
             );
-        } else if (session.state === 'permission_required' || session.state === 'thinking') {
-            indicator = <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />;
-        } else if (session.state === 'waiting') {
+        } else if (session.state === 'idle') {
             indicator = <StatusDot color={theme.colors.textSecondary} isPulsing={false} />;
         }
 
@@ -447,7 +467,7 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
             ]}
         >
             <Pressable
-                accessibilityLabel={session.name}
+                accessibilityLabel={`${session.name}, ${getSessionStateLabel(session.state)}${session.isConnected ? '' : `, ${t('status.disconnected')}`}`}
                 accessibilityRole="button"
                 accessibilityState={{ selected: !!selected }}
                 aria-current={selected ? 'page' : undefined}
@@ -464,7 +484,7 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
                         <Text
                             style={[
                                 styles.sessionTitle,
-                                status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                                session.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
                             ]}
                             numberOfLines={1}
                             testID="session-row-title"
@@ -472,6 +492,18 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
                         >
                             {session.name}
                         </Text>
+                        <View
+                            accessibilityLabel={`${getSessionStateLabel(session.state)}${session.isConnected ? '' : `, ${t('status.disconnected')}`}`}
+                            style={styles.sessionStatusBadge}
+                            testID={`session-row-status-${session.id}`}
+                        >
+                            <Text style={[styles.sessionStatusText, { color: status.color }]} numberOfLines={1}>
+                                {getSessionStateLabel(session.state)}
+                            </Text>
+                            {!session.isConnected ? (
+                                <Ionicons name="cloud-offline-outline" size={12} color={theme.colors.textSecondary} />
+                            ) : null}
+                        </View>
                     </View>
                     <SessionRowLocation presentation={presentation} />
                 </View>
@@ -653,6 +685,19 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 15,
         flex: 1,
         ...Typography.default('regular'),
+    },
+    sessionStatusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 0,
+        gap: 3,
+        marginLeft: 8,
+        maxWidth: 96,
+    },
+    sessionStatusText: {
+        fontSize: 11,
+        fontWeight: '600',
+        ...Typography.default('semiBold'),
     },
     sessionTitleConnected: {
         color: theme.colors.text,

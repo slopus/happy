@@ -63,6 +63,7 @@ import { readFileBytes } from '@/utils/readFileBytes';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import type { SessionApplyOptions } from './sessionApply';
+import { deriveSessionFallbackTitle, ensureSessionFallbackTitle } from './sessionFallbackTitle';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -134,6 +135,7 @@ class Sync {
     private pendingOutbox = new Map<string, OutboxMessage[]>();
     private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
     private sessionQueueProcessing = new Set<string>();
+    private sessionFallbackTitleInFlight = new Set<string>();
     private sessionMessageLocks = new Map<string, AsyncLock>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
@@ -768,6 +770,27 @@ class Sync {
             content: encryptedRawRecord
         });
         trackMessageSent(source, session.metadata);
+
+        const fallbackTitle = deriveSessionFallbackTitle(text, effectiveAttachments);
+        if (
+            fallbackTitle
+            && session.metadata
+            && !session.metadata.summary?.text.trim()
+            && !this.sessionFallbackTitleInFlight.has(sessionId)
+        ) {
+            this.sessionFallbackTitleInFlight.add(sessionId);
+            void ensureSessionFallbackTitle({
+                sessionId,
+                metadata: session.metadata,
+                metadataVersion: session.metadataVersion,
+                sessionEncryption: encryption,
+                title: fallbackTitle,
+            }).catch(error => {
+                console.error(`[session-title] Failed to generate fallback title for ${sessionId}:`, error);
+            }).finally(() => {
+                this.sessionFallbackTitleInFlight.delete(sessionId);
+            });
+        }
 
         this.getSendSync(sessionId).invalidate();
         this.maybeStartBackgroundSendWatchdog();
