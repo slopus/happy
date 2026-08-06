@@ -19,6 +19,7 @@ import {
 import { hapticsLight } from './haptics';
 import { useRouter } from 'expo-router';
 import { useSessionManagementPreferences } from '@/hooks/useSessionManagementPreferences';
+import { useLocalDayRollover } from '@/hooks/useLocalDayRollover';
 import { buildSessionNavigationGroups, buildSessionNavigationTimeGroups } from '@/utils/sessionNavigationGroups';
 import { sync } from '@/sync/sync';
 import { loadPendingPermissionMessageId } from '@/utils/pendingPermission';
@@ -138,6 +139,7 @@ export function ActiveSessionsGroupCompact({
     const sessionManagement = useSessionManagementPreferences(sessionIds, { prune: false });
     const [layoutMode, setLayoutMode] = useLocalSettingMutable('sessionListLayout');
     const [layoutTooltipVisible, setLayoutTooltipVisible] = React.useState(false);
+    const localDayIndex = useLocalDayRollover();
 
     // Machines are an explicit grouping dimension; projects are the compact,
     // collapsible units users scan to find recent sessions.
@@ -150,7 +152,7 @@ export function ActiveSessionsGroupCompact({
     const hasMultipleMachines = machineGroups.length > 1;
     const timeGroups = React.useMemo(
         () => buildSessionNavigationTimeGroups(sessions),
-        [sessions],
+        [localDayIndex, sessions],
     );
     const [collapsedProjects, setCollapsedProjects] = React.useState<Set<string>>(() => new Set());
 
@@ -215,7 +217,6 @@ export function ActiveSessionsGroupCompact({
                     <Pressable
                         accessibilityLabel={layoutActionLabel}
                         accessibilityRole="button"
-                        accessibilityState={{ selected: true }}
                         onBlur={() => setLayoutTooltipVisible(false)}
                         onFocus={() => setLayoutTooltipVisible(true)}
                         onHoverIn={() => setLayoutTooltipVisible(true)}

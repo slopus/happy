@@ -24,7 +24,7 @@ export interface SessionNavigationTimeGroup {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function getLocalDayIndex(timestamp: number): number {
+export function getLocalDayIndex(timestamp: number): number {
     const date = new Date(timestamp);
     return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS);
 }

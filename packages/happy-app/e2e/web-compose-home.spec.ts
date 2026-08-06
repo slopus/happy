@@ -1374,6 +1374,7 @@ test('[SESSION-LAYOUT] 左栏在项目分组与时间排序之间切换并记住
     await layoutToggle.click();
 
     await expect(layoutToggle).toHaveAccessibleName('Group sessions by project');
+    await expect(page.getByTestId('session-list-layout-tooltip')).toHaveText('Group sessions by project');
     await expect(page.getByTestId('session-time-group-0')).toBeVisible();
     await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toHaveCount(0);
     await expect(page.getByTestId(`session-row-${newestSessionId}`)).toContainText('~/atlas · studio-machine');
