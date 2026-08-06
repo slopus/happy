@@ -18,6 +18,13 @@ export class Session {
     readonly sandboxConfig?: SandboxConfig;
     readonly _onModeChange: (mode: 'local' | 'remote') => void;
     readonly _onAbort?: () => void;
+    /**
+     * Current model, permission mode and effort, as assembled by runClaude.
+     * Needed to enqueue a message on the user's behalf: the queue keys its
+     * batches by a hash of this, so pushing a hardcoded default would restart
+     * remote mode with a different model than the one the user selected.
+     */
+    readonly getEnhancedMode?: () => EnhancedMode;
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     readonly hookSettingsPath: string;
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -45,6 +52,7 @@ export class Session {
         messageQueue: MessageQueue2<EnhancedMode>,
         onModeChange: (mode: 'local' | 'remote') => void,
         onAbort?: () => void,
+        getEnhancedMode?: () => EnhancedMode,
         allowedTools?: string[],
         sandboxConfig?: SandboxConfig,
         /** Path to temporary settings file with SessionStart hook (required for session tracking) */
@@ -65,6 +73,7 @@ export class Session {
         this.sandboxConfig = opts.sandboxConfig;
         this._onModeChange = opts.onModeChange;
         this._onAbort = opts.onAbort;
+        this.getEnhancedMode = opts.getEnhancedMode;
         this.hookSettingsPath = opts.hookSettingsPath;
         this.jsRuntime = opts.jsRuntime ?? 'node';
 
