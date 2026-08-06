@@ -1,0 +1,4 @@
+interface:
+  display_name: "Happy Space Cleanup"
+  short_description: "Safely reclaim disk space used by Happy development"
+  default_prompt: "Use $happy-space-cleanup to safely inspect and reclaim disk space used by this Happy repository."
