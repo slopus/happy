@@ -4,6 +4,7 @@ import { registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
+import { checkMicrophonePermission } from '@/utils/microphonePermissions';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 
 // Static reference to the conversation hook instance
@@ -22,6 +23,13 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
         if (!conversationInstance) {
             console.warn('Realtime voice session not initialized');
             throw new Error('Realtime voice session not initialized');
+        }
+
+        const permission = await checkMicrophonePermission();
+        if (!permission.granted) {
+            console.warn('Microphone permission not granted, aborting voice session');
+            storage.getState().setRealtimeStatus('disconnected');
+            return;
         }
 
         try {
