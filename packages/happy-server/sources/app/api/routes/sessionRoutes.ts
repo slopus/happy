@@ -239,6 +239,10 @@ export function sessionRoutes(app: Fastify) {
         });
         if (session) {
             log({ module: 'session-create', sessionId: session.id, userId, tag }, `Found existing session: ${session.id} for tag ${tag}`);
+
+            // Session is starting back up - stop ignoring its heartbeats if it was stopped
+            activityCache.resumeSessionUpdates(session.id);
+
             return reply.send({
                 session: {
                     id: session.id,
