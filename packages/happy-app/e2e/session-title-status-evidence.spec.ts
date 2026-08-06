@@ -354,16 +354,16 @@ test('T09-03 compact header remains hit-testable at 800/1024 and phone keeps the
                 page.locator('[data-testid="session-header-title"]:visible'),
                 page.locator('[data-testid="session-header-run-status"]:visible'),
                 page.locator('[data-testid="session-header-more-button"]:visible'),
+                page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible'),
             ];
-            if (width === 1440) {
-                controls.push(page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible'));
-            }
             for (const control of controls) {
                 await expect(control).toBeVisible();
                 await expectCenterHitTestable(control);
             }
             const boxes = await Promise.all(controls.map(control => control.boundingBox()));
             expect(boxes[0]!.width).toBeGreaterThanOrEqual(32);
+            expect(boxes[2]!.width).toBeGreaterThanOrEqual(40);
+            expect(boxes[3]!.width).toBeGreaterThanOrEqual(40);
             if (width === 1440) {
                 expect(boxes[0]!.width).toBeGreaterThanOrEqual(120);
                 expect(boxes[1]!.width).toBeGreaterThanOrEqual(44);

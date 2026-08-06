@@ -469,6 +469,7 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel' })).toHaveLength(0);
         const host = renderer.root.findByType('RightSwipePanelHost');
         expect(host.props.open).toBe(false);
+        expect(renderer.root.findByType('ChatHeaderView').props.compactRightSlot).toBe(true);
         const toggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
         expect(toggle.props['aria-expanded']).toBe(false);
 
@@ -602,6 +603,7 @@ describe('SessionView Agent-space boundary', () => {
         );
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(1);
         expect(renderer.root.findAllByType('RightSwipePanelHost')).toHaveLength(0);
+        expect(renderer.root.findByType('ChatHeaderView').props.compactRightSlot).toBe(false);
 
         act(() => renderer.unmount());
     });

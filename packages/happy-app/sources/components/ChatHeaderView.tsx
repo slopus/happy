@@ -23,6 +23,8 @@ interface ChatHeaderViewProps {
     leftSlot?: React.ReactNode;
     /** Optional content rendered at the right edge of the header (used by file-view / diff overlays). */
     rightSlot?: React.ReactNode;
+    /** Lets a crowded desktop header use the full gap before its right-side actions. */
+    compactRightSlot?: boolean;
     onTitlePress?: () => void;
     onBackPress?: () => void;
     /** Opens the session-list drawer. Shown as a ☰ button left of the back arrow on phones. */
@@ -41,6 +43,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     titleSlot,
     leftSlot,
     rightSlot,
+    compactRightSlot = false,
     onTitlePress,
     onBackPress,
     onListPress,
@@ -155,7 +158,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                     </Pressable>
                     )}
                     {rightSlot ? (
-                        <View style={styles.rightSlot}>
+                        <View style={[styles.rightSlot, compactRightSlot && styles.rightSlotCompact]}>
                             {rightSlot}
                         </View>
                     ) : null}
@@ -223,6 +226,9 @@ const styles = StyleSheet.create({
         gap: 8,
         marginLeft: 12,
         flexShrink: 0,
+    },
+    rightSlotCompact: {
+        marginLeft: 0,
     },
     backButton: {
         paddingHorizontal: 8,

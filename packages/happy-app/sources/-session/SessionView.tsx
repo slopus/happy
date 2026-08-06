@@ -121,10 +121,12 @@ function SessionNewSessionAction({
 }
 
 function SessionHeaderTitle({
+    compact = false,
     session,
     title,
     tintColor,
 }: {
+    compact?: boolean;
     session: Session;
     title: string;
     tintColor?: string;
@@ -174,8 +176,8 @@ function SessionHeaderTitle({
     }, []);
 
     return (
-        <View style={workspaceStyles.headerTitleWrapper}>
-            <View style={workspaceStyles.headerTitleLine}>
+        <View style={[workspaceStyles.headerTitleWrapper, compact && workspaceStyles.headerTitleWrapperCompact]}>
+            <View style={[workspaceStyles.headerTitleLine, compact && workspaceStyles.headerTitleLineCompact]}>
                 {editing ? (
                     <TextInput
                         accessibilityLabel={t('sessionInfo.renameSession')}
@@ -486,6 +488,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         || session?.metadata?.host
         || null;
     const showChip = isDataReady && !!session;
+    const compactSessionHeader = shouldUseCompactSessionHeader({ isTablet, windowWidth });
     // 会话内「进入空间/退出空间」：进入 = 设 agentSpaceId + 拉出工作台抽屉；退出 = 清空间并回首页。
     const { enter: enterSpace, exit: exitSpace } = useAgentSpace();
 
@@ -496,7 +499,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     const sessionHeaderChip = showChip ? (
         <SessionHeaderChip
             agentLabel={agentLabel}
-            compact={shouldUseCompactSessionHeader({ isTablet, windowWidth })}
+            compact={compactSessionHeader}
             machineName={machineName}
             online={sessionOnline}
             open={infoPanelOpen}
@@ -506,12 +509,12 @@ export const SessionView = React.memo((props: { id: string }) => {
     const desktopWebHeader = Platform.OS === 'web' && isTablet;
     const headerTitleSlot = showChip ? (
         desktopWebHeader ? (
-            <View style={workspaceStyles.headerIdentity}>
-                <SessionHeaderTitle session={session!} title={headerProps.title} />
+            <View style={[workspaceStyles.headerIdentity, compactSessionHeader && workspaceStyles.headerIdentityCompact]}>
+                <SessionHeaderTitle compact={compactSessionHeader} session={session!} title={headerProps.title} />
             </View>
         ) : isTablet ? (
-            <View style={workspaceStyles.headerIdentity}>
-                <SessionHeaderTitle session={session!} title={headerProps.title} />
+            <View style={[workspaceStyles.headerIdentity, compactSessionHeader && workspaceStyles.headerIdentityCompact]}>
+                <SessionHeaderTitle compact={compactSessionHeader} session={session!} title={headerProps.title} />
                 <View style={workspaceStyles.headerAgentChip}>
                     {sessionHeaderChip}
                 </View>
@@ -584,7 +587,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         <SessionNewSessionAction onPress={() => router.navigate('/new')} />
     ) : null;
     const defaultHeaderRightSlot = (
-        <View style={workspaceStyles.headerActions}>
+        <View style={[workspaceStyles.headerActions, compactSessionHeader && workspaceStyles.headerActionsCompact]}>
             {moreButton}
             {rightPanelToggleButton}
             {spaceAgent ? exitSpaceButton : null}
@@ -592,7 +595,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         </View>
     );
     const overlayHeaderRightSlot = (
-        <View style={workspaceStyles.headerActions}>
+        <View style={[workspaceStyles.headerActions, compactSessionHeader && workspaceStyles.headerActionsCompact]}>
             {moreButton}
             {rightPanelToggleButton}
             {headerRightSlot}
@@ -657,6 +660,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         backgroundColor={spaceAgent ? spaceAgent.color : undefined}
                         tintColor={spaceAgent ? spaceTint : undefined}
                         headerContentLeftInset={persistentHeaderContentInset}
+                        compactRightSlot={compactSessionHeader}
                         leftSlot={enterSpaceButton}
                         titleSlot={spaceAgent ? spaceTitleSlot : headerTitleSlot}
                         rightSlot={(diffViewOpen || !!fileViewPath) ? overlayHeaderRightSlot : defaultHeaderRightSlot}
@@ -1510,16 +1514,25 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         gap: 10,
     },
+    headerIdentityCompact: {
+        gap: 0,
+    },
     headerTitleWrapper: {
         position: 'relative',
         flex: 1,
         minWidth: 64,
+    },
+    headerTitleWrapperCompact: {
+        minWidth: 39,
     },
     headerTitleLine: {
         minWidth: 0,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
+    },
+    headerTitleLineCompact: {
+        gap: 0,
     },
     headerTitleTarget: {
         minHeight: 40,
@@ -1580,6 +1593,9 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 5,
+    },
+    headerActionsCompact: {
+        gap: 3,
     },
     headerIconWrapper: {
         position: 'relative',
