@@ -24,6 +24,7 @@ import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import {
     getDesktopPanelShortcutPresentation,
     getPersistentHeaderPointerEvents,
+    PERSISTENT_NAVIGATION_BUTTON_SIZE,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH,
     PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH,
@@ -198,6 +199,9 @@ const PersistentHeader = React.memo(() => {
         toggleLeftSidebar,
     } = useDesktopWorkspaceLayout();
     const [sidebarTooltipVisible, setSidebarTooltipVisible] = React.useState(false);
+    const [zenTooltipVisible, setZenTooltipVisible] = React.useState(false);
+    const [backTooltipVisible, setBackTooltipVisible] = React.useState(false);
+    const [forwardTooltipVisible, setForwardTooltipVisible] = React.useState(false);
     const shortcuts = getDesktopPanelShortcutPresentation();
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
@@ -301,16 +305,10 @@ const PersistentHeader = React.memo(() => {
                         testID="desktop-navigation-sidebar-button"
                     >
                         <Ionicons
-                            name={sidebarVisible ? 'chevron-back' : 'albums-outline'}
-                            size={16}
+                            name={sidebarVisible ? 'folder-open-outline' : 'folder-outline'}
+                            size={19}
                             color={theme.colors.header.tint}
                         />
-                        <Text
-                            numberOfLines={1}
-                            style={styles.sidebarToggleText}
-                        >
-                            {t('desktopWorkspace.sessions')}
-                        </Text>
                     </Pressable>
                     <DesktopShortcutTooltip
                         label={sidebarToggleLabel}
@@ -319,53 +317,83 @@ const PersistentHeader = React.memo(() => {
                         visible={sidebarTooltipVisible}
                     />
                 </View>
-                <Pressable
-                    onPress={handleZenToggle}
-                    hitSlop={8}
-                    style={({ pressed }) => [
-                        styles.zenToggle,
-                        zenMode && styles.zenToggleSelected,
-                        pressed && styles.togglePressed,
-                    ]}
-                    aria-selected={zenMode}
-                    accessibilityLabel={t('zen.toggle')}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: zenMode }}
-                    testID="desktop-navigation-zen-button"
-                >
-                    <Ionicons
-                        name="leaf-outline"
-                        size={17}
-                        color={zenMode ? theme.colors.textLink : theme.colors.header.tint}
-                    />
-                    <Text
-                        numberOfLines={1}
-                        style={[styles.zenToggleText, zenMode && styles.zenToggleTextSelected]}
-                    >
-                        {t('zen.toggle')}
-                    </Text>
-                    {zenMode && (
-                        <Ionicons name="close-circle" size={14} color={theme.colors.textLink} />
-                    )}
-                </Pressable>
-                <Pressable
-                    onPress={handleBack}
-                    disabled={!canGoBackEffective}
-                    hitSlop={10}
-                    style={[styles.historyButton, !canGoBackEffective && styles.historyButtonDisabled]}
-                    testID="desktop-navigation-back-button"
-                >
-                    <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
-                </Pressable>
-                {Platform.OS === 'web' && (
+                <View style={styles.headerIconWrapper}>
                     <Pressable
-                        onPress={handleForward}
-                        disabled={!canGoForwardEffective}
-                        hitSlop={10}
-                        style={[styles.historyButton, !canGoForwardEffective && styles.historyButtonDisabled]}
+                        onBlur={() => setZenTooltipVisible(false)}
+                        onFocus={() => setZenTooltipVisible(true)}
+                        onHoverIn={() => setZenTooltipVisible(true)}
+                        onHoverOut={() => setZenTooltipVisible(false)}
+                        onPress={handleZenToggle}
+                        hitSlop={8}
+                        style={({ pressed }) => [
+                            styles.zenToggle,
+                            zenMode && styles.zenToggleSelected,
+                            pressed && styles.togglePressed,
+                        ]}
+                        aria-selected={zenMode}
+                        accessibilityLabel={t('zen.toggle')}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: zenMode }}
+                        testID="desktop-navigation-zen-button"
                     >
-                        <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />
+                        <Ionicons
+                            name={zenMode ? 'contract-outline' : 'leaf-outline'}
+                            size={19}
+                            color={zenMode ? theme.colors.textLink : theme.colors.header.tint}
+                        />
                     </Pressable>
+                    <DesktopShortcutTooltip
+                        label={t('zen.toggle')}
+                        testID="desktop-navigation-zen-tooltip"
+                        visible={zenTooltipVisible}
+                    />
+                </View>
+                <View style={styles.headerIconWrapper}>
+                    <Pressable
+                        accessibilityLabel={t('common.back')}
+                        accessibilityRole="button"
+                        onBlur={() => setBackTooltipVisible(false)}
+                        onFocus={() => setBackTooltipVisible(true)}
+                        onHoverIn={() => setBackTooltipVisible(true)}
+                        onHoverOut={() => setBackTooltipVisible(false)}
+                        onPress={handleBack}
+                        disabled={!canGoBackEffective}
+                        hitSlop={10}
+                        style={[styles.historyButton, !canGoBackEffective && styles.historyButtonDisabled]}
+                        testID="desktop-navigation-back-button"
+                    >
+                        <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
+                    </Pressable>
+                    <DesktopShortcutTooltip
+                        label={t('common.back')}
+                        testID="desktop-navigation-back-tooltip"
+                        visible={backTooltipVisible}
+                    />
+                </View>
+                {Platform.OS === 'web' && (
+                    <View style={styles.headerIconWrapper}>
+                        <Pressable
+                            accessibilityLabel={t('desktopWorkspace.forward')}
+                            accessibilityRole="button"
+                            onBlur={() => setForwardTooltipVisible(false)}
+                            onFocus={() => setForwardTooltipVisible(true)}
+                            onHoverIn={() => setForwardTooltipVisible(true)}
+                            onHoverOut={() => setForwardTooltipVisible(false)}
+                            onPress={handleForward}
+                            disabled={!canGoForwardEffective}
+                            hitSlop={10}
+                            style={[styles.historyButton, !canGoForwardEffective && styles.historyButtonDisabled]}
+                            testID="desktop-navigation-forward-button"
+                        >
+                            <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />
+                        </Pressable>
+                        <DesktopShortcutTooltip
+                            align="right"
+                            label={t('desktopWorkspace.forward')}
+                            testID="desktop-navigation-forward-tooltip"
+                            visible={forwardTooltipVisible}
+                        />
+                    </View>
                 )}
             </View>
         </View>
@@ -389,19 +417,14 @@ const styles = StyleSheet.create((theme) => ({
     sidebarToggleWrapper: {
         position: 'relative',
         width: PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH,
+        height: PERSISTENT_NAVIGATION_BUTTON_SIZE,
     },
     sidebarToggle: {
         width: '100%',
-        height: 30,
-        paddingHorizontal: 8,
-        flexDirection: 'row',
+        height: PERSISTENT_NAVIGATION_BUTTON_SIZE,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 5,
-        borderRadius: 9,
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
-        backgroundColor: theme.colors.surface,
+        borderRadius: 10,
     },
     toggleSelected: {
         backgroundColor: theme.colors.surfacePressed,
@@ -409,39 +432,25 @@ const styles = StyleSheet.create((theme) => ({
     togglePressed: {
         opacity: 0.7,
     },
-    sidebarToggleText: {
-        color: theme.colors.header.tint,
-        fontSize: 12,
-        fontWeight: '600',
+    headerIconWrapper: {
+        position: 'relative',
+        width: PERSISTENT_NAVIGATION_BUTTON_SIZE,
+        height: PERSISTENT_NAVIGATION_BUTTON_SIZE,
     },
     zenToggle: {
         width: PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH,
-        height: 30,
-        paddingHorizontal: 8,
-        flexDirection: 'row',
+        height: PERSISTENT_NAVIGATION_BUTTON_SIZE,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 6,
-        borderRadius: 9,
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
-        backgroundColor: theme.colors.surface,
+        borderRadius: 10,
     },
     zenToggleSelected: {
         borderColor: theme.colors.textLink,
         backgroundColor: theme.colors.surfacePressed,
     },
-    zenToggleText: {
-        color: theme.colors.header.tint,
-        fontSize: 12,
-        fontWeight: '600',
-    },
-    zenToggleTextSelected: {
-        color: theme.colors.textLink,
-    },
     historyButton: {
-        width: 28,
-        height: 28,
+        width: PERSISTENT_NAVIGATION_BUTTON_SIZE,
+        height: PERSISTENT_NAVIGATION_BUTTON_SIZE,
         alignItems: 'center',
         justifyContent: 'center',
     },

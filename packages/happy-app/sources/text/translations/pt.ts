@@ -56,6 +56,7 @@ export const pt: TranslationStructure = {
         hidePanel: ({ panel }: { panel: string }) => `Ocultar ${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `Redimensionar ${panel}`,
         hidePanelShort: 'Ocultar',
+        forward: 'Avançar',
     },
     composeHome: {
         greeting: ({ name }: { name: string }) => `Olá ${name}, o que vamos fazer hoje?`,

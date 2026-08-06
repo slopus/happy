@@ -6,13 +6,15 @@ import { Typography } from '@/constants/Typography';
 export const DesktopShortcutTooltip = React.memo(function DesktopShortcutTooltip({
     align = 'left',
     label,
+    multiline = false,
     shortcut,
     testID,
     visible,
 }: {
     align?: 'left' | 'right';
     label: string;
-    shortcut: string;
+    multiline?: boolean;
+    shortcut?: string;
     testID: string;
     visible: boolean;
 }) {
@@ -21,11 +23,20 @@ export const DesktopShortcutTooltip = React.memo(function DesktopShortcutTooltip
     return (
         <View
             accessibilityRole="text"
-            style={[styles.tooltip, align === 'right' ? styles.alignRight : styles.alignLeft]}
+            style={[
+                styles.tooltip,
+                multiline && styles.tooltipMultiline,
+                align === 'right' ? styles.alignRight : styles.alignLeft,
+            ]}
             testID={testID}
         >
-            <Text numberOfLines={1} style={styles.label}>{label}</Text>
-            <Text numberOfLines={1} style={styles.shortcut}>{shortcut}</Text>
+            <Text
+                numberOfLines={multiline ? undefined : 1}
+                style={[styles.label, multiline && styles.labelMultiline]}
+            >
+                {label}
+            </Text>
+            {shortcut ? <Text numberOfLines={1} style={styles.shortcut}>{shortcut}</Text> : null}
         </View>
     );
 });
@@ -46,6 +57,12 @@ const styles = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.text,
         pointerEvents: 'none',
     },
+    tooltipMultiline: {
+        width: 380,
+        maxWidth: 380,
+        flexDirection: 'column',
+        alignItems: 'stretch',
+    },
     alignLeft: {
         left: 0,
     },
@@ -57,6 +74,10 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.surface,
         fontSize: 12,
         ...Typography.default('semiBold'),
+    },
+    labelMultiline: {
+        flex: 0,
+        lineHeight: 17,
     },
     shortcut: {
         color: theme.colors.surface,

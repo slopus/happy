@@ -191,9 +191,8 @@ describe('SidebarNavigator drawer behavior', () => {
         expect(sidebarToggle.props['aria-expanded']).toBe(true);
         expect(sidebarToggle.props.accessibilityState).toEqual({ expanded: true });
         expect(sidebarToggle.props.accessibilityLabel).toBe('desktopWorkspace.hideSessions');
-        expect(sidebarToggle.findAllByType('Text').some(
-            (node: any) => node.props.children === 'desktopWorkspace.sessions',
-        )).toBe(true);
+        expect(sidebarToggle.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ height: 40 }));
+        expect(sidebarToggle.findByType('Ionicons').props.name).toBe('folder-open-outline');
 
         act(() => sidebarToggle.props.onPress());
         expect(mocks.setDesktopLeftSidebarCollapsed).toHaveBeenCalledWith(true);
@@ -224,7 +223,7 @@ describe('SidebarNavigator drawer behavior', () => {
         act(() => renderer.unmount());
     });
 
-    it('keeps a visible labeled and selected Zen exit affordance', () => {
+    it('keeps an icon-only selected Zen exit affordance with a focus tooltip', () => {
         mocks.zenMode = true;
         let renderer: any;
         act(() => {
@@ -234,8 +233,10 @@ describe('SidebarNavigator drawer behavior', () => {
         const zenToggle = renderer.root.findByProps({ testID: 'desktop-navigation-zen-button' });
         expect(zenToggle.props['aria-selected']).toBe(true);
         expect(zenToggle.props.accessibilityState).toEqual({ selected: true });
-        expect(zenToggle.findAllByType('Text').some((node: any) => node.props.children === 'zen.toggle')).toBe(true);
-        expect(zenToggle.findAllByType('Ionicons').some((node: any) => node.props.name === 'close-circle')).toBe(true);
+        expect(zenToggle.findAllByType('Text')).toHaveLength(0);
+        expect(zenToggle.findByType('Ionicons').props.name).toBe('contract-outline');
+        act(() => zenToggle.props.onFocus());
+        expect(renderer.root.findByProps({ testID: 'desktop-navigation-zen-tooltip' })).toBeDefined();
 
         act(() => zenToggle.props.onPress());
         expect(mocks.setZenMode).toHaveBeenCalledWith(false);

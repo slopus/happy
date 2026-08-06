@@ -1537,7 +1537,7 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
         await sidebarToggle.click();
     }
     if (!await page.locator('[data-testid="desktop-right-panel"]:visible').isVisible()) {
-        await page.locator('[data-testid="desktop-right-panel-restore-button"]:visible').click();
+        await page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible').click();
     }
 
     const rightPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
@@ -1553,10 +1553,11 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
     await expect(sidebarToggle).toHaveAttribute('aria-keyshortcuts', 'Meta+B');
     await pauseForRecordedReview(page);
 
-    const rightPanelCollapse = page.locator('[data-testid="desktop-right-panel-collapse-button"]:visible');
-    await rightPanelCollapse.hover();
-    await expect(page.getByTestId('desktop-right-panel-collapse-tooltip')).toContainText('⌥⌘B');
-    await expect(rightPanelCollapse).toHaveAttribute('aria-keyshortcuts', 'Alt+Meta+B');
+    const rightPanelToggle = page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible');
+    await rightPanelToggle.hover();
+    await expect(page.getByTestId('desktop-right-panel-toggle-tooltip')).toContainText('⌥⌘B');
+    await expect(rightPanelToggle).toHaveAttribute('aria-keyshortcuts', 'Alt+Meta+B');
+    await expect(rightPanelToggle).toHaveAttribute('aria-expanded', 'true');
     await pauseForRecordedReview(page);
 
     await page.keyboard.press('Meta+KeyB');
@@ -1568,10 +1569,10 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
 
     await page.keyboard.press('Alt+Meta+KeyB');
     await expect(rightPanel).toHaveCount(0);
-    const rightPanelRestore = page.locator('[data-testid="desktop-right-panel-restore-button"]:visible');
-    await expect(rightPanelRestore).toHaveAttribute('aria-keyshortcuts', 'Alt+Meta+B');
-    await rightPanelRestore.hover();
-    await expect(page.getByTestId('desktop-right-panel-restore-tooltip')).toContainText('⌥⌘B');
+    await expect(rightPanelToggle).toHaveAttribute('aria-keyshortcuts', 'Alt+Meta+B');
+    await expect(rightPanelToggle).toHaveAttribute('aria-expanded', 'false');
+    await rightPanelToggle.hover();
+    await expect(page.getByTestId('desktop-right-panel-toggle-tooltip')).toContainText('⌥⌘B');
     await pauseForRecordedReview(page);
     await page.keyboard.press('Alt+Meta+KeyB');
     await expect(rightPanel).toBeVisible();
@@ -1623,7 +1624,7 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
     await page.keyboard.press('ArrowLeft');
     await expect.poll(async () => Math.abs(((await rightPanel.boundingBox())?.width ?? 0) - resizedRightWidth)).toBeLessThanOrEqual(1);
     await expect.poll(async () => (await mainPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
-    await rightPanelCollapse.hover();
+    await rightPanelToggle.hover();
     if (process.env.HAPPY_E2E_RECORD === '1') {
         await page.screenshot({
             path: 'test-results/pc-sidebar-right-after-1280x720.png',
@@ -1646,16 +1647,16 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
     const initialMainBox = await mainPanel.boundingBox();
     expect(initialMainBox).not.toBeNull();
 
-    await page.locator('[data-testid="desktop-right-panel-collapse-button"]:visible').click();
+    await rightPanelToggle.click();
     await expect(rightPanel).toHaveCount(0);
-    await expect(page.locator('[data-testid="desktop-right-panel-restore-button"]:visible')).toBeVisible();
+    await expect(rightPanelToggle).toHaveAttribute('aria-expanded', 'false');
 
     const rightCollapsedMainBox = await mainPanel.boundingBox();
     expect(rightCollapsedMainBox).not.toBeNull();
     expect(rightCollapsedMainBox!.width).toBeGreaterThan(initialMainBox!.width + 100);
     await pauseForRecordedReview(page);
 
-    await page.locator('[data-testid="desktop-right-panel-restore-button"]:visible').click();
+    await rightPanelToggle.click();
     await expect(rightPanel).toBeVisible();
     await expect.poll(async () => (await mainPanel.boundingBox())?.width ?? 0).toBeLessThanOrEqual(initialMainBox!.width + 1);
     await pauseForRecordedReview(page);
@@ -1749,8 +1750,8 @@ test('活跃会话页面复用左右拖拽与折叠约束', async ({ page, reque
     await sidebarToggle.click();
     await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'false');
     const mainBeforeRightCollapse = (await mainPanel.boundingBox())!.width;
-    await rightPanel.getByTestId('desktop-right-panel-collapse-button').click();
-    const rightRestore = page.locator('[data-testid="desktop-right-panel-restore-button"]:visible');
+    const rightRestore = page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible');
+    await rightRestore.click();
     await expect(rightRestore).toBeVisible();
     await expect.poll(async () => (await mainPanel.boundingBox())?.width ?? 0).toBeGreaterThan(mainBeforeRightCollapse + 100);
     await sidebarToggle.click();
@@ -1829,7 +1830,7 @@ test('[TASK-CONTEXT] Capability Hub 投影当前会话的 Outputs 与 Sources �
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto(authenticatedRoute(`/session/${sessionId}`));
     if (!await page.locator('[data-testid="desktop-right-panel"]:visible').isVisible()) {
-        await page.locator('[data-testid="desktop-right-panel-restore-button"]:visible').click();
+        await page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible').click();
     }
     const rightPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
     const outputsBlock = rightPanel.getByTestId('capability-block-outputs');
