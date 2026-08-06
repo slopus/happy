@@ -19,6 +19,7 @@ export default function FeaturesSettingsScreen() {
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [expImageUpload, setExpImageUpload] = useSettingMutable('expImageUpload');
     const [sortSessionsByActivity, setSortSessionsByActivity] = useSettingMutable('sortSessionsByActivity');
+    const [expImageZoom, setExpImageZoom] = useSettingMutable('expImageZoom');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -126,6 +127,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={expImageUpload}
                             onValueChange={setExpImageUpload}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.imageZoom')}
+                    subtitle={t('settingsFeatures.imageZoomSubtitle')}
+                    icon={<Ionicons name="expand-outline" size={29} color="#5AC8FA" />}
+                    rightElement={
+                        <Switch
+                            value={expImageZoom}
+                            onValueChange={setExpImageZoom}
                         />
                     }
                     showChevron={false}

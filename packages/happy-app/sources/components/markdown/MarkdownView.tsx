@@ -8,12 +8,13 @@ import { Text } from '../StyledText';
 import { Typography } from '@/constants/Typography';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 import { Modal } from '@/modal';
-import { useLocalSetting } from '@/sync/storage';
+import { useLocalSetting, useSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 import { MermaidRenderer } from './MermaidRenderer';
+import { ImageViewer } from '@/components/ImageViewer';
 import { t } from '@/text';
 import { isHttpMarkdownLink } from './linkUtils';
 import { openExternalUrl } from '@/utils/openExternalUrl';
@@ -208,16 +209,31 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
 }
 
 function RenderImageBlock(props: { url: string, alt: string, first: boolean, last: boolean }) {
+    const expImageZoom = useSetting('expImageZoom');
     const accessibleLabel = props.alt || 'Markdown image';
+
+    const openViewer = React.useCallback(() => {
+        Modal.show({ component: ImageViewer, props: { uri: props.url } } as any);
+    }, [props.url]);
+
+    const image = (
+        <Image
+            source={{ uri: props.url }}
+            style={style.image}
+            accessibilityLabel={accessibleLabel}
+            resizeMode="contain"
+        />
+    );
 
     return (
         <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
-            <Image
-                source={{ uri: props.url }}
-                style={style.image}
-                accessibilityLabel={accessibleLabel}
-                resizeMode="contain"
-            />
+            {expImageZoom ? (
+                <Pressable onPress={openViewer} accessibilityRole="imagebutton">
+                    {image}
+                </Pressable>
+            ) : (
+                image
+            )}
             {props.alt ? (
                 <Text style={style.imageCaption}>{props.alt}</Text>
             ) : null}

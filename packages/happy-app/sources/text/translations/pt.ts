@@ -242,6 +242,8 @@ export const pt: TranslationStructure = {
         analyticsEnabled: 'Análises anônimas de uso ativas',
         imageUpload: 'Upload de imagens',
         imageUploadSubtitle: 'Anexe imagens às mensagens para que agentes compatíveis as analisem',
+        imageZoom: 'Toque para ampliar imagens',
+        imageZoomSubtitle: 'Abra imagens em tela cheia com zoom por pinça ao tocar',
     },
 
     errors: {
