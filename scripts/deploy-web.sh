@@ -13,7 +13,11 @@ show_usage() {
 
 可选环境变量：
   PAWS_DEPLOY_PORT   SSH 端口，默认 22
-  PAWS_SKIP_BUILD    设为 1 时复用现有 packages/happy-app/dist
+  PAWS_SKIP_BUILD    设为 1 时复用由本脚本生成且与 origin/main 一致的 dist
+
+发布保护：
+  只允许从干净、与 origin/main 完全一致的 main 分支发布。
+  构建期间如果 main 被推进或工作区发生变化，发布会中止。
 
 示例：
   PAWS_WEB_ORIGIN=https://paws.example.com \
@@ -97,6 +101,7 @@ fi
 validate_deploy_path "$PAWS_DEPLOY_PATH"
 
 require_command pnpm
+require_command git
 require_command ssh
 require_command scp
 require_command tar
@@ -104,6 +109,63 @@ require_command tar
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 DIST_DIR="$REPO_ROOT/packages/happy-app/dist"
+RELEASE_MARKER="$DIST_DIR/.paws-release-revision"
+
+assert_main_release_source() {
+    local current_branch
+    local current_revision
+    local origin_main_revision
+
+    echo "==> 校验发布来源 origin/main"
+    git -C "$REPO_ROOT" fetch --quiet origin main
+
+    current_branch="$(git -C "$REPO_ROOT" branch --show-current)"
+    if [[ "$current_branch" != "main" ]]; then
+        echo "错误：Web 只允许从 main 分支发布，当前为 ${current_branch:-detached HEAD}。" >&2
+        exit 1
+    fi
+
+    if [[ -n "$(git -C "$REPO_ROOT" status --short)" ]]; then
+        echo "错误：Web 发布要求干净工作区。" >&2
+        exit 1
+    fi
+
+    current_revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+    origin_main_revision="$(git -C "$REPO_ROOT" rev-parse refs/remotes/origin/main)"
+    if [[ "$current_revision" != "$origin_main_revision" ]]; then
+        echo "错误：当前 main 与 origin/main 不一致，请更新后重试。" >&2
+        echo "  HEAD:        $current_revision" >&2
+        echo "  origin/main: $origin_main_revision" >&2
+        exit 1
+    fi
+
+    RELEASE_REVISION="$current_revision"
+    RELEASE_TIMESTAMP="$(git -C "$REPO_ROOT" show -s --format=%cI "$RELEASE_REVISION")"
+    echo "==> 锁定发布提交 ${RELEASE_REVISION:0:12}"
+}
+
+assert_release_source_unchanged() {
+    local current_revision
+    local origin_main_revision
+
+    git -C "$REPO_ROOT" fetch --quiet origin main
+    current_revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+    origin_main_revision="$(git -C "$REPO_ROOT" rev-parse refs/remotes/origin/main)"
+    if [[ "$current_revision" != "$RELEASE_REVISION" || "$origin_main_revision" != "$RELEASE_REVISION" ]]; then
+        echo "错误：发布期间 main 已变化，为避免发布错配产物已中止。" >&2
+        echo "  锁定提交:   $RELEASE_REVISION" >&2
+        echo "  当前 HEAD:   $current_revision" >&2
+        echo "  origin/main: $origin_main_revision" >&2
+        exit 1
+    fi
+
+    if [[ -n "$(git -C "$REPO_ROOT" status --short)" ]]; then
+        echo "错误：构建期间工作区发生变化，发布已中止。" >&2
+        exit 1
+    fi
+}
+
+assert_main_release_source
 
 if [[ "${PAWS_SKIP_BUILD:-0}" != "1" ]]; then
     echo "==> 构建 Paws Web App"
@@ -112,11 +174,26 @@ if [[ "${PAWS_SKIP_BUILD:-0}" != "1" ]]; then
         CI=1 \
             APP_ENV=production \
             EXPO_PUBLIC_HAPPY_SERVER_URL="$PAWS_WEB_ORIGIN" \
+            HAPPY_BUILD_COMMIT_SHA="$RELEASE_REVISION" \
+            HAPPY_BUILD_COMMIT_TIMESTAMP="$RELEASE_TIMESTAMP" \
             pnpm --filter happy-app export:web
     )
+    printf '%s\n' "$RELEASE_REVISION" > "$RELEASE_MARKER"
 else
     echo "==> 跳过构建，复用现有 Web 产物"
+    if [[ ! -f "$RELEASE_MARKER" ]]; then
+        echo "错误：缺少 $RELEASE_MARKER，不能确认 dist 来自 origin/main。" >&2
+        echo "请取消 PAWS_SKIP_BUILD 并由本脚本重新构建。" >&2
+        exit 1
+    fi
+    artifact_revision="$(tr -d '[:space:]' < "$RELEASE_MARKER")"
+    if [[ "$artifact_revision" != "$RELEASE_REVISION" ]]; then
+        echo "错误：现有 dist 来自 $artifact_revision，当前 origin/main 为 $RELEASE_REVISION。" >&2
+        exit 1
+    fi
 fi
+
+assert_release_source_unchanged
 
 if [[ ! -f "$DIST_DIR/index.html" ]]; then
     echo "错误：未找到 $DIST_DIR/index.html，请先完成 Web 构建。" >&2
@@ -124,8 +201,7 @@ if [[ ! -f "$DIST_DIR/index.html" ]]; then
 fi
 
 RELEASE_TIME="$(date -u +%Y%m%dT%H%M%SZ)"
-GIT_REVISION="$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD 2>/dev/null || printf 'nogit')"
-RELEASE_ID="${RELEASE_TIME}-${GIT_REVISION}"
+RELEASE_ID="${RELEASE_TIME}-${RELEASE_REVISION:0:12}"
 TEMP_BASE="${TMPDIR:-/tmp}"
 TEMP_BASE="${TEMP_BASE%/}"
 TEMP_DIR="$(mktemp -d "${TEMP_BASE}/paws-web-deploy.XXXXXX")"
@@ -148,6 +224,8 @@ ARCHIVE_SHA256="$(calculate_sha256 "$ARCHIVE_PATH")"
 echo "==> 上传到 ${PAWS_DEPLOY_HOST}"
 scp -P "$PAWS_DEPLOY_PORT" "$ARCHIVE_PATH" \
     "${PAWS_DEPLOY_HOST}:/tmp/${ARCHIVE_NAME}"
+
+assert_release_source_unchanged
 
 echo "==> 在服务器上切换发布目录"
 ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- \

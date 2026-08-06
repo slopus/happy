@@ -414,8 +414,13 @@ Optional variables:
 
 ```text
 PAWS_DEPLOY_PORT     SSH port, default 22
-PAWS_SKIP_BUILD=1    Reuse the current dist directory
+PAWS_SKIP_BUILD=1    Reuse a dist previously built by this helper for the same origin/main commit
 ```
+
+The helper fetches `origin/main` before building and only releases from a clean
+local `main` whose `HEAD` exactly matches it. The commit is locked for the whole
+build; if `main` advances or the working tree changes before the atomic switch,
+the release aborts instead of publishing mismatched artifacts.
 
 The helper does not install Caddy, modify the firewall/Caddyfile, delete backups, or publish files to object storage/CDN.
 
