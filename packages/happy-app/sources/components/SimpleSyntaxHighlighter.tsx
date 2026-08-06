@@ -4,12 +4,12 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 
 interface SimpleSyntaxHighlighterProps {
-  code: string;
-  language: string | null;
-  selectable: boolean;
-  testID?: string;
-  textStyle?: StyleProp<TextStyle>;
-  monochromeColor?: string;
+    code: string;
+    language: string | null;
+    selectable: boolean;
+    testID?: string;
+    textStyle?: StyleProp<TextStyle>;
+    monochromeColor?: string;
 }
 
 // Get theme-aware colors
@@ -251,87 +251,87 @@ const tokenizeCode = (code: string, language: string | null) => {
 };
 
 export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = ({
-  code,
-  language,
-  selectable,
-  testID,
-  textStyle,
-  monochromeColor,
+    code,
+    language,
+    selectable,
+    testID,
+    textStyle,
+    monochromeColor,
 }) => {
-  const { theme } = useUnistyles();
-  const colors = getColors(theme);
-  const tokens = React.useMemo(() => tokenizeCode(code, language), [code, language]);
+    const { theme } = useUnistyles();
+    const colors = getColors(theme);
+    const tokens = React.useMemo(() => tokenizeCode(code, language), [code, language]);
 
-  const getColorForType = (type: string, nestLevel?: number): string => {
-    switch (type) {
-      case 'keyword': return colors.keyword;
-      case 'controlFlow': return colors.controlFlow;
-      case 'type': return colors.type;
-      case 'modifier': return colors.modifier;
-      case 'string': return colors.string;
-      case 'number': return colors.number;
-      case 'boolean': return colors.boolean;
-      case 'regex': return colors.regex;
-      case 'function': return colors.function;
-      case 'method': return colors.method;
-      case 'property': return colors.property;
-      case 'comment': return colors.comment;
-      case 'docstring': return colors.docstring;
-      case 'operator': return colors.operator;
-      case 'assignment': return colors.assignment;
-      case 'comparison': return colors.comparison;
-      case 'logical': return colors.logical;
-      case 'decorator': return colors.decorator;
-      case 'import': return colors.import;
-      case 'variable': return colors.variable;
-      case 'parameter': return colors.parameter;
-      case 'punctuation': return colors.punctuation;
-      case 'bracket': 
-        switch ((nestLevel || 1) % 5) {
-          case 1: return colors.bracket1;
-          case 2: return colors.bracket2;
-          case 3: return colors.bracket3;
-          case 4: return colors.bracket4;
-          case 0: return colors.bracket5; // Level 5, 10, 15, etc.
-          default: return colors.bracket1;
+    const getColorForType = (type: string, nestLevel?: number): string => {
+        switch (type) {
+        case 'keyword': return colors.keyword;
+        case 'controlFlow': return colors.controlFlow;
+        case 'type': return colors.type;
+        case 'modifier': return colors.modifier;
+        case 'string': return colors.string;
+        case 'number': return colors.number;
+        case 'boolean': return colors.boolean;
+        case 'regex': return colors.regex;
+        case 'function': return colors.function;
+        case 'method': return colors.method;
+        case 'property': return colors.property;
+        case 'comment': return colors.comment;
+        case 'docstring': return colors.docstring;
+        case 'operator': return colors.operator;
+        case 'assignment': return colors.assignment;
+        case 'comparison': return colors.comparison;
+        case 'logical': return colors.logical;
+        case 'decorator': return colors.decorator;
+        case 'import': return colors.import;
+        case 'variable': return colors.variable;
+        case 'parameter': return colors.parameter;
+        case 'punctuation': return colors.punctuation;
+        case 'bracket':
+            switch ((nestLevel || 1) % 5) {
+            case 1: return colors.bracket1;
+            case 2: return colors.bracket2;
+            case 3: return colors.bracket3;
+            case 4: return colors.bracket4;
+            case 0: return colors.bracket5; // Level 5, 10, 15, etc.
+            default: return colors.bracket1;
+            }
+        default: return colors.default;
         }
-      default: return colors.default;
-    }
-  };
+    };
 
-  return (
-    <View
-      testID={testID}
-      style={Platform.OS === 'web'
-        ? ({ alignSelf: 'flex-start', width: 'max-content' } as any)
-        : { alignSelf: 'flex-start' }}
-    >
-      <Text 
-        selectable={selectable}
-        style={[
-          {
-            fontFamily: Typography.mono().fontFamily,
-            fontSize: 14,
-            lineHeight: 20,
-            ...(Platform.OS === 'web' ? ({ whiteSpace: 'pre' } as any) : {}),
-          },
-          textStyle,
-        ]}
-      >
-        {tokens.map((token, index) => (
-          <Text
-            key={index}
-            selectable={selectable}
-            style={{
-              color: monochromeColor ?? getColorForType(token.type, token.nestLevel),
-              fontFamily: Typography.mono().fontFamily,
-              fontWeight: ['keyword', 'controlFlow', 'type', 'function'].includes(token.type) ? '600' : '400',
-            }}
-          >
-            {token.text}
-          </Text>
-        ))}
-      </Text>
-    </View>
-  );
+    return (
+        <View
+            testID={testID}
+            style={Platform.OS === 'web'
+                ? ({ alignSelf: 'flex-start', width: 'max-content' } as any)
+                : { alignSelf: 'flex-start' }}
+        >
+            <Text
+                selectable={selectable}
+                style={[
+                    {
+                        fontFamily: Typography.mono().fontFamily,
+                        fontSize: 14,
+                        lineHeight: 20,
+                        ...(Platform.OS === 'web' ? ({ whiteSpace: 'pre' } as any) : {}),
+                    },
+                    textStyle,
+                ]}
+            >
+                {tokens.map((token, index) => (
+                    <Text
+                        key={index}
+                        selectable={selectable}
+                        style={{
+                            color: monochromeColor ?? getColorForType(token.type, token.nestLevel),
+                            fontFamily: Typography.mono().fontFamily,
+                            fontWeight: ['keyword', 'controlFlow', 'type', 'function'].includes(token.type) ? '600' : '400',
+                        }}
+                    >
+                        {token.text}
+                    </Text>
+                ))}
+            </Text>
+        </View>
+    );
 };

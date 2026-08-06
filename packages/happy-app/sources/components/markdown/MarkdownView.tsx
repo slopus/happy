@@ -582,8 +582,10 @@ function RenderTableBlock(props: {
     const isLastCol = (colIndex: number) => colIndex === columnCount - 1;
     const isLastRow = (rowIndex: number) => rowIndex === rowCount - 1;
     const foldedPrompt = props.variant === 'foldedPrompt';
-    const headerTextStyle = foldedPrompt ? [style.tableHeaderText, style.foldedTableHeaderText] : style.tableHeaderText;
-    const cellTextStyle = foldedPrompt ? [style.tableCellText, style.foldedTableCellText] : style.tableCellText;
+    const headerTextStyle = foldedPrompt
+        ? [style.tableHeaderText, style.foldedTableText, style.foldedTableHeaderText]
+        : style.tableHeaderText;
+    const cellTextStyle = foldedPrompt ? [style.tableCellText, style.foldedTableText] : style.tableCellText;
 
     const columnWidths = React.useMemo(() => {
         const widths = new Array(columnCount).fill(0);
@@ -1182,11 +1184,14 @@ const style = StyleSheet.create((theme) => ({
         fontSize: 16,
         lineHeight: 24,
     },
-    foldedTableHeaderText: {
+    foldedTableText: {
         ...Typography.mono(),
         color: theme.colors.textSecondary,
         fontSize: 12,
         lineHeight: 18,
+        fontWeight: '400',
+    },
+    foldedTableHeaderText: {
         fontWeight: '600',
     },
     tableCellText: {
@@ -1195,14 +1200,6 @@ const style = StyleSheet.create((theme) => ({
         fontSize: 16,
         lineHeight: 24,
     },
-    foldedTableCellText: {
-        ...Typography.mono(),
-        color: theme.colors.textSecondary,
-        fontSize: 12,
-        lineHeight: 18,
-        fontWeight: '400',
-    },
-
     // Add global style for Web platform (Unistyles supports this via compiler plugin)
     ...(Platform.OS === 'web' ? {
         // Web-only CSS styles
