@@ -60,8 +60,12 @@ function captureBrowserDiagnostics(page: Page): string[] {
 }
 
 async function expectNoDevelopmentWarningSurface(page: Page, diagnostics: string[]): Promise<void> {
+    const baselineNativeDriverWarning = 'warning: Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md';
     const actionableDiagnostics = diagnostics.filter(message => (
         !message.includes('Failed to load resource: net::ERR_CONNECTION_REFUSED')
+        // The exact baseline warning is a console defect fixed by this PR in
+        // Shaker and ScreenshotGalleryDrawer. After evidence gets no waiver.
+        && !(evidencePhase === 'before' && message === baselineNativeDriverWarning)
     ));
     expect(actionableDiagnostics).toEqual([]);
     await expect(page.locator('#logbox_notification')).toHaveCount(0);
