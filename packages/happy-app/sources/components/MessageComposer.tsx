@@ -35,6 +35,7 @@ import {
     SessionComposerDirectorySelector,
     type SessionComposerDirectorySelectorConfig,
 } from './SessionComposerDirectorySelector';
+import { resolveComposerPrimaryAction } from './composerPrimaryAction';
 
 interface MessageComposerProps {
     // Drives layout differences between the home compose box and the in-session
@@ -535,6 +536,13 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     const [hasText, setHasText] = React.useState(() => props.initialValue.trim().length > 0);
     const hasImages = (props.selectedImages?.length ?? 0) > 0;
     const hasPayload = hasText || hasImages;
+    const primaryAction = resolveComposerPrimaryAction({
+        mode: props.mode,
+        showAbortButton: props.showAbortButton ?? false,
+        hasAbortHandler: Boolean(props.onAbort),
+        hasPayload,
+    });
+    const isAbortAction = primaryAction === 'abort';
     const canPressSendButton = !props.isSending
         && !props.isSendDisabled
         && !isSendBlocked
@@ -907,7 +915,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>
                         <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
-                            {/* Row 1: Profile (FIRST), Agent, Abort, Git Status */}
+                            {/* Row 1: Profile (FIRST), Agent, Git Status */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                 {props.zenMode && <View style={{ flex: 1 }} />}
                                 {!props.zenMode && <View style={styles.actionButtonsLeft}>
@@ -964,40 +972,6 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                                         : t('agentInput.agent.gemini')}
                                         </Text>
                                     </Pressable>
-                                )}
-
-                                {/* Abort button (session only) */}
-                                {isSession && props.showAbortButton && props.onAbort && (
-                                    <Shaker ref={shakerRef}>
-                                        <Pressable
-                                            style={(p) => ({
-                                                flexDirection: 'row',
-                                                alignItems: 'center',
-                                                borderRadius: Platform.select({ default: 16, android: 20 }),
-                                                paddingHorizontal: 8,
-                                                paddingVertical: 6,
-                                                justifyContent: 'center',
-                                                height: 32,
-                                                opacity: p.pressed ? 0.7 : 1,
-                                            })}
-                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            onPress={handleAbortPress}
-                                            disabled={isAborting}
-                                        >
-                                            {isAborting ? (
-                                                <ActivityIndicator
-                                                    size="small"
-                                                    color={theme.colors.button.secondary.tint}
-                                                />
-                                            ) : (
-                                                <Octicons
-                                                    name={"stop"}
-                                                    size={16}
-                                                    color={theme.colors.button.secondary.tint}
-                                                />
-                                            )}
-                                        </Pressable>
-                                    </Shaker>
                                 )}
 
                                 {/* Git Status Badge (session only) */}
@@ -1152,17 +1126,21 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     <SessionComposerModeSelector {...props.modeSelector} />
                                 ) : null}
 
-                                {/* Send button */}
-                                <View
+                                {/* Primary action: stop while running and empty, send when there is a payload. */}
+                                <Shaker
+                                    ref={shakerRef}
                                     style={[
                                         styles.sendButton,
-                                        (canPressSendButton || props.isSending)
+                                        (isAbortAction || canPressSendButton || props.isSending)
                                             ? styles.sendButtonActive
                                             : styles.sendButtonInactive
                                     ]}
                                 >
                                     <Pressable
-                                        testID="message-composer-send-button"
+                                        testID={isAbortAction
+                                            ? 'message-composer-abort-button'
+                                            : 'message-composer-send-button'}
+                                        accessibilityRole="button"
                                         style={(p) => ({
                                             width: '100%',
                                             height: '100%',
@@ -1171,12 +1149,18 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             opacity: p.pressed ? 0.7 : 1,
                                         })}
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        onPress={handleSendPress}
-                                        disabled={!canPressSendButton}
+                                        onPress={isAbortAction ? handleAbortPress : handleSendPress}
+                                        disabled={isAbortAction ? isAborting : !canPressSendButton}
                                     >
-                                        {props.isSending ? (
+                                        {(isAbortAction && isAborting) || (!isAbortAction && props.isSending) ? (
                                             <ActivityIndicator
                                                 size="small"
+                                                color={theme.colors.button.primary.tint}
+                                            />
+                                        ) : isAbortAction ? (
+                                            <Octicons
+                                                name="square-fill"
+                                                size={12}
                                                 color={theme.colors.button.primary.tint}
                                             />
                                         ) : (
@@ -1191,7 +1175,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             />
                                         )}
                                     </Pressable>
-                                </View>
+                                </Shaker>
                                 </View>
                             </View>
                         </View>
