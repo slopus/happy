@@ -1,7 +1,7 @@
 # Stage 1: install dependencies with workspace context
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+RUN corepack enable && corepack prepare pnpm@11.13.0 --activate
 
 WORKDIR /repo
 
@@ -45,8 +45,13 @@ ENV HAPPY_BUILD_COMMIT_TIMESTAMP=$HAPPY_BUILD_COMMIT_TIMESTAMP
 COPY packages/happy-wire ./packages/happy-wire
 COPY packages/happy-app ./packages/happy-app
 
-RUN pnpm --filter @slopus/happy-wire build
-RUN pnpm --filter happy-app exec expo export --platform web --output-dir dist
+# --config.verify-deps-before-run=false: pnpm 11's implicit deps-status-check
+# invokes `pnpm install` and tries to purge the modules dir; in a non-TTY
+# Docker build that purge prompts + aborts with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY.
+# Deps are already baked by the deps stage; skip the re-check (matches the flag
+# used by docker-compose for the server/migrate services).
+RUN pnpm --config.verify-deps-before-run=false --filter @slopus/happy-wire build
+RUN pnpm --config.verify-deps-before-run=false --filter happy-app exec expo export --platform web --output-dir dist
 
 # Stage 3: runtime with Nginx
 FROM nginx:alpine AS runner
