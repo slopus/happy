@@ -21,12 +21,14 @@ const mocks = vi.hoisted(() => ({
     closePanel: vi.fn(),
     pendingCloseCallback: null as (() => void) | null,
     isDataReady: false,
+    sessionAvailable: true,
     fileDiffsSidebarEnabled: false,
     runningOnMac: false,
     windowWidth: 390,
     isTablet: false,
     platformOS: 'android',
     desktopRightPanelCollapsed: false,
+    globalRightSidebarShortcut: undefined as (() => void) | undefined,
     setDesktopRightPanelCollapsed: vi.fn(),
     spaceAgent: null as AgentLauncher | null,
     useSpaceAgentForSession: vi.fn(),
@@ -133,8 +135,8 @@ vi.mock('@/components/rightPanel/SessionCapabilityHub', () => ({ SessionCapabili
 vi.mock('@/components/RightSwipePanelHost', async () => {
     const ReactModule = await import('react');
     return {
-        RightSwipePanelHost: ({ panelContent, children }: { panelContent: React.ReactNode; children: React.ReactNode }) => (
-            ReactModule.createElement('RightSwipePanelHost', { panelContent }, children, panelContent)
+        RightSwipePanelHost: ({ panelContent, children, ...props }: { panelContent: React.ReactNode; children: React.ReactNode }) => (
+            ReactModule.createElement('RightSwipePanelHost', { panelContent, ...props }, children, panelContent)
         ),
         useRightSwipePanel: () => ({
             isOpen: true,
@@ -186,6 +188,11 @@ vi.mock('@/hooks/useImagePicker', () => ({
         clearImages: vi.fn(),
         addImages: vi.fn(),
     }),
+}));
+vi.mock('@/hooks/useGlobalKeyboard', () => ({
+    useGlobalKeyboard: (_handler: (() => void) | undefined, options: { onToggleRightSidebar?: () => void }) => {
+        mocks.globalRightSidebarShortcut = options.onToggleRightSidebar;
+    },
 }));
 vi.mock('@/hooks/useSessionQuickActions', () => ({
     useSessionQuickActions: () => ({
@@ -258,7 +265,7 @@ vi.mock('@/sync/storage', () => ({
         return [false, vi.fn()];
     },
     useMachine: () => null,
-    useSession: () => mocks.session,
+    useSession: () => mocks.sessionAvailable ? mocks.session : null,
     useSessionMessages: () => ({ messages: [], isLoaded: true }),
     useSessionUsage: () => undefined,
     useSetting: (key: string) => key === 'fileDiffsSidebar' ? mocks.fileDiffsSidebarEnabled : false,
@@ -331,12 +338,14 @@ describe('SessionView Agent-space boundary', () => {
         vi.clearAllMocks();
         mocks.pendingCloseCallback = null;
         mocks.isDataReady = false;
+        mocks.sessionAvailable = true;
         mocks.fileDiffsSidebarEnabled = false;
         mocks.runningOnMac = false;
         mocks.windowWidth = 390;
         mocks.isTablet = false;
         mocks.platformOS = 'android';
         mocks.desktopRightPanelCollapsed = false;
+        mocks.globalRightSidebarShortcut = undefined;
         mocks.spaceAgent = null;
         mocks.useSpaceAgentForSession.mockImplementation(() => mocks.spaceAgent);
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -416,6 +425,110 @@ describe('SessionView Agent-space boundary', () => {
         const newSession = renderer.root.findByProps({ testID: 'session-header-new-session-button' });
         act(() => newSession.props.onPress());
         expect(mocks.routerNavigate).toHaveBeenCalledWith('/new');
+
+        act(() => renderer.unmount());
+    });
+
+    it.each([
+        { isDataReady: false, sessionAvailable: true, windowWidth: 390, label: 'phone loading' },
+        { isDataReady: true, sessionAvailable: false, windowWidth: 390, label: 'deleted phone session' },
+        { isDataReady: false, sessionAvailable: true, windowWidth: 1100, label: 'wide loading' },
+        { isDataReady: true, sessionAvailable: false, windowWidth: 1100, label: 'deleted wide session' },
+    ])('disables every right drawer entry while $label is unavailable', ({ isDataReady, sessionAvailable, windowWidth }) => {
+        mocks.isDataReady = isDataReady;
+        mocks.sessionAvailable = sessionAvailable;
+        mocks.windowWidth = windowWidth;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        const host = renderer.root.findByType('RightSwipePanelHost');
+        expect(host.props.enabled).toBe(false);
+        expect(host.props.open).toBe(false);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-toggle-button' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel' })).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
+
+    it('uses the T14 header toggle to control a compact drawer at 1024px', () => {
+        mocks.isDataReady = true;
+        mocks.windowWidth = 1024;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel' })).toHaveLength(0);
+        const host = renderer.root.findByType('RightSwipePanelHost');
+        expect(host.props.open).toBe(false);
+        const toggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
+        expect(toggle.props['aria-expanded']).toBe(false);
+
+        act(() => toggle.props.onPress());
+        expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' }).props['aria-expanded']).toBe(true);
+
+        expect(mocks.globalRightSidebarShortcut).toEqual(expect.any(Function));
+        act(() => mocks.globalRightSidebarShortcut?.());
+        expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(false);
+
+        act(() => renderer.unmount());
+    });
+
+    it('restores the compact drawer entry after crossing both persistent breakpoints', () => {
+        mocks.isDataReady = true;
+        mocks.windowWidth = 1099;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        mocks.desktopRightPanelCollapsed = true;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' }).props['aria-expanded']).toBe(false);
+
+        act(() => {
+            mocks.windowWidth = 1100;
+            renderer.update(<SessionView id="session-1" key="persistent-1100" />);
+        });
+        expect(renderer.root.findAllByType('RightSwipePanelHost')).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel' })).toHaveLength(1);
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' }).props['aria-expanded']).toBe(false);
+
+        act(() => {
+            mocks.windowWidth = 1099;
+            renderer.update(<SessionView id="session-1" key="drawer-1099" />);
+        });
+        expect(renderer.root.findAllByType('RightSwipePanelHost')).toHaveLength(1);
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' }).props['aria-expanded']).toBe(false);
+
+        act(() => renderer.unmount());
+    });
+
+    it('falls back to a visible drawer toggle when a wide native tablet cannot host a persistent panel', () => {
+        mocks.isDataReady = true;
+        mocks.windowWidth = 1400;
+        mocks.isTablet = true;
+        mocks.platformOS = 'android';
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel' })).toHaveLength(0);
+        expect(renderer.root.findAllByType('RightSwipePanelHost')).toHaveLength(1);
+        expect(renderer.root.findByType('RightSwipePanelHost').props.mode).toBe('drawer-toggle');
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' })).toBeTruthy();
 
         act(() => renderer.unmount());
     });
@@ -611,6 +724,8 @@ describe('SessionView Agent-space boundary', () => {
 
     it.each([
         { windowWidth: 1100, compact: true },
+        { windowWidth: 1179, compact: true },
+        { windowWidth: 1180, compact: false },
         { windowWidth: 1280, compact: false },
     ])('keeps the native tablet metadata chip compact=$compact at $windowWidth px', ({ windowWidth, compact }) => {
         mocks.isDataReady = true;

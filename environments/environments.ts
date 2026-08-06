@@ -374,7 +374,9 @@ export async function startEnvironmentServices(name: string): Promise<void> {
     const webLogFile = path.join(envDir, "web", "stdout.log");
     fs.mkdirSync(path.join(envDir, "web"), { recursive: true });
     console.log(`Starting web on port ${config.expoPort}...`);
-    const webPid = spawnService("pnpm", ["web", "--port", String(config.expoPort)], {
+    const webArgs = ["web", "--port", String(config.expoPort)];
+    if (process.env.HAPPY_E2E_WEB_NO_DEV === "1") webArgs.push("--no-dev", "--clear");
+    const webPid = spawnService("pnpm", webArgs, {
         cwd: path.join(REPO_ROOT, "packages", "happy-app"),
         env: { ...mergedEnv, BROWSER: "none" },
         logFile: webLogFile,

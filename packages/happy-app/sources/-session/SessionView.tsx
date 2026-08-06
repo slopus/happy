@@ -15,6 +15,7 @@ import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { useDraft } from '@/hooks/useDraft';
 import { useImagePicker } from '@/hooks/useImagePicker';
+import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
 import { requestScreenshot } from '@/sync/ops.screenshot';
@@ -40,6 +41,7 @@ import {
     getPersistentHeaderContentInset,
     getDesktopRightPanelPresentation,
     getPersistentNavigationControlsWidth,
+    getResponsiveRightPanelMode,
     shouldUseCompactSessionHeader,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
@@ -299,6 +301,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
     const [desktopRightPanelCollapsed, setDesktopRightPanelCollapsed] = useLocalSettingMutable('desktopRightPanelCollapsed');
+    const [rightDrawerOpen, setRightDrawerOpen] = React.useState(false);
     const {
         leftVisible: desktopLeftSidebarVisible,
         leftWidth: desktopLeftSidebarWidth,
@@ -310,6 +313,13 @@ export const SessionView = React.memo((props: { id: string }) => {
     // The capability hub is a first-class desktop panel. File browsing is an
     // optional mode inside that same panel instead of a separate fourth column.
     const desktopRightPanelAvailable = layoutRightPanelAvailable && isDataReady && !!session;
+    const widthRightPanelMode = getResponsiveRightPanelMode(windowWidth);
+    const responsiveRightPanelMode = desktopRightPanelAvailable
+        ? 'persistent'
+        : widthRightPanelMode === 'edge-handle'
+            ? 'edge-handle'
+            : 'drawer-toggle';
+    const compactRightDrawerAvailable = responsiveRightPanelMode === 'drawer-toggle' && isDataReady && !!session;
     const canShowFilePanel = desktopRightPanelAvailable && fileDiffsSidebarEnabled;
     const desktopRightPanelPresentation = getDesktopRightPanelPresentation({
         available: desktopRightPanelAvailable,
@@ -317,6 +327,12 @@ export const SessionView = React.memo((props: { id: string }) => {
         zenMode,
     });
     const showDesktopRightPanel = desktopRightPanelPresentation === 'expanded';
+
+    React.useEffect(() => {
+        if (responsiveRightPanelMode === 'persistent' || !isDataReady || !session) {
+            setRightDrawerOpen(false);
+        }
+    }, [isDataReady, responsiveRightPanelMode, session]);
 
     const rightPanelWidth = desktopRightPanelAvailable ? layoutRightPanelWidth : 0;
 
@@ -450,6 +466,14 @@ export const SessionView = React.memo((props: { id: string }) => {
     // agent + machine + connection state. The dropdown keeps runtime identity
     // read-only while letting next-turn model, effort, and permissions update.
     const [infoPanelOpen, setInfoPanelOpen] = React.useState(false);
+    const toggleCompactRightDrawer = React.useCallback(() => {
+        if (!compactRightDrawerAvailable) return;
+        setInfoPanelOpen(false);
+        setRightDrawerOpen((value) => !value);
+    }, [compactRightDrawerAvailable]);
+    useGlobalKeyboard(undefined, {
+        onToggleRightSidebar: compactRightDrawerAvailable ? toggleCompactRightDrawer : undefined,
+    });
     const sessionOnline = session?.presence === 'online';
     const agentLabel = React.useMemo(() => {
         const flavor = session?.metadata?.flavor ?? 'claude';
@@ -531,13 +555,22 @@ export const SessionView = React.memo((props: { id: string }) => {
     const desktopPanelLabel = desktopPanelMode === 'files' && canShowFilePanel
         ? t('common.files')
         : t('rightPanelCapabilityHub.title');
-    const rightPanelToggleButton = desktopRightPanelAvailable && desktopRightPanelPresentation !== 'zen' ? (
+    const rightPanelToggleButton = (
+        (desktopRightPanelAvailable && desktopRightPanelPresentation !== 'zen')
+        || compactRightDrawerAvailable
+    ) ? (
         <DesktopRightPanelToggleButton
-            expanded={showDesktopRightPanel}
-            label={showDesktopRightPanel
+            expanded={desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen}
+            label={(desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen)
                 ? t('desktopWorkspace.hidePanel', { panel: desktopPanelLabel })
                 : t('desktopWorkspace.showPanel', { panel: desktopPanelLabel })}
-            onPress={() => setDesktopRightPanelCollapsed(showDesktopRightPanel)}
+            onPress={() => {
+                if (desktopRightPanelAvailable) {
+                    setDesktopRightPanelCollapsed(showDesktopRightPanel);
+                    return;
+                }
+                toggleCompactRightDrawer();
+            }}
         />
     ) : null;
 
@@ -681,7 +714,19 @@ export const SessionView = React.memo((props: { id: string }) => {
             />
         );
         return (
-            <RightSwipePanelHost panelContent={rightPanel}>
+            <RightSwipePanelHost
+                closeAccessibilityLabel={t('desktopWorkspace.hidePanel', { panel: desktopPanelLabel })}
+                enabled={isDataReady && !!session}
+                mode={responsiveRightPanelMode === 'edge-handle' ? 'edge-handle' : 'drawer-toggle'}
+                onOpenChange={(nextOpen) => {
+                    if (nextOpen) setInfoPanelOpen(false);
+                    setRightDrawerOpen(nextOpen);
+                }}
+                open={rightDrawerOpen}
+                openAccessibilityLabel={t('desktopWorkspace.showPanel', { panel: desktopPanelLabel })}
+                panelAccessibilityLabel={desktopPanelLabel}
+                panelContent={rightPanel}
+            >
                 {mainContent}
             </RightSwipePanelHost>
         );

@@ -6,6 +6,8 @@ const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL!;
 const e2eServerUrl = process.env.HAPPY_E2E_SERVER_URL!;
 const evidenceDirectory = process.env.HAPPY_RESPONSIVE_LAYOUT_EVIDENCE_DIR;
 const evidencePhase = process.env.HAPPY_RESPONSIVE_LAYOUT_EVIDENCE_PHASE ?? 'after';
+const cleanEvidenceRuntime = process.env.HAPPY_E2E_WEB_NO_DEV === '1';
+const sessionReadyTimeout = cleanEvidenceRuntime ? 30_000 : 10_000;
 
 type Fixture = {
     close: () => void;
@@ -30,9 +32,85 @@ function route(pathname: string): string {
     return url.toString();
 }
 
+async function installStoredCredentials(page: Page): Promise<void> {
+    const url = new URL(authenticatedWebUrl);
+    const token = url.searchParams.get('dev_token');
+    const secret = url.searchParams.get('dev_secret');
+    if (!token || !secret) throw new Error('Missing local E2E authentication.');
+    await page.addInitScript(({ token, secret }) => {
+        if (window.location.origin === 'null') return;
+        window.localStorage.setItem('auth_credentials', JSON.stringify({ token, secret }));
+    }, { token, secret });
+}
+
 function screenshotPath(testInfo: TestInfo, caseNumber: number): string {
     const filename = `case-${caseNumber}-${evidencePhase}.png`;
     return evidenceDirectory ? `${evidenceDirectory}/${filename}` : testInfo.outputPath(filename);
+}
+
+function captureBrowserDiagnostics(page: Page): string[] {
+    const diagnostics: string[] = [];
+    page.on('console', (message) => {
+        if (message.type() === 'warning' || message.type() === 'error') {
+            diagnostics.push(`${message.type()}: ${message.text()}`);
+        }
+    });
+    page.on('pageerror', error => diagnostics.push(`pageerror: ${error.message}`));
+    return diagnostics;
+}
+
+async function expectNoDevelopmentWarningSurface(page: Page, diagnostics: string[]): Promise<void> {
+    const actionableDiagnostics = diagnostics.filter(message => (
+        !message.includes('Failed to load resource: net::ERR_CONNECTION_REFUSED')
+    ));
+    expect(actionableDiagnostics).toEqual([]);
+    await expect(page.locator('#logbox_notification')).toHaveCount(0);
+    const bottomLeftWarningCandidates = await page.locator('*').evaluateAll(elements => (
+        elements.flatMap((element) => {
+            const rect = element.getBoundingClientRect();
+            const isBottomLeftBadge = rect.left <= 12
+                && rect.left >= 0
+                && window.innerHeight - rect.bottom <= 12
+                && window.innerHeight - rect.bottom >= 0
+                && rect.width >= 32
+                && rect.width <= 56
+                && rect.height >= 32
+                && rect.height <= 56;
+            return isBottomLeftBadge ? [{
+                ariaLabel: element.getAttribute('aria-label'),
+                backgroundColor: getComputedStyle(element).backgroundColor,
+                bottom: rect.bottom,
+                height: rect.height,
+                id: element.id,
+                left: rect.left,
+                outerHTML: element.outerHTML.slice(0, 600),
+                role: element.getAttribute('role'),
+                tagName: element.tagName,
+                title: element.getAttribute('title'),
+                width: rect.width,
+            }] : [];
+        })
+    ));
+    expect(bottomLeftWarningCandidates).toEqual([]);
+}
+
+async function waitForFastRefreshIndicatorToSettle(page: Page): Promise<void> {
+    const deadline = Date.now() + 30_000;
+    let hiddenSince: number | null = null;
+    let lastCount = Number.POSITIVE_INFINITY;
+
+    while (Date.now() < deadline) {
+        lastCount = await page.locator('.__expo_fast_refresh_show').count();
+        if (lastCount === 0) {
+            hiddenSince ??= Date.now();
+            if (Date.now() - hiddenSince >= 1_000) return;
+        } else {
+            hiddenSince = null;
+        }
+        await page.waitForTimeout(125);
+    }
+
+    throw new Error(`Expo fast-refresh indicator did not stay hidden for 1000ms (last count: ${lastCount}).`);
 }
 
 async function appendAcpMessages(
@@ -236,17 +314,39 @@ async function expectDrawerDoesNotCoverCriticalControls(page: Page, drawer: Loca
     expect(permissionBox!.x + permissionBox!.width).toBeLessThanOrEqual(drawerBox!.x + 1);
 }
 
+async function expectDrawerSettled(page: Page, drawer: Locator): Promise<void> {
+    await expect.poll(() => page.getByTestId('right-swipe-panel-host').evaluate(element => element.scrollLeft)).toBe(0);
+    await expect.poll(async () => {
+        const box = await drawer.boundingBox();
+        return box ? Math.abs(box.x + box.width - await page.evaluate(() => window.innerWidth)) : Number.POSITIVE_INFINITY;
+    }).toBeLessThanOrEqual(1);
+    for (const testID of ['capability-block-outputs', 'capability-block-sources']) {
+        const block = drawer.getByTestId(testID);
+        await expect(block).toBeVisible();
+        expect(await block.evaluate(element => {
+            const rect = element.getBoundingClientRect();
+            return rect.left >= -1 && rect.right <= window.innerWidth + 1;
+        })).toBe(true);
+    }
+}
+
 test('T08-01 narrow session keeps the T14 phone header and exposes an accessible edge drawer', async ({ page, request }, testInfo) => {
     const fixture = await createFixture(request);
+    const browserDiagnostics = captureBrowserDiagnostics(page);
     try {
+        await installStoredCredentials(page);
         await page.setViewportSize({ width: 390, height: 844 });
         await page.goto(route(`/session/${fixture.sessionId}`));
-        await expect(page.getByTestId('session-message-input')).toBeVisible();
-        await expect(page.locator('[data-testid="permission-approve-button"]:visible')).toBeVisible();
+        await expect(page.getByTestId('session-message-input')).toBeVisible({ timeout: sessionReadyTimeout });
+        await expect(page.locator('[data-testid="permission-approve-button"]:visible')).toBeVisible({ timeout: sessionReadyTimeout });
         expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
 
         if (evidencePhase === 'before') {
+            await waitForFastRefreshIndicatorToSettle(page);
+            await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
             await page.screenshot({ path: screenshotPath(testInfo, 1), fullPage: true });
+            await expect(page.locator('.__expo_fast_refresh_show')).toHaveCount(0);
+            await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
             return;
         }
 
@@ -268,17 +368,45 @@ test('T08-01 narrow session keeps the T14 phone header and exposes an accessible
         await handle.click();
         const drawer = page.getByRole('dialog', { name: 'Capability Hub' });
         await expect(drawer).toBeVisible();
+        await expectDrawerSettled(page, drawer);
         await expect(handle).toHaveAttribute('aria-expanded', 'true');
         await expect(drawer.getByTestId('capability-block-outputs')).toBeVisible();
         await expect(drawer.getByTestId('capability-block-sources')).toBeVisible();
         await expect(drawer.getByTestId('capability-block-outputs')).toContainText('responsive-layout-report.md');
         await expect(drawer.getByTestId('capability-block-sources')).toContainText('docs.example.com');
+        const openHandleBox = await handle.boundingBox();
+        const openDrawerBox = await drawer.boundingBox();
+        expect(openHandleBox).not.toBeNull();
+        expect(openDrawerBox).not.toBeNull();
+        expect(Math.abs(openHandleBox!.x + openHandleBox!.width - openDrawerBox!.x)).toBeLessThanOrEqual(1);
+        await expectCenterHitTestable(handle);
+        for (const testID of ['capability-block-outputs', 'capability-block-sources']) {
+            const blockBox = await drawer.getByTestId(testID).boundingBox();
+            expect(blockBox).not.toBeNull();
+            expect(openHandleBox!.x + openHandleBox!.width <= blockBox!.x
+                || blockBox!.x + blockBox!.width <= openHandleBox!.x
+                || openHandleBox!.y + openHandleBox!.height <= blockBox!.y
+                || blockBox!.y + blockBox!.height <= openHandleBox!.y).toBe(true);
+        }
         await expect.poll(() => drawer.evaluate(element => element.contains(document.activeElement))).toBe(true);
         await expectDrawerDoesNotCoverCriticalControls(page, drawer);
         await expect(page.getByTestId('right-swipe-panel-main')).toHaveAttribute('aria-hidden', 'true');
         await expect(page.getByTestId('right-swipe-panel-main')).toHaveAttribute('inert', '');
         await expectNoHorizontalOverflow(page);
+
+        // Visit both lazy detail surfaces before the screenshot stability gate.
+        await drawer.getByTestId('capability-block-outputs').click();
+        await expect(drawer.getByTestId('task-context-output-file')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await drawer.getByTestId('capability-block-sources').click();
+        await expect(drawer.getByTestId('task-context-source-web')).toBeVisible();
+        await page.keyboard.press('Escape');
+
+        await waitForFastRefreshIndicatorToSettle(page);
+        await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
         await page.screenshot({ path: screenshotPath(testInfo, 1), fullPage: true });
+        await expect(page.locator('.__expo_fast_refresh_show')).toHaveCount(0);
+        await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
 
         await drawer.getByTestId('capability-block-outputs').click();
         await expect(drawer.getByTestId('task-context-output-file')).toBeVisible();
@@ -295,6 +423,7 @@ test('T08-01 narrow session keeps the T14 phone header and exposes an accessible
         await page.mouse.move(120, 320, { steps: 8 });
         await page.mouse.up();
         await expect(page.getByRole('dialog', { name: 'Capability Hub' })).toBeVisible();
+        await expectDrawerSettled(page, page.getByRole('dialog', { name: 'Capability Hub' }));
         await page.getByTestId('right-swipe-panel-close-button').click();
         await expect(page.getByRole('dialog', { name: 'Capability Hub' })).toHaveCount(0);
     } finally {
@@ -304,14 +433,20 @@ test('T08-01 narrow session keeps the T14 phone header and exposes an accessible
 
 test('T08-02 compact desktop toggle opens one measured drawer and restores focus', async ({ page, request }, testInfo) => {
     const fixture = await createFixture(request);
+    const browserDiagnostics = captureBrowserDiagnostics(page);
     try {
+        await installStoredCredentials(page);
         await page.setViewportSize({ width: 1024, height: 768 });
         await page.goto(route(`/session/${fixture.sessionId}`));
-        await expect(page.getByTestId('session-message-input')).toBeVisible();
-        await expect(page.locator('[data-testid="permission-approve-button"]:visible')).toBeVisible();
+        await expect(page.getByTestId('session-message-input')).toBeVisible({ timeout: sessionReadyTimeout });
+        await expect(page.locator('[data-testid="permission-approve-button"]:visible')).toBeVisible({ timeout: sessionReadyTimeout });
 
         if (evidencePhase === 'before') {
+            await waitForFastRefreshIndicatorToSettle(page);
+            await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
             await page.screenshot({ path: screenshotPath(testInfo, 2), fullPage: true });
+            await expect(page.locator('.__expo_fast_refresh_show')).toHaveCount(0);
+            await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
             return;
         }
 
@@ -329,6 +464,7 @@ test('T08-02 compact desktop toggle opens one measured drawer and restores focus
 
         const drawer = page.getByRole('dialog', { name: 'Capability Hub' });
         await expect(drawer).toBeVisible();
+        await expectDrawerSettled(page, drawer);
         await expect(toggle).toHaveAttribute('aria-expanded', 'true');
         await expect(drawer.getByTestId('capability-block-outputs')).toBeVisible();
         await expect(drawer.getByTestId('capability-block-sources')).toBeVisible();
@@ -337,7 +473,20 @@ test('T08-02 compact desktop toggle opens one measured drawer and restores focus
         await page.keyboard.press('Tab');
         expect(await drawer.evaluate(element => element.contains(document.activeElement))).toBe(true);
         await expectNoHorizontalOverflow(page);
+
+        // Settle every lazy Capability Hub surface before collecting visual proof.
+        await drawer.getByTestId('capability-block-outputs').click();
+        await expect(drawer.getByTestId('task-context-output-file')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await drawer.getByTestId('capability-block-sources').click();
+        await expect(drawer.getByTestId('task-context-source-web')).toBeVisible();
+        await page.keyboard.press('Escape');
+
+        await waitForFastRefreshIndicatorToSettle(page);
+        await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
         await page.screenshot({ path: screenshotPath(testInfo, 2), fullPage: true });
+        await expect(page.locator('.__expo_fast_refresh_show')).toHaveCount(0);
+        await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
 
         await page.keyboard.press('Escape');
         await expect(drawer).toHaveCount(0);
@@ -351,9 +500,10 @@ test('T08-03 all locked widths keep exactly one reachable right-panel presentati
     test.skip(evidencePhase === 'before', 'Responsive behavior only applies after T08.');
     const fixture = await createFixture(request);
     try {
+        await installStoredCredentials(page);
         await page.setViewportSize({ width: 1024, height: 768 });
         await page.goto(route(`/session/${fixture.sessionId}`));
-        await expect(page.getByTestId('session-message-input')).toBeVisible();
+        await expect(page.getByTestId('session-message-input')).toBeVisible({ timeout: sessionReadyTimeout });
 
         for (const width of [390, 500, 799]) {
             await page.setViewportSize({ width, height: 768 });

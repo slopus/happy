@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { act } from 'react';
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RightSwipePanelHost, useRightSwipePanel } from './RightSwipePanelHost';
 
@@ -66,16 +66,19 @@ vi.mock('react-native-gesture-handler', () => {
         GestureDetector: ({ children }: { children: React.ReactNode }) => children,
     };
 });
-vi.mock('react-native-reanimated', () => ({
-    default: { View: 'AnimatedView' },
-    runOnJS: (callback: (...args: any[]) => unknown) => callback,
-    useAnimatedStyle: (factory: () => object) => factory(),
-    useSharedValue: (value: number) => ({ value }),
-    withSpring: (_value: number, _config: unknown, completion?: SpringCompletion) => {
-        mocks.springCompletions.push(completion);
-        return _value;
-    },
-}));
+vi.mock('react-native-reanimated', async () => {
+    const ReactModule = await vi.importActual<typeof import('react')>('react');
+    return {
+        default: { View: 'AnimatedView' },
+        runOnJS: (callback: (...args: any[]) => unknown) => callback,
+        useAnimatedStyle: (factory: () => object) => factory(),
+        useSharedValue: (value: number) => ReactModule.useRef({ value }).current,
+        withSpring: (_value: number, _config: unknown, completion?: SpringCompletion) => {
+            mocks.springCompletions.push(completion);
+            return _value;
+        },
+    };
+});
 
 function CloseControl(props: { callback?: () => void; testID: string }) {
     const panel = useRightSwipePanel();
@@ -216,5 +219,78 @@ describe('RightSwipePanelHost close completion', () => {
         }).not.toThrow();
 
         act(() => renderer.unmount());
+    });
+
+    it('keeps a focusable narrow-screen edge handle visible with expanded semantics', () => {
+        const renderer = renderHost();
+        const handle = findControl(renderer, 'right-swipe-panel-edge-handle');
+        const closedDrawer = renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' });
+
+        expect(handle).toBeDefined();
+        expect(handle.props.accessibilityRole).toBe('button');
+        expect(handle.props.accessibilityState).toEqual({ expanded: false });
+        expect(handle.props['aria-expanded']).toBe(false);
+        expect(handle.props.style).toEqual(expect.objectContaining({ minWidth: 40, minHeight: 40 }));
+        expect(closedDrawer.props.accessibilityElementsHidden).toBe(true);
+        expect(closedDrawer.props.importantForAccessibility).toBe('no-hide-descendants');
+
+        act(() => handle.props.onPress());
+        const openHandle = findControl(renderer, 'right-swipe-panel-edge-handle');
+        expect(openHandle.props['aria-expanded']).toBe(true);
+        expect(openHandle.props.style).toEqual(expect.objectContaining({ right: 288 }));
+        const openDrawer = renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' });
+        expect(openDrawer.props.accessibilityElementsHidden).toBe(false);
+        expect(openDrawer.props.importantForAccessibility).toBe('auto');
+        expect(findControl(renderer, 'right-swipe-panel-close-button').props.accessibilityRole).toBe('button');
+
+        act(() => renderer.unmount());
+    });
+
+    it('sizes the filmstrip from the measured host instead of the full window', () => {
+        const renderer = renderHost();
+        const host = renderer.root.findByProps({ testID: 'right-swipe-panel-host' });
+
+        act(() => host.props.onLayout({ nativeEvent: { layout: { width: 550 } } }));
+
+        const filmstrip = renderer.root.findAllByType('AnimatedView').find((node: any) => (
+            Array.isArray(node.props.style)
+            && node.props.style.some((style: any) => style?.flexDirection === 'row')
+        ));
+        expect(filmstrip).toBeDefined();
+        expect(filmstrip.props.style).toContainEqual(expect.objectContaining({ width: 890 }));
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps controlled web geometry atomic with the open accessibility state', () => {
+        (Platform as { OS: string }).OS = 'web';
+        let renderer: any;
+        const renderControlled = (open: boolean) => (
+            <RightSwipePanelHost enabled mode="drawer-toggle" open={open} panelContent={<View />}>
+                <View />
+            </RightSwipePanelHost>
+        );
+
+        try {
+            act(() => {
+                renderer = TestRenderer.create(renderControlled(false));
+            });
+            act(() => renderer.update(renderControlled(true)));
+            // Re-render once after the effect so the lightweight Reanimated
+            // test double materializes the synchronized shared value.
+            act(() => renderer.update(renderControlled(true)));
+
+            const filmstrip = renderer.root.findAllByType('AnimatedView').find((node: any) => (
+                Array.isArray(node.props.style)
+                && node.props.style.some((style: any) => style?.flexDirection === 'row')
+            ));
+            expect(filmstrip.props.style).toContainEqual({ transform: [{ translateX: -288 }] });
+            const drawer = renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' });
+            expect(drawer.props.accessibilityElementsHidden).toBeUndefined();
+            expect(drawer.props.importantForAccessibility).toBeUndefined();
+        } finally {
+            if (renderer) act(() => renderer.unmount());
+            (Platform as { OS: string }).OS = 'ios';
+        }
     });
 });

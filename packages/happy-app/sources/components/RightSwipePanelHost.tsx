@@ -13,12 +13,20 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
+import { getResponsiveRightPanelMode, type ResponsiveRightPanelMode } from '@/utils/desktopNavigationLayout';
 import { hapticsLight } from './haptics';
 import { ExternalHorizontalGestureContext } from './ExternalHorizontalGestureContext';
 
 type Props = {
     children: React.ReactNode;
     panelContent?: React.ReactNode;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    openAccessibilityLabel?: string;
+    closeAccessibilityLabel?: string;
+    panelAccessibilityLabel?: string;
+    enabled?: boolean;
+    mode?: Exclude<ResponsiveRightPanelMode, 'persistent'>;
 };
 
 type PanelBackHandler = () => boolean;
@@ -26,6 +34,7 @@ type PanelBackHandler = () => boolean;
 type RightSwipePanelContextValue = {
     closePanel: (onClosed?: () => void) => void;
     isOpen: boolean;
+    openPanel: () => void;
     registerBackHandler: (handler: PanelBackHandler) => () => void;
 };
 
@@ -40,18 +49,37 @@ const SPRING_CONFIG = {
     mass: 0.9,
 };
 
-export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ children, panelContent }: Props) {
+export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
+    children,
+    closeAccessibilityLabel = 'Hide context panel',
+    enabled: enabledOverride,
+    mode,
+    onOpenChange,
+    open: controlledOpen,
+    openAccessibilityLabel = 'Show context panel',
+    panelAccessibilityLabel = 'Context panel',
+    panelContent,
+}: Props) {
     const { theme } = useUnistyles();
     const navigation = useNavigation();
     const isFocused = useIsFocused();
     const safeArea = useSafeAreaInsets();
-    const { width: windowWidth } = useWindowDimensions();
+    const { height: windowHeight, width: windowWidth } = useWindowDimensions();
     const isTablet = useIsTablet();
     const drawerPan = React.useContext(DrawerGestureContext);
-    const enabled = Platform.OS !== 'web' && !isTablet;
-    const panelWidth = Math.min(Math.max(Math.floor(windowWidth * 0.82), 280), 340);
+    const enabled = (panelContent !== undefined && panelContent !== null)
+        && (enabledOverride ?? (Platform.OS !== 'web' && !isTablet));
+    const widthMode = getResponsiveRightPanelMode(windowWidth);
+    const responsiveMode = mode ?? (widthMode === 'edge-handle' ? 'edge-handle' : 'drawer-toggle');
+    const [hostWidth, setHostWidth] = React.useState(windowWidth);
+    const panelWidth = Math.min(
+        Math.max(Math.floor(hostWidth * 0.72), 260),
+        340,
+        Math.max(240, hostWidth - 110),
+    );
 
-    const [open, setOpen] = React.useState(false);
+    const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
+    const open = controlledOpen ?? uncontrolledOpen;
     const progress = useSharedValue(0);
     const startProgress = useSharedValue(0);
     const startX = useSharedValue(0);
@@ -61,6 +89,18 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ chi
     const mountedRef = React.useRef(true);
     const animationRequestRef = React.useRef(0);
     const pendingCloseRef = React.useRef<{ id: number; onClosed?: () => void } | null>(null);
+    const hostRef = React.useRef<any>(null);
+    const mainRef = React.useRef<any>(null);
+    const panelRef = React.useRef<any>(null);
+    const focusReturnRef = React.useRef<HTMLElement | null>(null);
+    const previousOpenRef = React.useRef(false);
+
+    const setPanelOpen = React.useCallback((nextOpen: boolean) => {
+        if (controlledOpen === undefined) {
+            setUncontrolledOpen(nextOpen);
+        }
+        onOpenChange?.(nextOpen);
+    }, [controlledOpen, onOpenChange]);
 
     const supersedePanelAnimation = React.useCallback(() => {
         animationRequestRef.current += 1;
@@ -73,9 +113,9 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ chi
         if (!pending || pending.id !== requestId) return;
         pendingCloseRef.current = null;
         if (!finished) return;
-        setOpen(false);
+        setPanelOpen(false);
         pending.onClosed?.();
-    }, []);
+    }, [setPanelOpen]);
 
     React.useEffect(() => {
         mountedRef.current = true;
@@ -88,9 +128,20 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ chi
     const openPanel = React.useCallback(() => {
         supersedePanelAnimation();
         hapticsLight();
-        setOpen(true);
+        setPanelOpen(true);
         progress.value = withSpring(1, SPRING_CONFIG);
-    }, [progress, supersedePanelAnimation]);
+    }, [progress, setPanelOpen, supersedePanelAnimation]);
+
+    React.useEffect(() => {
+        if (controlledOpen === undefined) return;
+        supersedePanelAnimation();
+        // On web the controlled accessibility state (role/inert/aria-hidden)
+        // and the panel geometry must change atomically. Native keeps the
+        // spring because its focus model cannot scroll the hidden filmstrip.
+        progress.value = Platform.OS === 'web'
+            ? (controlledOpen ? 1 : 0)
+            : withSpring(controlledOpen ? 1 : 0, SPRING_CONFIG);
+    }, [controlledOpen, progress, supersedePanelAnimation]);
 
     const closePanel = React.useCallback((onClosed?: () => void) => {
         const requestId = animationRequestRef.current + 1;
@@ -101,6 +152,65 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ chi
             runOnJS(completePanelClose)(requestId, finished === true);
         });
     }, [completePanelClose, progress]);
+
+    React.useLayoutEffect(() => {
+        if (Platform.OS !== 'web' || typeof document === 'undefined') {
+            previousOpenRef.current = open;
+            return;
+        }
+
+        const host = hostRef.current as HTMLElement | null;
+        const main = mainRef.current as HTMLElement | null;
+        const panel = panelRef.current as HTMLElement | null;
+        const wasOpen = previousOpenRef.current;
+        previousOpenRef.current = open;
+        if (open) {
+            if (!wasOpen) {
+                const activeElement = document.activeElement;
+                if (activeElement instanceof HTMLElement && !panel?.contains(activeElement)) {
+                    focusReturnRef.current = activeElement;
+                }
+            }
+
+            // Expose and focus the dialog before hiding the currently focused
+            // main tree. This ordering avoids the browser rejecting
+            // aria-hidden on an ancestor that still owns activeElement.
+            panel?.removeAttribute('aria-hidden');
+            panel?.removeAttribute('inert');
+            if (!wasOpen) {
+                if (host) host.scrollLeft = 0;
+                panel?.focus?.({ preventScroll: true });
+                if (host) host.scrollLeft = 0;
+            }
+            main?.setAttribute('inert', '');
+            main?.setAttribute('aria-hidden', 'true');
+            return;
+        }
+
+        // Restore the main tree and its opener before hiding the dialog that
+        // currently owns focus.
+        main?.removeAttribute('inert');
+        main?.removeAttribute('aria-hidden');
+        if (wasOpen) {
+            const focusTarget = focusReturnRef.current;
+            focusReturnRef.current = null;
+            focusTarget?.focus({ preventScroll: true });
+        }
+        panel?.setAttribute('aria-hidden', 'true');
+        panel?.setAttribute('inert', '');
+    }, [open]);
+
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return undefined;
+        const mainElement = mainRef.current as HTMLElement | null;
+        const panelElement = panelRef.current as HTMLElement | null;
+        return () => {
+            mainElement?.removeAttribute('inert');
+            mainElement?.removeAttribute('aria-hidden');
+            panelElement?.removeAttribute('inert');
+            panelElement?.removeAttribute('aria-hidden');
+        };
+    }, []);
 
     const registerBackHandler = React.useCallback((handler: PanelBackHandler) => {
         backHandlerRef.current = handler;
@@ -117,6 +227,44 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ chi
         closePanel();
         return true;
     }, [closePanel, isFocused, open]);
+
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || !open || typeof document === 'undefined') return;
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                if (!handlePanelBack()) return;
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const panel = panelRef.current as HTMLElement | null;
+            if (!panel) return;
+            const focusable = Array.from(panel.querySelectorAll<HTMLElement>(
+                'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            )).filter((element) => element.getAttribute('aria-hidden') !== 'true');
+            if (focusable.length === 0) {
+                event.preventDefault();
+                panel.focus();
+                return;
+            }
+            const activeElement = document.activeElement;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (!panel.contains(activeElement)) {
+                event.preventDefault();
+                first.focus();
+            } else if (event.shiftKey && (activeElement === first || activeElement === panel)) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown, true);
+        return () => document.removeEventListener('keydown', handleKeyDown, true);
+    }, [handlePanelBack, open]);
 
     React.useEffect(() => {
         if (!enabled || !isFocused) return;
@@ -137,8 +285,9 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ chi
     const contextValue = React.useMemo<RightSwipePanelContextValue>(() => ({
         closePanel,
         isOpen: open,
+        openPanel,
         registerBackHandler,
-    }), [closePanel, open, registerBackHandler]);
+    }), [closePanel, open, openPanel, registerBackHandler]);
 
     const horizontalGesture = React.useMemo(() => {
         const pan = Gesture.Pan()
@@ -182,7 +331,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ chi
                 const projected = progress.value + Math.max(-0.22, Math.min(0.22, -e.velocityX / 2600));
                 if (projected >= (e.translationX < 0 ? OPEN_PROGRESS_THRESHOLD : CLOSE_PROGRESS_THRESHOLD)) {
                     runOnJS(hapticsLight)();
-                    runOnJS(setOpen)(true);
+                    runOnJS(setPanelOpen)(true);
                     progress.value = withSpring(1, {
                         ...SPRING_CONFIG,
                         velocity: -e.velocityX / panelWidth,
@@ -193,7 +342,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ chi
                         velocity: -e.velocityX / panelWidth,
                     }, (finished) => {
                         if (finished) {
-                            runOnJS(setOpen)(false);
+                            runOnJS(setPanelOpen)(false);
                         }
                     });
                     runOnJS(hapticsLight)();
@@ -203,7 +352,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ chi
             pan.blocksExternalGesture(drawerPan);
         }
         return pan;
-    }, [decided, drawerPan, enabled, open, panelWidth, progress, startProgress, startX, startY, supersedePanelAnimation]);
+    }, [decided, drawerPan, enabled, open, panelWidth, progress, setPanelOpen, startProgress, startX, startY, supersedePanelAnimation]);
 
     const externalHorizontalGestures = React.useMemo(() => [horizontalGesture], [horizontalGesture]);
 
@@ -223,18 +372,31 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ chi
         <RightSwipePanelContext.Provider value={contextValue}>
             <ExternalHorizontalGestureContext.Provider value={externalHorizontalGestures}>
                 <GestureDetector gesture={horizontalGesture}>
-                    <View collapsable={false} style={{ flex: 1, overflow: 'hidden', backgroundColor: theme.colors.surface }}>
+                    <View
+                        collapsable={false}
+                        ref={hostRef}
+                        onLayout={(event) => {
+                            const measuredWidth = Math.round(event.nativeEvent.layout.width);
+                            if (measuredWidth > 0 && measuredWidth !== hostWidth) setHostWidth(measuredWidth);
+                        }}
+                        style={{ flex: 1, overflow: 'hidden', backgroundColor: theme.colors.surface }}
+                        testID="right-swipe-panel-host"
+                    >
                         <Animated.View
                             style={[
                                 {
                                     flex: 1,
-                                    width: windowWidth + panelWidth,
+                                    width: hostWidth + panelWidth,
                                     flexDirection: 'row',
                                 },
                                 filmstripStyle,
                             ]}
                         >
-                            <View style={{ width: windowWidth }}>
+                            <View
+                                ref={mainRef}
+                                style={{ width: hostWidth }}
+                                testID="right-swipe-panel-main"
+                            >
                                 {children}
                                 <Animated.View
                                     style={[
@@ -252,23 +414,49 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ chi
                                 />
                             </View>
                             <View
+                                accessibilityLabel={panelAccessibilityLabel}
+                                accessibilityElementsHidden={Platform.OS === 'web' ? undefined : !open}
+                                importantForAccessibility={Platform.OS === 'web'
+                                    ? undefined
+                                    : open ? 'auto' : 'no-hide-descendants'}
+                                ref={panelRef}
                                 style={{
                                     width: panelWidth,
                                     paddingTop: safeArea.top + 12,
                                     paddingBottom: safeArea.bottom + 12,
                                     backgroundColor: theme.colors.surface,
                                 }}
+                                {...(Platform.OS === 'web' ? ({
+                                    'aria-modal': open ? true : undefined,
+                                    role: open ? 'dialog' : undefined,
+                                    tabIndex: open ? -1 : undefined,
+                                } as any) : {})}
+                                testID="right-swipe-panel-drawer"
                             >
-                                <View
+                                <Pressable
+                                    accessibilityLabel={closeAccessibilityLabel}
+                                    accessibilityRole="button"
+                                    hitSlop={8}
+                                    onPress={handlePanelBack}
                                     style={{
                                         alignSelf: 'center',
-                                        width: 36,
-                                        height: 4,
-                                        borderRadius: 2,
-                                        backgroundColor: theme.colors.divider,
-                                        opacity: 0.9,
+                                        width: 40,
+                                        height: 40,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
                                     }}
-                                />
+                                    testID="right-swipe-panel-close-button"
+                                >
+                                    <View
+                                        style={{
+                                            width: 36,
+                                            height: 4,
+                                            borderRadius: 2,
+                                            backgroundColor: theme.colors.divider,
+                                            opacity: 0.9,
+                                        }}
+                                    />
+                                </Pressable>
                                 <View style={{ flex: 1, minHeight: 0 }}>
                                     {panelContent}
                                 </View>
@@ -276,16 +464,57 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({ chi
                         </Animated.View>
                         {open && (
                             <Pressable
-                                onPress={() => closePanel()}
+                                onPress={handlePanelBack}
                                 style={{
                                     position: 'absolute',
                                     top: 0,
                                     left: 0,
                                     bottom: 0,
-                                    width: windowWidth - panelWidth,
+                                    width: Math.max(0, hostWidth - panelWidth),
                                 }}
                             >
                                 <View style={{ flex: 1 }} />
+                            </Pressable>
+                        )}
+                        {responsiveMode === 'edge-handle' && (
+                            <Pressable
+                                accessibilityLabel={open ? closeAccessibilityLabel : openAccessibilityLabel}
+                                accessibilityRole="button"
+                                accessibilityState={{ expanded: open }}
+                                aria-expanded={open}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 0 }}
+                                onPress={open ? handlePanelBack : openPanel}
+                                style={{
+                                    position: 'absolute',
+                                    // Once open, keep the handle attached to
+                                    // the drawer's leading edge on the dimmed
+                                    // main side so it cannot cover Hub cards.
+                                    right: open ? panelWidth : 0,
+                                    top: Math.max(safeArea.top + 88, Math.floor(windowHeight * 0.42)),
+                                    minWidth: 40,
+                                    minHeight: 40,
+                                    width: 40,
+                                    height: 56,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    borderTopLeftRadius: 14,
+                                    borderBottomLeftRadius: 14,
+                                    borderWidth: 1,
+                                    borderRightWidth: 0,
+                                    borderColor: theme.colors.divider,
+                                    backgroundColor: theme.colors.surface,
+                                    zIndex: 1200,
+                                }}
+                                testID="right-swipe-panel-edge-handle"
+                            >
+                                <View
+                                    style={{
+                                        width: 4,
+                                        height: 24,
+                                        borderRadius: 2,
+                                        backgroundColor: theme.colors.divider,
+                                    }}
+                                />
                             </Pressable>
                         )}
                     </View>
