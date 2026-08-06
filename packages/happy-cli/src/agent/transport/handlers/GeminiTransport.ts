@@ -20,6 +20,7 @@ import type {
   ToolNameContext,
 } from '../TransportHandler';
 import type { AgentMessage } from '../../core';
+import { HAPPY_CHANGE_TITLE_TOOL_NAME } from '../../constants/happyChangeTitleTool';
 import { logger } from '@/ui/logger';
 
 /**
@@ -58,7 +59,7 @@ interface ExtendedToolPattern extends ToolPattern {
 const GEMINI_TOOL_PATTERNS: ExtendedToolPattern[] = [
   {
     name: 'change_title',
-    patterns: ['change_title', 'change-title', 'happy__change_title', 'mcp__happy__change_title'],
+    patterns: ['change_title', 'change-title', 'happy__change_title', HAPPY_CHANGE_TITLE_TOOL_NAME],
     inputFields: ['title'],
     emptyInputDefault: true, // change_title often has empty input (title extracted from context)
   },

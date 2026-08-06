@@ -8,6 +8,7 @@
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import type { PermissionMode } from '@/api/types';
+import { HAPPY_CHANGE_TITLE_TOOL_NAME } from '@/agent/constants/happyChangeTitleTool';
 import {
     BasePermissionHandler,
     PermissionResult,
@@ -62,7 +63,7 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
         const alwaysAutoApproveNames: ReadonlySet<string> = new Set([
             'change_title',
             'happy__change_title',
-            'mcp__happy__change_title',
+            HAPPY_CHANGE_TITLE_TOOL_NAME,
             'GeminiReasoning',
             'CodexReasoning',
             'think',
