@@ -11,7 +11,7 @@ Visible UI cases: 1
 
 | Case | Problem | Before | After |
 | --- | --- | --- | --- |
-| NAV-13-01 | The project/session rail mixed avatars, cards, status dots, and icon styles; a hovered final row could insert its details over the next project. | ![Before: card-based session navigation](https://raw.githubusercontent.com/wangjs-jacky/happy/<COMMIT_SHA>/docs/pr-evidence/session-list-codex-style/session-list-codex-style-before-1280x900.png) | ![After: compact Codex-style row with right-side details](https://raw.githubusercontent.com/wangjs-jacky/happy/<COMMIT_SHA>/docs/pr-evidence/session-list-codex-style/session-list-codex-style-after-1280x900.png) |
+| NAV-13-01 | The project/session rail mixed avatars, cards, status dots, and icon styles; a hovered final row could insert its details over the next project. | ![Before: card-based session navigation](https://raw.githubusercontent.com/wangjs-jacky/happy/e03c7619550267d90b9007e11ef4afe2c8ddb71d/docs/pr-evidence/session-list-codex-style/session-list-codex-style-before-1280x900.png) | ![After: compact Codex-style row with right-side details](https://raw.githubusercontent.com/wangjs-jacky/happy/e03c7619550267d90b9007e11ef4afe2c8ddb71d/docs/pr-evidence/session-list-codex-style/session-list-codex-style-after-1280x900.png) |
 
 Both images use Chromium, English, light theme, DPR 1, and a 1280×900 viewport. The After case asserts that row actions remain inside the sidebar while the details card begins strictly beyond the sidebar's right edge.
 
