@@ -22,7 +22,7 @@ import packageJson from '../../package.json';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import type { PendingAttachment } from '@/utils/MessageQueue2';
 import { isPlaintextMediaEvent, resolveMediaKind, stagedMediaPath, isMediaFileEvent, buildMediaAttachmentFromBytes } from '@/api/mediaAttachment';
-import { buildCodexImageAttachmentNotice, buildCodexInput } from './codexImageInput';
+import { buildCodexTurnPayload } from './codexImageInput';
 import { projectPath } from '@/projectPath';
 import { join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
@@ -1340,24 +1340,17 @@ export async function runCodex(opts: {
                 includeTitleInstruction: first,
             });
 
-            const turnInput = buildCodexInput(turnPrompt, opts.attachments);
-            const turnImages = turnInput.filter(
-                (item): item is { type: 'localImage'; path: string } => item.type === 'localImage',
-            );
-            if (turnImages.length > 0) {
-                logger.debug(`[Codex] Attaching ${turnImages.length} image(s) to turn`);
+            const turnPayload = buildCodexTurnPayload(turnPrompt, opts.attachments);
+            if (turnPayload.images.length > 0) {
+                logger.debug(`[Codex] Attaching ${turnPayload.images.length} image(s) to turn`);
             }
-            const attachmentNotice = buildCodexImageAttachmentNotice(turnImages);
-            const promptForCodex = attachmentNotice
-                ? `${attachmentNotice}\n\n${turnPrompt}`
-                : turnPrompt;
 
-            const result = await client.sendTurnAndWait(promptForCodex, {
+            const result = await client.sendTurnAndWait(turnPayload.prompt, {
                 model: opts.mode.model,
                 approvalPolicy: executionPolicy.approvalPolicy,
                 sandbox: executionPolicy.sandbox,
                 effort: opts.mode.effort,
-                images: turnImages,
+                images: turnPayload.images,
             });
             first = false;
             if (includeAppendSystemPrompt) {
