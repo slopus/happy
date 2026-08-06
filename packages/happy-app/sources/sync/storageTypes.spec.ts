@@ -97,6 +97,42 @@ describe('MachineMetadataSchema', () => {
         expect(metadata.models?.[0]?.thinkingLevels).toEqual(['low', 'high']);
         expect((metadata as any).futureRigMachineField).toEqual({ enabled: true });
     });
+
+    // A failed parse returns null for the whole metadata object, so anything Rig
+    // may legitimately omit has to survive. These are the shapes its own session
+    // schema already permits.
+    const machineBase = {
+        host: 'workstation',
+        platform: 'darwin',
+        happyCliVersion: '0.0.136',
+        happyHomeDir: '/Users/dev/.happy',
+        homeDir: '/Users/dev',
+        machineKind: 'rig',
+        cliAvailability: {
+            claude: false,
+            codex: false,
+            gemini: false,
+            openclaw: false,
+            agy: false,
+            rig: true,
+            detectedAt: 123,
+        },
+    };
+
+    it.each([
+        ['a model without a reasoning level', { models: [{ code: 'c', value: 'v', id: 'm', providerId: 'p' }] }],
+        ['a model with a null reasoning level', { models: [{ code: 'c', value: 'v', id: 'm', providerId: 'p', defaultThinkingLevel: null }] }],
+        ['an operating mode with a null description', { operatingModes: [{ code: 'auto', value: 'Auto', description: null }] }],
+        ['an operating mode without a kind', { operatingModes: [{ code: 'auto', value: 'Auto', description: 'd' }] }],
+        ['partial defaults', { defaults: { providerId: 'codex' } }],
+        ['an unreadable catalog block', { models: 'not-an-array' }],
+    ])('keeps the rest of the machine when Rig publishes %s', (_label, rigFields) => {
+        const metadata = MachineMetadataSchema.parse({ ...machineBase, ...rigFields });
+
+        expect(metadata.host).toBe('workstation');
+        expect(metadata.platform).toBe('darwin');
+        expect(metadata.cliAvailability?.rig).toBe(true);
+    });
 });
 
 describe('AgentGoalStatusSchema', () => {
