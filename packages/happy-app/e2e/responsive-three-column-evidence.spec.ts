@@ -307,6 +307,67 @@ async function expectCenterHitTestable(locator: Locator): Promise<void> {
     })).toBe(true);
 }
 
+async function expectCenterNotHitTestable(locator: Locator): Promise<void> {
+    expect(await locator.evaluate(element => {
+        const rect = element.getBoundingClientRect();
+        const x = Math.max(0, Math.min(window.innerWidth - 1, rect.left + rect.width / 2));
+        const y = Math.max(0, Math.min(window.innerHeight - 1, rect.top + rect.height / 2));
+        const hit = document.elementFromPoint(x, y);
+        return rect.width > 0
+            && rect.height > 0
+            && hit !== element
+            && !element.contains(hit);
+    })).toBe(true);
+}
+
+type ElementBox = NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>;
+
+function boxesOverlap(left: ElementBox, right: ElementBox): boolean {
+    return left.x < right.x + right.width - 1
+        && left.x + left.width > right.x + 1
+        && left.y < right.y + right.height - 1
+        && left.y + left.height > right.y + 1;
+}
+
+async function expectCriticalLayoutInsideCompactWorkspace(page: Page, drawer: Locator): Promise<void> {
+    const host = page.getByTestId('right-swipe-panel-host');
+    const leftSidebar = page.getByTestId('desktop-left-sidebar');
+    const targets: Array<{ label: string; locator: Locator }> = [
+        { label: 'main area', locator: page.getByTestId('right-swipe-panel-main') },
+        { label: 'session title', locator: page.locator('[data-testid="session-header-title"]:visible') },
+        { label: 'run status', locator: page.locator('[data-testid="session-header-run-status"]:visible') },
+        { label: 'Agent chip', locator: page.locator('[data-testid="session-header-chip"]:visible') },
+        { label: 'header More action', locator: page.locator('[data-testid="session-header-more-button"]:visible') },
+        { label: 'header right-panel toggle', locator: page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible') },
+        { label: 'composer', locator: page.locator('[data-testid="message-composer-content"]:visible') },
+        { label: 'permission action', locator: page.locator('[data-testid="permission-approve-button"]:visible') },
+    ];
+    const hostBox = await host.boundingBox();
+    const leftBox = await leftSidebar.boundingBox();
+    const drawerBox = await drawer.boundingBox();
+    expect(hostBox, 'compact workspace host must have geometry').not.toBeNull();
+    expect(leftBox, 'open desktop left sidebar must have geometry').not.toBeNull();
+    expect(drawerBox, 'open right drawer must have geometry').not.toBeNull();
+
+    const workspaceLeft = Math.max(hostBox!.x, leftBox!.x + leftBox!.width);
+    const workspaceRight = drawerBox!.x;
+    expect(workspaceRight).toBeGreaterThan(workspaceLeft);
+
+    for (const { label, locator } of targets) {
+        await expect(locator, `${label} must remain rendered while the drawer is open`).toBeVisible();
+        const box = await locator.boundingBox();
+        expect(box, `${label} must have geometry`).not.toBeNull();
+        expect(box!.x, `${label} must stay right of the left sidebar`).toBeGreaterThanOrEqual(workspaceLeft - 1);
+        expect(box!.x + box!.width, `${label} must stay left of the right drawer`).toBeLessThanOrEqual(workspaceRight + 1);
+        expect(box!.y, `${label} must stay inside the workspace top`).toBeGreaterThanOrEqual(hostBox!.y - 1);
+        expect(box!.y + box!.height, `${label} must stay inside the workspace bottom`).toBeLessThanOrEqual(
+            hostBox!.y + hostBox!.height + 1,
+        );
+        expect(boxesOverlap(box!, leftBox!), `${label} must not overlap the desktop left sidebar`).toBe(false);
+        expect(boxesOverlap(box!, drawerBox!), `${label} must not overlap the right drawer`).toBe(false);
+    }
+}
+
 async function expectDrawerDoesNotCoverCriticalControls(page: Page, drawer: Locator): Promise<void> {
     const drawerBox = await drawer.boundingBox();
     const composerBox = await page.locator('[data-testid="message-composer-content"]:visible').boundingBox();
@@ -374,6 +435,7 @@ test('T08-01 narrow session keeps the T14 phone header and exposes an accessible
         await expect(drawer).toBeVisible();
         await expectDrawerSettled(page, drawer);
         await expect(handle).toHaveAttribute('aria-expanded', 'true');
+        await expect(handle).toHaveAccessibleName('Hide Capability Hub');
         await expect(drawer.getByTestId('capability-block-outputs')).toBeVisible();
         await expect(drawer.getByTestId('capability-block-sources')).toBeVisible();
         await expect(drawer.getByTestId('capability-block-outputs')).toContainText('responsive-layout-report.md');
@@ -412,12 +474,12 @@ test('T08-01 narrow session keeps the T14 phone header and exposes an accessible
         await expect(page.locator('.__expo_fast_refresh_show')).toHaveCount(0);
         await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
 
+        // The edge affordance is an explicit Hide action, not a Back action:
+        // even from a nested detail, one activation closes the whole drawer.
         await drawer.getByTestId('capability-block-outputs').click();
         await expect(drawer.getByTestId('task-context-output-file')).toBeVisible();
-        await page.keyboard.press('Escape');
-        await expect(drawer.getByTestId('capability-block-sources')).toBeVisible();
-        await expect(drawer).toBeVisible();
-        await page.keyboard.press('Escape');
+        await expect(handle).toHaveAccessibleName('Hide Capability Hub');
+        await handle.click();
         await expect(drawer).toHaveCount(0);
         await expect(handle).toBeFocused();
 
@@ -460,11 +522,30 @@ test('T08-02 compact desktop toggle opens one measured drawer and restores focus
         await expect(page.locator('[data-testid="desktop-right-panel"]:visible')).toHaveCount(0);
         await expect(page.getByTestId('right-swipe-panel-edge-handle')).toHaveCount(0);
 
-        // Opening another top-level surface never leaves two overlays stacked.
-        await page.getByTestId('session-header-more-button').click();
-        await expect(page.getByTestId('session-agent-panel')).toBeVisible();
-        await toggle.click();
-        await expect(page.getByTestId('session-agent-panel')).toHaveCount(0);
+        const leftSidebar = page.getByTestId('desktop-left-sidebar');
+        const main = page.getByTestId('right-swipe-panel-main');
+        await expect(leftSidebar).toBeVisible();
+        await expectCenterHitTestable(leftSidebar);
+
+        // A real composer permission picker owns Alt+Meta+B while open. The
+        // workspace shortcut must not stack the Capability Hub over it.
+        const permissionTrigger = page.getByTestId('session-composer-permission-trigger');
+        await expect(permissionTrigger).toBeVisible();
+        await permissionTrigger.click();
+        const permissionPicker = page.getByTestId('session-composer-permission-picker');
+        await expect(permissionPicker).toBeVisible();
+        await expect.poll(() => permissionPicker.evaluate(element => element.contains(document.activeElement))).toBe(true);
+        await page.keyboard.press('Alt+Meta+KeyB');
+        await expect(permissionPicker).toBeVisible();
+        await expect(page.getByRole('dialog', { name: 'Capability Hub' })).toHaveCount(0);
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+        await page.keyboard.press('Escape');
+        await expect(permissionPicker).toHaveCount(0);
+        await expect(permissionTrigger).toBeFocused();
+
+        // Once the picker is gone, the same shortcut opens the compact drawer.
+        await page.keyboard.press('Alt+Meta+KeyB');
 
         const drawer = page.getByRole('dialog', { name: 'Capability Hub' });
         await expect(drawer).toBeVisible();
@@ -473,6 +554,17 @@ test('T08-02 compact desktop toggle opens one measured drawer and restores focus
         await expect(drawer.getByTestId('capability-block-outputs')).toBeVisible();
         await expect(drawer.getByTestId('capability-block-sources')).toBeVisible();
         await expectDrawerDoesNotCoverCriticalControls(page, drawer);
+        await expectCriticalLayoutInsideCompactWorkspace(page, drawer);
+
+        // The modal drawer covers the complete workspace, including the
+        // permanent left sidebar. No background region stays in the a11y or
+        // pointer hit-test tree while the Hub is open.
+        await expect(main).toHaveAttribute('aria-hidden', 'true');
+        await expect(main).toHaveAttribute('inert', '');
+        await expect.poll(() => leftSidebar.evaluate(element => (
+            element.closest('[inert][aria-hidden="true"]') !== null
+        ))).toBe(true);
+        await expectCenterNotHitTestable(leftSidebar);
         await expect.poll(() => drawer.evaluate(element => element.contains(document.activeElement))).toBe(true);
         await page.keyboard.press('Tab');
         expect(await drawer.evaluate(element => element.contains(document.activeElement))).toBe(true);
@@ -492,7 +584,36 @@ test('T08-02 compact desktop toggle opens one measured drawer and restores focus
         await expect(page.locator('.__expo_fast_refresh_show')).toHaveCount(0);
         await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
 
+        // Escape is hierarchical: the first press leaves detail for the Hub
+        // summary without dropping dialog focus, the second closes the drawer
+        // and restores the element that owned focus before the shortcut.
+        await drawer.getByTestId('capability-block-outputs').click();
+        await expect(drawer.getByTestId('task-context-output-file')).toBeVisible();
         await page.keyboard.press('Escape');
+        await expect(drawer).toBeVisible();
+        await expect(drawer.getByTestId('capability-block-outputs')).toBeVisible();
+        await expect.poll(() => drawer.evaluate(element => element.contains(document.activeElement))).toBe(true);
+        await page.keyboard.press('Escape');
+        await expect(drawer).toHaveCount(0);
+        await expect(permissionTrigger).toBeFocused();
+        await expect(main).not.toHaveAttribute('aria-hidden', 'true');
+        await expect(main).not.toHaveAttribute('inert', '');
+        await expect.poll(() => leftSidebar.evaluate(element => (
+            element.closest('[inert][aria-hidden="true"]') !== null
+        ))).toBe(false);
+        await expectCenterHitTestable(leftSidebar);
+
+        // The explicit Hide button is not a detail-level Back control. One
+        // click from a nested Outputs detail closes the complete dialog and
+        // returns focus to the header opener.
+        await toggle.focus();
+        await toggle.click();
+        await expect(drawer).toBeVisible();
+        await drawer.getByTestId('capability-block-outputs').click();
+        await expect(drawer.getByTestId('task-context-output-file')).toBeVisible();
+        const closeButton = drawer.getByTestId('right-swipe-panel-close-button');
+        await expect(closeButton).toHaveAccessibleName('Hide Capability Hub');
+        await closeButton.click();
         await expect(drawer).toHaveCount(0);
         await expect(toggle).toBeFocused();
     } finally {

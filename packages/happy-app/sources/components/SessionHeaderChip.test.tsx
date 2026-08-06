@@ -129,4 +129,29 @@ describe('SessionHeaderChip connection semantics', () => {
 
         act(() => renderer.unmount());
     });
+
+    it('condenses only visual metadata while preserving the full accessible identity', () => {
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <SessionHeaderChip
+                    agentLabel="codex"
+                    compact
+                    condensed
+                    machineName="Mac mini"
+                    online
+                    open
+                    onPress={vi.fn()}
+                />,
+            );
+        });
+
+        const chip = renderer.root.findByProps({ testID: 'session-header-chip' });
+        expect(chip.props.accessibilityLabel).toBe('codex, status.online, Mac mini');
+        expect(chip.props.accessibilityState).toEqual({ expanded: true });
+        expect(chip.findAllByType('Text').map((node: any) => node.props.children)).toEqual(['codex']);
+        expect(chip.findAllByType('Ionicons')).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
 });

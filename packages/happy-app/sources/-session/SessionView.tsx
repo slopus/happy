@@ -87,6 +87,17 @@ const AGENT_LABELS: Record<string, string> = {
 
 const CAN_COPY_SESSION_ID = Application.applicationId === 'build.paws.preview';
 
+function hasVisibleWebDialog(): boolean {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return false;
+
+    return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]:not([aria-hidden="true"])')).some((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return false;
+        const style = typeof window === 'undefined' ? null : window.getComputedStyle(element);
+        return style?.display !== 'none' && style?.visibility !== 'hidden';
+    });
+}
+
 function SessionNewSessionAction({
     onPress,
 }: {
@@ -470,9 +481,17 @@ export const SessionView = React.memo((props: { id: string }) => {
     const [infoPanelOpen, setInfoPanelOpen] = React.useState(false);
     const toggleCompactRightDrawer = React.useCallback(() => {
         if (!compactRightDrawerAvailable) return;
+        if (rightDrawerOpen) {
+            setRightDrawerOpen(false);
+            return;
+        }
+        // Do not stack the Capability Hub over another top-level dialog such
+        // as the composer permission picker. The open drawer itself remains
+        // closable through this same shortcut.
+        if (hasVisibleWebDialog()) return;
         setInfoPanelOpen(false);
-        setRightDrawerOpen((value) => !value);
-    }, [compactRightDrawerAvailable]);
+        setRightDrawerOpen(true);
+    }, [compactRightDrawerAvailable, rightDrawerOpen]);
     useGlobalKeyboard(undefined, {
         onToggleRightSidebar: compactRightDrawerAvailable ? toggleCompactRightDrawer : undefined,
     });
@@ -489,6 +508,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         || null;
     const showChip = isDataReady && !!session;
     const compactSessionHeader = shouldUseCompactSessionHeader({ isTablet, windowWidth });
+    const constrainedDrawerHeader = compactSessionHeader && compactRightDrawerAvailable && rightDrawerOpen;
     // 会话内「进入空间/退出空间」：进入 = 设 agentSpaceId + 拉出工作台抽屉；退出 = 清空间并回首页。
     const { enter: enterSpace, exit: exitSpace } = useAgentSpace();
 
@@ -500,6 +520,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         <SessionHeaderChip
             agentLabel={agentLabel}
             compact={compactSessionHeader}
+            condensed={constrainedDrawerHeader}
             machineName={machineName}
             online={sessionOnline}
             open={infoPanelOpen}
@@ -515,7 +536,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         ) : isTablet ? (
             <View style={[workspaceStyles.headerIdentity, compactSessionHeader && workspaceStyles.headerIdentityCompact]}>
                 <SessionHeaderTitle compact={compactSessionHeader} session={session!} title={headerProps.title} />
-                <View style={workspaceStyles.headerAgentChip}>
+                <View style={[workspaceStyles.headerAgentChip, constrainedDrawerHeader && workspaceStyles.headerAgentChipConstrained]}>
                     {sessionHeaderChip}
                 </View>
             </View>
@@ -1588,6 +1609,11 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         flexShrink: 1,
         minWidth: 116,
         maxWidth: 220,
+    },
+    headerAgentChipConstrained: {
+        flexBasis: 60,
+        minWidth: 60,
+        maxWidth: 60,
     },
     headerActions: {
         flexDirection: 'row',

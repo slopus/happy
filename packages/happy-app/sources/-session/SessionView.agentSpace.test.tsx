@@ -144,6 +144,7 @@ vi.mock('@/components/RightSwipePanelHost', async () => {
                 mocks.closePanel(callback);
                 mocks.pendingCloseCallback = callback ?? null;
             },
+            focusPanel: vi.fn(),
             registerBackHandler: vi.fn(),
         }),
     };
@@ -482,6 +483,47 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(false);
 
         act(() => renderer.unmount());
+    });
+
+    it('blocks a closed compact drawer behind a visible dialog but still lets an open drawer close', () => {
+        mocks.isDataReady = true;
+        mocks.windowWidth = 1024;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        const originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+        const visibleDialog = {
+            getBoundingClientRect: () => ({ width: 320, height: 240 }),
+        };
+        let dialogs: unknown[] = [visibleDialog];
+        Object.defineProperty(globalThis, 'document', {
+            configurable: true,
+            value: { querySelectorAll: () => dialogs },
+        });
+        let renderer: any;
+
+        try {
+            act(() => {
+                renderer = TestRenderer.create(<SessionView id="session-1" />);
+            });
+
+            act(() => mocks.globalRightSidebarShortcut?.());
+            expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(false);
+
+            dialogs = [];
+            act(() => mocks.globalRightSidebarShortcut?.());
+            expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
+
+            dialogs = [visibleDialog];
+            act(() => mocks.globalRightSidebarShortcut?.());
+            expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(false);
+        } finally {
+            if (renderer) act(() => renderer.unmount());
+            if (originalDocument) {
+                Object.defineProperty(globalThis, 'document', originalDocument);
+            } else {
+                Reflect.deleteProperty(globalThis, 'document');
+            }
+        }
     });
 
     it('restores the compact drawer entry after crossing both persistent breakpoints', () => {

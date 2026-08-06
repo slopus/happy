@@ -90,6 +90,15 @@ function CloseControl(props: { callback?: () => void; testID: string }) {
     );
 }
 
+function NestedBackControl(props: { onBack: () => void }) {
+    const panel = useRightSwipePanel();
+    React.useEffect(() => panel?.registerBackHandler(() => {
+        props.onBack();
+        return true;
+    }), [panel, props.onBack]);
+    return null;
+}
+
 function renderHost(callback?: () => void) {
     let renderer: any;
     act(() => {
@@ -246,6 +255,38 @@ describe('RightSwipePanelHost close completion', () => {
         act(() => renderer.unmount());
     });
 
+    it('lets explicit hide controls close directly without consuming nested back', () => {
+        const nestedBack = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <RightSwipePanelHost panelContent={<NestedBackControl onBack={nestedBack} />}>
+                    <View />
+                </RightSwipePanelHost>,
+            );
+        });
+
+        const open = () => act(() => findControl(renderer, 'right-swipe-panel-edge-handle').props.onPress());
+        const completeClose = () => act(() => latestSpringCompletion()(true));
+
+        open();
+        act(() => findControl(renderer, 'right-swipe-panel-close-button').props.onPress());
+        completeClose();
+        expect(nestedBack).not.toHaveBeenCalled();
+
+        open();
+        act(() => findControl(renderer, 'right-swipe-panel-edge-handle').props.onPress());
+        completeClose();
+        expect(nestedBack).not.toHaveBeenCalled();
+
+        open();
+        act(() => findControl(renderer, 'right-swipe-panel-scrim').props.onPress());
+        completeClose();
+        expect(nestedBack).not.toHaveBeenCalled();
+
+        act(() => renderer.unmount());
+    });
+
     it('sizes the filmstrip from the measured host instead of the full window', () => {
         const renderer = renderHost();
         const host = renderer.root.findByProps({ testID: 'right-swipe-panel-host' });
@@ -262,7 +303,7 @@ describe('RightSwipePanelHost close completion', () => {
         act(() => renderer.unmount());
     });
 
-    it('keeps controlled web geometry atomic with the open accessibility state', () => {
+    it('keeps controlled web geometry atomic without translating the main workspace', () => {
         (Platform as { OS: string }).OS = 'web';
         let renderer: any;
         const renderControlled = (open: boolean) => (
@@ -284,8 +325,12 @@ describe('RightSwipePanelHost close completion', () => {
                 Array.isArray(node.props.style)
                 && node.props.style.some((style: any) => style?.flexDirection === 'row')
             ));
-            expect(filmstrip.props.style).toContainEqual({ transform: [{ translateX: -288 }] });
+            expect(filmstrip.props.style).toContainEqual(expect.objectContaining({ width: 400 }));
+            expect(filmstrip.props.style).not.toContainEqual(expect.objectContaining({ transform: expect.any(Array) }));
+            const main = renderer.root.findByProps({ testID: 'right-swipe-panel-main' });
             const drawer = renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' });
+            expect(main.props.style).toEqual(expect.objectContaining({ width: 240 }));
+            expect(drawer.props.style).toEqual(expect.objectContaining({ width: 160 }));
             expect(drawer.props.accessibilityElementsHidden).toBeUndefined();
             expect(drawer.props.importantForAccessibility).toBeUndefined();
         } finally {

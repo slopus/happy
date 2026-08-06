@@ -33,9 +33,16 @@ type PanelBackHandler = () => boolean;
 
 type RightSwipePanelContextValue = {
     closePanel: (onClosed?: () => void) => void;
+    focusPanel: () => void;
     isOpen: boolean;
     openPanel: () => void;
     registerBackHandler: (handler: PanelBackHandler) => () => void;
+};
+
+type ElementIsolationSnapshot = {
+    ariaHidden: string | null;
+    element: HTMLElement;
+    inert: string | null;
 };
 
 const RightSwipePanelContext = React.createContext<RightSwipePanelContextValue | null>(null);
@@ -48,6 +55,48 @@ const SPRING_CONFIG = {
     stiffness: 320,
     mass: 0.9,
 };
+
+function restoreElementIsolation(snapshot: ElementIsolationSnapshot): void {
+    for (const [attribute, value] of [
+        ['aria-hidden', snapshot.ariaHidden],
+        ['inert', snapshot.inert],
+    ] as const) {
+        if (value === null) {
+            snapshot.element.removeAttribute(attribute);
+        } else {
+            snapshot.element.setAttribute(attribute, value);
+        }
+    }
+}
+
+function isolateElement(element: HTMLElement): ElementIsolationSnapshot {
+    const snapshot = {
+        ariaHidden: element.getAttribute('aria-hidden'),
+        element,
+        inert: element.getAttribute('inert'),
+    };
+    element.setAttribute('inert', '');
+    element.setAttribute('aria-hidden', 'true');
+    return snapshot;
+}
+
+function isolateOutsideHostBranch(host: HTMLElement): ElementIsolationSnapshot[] {
+    const snapshots: ElementIsolationSnapshot[] = [];
+    let branch: HTMLElement = host;
+
+    while (branch.parentElement) {
+        const parent = branch.parentElement;
+        for (const sibling of Array.from(parent.children)) {
+            if (sibling !== branch && sibling instanceof HTMLElement) {
+                snapshots.push(isolateElement(sibling));
+            }
+        }
+        if (parent === document.body) break;
+        branch = parent;
+    }
+
+    return snapshots;
+}
 
 export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
     children,
@@ -72,14 +121,18 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
     const widthMode = getResponsiveRightPanelMode(windowWidth);
     const responsiveMode = mode ?? (widthMode === 'edge-handle' ? 'edge-handle' : 'drawer-toggle');
     const [hostWidth, setHostWidth] = React.useState(windowWidth);
-    const panelWidth = Math.min(
-        Math.max(Math.floor(hostWidth * 0.72), 260),
-        340,
-        Math.max(240, hostWidth - 110),
-    );
-
     const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
     const open = controlledOpen ?? uncontrolledOpen;
+    const preferredPanelWidth = Math.min(
+        Math.max(Math.floor(hostWidth * 0.72), 260),
+        340,
+    );
+    const minimumVisibleMainWidth = responsiveMode === 'drawer-toggle' ? 240 : 110;
+    const panelWidth = Math.min(preferredPanelWidth, Math.max(0, hostWidth - minimumVisibleMainWidth));
+    const mainWidth = Platform.OS === 'web' && open
+        ? Math.max(0, hostWidth - panelWidth)
+        : hostWidth;
+
     const progress = useSharedValue(0);
     const startProgress = useSharedValue(0);
     const startX = useSharedValue(0);
@@ -93,6 +146,8 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
     const mainRef = React.useRef<any>(null);
     const panelRef = React.useRef<any>(null);
     const focusReturnRef = React.useRef<HTMLElement | null>(null);
+    const mainIsolationRef = React.useRef<ElementIsolationSnapshot | null>(null);
+    const outsideIsolationRef = React.useRef<ElementIsolationSnapshot[]>([]);
     const previousOpenRef = React.useRef(false);
 
     const setPanelOpen = React.useCallback((nextOpen: boolean) => {
@@ -153,6 +208,34 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
         });
     }, [completePanelClose, progress]);
 
+    const focusPanel = React.useCallback(() => {
+        const restoreFocus = () => {
+            const panel = panelRef.current as HTMLElement | null;
+            if (!panel || panel.getAttribute('aria-hidden') === 'true') return;
+            panel.focus?.({ preventScroll: true });
+        };
+
+        if (Platform.OS === 'web' && typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(restoreFocus);
+        } else if (Platform.OS === 'web') {
+            setTimeout(restoreFocus, 0);
+        } else {
+            panelRef.current?.focus?.();
+        }
+    }, []);
+
+    const restoreModalIsolation = React.useCallback(() => {
+        const mainSnapshot = mainIsolationRef.current;
+        mainIsolationRef.current = null;
+        if (mainSnapshot) restoreElementIsolation(mainSnapshot);
+
+        const outsideSnapshots = outsideIsolationRef.current;
+        outsideIsolationRef.current = [];
+        for (let index = outsideSnapshots.length - 1; index >= 0; index -= 1) {
+            restoreElementIsolation(outsideSnapshots[index]);
+        }
+    }, []);
+
     React.useLayoutEffect(() => {
         if (Platform.OS !== 'web' || typeof document === 'undefined') {
             previousOpenRef.current = open;
@@ -181,16 +264,15 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                 if (host) host.scrollLeft = 0;
                 panel?.focus?.({ preventScroll: true });
                 if (host) host.scrollLeft = 0;
+                if (main) mainIsolationRef.current = isolateElement(main);
+                if (host) outsideIsolationRef.current = isolateOutsideHostBranch(host);
             }
-            main?.setAttribute('inert', '');
-            main?.setAttribute('aria-hidden', 'true');
             return;
         }
 
         // Restore the main tree and its opener before hiding the dialog that
         // currently owns focus.
-        main?.removeAttribute('inert');
-        main?.removeAttribute('aria-hidden');
+        restoreModalIsolation();
         if (wasOpen) {
             const focusTarget = focusReturnRef.current;
             focusReturnRef.current = null;
@@ -198,19 +280,17 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
         }
         panel?.setAttribute('aria-hidden', 'true');
         panel?.setAttribute('inert', '');
-    }, [open]);
+    }, [open, restoreModalIsolation]);
 
     React.useEffect(() => {
         if (Platform.OS !== 'web') return undefined;
-        const mainElement = mainRef.current as HTMLElement | null;
         const panelElement = panelRef.current as HTMLElement | null;
         return () => {
-            mainElement?.removeAttribute('inert');
-            mainElement?.removeAttribute('aria-hidden');
+            restoreModalIsolation();
             panelElement?.removeAttribute('inert');
             panelElement?.removeAttribute('aria-hidden');
         };
-    }, []);
+    }, [restoreModalIsolation]);
 
     const registerBackHandler = React.useCallback((handler: PanelBackHandler) => {
         backHandlerRef.current = handler;
@@ -223,10 +303,13 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
 
     const handlePanelBack = React.useCallback(() => {
         if (!isFocused || !open) return false;
-        if (backHandlerRef.current?.()) return true;
+        if (backHandlerRef.current?.()) {
+            focusPanel();
+            return true;
+        }
         closePanel();
         return true;
-    }, [closePanel, isFocused, open]);
+    }, [closePanel, focusPanel, isFocused, open]);
 
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !open || typeof document === 'undefined') return;
@@ -284,10 +367,11 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
 
     const contextValue = React.useMemo<RightSwipePanelContextValue>(() => ({
         closePanel,
+        focusPanel,
         isOpen: open,
         openPanel,
         registerBackHandler,
-    }), [closePanel, open, openPanel, registerBackHandler]);
+    }), [closePanel, focusPanel, open, openPanel, registerBackHandler]);
 
     const horizontalGesture = React.useMemo(() => {
         const pan = Gesture.Pan()
@@ -386,15 +470,15 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                             style={[
                                 {
                                     flex: 1,
-                                    width: hostWidth + panelWidth,
+                                    width: Platform.OS === 'web' && open ? hostWidth : hostWidth + panelWidth,
                                     flexDirection: 'row',
                                 },
-                                filmstripStyle,
+                                Platform.OS !== 'web' && filmstripStyle,
                             ]}
                         >
                             <View
                                 ref={mainRef}
-                                style={{ width: hostWidth }}
+                                style={{ width: mainWidth }}
                                 testID="right-swipe-panel-main"
                             >
                                 {children}
@@ -437,7 +521,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                                     accessibilityLabel={closeAccessibilityLabel}
                                     accessibilityRole="button"
                                     hitSlop={8}
-                                    onPress={handlePanelBack}
+                                    onPress={() => closePanel()}
                                     style={{
                                         alignSelf: 'center',
                                         width: 40,
@@ -464,7 +548,10 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                         </Animated.View>
                         {open && (
                             <Pressable
-                                onPress={handlePanelBack}
+                                accessibilityElementsHidden
+                                accessible={false}
+                                importantForAccessibility="no-hide-descendants"
+                                onPress={() => closePanel()}
                                 style={{
                                     position: 'absolute',
                                     top: 0,
@@ -472,6 +559,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                                     bottom: 0,
                                     width: Math.max(0, hostWidth - panelWidth),
                                 }}
+                                testID="right-swipe-panel-scrim"
                             >
                                 <View style={{ flex: 1 }} />
                             </Pressable>
@@ -483,7 +571,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                                 accessibilityState={{ expanded: open }}
                                 aria-expanded={open}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 0 }}
-                                onPress={open ? handlePanelBack : openPanel}
+                                onPress={open ? () => closePanel() : openPanel}
                                 style={{
                                     position: 'absolute',
                                     // Once open, keep the handle attached to
