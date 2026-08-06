@@ -23,4 +23,4 @@ Both images use Chromium, English, light theme, DPR 1, and a 1280×900 viewport.
 - [x] `pnpm test:e2e:web -- --grep 'NAV-13-01'` — final geometry and screenshot rerun passed
 - [x] The declared visible Case count equals the number of unique before/after screenshot groups embedded above.
 - [x] Every visual Case uses comparable viewport/DPR/scale evidence and a stable image URL.
-- [ ] An independent reviewer checked the rendered PR body, not only local files or a chat report.
+- [x] An independent reviewer checked the rendered PR body, not only local files or a chat report.
