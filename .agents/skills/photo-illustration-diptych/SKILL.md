@@ -29,4 +29,3 @@ Choose the illustration medium from the source:
 Default to no typography. Add a caption only when the user supplies or explicitly requests exact wording; reproduce that wording exactly, keep it short, and never invent a place name. Never include phone UI, viewer controls, progress bars, watermarks, logos, QR codes, or fake signatures.
 
 Inspect the result before delivery. Reject output if the two panels depict different scenes, landmark count/order drifts, the lower half becomes a generic filter, the source photo is heavily restyled, text is garbled, people are malformed, or the composition loses the calm paper-poster hierarchy. Regenerate at most once with a targeted correction.
-
