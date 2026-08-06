@@ -45,7 +45,8 @@ export const MermaidRenderer = React.memo((props: {
                     if (mermaid.initialize) {
                         mermaid.initialize({
                             startOnLoad: false,
-                            theme: 'dark'
+                            theme: 'dark',
+                            securityLevel: 'strict',
                         });
                     }
 
