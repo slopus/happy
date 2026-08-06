@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+    DESKTOP_LEFT_PANEL_MAX_WIDTH,
     DESKTOP_MAIN_MIN_WIDTH,
+    DESKTOP_RIGHT_PANEL_MAX_WIDTH,
     getDesktopPanelResizeWidth,
     getDesktopPanelShortcutPresentation,
     getDesktopSidebarWidth,
@@ -59,17 +61,21 @@ describe('desktopNavigationLayout', () => {
         expect(widths.right).toBeGreaterThanOrEqual(280);
     });
 
-    it('lets one visible panel use the space released by the other panel', () => {
+    it('caps one visible panel when the opposite panel is hidden', () => {
         expect(getDesktopWorkspacePanelWidths({
             leftVisible: true,
             requestedLeftWidth: 640,
             requestedRightWidth: 640,
             rightVisible: false,
             windowWidth: 1280,
-        })).toEqual({ left: 640, main: 640, right: 0 });
+        })).toEqual({
+            left: DESKTOP_LEFT_PANEL_MAX_WIDTH,
+            main: 1280 - DESKTOP_LEFT_PANEL_MAX_WIDTH,
+            right: 0,
+        });
     });
 
-    it('clamps the actively resized panel without shrinking the opposite panel', () => {
+    it('clamps the actively resized panel to its fixed maximum and the available workspace', () => {
         expect(getDesktopPanelResizeWidth({
             desiredWidth: 900,
             oppositePanelVisible: true,
@@ -83,14 +89,21 @@ describe('desktopNavigationLayout', () => {
             oppositePanelWidth: 320,
             side: 'left',
             windowWidth: 1280,
-        })).toBe(800);
+        })).toBe(DESKTOP_LEFT_PANEL_MAX_WIDTH);
         expect(getDesktopPanelResizeWidth({
             desiredWidth: 1500,
             oppositePanelVisible: true,
             oppositePanelWidth: 320,
             side: 'left',
             windowWidth: 1920,
-        })).toBe(1120);
+        })).toBe(DESKTOP_LEFT_PANEL_MAX_WIDTH);
+        expect(getDesktopPanelResizeWidth({
+            desiredWidth: 1500,
+            oppositePanelVisible: false,
+            oppositePanelWidth: 360,
+            side: 'right',
+            windowWidth: 1920,
+        })).toBe(DESKTOP_RIGHT_PANEL_MAX_WIDTH);
     });
 
     it('renders platform-correct shortcut hints and ARIA tokens', () => {

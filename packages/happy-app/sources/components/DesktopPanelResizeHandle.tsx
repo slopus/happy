@@ -18,6 +18,7 @@ export const DesktopPanelResizeHandle = React.memo(function DesktopPanelResizeHa
     side: DesktopPanelSide;
 }) {
     const { theme } = useUnistyles();
+    const [focused, setFocused] = React.useState(false);
     const {
         beginPanelResize,
         continuePanelResize,
@@ -71,20 +72,30 @@ export const DesktopPanelResizeHandle = React.memo(function DesktopPanelResizeHa
                 'aria-valuemin': minimumWidth,
                 'aria-valuenow': currentWidth,
                 'aria-valuetext': `${currentWidth} px`,
+                onBlur: () => setFocused(false),
+                onFocus: () => setFocused(true),
                 onKeyDown: handleKeyDown,
                 tabIndex: 0,
             } as any) : {})}
             style={[
                 styles.handle,
                 { left: offset },
-                Platform.OS === 'web' && ({ cursor: 'col-resize', touchAction: 'none' } as any),
+                Platform.OS === 'web' && ({
+                    cursor: 'col-resize',
+                    outlineStyle: 'none',
+                    touchAction: 'none',
+                } as any),
             ]}
             testID={`desktop-${side}-panel-resize-handle`}
         >
             <View
                 style={[
                     styles.line,
-                    { backgroundColor: resizingSide === side ? theme.colors.textLink : theme.colors.divider },
+                    {
+                        backgroundColor: resizingSide === side || focused
+                            ? theme.colors.textLink
+                            : theme.colors.divider,
+                    },
                 ]}
             />
         </View>

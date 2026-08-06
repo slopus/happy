@@ -481,6 +481,9 @@ describe('SessionView Agent-space boundary', () => {
         });
 
         expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel' })).toHaveLength(1);
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel' }).props.style).toContainEqual(
+            expect.objectContaining({ borderLeftWidth: 0 }),
+        );
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(1);
         expect(renderer.root.findAllByType('RightSwipePanelHost')).toHaveLength(0);
 

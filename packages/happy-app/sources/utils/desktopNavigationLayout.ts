@@ -4,8 +4,10 @@ export const DESKTOP_SESSION_HEADER_COMPACT_WINDOW_WIDTH = 1180;
 export const DESKTOP_MAIN_MIN_WIDTH = 480;
 export const DESKTOP_LEFT_PANEL_MIN_WIDTH = 250;
 export const DESKTOP_LEFT_PANEL_DEFAULT_WIDTH = 360;
+export const DESKTOP_LEFT_PANEL_MAX_WIDTH = 480;
 export const DESKTOP_RIGHT_PANEL_MIN_WIDTH = 280;
 export const DESKTOP_RIGHT_PANEL_DEFAULT_WIDTH = 320;
+export const DESKTOP_RIGHT_PANEL_MAX_WIDTH = 480;
 export const PERSISTENT_NAVIGATION_HORIZONTAL_PADDING = 16;
 export const PERSISTENT_NAVIGATION_BUTTON_SIZE = 40;
 export const PERSISTENT_NAVIGATION_BUTTON_GAP = 4;
@@ -52,8 +54,15 @@ function getDesktopPanelMinimum(side: DesktopPanelSide): number {
     return side === 'left' ? DESKTOP_LEFT_PANEL_MIN_WIDTH : DESKTOP_RIGHT_PANEL_MIN_WIDTH;
 }
 
+function getDesktopPanelMaximum(side: DesktopPanelSide): number {
+    return side === 'left' ? DESKTOP_LEFT_PANEL_MAX_WIDTH : DESKTOP_RIGHT_PANEL_MAX_WIDTH;
+}
+
 export function clampDesktopPanelWidth(side: DesktopPanelSide, width: number): number {
-    return Math.round(Math.max(width, getDesktopPanelMinimum(side)));
+    return Math.round(Math.min(
+        Math.max(width, getDesktopPanelMinimum(side)),
+        getDesktopPanelMaximum(side),
+    ));
 }
 
 export function getDesktopWorkspacePanelWidths({
@@ -117,12 +126,13 @@ export function getDesktopPanelResizeWidth({
     windowWidth: number;
 }): number {
     const min = getDesktopPanelMinimum(side);
+    const max = getDesktopPanelMaximum(side);
     const availableWidth = Math.max(
         0,
         windowWidth - DESKTOP_MAIN_MIN_WIDTH - (oppositePanelVisible ? oppositePanelWidth : 0),
     );
     if (availableWidth < min) return Math.round(availableWidth);
-    return Math.round(Math.min(Math.max(desiredWidth, min), availableWidth));
+    return Math.round(Math.min(Math.max(desiredWidth, min), availableWidth, max));
 }
 
 export type DesktopPanelShortcutPresentation = {
