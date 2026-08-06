@@ -1,7 +1,7 @@
 import { FileSystemUploadType, uploadAsync } from 'expo-file-system/legacy';
 import type { AuthCredentials } from '@/auth/tokenStorage';
-import { getServerUrl } from './serverConfig';
 import type { RequestUploadResult } from './apiAttachments';
+import { mediaUploadHeaders } from './mediaUploadHeaders';
 
 /** Stream a native audio/video file directly to private object storage. */
 export async function uploadMediaFile(
@@ -14,11 +14,7 @@ export async function uploadMediaFile(
         throw new Error(`Media upload expected PUT, got ${upload.method}`);
     }
 
-    const serverUrl = getServerUrl();
-    const headers: Record<string, string> = { 'Content-Type': mimeType };
-    if (upload.uploadUrl.startsWith(serverUrl)) {
-        headers.Authorization = `Bearer ${credentials.token}`;
-    }
+    const headers = mediaUploadHeaders(upload.uploadUrl, mimeType, credentials.token);
 
     let result;
     try {

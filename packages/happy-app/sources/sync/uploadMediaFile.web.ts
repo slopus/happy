@@ -1,6 +1,6 @@
 import type { AuthCredentials } from '@/auth/tokenStorage';
-import { getServerUrl } from './serverConfig';
 import type { RequestUploadResult } from './apiAttachments';
+import { mediaUploadHeaders } from './mediaUploadHeaders';
 
 /** Upload a browser-selected media Blob without copying it into a JS ArrayBuffer. */
 export async function uploadMediaFile(
@@ -18,10 +18,7 @@ export async function uploadMediaFile(
         throw new Error(`Media source read failed: ${source.status}`);
     }
     const media = await source.blob();
-    const headers: Record<string, string> = { 'Content-Type': mimeType };
-    if (upload.uploadUrl.startsWith(getServerUrl())) {
-        headers.Authorization = `Bearer ${credentials.token}`;
-    }
+    const headers = mediaUploadHeaders(upload.uploadUrl, mimeType, credentials.token);
 
     const response = await fetch(upload.uploadUrl, {
         method: 'PUT',

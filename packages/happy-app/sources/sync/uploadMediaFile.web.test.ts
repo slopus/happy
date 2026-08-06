@@ -30,4 +30,30 @@ describe('uploadMediaFile on web', () => {
             }),
         );
     });
+
+    it('uses the server binary content type and auth for local-storage PUTs', async () => {
+        const media = new Blob(['video-bytes'], { type: 'video/mp4' });
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(media, { status: 200 }))
+            .mockResolvedValueOnce(new Response(null, { status: 200 }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        await uploadMediaFile({
+            ref: 'sessions/s1/attachments/video-id.mp4',
+            uploadUrl: 'http://localhost:3005/v1/sessions/s1/attachments/video-id.mp4',
+            method: 'PUT',
+        }, 'blob:https://app.example/local-video', 'video/mp4', {
+            token: 'test-token',
+        } as AuthCredentials);
+
+        expect(fetchMock).toHaveBeenNthCalledWith(2,
+            'http://localhost:3005/v1/sessions/s1/attachments/video-id.mp4',
+            expect.objectContaining({
+                headers: {
+                    Authorization: 'Bearer test-token',
+                    'Content-Type': 'application/octet-stream',
+                },
+            }),
+        );
+    });
 });
