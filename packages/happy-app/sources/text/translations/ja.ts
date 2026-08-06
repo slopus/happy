@@ -1659,6 +1659,8 @@ export const ja: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'GitHub Skills',
+        imageStylePhotoIllustrationDiptych: '写真とイラストの二連画',
+        imageStylePhotoIllustrationDiptychHint: '提供された写真1枚と構図を合わせたイラストを、落ち着いた3:5比率の紙ポスターにまとめます。\nランドマークの数、水平線、空間の並び、動きを保ち、画法を題材に応じて墨のにじみ、フラットなエディトリアル表現、幾何学的なスカイライン、Art Decoに調整します。',
         imageStyleMinimalZinePoster: 'ミニマル Zine ペーパーポスター',
         imageStyleMinimalZinePosterHint: 'テーマ、短い一文、物、気分、記事のアイデア、写真を3:5縦型のミニマルな紙ポスターに。\n古紙の余白、小さな破り紙／写真のアクセント、控えめなタイプライター文字、鮮やかな差し色1色、コピー／スキャン質感。',
         imageStyleSceneDistillationZine: 'シーン蒸留 Zine',

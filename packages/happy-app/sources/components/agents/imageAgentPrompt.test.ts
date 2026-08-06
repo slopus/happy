@@ -103,6 +103,71 @@ describe('imageAgentPrompt', () => {
         expect(prompt).toContain('mcp__happy__send_image');
     });
 
+    it('integrates the Photo–Illustration Diptych compiler with one-photo semantics', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/photo-illustration-diptych/1');
+        expect(style).toMatchObject({
+            title: 'Photo–Illustration Diptych',
+            categoryId: 'github-skills',
+            sourceRepository: 'wangjs-jacky/happy',
+            sourceRevision: '532e49bb711283cbe2738439039298f9cea1ef7b',
+            templateRef: 'skills/photo-illustration-diptych/SKILL.md',
+            promptPath: 'garden-gpt-image-2/prompt/photo-illustration-diptych-v1.md',
+            sourceCaseId: 'photo-illustration-diptych/user-reference-20260806',
+            executionKind: 'gpt-image-2',
+            inputMode: 'image-required',
+            multiInputMode: 'single',
+        });
+        expect(style?.promptContent).toContain('Photo–Illustration Diptych v1 visual compiler');
+        expect(style?.promptContent).toContain('build a Scene Map');
+        expect(style?.promptContent).toContain('Simplify buildings, boats, paths, vehicles');
+        expect(style?.promptContent).toContain('Compress foliage, water, crowds, clouds');
+        expect(style?.promptContent).toContain('modern skyline or dusk city');
+        expect(style?.promptContent).toContain('dramatic night architecture or castle-like forms');
+        expect(style?.promptContent).toContain('Default to a text-free poster');
+        expect(style?.promptContent).toContain('regenerate at most once');
+        expect(style?.sourceLicenseNotice).toContain('Happy Coder Contributors');
+        expect(style?.responseInstructions).toContain("user's current conversation language");
+
+        const prompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: ['github-skills/photo-illustration-diptych/1'] },
+            userPrompt: '把上传的城市黄昏做成实景与几何插画上下对照海报。',
+            imageCount: 1,
+        });
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('把上传的城市黄昏做成实景与几何插画上下对照海报。');
+        expect(prompt).toContain('mcp__happy__send_image');
+        expect(prompt).toContain('selected illustration medium');
+
+        const missingInputPrompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: ['github-skills/photo-illustration-diptych/1'] },
+            userPrompt: '做实景插画对照海报。',
+            imageCount: 0,
+        });
+        expect(missingInputPrompt).toContain('请先上传一张源照片');
+
+        const extraInputPrompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: ['github-skills/photo-illustration-diptych/1'] },
+            userPrompt: '做实景插画对照海报。',
+            imageCount: 2,
+        });
+        expect(extraInputPrompt).toContain('一次只接受一张源照片');
+        expect(extraInputPrompt).toContain('不要擅自拼图、混合多个场景或启动图片工具');
+
+        const mixedPrompt = buildImageAgentPrompt({
+            agent: {
+                ...agent,
+                imageStyleIds: ['github-skills/photo-illustration-diptych/1', 'github-skills/grade-images/1'],
+            },
+            userPrompt: '分别生成实景插画海报和严格保真的调色版本。',
+            imageCount: 1,
+        });
+        expect(mixedPrompt).toContain('执行一次混合图片批处理');
+        expect(mixedPrompt).toContain('[github-skills/photo-illustration-diptych/1]');
+        expect(mixedPrompt).toContain('[github-skills/grade-images/1]');
+        expect(mixedPrompt).toContain('selected illustration medium');
+        expect(mixedPrompt).toContain('deterministic-grade 风格先只生成带标签的低分辨率原图/结果预览');
+    });
+
     it('integrates Scene Distillation Zine with source privacy and exact color-block semantics', () => {
         const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/scene-distillation-zine/1');
         expect(style).toMatchObject({

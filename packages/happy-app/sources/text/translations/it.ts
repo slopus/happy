@@ -1656,6 +1656,8 @@ export const it: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Skill di GitHub',
+        imageStylePhotoIllustrationDiptych: 'Dittico foto–illustrazione',
+        imageStylePhotoIllustrationDiptychHint: 'Abbina una foto fornita a un’illustrazione dalla composizione corrispondente, in un sobrio poster su carta 3:5.\nMantieni il numero di punti di riferimento, l’orizzonte, l’ordine spaziale e il movimento; la tecnica si adatta dal lavis a inchiostro allo stile editoriale a campiture piatte, allo skyline geometrico o all’Art Deco.',
         imageStyleMinimalZinePoster: 'Poster Zine minimalista su carta',
         imageStyleMinimalZinePosterHint: 'Tema, frase breve, oggetto, atmosfera, idea per un articolo o foto → poster verticale minimalista su carta 3:5.\nSpazio negativo su carta invecchiata, piccolo elemento in carta strappata/foto, testo dattiloscritto essenziale, un accento saturo e texture da fotocopia/scansione.',
         imageStyleSceneDistillationZine: 'Zine di distillazione della scena',

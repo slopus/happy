@@ -2,6 +2,7 @@
 import type { ImageAgentStyleCategory, ImageAgentStylePreset } from './imageStyleTypes';
 import { GC_MINIMAL_ZINE_POSTER_LICENSE, GC_MINIMAL_ZINE_POSTER_PROMPT } from './gcMinimalZinePosterPrompt';
 import { GRADE_IMAGES_LICENSE_NOTICE, GRADE_IMAGES_PROMPT } from './gradeImagesPrompt';
+import { PHOTO_ILLUSTRATION_DIPTYCH_LICENSE_NOTICE, PHOTO_ILLUSTRATION_DIPTYCH_PROMPT } from './photoIllustrationDiptychPrompt';
 import { SCENE_DISTILLATION_ZINE_LICENSE, SCENE_DISTILLATION_ZINE_PROMPT } from './sceneDistillationZinePrompt';
 import { SCENES_GATHERED_ZINE_LICENSE, SCENES_GATHERED_ZINE_PROMPT } from './scenesGatheredZinePrompt';
 
@@ -11,7 +12,7 @@ export const EXTRA_IMAGE_AGENT_STYLE_CATEGORIES: ImageAgentStyleCategory[] = [
         "label": "GitHub Skills",
         "labelKey": "agents.imageStyleGithubSkills",
         "accent": "#315D86",
-        "count": 5
+        "count": 6
     },
     {
         "id": "reference-voxcat",
@@ -40,6 +41,30 @@ export const EXTRA_IMAGE_AGENT_STYLE_CATEGORIES: ImageAgentStyleCategory[] = [
 ];
 
 export const EXTRA_IMAGE_AGENT_STYLE_PRESETS: ImageAgentStylePreset[] = [
+    {
+        "id": "github-skills/photo-illustration-diptych/1",
+        "title": "Photo–Illustration Diptych",
+        "labelKey": "agents.imageStylePhotoIllustrationDiptych",
+        "categoryId": "github-skills",
+        "categoryLabel": "GitHub Skills",
+        "categoryLabelKey": "agents.imageStyleGithubSkills",
+        "categoryAccent": "#315D86",
+        "templateRef": "skills/photo-illustration-diptych/SKILL.md",
+        "templateLabel": "Photo–Illustration Diptych v1",
+        "templateLabelKey": "agents.imageStylePhotoIllustrationDiptych",
+        "promptHint": "Pair one supplied photo with a composition-matched illustration in a calm 3:5 paper poster. Preserve landmark count, horizon, spatial order, and movement while adapting the lower medium to the subject: ink wash, flat editorial, geometric skyline, or Art Deco.",
+        "promptHintKey": "agents.imageStylePhotoIllustrationDiptychHint",
+        "promptContent": PHOTO_ILLUSTRATION_DIPTYCH_PROMPT,
+        "promptPath": "garden-gpt-image-2/prompt/photo-illustration-diptych-v1.md",
+        "sourceCaseId": "photo-illustration-diptych/user-reference-20260806",
+        "sourceRepository": "wangjs-jacky/happy",
+        "sourceRevision": "532e49bb711283cbe2738439039298f9cea1ef7b",
+        "sourceLicenseNotice": PHOTO_ILLUSTRATION_DIPTYCH_LICENSE_NOTICE,
+        "executionKind": "gpt-image-2",
+        "inputMode": "image-required",
+        "multiInputMode": "single",
+        "responseInstructions": "After sending the image, add a concise 1–3 sentence rationale in the user's current conversation language that names the preserved scene correspondences and the selected illustration medium. Do not reveal the full prompt, private source path, or detailed parameters unless explicitly requested."
+    },
     {
         "id": "github-skills/scenes-gathered-zine/2",
         "title": "Gathered Scenes Zine · Sea",

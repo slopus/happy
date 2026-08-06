@@ -1657,6 +1657,8 @@ export const ca: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Skills de GitHub',
+        imageStylePhotoIllustrationDiptych: 'Díptic de foto i il·lustració',
+        imageStylePhotoIllustrationDiptychHint: 'Combina una fotografia proporcionada amb una il·lustració de composició equivalent en un cartell serè sobre paper, en format 3:5.\nConserva el nombre de punts de referència, l’horitzó, l’ordre espacial i el moviment; la tècnica s’adapta des de l’aiguada de tinta fins a la il·lustració editorial plana, el perfil urbà geomètric o l’Art Deco.',
         imageStyleMinimalZinePoster: 'Pòster Zine minimalista en paper',
         imageStyleMinimalZinePosterHint: 'Tema, frase breu, objecte, estat d’ànim, idea d’article o foto → pòster vertical minimalista en paper 3:5.\nEspai negatiu de paper envellit, petit ancoratge de paper estripat/foto, tipografia de màquina d’escriure, un accent intens i textura de fotocòpia/escaneig.',
         imageStyleSceneDistillationZine: 'Zine de destil·lació d’escena',

@@ -64,6 +64,23 @@ describe('imageStyleOptions', () => {
         expect(prompt).toContain('high-chroma hue');
     });
 
+    it('keeps the complete Photo–Illustration Diptych compiler in continuation batches', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/photo-illustration-diptych/1');
+        expect(style).toBeTruthy();
+
+        const prompt = buildImageStyleContinuationPrompt([style!]);
+
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('github-skills/photo-illustration-diptych/1');
+        expect(prompt).toContain('Photo–Illustration Diptych v1 visual compiler');
+        expect(prompt).toContain('build a Scene Map');
+        expect(prompt).toContain('Default to a text-free poster');
+        expect(prompt).toContain('regenerate at most once');
+        expect(prompt).toContain('必须有源图片');
+        expect(prompt).toContain('一次只能处理一张源图片');
+        expect(prompt).toContain('selected illustration medium');
+    });
+
     it('keeps the complete Scene Distillation compiler in continuation batches', () => {
         const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/scene-distillation-zine/1');
         expect(style).toBeTruthy();
