@@ -3,7 +3,7 @@ import { ActivityIndicator, View, Pressable, FlatList, Platform } from 'react-na
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem, SessionRowData } from '@/sync/storage';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { type SessionState, getSessionStateLabel } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
@@ -530,7 +530,7 @@ export function SessionsList() {
                             onPress={clearSelection}
                             style={styles.bulkToolbarButton}
                         >
-                            <Ionicons name="close" size={18} color={theme.colors.text} />
+                            <Feather name="x" size={18} color={theme.colors.text} />
                         </Pressable>
                     </View>
                 )}
@@ -642,8 +642,8 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
                 {selectionMode ? (
                     <View style={[styles.selectionCheckbox, bulkSelected && styles.selectionCheckboxSelected]}>
                         {bulkSelected ? (
-                            <Ionicons
-                                name="checkmark"
+                            <Feather
+                                name="check"
                                 size={14}
                                 color="#FFFFFF"
                             />
@@ -654,9 +654,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
                 )}
                 {!selectionMode && session.hasDraft && (
                     <View style={styles.draftIconContainer}>
-                        <Ionicons
-                            name="create-outline"
-                            size={12}
+                        <Feather
+                            name="edit-3"
+                            size={13}
                             style={styles.draftIconOverlay}
                         />
                     </View>
@@ -693,11 +693,16 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, 
                     onContextAnchorChange={setActionsAnchor}
                     onStartSelection={onStartSelection ? () => onStartSelection(session.id) : undefined}
                     sessionId={session.id}
+                    statusLabel={presentation.status}
                     visible={disclosure.visible}
                 />
             ) : null}
         </View>
-        <SessionRowDetails presentation={presentation} visible={!selectionMode && disclosure.visible} />
+        <SessionRowDetails
+            anchor={disclosure.detailsAnchor}
+            presentation={presentation}
+            visible={!selectionMode && disclosure.visible}
+        />
         </View>
     );
 });

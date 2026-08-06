@@ -1,6 +1,7 @@
 import type { SessionRowData } from '@/sync/storage';
 
 export interface SessionRowPresentationLabels {
+    disconnected: string;
     remoteLocation: (machineName: string) => string;
     unknownLocation: string;
     unknownAgent: string;
@@ -17,7 +18,7 @@ export interface SessionRowPresentation {
     relativeTime: string;
     status: string;
     location: {
-        icon: 'desktop-outline' | 'location-outline';
+        icon: 'monitor' | 'map-pin';
         text: string;
         tooltip: string;
         kind: 'remote' | 'unknown';
@@ -67,9 +68,11 @@ export function buildSessionRowPresentation(
         machine: resolvedMachine,
         agent: displayAgentFlavor(session.flavor, labels.unknownAgent),
         relativeTime: timestamp ? labels.relativeTime(timestamp) : '',
-        status: labels.status[session.state],
+        status: session.isConnected
+            ? labels.status[session.state]
+            : `${labels.status[session.state]} · ${labels.disconnected}`,
         location: {
-            icon: hasMachine ? 'desktop-outline' : 'location-outline',
+            icon: hasMachine ? 'monitor' : 'map-pin',
             text: locationText,
             tooltip: locationText,
             kind: hasMachine ? 'remote' : 'unknown',

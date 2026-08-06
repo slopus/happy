@@ -742,7 +742,7 @@ test('中文欢迎页在四档桌面视口没有孤字收尾', async ({ browser 
 });
 
 test.describe('会话行组织可见回归', () => {
-    test('NAV-13-01：桌面悬停显示诚实位置、溢出标题与完整详情', async ({ page, request }, testInfo) => {
+    test('NAV-13-01：Codex 项目行默认收敛，悬停滚动标题并在右侧显示详情', async ({ page, request }, testInfo) => {
         const title = 'Session row title that is intentionally long enough to overflow the compact navigation column';
         const sessionId = await createE2ESession(request, {
             path: '/workspace/session-row-location-details',
@@ -754,7 +754,10 @@ test.describe('会话行组织可见回归', () => {
         await page.goto(authenticatedRoute('/new'));
         const row = page.getByTestId(`session-row-${sessionId}`);
         await expect(row).toBeVisible();
-        await expect(row.getByLabel('Location unknown/local')).toBeVisible();
+        await expect(page.getByTestId(`session-row-status-${sessionId}`)).toHaveCount(0);
+        await expect(page.getByTestId(`session-row-actions-${sessionId}`).getByRole('button')).toHaveCount(0);
+        const titleViewport = row.getByTestId('session-row-title');
+        await expect(titleViewport).toHaveAttribute('data-marquee-active', 'false');
 
         await row.hover();
         const details = page.getByTestId('session-row-details');
@@ -762,7 +765,16 @@ test.describe('会话行组织可见回归', () => {
         await expect(details).toContainText(title);
         await expect(details).toContainText('/workspace/session-row-location-details');
         await expect(details).toContainText('Codex');
-        await expect(row.locator(`[title="${title}"]`)).toHaveCount(1);
+        await expect(titleViewport).toHaveAttribute('data-marquee-active', 'true');
+        await expect(page.getByTestId('session-row-hover-status')).toBeVisible();
+        await expect(page.getByTestId(`session-row-actions-${sessionId}`).getByTestId('session-row-pin-action')).toBeVisible();
+        await expect(page.getByTestId(`session-row-actions-${sessionId}`).getByTestId('session-row-archive-action')).toBeVisible();
+        const sidebarBox = await page.getByTestId('desktop-left-sidebar').boundingBox();
+        const detailsBox = await details.boundingBox();
+        const actionsBox = await page.getByTestId(`session-row-actions-${sessionId}`).boundingBox();
+        if (!sidebarBox || !detailsBox || !actionsBox) throw new Error('找不到 Codex 侧栏、操作区或右侧详情浮层');
+        expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(sidebarBox.x + sidebarBox.width + 1);
+        expect(detailsBox.x).toBeGreaterThan(sidebarBox.x + sidebarBox.width);
         await page.screenshot({
             path: testInfo.outputPath('nav-13-01-hover-details-1280x900.png'),
             fullPage: true,
@@ -785,8 +797,13 @@ test.describe('会话行组织可见回归', () => {
         await expect(row).toBeFocused();
         await expect(page.getByTestId('session-row-details')).toBeVisible();
 
+        await expect(page.getByTestId('session-row-details-action')).toHaveCount(0);
+        await expect(page.getByTestId('session-row-hover-status')).toBeVisible();
         const pinAction = page.getByTestId('session-row-pin-action');
         await expect(pinAction).toHaveAccessibleName('Pin Session');
+        await pinAction.hover();
+        await expect(page.getByTestId('session-row-pin-action-tooltip')).toBeVisible();
+        await expect(page.getByTestId('session-row-pin-action-tooltip')).toContainText('Pin Session');
         await pinAction.click();
         await expect.poll(() => new URL(page.url()).pathname).toBe('/new');
         await expect(pinAction).toHaveAccessibleName('Unpin Session');

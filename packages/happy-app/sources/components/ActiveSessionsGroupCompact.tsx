@@ -2,12 +2,11 @@ import React from 'react';
 import { View, Pressable, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { SessionRowData } from '@/sync/storage';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { type SessionState, formatPathRelativeToHome, getSessionStateLabel } from '@/utils/sessionUtils';
-import { Avatar } from './Avatar';
+import { Feather } from '@expo/vector-icons';
+import { type SessionState, getSessionStateLabel } from '@/utils/sessionUtils';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { storage, useAllMachines, useSessionGitStatus } from '@/sync/storage';
+import { storage, useAllMachines } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -15,13 +14,10 @@ import { SessionActionsAnchor } from './SessionActionsPopover';
 import {
     SessionRowActions,
     SessionRowDetails,
-    SessionRowLocation,
     useSessionRowDisclosure,
     useSessionRowPresentation,
 } from './SessionRowChrome';
 import { hapticsLight } from './haptics';
-import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
-import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
 import { useSessionManagementPreferences } from '@/hooks/useSessionManagementPreferences';
 import { buildSessionNavigationGroups } from '@/utils/sessionNavigationGroups';
@@ -45,28 +41,9 @@ interface ActiveSessionsGroupProps {
     onToggleSelection?: (sessionId: string) => void;
 }
 
-/**
- * Hook to get git display info for a section header:
- * branch name, line changes, and worktree status.
- */
-function useSectionGitInfo(sessionId: string) {
-    const gitStatus = useSessionGitStatus(sessionId);
-
-    return React.useMemo(() => {
-        if (!gitStatus || gitStatus.lastUpdatedAt === 0) {
-            return { branch: null, linesAdded: 0, linesRemoved: 0, hasChanges: false };
-        }
-        return {
-            branch: gitStatus.branch,
-            linesAdded: gitStatus.unstagedLinesAdded,
-            linesRemoved: gitStatus.unstagedLinesRemoved,
-            hasChanges: gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0,
-        };
-    }, [gitStatus]);
-}
-
-// Section header: avatar | path + branch + tree icon + line changes | + button
+// Codex-style project header: folder + project name + optional activity dot.
 const SectionHeader = React.memo(({
+    activity,
     current,
     displayPath,
     expanded,
@@ -74,6 +51,7 @@ const SectionHeader = React.memo(({
     session,
     testID,
 }: {
+    activity: { color: string; isPulsing: boolean } | null;
     current: boolean;
     displayPath: string;
     expanded: boolean;
@@ -83,116 +61,43 @@ const SectionHeader = React.memo(({
 }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const router = useRouter();
-    const draft = useNewSessionDraft();
-
-    const sessionPath = session.path || '';
-    const isWorktree = isWorktreePath(sessionPath);
-    const repoPath = isWorktree ? getRepoPath(sessionPath) : sessionPath;
-    const repoDisplayPath = isWorktree
-        ? formatPathRelativeToHome(repoPath, session.homeDir ?? undefined)
-        : displayPath;
-    const repoFolderName = repoPath.split(/[/\\]/).filter(Boolean).pop() || repoDisplayPath;
-    const worktreeName = isWorktree ? getWorktreeName(sessionPath) : null;
-
-    const gitInfo = useSectionGitInfo(session.id);
-    const branchName = worktreeName || gitInfo.branch;
-    const hasBranch = !!branchName;
-
-    const handleAdd = React.useCallback(() => {
-        const machineId = session.machineId;
-        if (machineId) {
-            draft.setMachineId(machineId);
-        }
-        const pathToSet = formatPathRelativeToHome(repoPath, session.homeDir ?? undefined);
-        draft.setPath(pathToSet);
-        draft.setSessionType(isWorktree ? 'worktree' : 'simple');
-        draft.setWorktreeKey(isWorktree ? sessionPath : null);
-        router.navigate('/new');
-    }, [session.machineId, session.homeDir, repoPath, isWorktree, sessionPath, draft, router]);
-
-    const [isHovered, setIsHovered] = React.useState(false);
+    const repoFolderName = (session.path || displayPath)
+        .split(/[/\\]/)
+        .filter(Boolean)
+        .pop() || displayPath;
 
     return (
-        <View
-            style={[
-                hasBranch ? styles.sectionHeader : styles.sectionHeaderSingleLine,
-                current && styles.sectionHeaderCurrent,
+        <Pressable
+            accessibilityLabel={repoFolderName}
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            aria-expanded={expanded}
+            onPress={onToggle}
+            style={({ hovered, pressed }: any) => [
+                styles.sectionHeader,
+                (hovered || pressed) && styles.sectionHeaderHovered,
             ]}
-            // @ts-ignore - Web only events
-            onMouseEnter={() => setIsHovered(true)}
-            // @ts-ignore - Web only events
-            onMouseLeave={() => setIsHovered(false)}
+            testID={testID}
         >
-            <Pressable
-                accessibilityLabel={repoFolderName}
-                accessibilityRole="button"
-                accessibilityState={{ expanded }}
-                aria-expanded={expanded}
-                onPress={onToggle}
-                style={styles.sectionHeaderPressTarget}
-                testID={testID}
-            >
-                <Ionicons
-                    name={expanded ? 'chevron-down' : 'chevron-forward'}
-                    size={14}
-                    color={current ? theme.colors.textLink : theme.colors.textSecondary}
-                    style={styles.sectionChevron}
+            <View style={styles.sectionFolder}>
+                <Feather
+                    name="folder"
+                    size={18}
+                    color={current ? theme.colors.text : theme.colors.textSecondary}
                 />
-
-                {/* Avatar — vertically centered */}
-                <View style={styles.sectionHeaderAvatar}>
-                    <Avatar id={session.avatarId} size={24} flavor={null} />
-                </View>
-
-                {/* Path + branch */}
-                <View style={styles.sectionHeaderContent}>
-                    <Text style={styles.sectionHeaderPath} numberOfLines={1}>
-                        {repoFolderName}
-                    </Text>
-                    {hasBranch && (
-                        <View style={styles.branchRow}>
-                            <Text style={styles.branchText} numberOfLines={1}>
-                                {branchName}
-                            </Text>
-                            {isWorktree && (
-                                <MaterialCommunityIcons
-                                    name="tree"
-                                    size={11}
-                                    color={theme.colors.textSecondary}
-                                    style={styles.worktreeIcon}
-                                />
-                            )}
-                            {gitInfo.linesAdded > 0 && (
-                                <Text style={styles.addedText}>+{gitInfo.linesAdded}</Text>
-                            )}
-                            {gitInfo.linesRemoved > 0 && (
-                                <Text style={styles.removedText}>-{gitInfo.linesRemoved}</Text>
-                            )}
-                        </View>
-                    )}
-                </View>
-                {current ? (
-                    <Ionicons
-                        name="ellipse"
-                        size={7}
-                        color={theme.colors.textLink}
-                        style={styles.currentProjectIndicator}
-                    />
-                ) : null}
-            </Pressable>
-
-            {/* + button — vertically centered, large hit area; desktop: hover-only */}
-            <Pressable
-                accessibilityLabel={t('sidebar.newSession')}
-                accessibilityRole="button"
-                onPress={handleAdd}
-                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                style={[styles.addButton, { opacity: Platform.OS !== 'web' || isHovered ? 1 : 0 }]}
+            </View>
+            <Text
+                style={[styles.sectionHeaderPath, expanded && styles.sectionHeaderPathExpanded]}
+                numberOfLines={1}
             >
-                <Ionicons name="add-outline" size={14} color={theme.colors.textSecondary} />
-            </Pressable>
-        </View>
+                {repoFolderName}
+            </Text>
+            {activity ? (
+                <View style={styles.projectActivity}>
+                    <StatusDot color={activity.color} isPulsing={activity.isPulsing} />
+                </View>
+            ) : null}
+        </Pressable>
     );
 });
 
@@ -209,7 +114,7 @@ const MachineSeparator = React.memo(({ machineName, machineId }: { machineName: 
     return (
         <Pressable onPress={handlePress} style={styles.machineSeparator} hitSlop={{ top: 8, bottom: 8 }}>
             <View style={styles.machineSeparatorLine} />
-            <Ionicons name="desktop-outline" size={11} color={theme.colors.textSecondary} style={{ marginHorizontal: 6 }} />
+            <Feather name="monitor" size={12} color={theme.colors.textSecondary} style={{ marginHorizontal: 6 }} />
             <Text style={styles.machineSeparatorText} numberOfLines={1}>
                 {machineName}
             </Text>
@@ -281,7 +186,8 @@ export function ActiveSessionsGroupCompact({
 
     return (
         <View style={styles.container}>
-            {machineGroups.map(machineGroup => {
+            <Text style={styles.projectsLabel}>{t('devTools.projects')}</Text>
+            {machineGroups.map((machineGroup, machineIndex) => {
                 return (
                     <React.Fragment key={machineGroup.machineId}>
                         {hasMultipleMachines && (
@@ -290,15 +196,38 @@ export function ActiveSessionsGroupCompact({
                                 machineId={machineGroup.machineId}
                             />
                         )}
-                        {machineGroup.projects.map((projectGroup) => {
+                        {machineGroup.projects.map((projectGroup, projectIndex) => {
                             const firstSession = projectGroup.sessions[0];
                             if (!firstSession) return null;
                             const expanded = !collapsedProjects.has(projectGroup.key);
                             const current = projectGroup.key === selectedProjectKey;
+                            const activitySession = projectGroup.sessions.find((candidate) => (
+                                candidate.state === 'permission_required'
+                                || candidate.state === 'running'
+                                || candidate.hasUnread
+                            ));
+                            const activity = activitySession
+                                ? {
+                                    color: activitySession.hasUnread && activitySession.state === 'idle'
+                                        ? '#78B9F2'
+                                        : STATUS_CONFIG[activitySession.state].dotColor,
+                                    isPulsing: STATUS_CONFIG[activitySession.state].isPulsing,
+                                }
+                                : null;
 
                             return (
-                                <View key={projectGroup.key}>
+                                <View
+                                    key={projectGroup.key}
+                                    style={[
+                                        styles.projectGroupWrapper,
+                                        {
+                                            zIndex: ((machineGroups.length - machineIndex) * 1000)
+                                                + (machineGroup.projects.length - projectIndex),
+                                        },
+                                    ]}
+                                >
                                     <SectionHeader
+                                        activity={activity}
                                         current={current}
                                         session={firstSession}
                                         displayPath={projectGroup.displayPath}
@@ -307,7 +236,7 @@ export function ActiveSessionsGroupCompact({
                                         testID={`sidebar-project-toggle-${projectGroup.key}`}
                                     />
                                     {expanded ? (
-                                        <View style={styles.projectCard} testID={`sidebar-project-sessions-${projectGroup.key}`}>
+                                        <View style={styles.projectSessions} testID={`sidebar-project-sessions-${projectGroup.key}`}>
                                             {projectGroup.sessions.map((session, index) => (
                                                 <CompactSessionRow
                                                     key={session.id}
@@ -316,7 +245,6 @@ export function ActiveSessionsGroupCompact({
                                                     bulkSelected={selectedIds?.has(session.id) ?? false}
                                                     selectionMode={selectionMode}
                                                     showBorder={index < projectGroup.sessions.length - 1}
-                                                    pinned={sessionManagement.isPinned(session.id)}
                                                     onStartSelection={onStartSelection}
                                                     onToggleSelection={onToggleSelection}
                                                 />
@@ -333,25 +261,17 @@ export function ActiveSessionsGroupCompact({
     );
 }
 
-// Compact session row with status dot indicator
-const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selectionMode, showBorder, pinned, onStartSelection, onToggleSelection }: {
+// Compact Codex-style session row. Status and actions are disclosed on hover.
+const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selectionMode, showBorder, onStartSelection, onToggleSelection }: {
     session: SessionRowData;
     selected?: boolean;
     bulkSelected?: boolean;
     selectionMode?: boolean;
     showBorder?: boolean;
-    pinned?: boolean;
     onStartSelection?: (sessionId: string) => void;
     onToggleSelection?: (sessionId: string) => void;
 }) => {
     const styles = stylesheet;
-    const { theme } = useUnistyles();
-    const baseStatus = STATUS_CONFIG[session.state];
-    // Runtime outcomes keep their own marker priority, while an otherwise-idle
-    // unread session retains the existing blue unread marker.
-    const status = session.hasUnread && session.state === 'idle'
-        ? { ...baseStatus, dotColor: theme.colors.accent, isPulsing: false }
-        : baseStatus;
     const navigateToSession = useNavigateToSession();
     const router = useRouter();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
@@ -413,38 +333,14 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
             indicator = (
                 <View style={[styles.selectionCheckbox, bulkSelected && styles.selectionCheckboxSelected]}>
                     {bulkSelected ? (
-                        <Ionicons
-                            name="checkmark"
+                        <Feather
+                            name="check"
                             size={14}
                             color="#FFFFFF"
                         />
                     ) : null}
                 </View>
             );
-        } else if (session.state === 'permission_required' || session.state === 'running') {
-            indicator = <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />;
-        } else if (session.state === 'failed' || session.state === 'completed') {
-            indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
-        } else if (pinned) {
-            indicator = (
-                <Ionicons
-                    name="pin"
-                    size={14}
-                    color={theme.colors.textSecondary}
-                />
-            );
-        } else if (session.hasUnread) {
-            indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
-        } else if (session.state === 'idle' && session.hasDraft) {
-            indicator = (
-                <Ionicons
-                    name="create-outline"
-                    size={14}
-                    color={theme.colors.textSecondary}
-                />
-            );
-        } else if (session.state === 'idle') {
-            indicator = <StatusDot color={theme.colors.textSecondary} isPulsing={false} />;
         }
 
         return (
@@ -454,15 +350,12 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
         );
     };
 
-    const titleHint = Platform.OS === 'web' && disclosure.titleOverflowing
-        ? { title: session.name } as any
-        : {};
-
     const itemContent = (
         <View
             style={[
                 styles.sessionRow,
                 showBorder && styles.sessionRowWithBorder,
+                disclosure.visible && styles.sessionRowHovered,
                 (selected || bulkSelected || !!actionsAnchor) && styles.sessionRowSelected
             ]}
         >
@@ -479,33 +372,28 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
             >
                 <View style={styles.sessionContent}>
                     <View style={styles.sessionTitleRow}>
-                        {renderLeadingIndicator()}
-
-                        <Text
-                            style={[
-                                styles.sessionTitle,
-                                session.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
-                            ]}
-                            numberOfLines={1}
-                            testID="session-row-title"
-                            {...titleHint}
-                        >
-                            {session.name}
-                        </Text>
+                        {selectionMode ? renderLeadingIndicator() : null}
                         <View
-                            accessibilityLabel={`${getSessionStateLabel(session.state)}${session.isConnected ? '' : `, ${t('status.disconnected')}`}`}
-                            style={styles.sessionStatusBadge}
-                            testID={`session-row-status-${session.id}`}
+                            style={styles.sessionTitleViewport}
+                            testID="session-row-title"
+                            {...(Platform.OS === 'web' ? {
+                                dataSet: {
+                                    marqueeActive: disclosure.visible && disclosure.titleOverflowing ? 'true' : 'false',
+                                },
+                            } as any : {})}
                         >
-                            <Text style={[styles.sessionStatusText, { color: status.color }]} numberOfLines={1}>
-                                {getSessionStateLabel(session.state)}
+                            <Text
+                                style={[
+                                    styles.sessionTitle,
+                                    session.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                                ]}
+                                numberOfLines={1}
+                                testID="session-row-title-text"
+                            >
+                                {session.name}
                             </Text>
-                            {!session.isConnected ? (
-                                <Ionicons name="cloud-offline-outline" size={12} color={theme.colors.textSecondary} />
-                            ) : null}
                         </View>
                     </View>
-                    <SessionRowLocation presentation={presentation} />
                 </View>
             </Pressable>
             {!selectionMode ? (
@@ -514,6 +402,7 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
                     onContextAnchorChange={setActionsAnchor}
                     onStartSelection={onStartSelection ? () => onStartSelection(session.id) : undefined}
                     sessionId={session.id}
+                    statusLabel={presentation.status}
                     visible={disclosure.visible}
                 />
             ) : null}
@@ -527,7 +416,11 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
             {...disclosure.interactionProps as any}
         >
             {itemContent}
-            <SessionRowDetails presentation={presentation} visible={!selectionMode && disclosure.visible} />
+            <SessionRowDetails
+                anchor={disclosure.detailsAnchor}
+                presentation={presentation}
+                visible={!selectionMode && disclosure.visible}
+            />
         </View>
     );
 });
@@ -535,85 +428,52 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
         backgroundColor: theme.colors.groupped.background,
-        paddingTop: 8,
+        paddingBottom: 12,
+        paddingTop: 12,
     },
-    // Section header styles
+    projectsLabel: {
+        color: theme.colors.groupped.sectionTitle,
+        fontSize: 13,
+        lineHeight: 18,
+        marginBottom: 8,
+        paddingHorizontal: 16,
+        ...Typography.default('semiBold'),
+    },
     sectionHeader: {
-        paddingTop: 12,
-        paddingBottom: Platform.select({ ios: 6, default: 8 }),
-        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+        borderRadius: 10,
         flexDirection: 'row',
         alignItems: 'center',
+        marginHorizontal: 8,
+        minHeight: 38,
+        minWidth: 0,
+        paddingHorizontal: 10,
     },
-    sectionHeaderSingleLine: {
-        paddingTop: 12,
-        paddingBottom: Platform.select({ ios: 6, default: 8 }),
-        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    sectionHeaderCurrent: {
+    sectionHeaderHovered: {
         backgroundColor: theme.colors.surfaceSelected,
     },
-    sectionHeaderPressTarget: {
+    sectionFolder: {
         alignItems: 'center',
-        flex: 1,
-        flexDirection: 'row',
-        minHeight: 40,
-        minWidth: 0,
-    },
-    sectionChevron: {
-        marginRight: 4,
-    },
-    sectionHeaderAvatar: {
-        marginRight: 8,
-    },
-    sectionHeaderContent: {
-        flex: 1,
         justifyContent: 'center',
-        minWidth: 0,
+        marginRight: 10,
+        width: 18,
     },
     sectionHeaderPath: {
         ...Typography.default('regular'),
-        color: theme.colors.groupped.sectionTitle,
-        fontSize: Platform.select({ ios: 13, default: 14 }),
-        lineHeight: Platform.select({ ios: 18, default: 20 }),
-        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
-        fontWeight: Platform.select({ ios: 'normal', default: '500' }),
-        flexShrink: 1,
+        color: theme.colors.text,
+        flex: 1,
+        fontSize: 14,
+        lineHeight: 20,
+        minWidth: 0,
     },
-    branchRow: {
-        flexDirection: 'row',
+    sectionHeaderPathExpanded: {
+        ...Typography.default('semiBold'),
+    },
+    projectActivity: {
         alignItems: 'center',
-        marginTop: 1,
-    },
-    branchText: {
-        fontSize: 11,
-        color: theme.colors.textSecondary,
-        ...Typography.default('regular'),
-        flexShrink: 1,
-    },
-    worktreeIcon: {
-        marginLeft: 4,
-    },
-    addedText: {
-        fontSize: 11,
-        fontWeight: '600',
-        color: theme.colors.gitAddedText,
-        marginLeft: 6,
-    },
-    removedText: {
-        fontSize: 11,
-        fontWeight: '600',
-        color: theme.colors.gitRemovedText,
-        marginLeft: 3,
-    },
-    addButton: {
-        marginLeft: 4,
-        padding: 8,
-    },
-    currentProjectIndicator: {
-        marginLeft: 6,
+        height: 18,
+        justifyContent: 'center',
+        marginLeft: 8,
+        width: 18,
     },
     // Machine separator styles
     machineSeparator: {
@@ -634,40 +494,48 @@ const stylesheet = StyleSheet.create((theme) => ({
         ...Typography.default('regular'),
         marginRight: 4,
     },
-    // Project card styles
-    projectCard: {
-        backgroundColor: theme.colors.surface,
-        marginBottom: 8,
-        marginHorizontal: Platform.select({ ios: 16, default: 12 }),
-        borderRadius: Platform.select({ ios: 10, default: 16 }),
-        overflow: 'visible',
-        shadowColor: theme.colors.shadow.color,
-        shadowOffset: { width: 0, height: 0.33 },
-        shadowOpacity: theme.colors.shadow.opacity,
-        shadowRadius: 0,
-        elevation: 1,
+    projectGroupWrapper: {
+        position: 'relative',
     },
-    // Session row styles
+    projectSessions: {
+        marginBottom: 4,
+        overflow: 'visible',
+    },
     sessionRow: {
-        minHeight: 64,
+        borderRadius: 12,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        backgroundColor: theme.colors.surface,
+        marginHorizontal: 8,
+        minHeight: 46,
+        paddingLeft: 38,
+        paddingRight: 8,
     },
     sessionRowWithBorder: {
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: theme.colors.divider,
+        borderBottomWidth: 0,
     },
     sessionRowSelected: {
         backgroundColor: theme.colors.surfaceSelected,
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: Platform.OS === 'web' ? 0.18 : theme.colors.shadow.opacity,
+        shadowRadius: 8,
+    },
+    sessionRowHovered: {
+        backgroundColor: theme.colors.surfaceSelected,
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: Platform.OS === 'web' ? 0.18 : theme.colors.shadow.opacity,
+        shadowRadius: 8,
     },
     sessionContent: {
         flex: 1,
         justifyContent: 'center',
+        minWidth: 0,
     },
     sessionPressTarget: {
+        alignItems: 'center',
         flex: 1,
+        flexDirection: 'row',
         minWidth: 0,
     },
     sessionRowWrapper: {
@@ -678,26 +546,19 @@ const stylesheet = StyleSheet.create((theme) => ({
         zIndex: 40,
     },
     sessionTitleRow: {
+        minHeight: 20,
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    sessionTitleViewport: {
+        flex: 1,
+        minWidth: 0,
+        overflow: 'hidden',
     },
     sessionTitle: {
-        fontSize: 15,
-        flex: 1,
+        fontSize: 14,
+        lineHeight: 20,
         ...Typography.default('regular'),
-    },
-    sessionStatusBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexShrink: 0,
-        gap: 3,
-        marginLeft: 8,
-        maxWidth: 96,
-    },
-    sessionStatusText: {
-        fontSize: 11,
-        fontWeight: '600',
-        ...Typography.default('semiBold'),
     },
     sessionTitleConnected: {
         color: theme.colors.text,

@@ -5,15 +5,19 @@ import { Typography } from '@/constants/Typography';
 
 export const DesktopShortcutTooltip = React.memo(function DesktopShortcutTooltip({
     align = 'left',
+    compact = false,
     label,
     multiline = false,
+    placement = 'below',
     shortcut,
     testID,
     visible,
 }: {
     align?: 'left' | 'right';
+    compact?: boolean;
     label: string;
     multiline?: boolean;
+    placement?: 'above' | 'below';
     shortcut?: string;
     testID: string;
     visible: boolean;
@@ -25,6 +29,8 @@ export const DesktopShortcutTooltip = React.memo(function DesktopShortcutTooltip
             accessibilityRole="text"
             style={[
                 styles.tooltip,
+                placement === 'above' ? styles.placementAbove : styles.placementBelow,
+                compact && styles.tooltipCompact,
                 multiline && styles.tooltipMultiline,
                 align === 'right' ? styles.alignRight : styles.alignLeft,
             ]}
@@ -32,11 +38,19 @@ export const DesktopShortcutTooltip = React.memo(function DesktopShortcutTooltip
         >
             <Text
                 numberOfLines={multiline ? undefined : 1}
-                style={[styles.label, multiline && styles.labelMultiline]}
+                style={[styles.label, compact && styles.labelCompact, multiline && styles.labelMultiline]}
             >
                 {label}
             </Text>
             {shortcut ? <Text numberOfLines={1} style={styles.shortcut}>{shortcut}</Text> : null}
+            {compact ? (
+                <View
+                    style={[
+                        styles.caret,
+                        placement === 'above' ? styles.caretBelow : styles.caretAbove,
+                    ]}
+                />
+            ) : null}
         </View>
     );
 });
@@ -44,7 +58,6 @@ export const DesktopShortcutTooltip = React.memo(function DesktopShortcutTooltip
 const styles = StyleSheet.create((theme) => ({
     tooltip: {
         position: 'absolute',
-        top: 36,
         zIndex: 1400,
         minWidth: 150,
         maxWidth: 260,
@@ -56,6 +69,17 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 9,
         backgroundColor: theme.colors.text,
         pointerEvents: 'none',
+    },
+    placementAbove: {
+        bottom: 42,
+    },
+    placementBelow: {
+        top: 36,
+    },
+    tooltipCompact: {
+        minWidth: 0,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
     },
     tooltipMultiline: {
         width: 380,
@@ -70,10 +94,14 @@ const styles = StyleSheet.create((theme) => ({
         right: 0,
     },
     label: {
-        flex: 1,
+        flexGrow: 1,
         color: theme.colors.surface,
         fontSize: 12,
         ...Typography.default('semiBold'),
+    },
+    labelCompact: {
+        flexGrow: 0,
+        flexShrink: 0,
     },
     labelMultiline: {
         flex: 0,
@@ -84,5 +112,19 @@ const styles = StyleSheet.create((theme) => ({
         opacity: 0.72,
         fontSize: 12,
         ...Typography.default('semiBold'),
+    },
+    caret: {
+        position: 'absolute',
+        right: 13,
+        width: 9,
+        height: 9,
+        backgroundColor: theme.colors.text,
+        transform: [{ rotate: '45deg' }],
+    },
+    caretAbove: {
+        top: -4,
+    },
+    caretBelow: {
+        bottom: -4,
     },
 }));
