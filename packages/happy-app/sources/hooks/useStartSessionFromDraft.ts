@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { randomUUID } from 'expo-crypto';
 import { useAllMachines, useSetting } from '@/sync/storage';
 import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { machineSpawnNewSession, sessionSetAgentModes, type SessionAgentModesPatch } from '@/sync/ops';
@@ -21,7 +20,13 @@ import { delay } from '@/utils/time';
 import {
     buildRigSpawnConfiguration,
     getRigMachineSessionCreation,
+    resolveRigPendingRetryDelayMs,
 } from '@/sync/rigSessionCreation';
+import {
+    buildSpawnRequestSignature,
+    completeSpawnRequest,
+    resolveSpawnRequestId,
+} from '@/sync/spawnRequestId';
 
 const MAX_RIG_PENDING_RESULTS = 3;
 
@@ -120,7 +125,17 @@ export function useStartSessionFromDraft() {
             : draft.sessionType === 'worktree'
                 ? draft.worktreeKey ?? '__new__'
                 : '__none__';
-        const clientRequestId = randomUUID();
+        // Reused across every retry of this exact request so a second press of
+        // Start is deduped by Rig instead of spawning a second session.
+        const clientRequestId = resolveSpawnRequestId(buildSpawnRequestSignature({
+            machineId: machine.id,
+            agent: agentType,
+            directory: selectedPath,
+            worktree: worktreeSelection,
+            modelKey: model.key,
+            permissionMode: permission.key,
+            effort: effort?.key ?? null,
+        }));
 
         isStartingRef.current = true;
         setIsStarting(true);
@@ -165,7 +180,10 @@ export function useStartSessionFromDraft() {
                 let pendingResults = 0;
                 while (result.type === 'pending' && pendingResults < MAX_RIG_PENDING_RESULTS) {
                     pendingResults += 1;
-                    await delay(Math.min(10_000, Math.max(250, result.retryAfterMs)));
+                    await delay(resolveRigPendingRetryDelayMs(
+                        result.retryAfterMs,
+                        rigCreation?.pendingRetryAfterMs,
+                    ));
                     if (!isMountedRef.current) return null;
                     result = await machineSpawnNewSession(spawnOptions);
                 }
@@ -194,6 +212,8 @@ export function useStartSessionFromDraft() {
 
             const sessionId = await spawn();
             if (!sessionId) return false;
+            // The idempotency key did its job; the next Start is a new session.
+            completeSpawnRequest();
 
             await sync.refreshSessions();
 

@@ -31,7 +31,6 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import Constants from 'expo-constants';
-import { randomUUID } from 'expo-crypto';
 import { useHeaderHeight } from '@/utils/responsive';
 import { t } from '@/text';
 import { useAllMachines, useLocalSetting, useSessions, useSetting, storage } from '@/sync/storage';
@@ -70,7 +69,14 @@ import { delay } from '@/utils/time';
 import {
     buildRigSpawnConfiguration,
     getRigMachineSessionCreation,
+    resolveRigPendingRetryDelayMs,
 } from '@/sync/rigSessionCreation';
+import {
+    buildSpawnRequestSignature,
+    completeSpawnRequest,
+    resolveSpawnRequestId,
+} from '@/sync/spawnRequestId';
+import { resolvePermissionStyle, resolveSelectedOption } from '@/utils/newSessionModeSelection';
 import { MobileGlassSurface } from '@/components/MobileGlass';
 import { getNativeGlassInteractivity } from '@/components/glassInteractionPolicy';
 import { BubblePressable } from '@/components/BubblePressable';
@@ -119,8 +125,6 @@ const NATIVE_PICKER_ESTIMATED_HEIGHT = 264;
 const MAX_RIG_PENDING_RESULTS = 3;
 const NATIVE_COMPOSER_RESERVED_HEIGHT = 98;
 
-type PermissionStyle = { color: string; icon: 'play-forward' | 'pause' };
-
 function findPreferredModeIndex<T extends { key: string }>(
     options: T[],
     preferredKeys: Array<string | null | undefined>,
@@ -159,26 +163,6 @@ function normalizePathForComparison(path: string | null | undefined, homeDir?: s
         return null;
     }
     return trimTrailingPathSeparator(resolveAbsolutePath(trimmed, homeDir));
-}
-
-function getPermissionStyle(key: string): PermissionStyle | null {
-    switch (key) {
-        case 'acceptEdits':
-        case 'auto_edit':
-            return { color: '#A78BFA', icon: 'play-forward' };
-        case 'plan':
-            return { color: '#5EABA4', icon: 'pause' };
-        case 'dontAsk':
-        case 'safe-yolo':
-            return { color: '#FBBF24', icon: 'play-forward' };
-        case 'bypassPermissions':
-        case 'yolo':
-            return { color: '#F87171', icon: 'play-forward' };
-        case 'read-only':
-            return { color: '#60A5FA', icon: 'pause' };
-        default:
-            return null;
-    }
 }
 
 // Bottom sheet modal — native formSheet on iOS, slide-up sheet on Android
@@ -950,7 +934,7 @@ function NewSessionScreen() {
         [selectedAgent, rigCreation],
     );
 
-    const currentModel = modelModes[modelIndex] ?? modelModes[0];
+    const currentModel = resolveSelectedOption(modelModes, modelIndex);
     const currentModelKey = currentModel?.key ?? 'default';
 
     const effortLevels = React.useMemo<EffortLevel[]>(
@@ -1073,9 +1057,11 @@ function NewSessionScreen() {
 
     const isOffline = selectedMachine ? !isMachineOnline(selectedMachine) : false;
     const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS[0];
-    const currentPermission = permissionModes[permissionIndex] ?? permissionModes[0];
-    const currentEffort = effortLevels[effortIndex] ?? effortLevels[0];
-    const permissionStyle = currentPermission?.key !== 'default' ? getPermissionStyle(currentPermission.key) : null;
+    // A Rig machine can publish an empty catalog, so every current pick is
+    // nullable — the composer hides the picker instead of rendering a pick.
+    const currentPermission = resolveSelectedOption(permissionModes, permissionIndex);
+    const currentEffort = resolveSelectedOption(effortLevels, effortIndex);
+    const permissionStyle = resolvePermissionStyle(currentPermission);
     const composerSettingsItems = React.useMemo(() => {
         const items: Array<{
             key: ComposerSettingPickerType;
@@ -1274,7 +1260,6 @@ function NewSessionScreen() {
     // Spawn session handler
     const handleSend = React.useCallback(async (
         approvedNewDirectoryCreation: boolean = false,
-        clientRequestId: string = randomUUID(),
     ) => {
         if (!selectedMachineId || !selectedMachine) {
             Modal.alert(t('common.error'), 'Please select a machine');
@@ -1289,6 +1274,21 @@ function NewSessionScreen() {
         try {
             const pathToUse = trimPathInput(selectedPath) || '~';
             const absolutePath = resolveAbsolutePath(pathToUse, selectedMachine.metadata?.homeDir);
+            const permissionKey = currentPermission?.key ?? null;
+            // Same key for every retry of this request (directory approval,
+            // pending polling, or the user pressing Start again) so Rig dedupes
+            // instead of spawning a second session. Built from what the user
+            // picked, not from the resolved worktree path, so retrying a "new
+            // worktree" spawn still lands on the session Rig already created.
+            const clientRequestId = resolveSpawnRequestId(buildSpawnRequestSignature({
+                machineId: selectedMachineId,
+                agent: selectedAgent,
+                directory: pathToUse,
+                worktree: supportsWorktree ? worktreeKey : '__none__',
+                modelKey: currentModelKey,
+                permissionMode: permissionKey,
+                effort: currentEffort?.key ?? null,
+            }));
 
             // Handle worktree selection
             let spawnDirectory = absolutePath;
@@ -1312,7 +1312,7 @@ function NewSessionScreen() {
                         clientRequestId,
                         approvedNewDirectoryCreation,
                         modelKey: currentModelKey,
-                        permissionMode: currentPermission.key,
+                        permissionMode: permissionKey,
                         effort: currentEffort?.key,
                     }),
                 }
@@ -1324,7 +1324,9 @@ function NewSessionScreen() {
                     // For codex, 'default' is a concrete ask-first mode (the codex
                     // launch default is yolo) — it must be forwarded. For other
                     // agents 'default' is the ambient no-override value.
-                    permissionMode: selectedAgent === 'codex' || currentPermission.key !== 'default' ? currentPermission.key : undefined,
+                    permissionMode: permissionKey && (selectedAgent === 'codex' || permissionKey !== 'default')
+                        ? permissionKey
+                        : undefined,
                     modelMode: currentModelKey !== 'default' ? currentModelKey : undefined,
                     effortLevel: currentEffort?.key,
                 };
@@ -1332,7 +1334,10 @@ function NewSessionScreen() {
             let pendingResults = 0;
             while (result.type === 'pending' && pendingResults < MAX_RIG_PENDING_RESULTS) {
                 pendingResults += 1;
-                await delay(Math.min(10_000, Math.max(250, result.retryAfterMs)));
+                await delay(resolveRigPendingRetryDelayMs(
+                    result.retryAfterMs,
+                    rigCreation?.pendingRetryAfterMs,
+                ));
                 if (!isMountedRef.current) return;
                 result = await machineSpawnNewSession(spawnOptions);
             }
@@ -1340,13 +1345,15 @@ function NewSessionScreen() {
 
             switch (result.type) {
                 case 'success':
+                    // The idempotency key did its job; the next Start is a new session.
+                    completeSpawnRequest();
                     await sync.refreshSessions();
 
                     // Store only per-session overrides. Matching the effective
                     // default stays null so future code default changes apply.
-                    const permissionOverride = currentPermission.key === effectiveAgentDefaults.permissionMode
+                    const permissionOverride = permissionKey === effectiveAgentDefaults.permissionMode
                         ? null
-                        : currentPermission.key;
+                        : permissionKey;
                     const modelOverride = currentModelKey === effectiveAgentDefaults.modelMode
                         ? null
                         : currentModelKey;
@@ -1391,7 +1398,9 @@ function NewSessionScreen() {
                         { cancelText: t('common.cancel'), confirmText: t('common.create') },
                     );
                     if (approved) {
-                        await handleSend(true, clientRequestId);
+                        // The request is unchanged, so the retry resolves to the
+                        // same clientRequestId.
+                        await handleSend(true);
                     }
                     break;
                 }
@@ -1413,7 +1422,7 @@ function NewSessionScreen() {
         } finally {
             if (isMountedRef.current) setIsSpawning(false);
         }
-    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession, currentPermission.key, currentModelKey, currentEffort?.key, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.effortLevel, worktreeKey, rigCreation, supportsWorktree]);
+    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession, currentPermission?.key, currentModelKey, currentEffort?.key, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.effortLevel, worktreeKey, rigCreation, supportsWorktree]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
     React.useEffect(() => {
@@ -1708,7 +1717,7 @@ function NewSessionScreen() {
                                                 <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
                                                 <BubblePressable scaleFeedback={false} onPress={() => togglePicker('model')} style={(p) => [styles.configInlineField, p.pressed && styles.configRowPressed]}>
                                                     <Text style={[styles.configLabel, styles.configInlineText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                                        {currentModel.name}
+                                                        {currentModel?.name}
                                                     </Text>
                                                     <Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} />
                                                 </BubblePressable>

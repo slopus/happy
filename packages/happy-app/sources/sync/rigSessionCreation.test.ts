@@ -6,6 +6,7 @@ import {
     findConnectedRigMachine,
     getRigMachineSessionCreation,
     isRigMachine,
+    resolveRigPendingRetryDelayMs,
 } from './rigSessionCreation';
 
 const rigMachine = {
@@ -149,5 +150,46 @@ describe('Rig machine session creation', () => {
             modelKey: 'claude:shared-model',
             effort: 'high',
         })).toThrow('reasoning level is unavailable');
+    });
+
+    it('has an empty catalog when the machine publishes no operating modes', () => {
+        const creation = getRigMachineSessionCreation({
+            ...rigMachine,
+            operatingModes: undefined,
+        } as unknown as MachineMetadata);
+
+        expect(creation?.permissionModes).toEqual([]);
+        expect(creation?.defaultPermissionMode).toBeNull();
+        expect(creation?.pendingRetryAfterMs).toBeNull();
+    });
+
+    it('reads the retry backoff the machine publishes', () => {
+        const creation = getRigMachineSessionCreation({
+            ...rigMachine,
+            sessionCreation: {
+                idempotencyKey: 'clientRequestId',
+                pendingRetryAfterMs: 2_000,
+                resultKinds: ['success', 'pending'],
+            },
+        } as unknown as MachineMetadata);
+
+        expect(creation?.pendingRetryAfterMs).toBe(2_000);
+    });
+
+    it('never turns a missing pending retry delay into an instant retry', () => {
+        // `retryAfterMs` comes from an unvalidated RPC payload: a Rig that omits
+        // it used to produce Math.max(250, undefined) === NaN, and delay(NaN)
+        // resolves immediately.
+        expect(resolveRigPendingRetryDelayMs(undefined, null)).toBe(1_000);
+        expect(resolveRigPendingRetryDelayMs(Number.NaN, null)).toBe(1_000);
+        expect(resolveRigPendingRetryDelayMs('soon', null)).toBe(1_000);
+        expect(resolveRigPendingRetryDelayMs(undefined, 2_000)).toBe(2_000);
+    });
+
+    it('clamps the pending retry delay to a sane window', () => {
+        expect(resolveRigPendingRetryDelayMs(0, null)).toBe(250);
+        expect(resolveRigPendingRetryDelayMs(-5_000, null)).toBe(250);
+        expect(resolveRigPendingRetryDelayMs(60_000, null)).toBe(10_000);
+        expect(resolveRigPendingRetryDelayMs(3_000, 250)).toBe(3_000);
     });
 });

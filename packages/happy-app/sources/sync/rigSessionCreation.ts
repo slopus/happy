@@ -26,6 +26,8 @@ export type RigMachineSessionCreation = {
     defaultModelKey: string | null;
     defaultPermissionMode: string | null;
     supportsWorktrees: boolean;
+    /** Backoff the machine publishes for polling a `pending` spawn result. */
+    pendingRetryAfterMs: number | null;
     effortsForModel: (modelKey: string | null | undefined) => string[];
     defaultEffortForModel: (modelKey: string | null | undefined) => string | null;
 };
@@ -70,7 +72,14 @@ type RigMachineMetadata = {
     } | null;
     models?: unknown;
     operatingModes?: unknown;
+    sessionCreation?: { pendingRetryAfterMs?: unknown } | null;
 };
+
+/** Bounds applied to any retry delay before it reaches `delay()`. */
+const PENDING_RETRY_MIN_MS = 250;
+const PENDING_RETRY_MAX_MS = 10_000;
+/** Used when neither the RPC result nor the machine publishes a delay. */
+const PENDING_RETRY_DEFAULT_MS = 1_000;
 
 function asRigMachineMetadata(metadata: MachineMetadata | null | undefined): RigMachineMetadata | null {
     return metadata as unknown as RigMachineMetadata | null;
@@ -78,6 +87,29 @@ function asRigMachineMetadata(metadata: MachineMetadata | null | undefined): Rig
 
 function nonEmptyString(value: unknown): string | null {
     return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function finiteNumber(value: unknown): number | null {
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Backoff before polling a `pending` spawn result again.
+ *
+ * `retryAfterMs` arrives from an unvalidated machine RPC payload, so it is only
+ * typed as a number: a Rig that omits it produced `Math.max(250, undefined)` —
+ * `NaN` — and `delay(NaN)` resolves immediately, turning the backoff into
+ * back-to-back retries. Falls back to the delay the machine publishes in
+ * `sessionCreation.pendingRetryAfterMs`, then to a fixed default.
+ */
+export function resolveRigPendingRetryDelayMs(
+    retryAfterMs: unknown,
+    publishedRetryAfterMs?: number | null,
+): number {
+    const requested = finiteNumber(retryAfterMs)
+        ?? finiteNumber(publishedRetryAfterMs)
+        ?? PENDING_RETRY_DEFAULT_MS;
+    return Math.min(PENDING_RETRY_MAX_MS, Math.max(PENDING_RETRY_MIN_MS, requested));
 }
 
 function records(value: unknown): Record<string, unknown>[] {
@@ -178,6 +210,7 @@ export function getRigMachineSessionCreation(
         defaultModelKey,
         defaultPermissionMode,
         supportsWorktrees: rig.capabilities?.worktrees === true,
+        pendingRetryAfterMs: finiteNumber(rig.sessionCreation?.pendingRetryAfterMs),
         effortsForModel: (modelKey) => modelFor(modelKey)?.thinkingLevels ?? [],
         defaultEffortForModel: (modelKey) => modelFor(modelKey)?.defaultThinkingLevel ?? null,
     };

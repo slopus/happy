@@ -17,9 +17,11 @@ const mocks = vi.hoisted(() => ({
     alert: vi.fn(),
     confirm: vi.fn(),
     delay: vi.fn(),
+    uuidCount: 0,
 }));
 
-vi.mock('expo-crypto', () => ({ randomUUID: () => 'rig-request-1' }));
+// Counts up so a test can tell a reused idempotency key from a fresh one.
+vi.mock('expo-crypto', () => ({ randomUUID: () => `rig-request-${++mocks.uuidCount}` }));
 
 vi.mock('react', () => ({
     useState: <T,>(value: T) => [value, vi.fn()] as const,
@@ -106,7 +108,40 @@ vi.mock('@/text', () => ({
     t: (key: string) => key,
 }));
 
+import { completeSpawnRequest } from '@/sync/spawnRequestId';
 import { useStartSessionFromDraft } from './useStartSessionFromDraft';
+
+function createRigMachine(metadata: Record<string, unknown> = {}) {
+    return {
+        id: 'machine-1',
+        online: true,
+        metadata: {
+            homeDir: '/Users/dev',
+            machineKind: 'rig',
+            rigOnly: true,
+            cliAvailability: {
+                rig: true,
+                claude: false,
+                codex: false,
+                gemini: false,
+                openclaw: false,
+                detectedAt: 1,
+            },
+            capabilities: { newSession: true, resume: false, worktrees: false },
+            defaults: {
+                providerId: 'codex', modelId: 'model', permissionMode: 'auto', effort: 'high',
+            },
+            models: [{
+                providerId: 'codex', id: 'model', name: 'Model', providerName: 'Codex',
+                thinkingLevels: ['high'], defaultThinkingLevel: 'high',
+            }],
+            operatingModes: [{
+                code: 'auto', value: 'Auto', description: 'Automatic review', kind: 'safe-yolo',
+            }],
+            ...metadata,
+        },
+    };
+}
 
 function createDraft(overrides: Record<string, unknown> = {}) {
     return {
@@ -129,6 +164,8 @@ function createDraft(overrides: Record<string, unknown> = {}) {
 describe('useStartSessionFromDraft', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.uuidCount = 0;
+        completeSpawnRequest();
         mocks.defaultOverrides = {};
         mocks.machines = [{ id: 'machine-1', online: true, metadata: { homeDir: '/Users/dev' } }];
         mocks.draft = createDraft();
@@ -337,6 +374,64 @@ describe('useStartSessionFromDraft', () => {
             'Rig created the session, but it is still syncing with Happy. It should appear shortly.',
         );
         expect(mocks.navigateToSession).not.toHaveBeenCalled();
+    });
+
+    it('degrades instead of crashing when a Rig machine publishes no operating modes', async () => {
+        mocks.machines = [createRigMachine({ operatingModes: [] })];
+        mocks.draft = createDraft({ agentType: 'rig' });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(false);
+        expect(mocks.alert).toHaveBeenCalledWith(
+            'common.error',
+            'The selected agent configuration is unavailable',
+        );
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+    });
+
+    it('reuses the idempotency key when the user retries the same spawn', async () => {
+        mocks.machines = [createRigMachine()];
+        mocks.draft = createDraft({ agentType: 'rig' });
+        mocks.machineSpawnNewSession.mockResolvedValue({
+            type: 'pending', clientRequestId: 'rig-request-1', retryAfterMs: 250,
+        });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        // Rig stayed pending past the retry budget, so the user presses Start again.
+        await expect(startSession()).resolves.toBe(false);
+        mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'rig-session-1' });
+        await expect(startSession()).resolves.toBe(true);
+
+        const requestIds = mocks.machineSpawnNewSession.mock.calls
+            .map(([options]) => options.clientRequestId);
+        expect(new Set(requestIds)).toEqual(new Set(['rig-request-1']));
+
+        // The spawn succeeded, so the next one is a genuinely new session.
+        await expect(startSession()).resolves.toBe(true);
+        expect(mocks.machineSpawnNewSession).toHaveBeenLastCalledWith(expect.objectContaining({
+            clientRequestId: 'rig-request-2',
+        }));
+    });
+
+    it('backs off with the published delay when a pending result omits one', async () => {
+        mocks.machines = [createRigMachine({
+            sessionCreation: {
+                idempotencyKey: 'clientRequestId',
+                pendingRetryAfterMs: 4_000,
+                resultKinds: ['success', 'pending'],
+            },
+        })];
+        mocks.draft = createDraft({ agentType: 'rig' });
+        mocks.machineSpawnNewSession
+            .mockResolvedValueOnce({ type: 'pending', clientRequestId: 'rig-request-1' })
+            .mockResolvedValueOnce({ type: 'success', sessionId: 'rig-session-1' });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(true);
+        expect(mocks.delay).toHaveBeenCalledWith(4_000);
     });
 
     it('keeps the draft in place when creation fails', async () => {
