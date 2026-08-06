@@ -16,6 +16,14 @@ export function applyPersistedTurnStatus(
 ): AgentState {
   const current = state.turnStatus;
   if (current) {
+    if (
+      current.turnId
+      && next.turnId
+      && current.turnId === next.turnId
+      && current.status !== 'running'
+    ) {
+      return state;
+    }
     if (current.updatedAt > next.updatedAt) {
       return state;
     }

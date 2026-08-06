@@ -349,16 +349,56 @@ export async function runGemini(opts: {
   let geminiBackend: AgentBackend | null = null;
   let acpSessionId: string | null = null;
   let wasSessionCreated = false;
+  let currentTurnId: string | null = null;
+  let currentTurnTerminal: 'completed' | 'failed' | 'cancelled' | null = null;
+  let taskStartedSent = false;
+
+  const beginTurn = () => {
+    currentTurnId = randomUUID();
+    currentTurnTerminal = null;
+    taskStartedSent = false;
+  };
+
+  const sendTurnStarted = () => {
+    if (!currentTurnId || currentTurnTerminal || taskStartedSent) {
+      return;
+    }
+    session.sendAgentMessage('gemini', {
+      type: 'task_started',
+      id: currentTurnId,
+    });
+    taskStartedSent = true;
+  };
+
+  const sendTurnTerminal = (outcome: 'completed' | 'failed' | 'cancelled') => {
+    if (!currentTurnId || currentTurnTerminal) {
+      return;
+    }
+    currentTurnTerminal = outcome;
+    if (outcome === 'completed') {
+      session.sendAgentMessage('gemini', {
+        type: 'task_complete',
+        id: currentTurnId,
+      });
+      return;
+    }
+    session.sendAgentMessage('gemini', {
+      type: 'turn_aborted',
+      id: currentTurnId,
+      status: outcome,
+    });
+  };
+
+  const endTurn = () => {
+    currentTurnId = null;
+    currentTurnTerminal = null;
+    taskStartedSent = false;
+  };
 
   async function handleAbort() {
     logger.debug('[Gemini] Abort requested - stopping current task');
-    
-    // Send turn_aborted event (like Codex) when abort is requested
-    session.sendAgentMessage('gemini', {
-      type: 'turn_aborted',
-      id: randomUUID(),
-      status: 'cancelled',
-    });
+
+    sendTurnTerminal('cancelled');
     
     // Abort reasoning processor and reset diff processor
     reasoningProcessor.abort();
@@ -548,7 +588,6 @@ export async function runGemini(opts: {
   let hadToolCallInTurn = false; // Track if any tool calls happened in this turn (for task_complete)
   let pendingChangeTitle = false; // Track if we're waiting for change_title to complete
   let changeTitleCompleted = false; // Track if change_title was completed in this turn
-  let taskStartedSent = false; // Track if task_started was sent this turn (prevent duplicates)
 
   /**
    * Set up message handler for Gemini backend
@@ -588,13 +627,7 @@ export async function runGemini(opts: {
         // Log error status with details
         if (msg.status === 'error') {
           logger.debug(`[gemini] ⚠️ Error status received: ${statusDetail || 'Unknown error'}`);
-          
-          // Send turn_aborted event (like Codex) when error occurs
-          session.sendAgentMessage('gemini', {
-            type: 'turn_aborted',
-            id: randomUUID(),
-            status: 'failed',
-          });
+          sendTurnTerminal('failed');
         }
         
         if (msg.status === 'running') {
@@ -603,13 +636,7 @@ export async function runGemini(opts: {
           
           // Send task_started event ONCE per turn (like Codex) when agent starts working
           // Gemini may go running -> idle -> running multiple times during a turn
-          if (!taskStartedSent) {
-            session.sendAgentMessage('gemini', {
-              type: 'task_started',
-              id: randomUUID(),
-            });
-            taskStartedSent = true;
-          }
+          sendTurnStarted();
           
           // Show thinking indicator in UI when agent starts working (like Codex)
           // This will be updated with actual thinking text when agent_thought_chunk events arrive
@@ -1010,6 +1037,7 @@ export async function runGemini(opts: {
 
       // Mark that we're processing a message to synchronize session swaps
       isProcessingMessage = true;
+      beginTurn();
 
       try {
         if (first || !wasSessionCreated) {
@@ -1168,9 +1196,11 @@ export async function runGemini(opts: {
         const isAbortError = error instanceof Error && error.name === 'AbortError';
 
         if (isAbortError) {
+          sendTurnTerminal('cancelled');
           messageBuffer.addMessage('Aborted by user', 'status');
           session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
         } else {
+          sendTurnTerminal('failed');
           // Parse error message
           let errorMsg = 'Process error occurred';
           
@@ -1279,12 +1309,9 @@ export async function runGemini(opts: {
           isResponseInProgress = false;
         }
         
-        // Send task_complete ONCE at the end of turn (not on every idle)
-        // This signals to the UI that the agent has finished processing
-        session.sendAgentMessage('gemini', {
-          type: 'task_complete',
-          id: randomUUID(),
-        });
+        // Emit exactly one terminal event for this turn. Abort/error paths latch
+        // their outcome before reaching finally, so they cannot be overwritten.
+        sendTurnTerminal('completed');
         
         // Reset tracking flags
         hadToolCallInTurn = false;
@@ -1301,6 +1328,7 @@ export async function runGemini(opts: {
         // Message processing complete - safe to apply any pending session swap
         isProcessingMessage = false;
         applyPendingSessionSwap();
+        endTurn();
 
         logger.debug(`[gemini] Main loop: turn completed, continuing to next iteration (queue size: ${messageQueue.size()})`);
       }
