@@ -163,6 +163,9 @@ describe('SidebarView Agent space exit', () => {
         });
 
         expect(renderer.root.findAllByProps({ testID: 'sidebar-desktop-density' })).toHaveLength(1);
+        expect(renderer.root.findByProps({ testID: 'sidebar-desktop-density' }).props.style).toContainEqual(
+            expect.objectContaining({ borderWidth: 0 }),
+        );
         expect(renderer.root.findByType('SidebarAccountMenu').props.desktopDensity).toBe(true);
         expect(renderer.root.findAllByProps({ testID: 'sidebar-user-card' })).toHaveLength(0);
         expect(renderer.root.findAllByType('MainView')).toHaveLength(1);

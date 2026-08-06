@@ -41,7 +41,10 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
     const activePanelLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? tabs[0]?.label ?? 'Panel';
 
     return (
-        <View style={styles.container} testID="desktop-right-panel">
+        <View
+            style={[styles.container, resizable && styles.containerResizable]}
+            testID="desktop-right-panel"
+        >
             {resizable && (
                 <DesktopPanelResizeHandle
                     accessibilityLabel={t('desktopWorkspace.resizePanel', { panel: activePanelLabel })}
@@ -176,6 +179,9 @@ const styles = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.groupped.background,
         borderLeftWidth: StyleSheet.hairlineWidth,
         borderLeftColor: theme.colors.divider,
+    },
+    containerResizable: {
+        borderLeftWidth: 0,
     },
     header: {
         minHeight: 48,

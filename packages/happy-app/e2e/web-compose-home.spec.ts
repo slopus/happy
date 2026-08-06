@@ -1592,6 +1592,7 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
     const leftResizeHandle = page.getByTestId('desktop-left-panel-resize-handle');
     await expect(leftResizeHandle).toHaveAttribute('aria-valuenow', String(Math.round(resizedLeftWidth)));
     await leftResizeHandle.focus();
+    await expect(leftResizeHandle).toHaveCSS('outline-style', 'none');
     await page.keyboard.press('ArrowLeft');
     await expect.poll(async () => (await leftPanel.boundingBox())?.width ?? 0).toBeLessThan(resizedLeftWidth);
     await page.keyboard.press('ArrowRight');
@@ -1619,6 +1620,7 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
     const rightResizeHandle = rightPanel.getByTestId('desktop-right-panel-resize-handle');
     await expect(rightResizeHandle).toHaveAttribute('aria-valuenow', String(Math.round(resizedRightWidth)));
     await rightResizeHandle.focus();
+    await expect(rightResizeHandle).toHaveCSS('outline-style', 'none');
     await page.keyboard.press('ArrowRight');
     await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? 0).toBeLessThan(resizedRightWidth);
     await page.keyboard.press('ArrowLeft');
@@ -1700,12 +1702,13 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
     await pauseForRecordedReview(page, 900);
 });
 
-test('超宽桌面侧栏只受中间最小宽度约束', async ({ page }) => {
+test('超宽桌面左右侧栏保持各自最大宽度', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await page.goto(authenticatedRoute('/new'));
     await expect(page.getByRole('textbox')).toBeVisible();
 
     const leftPanel = page.getByTestId('desktop-left-sidebar');
+    const leftPanelSurface = page.getByTestId('sidebar-desktop-density');
     const mainPanel = page.locator('[data-testid="desktop-workspace-main"]:visible');
     const rightPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
     const leftHandle = page.getByTestId('desktop-left-panel-resize-handle');
@@ -1713,17 +1716,30 @@ test('超宽桌面侧栏只受中间最小宽度约束', async ({ page }) => {
 
     const leftBefore = (await leftPanel.boundingBox())!.width;
     await dragHorizontalResizeHandle(page, leftHandle, 520);
-    await expect.poll(async () => (await leftPanel.boundingBox())?.width ?? 0).toBeGreaterThan(leftBefore + 450);
-    await expect.poll(async () => (await leftPanel.boundingBox())?.width ?? 0).toBeGreaterThan(640);
+    await expect.poll(async () => (await leftPanel.boundingBox())?.width ?? 0).toBeGreaterThan(leftBefore + 100);
+    await expect.poll(async () => (await leftPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
+    await expect.poll(async () => (await leftPanel.boundingBox())?.width ?? 0).toBeLessThanOrEqual(480);
+    await expect(leftPanelSurface).toHaveCSS('border-right-width', '0px');
     await expect.poll(async () => (await mainPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
 
     await sidebarToggle.click();
     await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'false');
     const rightBefore = (await rightPanel.boundingBox())!.width;
     await dragHorizontalResizeHandle(page, rightPanel.getByTestId('desktop-right-panel-resize-handle'), -520);
-    await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? 0).toBeGreaterThan(rightBefore + 450);
-    await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? 0).toBeGreaterThan(640);
+    await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? 0).toBeGreaterThan(rightBefore + 100);
+    await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
+    await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? 0).toBeLessThanOrEqual(480);
+    await expect(rightPanel).toHaveCSS('border-left-width', '0px');
     await expect.poll(async () => (await mainPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
+
+    await sidebarToggle.click();
+    await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(async () => (await leftPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
+    await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(479);
+    await page.screenshot({
+        path: 'test-results/pc-panel-bounds-after-1920x1080.png',
+        fullPage: true,
+    });
 });
 
 test('活跃会话页面复用左右拖拽与折叠约束', async ({ page, request }) => {

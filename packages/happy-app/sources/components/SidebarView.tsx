@@ -26,6 +26,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
     },
+    containerDesktop: {
+        borderWidth: 0,
+    },
     messagesRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -252,7 +255,11 @@ export const SidebarView = React.memo(({
     // 隐藏全局用户卡/收件箱/会话列表，只看本空间。退出空间即回落到下面的常规侧栏。
     if (spaceAgent) {
         return (
-            <View style={[styles.container, { paddingTop: safeArea.top + (desktopDensity ? 4 : 12) }]}>
+            <View style={[
+                styles.container,
+                desktopDensity && styles.containerDesktop,
+                { paddingTop: safeArea.top + (desktopDensity ? 4 : 12) },
+            ]}>
                 <AgentSpaceWorkbench
                     agent={spaceAgent}
                     onExit={exitAgentSpace}
@@ -265,7 +272,11 @@ export const SidebarView = React.memo(({
 
     return (
         <View
-            style={[styles.container, { paddingTop: safeArea.top + (desktopDensity ? 4 : 12) }]}
+            style={[
+                styles.container,
+                desktopDensity && styles.containerDesktop,
+                { paddingTop: safeArea.top + (desktopDensity ? 4 : 12) },
+            ]}
             testID={desktopDensity ? 'sidebar-desktop-density' : undefined}
         >
             {accountMenuOpen ? (
