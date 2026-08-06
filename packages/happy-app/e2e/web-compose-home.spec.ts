@@ -2000,7 +2000,7 @@ test('桌面图片效果使用有边界的居中弹窗且支持 Escape 关闭', 
 
     await page.getByRole('button', { name: /GitHub Skills/ }).click();
     const githubSkillCovers = dialog.locator('img');
-    await expect(githubSkillCovers).toHaveCount(5);
+    await expect(githubSkillCovers).toHaveCount(6);
     await expect.poll(async () => githubSkillCovers.evaluateAll((images) => images.every((image) => {
         const element = image as HTMLImageElement;
         return element.complete && element.naturalWidth > 0 && element.naturalHeight > 0;
