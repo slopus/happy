@@ -168,8 +168,8 @@ describe('desktopNavigationLayout', () => {
     );
 
     it('calculates the rendered controls width from the real button geometry', () => {
-        expect(getPersistentNavigationControlsWidth(3)).toBe(92);
-        expect(getPersistentNavigationControlsWidth(2)).toBe(60);
+        expect(getPersistentNavigationControlsWidth(4)).toBe(172);
+        expect(getPersistentNavigationControlsWidth(3)).toBe(128);
     });
 
     it.each([
@@ -184,15 +184,15 @@ describe('desktopNavigationLayout', () => {
     );
 
     it.each([
-        { width: 800, expected: 114 },
-        { width: 1280, expected: 54 },
-        { width: 1470, expected: 0 },
+        { width: 800, expected: 194 },
+        { width: 1280, expected: 134 },
+        { width: 1470, expected: 39 },
     ])('only reserves the Web header area that overlaps at $width px', ({ width, expected }) => {
         expect(getPersistentHeaderContentInset({
             windowWidth: width,
             headerMaxWidth: 800,
             headerHorizontalPadding: 16,
-            buttonCount: 3,
+            buttonCount: 4,
             targetHitSlop: 8,
         })).toBe(expected);
     });
@@ -203,9 +203,9 @@ describe('desktopNavigationLayout', () => {
             headerMaxWidth: Number.POSITIVE_INFINITY,
             headerHorizontalPadding: 16,
             sidebarVisible: false,
-            buttonCount: 3,
+            buttonCount: 4,
             targetHitSlop: 8,
-        })).toBe(114);
+        })).toBe(194);
     });
 
     it('uses the exact width for labeled desktop controls', () => {
@@ -214,10 +214,10 @@ describe('desktopNavigationLayout', () => {
             headerMaxWidth: Number.POSITIVE_INFINITY,
             headerHorizontalPadding: 16,
             sidebarVisible: false,
-            buttonCount: 3,
+            buttonCount: 4,
             controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
             targetHitSlop: 8,
-        })).toBe(300);
+        })).toBe(194);
     });
 
     it('uses a resized sidebar width when protecting header controls', () => {
@@ -227,10 +227,10 @@ describe('desktopNavigationLayout', () => {
             headerHorizontalPadding: 16,
             sidebarVisible: true,
             sidebarWidth: 480,
-            buttonCount: 3,
+            buttonCount: 4,
             controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
             targetHitSlop: 8,
-        })).toBe(300);
+        })).toBe(194);
     });
 
     it('reserves navigation space when the desktop file panel narrows the session header', () => {
@@ -240,8 +240,8 @@ describe('desktopNavigationLayout', () => {
             headerHorizontalPadding: 16,
             rightPanelWidth: 360,
             controlStartPadding: 16,
-            buttonCount: 3,
+            buttonCount: 4,
             targetHitSlop: 8,
-        })).toBe(130);
+        })).toBe(210);
     });
 });

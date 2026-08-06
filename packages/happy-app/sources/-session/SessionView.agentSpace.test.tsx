@@ -387,6 +387,26 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
+    it('preserves the ordinary phone header while desktop-only controls stay absent', () => {
+        mocks.isDataReady = true;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        expect(renderer.root.findAllByType('SessionHeaderChip')).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'session-header-title' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-header-more-button' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-toggle-button' })).toHaveLength(0);
+
+        const newSession = renderer.root.findByProps({ testID: 'session-header-new-session-button' });
+        act(() => newSession.props.onPress());
+        expect(mocks.routerNavigate).toHaveBeenCalledWith('/new');
+
+        act(() => renderer.unmount());
+    });
+
     it('preserves the desktop file sidebar instead of mounting the swipe panel', () => {
         mocks.isDataReady = true;
         mocks.fileDiffsSidebarEnabled = true;
@@ -430,7 +450,7 @@ describe('SessionView Agent-space boundary', () => {
             sidebarVisible: true,
             rightPanelWidth: getDesktopRightPanelWidth(mocks.windowWidth),
             controlStartPadding: 16,
-            buttonCount: 3,
+            buttonCount: 4,
             controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
             targetHitSlop: 8,
         });
@@ -467,7 +487,10 @@ describe('SessionView Agent-space boundary', () => {
         act(() => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
-        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-collapse-button' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-collapse-button' })).toHaveLength(0);
+        const toggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
+        expect(toggle.props['aria-expanded']).toBe(true);
+        act(() => toggle.props.onPress());
         expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenCalledWith(true);
 
         act(() => {
@@ -475,14 +498,15 @@ describe('SessionView Agent-space boundary', () => {
             mocks.desktopRightPanelCollapsed = true;
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
-        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-restore-button' })).toHaveLength(1);
-        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-restore-button' }).props.onPress());
+        const collapsedToggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
+        expect(collapsedToggle.props['aria-expanded']).toBe(false);
+        act(() => collapsedToggle.props.onPress());
         expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenLastCalledWith(false);
 
         act(() => renderer.unmount());
     });
 
-    it('keeps the right-panel restore action available while a file overlay is open', () => {
+    it('keeps the unified right-panel toggle available while a file overlay is open', () => {
         mocks.isDataReady = true;
         mocks.fileDiffsSidebarEnabled = true;
         mocks.windowWidth = 1400;
@@ -499,48 +523,54 @@ describe('SessionView Agent-space boundary', () => {
             status: 'modified',
             fullPath: '/tmp/example.ts',
         }));
-        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-collapse-button' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' }).props.onPress());
 
         act(() => {
             mocks.desktopRightPanelCollapsed = true;
             filesSidebar.props.onModeChange('allFiles');
         });
 
-        const restore = renderer.root.findByProps({ testID: 'desktop-right-panel-restore-button' });
-        expect(restore.props.accessibilityLabel).toBe('desktopWorkspace.showPanel');
-        act(() => restore.props.onPress());
+        const toggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
+        expect(toggle.props.accessibilityLabel).toBe('desktopWorkspace.showPanel');
+        act(() => toggle.props.onPress());
         expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenLastCalledWith(false);
 
         act(() => renderer.unmount());
     });
 
-    it('uses the labeled new-session action and the same /new route as the sidebar', () => {
+    it('keeps title, Agent panel, and More while removing the desktop new-session action', () => {
         mocks.isDataReady = true;
+        mocks.windowWidth = 1400;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
         let renderer: any;
 
         act(() => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
 
-        const action = renderer.root.findByProps({ testID: 'session-header-new-session-button' });
-        expect(action.props.accessibilityLabel).toBe('sidebar.newSession');
-        expect(action.props.style).toMatchObject({
-            minHeight: 32,
-            borderRadius: 16,
-            backgroundColor: '#7c5cbf',
-        });
-        expect(mocks.styleUseVariants).toHaveBeenCalledWith({ pressState: 'idle' });
-        expect(renderer.root.findByProps({ testID: 'session-header-new-session-icon' }).props).toMatchObject({
-            name: 'add-outline',
-            size: 18,
-        });
-        const label = action.findAllByType('Text').find((node: any) => node.props.children === 'sidebar.newSession');
-        expect(label?.props).toMatchObject({ numberOfLines: 1, ellipsizeMode: 'tail' });
-        act(() => action.props.onPressIn());
-        expect(mocks.styleUseVariants).toHaveBeenCalledWith({ pressState: 'pressed' });
-        act(() => action.props.onPressOut());
-        act(() => action.props.onPress());
-        expect(mocks.routerNavigate).toHaveBeenCalledWith('/new');
+        expect(renderer.root.findAllByProps({ testID: 'session-header-new-session-button' })).toHaveLength(0);
+        expect(renderer.root.findAllByType('SessionHeaderChip')).toHaveLength(1);
+
+        const title = renderer.root.findByProps({ testID: 'session-header-title' });
+        expect(title.props.accessibilityLabel).toBe(
+            renderer.root.findByType('ChatHeaderView').props.title,
+        );
+        expect(title.props.style).toMatchObject({ minHeight: 40, overflow: 'hidden' });
+        expect(title.parent.props.style).not.toMatchObject({ overflow: 'hidden' });
+        act(() => title.props.onFocus());
+        const titleTooltip = renderer.root.findAllByType('View').find(
+            (node: any) => node.props.testID === 'session-header-title-tooltip',
+        );
+        expect(titleTooltip).toBeDefined();
+        expect(titleTooltip!.props.style).toContainEqual(expect.objectContaining({ width: 380, maxWidth: 380 }));
+        expect(titleTooltip!.findByType('Text').props.numberOfLines).toBeUndefined();
+
+        const more = renderer.root.findByProps({ testID: 'session-header-more-button' });
+        expect(more.props.accessibilityLabel).toBe('sessionInfo.viewDetails');
+        expect(more.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ width: 40, height: 40 }));
+        act(() => more.props.onPress());
+        expect(renderer.root.findAllByType('SessionInfoDropdown')).toHaveLength(1);
 
         act(() => renderer.unmount());
     });

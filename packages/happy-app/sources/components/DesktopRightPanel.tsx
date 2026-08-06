@@ -22,6 +22,7 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
     collapseLabel,
     onCollapse,
     onTabChange,
+    showCollapseButton = true,
     tabs,
 }: {
     activeTab: string;
@@ -30,6 +31,7 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
     collapseLabel: string;
     onCollapse: () => void;
     onTabChange: (key: string) => void;
+    showCollapseButton?: boolean;
     tabs: readonly DesktopRightPanelTab[];
 }) {
     const { theme } = useUnistyles();
@@ -80,7 +82,7 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
                         );
                     })}
                 </View>
-                <View style={styles.collapseButtonWrapper}>
+                {showCollapseButton ? <View style={styles.collapseButtonWrapper}>
                     <Pressable
                         accessibilityHint={`${collapseAccessibilityLabel} (${shortcuts.rightLabel})`}
                         accessibilityLabel={collapseAccessibilityLabel}
@@ -107,7 +109,7 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
                         testID="desktop-right-panel-collapse-tooltip"
                         visible={tooltipVisible}
                     />
-                </View>
+                </View> : null}
             </View>
             <View style={styles.content}>
                 {children}
@@ -116,10 +118,12 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
     );
 });
 
-export const DesktopRightPanelRestoreButton = React.memo(function DesktopRightPanelRestoreButton({
+export const DesktopRightPanelToggleButton = React.memo(function DesktopRightPanelToggleButton({
+    expanded,
     label,
     onPress,
 }: {
+    expanded: boolean;
     label: string;
     onPress: () => void;
 }) {
@@ -128,11 +132,13 @@ export const DesktopRightPanelRestoreButton = React.memo(function DesktopRightPa
     const shortcuts = getDesktopPanelShortcutPresentation();
 
     return (
-        <View style={styles.restoreButtonWrapper}>
+        <View style={styles.toggleButtonWrapper}>
             <Pressable
                 accessibilityHint={`${label} (${shortcuts.rightLabel})`}
                 accessibilityLabel={label}
                 accessibilityRole="button"
+                accessibilityState={{ expanded }}
+                aria-expanded={expanded}
                 {...({
                     'aria-keyshortcuts': shortcuts.rightAria,
                 } as any)}
@@ -142,17 +148,20 @@ export const DesktopRightPanelRestoreButton = React.memo(function DesktopRightPa
                 onHoverIn={() => setTooltipVisible(true)}
                 onHoverOut={() => setTooltipVisible(false)}
                 onPress={onPress}
-                style={({ pressed }) => [styles.restoreButton, pressed && styles.pressed]}
-                testID="desktop-right-panel-restore-button"
+                style={({ pressed }) => [
+                    styles.toggleButton,
+                    expanded && styles.toggleButtonExpanded,
+                    pressed && styles.pressed,
+                ]}
+                testID="desktop-right-panel-toggle-button"
             >
-                <Ionicons name="albums-outline" size={16} color={theme.colors.header.tint} />
-                <Text numberOfLines={1} style={styles.restoreText}>{label}</Text>
+                <Ionicons name="reader-outline" size={19} color={theme.colors.header.tint} />
             </Pressable>
             <DesktopShortcutTooltip
                 align="right"
                 label={label}
                 shortcut={shortcuts.rightLabel}
-                testID="desktop-right-panel-restore-tooltip"
+                testID="desktop-right-panel-toggle-tooltip"
                 visible={tooltipVisible}
             />
         </View>
@@ -231,27 +240,20 @@ const styles = StyleSheet.create((theme) => ({
         flex: 1,
         minHeight: 0,
     },
-    restoreButton: {
-        maxWidth: 164,
-        flexDirection: 'row',
+    toggleButton: {
+        width: 40,
+        height: 40,
         alignItems: 'center',
-        gap: 5,
-        paddingHorizontal: 9,
-        paddingVertical: 6,
-        borderRadius: 9,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.divider,
-        backgroundColor: theme.colors.surface,
+        justifyContent: 'center',
+        borderRadius: 10,
     },
-    restoreButtonWrapper: {
+    toggleButtonExpanded: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    toggleButtonWrapper: {
         position: 'relative',
-        maxWidth: 164,
-    },
-    restoreText: {
-        flexShrink: 1,
-        fontSize: 12,
-        color: theme.colors.header.tint,
-        ...Typography.default('semiBold'),
+        width: 40,
+        height: 40,
     },
     pressed: {
         opacity: 0.7,

@@ -7,7 +7,8 @@ import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { SessionHeaderChip } from '@/components/SessionHeaderChip';
 import { SessionInfoDropdown } from '@/components/SessionInfoDropdown';
-import { DesktopRightPanel, DesktopRightPanelRestoreButton } from '@/components/DesktopRightPanel';
+import { DesktopRightPanel, DesktopRightPanelToggleButton } from '@/components/DesktopRightPanel';
+import { DesktopShortcutTooltip } from '@/components/DesktopShortcutTooltip';
 import { RightSwipePanelHost } from '@/components/RightSwipePanelHost';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
@@ -38,6 +39,7 @@ import {
     DESKTOP_MAIN_MIN_WIDTH,
     getPersistentHeaderContentInset,
     getDesktopRightPanelPresentation,
+    getPersistentNavigationControlsWidth,
     shouldUseCompactSessionHeader,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
@@ -113,6 +115,88 @@ function SessionNewSessionAction({
                 {t('sidebar.newSession')}
             </Text>
         </Pressable>
+    );
+}
+
+function SessionHeaderTitle({
+    title,
+}: {
+    title: string;
+}) {
+    const [tooltipVisible, setTooltipVisible] = React.useState(false);
+
+    return (
+        <View style={workspaceStyles.headerTitleWrapper}>
+            <Pressable
+                accessibilityLabel={title}
+                accessibilityRole="text"
+                {...({ tabIndex: 0 } as any)}
+                onBlur={() => setTooltipVisible(false)}
+                onFocus={() => setTooltipVisible(true)}
+                onHoverIn={() => setTooltipVisible(true)}
+                onHoverOut={() => setTooltipVisible(false)}
+                style={workspaceStyles.headerTitleTarget}
+                testID="session-header-title"
+            >
+                <Text numberOfLines={1} ellipsizeMode="tail" style={workspaceStyles.headerTitleText}>
+                    {title}
+                </Text>
+            </Pressable>
+            <DesktopShortcutTooltip
+                align="right"
+                label={title}
+                multiline
+                testID="session-header-title-tooltip"
+                visible={tooltipVisible}
+            />
+        </View>
+    );
+}
+
+function SessionHeaderMoreAction({
+    expanded,
+    onPress,
+}: {
+    expanded: boolean;
+    onPress: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const [tooltipVisible, setTooltipVisible] = React.useState(false);
+    const label = t('sessionInfo.viewDetails');
+
+    return (
+        <View style={workspaceStyles.headerIconWrapper}>
+            <Pressable
+                accessibilityLabel={label}
+                accessibilityRole="button"
+                accessibilityState={{ expanded }}
+                aria-expanded={expanded}
+                onBlur={() => setTooltipVisible(false)}
+                onFocus={() => setTooltipVisible(true)}
+                onHoverIn={() => setTooltipVisible(true)}
+                onHoverOut={() => setTooltipVisible(false)}
+                onPress={onPress}
+                hitSlop={8}
+                style={({ pressed }) => [
+                    workspaceStyles.headerIconButton,
+                    expanded && workspaceStyles.headerIconButtonSelected,
+                    pressed && workspaceStyles.headerIconButtonPressed,
+                ]}
+                testID="session-header-more-button"
+            >
+                <Ionicons
+                    name="ellipsis-horizontal"
+                    size={20}
+                    color={theme.colors.header.tint}
+                />
+            </Pressable>
+            <DesktopShortcutTooltip
+                align="right"
+                label={label}
+                testID="session-header-more-tooltip"
+                visible={tooltipVisible}
+            />
+        </View>
     );
 }
 
@@ -304,7 +388,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     // then share that identity between the header skin and the phone panel.
     const spaceAgent = useSpaceAgentForSession(session);
 
-    const headerTitleSlot = showChip ? (
+    const sessionHeaderChip = showChip ? (
         <SessionHeaderChip
             agentLabel={agentLabel}
             compact={shouldUseCompactSessionHeader({ isTablet, windowWidth })}
@@ -313,6 +397,16 @@ export const SessionView = React.memo((props: { id: string }) => {
             open={infoPanelOpen}
             onPress={() => setInfoPanelOpen(v => !v)}
         />
+    ) : undefined;
+    const headerTitleSlot = showChip ? (
+        isTablet ? (
+            <View style={workspaceStyles.headerIdentity}>
+                <SessionHeaderTitle title={headerProps.title} />
+                <View style={workspaceStyles.headerAgentChip}>
+                    {sessionHeaderChip}
+                </View>
+            </View>
+        ) : sessionHeaderChip
     ) : undefined;
 
     // 「空间皮肤」会话顶栏（第三张图）：会话属于某空间 Agent 时，顶栏染 accent 色 + 头像 + 会话名，
@@ -345,27 +439,37 @@ export const SessionView = React.memo((props: { id: string }) => {
     const desktopPanelLabel = desktopPanelMode === 'files' && canShowFilePanel
         ? t('common.files')
         : t('rightPanelCapabilityHub.title');
-    const rightPanelRestoreButton = desktopRightPanelPresentation === 'collapsed' ? (
-        <DesktopRightPanelRestoreButton
-            label={t('desktopWorkspace.showPanel', { panel: desktopPanelLabel })}
-            onPress={() => setDesktopRightPanelCollapsed(false)}
+    const rightPanelToggleButton = desktopRightPanelAvailable && desktopRightPanelPresentation !== 'zen' ? (
+        <DesktopRightPanelToggleButton
+            expanded={showDesktopRightPanel}
+            label={showDesktopRightPanel
+                ? t('desktopWorkspace.hidePanel', { panel: desktopPanelLabel })
+                : t('desktopWorkspace.showPanel', { panel: desktopPanelLabel })}
+            onPress={() => setDesktopRightPanelCollapsed(showDesktopRightPanel)}
         />
     ) : null;
 
-    // Match the permanent sidebar's explicit /new destination and visible label.
-    // The text makes the isolated top-right action understandable before click.
-    const newSessionButton = (
+    const moreButton = isTablet && !spaceAgent ? (
+        <SessionHeaderMoreAction
+            expanded={infoPanelOpen}
+            onPress={() => setInfoPanelOpen((value) => !value)}
+        />
+    ) : null;
+    const newSessionButton = !isTablet && !spaceAgent ? (
         <SessionNewSessionAction onPress={() => router.navigate('/new')} />
-    );
+    ) : null;
     const defaultHeaderRightSlot = (
         <View style={workspaceStyles.headerActions}>
-            {rightPanelRestoreButton}
-            {spaceAgent ? exitSpaceButton : newSessionButton}
+            {moreButton}
+            {rightPanelToggleButton}
+            {spaceAgent ? exitSpaceButton : null}
+            {newSessionButton}
         </View>
     );
     const overlayHeaderRightSlot = (
         <View style={workspaceStyles.headerActions}>
-            {rightPanelRestoreButton}
+            {moreButton}
+            {rightPanelToggleButton}
             {headerRightSlot}
         </View>
     );
@@ -380,8 +484,10 @@ export const SessionView = React.memo((props: { id: string }) => {
             // SidebarNavigator 同时存在 `left: sidebar + 16` 和非 Tauri 环境下的
             // `paddingLeft: 16`，命中区域计算必须包含第二段偏移。
             controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
-            buttonCount: Platform.OS === 'web' ? 3 : 2,
-            controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+            buttonCount: Platform.OS === 'web' ? 4 : 3,
+            controlsWidth: Platform.OS === 'web'
+                ? PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH
+                : getPersistentNavigationControlsWidth(3),
             targetHitSlop: 8,
         })
         : 0;
@@ -569,6 +675,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         collapseLabel={t('desktopWorkspace.hidePanelShort')}
                         onCollapse={() => setDesktopRightPanelCollapsed(true)}
                         onTabChange={(key) => setDesktopPanelMode(key === 'files' ? 'files' : 'capabilities')}
+                        showCollapseButton={false}
                         tabs={desktopPanelTabs}
                     >
                         {desktopPanelMode === 'files' && canShowFilePanel ? (
@@ -1253,15 +1360,62 @@ const workspaceStyles = StyleSheet.create((theme) => ({
             },
         },
     },
+    headerActionText: {
+        color: theme.colors.button.primary.tint,
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    headerIdentity: {
+        flex: 1,
+        width: '100%',
+        minWidth: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    headerTitleWrapper: {
+        position: 'relative',
+        flex: 1,
+        minWidth: 64,
+    },
+    headerTitleTarget: {
+        minHeight: 40,
+        justifyContent: 'center',
+        overflow: 'hidden',
+    },
+    headerTitleText: {
+        color: theme.colors.header.tint,
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    headerAgentChip: {
+        flexBasis: 250,
+        flexShrink: 1,
+        minWidth: 130,
+        maxWidth: 290,
+    },
     headerActions: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 5,
     },
-    headerActionText: {
-        color: theme.colors.button.primary.tint,
-        fontSize: 12,
-        fontWeight: '600',
+    headerIconWrapper: {
+        position: 'relative',
+        width: 40,
+        height: 40,
+    },
+    headerIconButton: {
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 10,
+    },
+    headerIconButtonSelected: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    headerIconButtonPressed: {
+        opacity: 0.7,
     },
     desktopMain: {
         flex: 1,

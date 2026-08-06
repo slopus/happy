@@ -56,6 +56,7 @@ export const it: TranslationStructure = {
         hidePanel: ({ panel }: { panel: string }) => `Nascondi ${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `Ridimensiona ${panel}`,
         hidePanelShort: 'Nascondi',
+        forward: 'Avanti',
     },
     composeHome: {
         greeting: ({ name }: { name: string }) => `Ciao ${name}, cosa facciamo oggi?`,

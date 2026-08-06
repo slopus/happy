@@ -17,6 +17,7 @@ import {
     DESKTOP_MAIN_MIN_WIDTH,
     getPersistentHeaderContentInset,
     getDesktopRightPanelPresentation,
+    getPersistentNavigationControlsWidth,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
 } from '@/utils/desktopNavigationLayout';
@@ -31,7 +32,7 @@ import { getDisplayName, getAvatarUrl } from '@/sync/profile';
 import { Avatar } from './Avatar';
 import { RightSwipePanelHost } from './RightSwipePanelHost';
 import { SessionCapabilityHub } from './rightPanel/SessionCapabilityHub';
-import { DesktopRightPanel, DesktopRightPanelRestoreButton } from './DesktopRightPanel';
+import { DesktopRightPanel, DesktopRightPanelToggleButton } from './DesktopRightPanel';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveNewSessionModeSelection } from '@/utils/newSessionModeSelection';
 import {
@@ -720,8 +721,10 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             // SidebarNavigator 同时存在 `left: sidebar + 16` 和非 Tauri 环境下的
             // `paddingLeft: 16`，命中区域计算必须包含第二段偏移。
             controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
-            buttonCount: Platform.OS === 'web' ? 3 : 2,
-            controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+            buttonCount: Platform.OS === 'web' ? 4 : 3,
+            controlsWidth: Platform.OS === 'web'
+                ? PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH
+                : getPersistentNavigationControlsWidth(3),
             targetHitSlop: 8,
         })
         : 0;
@@ -770,12 +773,13 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         </View>
     );
 
-    const rightPanelRestoreButton = desktopRightPanelPresentation === 'collapsed' ? (
-        <DesktopRightPanelRestoreButton
-            label={t('desktopWorkspace.showPanel', {
-                panel: t('rightPanelCapabilityHub.title'),
-            })}
-            onPress={() => setDesktopRightPanelCollapsed(false)}
+    const rightPanelToggleButton = desktopRightPanelAvailable && desktopRightPanelPresentation !== 'zen' ? (
+        <DesktopRightPanelToggleButton
+            expanded={showDesktopRightPanel}
+            label={showDesktopRightPanel
+                ? t('desktopWorkspace.hidePanel', { panel: t('rightPanelCapabilityHub.title') })
+                : t('desktopWorkspace.showPanel', { panel: t('rightPanelCapabilityHub.title') })}
+            onPress={() => setDesktopRightPanelCollapsed(showDesktopRightPanel)}
         />
     ) : null;
     const composeContent = (
@@ -806,9 +810,9 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         </Pressable>
                     ) : null
                 )}
-                headerRight={isScreen && !rightPanelRestoreButton ? undefined : () => (
+                headerRight={isScreen && !rightPanelToggleButton ? undefined : () => (
                     <View style={styles.desktopHeaderActions}>
-                        {rightPanelRestoreButton}
+                        {rightPanelToggleButton}
                         {!isScreen && (
                             <Pressable onPress={openSettings} hitSlop={12} style={styles.headerButton}>
                                 <Avatar
@@ -1091,6 +1095,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         collapseLabel={t('desktopWorkspace.hidePanelShort')}
                         onCollapse={() => setDesktopRightPanelCollapsed(true)}
                         onTabChange={() => undefined}
+                        showCollapseButton={false}
                         tabs={[{
                             key: 'capabilities',
                             label: t('rightPanelCapabilityHub.title'),

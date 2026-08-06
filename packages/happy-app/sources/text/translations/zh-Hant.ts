@@ -58,6 +58,7 @@ export const zhHant: TranslationStructure = {
         hidePanel: ({ panel }: { panel: string }) => `收起${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `調整${panel}寬度`,
         hidePanelShort: '收起',
+        forward: '前進',
     },
     composeHome: {
         greeting: ({ name }: { name: string }) => `嗨 ${name}，今天和 Paws 做點什麼`,

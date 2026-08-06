@@ -59,6 +59,7 @@ export const ja: TranslationStructure = {
         hidePanel: ({ panel }: { panel: string }) => `${panel}を非表示`,
         resizePanel: ({ panel }: { panel: string }) => `${panel}の幅を変更`,
         hidePanelShort: '非表示',
+        forward: '進む',
     },
     composeHome: {
         greeting: ({ name }: { name: string }) => `こんにちは ${name}さん、今日は何をしますか？`,
