@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
@@ -21,6 +21,8 @@ import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
+import { useBatchArchive } from '@/hooks/useBatchArchive';
+import { Modal } from '@/modal';
 import { useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
 import { SessionShortcutHintBadge } from './ShortcutHints';
@@ -205,6 +207,95 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 12,
         ...Typography.default('semiBold'),
     },
+    batchFab: {
+        position: 'absolute',
+        right: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 20,
+        backgroundColor: theme.colors.surfaceHigh,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+        shadowColor: '#000',
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 4,
+    },
+    batchFabText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    batchBar: {
+        position: 'absolute',
+        left: 16,
+        right: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 16,
+        backgroundColor: theme.colors.surfaceHigh,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+        shadowColor: '#000',
+        shadowOpacity: 0.2,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 3 },
+        elevation: 6,
+    },
+    batchBarCount: {
+        flex: 1,
+        fontSize: 13,
+        fontWeight: '600',
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    batchBarProgress: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        marginTop: 1,
+        ...Typography.default(),
+    },
+    batchBarTextButton: {
+        paddingHorizontal: 8,
+        paddingVertical: 8,
+    },
+    batchBarTextButtonText: {
+        fontSize: 13,
+        fontWeight: '500',
+        color: theme.colors.textLink,
+        ...Typography.default('semiBold'),
+    },
+    batchBarArchiveButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 12,
+        backgroundColor: '#FF3B30',
+    },
+    batchBarArchiveButtonDisabled: {
+        opacity: 0.4,
+    },
+    batchBarArchiveButtonText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#FFFFFF',
+        ...Typography.default('semiBold'),
+    },
+    batchCheckContainer: {
+        width: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
 }));
 
 export function SessionsList({
@@ -219,6 +310,7 @@ export function SessionsList({
     searchQuery?: string;
 } = {}) {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const sourceData = useVisibleSessionListViewData();
     const pathname = usePathname();
@@ -227,6 +319,44 @@ export function SessionsList({
     const toggleArchived = React.useCallback(() => {
         setHideInactiveSessions(!hideInactiveSessions);
     }, [hideInactiveSessions, setHideInactiveSessions]);
+
+    // ---- Batch selection mode ----
+    // Self-contained selection mode: floating entry button, checkboxes on
+    // session rows, and a bottom action bar for bulk operations. Sessions
+    // nested inside project groups are not selectable in v1.
+    const [batchMode, setBatchMode] = React.useState(false);
+    const [selectedIds, setSelectedIds] = React.useState<ReadonlySet<string>>(new Set());
+    const [batchArchiveState, runBatchArchive] = useBatchArchive(React.useCallback((ok: number, failed: number) => {
+        setSelectedIds(new Set());
+        setBatchMode(false);
+        Modal.alert(
+            t('batch.archive'),
+            t('batch.archiveResult', { ok, failed }),
+            [{ text: t('common.ok'), style: 'cancel' }],
+        );
+    }, []));
+
+    const enterBatchMode = React.useCallback(() => {
+        setSelectedIds(new Set());
+        setBatchMode(true);
+    }, []);
+
+    const exitBatchMode = React.useCallback(() => {
+        setBatchMode(false);
+        setSelectedIds(new Set());
+    }, []);
+
+    const toggleSelect = React.useCallback((sessionId: string) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(sessionId)) next.delete(sessionId);
+            else next.add(sessionId);
+            return next;
+        });
+    }, []);
+
+    // (visibleSessionIds / select-all / archive-confirm are defined after the
+    // `data` memo below, since they derive the selectable set from it.)
     // Selection is derived once from pathname so the data array stays stable
     // across navigations. This keeps FlatList virtualization intact: only
     // the previously- and newly-selected rows re-render, instead of the
@@ -303,6 +433,47 @@ export function SessionsList({
         return result;
     }, [searchQuery, sourceData]);
 
+    // Everything the user can currently see: flat sessions plus the compact
+    // active-sessions group. Project-group sessions are out of scope for v1.
+    const visibleSessionIds = React.useMemo(() => {
+        const ids: string[] = [];
+        if (!data) return ids;
+        for (const item of data) {
+            if (item.type === 'session') ids.push(item.session.id);
+            else if (item.type === 'active-sessions') {
+                for (const session of item.sessions) ids.push(session.id);
+            }
+        }
+        return ids;
+    }, [data]);
+
+    const allSelected = visibleSessionIds.length > 0 && visibleSessionIds.every(id => selectedIds.has(id));
+
+    const toggleSelectAll = React.useCallback(() => {
+        setSelectedIds(prev => {
+            const everythingSelected = visibleSessionIds.length > 0
+                && visibleSessionIds.every(id => prev.has(id));
+            return everythingSelected ? new Set() : new Set(visibleSessionIds);
+        });
+    }, [visibleSessionIds]);
+
+    const confirmBatchArchive = React.useCallback(() => {
+        const ids = Array.from(selectedIds);
+        if (ids.length === 0 || batchArchiveState.running) return;
+        Modal.alert(
+            t('batch.archive'),
+            t('batch.archiveConfirm', { count: ids.length }),
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                    text: t('batch.archive'),
+                    style: 'destructive',
+                    onPress: () => { void runBatchArchive(ids); },
+                },
+            ],
+        );
+    }, [batchArchiveState.running, runBatchArchive, selectedIds]);
+
     // Early return if no data yet
     if (!data) {
         return (
@@ -345,6 +516,26 @@ export function SessionsList({
                 );
 
             case 'active-sessions':
+                // In batch mode the compact group yields to flat selectable
+                // rows so active sessions can be picked for bulk operations.
+                if (batchMode) {
+                    return (
+                        <View>
+                            {item.sessions.map((session, i) => (
+                                <SessionItem
+                                    key={`batch-active-${session.id}`}
+                                    session={session}
+                                    isFirst={i === 0}
+                                    isLast={i === item.sessions.length - 1}
+                                    isSingle={item.sessions.length === 1}
+                                    batchMode
+                                    checked={selectedIds.has(session.id)}
+                                    onToggleSelect={toggleSelect}
+                                />
+                            ))}
+                        </View>
+                    );
+                }
                 return (
                     <ActiveSessionsGroupCompact
                         sessions={item.sessions}
@@ -398,10 +589,13 @@ export function SessionsList({
                         isFirst={isFirst}
                         isLast={isLast}
                         isSingle={isSingle}
+                        batchMode={batchMode}
+                        checked={batchMode && selectedIds.has(item.session.id)}
+                        onToggleSelect={toggleSelect}
                     />
                 );
         }
-    }, [selectedSessionId, data, toggleArchived]);
+    }, [selectedSessionId, data, toggleArchived, batchMode, selectedIds, toggleSelect]);
 
 
     // Remove this section as we'll use FlatList for all items now
@@ -422,7 +616,7 @@ export function SessionsList({
                     data={data}
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
-                    extraData={selectedSessionId}
+                    extraData={{ selectedSessionId, batchMode, selectedIds }}
                     contentContainerStyle={{
                         paddingTop: topContentInset,
                         paddingBottom: safeArea.bottom + bottomContentInset,
@@ -441,6 +635,50 @@ export function SessionsList({
                     scrollEventThrottle={16}
                 />
             </View>
+            {batchMode ? (
+                <View style={[styles.batchBar, { bottom: safeArea.bottom + 12 }]}>
+                    <Pressable onPress={exitBatchMode} style={styles.batchBarTextButton} hitSlop={8}>
+                        <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
+                    </Pressable>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.batchBarCount}>
+                            {t('batch.selectedCount', { count: selectedIds.size })}
+                        </Text>
+                        {batchArchiveState.running && (
+                            <Text style={styles.batchBarProgress}>
+                                {t('batch.archivingProgress', { done: batchArchiveState.done, total: batchArchiveState.total })}
+                            </Text>
+                        )}
+                    </View>
+                    <Pressable onPress={toggleSelectAll} style={styles.batchBarTextButton} disabled={batchArchiveState.running}>
+                        <Text style={styles.batchBarTextButtonText}>
+                            {allSelected ? t('batch.clear') : t('batch.selectAll')}
+                        </Text>
+                    </Pressable>
+                    <Pressable
+                        onPress={confirmBatchArchive}
+                        disabled={selectedIds.size === 0 || batchArchiveState.running}
+                        style={[
+                            styles.batchBarArchiveButton,
+                            (selectedIds.size === 0 || batchArchiveState.running) && styles.batchBarArchiveButtonDisabled,
+                        ]}
+                    >
+                        <Ionicons name="archive-outline" size={15} color="#FFFFFF" />
+                        <Text style={styles.batchBarArchiveButtonText}>
+                            {t('batch.archive')}
+                        </Text>
+                    </Pressable>
+                </View>
+            ) : (
+                <Pressable
+                    onPress={enterBatchMode}
+                    style={[styles.batchFab, { bottom: safeArea.bottom + bottomContentInset + 8 }]}
+                    hitSlop={8}
+                >
+                    <Ionicons name="checkmark-circle-outline" size={17} color={theme.colors.text} />
+                    <Text style={styles.batchFabText}>{t('batch.select')}</Text>
+                </Pressable>
+            )}
         </View>
     );
 }
@@ -452,14 +690,18 @@ const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isP
     permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
 };
 
-const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }: {
+const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle, batchMode, checked, onToggleSelect }: {
     session: SessionRowData;
     selected?: boolean;
     isFirst?: boolean;
     isLast?: boolean;
     isSingle?: boolean;
+    batchMode?: boolean;
+    checked?: boolean;
+    onToggleSelect?: (sessionId: string) => void;
 }) => {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const baseStatus = STATUS_CONFIG[session.state];
@@ -483,8 +725,12 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     : t('status.online');
 
     const handlePress = React.useCallback(() => {
+        if (batchMode) {
+            onToggleSelect?.(session.id);
+            return;
+        }
         navigateToSession(session.id);
-    }, [navigateToSession, session.id]);
+    }, [batchMode, navigateToSession, onToggleSelect, session.id]);
 
     const handleContextMenu = React.useCallback((event: any) => {
         event.preventDefault?.();
@@ -497,7 +743,8 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     }, []);
 
     const showActionAlert = useSessionActionAlert(session.id);
-    const menuProps = Platform.OS === 'web' ? {
+    // Batch mode replaces the per-session menu with selection toggling.
+    const menuProps = batchMode ? {} : Platform.OS === 'web' ? {
         onContextMenu: handleContextMenu,
     } as any : {
         onLongPress: showActionAlert,
@@ -513,7 +760,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         <Pressable
             style={[
                 styles.sessionItem,
-                selected && styles.sessionItemSelected,
+                (selected || checked) && styles.sessionItemSelected,
                 isSingle ? styles.sessionItemSingle :
                     isFirst ? styles.sessionItemFirst :
                         isLast ? styles.sessionItemLast : {}
@@ -521,6 +768,15 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             onPress={handlePress}
             {...menuProps}
         >
+            {batchMode && (
+                <View style={styles.batchCheckContainer}>
+                    <Ionicons
+                        name={checked ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={22}
+                        color={checked ? theme.colors.textLink : theme.colors.textSecondary}
+                    />
+                </View>
+            )}
             <View style={styles.avatarContainer}>
                 <Avatar id={session.avatarId} size={48} monochrome={!status.isConnected} flavor={session.flavor} clientId={session.clientId} />
                 {session.hasDraft && (

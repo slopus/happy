@@ -565,6 +565,22 @@ export const en: TranslationStructure = {
         projects: "Projects",
     },
 
+    batch: {
+        select: 'Select',
+        selectAll: 'Select all',
+        clear: 'Clear',
+        archive: 'Archive',
+        selectedCount: ({ count }: { count: number }) => `${count} selected`,
+        archiveConfirm: ({ count }: { count: number }) =>
+            count === 1
+                ? 'Archive this session? Running processes will be stopped.'
+                : `Archive ${count} sessions? Running processes will be stopped.`,
+        archivingProgress: ({ done, total }: { done: number; total: number }) =>
+            `Archiving ${done}/${total}…`,
+        archiveResult: ({ ok, failed }: { ok: number; failed: number }) =>
+            failed === 0 ? `${ok} archived` : `${ok} archived, ${failed} failed`,
+    },
+
     zen: {
         toggle: 'Zen mode',
     },

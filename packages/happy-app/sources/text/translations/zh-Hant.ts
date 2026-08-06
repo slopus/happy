@@ -551,6 +551,22 @@ export const zhHant: TranslationStructure = {
         projects: "專案",
     },
 
+    batch: {
+        select: '選擇',
+        selectAll: '全選',
+        clear: '清除',
+        archive: '封存',
+        selectedCount: ({ count }: { count: number }) => `已選 ${count} 個`,
+        archiveConfirm: ({ count }: { count: number }) =>
+            count === 1
+                ? '封存該對話？執行中的程序將被停止。'
+                : `封存 ${count} 個對話？執行中的程序將被停止。`,
+        archivingProgress: ({ done, total }: { done: number; total: number }) =>
+            `正在封存 ${done}/${total}…`,
+        archiveResult: ({ ok, failed }: { ok: number; failed: number }) =>
+            failed === 0 ? `已封存 ${ok} 個` : `已封存 ${ok} 個，${failed} 個失敗`,
+    },
+
     zen: {
         toggle: '禪模式',
     },

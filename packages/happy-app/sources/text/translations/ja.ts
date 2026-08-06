@@ -552,6 +552,22 @@ export const ja: TranslationStructure = {
         projects: "プロジェクト",
     },
 
+    batch: {
+        select: '選択',
+        selectAll: 'すべて選択',
+        clear: 'クリア',
+        archive: 'アーカイブ',
+        selectedCount: ({ count }: { count: number }) => `${count}件選択中`,
+        archiveConfirm: ({ count }: { count: number }) =>
+            count === 1
+                ? 'このセッションをアーカイブしますか？実行中のプロセスは停止されます。'
+                : `${count}件のセッションをアーカイブしますか？実行中のプロセスは停止されます。`,
+        archivingProgress: ({ done, total }: { done: number; total: number }) =>
+            `アーカイブ中 ${done}/${total}…`,
+        archiveResult: ({ ok, failed }: { ok: number; failed: number }) =>
+            failed === 0 ? `${ok}件アーカイブしました` : `${ok}件アーカイブ、${failed}件失敗`,
+    },
+
     zen: {
         toggle: 'Zenモード',
     },
