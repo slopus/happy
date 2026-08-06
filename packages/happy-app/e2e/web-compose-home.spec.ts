@@ -2019,7 +2019,16 @@ test('PC 暂停后可复制并原位编辑最后一条输入', async ({ context,
 
         await copyButton.click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(originalMessage);
-        await pauseForRecordedReview(page, 650);
+        const copiedButton = originalContainer.getByRole('button', { name: 'Copied' });
+        const copiedFeedback = originalContainer.getByTestId(/^message-user-copy-feedback-/);
+        await expect(copiedButton).toBeVisible();
+        await expect(copiedFeedback).toHaveText('Copied');
+        await page.screenshot({
+            path: testInfo.outputPath('pc-paused-message-copy-feedback-after.png'),
+            fullPage: true,
+        });
+        await pauseForRecordedReview(page, 1100);
+        await expect(originalContainer.getByRole('button', { name: 'Copy' })).toBeVisible({ timeout: 3_000 });
 
         await editButton.click();
         const editor = page.getByRole('textbox', { name: 'Edit' });

@@ -112,6 +112,8 @@ function UserTextBlock(props: {
   const [isEditing, setIsEditing] = React.useState(false);
   const [editText, setEditText] = React.useState('');
   const [isSendingEdit, setIsSendingEdit] = React.useState(false);
+  const [isCopied, setIsCopied] = React.useState(false);
+  const copyFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
@@ -136,9 +138,26 @@ function UserTextBlock(props: {
     setEditText('');
     setIsEditing(false);
   }, []);
-  const copyMessage = React.useCallback(() => {
-    void Clipboard.setStringAsync(visibleText);
+  const copyMessage = React.useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(visibleText);
+      setIsCopied(true);
+      if (copyFeedbackTimerRef.current) {
+        clearTimeout(copyFeedbackTimerRef.current);
+      }
+      copyFeedbackTimerRef.current = setTimeout(() => {
+        setIsCopied(false);
+        copyFeedbackTimerRef.current = null;
+      }, 1800);
+    } catch {
+      setIsCopied(false);
+    }
   }, [visibleText]);
+  React.useEffect(() => () => {
+    if (copyFeedbackTimerRef.current) {
+      clearTimeout(copyFeedbackTimerRef.current);
+    }
+  }, []);
   const sendEditedMessage = React.useCallback(async () => {
     const trimmed = editText.trim();
     if (!trimmed || !props.onEditUserMessage || isSendingEdit) return;
@@ -266,13 +285,30 @@ function UserTextBlock(props: {
         <View style={[styles.userMessageActions, modeLabel && styles.userMessageActionsWithMode]}>
           <Pressable
             testID={`message-user-copy-${props.message.id}`}
-            accessibilityLabel={t('common.copy')}
+            accessibilityLabel={isCopied ? t('common.copied') : t('common.copy')}
             accessibilityRole="button"
             hitSlop={6}
-            onPress={copyMessage}
-            style={({ pressed }) => [styles.userMessageAction, pressed && styles.userMessageActionPressed]}
+            onPress={() => { void copyMessage(); }}
+            style={({ pressed }) => [
+              styles.userMessageAction,
+              isCopied && styles.userMessageCopyActionCopied,
+              pressed && styles.userMessageActionPressed,
+            ]}
           >
-            <Ionicons name="copy-outline" size={16} color={theme.colors.textSecondary} />
+            <Ionicons
+              name={isCopied ? 'checkmark' : 'copy-outline'}
+              size={16}
+              color={isCopied ? theme.colors.success : theme.colors.textSecondary}
+            />
+            {isCopied && (
+              <Text
+                testID={`message-user-copy-feedback-${props.message.id}`}
+                accessibilityLiveRegion="polite"
+                style={styles.userMessageCopyFeedbackText}
+              >
+                {t('common.copied')}
+              </Text>
+            )}
           </Pressable>
           {canEdit && (
             <Pressable
@@ -509,9 +545,20 @@ const styles = StyleSheet.create((theme) => ({
   userMessageAction: {
     width: 28,
     height: 28,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 8,
+  },
+  userMessageCopyActionCopied: {
+    width: 'auto',
+    gap: 4,
+    paddingHorizontal: 7,
+  },
+  userMessageCopyFeedbackText: {
+    color: theme.colors.success,
+    fontSize: 12,
+    fontWeight: '600',
   },
   userMessageActionPressed: {
     opacity: 0.58,
