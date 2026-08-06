@@ -12,7 +12,7 @@ function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageS
 import { Session, Machine, GitStatus, SessionAgentModesPatch } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
-import { buildProjectGroups, isProjectSession, type ProjectGroupData } from "./projectGroups";
+import { buildPathProjectGroups, buildProjectGroups, isProjectSession, type ProjectGroupData } from "./projectGroups";
 import { selectPendingCommunications, type PendingAgentCommunication } from "./agentCommunications";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
@@ -34,7 +34,7 @@ import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/Realtim
 import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
-import { getRigActivityIndicators, getRigIdentity } from './rig';
+import { getRigActivityIndicators, getRigIdentity, isRigMetadata } from './rig';
 import { indexSessionsById } from './sessionIdentity';
 
 // Debounce timer for realtimeMode changes
@@ -98,14 +98,15 @@ export interface SessionRowData {
     createdAt?: number;
     hasDraft: boolean;
     active: boolean;
+    archived: boolean;
     machineId: string | null;
     path: string | null;
     homeDir: string | null;
     completedTodosCount: number;
     totalTodosCount: number;
     hasUnread: boolean;
-    // Rig-only project identity. Sessions from the Happy CLI leave these null
-    // and keep the flat, date-grouped presentation.
+    // Native project identity supplied by Rig. Happy CLI project cards derive
+    // their identity from machineId + path instead.
     projectId: string | null;
     projectName: string | null;
     // Names the git worktree this session runs in; null in the primary tree.
@@ -147,6 +148,8 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
         hasDraft: !!session.draft,
         active: session.active,
+        archived: session.metadata?.lifecycleState === 'archived'
+            || (!isRigMetadata(session.metadata) && !session.active),
         machineId: session.metadata?.machineId ?? null,
         path: session.metadata?.path ?? null,
         homeDir: session.metadata?.homeDir ?? null,
@@ -165,10 +168,9 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
 export type SessionListViewItem =
     | { type: 'header'; title: string }
     | { type: 'active-sessions'; sessions: SessionRowData[] }
-    | { type: 'archive-toggle'; hidden: boolean }
     | { type: 'project-group'; displayPath: string; machine: Machine }
-    | { type: 'projects-header' }
-    | { type: 'project'; project: ProjectGroupData }
+    | { type: 'projects-header'; source: 'rig' | 'happy' }
+    | { type: 'project'; source: 'rig' | 'happy'; project: ProjectGroupData }
     | { type: 'session'; session: SessionRowData };
 
 export type { ProjectGroupData, ProjectWorkspaceGroup } from './projectGroups';
@@ -272,11 +274,9 @@ function buildSessionListViewData(
     // hasUnread=false everywhere — exactly the bug this parameter caused twice.
     unreadSessionIds: Set<string>,
 ): SessionListViewItem[] {
-    // Separate active and inactive sessions. Rig sessions are pulled out
-    // entirely — they live in the projects section instead of the flat list.
-    const projectSessions: Session[] = [];
-    const activeSessions: Session[] = [];
-    const inactiveSessions: Session[] = [];
+    const rigProjectSessions: Session[] = [];
+    const rigPathSessions: Session[] = [];
+    const happySessions: Session[] = [];
 
     Object.values(sessions).forEach(session => {
         // Side chats are hidden children of another session — they render only
@@ -284,12 +284,14 @@ function buildSessionListViewData(
         if (session.metadata?.isSideChat) {
             return;
         }
-        if (isProjectSession(session)) {
-            projectSessions.push(session);
-        } else if (isSessionActive(session)) {
-            activeSessions.push(session);
+        if (isRigMetadata(session.metadata)) {
+            if (isProjectSession(session)) {
+                rigProjectSessions.push(session);
+            } else {
+                rigPathSessions.push(session);
+            }
         } else {
-            inactiveSessions.push(session);
+            happySessions.push(session);
         }
     });
 
@@ -300,98 +302,39 @@ function buildSessionListViewData(
     const sortKey = storage.getState().settings.sortSessionsByActivity
         ? (s: Session) => s.lastMessageSentAt ?? s.createdAt
         : (s: Session) => s.createdAt;
-    activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
-    inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
-    // Active first so a project surfaces its live work, newest-first within each.
-    projectSessions.sort((a, b) => {
+    const sortProjectSessions = (items: Session[]) => items.sort((a, b) => {
         const activeDelta = Number(isSessionActive(b)) - Number(isSessionActive(a));
         return activeDelta !== 0 ? activeDelta : sortKey(b) - sortKey(a);
     });
+    sortProjectSessions(rigProjectSessions);
+    sortProjectSessions(rigPathSessions);
+    sortProjectSessions(happySessions);
 
-    // Build unified list view data
     const listData: SessionListViewItem[] = [];
+    const toRow = (session: Session) => buildSessionRowData(session, unreadSessionIds);
 
-    // Projects sit above everything else and never mix with plain sessions
-    const projects = buildProjectGroups(
-        projectSessions,
-        s => buildSessionRowData(s, unreadSessionIds),
+    const rigProjects = [
+        ...buildProjectGroups(rigProjectSessions, toRow, isSessionActive),
+        ...buildPathProjectGroups(rigPathSessions, toRow, isSessionActive, 'rig'),
+    ];
+    if (rigProjects.length > 0) {
+        listData.push({ type: 'projects-header', source: 'rig' });
+        for (const project of rigProjects) {
+            listData.push({ type: 'project', source: 'rig', project });
+        }
+    }
+
+    const happyProjects = buildPathProjectGroups(
+        happySessions,
+        toRow,
         isSessionActive,
+        'happy',
     );
-    if (projects.length > 0) {
-        listData.push({ type: 'projects-header' });
-        for (const project of projects) {
-            listData.push({ type: 'project', project });
+    if (happyProjects.length > 0) {
+        listData.push({ type: 'projects-header', source: 'happy' });
+        for (const project of happyProjects) {
+            listData.push({ type: 'project', source: 'happy', project });
         }
-    }
-
-    // Add active sessions as a single item at the top (if any)
-    if (activeSessions.length > 0) {
-        listData.push({ type: 'active-sessions', sessions: activeSessions.map(s => buildSessionRowData(s, unreadSessionIds)) });
-    }
-
-    // Group inactive sessions by date
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-
-    let currentDateGroup: Session[] = [];
-    let currentDateString: string | null = null;
-
-    for (const session of inactiveSessions) {
-        const sessionDate = new Date(sortKey(session));
-        const dateString = sessionDate.toDateString();
-
-        if (currentDateString !== dateString) {
-            // Process previous group
-            if (currentDateGroup.length > 0 && currentDateString) {
-                const groupDate = new Date(currentDateString);
-                const sessionDateOnly = new Date(groupDate.getFullYear(), groupDate.getMonth(), groupDate.getDate());
-
-                let headerTitle: string;
-                if (sessionDateOnly.getTime() === today.getTime()) {
-                    headerTitle = 'Today';
-                } else if (sessionDateOnly.getTime() === yesterday.getTime()) {
-                    headerTitle = 'Yesterday';
-                } else {
-                    const diffTime = today.getTime() - sessionDateOnly.getTime();
-                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                    headerTitle = `${diffDays} days ago`;
-                }
-
-                listData.push({ type: 'header', title: headerTitle });
-                currentDateGroup.forEach(sess => {
-                    listData.push({ type: 'session', session: buildSessionRowData(sess, unreadSessionIds) });
-                });
-            }
-
-            // Start new group
-            currentDateString = dateString;
-            currentDateGroup = [session];
-        } else {
-            currentDateGroup.push(session);
-        }
-    }
-
-    // Process final group
-    if (currentDateGroup.length > 0 && currentDateString) {
-        const groupDate = new Date(currentDateString);
-        const sessionDateOnly = new Date(groupDate.getFullYear(), groupDate.getMonth(), groupDate.getDate());
-
-        let headerTitle: string;
-        if (sessionDateOnly.getTime() === today.getTime()) {
-            headerTitle = 'Today';
-        } else if (sessionDateOnly.getTime() === yesterday.getTime()) {
-            headerTitle = 'Yesterday';
-        } else {
-            const diffTime = today.getTime() - sessionDateOnly.getTime();
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-            headerTitle = `${diffDays} days ago`;
-        }
-
-        listData.push({ type: 'header', title: headerTitle });
-        currentDateGroup.forEach(sess => {
-            listData.push({ type: 'session', session: buildSessionRowData(sess, unreadSessionIds) });
-        });
     }
 
     return listData;

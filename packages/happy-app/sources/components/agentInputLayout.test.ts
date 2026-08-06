@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as agentInputLayout from './agentInputLayout';
 
-const { resolveAgentInputLayout } = agentInputLayout;
+const { resolveAgentInputLayout, resolveMobileCollapsedComposerGeometry } = agentInputLayout;
 
 describe('agent input compact mobile layout', () => {
     it('aligns composer text start with the left edge of the add glyph', () => {
@@ -40,6 +40,21 @@ describe('agent input compact mobile layout', () => {
         });
         expect((agentInputLayout as Record<string, unknown>).MOBILE_COMPOSER_BASE_HEIGHT).toBe(102);
         expect((agentInputLayout as Record<string, unknown>).MOBILE_COMPOSER_CHROME_HEIGHT).toBe(58);
+    });
+
+    it('starts collapsed composer text where the capsule becomes straight', () => {
+        const geometry = resolveMobileCollapsedComposerGeometry();
+
+        expect(geometry).toEqual({
+            shellHeight: 56,
+            shellRadius: 28,
+            contentPaddingLeft: 7,
+            contentPaddingRight: 7,
+            inputPaddingLeft: 21,
+            inputPaddingRight: 4,
+            textInset: 28,
+        });
+        expect(geometry.textInset).toBe(geometry.shellRadius);
     });
 
     it('matches the chat shell height while the input grows and attachments appear', () => {

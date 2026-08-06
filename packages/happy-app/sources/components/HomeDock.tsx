@@ -43,11 +43,17 @@ import { Modal } from '@/modal';
 import { resolveMultiTextInputLayout } from './multiTextInputLayout';
 import { resolveCustomProjectPathSelection } from './homeDockInteraction';
 import { resolveMachineAgent } from '@/utils/newSessionAgentSelection';
+import { findConnectedRigMachine, getRigMachineSessionCreation } from '@/sync/rigSessionCreation';
+import {
+    MobileHeaderScrim,
+    MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
+} from './navigation/MobileHeaderScrim';
 import {
     MOBILE_COMPOSER_LAYOUT,
     MOBILE_COMPOSER_METRICS,
     resolveMobileComposerActionGeometry,
     resolveMobileComposerActionRowGeometry,
+    resolveMobileCollapsedComposerGeometry,
     resolveMobileComposerHeight,
     resolveMobileComposerMenuGeometry,
 } from './agentInputLayout';
@@ -60,6 +66,7 @@ type AgentSetting = 'agent' | 'model' | 'permission' | 'effort';
 const CUSTOM_PROJECT_PATH_KEY = '__custom_project_path__';
 
 const AGENTS: Array<{ key: NewSessionAgentType; name: string }> = [
+    { key: 'rig', name: 'Rig' },
     { key: 'claude', name: 'Claude Code' },
     { key: 'codex', name: 'Codex' },
     { key: 'openclaw', name: 'OpenClaw' },
@@ -73,10 +80,16 @@ const MOBILE_EFFORT_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('effort');
 const MOBILE_ACTION_ROW_GEOMETRY = resolveMobileComposerActionRowGeometry();
 const MOBILE_ICON_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('icon');
 const MOBILE_PRIMARY_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('primary');
+const MOBILE_COLLAPSED_COMPOSER_GEOMETRY = resolveMobileCollapsedComposerGeometry();
 
 const styles = StyleSheet.create((theme) => ({
     keyboardFollower: {
         width: '100%',
+    },
+    bottomBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+        top: -36,
+        opacity: MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
     },
     safeArea: {
         paddingHorizontal: 16,
@@ -85,9 +98,9 @@ const styles = StyleSheet.create((theme) => ({
     composerSurface: {
         width: '100%',
         maxWidth: layout.maxWidth,
-        height: 56,
+        height: MOBILE_COLLAPSED_COMPOSER_GEOMETRY.shellHeight,
         alignSelf: 'center',
-        borderRadius: 28,
+        borderRadius: MOBILE_COLLAPSED_COMPOSER_GEOMETRY.shellRadius,
         overflow: 'hidden',
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.glass.border,
@@ -103,7 +116,8 @@ const styles = StyleSheet.create((theme) => ({
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 7,
+        paddingLeft: MOBILE_COLLAPSED_COMPOSER_GEOMETRY.contentPaddingLeft,
+        paddingRight: MOBILE_COLLAPSED_COMPOSER_GEOMETRY.contentPaddingRight,
         gap: 4,
     },
     sideButton: MOBILE_ICON_ACTION_GEOMETRY,
@@ -114,7 +128,8 @@ const styles = StyleSheet.create((theme) => ({
         flex: 1,
         minWidth: 0,
         height: '100%',
-        paddingHorizontal: 4,
+        paddingLeft: MOBILE_COLLAPSED_COMPOSER_GEOMETRY.inputPaddingLeft,
+        paddingRight: MOBILE_COLLAPSED_COMPOSER_GEOMETRY.inputPaddingRight,
         paddingVertical: 0,
         color: theme.colors.text,
         fontSize: 17,
@@ -125,7 +140,8 @@ const styles = StyleSheet.create((theme) => ({
         minWidth: 0,
         height: '100%',
         justifyContent: 'center',
-        paddingHorizontal: 4,
+        paddingLeft: MOBILE_COLLAPSED_COMPOSER_GEOMETRY.inputPaddingLeft,
+        paddingRight: MOBILE_COLLAPSED_COMPOSER_GEOMETRY.inputPaddingRight,
     },
     inputEntryText: {
         color: theme.colors.text,
@@ -421,11 +437,13 @@ export const HomeDock = React.memo(({
     onPromptChange,
     onSubmit,
     isSubmitting,
+    showBottomBackdrop = true,
 }: {
     prompt: string;
     onPromptChange: (prompt: string) => void;
     onSubmit: () => Promise<boolean>;
     isSubmitting: boolean;
+    showBottomBackdrop?: boolean;
 }) => {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
@@ -507,7 +525,25 @@ export const HomeDock = React.memo(({
         });
     }, [selectedMachine, selectedMachineId, selectedPath, sessions]);
     const currentProject = resolveOption(projectOptions, [selectedPath, '~']);
-    const supportsWorktree = getSupportsWorktree(agentType);
+    const selectedRigCreation = React.useMemo(
+        () => getRigMachineSessionCreation(selectedMachine?.metadata),
+        [selectedMachine?.metadata],
+    );
+    const connectedRigMachine = React.useMemo(
+        () => findConnectedRigMachine(machines),
+        [machines],
+    );
+    const selectedRigIsConnected = selectedRigCreation !== null
+        && selectedMachine !== null
+        && isMachineOnline(selectedMachine);
+    const rigSelectionMachine = selectedRigIsConnected ? selectedMachine : connectedRigMachine;
+    const rigSelectionCreation = selectedRigIsConnected
+        ? selectedRigCreation
+        : getRigMachineSessionCreation(connectedRigMachine?.metadata);
+    const rigCreation = agentType === 'rig' ? rigSelectionCreation : null;
+    const supportsWorktree = selectedMachine?.metadata?.rigOnly === true
+        ? selectedRigCreation?.supportsWorktrees ?? false
+        : rigCreation?.supportsWorktrees ?? getSupportsWorktree(agentType);
     const selectedWorktreeKey = sessionType === 'worktree'
         ? worktreeKey ?? '__new__'
         : '__none__';
@@ -568,35 +604,52 @@ export const HomeDock = React.memo(({
     // otherwise leaves a single checked row that looks like it does nothing.
     const availableAgents = React.useMemo<ModeOption[]>(() => {
         const availability = selectedMachine?.metadata?.cliAvailability;
-        return AGENTS.map((agent) => (
-            !availability || availability[agent.key]
+        return AGENTS.map((agent) => {
+            const available = agent.key === 'rig'
+                ? rigSelectionMachine !== null
+                : !availability || availability[agent.key];
+            return available
                 ? agent
-                : { ...agent, disabled: true, description: 'Not installed on this machine' }
-        ));
-    }, [selectedMachine]);
-    const resolvedAgentType = resolveMachineAgent(
-        agentType,
-        selectedMachine?.metadata?.cliAvailability,
-    );
-    const defaults = React.useMemo(
-        () => resolveAgentDefaultConfig(defaultOverrides, agentType),
-        [agentType, defaultOverrides],
-    );
+                : {
+                    ...agent,
+                    disabled: true,
+                    description: agent.key === 'rig'
+                        ? 'Select a connected Rig machine'
+                        : 'Not installed on this machine',
+                };
+        });
+    }, [rigSelectionMachine, selectedMachine]);
+    const resolvedAgentType = agentType === 'rig' && !rigSelectionMachine
+        ? (availableAgents.find((agent) => !agent.disabled && agent.key !== 'rig')?.key as NewSessionAgentType | undefined) ?? agentType
+        : agentType === 'rig'
+            ? agentType
+            : resolveMachineAgent(agentType, selectedMachine?.metadata?.cliAvailability);
+    const defaults = React.useMemo(() => rigCreation
+        ? {
+            permissionMode: rigCreation.defaultPermissionMode ?? '',
+            modelMode: rigCreation.defaultModelKey ?? '',
+            effortLevel: rigCreation.defaultEffortForModel(rigCreation.defaultModelKey),
+        }
+        : resolveAgentDefaultConfig(defaultOverrides, agentType), [agentType, defaultOverrides, rigCreation]);
     const permissionOptions = React.useMemo(
-        () => getHardcodedPermissionModes(agentType, t),
-        [agentType],
+        () => rigCreation?.permissionModes ?? getHardcodedPermissionModes(agentType, t),
+        [agentType, rigCreation],
     );
     const modelOptions = React.useMemo(
-        () => getHardcodedModelModes(agentType, t),
-        [agentType],
+        () => rigCreation?.models ?? getHardcodedModelModes(agentType, t),
+        [agentType, rigCreation],
     );
     const currentPermission = resolveOption(permissionOptions, [permissionMode, defaults.permissionMode]);
     const currentModel = resolveOption(modelOptions, [modelMode, defaults.modelMode]);
     const effortOptions = React.useMemo(
-        () => getEffortLevelsForModel(agentType, currentModel?.key ?? 'default'),
-        [agentType, currentModel?.key],
+        () => rigCreation
+            ? rigCreation.effortsForModel(currentModel?.key).map((key) => ({ key, name: key }))
+            : getEffortLevelsForModel(agentType, currentModel?.key ?? 'default'),
+        [agentType, currentModel?.key, rigCreation],
     );
-    const currentEffort = resolveOption(effortOptions, [effortLevel, defaults.effortLevel]);
+    const currentEffortDefault = rigCreation?.defaultEffortForModel(currentModel?.key)
+        ?? defaults.effortLevel;
+    const currentEffort = resolveOption(effortOptions, [effortLevel, currentEffortDefault]);
     const currentAgent = availableAgents.find((agent) => agent.key === agentType) ?? availableAgents[0] ?? AGENTS[0];
     const canSubmit = !isSubmitting && (
         prompt.trim().length > 0 || (expImageUpload && selectedImages.length > 0)
@@ -751,12 +804,28 @@ export const HomeDock = React.memo(({
     }, [finishCloseFocusMode, focusPresentation]);
 
     const selectAgent = React.useCallback((agent: NewSessionAgentType) => {
-        const nextDefaults = resolveAgentDefaultConfig(defaultOverrides, agent);
+        const nextRigCreation = agent === 'rig' ? rigSelectionCreation : null;
+        const nextDefaults = nextRigCreation
+            ? {
+                permissionMode: nextRigCreation.defaultPermissionMode ?? '',
+                modelMode: nextRigCreation.defaultModelKey ?? '',
+                effortLevel: nextRigCreation.defaultEffortForModel(nextRigCreation.defaultModelKey),
+            }
+            : resolveAgentDefaultConfig(defaultOverrides, agent);
+        if (agent === 'rig' && rigSelectionMachine && rigSelectionMachine.id !== selectedMachineId) {
+            setMachineId(rigSelectionMachine.id);
+        }
         setAgentType(agent);
         setPermissionMode(nextDefaults.permissionMode);
         setModelMode(nextDefaults.modelMode);
         if (nextDefaults.effortLevel) setEffortLevel(nextDefaults.effortLevel);
-    }, [defaultOverrides, setAgentType, setEffortLevel, setModelMode, setPermissionMode]);
+    }, [defaultOverrides, rigSelectionCreation, rigSelectionMachine, selectedMachineId, setAgentType, setEffortLevel, setMachineId, setModelMode, setPermissionMode]);
+
+    React.useEffect(() => {
+        if (agentType === 'rig' && rigSelectionMachine && rigSelectionMachine.id !== selectedMachineId) {
+            setMachineId(rigSelectionMachine.id);
+        }
+    }, [agentType, rigSelectionMachine, selectedMachineId, setMachineId]);
 
     React.useEffect(() => {
         if (resolvedAgentType !== agentType) {
@@ -1168,6 +1237,11 @@ export const HomeDock = React.memo(({
                 pointerEvents="box-none"
                 style={[styles.keyboardFollower, keyboardStyle]}
             >
+                {showBottomBackdrop && (
+                    <View pointerEvents="none" style={styles.bottomBackdrop}>
+                        <MobileHeaderScrim variant="strong" edge="bottom" />
+                    </View>
+                )}
                 <View
                     pointerEvents="box-none"
                     style={[

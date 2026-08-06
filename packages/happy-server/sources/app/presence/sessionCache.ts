@@ -20,6 +20,9 @@ interface MachineCacheEntry {
 class ActivityCache {
     private sessionCache = new Map<string, SessionCacheEntry>();
     private machineCache = new Map<string, MachineCacheEntry>();
+    // Sessions that were just stopped, archived or deleted, mapped to the time their
+    // heartbeat suppression expires
+    private stoppedSessions = new Map<string, number>();
     private batchTimer: ReturnType<typeof setInterval> | null = null;
     
     // Cache TTL (30 seconds)
@@ -30,6 +33,11 @@ class ActivityCache {
     
     // Batch update interval (5 seconds)
     private readonly BATCH_INTERVAL = 5 * 1000;
+
+    // How long heartbeats are ignored after a session is stopped (60 seconds).
+    // Longer than CACHE_TTL + BATCH_INTERVAL so that every in-flight heartbeat and
+    // every pending flush from before the stop is gone by the time it expires.
+    private readonly STOPPED_TTL = 60 * 1000;
 
     constructor() {
         this.startBatchTimer();
@@ -49,6 +57,14 @@ class ActivityCache {
 
     async isSessionValid(sessionId: string, userId: string): Promise<boolean> {
         const now = Date.now();
+
+        // Session was just stopped, archived or deleted - ignore heartbeats for a while
+        // instead of caching it again and letting a batch flush revive it
+        if (this.isSessionStopped(sessionId, now)) {
+            sessionCacheCounter.inc({ operation: 'session_validation', result: 'stopped' });
+            return false;
+        }
+
         const cached = this.sessionCache.get(sessionId);
         
         // Check cache first
@@ -66,6 +82,12 @@ class ActivityCache {
             });
             
             if (session) {
+                // Session could have been stopped while we were reading the database
+                if (this.isSessionStopped(sessionId, Date.now())) {
+                    sessionCacheCounter.inc({ operation: 'session_validation', result: 'stopped' });
+                    return false;
+                }
+
                 // Cache the result
                 this.sessionCache.set(sessionId, {
                     validUntil: now + this.CACHE_TTL,
@@ -126,6 +148,12 @@ class ActivityCache {
     }
 
     queueSessionUpdate(sessionId: string, timestamp: number): boolean {
+        // Heartbeat that was already in flight when the session was stopped
+        if (this.isSessionStopped(sessionId, Date.now())) {
+            databaseUpdatesSkippedCounter.inc({ type: 'session' });
+            return false;
+        }
+
         const cached = this.sessionCache.get(sessionId);
         if (!cached) {
             return false; // Should validate first
@@ -140,6 +168,39 @@ class ActivityCache {
         
         databaseUpdatesSkippedCounter.inc({ type: 'session' });
         return false; // No update needed
+    }
+
+    /**
+     * Forget queued heartbeats and ignore new ones before a session is stopped,
+     * archived, or deleted. Call this before the deactivating write: dropping the cache
+     * entry alone leaves a window where a heartbeat re-validates the session, caches it
+     * again and queues an update, and the next batch flush overwrites active=false with
+     * stale activity (or updates an already deleted row). Suppression expires by itself
+     * after STOPPED_TTL and is lifted early by resumeSessionUpdates.
+     */
+    clearSessionUpdates(sessionId: string): void {
+        this.sessionCache.delete(sessionId);
+        this.stoppedSessions.set(sessionId, Date.now() + this.STOPPED_TTL);
+    }
+
+    /**
+     * Accept heartbeats again for a session that is legitimately starting back up,
+     * so a restarted session goes active without waiting out the suppression window.
+     */
+    resumeSessionUpdates(sessionId: string): void {
+        this.stoppedSessions.delete(sessionId);
+    }
+
+    private isSessionStopped(sessionId: string, now: number): boolean {
+        const stoppedUntil = this.stoppedSessions.get(sessionId);
+        if (stoppedUntil === undefined) {
+            return false;
+        }
+        if (stoppedUntil <= now) {
+            this.stoppedSessions.delete(sessionId);
+            return false;
+        }
+        return true;
     }
 
     queueMachineUpdate(machineId: string, timestamp: number): boolean {
@@ -239,6 +300,12 @@ class ActivityCache {
         for (const [machineId, entry] of this.machineCache.entries()) {
             if (entry.validUntil < now) {
                 this.machineCache.delete(machineId);
+            }
+        }
+
+        for (const [sessionId, stoppedUntil] of this.stoppedSessions.entries()) {
+            if (stoppedUntil <= now) {
+                this.stoppedSessions.delete(sessionId);
             }
         }
     }

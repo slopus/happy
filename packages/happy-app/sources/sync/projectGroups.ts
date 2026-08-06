@@ -1,7 +1,7 @@
 import type { Session } from './storageTypes';
 import type { SessionRowData } from './storage';
 
-// One git worktree inside a Rig project. `id` is empty and `name` is null for
+// One git worktree inside a project. `id` is empty and `name` is null for
 // the project's primary tree, which always sorts first.
 export interface ProjectWorkspaceGroup {
     id: string;
@@ -9,7 +9,8 @@ export interface ProjectWorkspaceGroup {
     sessions: SessionRowData[];
 }
 
-// A Rig project: every worktree of the same repo, shown together.
+// A project shown in the sessions sidebar. Rig supplies a durable project
+// identity; Happy CLI sessions use their machine and working directory.
 export interface ProjectGroupData {
     id: string;
     name: string;
@@ -20,12 +21,81 @@ export interface ProjectGroupData {
 }
 
 /**
- * Rig reports a project (and optionally a worktree) for every session it runs;
- * the Happy CLI does not. Only Rig sessions get the project presentation, so
- * that CLI sessions keep the flat, date-grouped list they have always had.
+ * Rig reports a project (and optionally a worktree) for its current sessions.
  */
 export function isProjectSession(session: Session): boolean {
     return !!session.metadata?.project?.id;
+}
+
+/**
+ * Groups sessions without a native project identity by machine and working
+ * directory. This gives Happy CLI sessions the same project-card presentation
+ * as Rig without merging identical paths from different computers.
+ */
+export function buildPathProjectGroups(
+    sessions: Session[],
+    toRow: (session: Session) => SessionRowData,
+    isActive: (session: Session) => boolean,
+    idPrefix: string,
+): ProjectGroupData[] {
+    const projects = new Map<string, ProjectGroupData>();
+
+    for (const session of sessions) {
+        const machineId = session.metadata?.machineId ?? null;
+        const path = session.metadata?.path?.trim() || '';
+        const key = JSON.stringify([machineId, path]);
+        let group = projects.get(key);
+        if (!group) {
+            group = {
+                id: `${idPrefix}:${key}`,
+                name: pathProjectName(path, session.metadata?.homeDir),
+                machineId,
+                workspaces: [{ id: '', name: null, sessions: [] }],
+                sessionCount: 0,
+                activeCount: 0,
+            };
+            projects.set(key, group);
+        }
+
+        group.workspaces[0].sessions.push(toRow(session));
+        group.sessionCount += 1;
+        if (isActive(session)) {
+            group.activeCount += 1;
+        }
+    }
+
+    return [...projects.values()];
+}
+
+function pathProjectName(path: string, homeDir: string | undefined): string {
+    const normalizedPath = path.replace(/[\\/]+$/, '');
+    const normalizedHome = homeDir?.replace(/[\\/]+$/, '');
+    if (!normalizedPath || normalizedPath === '~' || normalizedPath === normalizedHome) {
+        return 'Home';
+    }
+    return normalizedPath.split(/[\\/]/).filter(Boolean).at(-1) ?? normalizedPath;
+}
+
+/** Keeps only the rows accepted by a visibility rule and refreshes its badge. */
+export function filterProjectGroupSessions(
+    project: ProjectGroupData,
+    keep: (session: SessionRowData) => boolean,
+): ProjectGroupData | null {
+    const workspaces = project.workspaces
+        .map((workspace) => ({
+            ...workspace,
+            sessions: workspace.sessions.filter(keep),
+        }))
+        .filter((workspace) => workspace.sessions.length > 0);
+    if (workspaces.length === 0) return null;
+
+    const sessions = workspaces.flatMap((workspace) => workspace.sessions);
+    return {
+        ...project,
+        workspaces,
+        sessionCount: sessions.length,
+        activeCount: sessions.filter((session) => session.active).length,
+    };
 }
 
 /**

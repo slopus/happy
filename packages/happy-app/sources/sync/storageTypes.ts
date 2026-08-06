@@ -428,16 +428,82 @@ export const MachineMetadataSchema = z.object({
         gemini: z.boolean(),
         openclaw: z.boolean(),
         agy: z.boolean().optional(), // optional: older CLIs don't report agy
+        rig: z.boolean().optional(), // Rig runs its own Happy-connected daemon
         detectedAt: z.number(),
     }).optional(),
+    // Rig registers as its own machine instead of being launched by happy-cli.
+    // Keep its creation catalog so the new-session UI can send Rig-native
+    // provider/model identifiers to the machine RPC.
+    machineKind: z.string().optional(),
+    rigOnly: z.boolean().optional(),
+    rigMetadataVersion: z.number().int().positive().optional(),
+    client: z.object({
+        id: z.string(),
+        name: z.string(),
+        version: z.string(),
+    }).passthrough().optional(),
+    capabilities: z.object({
+        newSession: z.boolean().optional(),
+        resume: z.boolean().optional(),
+        worktrees: z.boolean().optional(),
+    }).passthrough().optional(),
+    // The Rig catalog below mirrors the optionality of MetadataSchema at the top
+    // of this file, which models the same payload for a session. Rig is a
+    // separate codebase shipping on its own schedule, so a field it omits or
+    // sends as null must not fail the parse: a rejected parse returns null for
+    // the ENTIRE machine metadata (see machineEncryption.ts), which would strip
+    // host, platform and CLI availability over an unread reasoning level.
+    // Each block also catches independently, so an unforeseen shape degrades to
+    // "no Rig session creation" rather than "no machine".
+    defaults: z.object({
+        effort: z.string().optional(),
+        modelId: z.string().optional(),
+        permissionMode: z.string().optional(),
+        providerId: z.string().optional(),
+    }).passthrough().optional().catch(undefined),
+    providers: z.array(z.object({
+        id: z.string(),
+        kind: z.string().optional(),
+        name: z.string().optional(),
+    }).passthrough()).optional().catch(undefined),
+    models: z.array(z.object({
+        code: z.string(),
+        value: z.string(),
+        description: z.string().nullish(),
+        id: z.string().optional(),
+        name: z.string().optional(),
+        providerId: z.string().optional(),
+        providerKind: z.string().optional(),
+        providerName: z.string().optional(),
+        provider: z.object({
+            id: z.string(),
+            kind: z.string(),
+            name: z.string(),
+        }).passthrough().optional(),
+        contextWindow: z.number().optional(),
+        serviceTiers: z.array(z.string()).optional(),
+        thinkingLevels: z.array(z.string()).optional(),
+        defaultThinkingLevel: z.string().nullish(),
+    }).passthrough()).optional().catch(undefined),
+    operatingModes: z.array(z.object({
+        code: z.string(),
+        value: z.string(),
+        description: z.string().nullish(),
+        kind: z.string().optional(),
+    }).passthrough()).optional().catch(undefined),
+    sessionCreation: z.object({
+        idempotencyKey: z.string().optional(),
+        pendingRetryAfterMs: z.number().optional(),
+        resultKinds: z.array(z.string()).optional(),
+    }).passthrough().optional().catch(undefined),
     resumeSupport: z.object({
-        rpcAvailable: z.boolean(),
-        requiresSameMachine: z.boolean(),
-        requiresHappyAgentAuth: z.boolean(),
-        happyAgentAuthenticated: z.boolean(),
-        detectedAt: z.number(),
-    }).optional(),
-});
+        rpcAvailable: z.boolean().optional(),
+        requiresSameMachine: z.boolean().optional(),
+        requiresHappyAgentAuth: z.boolean().optional(),
+        happyAgentAuthenticated: z.boolean().optional(),
+        detectedAt: z.number().optional(),
+    }).passthrough().optional().catch(undefined),
+}).passthrough();
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>;
 

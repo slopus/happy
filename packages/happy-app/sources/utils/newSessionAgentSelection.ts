@@ -1,6 +1,7 @@
 import type { NewSessionAgentType } from '@/sync/persistence';
 
 export const NEW_SESSION_AGENT_ORDER: readonly NewSessionAgentType[] = [
+    'rig',
     'claude',
     'codex',
     'openclaw',

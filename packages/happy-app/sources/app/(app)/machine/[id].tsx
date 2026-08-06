@@ -562,6 +562,17 @@ export default function MachineDetailScreen() {
                                 </Text>
                             }
                         />
+                        {metadata.cliAvailability.rig !== undefined && (
+                            <Item
+                                title="Rig"
+                                showChevron={false}
+                                rightElement={
+                                    <Text style={{ color: metadata.cliAvailability.rig ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>
+                                        {metadata.cliAvailability.rig ? t('machine.cliInstalled') : t('machine.cliNotFound')}
+                                    </Text>
+                                }
+                            />
+                        )}
                         <Item
                             title={t('machine.lastDetected')}
                             subtitle={new Date(metadata.cliAvailability.detectedAt).toLocaleString()}
