@@ -104,6 +104,7 @@ model Session {
     seq               Int              @default(0)
     active            Boolean          @default(true)
     lastActiveAt      DateTime         @default(now())
+    archivedAt        DateTime?
     createdAt         DateTime         @default(now())
     updatedAt         DateTime         @updatedAt
     messages          SessionMessage[]
