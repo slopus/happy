@@ -10,7 +10,6 @@ import TestRenderer from 'react-test-renderer';
 vi.mock('react-native', () => ({
     Platform: { OS: 'web' },
     Pressable: 'Pressable',
-    StyleSheet: { create: (styles: object) => styles },
     Text: 'Text',
     View: 'View',
 }));
@@ -20,6 +19,30 @@ vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}), mo
 vi.mock('@/utils/responsive', () => ({ useHeaderHeight: () => 52, useIsTablet: () => true }));
 vi.mock('@/components/layout', () => ({ layout: { headerMaxWidth: 800 } }));
 vi.mock('react-native-unistyles', () => ({
+    StyleSheet: {
+        create: (factory: unknown) => {
+            const theme = {
+                colors: {
+                    header: { background: '#fff', tint: '#111' },
+                    textSecondary: '#666',
+                },
+            };
+            const created = (typeof factory === 'function'
+                ? (factory as (value: typeof theme) => Record<string, any>)(theme)
+                : factory) as Record<string, any>;
+            const variants = created.rightSlot?.variants?.rightSlotDensity;
+            const rightSlotBase = { ...created.rightSlot };
+            delete rightSlotBase.variants;
+            created.rightSlot = rightSlotBase;
+            created.useVariants = ({ rightSlotDensity }: { rightSlotDensity: 'regular' | 'compact' }) => {
+                created.rightSlot = {
+                    ...rightSlotBase,
+                    ...variants?.[rightSlotDensity],
+                };
+            };
+            return created;
+        },
+    },
     useUnistyles: () => ({
         theme: {
             colors: {
@@ -42,7 +65,9 @@ function renderRightSlot(compactRightSlot: boolean) {
         );
     });
     const slot = renderer.root.findByType('RightSlot').parent;
-    const flattenedStyle = Object.assign({}, ...slot.props.style.filter(Boolean));
+    const flattenedStyle = Array.isArray(slot.props.style)
+        ? Object.assign({}, ...slot.props.style.filter(Boolean))
+        : slot.props.style;
     return { flattenedStyle, renderer };
 }
 

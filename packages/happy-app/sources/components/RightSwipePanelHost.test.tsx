@@ -30,7 +30,14 @@ vi.mock('react-native-safe-area-context', () => ({
     useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 vi.mock('react-native-unistyles', () => ({
-    useUnistyles: () => ({ theme: { colors: { surface: '#111', divider: '#333' } } }),
+    StyleSheet: {
+        create: (factory: unknown) => {
+            const theme = { colors: { surface: '#111', divider: '#333' } };
+            return typeof factory === 'function'
+                ? (factory as (value: typeof theme) => object)(theme)
+                : factory;
+        },
+    },
 }));
 vi.mock('@/utils/responsive', () => ({ useIsTablet: () => false }));
 vi.mock('./haptics', () => ({ hapticsLight: vi.fn() }));
@@ -99,11 +106,23 @@ function NestedBackControl(props: { onBack: () => void }) {
     return null;
 }
 
+const PANEL_ACCESSIBILITY_LABELS = {
+    closeAccessibilityLabel: 'Hide context panel',
+    openAccessibilityLabel: 'Show context panel',
+    panelAccessibilityLabel: 'Context panel',
+};
+
+function flattenStyle(style: unknown): Record<string, unknown> {
+    if (!Array.isArray(style)) return (style ?? {}) as Record<string, unknown>;
+    return Object.assign({}, ...style.filter(Boolean));
+}
+
 function renderHost(callback?: () => void) {
     let renderer: any;
     act(() => {
         renderer = TestRenderer.create(
             <RightSwipePanelHost
+                {...PANEL_ACCESSIBILITY_LABELS}
                 panelContent={(
                     <>
                         <CloseControl callback={callback} testID="close-with-callback" />
@@ -180,7 +199,10 @@ describe('RightSwipePanelHost close completion', () => {
         const completeFirst = latestSpringCompletion();
         // Re-rendering supplies the second callback through the same public context API.
         act(() => renderer.update(
-            <RightSwipePanelHost panelContent={<CloseControl callback={second} testID="close-with-callback" />}>
+            <RightSwipePanelHost
+                {...PANEL_ACCESSIBILITY_LABELS}
+                panelContent={<CloseControl callback={second} testID="close-with-callback" />}
+            >
                 <View />
             </RightSwipePanelHost>,
         ));
@@ -239,14 +261,25 @@ describe('RightSwipePanelHost close completion', () => {
         expect(handle.props.accessibilityRole).toBe('button');
         expect(handle.props.accessibilityState).toEqual({ expanded: false });
         expect(handle.props['aria-expanded']).toBe(false);
-        expect(handle.props.style).toEqual(expect.objectContaining({ minWidth: 40, minHeight: 40 }));
+        expect(flattenStyle(handle.props.style)).toEqual(expect.objectContaining({
+            backgroundColor: '#111',
+            borderColor: '#333',
+            minHeight: 40,
+            minWidth: 40,
+            top: 336,
+        }));
+        expect(flattenStyle(closedDrawer.props.style)).toEqual(expect.objectContaining({
+            backgroundColor: '#111',
+            paddingBottom: 12,
+            paddingTop: 12,
+        }));
         expect(closedDrawer.props.accessibilityElementsHidden).toBe(true);
         expect(closedDrawer.props.importantForAccessibility).toBe('no-hide-descendants');
 
         act(() => handle.props.onPress());
         const openHandle = findControl(renderer, 'right-swipe-panel-edge-handle');
         expect(openHandle.props['aria-expanded']).toBe(true);
-        expect(openHandle.props.style).toEqual(expect.objectContaining({ right: 288 }));
+        expect(flattenStyle(openHandle.props.style)).toEqual(expect.objectContaining({ right: 288 }));
         const openDrawer = renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' });
         expect(openDrawer.props.accessibilityElementsHidden).toBe(false);
         expect(openDrawer.props.importantForAccessibility).toBe('auto');
@@ -260,7 +293,10 @@ describe('RightSwipePanelHost close completion', () => {
         let renderer: any;
         act(() => {
             renderer = TestRenderer.create(
-                <RightSwipePanelHost panelContent={<NestedBackControl onBack={nestedBack} />}>
+                <RightSwipePanelHost
+                    {...PANEL_ACCESSIBILITY_LABELS}
+                    panelContent={<NestedBackControl onBack={nestedBack} />}
+                >
                     <View />
                 </RightSwipePanelHost>,
             );
@@ -307,7 +343,13 @@ describe('RightSwipePanelHost close completion', () => {
         (Platform as { OS: string }).OS = 'web';
         let renderer: any;
         const renderControlled = (open: boolean) => (
-            <RightSwipePanelHost enabled mode="drawer-toggle" open={open} panelContent={<View />}>
+            <RightSwipePanelHost
+                {...PANEL_ACCESSIBILITY_LABELS}
+                enabled
+                mode="drawer-toggle"
+                open={open}
+                panelContent={<View />}
+            >
                 <View />
             </RightSwipePanelHost>
         );
@@ -330,7 +372,7 @@ describe('RightSwipePanelHost close completion', () => {
             const main = renderer.root.findByProps({ testID: 'right-swipe-panel-main' });
             const drawer = renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' });
             expect(main.props.style).toEqual(expect.objectContaining({ width: 240 }));
-            expect(drawer.props.style).toEqual(expect.objectContaining({ width: 160 }));
+            expect(flattenStyle(drawer.props.style)).toEqual(expect.objectContaining({ width: 160 }));
             expect(drawer.props.accessibilityElementsHidden).toBeUndefined();
             expect(drawer.props.importantForAccessibility).toBeUndefined();
         } finally {

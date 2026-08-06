@@ -373,6 +373,8 @@ describe('SessionView Agent-space boundary', () => {
         })).toHaveLength(1);
         expect(renderer.root.findAllByProps({ accessibilityLabel: 'Exit space' })).toHaveLength(1);
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(0);
+        expect(renderer.root.findByType('RightSwipePanelHost').props.panelAccessibilityLabel)
+            .toBe('agentSpace.companion.panelTitle');
 
         act(() => renderer.unmount());
     });
@@ -405,6 +407,8 @@ describe('SessionView Agent-space boundary', () => {
 
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(1);
         expect(renderer.root.findAllByProps({ accessibilityLabel: 'Exit space' })).toHaveLength(0);
+        expect(renderer.root.findByType('RightSwipePanelHost').props.panelAccessibilityLabel)
+            .toBe('rightPanelCapabilityHub.title');
 
         act(() => renderer.unmount());
     });

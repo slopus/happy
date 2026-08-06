@@ -579,6 +579,12 @@ export const SessionView = React.memo((props: { id: string }) => {
     const desktopPanelLabel = desktopPanelMode === 'files' && canShowFilePanel
         ? t('common.files')
         : t('rightPanelCapabilityHub.title');
+    const compactPanelLabel = spaceAgent
+        ? t('agentSpace.companion.panelTitle')
+        : t('rightPanelCapabilityHub.title');
+    const rightPanelToggleLabel = desktopRightPanelAvailable
+        ? desktopPanelLabel
+        : compactPanelLabel;
     const rightPanelToggleButton = (
         (desktopRightPanelAvailable && desktopRightPanelPresentation !== 'zen')
         || compactRightDrawerAvailable
@@ -586,8 +592,8 @@ export const SessionView = React.memo((props: { id: string }) => {
         <DesktopRightPanelToggleButton
             expanded={desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen}
             label={(desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen)
-                ? t('desktopWorkspace.hidePanel', { panel: desktopPanelLabel })
-                : t('desktopWorkspace.showPanel', { panel: desktopPanelLabel })}
+                ? t('desktopWorkspace.hidePanel', { panel: rightPanelToggleLabel })
+                : t('desktopWorkspace.showPanel', { panel: rightPanelToggleLabel })}
             onPress={() => {
                 if (desktopRightPanelAvailable) {
                     setDesktopRightPanelCollapsed(showDesktopRightPanel);
@@ -740,7 +746,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         );
         return (
             <RightSwipePanelHost
-                closeAccessibilityLabel={t('desktopWorkspace.hidePanel', { panel: desktopPanelLabel })}
+                closeAccessibilityLabel={t('desktopWorkspace.hidePanel', { panel: compactPanelLabel })}
                 enabled={isDataReady && !!session}
                 mode={responsiveRightPanelMode === 'edge-handle' ? 'edge-handle' : 'drawer-toggle'}
                 onOpenChange={(nextOpen) => {
@@ -748,8 +754,8 @@ export const SessionView = React.memo((props: { id: string }) => {
                     setRightDrawerOpen(nextOpen);
                 }}
                 open={rightDrawerOpen}
-                openAccessibilityLabel={t('desktopWorkspace.showPanel', { panel: desktopPanelLabel })}
-                panelAccessibilityLabel={desktopPanelLabel}
+                openAccessibilityLabel={t('desktopWorkspace.showPanel', { panel: compactPanelLabel })}
+                panelAccessibilityLabel={compactPanelLabel}
                 panelContent={rightPanel}
             >
                 {mainContent}

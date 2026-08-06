@@ -1079,8 +1079,14 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     );
 
     if (!desktopRightPanelAvailable) {
+        const capabilityHubLabel = t('rightPanelCapabilityHub.title');
         return (
-            <RightSwipePanelHost panelContent={<SessionCapabilityHub />}>
+            <RightSwipePanelHost
+                closeAccessibilityLabel={t('desktopWorkspace.hidePanel', { panel: capabilityHubLabel })}
+                openAccessibilityLabel={t('desktopWorkspace.showPanel', { panel: capabilityHubLabel })}
+                panelAccessibilityLabel={capabilityHubLabel}
+                panelContent={<SessionCapabilityHub />}
+            >
                 {composeContent}
             </RightSwipePanelHost>
         );

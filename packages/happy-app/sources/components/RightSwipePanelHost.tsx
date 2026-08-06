@@ -11,7 +11,7 @@ import Animated, {
     withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
 import { getResponsiveRightPanelMode, type ResponsiveRightPanelMode } from '@/utils/desktopNavigationLayout';
 import { hapticsLight } from './haptics';
@@ -22,9 +22,9 @@ type Props = {
     panelContent?: React.ReactNode;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
-    openAccessibilityLabel?: string;
-    closeAccessibilityLabel?: string;
-    panelAccessibilityLabel?: string;
+    openAccessibilityLabel: string;
+    closeAccessibilityLabel: string;
+    panelAccessibilityLabel: string;
     enabled?: boolean;
     mode?: Exclude<ResponsiveRightPanelMode, 'persistent'>;
 };
@@ -100,16 +100,15 @@ function isolateOutsideHostBranch(host: HTMLElement): ElementIsolationSnapshot[]
 
 export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
     children,
-    closeAccessibilityLabel = 'Hide context panel',
+    closeAccessibilityLabel,
     enabled: enabledOverride,
     mode,
     onOpenChange,
     open: controlledOpen,
-    openAccessibilityLabel = 'Show context panel',
-    panelAccessibilityLabel = 'Context panel',
+    openAccessibilityLabel,
+    panelAccessibilityLabel,
     panelContent,
 }: Props) {
-    const { theme } = useUnistyles();
     const navigation = useNavigation();
     const isFocused = useIsFocused();
     const safeArea = useSafeAreaInsets();
@@ -463,16 +462,13 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                             const measuredWidth = Math.round(event.nativeEvent.layout.width);
                             if (measuredWidth > 0 && measuredWidth !== hostWidth) setHostWidth(measuredWidth);
                         }}
-                        style={{ flex: 1, overflow: 'hidden', backgroundColor: theme.colors.surface }}
+                        style={styles.host}
                         testID="right-swipe-panel-host"
                     >
                         <Animated.View
                             style={[
-                                {
-                                    flex: 1,
-                                    width: Platform.OS === 'web' && open ? hostWidth : hostWidth + panelWidth,
-                                    flexDirection: 'row',
-                                },
+                                styles.filmstrip,
+                                { width: Platform.OS === 'web' && open ? hostWidth : hostWidth + panelWidth },
                                 Platform.OS !== 'web' && filmstripStyle,
                             ]}
                         >
@@ -483,18 +479,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                             >
                                 {children}
                                 <Animated.View
-                                    style={[
-                                        {
-                                            pointerEvents: 'none',
-                                            position: 'absolute',
-                                            top: 0,
-                                            left: 0,
-                                            right: 0,
-                                            bottom: 0,
-                                            backgroundColor: '#000',
-                                        },
-                                        scrimStyle,
-                                    ]}
+                                    style={[styles.mainScrim, scrimStyle]}
                                 />
                             </View>
                             <View
@@ -504,12 +489,14 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                                     ? undefined
                                     : open ? 'auto' : 'no-hide-descendants'}
                                 ref={panelRef}
-                                style={{
-                                    width: panelWidth,
-                                    paddingTop: safeArea.top + 12,
-                                    paddingBottom: safeArea.bottom + 12,
-                                    backgroundColor: theme.colors.surface,
-                                }}
+                                style={[
+                                    styles.panel,
+                                    {
+                                        width: panelWidth,
+                                        paddingTop: safeArea.top + 12,
+                                        paddingBottom: safeArea.bottom + 12,
+                                    },
+                                ]}
                                 {...(Platform.OS === 'web' ? ({
                                     'aria-modal': open ? true : undefined,
                                     role: open ? 'dialog' : undefined,
@@ -522,26 +509,14 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                                     accessibilityRole="button"
                                     hitSlop={8}
                                     onPress={() => closePanel()}
-                                    style={{
-                                        alignSelf: 'center',
-                                        width: 40,
-                                        height: 40,
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                    }}
+                                    style={styles.closeButton}
                                     testID="right-swipe-panel-close-button"
                                 >
                                     <View
-                                        style={{
-                                            width: 36,
-                                            height: 4,
-                                            borderRadius: 2,
-                                            backgroundColor: theme.colors.divider,
-                                            opacity: 0.9,
-                                        }}
+                                        style={styles.closeGrabber}
                                     />
                                 </Pressable>
-                                <View style={{ flex: 1, minHeight: 0 }}>
+                                <View style={styles.panelContent}>
                                     {panelContent}
                                 </View>
                             </View>
@@ -552,16 +527,10 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                                 accessible={false}
                                 importantForAccessibility="no-hide-descendants"
                                 onPress={() => closePanel()}
-                                style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    bottom: 0,
-                                    width: Math.max(0, hostWidth - panelWidth),
-                                }}
+                                style={[styles.scrimPressable, { width: Math.max(0, hostWidth - panelWidth) }]}
                                 testID="right-swipe-panel-scrim"
                             >
-                                <View style={{ flex: 1 }} />
+                                <View style={styles.scrimFill} />
                             </Pressable>
                         )}
                         {responsiveMode === 'edge-handle' && (
@@ -572,36 +541,20 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                                 aria-expanded={open}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 0 }}
                                 onPress={open ? () => closePanel() : openPanel}
-                                style={{
-                                    position: 'absolute',
-                                    // Once open, keep the handle attached to
-                                    // the drawer's leading edge on the dimmed
-                                    // main side so it cannot cover Hub cards.
-                                    right: open ? panelWidth : 0,
-                                    top: Math.max(safeArea.top + 88, Math.floor(windowHeight * 0.42)),
-                                    minWidth: 40,
-                                    minHeight: 40,
-                                    width: 40,
-                                    height: 56,
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    borderTopLeftRadius: 14,
-                                    borderBottomLeftRadius: 14,
-                                    borderWidth: 1,
-                                    borderRightWidth: 0,
-                                    borderColor: theme.colors.divider,
-                                    backgroundColor: theme.colors.surface,
-                                    zIndex: 1200,
-                                }}
+                                style={[
+                                    styles.edgeHandle,
+                                    {
+                                        // Once open, keep the handle attached to
+                                        // the drawer's leading edge on the dimmed
+                                        // main side so it cannot cover Hub cards.
+                                        right: open ? panelWidth : 0,
+                                        top: Math.max(safeArea.top + 88, Math.floor(windowHeight * 0.42)),
+                                    },
+                                ]}
                                 testID="right-swipe-panel-edge-handle"
                             >
                                 <View
-                                    style={{
-                                        width: 4,
-                                        height: 24,
-                                        borderRadius: 2,
-                                        backgroundColor: theme.colors.divider,
-                                    }}
+                                    style={styles.edgeHandleBar}
                                 />
                             </Pressable>
                         )}
@@ -615,3 +568,76 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
 export function useRightSwipePanel() {
     return React.useContext(RightSwipePanelContext);
 }
+
+const styles = StyleSheet.create((theme) => ({
+    host: {
+        flex: 1,
+        overflow: 'hidden',
+        backgroundColor: theme.colors.surface,
+    },
+    filmstrip: {
+        flex: 1,
+        flexDirection: 'row',
+    },
+    mainScrim: {
+        pointerEvents: 'none',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: '#000',
+    },
+    panel: {
+        backgroundColor: theme.colors.surface,
+    },
+    closeButton: {
+        alignSelf: 'center',
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    closeGrabber: {
+        width: 36,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: theme.colors.divider,
+        opacity: 0.9,
+    },
+    panelContent: {
+        flex: 1,
+        minHeight: 0,
+    },
+    scrimPressable: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        bottom: 0,
+    },
+    scrimFill: {
+        flex: 1,
+    },
+    edgeHandle: {
+        position: 'absolute',
+        minWidth: 40,
+        minHeight: 40,
+        width: 40,
+        height: 56,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderTopLeftRadius: 14,
+        borderBottomLeftRadius: 14,
+        borderWidth: 1,
+        borderRightWidth: 0,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surface,
+        zIndex: 1200,
+    },
+    edgeHandleBar: {
+        width: 4,
+        height: 24,
+        borderRadius: 2,
+        backgroundColor: theme.colors.divider,
+    },
+}));
