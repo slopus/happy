@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { View, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
+import { useAuth } from '@/auth/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -13,6 +14,7 @@ import { t } from '@/text';
 
 export default function TerminalConnectScreen() {
     const router = useRouter();
+    const auth = useAuth();
     const [publicKey, setPublicKey] = useState<string | null>(null);
     const [hashProcessed, setHashProcessed] = useState(false);
     const { processAuthUrl, isLoading } = useConnectTerminal({
@@ -23,7 +25,7 @@ export default function TerminalConnectScreen() {
 
     // Extract key from hash on web platform
     useEffect(() => {
-        if (Platform.OS === 'web' && typeof window !== 'undefined' && !hashProcessed) {
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && !hashProcessed && auth.isAuthenticated) {
             const hash = window.location.hash;
             if (hash.startsWith('#key=')) {
                 const key = hash.substring(5); // Remove '#key='
@@ -36,7 +38,7 @@ export default function TerminalConnectScreen() {
                 setHashProcessed(true);
             }
         }
-    }, [hashProcessed]);
+    }, [hashProcessed, auth.isAuthenticated]);
 
     const handleConnect = async () => {
         if (publicKey) {
@@ -49,6 +51,15 @@ export default function TerminalConnectScreen() {
     const handleReject = () => {
         router.back();
     };
+
+    // Approving a connection needs account credentials, so a visitor
+    // without an account would crash below. Send them to the welcome
+    // screen to create or restore an account first. The URL hash is
+    // intentionally not cleared in this case so the pairing link still
+    // works when it is opened again after the account exists.
+    if (!auth.isAuthenticated) {
+        return <Redirect href="/" />;
+    }
 
     // Show placeholder for mobile platforms
     if (Platform.OS !== 'web') {
