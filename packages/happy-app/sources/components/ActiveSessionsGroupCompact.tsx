@@ -5,6 +5,7 @@ import { Text } from '@/components/StyledText';
 import { SessionRowData } from '@/sync/storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLastSeen } from '@/utils/sessionUtils';
+import { unreadMayOverride } from '@/utils/sessionUnread';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
@@ -226,8 +227,11 @@ export const CompactSessionRow = React.memo(({ session, selected, showBorder }: 
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
-    const status = session.hasUnread
+    // Override to solid blue when session has unread results — but only for
+    // states that are not themselves live. An unread marker painted over
+    // `permission_required` hides a session that is blocked on the user.
+    const showUnread = session.hasUnread && unreadMayOverride(session.state);
+    const status = showUnread
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
     const navigateToSession = useNavigateToSession();
@@ -271,7 +275,7 @@ export const CompactSessionRow = React.memo(({ session, selected, showBorder }: 
     const renderLeadingIndicator = () => {
         let indicator: React.ReactNode = null;
 
-        if (session.hasUnread) {
+        if (showUnread) {
             indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
         } else if (session.state === 'waiting' && session.hasDraft) {
             indicator = (
