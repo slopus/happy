@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { writeFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AgyBackend, type SpawnFn } from './AgyBackend';
@@ -82,6 +83,55 @@ describe('AgyBackend', () => {
     expect(messages.at(-1)).toMatchObject({ type: 'status', status: 'error' });
   });
 
+  it('rejects an exit-0 turn that produced no stdout and surfaces agy quota logs', async () => {
+    const { child } = makeFakeChild();
+    let logFile = '';
+    const spawnFn = vi.fn((_bin: string, args: string[]) => {
+      const idx = args.indexOf('--log-file');
+      logFile = args[idx + 1];
+      return child;
+    }) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => null,
+    });
+    const messages: AgentMessage[] = [];
+    backend.onMessage((m) => messages.push(m));
+
+    await backend.startSession();
+    const turn = backend.sendPrompt('/work', 'hi');
+    writeFileSync(logFile, 'agent executor error: RESOURCE_EXHAUSTED (code 429): Individual quota reached.\n');
+    child.emit('close', 0);
+
+    await expect(turn).rejects.toThrow(/RESOURCE_EXHAUSTED/);
+    expect(messages.at(-1)).toMatchObject({
+      type: 'status',
+      status: 'error',
+      detail: expect.stringContaining('RESOURCE_EXHAUSTED'),
+    });
+  });
+
+  it('rejects an exit-0 turn that produced no stdout even without a classified agy log error', async () => {
+    const { child } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => null,
+    });
+
+    await backend.startSession();
+    const turn = backend.sendPrompt('/work', 'hi');
+    child.emit('close', 0);
+
+    await expect(turn).rejects.toThrow(/produced no output/);
+  });
+
   it('resumes the captured conversation id on the next turn', async () => {
     const spawnCalls: string[][] = [];
     let current = makeFakeChild();
@@ -104,6 +154,7 @@ describe('AgyBackend', () => {
     // First turn: fresh (no --conversation), then a conversation id appears.
     const t1 = backend.sendPrompt('/work', 'first');
     recorded = 'cid-xyz';
+    current.stdout.emit('data', 'ok');
     current.child.emit('close', 0);
     await t1;
 
@@ -112,6 +163,7 @@ describe('AgyBackend', () => {
     // Second turn: resumes the captured id.
     current = makeFakeChild();
     const t2 = backend.sendPrompt('/work', 'second');
+    current.stdout.emit('data', 'ok');
     current.child.emit('close', 0);
     await t2;
 
@@ -139,6 +191,7 @@ describe('AgyBackend', () => {
     await backend.startSession();
 
     const t1 = backend.sendPrompt('/work', 'first');
+    current.stdout.emit('data', 'ok');
     current.child.emit('close', 0);
     await t1;
     expect(spawnCalls[0]).not.toContain('--conversation');
@@ -146,6 +199,7 @@ describe('AgyBackend', () => {
     // The cache entry never changed, so it was not ours to adopt.
     current = makeFakeChild();
     const t2 = backend.sendPrompt('/work', 'second');
+    current.stdout.emit('data', 'ok');
     current.child.emit('close', 0);
     await t2;
     expect(spawnCalls[1]).not.toContain('--conversation');
@@ -171,12 +225,14 @@ describe('AgyBackend', () => {
 
     const t1 = backend.sendPrompt('/work', 'first');
     recorded = 'fresh-1'; // our turn created a new conversation
+    current.stdout.emit('data', 'ok');
     current.child.emit('close', 0);
     await t1;
     expect(spawnCalls[0]).not.toContain('--conversation');
 
     current = makeFakeChild();
     const t2 = backend.sendPrompt('/work', 'second');
+    current.stdout.emit('data', 'ok');
     current.child.emit('close', 0);
     await t2;
     const idx = spawnCalls[1].indexOf('--conversation');
@@ -204,6 +260,7 @@ describe('AgyBackend', () => {
 
     // Turn 1: cache stays at the stale value → nothing to adopt.
     const t1 = backend.sendPrompt('/work', 'first');
+    current.stdout.emit('data', 'ok');
     current.child.emit('close', 0);
     await t1;
 
@@ -213,11 +270,13 @@ describe('AgyBackend', () => {
 
     current = makeFakeChild();
     const t2 = backend.sendPrompt('/work', 'second');
+    current.stdout.emit('data', 'ok');
     current.child.emit('close', 0);
     await t2;
 
     current = makeFakeChild();
     const t3 = backend.sendPrompt('/work', 'third');
+    current.stdout.emit('data', 'ok');
     current.child.emit('close', 0);
     await t3;
 
@@ -246,6 +305,7 @@ describe('AgyBackend', () => {
 
     const t1 = backend.sendPrompt('/work', 'first');
     recorded = 'mine';
+    current.stdout.emit('data', 'ok');
     current.child.emit('close', 0);
     await t1;
 
@@ -254,11 +314,13 @@ describe('AgyBackend', () => {
 
     current = makeFakeChild();
     const t2 = backend.sendPrompt('/work', 'second');
+    current.stdout.emit('data', 'ok');
     current.child.emit('close', 0);
     await t2;
 
     current = makeFakeChild();
     const t3 = backend.sendPrompt('/work', 'third');
+    current.stdout.emit('data', 'ok');
     current.child.emit('close', 0);
     await t3;
 

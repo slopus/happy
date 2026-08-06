@@ -16,6 +16,9 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { PermissionMode } from '@/api/types';
 import type {
   AgentBackend,
@@ -99,6 +102,7 @@ export class AgyBackend implements AgentBackend {
   }
 
   async sendPrompt(_sessionId: SessionId, prompt: string): Promise<void> {
+    const logFile = join(tmpdir(), `happy-agy-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.log`);
     const args = buildAgyArgs({
       prompt,
       model: this.model,
@@ -106,6 +110,7 @@ export class AgyBackend implements AgentBackend {
       permissionMode: this.permissionMode,
       addDirs: [this.cwd],
       printTimeout: this.printTimeout,
+      logFile,
     });
 
     this.emit({ type: 'status', status: 'running' });
@@ -127,6 +132,8 @@ export class AgyBackend implements AgentBackend {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       this.child = child;
+      let sawModelOutput = false;
+      let stderrText = '';
 
       // Node can fire both 'error' and 'close' on spawn failure; act on the first only.
       let settled = false;
@@ -144,6 +151,9 @@ export class AgyBackend implements AgentBackend {
       child.stdout?.setEncoding('utf8');
       child.stdout?.on('data', (chunk: string) => {
         if (chunk) {
+          if (chunk.trim().length > 0) {
+            sawModelOutput = true;
+          }
           this.emit({ type: 'model-output', textDelta: chunk });
         }
       });
@@ -152,6 +162,7 @@ export class AgyBackend implements AgentBackend {
       child.stderr?.on('data', (chunk: string) => {
         const text = chunk.trimEnd();
         if (text) {
+          stderrText += `${text}\n`;
           this.log(`stderr: ${text}`);
         }
       });
@@ -191,6 +202,12 @@ export class AgyBackend implements AgentBackend {
         }
 
         if (code === 0) {
+          if (!sawModelOutput) {
+            const detail = this.describeEmptyOutput(logFile, stderrText);
+            this.emit({ type: 'status', status: 'error', detail });
+            reject(new Error(detail));
+            return;
+          }
           this.emit({ type: 'status', status: 'idle' });
           resolve();
         } else {
@@ -200,6 +217,27 @@ export class AgyBackend implements AgentBackend {
         }
       });
     });
+  }
+
+  private describeEmptyOutput(logFile: string, stderrText: string): string {
+    const logText = existsSync(logFile) ? readFileSync(logFile, 'utf8') : '';
+    const hay = `${stderrText}\n${logText}`;
+    const lower = hay.toLowerCase();
+    const resourceExhausted = hay.match(/RESOURCE_EXHAUSTED[^\n]*/);
+    if (resourceExhausted) {
+      return `agy produced no output: ${resourceExhausted[0]}`;
+    }
+    const quota = hay.match(/(?:quota|usage limit|rate limit|too many requests|429)[^\n]*/i);
+    if (quota) {
+      return `agy produced no output: ${quota[0]}`;
+    }
+    if (lower.includes('not logged into antigravity') || lower.includes('failed to get oauth token')) {
+      return 'agy produced no output: not logged into Antigravity';
+    }
+    if (lower.includes('auth') && lower.includes('failed')) {
+      return 'agy produced no output: Antigravity authentication failed';
+    }
+    return 'agy exited successfully but produced no output';
   }
 
   async cancel(_sessionId?: SessionId): Promise<void> {
