@@ -87,13 +87,13 @@ export const MarkdownView = React.memo((props: {
                     } else if (block.type === 'numbered-list') {
                         return <RenderNumberedListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onLinkPress={handleLinkPress} variant={variant} />;
                     } else if (block.type === 'code-block') {
-                        return <RenderCodeBlock content={block.content} language={block.language} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                        return <RenderCodeBlock content={block.content} language={block.language} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} variant={variant} />;
                     } else if (block.type === 'mermaid') {
                         return <MermaidRenderer content={block.content} key={index} />;
                     } else if (block.type === 'options') {
                         return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} variant={variant} />;
                     } else if (block.type === 'table') {
-                        return <RenderTableBlock headers={block.headers} rows={block.rows} onLinkPress={handleLinkPress} selectable={selectable} key={index} first={index === 0} last={index === blocks.length - 1} />;
+                        return <RenderTableBlock headers={block.headers} rows={block.rows} onLinkPress={handleLinkPress} selectable={selectable} key={index} first={index === 0} last={index === blocks.length - 1} variant={variant} />;
                     } else if (block.type === 'image') {
                         return <RenderImageBlock url={block.url} alt={block.alt} key={index} first={index === 0} last={index === blocks.length - 1} />;
                     } else if (block.type === 'ota-preview') {
@@ -186,8 +186,10 @@ function RenderNumberedListBlock(props: { items: { number: number, depth: number
     );
 }
 
-function RenderCodeBlock(props: { content: string, language: string | null, first: boolean, last: boolean, selectable: boolean }) {
+function RenderCodeBlock(props: { content: string, language: string | null, first: boolean, last: boolean, selectable: boolean, variant: MarkdownViewVariant }) {
+    const { theme } = useUnistyles();
     const [isHovered, setIsHovered] = React.useState(false);
+    const foldedPrompt = props.variant === 'foldedPrompt';
 
     const copyCode = React.useCallback(async () => {
         try {
@@ -201,7 +203,7 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
 
     return (
         <View
-            style={[style.codeBlock, props.first && style.first, props.last && style.last]}
+            style={[style.codeBlock, foldedPrompt && style.foldedCodeBlock, props.first && style.first, props.last && style.last]}
             // @ts-ignore - Web only events
             onMouseEnter={() => setIsHovered(true)}
             // @ts-ignore - Web only events
@@ -209,13 +211,15 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
         >
             {props.language && <Text selectable={props.selectable} style={style.codeLanguage}>{props.language}</Text>}
             <HorizontalScrollView
-                contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16, alignItems: 'flex-start' }}
+                contentContainerStyle={foldedPrompt ? style.foldedCodeContent : style.codeContent}
                 testID="markdown-code-scroll"
             >
                 <SimpleSyntaxHighlighter
                     code={props.content}
                     language={props.language}
                     selectable={props.selectable}
+                    textStyle={foldedPrompt ? style.foldedCodeText : undefined}
+                    monochromeColor={foldedPrompt ? theme.colors.textSecondary : undefined}
                 />
             </HorizontalScrollView>
             <View
@@ -570,12 +574,16 @@ function RenderTableBlock(props: {
     onLinkPress: (url: string) => void,
     selectable: boolean,
     first: boolean,
-    last: boolean
+    last: boolean,
+    variant: MarkdownViewVariant,
 }) {
     const columnCount = props.headers.length;
     const rowCount = props.rows.length;
     const isLastCol = (colIndex: number) => colIndex === columnCount - 1;
     const isLastRow = (rowIndex: number) => rowIndex === rowCount - 1;
+    const foldedPrompt = props.variant === 'foldedPrompt';
+    const headerTextStyle = foldedPrompt ? [style.tableHeaderText, style.foldedTableHeaderText] : style.tableHeaderText;
+    const cellTextStyle = foldedPrompt ? [style.tableCellText, style.foldedTableCellText] : style.tableCellText;
 
     const columnWidths = React.useMemo(() => {
         const widths = new Array(columnCount).fill(0);
@@ -591,7 +599,7 @@ function RenderTableBlock(props: {
     }, [props.headers, props.rows, columnCount]);
 
     return (
-        <View style={[style.tableContainer, props.first && style.first, props.last && style.last]}>
+        <View style={[style.tableContainer, foldedPrompt && style.foldedTableContainer, props.first && style.first, props.last && style.last]}>
             {/* flexGrow:0 stops iOS from stretching the horizontal ScrollView
                 vertically to fill the parent — the cause of the table's frame
                 extending down past the last row into empty space. */}
@@ -602,10 +610,10 @@ function RenderTableBlock(props: {
                         {props.headers.map((header, colIndex) => (
                             <View
                                 key={`header-${colIndex}`}
-                                style={[style.tableCell, style.tableHeaderCell, { width: columnWidths[colIndex] }, !isLastCol(colIndex) && style.tableCellBorderRight]}
+                                style={[style.tableCell, foldedPrompt && style.foldedTableCell, style.tableHeaderCell, { width: columnWidths[colIndex] }, !isLastCol(colIndex) && style.tableCellBorderRight]}
                             >
-                                <Text style={style.tableHeaderText}>
-                                    <RenderSpans spans={header} baseStyle={style.tableHeaderText} onLinkPress={props.onLinkPress} selectable={props.selectable} />
+                                <Text style={headerTextStyle}>
+                                    <RenderSpans spans={header} baseStyle={headerTextStyle} onLinkPress={props.onLinkPress} selectable={props.selectable} variant={props.variant} />
                                 </Text>
                             </View>
                         ))}
@@ -619,10 +627,10 @@ function RenderTableBlock(props: {
                             {props.headers.map((_, colIndex) => (
                                 <View
                                     key={`cell-${rowIndex}-${colIndex}`}
-                                    style={[style.tableCell, { width: columnWidths[colIndex] }, !isLastCol(colIndex) && style.tableCellBorderRight]}
+                                    style={[style.tableCell, foldedPrompt && style.foldedTableCell, { width: columnWidths[colIndex] }, !isLastCol(colIndex) && style.tableCellBorderRight]}
                                 >
-                                    <Text style={style.tableCellText}>
-                                        <RenderSpans spans={row[colIndex] ?? []} baseStyle={style.tableCellText} onLinkPress={props.onLinkPress} selectable={props.selectable} />
+                                    <Text style={cellTextStyle}>
+                                        <RenderSpans spans={row[colIndex] ?? []} baseStyle={cellTextStyle} onLinkPress={props.onLinkPress} selectable={props.selectable} variant={props.variant} />
                                     </Text>
                                 </View>
                             ))}
@@ -706,7 +714,7 @@ const style = StyleSheet.create((theme) => ({
     },
     foldedHeader: {
         ...Typography.mono(),
-        color: theme.colors.text,
+        color: theme.colors.textSecondary,
         fontSize: 13,
         lineHeight: 18,
         fontWeight: '600',
@@ -792,6 +800,19 @@ const style = StyleSheet.create((theme) => ({
         zIndex: 1,
         width: '100%',
     },
+    foldedCodeBlock: {
+        marginVertical: 6,
+    },
+    codeContent: {
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+        alignItems: 'flex-start',
+    },
+    foldedCodeContent: {
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        alignItems: 'flex-start',
+    },
     copyButtonWrapper: {
         position: 'absolute',
         top: 8,
@@ -818,6 +839,10 @@ const style = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         fontSize: 14,
         lineHeight: 20,
+    },
+    foldedCodeText: {
+        fontSize: 12,
+        lineHeight: 18,
     },
     horizontalRule: {
         height: 1,
@@ -1119,6 +1144,9 @@ const style = StyleSheet.create((theme) => ({
         maxWidth: '100%',
         alignSelf: 'flex-start',
     },
+    foldedTableContainer: {
+        marginVertical: 6,
+    },
     tableRow: {
         flexDirection: 'row',
         alignItems: 'stretch',
@@ -1137,6 +1165,10 @@ const style = StyleSheet.create((theme) => ({
         alignItems: 'flex-start',
         flexShrink: 0,
     },
+    foldedTableCell: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+    },
     tableCellBorderRight: {
         borderRightWidth: 1,
         borderRightColor: theme.colors.divider,
@@ -1150,11 +1182,25 @@ const style = StyleSheet.create((theme) => ({
         fontSize: 16,
         lineHeight: 24,
     },
+    foldedTableHeaderText: {
+        ...Typography.mono(),
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        lineHeight: 18,
+        fontWeight: '600',
+    },
     tableCellText: {
         ...Typography.default(),
         color: theme.colors.text,
         fontSize: 16,
         lineHeight: 24,
+    },
+    foldedTableCellText: {
+        ...Typography.mono(),
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        lineHeight: 18,
+        fontWeight: '400',
     },
 
     // Add global style for Web platform (Unistyles supports this via compiler plugin)

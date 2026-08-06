@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, Text, View } from 'react-native';
+import { Platform, Text, View, type StyleProp, type TextStyle } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 
@@ -8,6 +8,8 @@ interface SimpleSyntaxHighlighterProps {
   language: string | null;
   selectable: boolean;
   testID?: string;
+  textStyle?: StyleProp<TextStyle>;
+  monochromeColor?: string;
 }
 
 // Get theme-aware colors
@@ -253,6 +255,8 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
   language,
   selectable,
   testID,
+  textStyle,
+  monochromeColor,
 }) => {
   const { theme } = useUnistyles();
   const colors = getColors(theme);
@@ -304,19 +308,22 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
     >
       <Text 
         selectable={selectable}
-        style={{ 
-          fontFamily: Typography.mono().fontFamily,
-          fontSize: 14,
-          lineHeight: 20,
-          ...(Platform.OS === 'web' ? ({ whiteSpace: 'pre' } as any) : {}),
-        }}
+        style={[
+          {
+            fontFamily: Typography.mono().fontFamily,
+            fontSize: 14,
+            lineHeight: 20,
+            ...(Platform.OS === 'web' ? ({ whiteSpace: 'pre' } as any) : {}),
+          },
+          textStyle,
+        ]}
       >
         {tokens.map((token, index) => (
           <Text
             key={index}
             selectable={selectable}
             style={{
-              color: getColorForType(token.type, token.nestLevel),
+              color: monochromeColor ?? getColorForType(token.type, token.nestLevel),
               fontFamily: Typography.mono().fontFamily,
               fontWeight: ['keyword', 'controlFlow', 'type', 'function'].includes(token.type) ? '600' : '400',
             }}
