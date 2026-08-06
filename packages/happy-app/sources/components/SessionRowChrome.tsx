@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Platform, Pressable, View, useWindowDimensions, type PressableProps } from 'react-native';
 import { createPortal } from 'react-dom';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
@@ -319,14 +319,21 @@ export const SessionRowActions = React.memo(function SessionRowActions({
                         </Text>
                         <SessionRowActionButton
                             active={quickActions.sessionPinned}
-                            icon="star"
+                            icon="pin"
                             label={quickActions.sessionPinned ? t('sessionInfo.unpinSession') : t('sessionInfo.pinSession')}
                             onPress={handleAction(quickActions.togglePinSession)}
                             testID="session-row-pin-action"
                         />
                         <SessionRowActionButton
+                            disabled={quickActions.deletingSession}
+                            icon="trash"
+                            label={t('sessionInfo.deleteSession')}
+                            onPress={handleAction(quickActions.deleteSession)}
+                            testID="session-row-delete-action"
+                        />
+                        <SessionRowActionButton
                             disabled={quickActions.archivingSession || quickActions.restoringSession}
-                            icon={sessionArchived ? 'rotate-ccw' : 'archive'}
+                            icon={sessionArchived ? 'undo' : 'archive'}
                             label={sessionArchived ? t('sessionInfo.restoreSession') : t('sessionInfo.archiveSession')}
                             onPress={handleAction(sessionArchived ? quickActions.restoreSession : quickActions.archiveSession)}
                             testID={sessionArchived ? 'session-row-restore-action' : 'session-row-archive-action'}
@@ -335,7 +342,7 @@ export const SessionRowActions = React.memo(function SessionRowActions({
                 ) : null}
                 {useMoreAction ? (
                     <SessionRowActionButton
-                        icon="more-horizontal"
+                        icon="kebab-horizontal"
                         label={t('sessionInfo.sessionRowMoreActions')}
                         onPress={openMenu}
                         testID="session-row-more-action"
@@ -364,7 +371,7 @@ const SessionRowActionButton = React.memo(function SessionRowActionButton({
 }: {
     active?: boolean;
     disabled?: boolean;
-    icon: React.ComponentProps<typeof Feather>['name'];
+    icon: React.ComponentProps<typeof Octicons>['name'];
     label: string;
     onPress: NonNullable<PressableProps['onPress']>;
     testID: string;
@@ -393,10 +400,12 @@ const SessionRowActionButton = React.memo(function SessionRowActionButton({
                 ]}
                 testID={testID}
             >
-                <Feather
+                <Octicons
                     color={active ? theme.colors.accent : theme.colors.textSecondary}
+                    dataSet={{ iconName: icon }}
                     name={icon}
                     size={17}
+                    testID={`${testID}-icon`}
                 />
             </Pressable>
             <DesktopShortcutTooltip
