@@ -340,6 +340,15 @@ export async function claudeRemote(opts: {
                     isCompactCommand = false;
                 }
 
+                // A result carrying an error never reaches the chat, so a
+                // safeguards refusal or an API failure reads as the session
+                // simply going quiet. Surface the text as a status line.
+                const resultMessage = message as unknown as { is_error?: boolean; result?: string };
+                if (resultMessage.is_error && typeof resultMessage.result === 'string' && resultMessage.result.trim() && opts.onCompletionEvent) {
+                    const text = resultMessage.result.trim();
+                    opts.onCompletionEvent(`⚠️ ${text.length > 400 ? text.slice(0, 400) + '…' : text}`);
+                }
+
                 // Send ready event
                 opts.onReady();
 
