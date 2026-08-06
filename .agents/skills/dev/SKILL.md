@@ -166,7 +166,23 @@ togglable from the dev settings screen).
 
 ## Releasing
 
-Do not publish by hand. Use `/release` — it handles npm publish, git tags, GitHub releases, and the smoke check.
+After a PR is merged, inspect the merged diff and route the delivery handoff by
+the actual user-visible platform. Do not use `packages/happy-app` as a synonym
+for mobile because it also contains PC Web:
+
+- Mobile-only, OTA-compatible App change -> offer `发布 App preview OTA`.
+- PC/Web-only change -> offer `部署 Happy Web`.
+- Shared mobile + PC/Web change -> offer the combined release first, with
+  single-target choices only when useful.
+- No user-visible runtime change -> do not invent a release option.
+
+When structured response options are available, include only the choices that
+match this classification. Never end a PC/Web PR by asking only whether to
+publish preview OTA. If the user selects a release action, use `/release` for
+the target-specific checks, deployment, and smoke verification.
+
+Do not publish by hand. Use `/release` — it handles npm publishing, OTA, Web
+deployment, git tags, GitHub releases, and the relevant smoke checks.
 
 ## Troubleshooting
 
