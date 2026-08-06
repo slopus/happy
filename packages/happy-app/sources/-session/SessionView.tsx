@@ -1032,9 +1032,15 @@ export function SessionViewLoaded({
             onMicPress={(embedded || isDisconnected) ? undefined : micButtonState.onMicPress}
             isMicActive={(embedded || isDisconnected) ? false : micButtonState.isMicActive}
             onAbort={isDisconnected || !rigCanAbort(session.metadata) ? undefined : handleAbort}
-            showAbortButton={rigCanAbort(session.metadata) && (Platform.OS === 'web'
-                ? sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'
-                : sessionStatus.state === 'thinking')}
+            showAbortButton={rigCanAbort(session.metadata) && (
+                sessionStatus.state === 'thinking'
+                // A pending selection (AskUserQuestion / permission request) parks the
+                // session in 'permission_required', where the agent is blocked inside the
+                // tool call — aborting is the only way to ignore the choices and keep
+                // typing, so Stop has to stay reachable on every platform.
+                || sessionStatus.state === 'permission_required'
+                || (Platform.OS === 'web' && sessionStatus.state === 'waiting')
+            )}
             onFileViewerPress={experiments && !isTablet && rigCanBrowseFiles(session.metadata) && rigCanReadFiles(session.metadata) ? handleFileViewerPress : undefined}
             selectedImages={expImageUpload && canUseAttachments ? selectedImages : undefined}
             onPickImages={expImageUpload && canUseAttachments ? pickImages : undefined}
