@@ -408,6 +408,97 @@ async function createConnectedE2EFileSession(request: APIRequestContext): Promis
     };
 }
 
+async function createConnectedE2EAbortSession(request: APIRequestContext): Promise<{
+    abortCalls: Array<{ reason?: string } | null>;
+    client: { close: () => void };
+    sessionId: string;
+}> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少创建停止快捷键 E2E 会话所需的本地认证配置。');
+    }
+
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+    const sessionId = await createE2ESession(request, {
+        name: 'Double Escape abort regression',
+        summary: 'Confirm abort only after pressing Escape twice',
+    });
+    const abortCalls: Array<{ reason?: string } | null> = [];
+    const rpcSocket = io(e2eServerUrl, {
+        auth: {
+            token,
+            clientType: 'session-scoped',
+            sessionId,
+            happyClient: 'playwright-abort-rpc',
+        },
+        autoConnect: false,
+        path: '/v1/updates',
+        reconnection: false,
+        transports: ['websocket'],
+    });
+
+    rpcSocket.on('rpc-request', (
+        data: { method: string; params: string },
+        callback: (response: string) => void,
+    ) => {
+        const params = decryptLegacy(
+            decodeBase64(data.params),
+            encryptionKey,
+        ) as { reason?: string } | null;
+        const isAbort = data.method === `${sessionId}:abort`;
+        if (isAbort) {
+            abortCalls.push(params);
+        }
+        callback(encodeBase64(encryptLegacy(
+            isAbort ? { success: true } : { success: false, error: 'Unknown E2E RPC request' },
+            encryptionKey,
+        )));
+    });
+    const pulse = () => rpcSocket.emit('session-alive', {
+        sid: sessionId,
+        time: Date.now(),
+        thinking: true,
+    });
+
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('停止快捷键 E2E RPC 连接超时。')), 10_000);
+            const handleConnectError = (error: Error) => {
+                clearTimeout(timeout);
+                reject(error);
+            };
+            rpcSocket.once('connect_error', handleConnectError);
+            rpcSocket.once('connect', () => {
+                rpcSocket.off('connect_error', handleConnectError);
+                rpcSocket.once('rpc-registered', () => {
+                    clearTimeout(timeout);
+                    pulse();
+                    resolve();
+                });
+                rpcSocket.emit('rpc-register', { method: `${sessionId}:abort` });
+            });
+            rpcSocket.connect();
+        });
+    } catch (error) {
+        rpcSocket.close();
+        throw error;
+    }
+    const keepAlive = setInterval(pulse, 500);
+
+    return {
+        abortCalls,
+        client: {
+            close: () => {
+                clearInterval(keepAlive);
+                rpcSocket.close();
+            },
+        },
+        sessionId,
+    };
+}
+
 async function createConnectedE2EWorkingDirectorySession(request: APIRequestContext): Promise<{
     client: { close: () => Promise<void>; pulse: () => void };
     currentPath: string;
@@ -1829,6 +1920,50 @@ test('超宽桌面左右侧栏保持各自最大宽度', async ({ page }) => {
         path: 'test-results/pc-panel-bounds-after-1920x1080.png',
         fullPage: true,
     });
+});
+
+test('PC 端连续按两次 Esc 才发送停止指令', async ({ page, request }, testInfo) => {
+    const fixture = await createConnectedE2EAbortSession(request);
+
+    try {
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
+
+        const input = page.getByTestId('session-message-input');
+        await expect(input).toBeVisible();
+        await expect(page.locator('[data-testid="message-composer-abort-button"]:visible')).toBeVisible();
+        await page.screenshot({
+            path: testInfo.outputPath('pc-double-escape-before.png'),
+            fullPage: true,
+        });
+
+        await input.press('Escape');
+        const armedAbortButton = page.locator('[data-testid="message-composer-abort-button"]:visible');
+        await expect(armedAbortButton).toHaveText('Esc');
+        expect(fixture.abortCalls).toHaveLength(0);
+        await page.screenshot({
+            path: testInfo.outputPath('pc-double-escape-after-first-escape.png'),
+            fullPage: true,
+        });
+
+        await input.press('Escape');
+        await expect.poll(() => fixture.abortCalls.length).toBe(1);
+        const readyAbortButton = page.locator('[data-testid="message-composer-abort-button"]:visible');
+        await expect(readyAbortButton).toBeVisible();
+        await expect(readyAbortButton).toBeEnabled();
+
+        // A running task can still be stopped with the shortcut while a
+        // supplemental message has temporarily changed the primary action to send.
+        await input.fill('Additional context while the task is running');
+        await expect(page.locator('[data-testid="message-composer-send-button"]:visible')).toBeVisible();
+        await input.press('Escape');
+        await expect(page.locator('[data-testid="message-composer-abort-button"]:visible')).toHaveText('Esc');
+        expect(fixture.abortCalls).toHaveLength(1);
+        await input.press('Escape');
+        await expect.poll(() => fixture.abortCalls.length).toBe(2);
+    } finally {
+        fixture.client.close();
+    }
 });
 
 test('活跃会话页面复用左右拖拽与折叠约束', async ({ page, request }) => {

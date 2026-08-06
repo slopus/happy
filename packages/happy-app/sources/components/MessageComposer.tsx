@@ -36,6 +36,7 @@ import {
     type SessionComposerDirectorySelectorConfig,
 } from './SessionComposerDirectorySelector';
 import { resolveComposerPrimaryAction } from './composerPrimaryAction';
+import { useComposerAbortConfirmation } from '@/hooks/useComposerAbortConfirmation';
 
 interface MessageComposerProps {
     // Drives layout differences between the home compose box and the in-session
@@ -208,6 +209,12 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     sendButtonIcon: {
         color: theme.colors.button.primary.tint,
+    },
+    abortConfirmationLabel: {
+        color: theme.colors.button.primary.tint,
+        fontSize: 12,
+        lineHeight: 16,
+        ...Typography.default('semiBold'),
     },
     imagePickerButton: {
         width: 40,
@@ -759,6 +766,18 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         }
     }, [props.onAbort]);
 
+    const {
+        confirm: confirmAbortShortcut,
+        handleEscape: handleAbortEscape,
+        isArmed: isAbortConfirmationArmed,
+    } = useComposerAbortConfirmation({
+        enabled: Platform.OS === 'web'
+            && Boolean(props.showAbortButton)
+            && Boolean(props.onAbort)
+            && !isAborting,
+        onConfirm: handleAbortPress,
+    });
+
     const handleBlockedSendAttempt = React.useCallback(() => {
         if (!isSendBlocked || !hasText || props.isSending) return;
         hapticsError();
@@ -809,8 +828,12 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             }
         }
 
-        // Handle Escape for abort when no suggestions are visible
+        // On PC, Escape uses a recoverable two-step confirmation. Native keeps
+        // the existing one-press hardware-keyboard behavior.
         if (event.key === 'Escape' && props.showAbortButton && props.onAbort && !isAborting) {
+            if (Platform.OS === 'web') {
+                return handleAbortEscape();
+            }
             handleAbortPress();
             return true;
         }
@@ -837,7 +860,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             }
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.onSend, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
 
 
 
@@ -1131,13 +1154,13 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     ref={shakerRef}
                                     style={[
                                         styles.sendButton,
-                                        (isAbortAction || canPressSendButton || props.isSending)
+                                        (isAbortAction || isAbortConfirmationArmed || canPressSendButton || props.isSending)
                                             ? styles.sendButtonActive
                                             : styles.sendButtonInactive
                                     ]}
                                 >
                                     <Pressable
-                                        testID={isAbortAction
+                                        testID={(isAbortAction || isAbortConfirmationArmed)
                                             ? 'message-composer-abort-button'
                                             : 'message-composer-send-button'}
                                         accessibilityRole="button"
@@ -1149,14 +1172,23 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             opacity: p.pressed ? 0.7 : 1,
                                         })}
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        onPress={isAbortAction ? handleAbortPress : handleSendPress}
-                                        disabled={isAbortAction ? isAborting : !canPressSendButton}
+                                        onPress={isAbortConfirmationArmed
+                                            ? confirmAbortShortcut
+                                            : isAbortAction
+                                                ? handleAbortPress
+                                                : handleSendPress}
+                                        disabled={(isAbortAction || isAbortConfirmationArmed)
+                                            ? isAborting
+                                            : !canPressSendButton}
                                     >
-                                        {(isAbortAction && isAborting) || (!isAbortAction && props.isSending) ? (
+                                        {((isAbortAction || isAbortConfirmationArmed) && isAborting)
+                                            || (!isAbortAction && !isAbortConfirmationArmed && props.isSending) ? (
                                             <ActivityIndicator
                                                 size="small"
                                                 color={theme.colors.button.primary.tint}
                                             />
+                                        ) : isAbortConfirmationArmed ? (
+                                            <Text style={styles.abortConfirmationLabel}>Esc</Text>
                                         ) : isAbortAction ? (
                                             <Octicons
                                                 name="square-fill"
