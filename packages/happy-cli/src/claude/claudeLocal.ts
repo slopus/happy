@@ -12,6 +12,8 @@ import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
+import { mapToClaudeMode } from "./utils/permissionMode";
+import type { PermissionMode } from "@/api/types";
 
 /**
  * Error thrown when the Claude process exits with a non-zero exit code.
@@ -47,6 +49,7 @@ export async function claudeLocal(opts: {
     /** Path to temporary settings file with SessionStart hook (optional - for session tracking) */
     hookSettingsPath?: string,
     sandboxConfig?: SandboxConfig,
+    permissionMode?: PermissionMode,
 }) {
 
     // Ensure project directory exists
@@ -242,6 +245,19 @@ export async function claudeLocal(opts: {
             // Add custom Claude arguments
             if (opts.claudeArgs) {
                 args.push(...opts.claudeArgs)
+            }
+
+            // Forward the resolved permission mode to Claude. Local mode does not
+            // install --permission-prompt-tool (unlike daemon/remote mode, which
+            // intercepts canUseTool via the SDK), so Claude manages permissions
+            // itself and must be told the mode explicitly. Without this,
+            // `--permission-mode bypassPermissions` is silently dropped in local
+            // mode and Claude falls back to default/manual.
+            if (opts.permissionMode) {
+                const claudeMode = mapToClaudeMode(opts.permissionMode);
+                if (claudeMode !== 'default') {
+                    args.push('--permission-mode', claudeMode);
+                }
             }
 
             // Add hook settings for session tracking (when available)
