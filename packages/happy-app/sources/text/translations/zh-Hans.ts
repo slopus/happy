@@ -244,6 +244,8 @@ export const zhHans: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
         imageUploadSubtitle: '将图片附加到消息中，以便受支持的代理进行分析',
+        mermaidZoom: '点按缩放图表',
+        mermaidZoomSubtitle: '全屏打开 Mermaid 图表并支持双指缩放',
     },
 
     errors: {

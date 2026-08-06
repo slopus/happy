@@ -19,6 +19,7 @@ export default function FeaturesSettingsScreen() {
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [expImageUpload, setExpImageUpload] = useSettingMutable('expImageUpload');
     const [sortSessionsByActivity, setSortSessionsByActivity] = useSettingMutable('sortSessionsByActivity');
+    const [expMermaidZoom, setExpMermaidZoom] = useSettingMutable('expMermaidZoom');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -114,6 +115,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={expResumeSession}
                             onValueChange={setExpResumeSession}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.mermaidZoom')}
+                    subtitle={t('settingsFeatures.mermaidZoomSubtitle')}
+                    icon={<Ionicons name="git-network-outline" size={29} color="#AF52DE" />}
+                    rightElement={
+                        <Switch
+                            value={expMermaidZoom}
+                            onValueChange={setExpMermaidZoom}
                         />
                     }
                     showChevron={false}

@@ -243,6 +243,8 @@ export const es: TranslationStructure = {
         analyticsEnabled: 'Analítica anónima de uso activa',
         imageUpload: 'Subida de imágenes',
         imageUploadSubtitle: 'Adjunta imágenes a los mensajes para que los agentes compatibles las analicen',
+        mermaidZoom: 'Toca para ampliar diagramas',
+        mermaidZoomSubtitle: 'Abre diagramas Mermaid en pantalla completa con zoom de pellizco',
     },
 
     errors: {
