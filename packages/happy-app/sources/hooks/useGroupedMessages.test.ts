@@ -640,6 +640,7 @@ describe('useGroupedMessages', () => {
             type: 'tool-group',
             id: 'group-tool-only',
             hasPendingPermission: false,
+            messages: [{ id: 'tool-only' }],
         });
     });
 

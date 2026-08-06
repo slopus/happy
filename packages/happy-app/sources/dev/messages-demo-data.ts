@@ -182,6 +182,29 @@ export const activityStatusDemoEnvelopes: Array<Record<string, unknown>> = [
         ev: { t: 'text', text: 'The Skill is loaded, implementation is still running, and the nested review has completed.' },
     },
     {
+        id: 'activity-standalone-bash-start',
+        time: activityDemoBaseTime + 6_200,
+        role: 'agent',
+        turn: 'activity-turn',
+        ev: {
+            t: 'tool-call-start',
+            call: 'activity-standalone-bash-call',
+            name: 'Bash',
+            title: 'Render the Blender demo preview',
+            description: 'Render the Blender demo preview',
+            args: {
+                command: 'DEMO_RENDER_ANIMATION=0 ./render_demo.sh',
+            },
+        },
+    },
+    {
+        id: 'activity-standalone-bash-end',
+        time: activityDemoBaseTime + 6_400,
+        role: 'agent',
+        turn: 'activity-turn',
+        ev: { t: 'tool-call-end', call: 'activity-standalone-bash-call', status: 'completed' },
+    },
+    {
         id: 'activity-turn-end',
         time: activityDemoBaseTime + 6_500,
         role: 'agent',

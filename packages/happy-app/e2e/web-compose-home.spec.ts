@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Locator, type Page, type Route } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator, type Page, type Route, type TestInfo } from '@playwright/test';
 import fs, { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { join } from 'node:path';
@@ -11,6 +11,17 @@ import {
 
 const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL!;
 const e2eServerUrl = process.env.HAPPY_E2E_SERVER_URL!;
+const standaloneToolEvidenceDirectory = process.env.HAPPY_STANDALONE_TOOL_EVIDENCE_DIR;
+const standaloneToolEvidencePhase = process.env.HAPPY_STANDALONE_TOOL_EVIDENCE_PHASE ?? 'after';
+
+function standaloneToolScreenshotPath(testInfo: TestInfo): string {
+    const filename = `case-1-${standaloneToolEvidencePhase}.png`;
+    if (!standaloneToolEvidenceDirectory) {
+        return testInfo.outputPath(filename);
+    }
+    fs.mkdirSync(standaloneToolEvidenceDirectory, { recursive: true });
+    return path.join(standaloneToolEvidenceDirectory, filename);
+}
 
 function authenticatedRoute(pathname: string): string {
     const url = new URL(authenticatedWebUrl);
@@ -2852,6 +2863,39 @@ test.describe('中文 Web 安全组件演示主题与语义', () => {
 
 test.describe('中文 Web 消息与工具演示', () => {
     test.use({ locale: 'zh-CN' });
+
+    test('[STANDALONE-TOOL] 单条终端调用复用紧凑折叠行', async ({ page }, testInfo) => {
+        await page.setViewportSize({ width: 1100, height: 820 });
+        const url = new URL(authenticatedRoute('/dev/messages-demo'));
+        url.searchParams.set('demo', 'activity-status');
+        await page.goto(url.toString());
+
+        const skillRow = page.getByTestId('activity-skill-obsidian-tools:ob-chat');
+        const command = page.getByText('DEMO_RENDER_ANIMATION=0 ./render_demo.sh', { exact: true });
+        await expect(skillRow).toBeVisible();
+
+        if (standaloneToolEvidencePhase === 'before') {
+            await expect(page.getByText('终端', { exact: true })).toBeVisible();
+            await expect(command).toBeVisible();
+            await expect(page.getByText('执行了 1 个命令', { exact: true })).toHaveCount(0);
+        } else {
+            const compactGroup = page.getByText('执行了 1 个命令', { exact: true });
+            await expect(compactGroup).toBeVisible();
+            await expect(command).toHaveCount(0);
+
+            const compactRowHeight = await compactGroup.locator('..').evaluate((element) => (
+                element.getBoundingClientRect().height
+            ));
+            const skillRowHeight = await skillRow.evaluate((element) => element.getBoundingClientRect().height);
+            expect(Math.abs(compactRowHeight - skillRowHeight)).toBeLessThanOrEqual(2);
+        }
+
+        expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+        await page.screenshot({
+            path: standaloneToolScreenshotPath(testInfo),
+            fullPage: true,
+        });
+    });
 
     test('对话明确展示 Skill 名称与子 Agent 生命周期状态', async ({ page }, testInfo) => {
         await page.setViewportSize({ width: 1100, height: 820 });
