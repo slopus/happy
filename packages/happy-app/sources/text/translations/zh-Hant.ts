@@ -1366,6 +1366,8 @@ export const zhHant: TranslationStructure = {
         foldedPromptSummary: ({ lines, chars }: { lines: number; chars: number }) => `${lines} 行 · ${chars} 字元`,
         showPrompt: '展開',
         hidePrompt: '收起',
+        editInput: '編輯',
+        sendEdit: '傳送',
     },
 
     codex: {

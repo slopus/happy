@@ -256,6 +256,7 @@ Notes:
   allowedTools?: string[] | null;
   disallowedTools?: string[] | null;
   displayText?: string;
+  editedFromMessageId?: string;
 }
 ```
 

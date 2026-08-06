@@ -1270,6 +1270,8 @@ export const ru: TranslationStructure = {
         foldedPromptSummary: ({ lines, chars }: { lines: number; chars: number }) => `${lines} строк · ${chars} симв.`,
         showPrompt: 'Показать',
         hidePrompt: 'Скрыть',
+        editInput: 'Редактировать',
+        sendEdit: 'Отправить',
     },
 
     codex: {

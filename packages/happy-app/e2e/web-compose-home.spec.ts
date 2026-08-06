@@ -412,6 +412,7 @@ async function createConnectedE2EAbortSession(request: APIRequestContext): Promi
     abortCalls: Array<{ reason?: string } | null>;
     client: { close: () => void };
     sessionId: string;
+    setThinking: (thinking: boolean) => void;
 }> {
     const authUrl = new URL(authenticatedWebUrl);
     const token = authUrl.searchParams.get('dev_token');
@@ -456,10 +457,11 @@ async function createConnectedE2EAbortSession(request: APIRequestContext): Promi
             encryptionKey,
         )));
     });
+    let thinking = true;
     const pulse = () => rpcSocket.emit('session-alive', {
         sid: sessionId,
         time: Date.now(),
-        thinking: true,
+        thinking,
     });
 
     try {
@@ -496,6 +498,10 @@ async function createConnectedE2EAbortSession(request: APIRequestContext): Promi
             },
         },
         sessionId,
+        setThinking: (nextThinking: boolean) => {
+            thinking = nextThinking;
+            pulse();
+        },
     };
 }
 
@@ -1961,6 +1967,67 @@ test('PC 端连续按两次 Esc 才发送停止指令', async ({ page, request }
         expect(fixture.abortCalls).toHaveLength(1);
         await input.press('Escape');
         await expect.poll(() => fixture.abortCalls.length).toBe(2);
+    } finally {
+        fixture.client.close();
+    }
+});
+
+test('PC 暂停后可复制并原位编辑最后一条输入', async ({ context, page, request }, testInfo) => {
+    const fixture = await createConnectedE2EAbortSession(request);
+    const originalMessage = 'Please verify the paused task using the original instructions.';
+    const editedMessage = 'Please verify the paused task and include the browser evidence.';
+
+    try {
+        fixture.setThinking(false);
+        await createE2EUserMessage(request, fixture.sessionId, {
+            text: originalMessage,
+            model: 'gpt-5.6-sol',
+            effort: 'xhigh',
+            permission: 'default',
+        });
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+            origin: new URL(authenticatedWebUrl).origin,
+        });
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
+
+        const originalText = page.getByText(originalMessage, { exact: true });
+        await expect(originalText).toBeVisible();
+        const originalContainer = page.locator('[data-testid^="message-user-"]').filter({ has: originalText }).first();
+        const copyButton = originalContainer.getByRole('button', { name: 'Copy' });
+        const editButton = originalContainer.getByRole('button', { name: 'Edit' });
+        await expect(copyButton).toBeVisible();
+        await expect(editButton).toBeVisible();
+        await page.screenshot({
+            path: testInfo.outputPath('pc-paused-message-actions-after.png'),
+            fullPage: true,
+        });
+
+        await copyButton.click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(originalMessage);
+
+        await editButton.click();
+        const editor = page.getByRole('textbox', { name: 'Edit' });
+        await expect(editor).toHaveValue(originalMessage);
+        await editor.fill('Temporary edit that should be cancelled.');
+        await page.getByRole('button', { name: 'Cancel' }).click();
+        await expect(originalText).toBeVisible();
+        await expect(editor).toHaveCount(0);
+
+        await originalContainer.getByRole('button', { name: 'Edit' }).click();
+        const reopenedEditor = page.getByRole('textbox', { name: 'Edit' });
+        await reopenedEditor.fill(editedMessage);
+        await page.screenshot({
+            path: testInfo.outputPath('pc-paused-message-editor-after.png'),
+            fullPage: true,
+        });
+        await page.getByRole('button', { name: 'Send' }).click();
+
+        await expect(page.getByText(editedMessage, { exact: true })).toBeVisible();
+        await expect(page.getByText(originalMessage, { exact: true })).toHaveCount(0);
+        await page.reload();
+        await expect(page.getByText(editedMessage, { exact: true })).toBeVisible();
+        await expect(page.getByText(originalMessage, { exact: true })).toHaveCount(0);
     } finally {
         fixture.client.close();
     }
