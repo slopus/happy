@@ -449,8 +449,13 @@ pnpm web:deploy
 
 ```text
 PAWS_DEPLOY_PORT     SSH 端口，默认 22
-PAWS_SKIP_BUILD=1    使用已经存在的 dist，不重新构建
+PAWS_SKIP_BUILD=1    复用由本脚本生成且与当前 origin/main 同提交的 dist
 ```
+
+脚本会在构建前拉取 `origin/main`，并且只允许从干净、`HEAD`
+与 `origin/main` 完全一致的本地 `main` 发布。构建全程会锁定该提交；
+如果原子切换前 `main` 被推进或工作区发生变化，发布将中止，
+不会上线来源错配的产物。
 
 脚本不会：
 
