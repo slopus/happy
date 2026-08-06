@@ -195,6 +195,32 @@ describe('filterProjectGroupSessions', () => {
             workspaces: [{ sessions: [{ id: 'active' }] }],
         });
     });
+
+    // A Rig session that dropped its connection is inactive but not archived —
+    // hiding the archive must leave it on screen.
+    it('keeps a disconnected session that was never archived', () => {
+        const project: ProjectGroupData = {
+            id: 'rig-project',
+            name: 'rig',
+            machineId: 'machine-1',
+            sessionCount: 2,
+            activeCount: 0,
+            workspaces: [{
+                id: '',
+                name: null,
+                sessions: [
+                    { id: 'disconnected', active: false, archived: false } as SessionRowData,
+                    { id: 'archived', active: false, archived: true } as SessionRowData,
+                ],
+            }],
+        };
+
+        expect(filterProjectGroupSessions(project, session => !session.archived)).toMatchObject({
+            sessionCount: 1,
+            activeCount: 0,
+            workspaces: [{ sessions: [{ id: 'disconnected' }] }],
+        });
+    });
 });
 
 describe('filterProjectGroup', () => {

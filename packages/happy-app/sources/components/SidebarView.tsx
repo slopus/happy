@@ -93,15 +93,17 @@ export const SidebarView = React.memo(() => {
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
     const hasArchivedSessions = useHasArchivedSessions();
-    const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
+    // Stored under its original `hideInactiveSessions` key — synced settings
+    // have no rename migration — but it hides archived sessions only.
+    const [hideArchivedSessions, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
     const { visible: shortcutHintsVisible } = useShortcutHints();
 
     const handleNewSession = React.useCallback(() => {
         router.navigate('/new');
     }, [router]);
     const handleArchiveVisibility = React.useCallback(() => {
-        setHideInactiveSessions(!hideInactiveSessions);
-    }, [hideInactiveSessions, setHideInactiveSessions]);
+        setHideArchivedSessions(!hideArchivedSessions);
+    }, [hideArchivedSessions, setHideArchivedSessions]);
 
     return (
         <View style={[styles.container, { paddingTop: safeArea.top + headerHeight }]}>
@@ -121,19 +123,19 @@ export const SidebarView = React.memo(() => {
                 {hasArchivedSessions && (
                     <Pressable
                         onPress={handleArchiveVisibility}
-                        accessibilityLabel={hideInactiveSessions
+                        accessibilityLabel={hideArchivedSessions
                             ? t('sidebar.showArchived')
                             : t('sidebar.hideArchived')}
                         accessibilityRole="button"
-                        accessibilityState={{ selected: !hideInactiveSessions }}
+                        accessibilityState={{ selected: !hideArchivedSessions }}
                         style={({ pressed }) => [
                             styles.archiveButton,
-                            !hideInactiveSessions && styles.archiveButtonActive,
+                            !hideArchivedSessions && styles.archiveButtonActive,
                             pressed && styles.newSessionButtonPressed,
                         ]}
                     >
                         <Ionicons
-                            name={hideInactiveSessions ? 'archive-outline' : 'archive'}
+                            name={hideArchivedSessions ? 'archive-outline' : 'archive'}
                             size={18}
                             color={stylesheet.newSessionText.color}
                         />

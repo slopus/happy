@@ -283,14 +283,14 @@ const HeaderRight = React.memo(({
     searchActive,
     onSearchPress,
     hasArchivedSessions,
-    hideInactiveSessions,
+    hideArchivedSessions,
     onArchiveVisibilityPress,
 }: {
     activeTab: ActiveTabType;
     searchActive: boolean;
     onSearchPress: () => void;
     hasArchivedSessions: boolean;
-    hideInactiveSessions: boolean;
+    hideArchivedSessions: boolean;
     onArchiveVisibilityPress: () => void;
 }) => {
     const router = useRouter();
@@ -316,18 +316,18 @@ const HeaderRight = React.memo(({
                     {hasArchivedSessions && !searchActive && (
                         <Pressable
                             onPress={onArchiveVisibilityPress}
-                            accessibilityLabel={hideInactiveSessions
+                            accessibilityLabel={hideArchivedSessions
                                 ? t('sidebar.showArchived')
                                 : t('sidebar.hideArchived')}
                             accessibilityRole="button"
-                            accessibilityState={{ selected: !hideInactiveSessions }}
+                            accessibilityState={{ selected: !hideArchivedSessions }}
                             style={[
                                 styles.headerActionButton,
-                                !hideInactiveSessions && styles.headerActionButtonActive,
+                                !hideArchivedSessions && styles.headerActionButtonActive,
                             ]}
                         >
                             <Ionicons
-                                name={hideInactiveSessions ? 'archive-outline' : 'archive'}
+                                name={hideArchivedSessions ? 'archive-outline' : 'archive'}
                                 size={20}
                                 color={theme.colors.header.tint}
                             />
@@ -349,18 +349,18 @@ const HeaderRight = React.memo(({
                 {hasArchivedSessions && (
                     <Pressable
                         onPress={onArchiveVisibilityPress}
-                        accessibilityLabel={hideInactiveSessions
+                        accessibilityLabel={hideArchivedSessions
                             ? t('sidebar.showArchived')
                             : t('sidebar.hideArchived')}
                         accessibilityRole="button"
-                        accessibilityState={{ selected: !hideInactiveSessions }}
+                        accessibilityState={{ selected: !hideArchivedSessions }}
                         style={[
                             styles.headerButton,
-                            !hideInactiveSessions && styles.headerActionButtonActive,
+                            !hideArchivedSessions && styles.headerActionButtonActive,
                         ]}
                     >
                         <Ionicons
-                            name={hideInactiveSessions ? 'archive-outline' : 'archive'}
+                            name={hideArchivedSessions ? 'archive-outline' : 'archive'}
                             size={19}
                             color={theme.colors.header.tint}
                         />
@@ -414,7 +414,9 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
     const hasArchivedSessions = useHasArchivedSessions();
-    const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
+    // Stored under its original `hideInactiveSessions` key — synced settings
+    // have no rename migration — but it hides archived sessions only.
+    const [hideArchivedSessions, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
     const isTablet = useIsTablet();
     const router = useRouter();
     const friendRequests = useFriendRequests();
@@ -465,8 +467,8 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     }, []);
 
     const handleArchiveVisibilityPress = React.useCallback(() => {
-        setHideInactiveSessions(!hideInactiveSessions);
-    }, [hideInactiveSessions, setHideInactiveSessions]);
+        setHideArchivedSessions(!hideArchivedSessions);
+    }, [hideArchivedSessions, setHideArchivedSessions]);
 
     const handleTabPress = React.useCallback((tab: ActiveTabType) => {
         // This callback is intentionally independent of activeTab. Gesture
@@ -551,7 +553,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                         searchActive={searchActive}
                         onSearchPress={handleSearchPress}
                         hasArchivedSessions={hasArchivedSessions}
-                        hideInactiveSessions={hideInactiveSessions}
+                        hideArchivedSessions={hideArchivedSessions}
                         onArchiveVisibilityPress={handleArchiveVisibilityPress}
                     />
                 ) : undefined}
