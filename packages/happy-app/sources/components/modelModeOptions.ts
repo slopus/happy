@@ -101,6 +101,7 @@ export function getClaudeModelModes(): ModelMode[] {
         // while the full ID passes straight through to the API.
         { key: 'claude-opus-5', name: 'opus 5', description: null },
         { key: 'opus', name: 'opus 4.8', description: null },
+        { key: 'opus[1m]', name: 'opus 4.8 (1m)', description: '1M-token context window' },
         { key: 'fable', name: 'fable 5', description: null },
         { key: 'sonnet', name: 'sonnet 4.6', description: null },
         { key: 'haiku', name: 'haiku 4.5', description: null },
