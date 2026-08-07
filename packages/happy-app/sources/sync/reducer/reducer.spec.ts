@@ -3088,7 +3088,7 @@ describe('reducer', () => {
             }
         });
 
-        it('keeps root final output while nesting child SessionEnvelope messages under Agent', () => {
+        it('keeps root final output while nesting reused child messages after the root turn ends', () => {
             const turn = 'session-turn-1';
             const sessionSubagent = createId();
             const envelopes = [
@@ -3147,6 +3147,30 @@ describe('reducer', () => {
                     turn,
                     ev: { t: 'turn-end', status: 'completed' },
                 },
+                {
+                    id: 'env-child-restart',
+                    time: 1500,
+                    role: 'agent',
+                    turn,
+                    subagent: sessionSubagent,
+                    ev: { t: 'start' },
+                },
+                {
+                    id: 'env-child-follow-up-text',
+                    time: 1600,
+                    role: 'agent',
+                    turn,
+                    subagent: sessionSubagent,
+                    ev: { t: 'text', text: 'Late child follow-up' },
+                },
+                {
+                    id: 'env-child-second-stop',
+                    time: 1700,
+                    role: 'agent',
+                    turn,
+                    subagent: sessionSubagent,
+                    ev: { t: 'stop', status: 'completed' },
+                },
             ];
             const normalized = envelopes
                 .map((envelope, index) => normalizeRawMessage(
@@ -3171,7 +3195,7 @@ describe('reducer', () => {
             expect(parentMessage?.kind).toBe('tool-call');
             if (parentMessage?.kind === 'tool-call') {
                 expect(parentMessage.tool.name).toBe('Agent');
-                expect(parentMessage.children).toHaveLength(3);
+                expect(parentMessage.children).toHaveLength(6);
                 expect(parentMessage.children).toEqual(expect.arrayContaining([
                     expect.objectContaining({
                         kind: 'agent-event',
@@ -3195,6 +3219,12 @@ describe('reducer', () => {
                     kind: 'agent-text',
                     text: 'Child review complete',
                 });
+                expect(parentMessage.children).toEqual(expect.arrayContaining([
+                    expect.objectContaining({
+                        kind: 'agent-text',
+                        text: 'Late child follow-up',
+                    }),
+                ]));
             }
             expect(result.messages.find((message) => (
                 message.kind === 'agent-text' && message.text === 'Root final answer'
@@ -3202,6 +3232,9 @@ describe('reducer', () => {
                 kind: 'agent-text',
                 text: 'Root final answer',
             });
+            expect(result.messages.some((message) => (
+                message.kind === 'agent-text' && message.text === 'Late child follow-up'
+            ))).toBe(false);
         });
 
         it('returns the root Agent when a nested subagent lifecycle changes', () => {
