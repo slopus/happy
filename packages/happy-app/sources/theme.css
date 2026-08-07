@@ -17,6 +17,10 @@ button, input, textarea, select {
 }
 
 :root {
+    --happy-motion-content-duration: 150ms;
+    --happy-motion-tab-duration: 120ms;
+    --happy-motion-content-ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --happy-motion-content-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
     --happy-motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
     --happy-motion-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
     --happy-motion-panel-duration: 180ms;
@@ -51,6 +55,48 @@ button, input, textarea, select {
 
 [data-happy-motion="desktop-panel"][data-happy-motion-side="right"][data-happy-motion-state="closed"] {
     transform: translate3d(14px, 0, 0);
+}
+
+[data-happy-motion="desktop-presence-layer"] {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    transition:
+        opacity var(--happy-motion-content-duration) var(--happy-motion-content-ease-out),
+        transform var(--happy-motion-content-duration) var(--happy-motion-content-ease-out);
+}
+
+[data-happy-motion="desktop-presence-layer"][data-happy-presence-phase="entering"],
+[data-happy-motion="desktop-presence-layer"][data-happy-presence-phase="active"],
+[data-happy-motion="desktop-presence-layer"][data-happy-presence-phase="exiting"] {
+    will-change: opacity, transform;
+}
+
+[data-happy-motion="desktop-presence-layer"][data-happy-presence-phase="settled"] {
+    will-change: auto;
+}
+
+[data-happy-motion="desktop-presence-layer"][data-happy-presence-phase="entering"][data-happy-presence-direction="forward"] {
+    opacity: 0;
+    transform: translate3d(8px, 0, 0);
+}
+
+[data-happy-motion="desktop-presence-layer"][data-happy-presence-phase="entering"][data-happy-presence-direction="back"] {
+    opacity: 0;
+    transform: translate3d(-8px, 0, 0);
+}
+
+[data-happy-motion="desktop-presence-layer"][data-happy-presence-phase="exiting"] {
+    transition-timing-function: var(--happy-motion-content-ease-in);
+}
+
+[data-happy-motion="desktop-presence-layer"][data-happy-presence-phase="exiting"][data-happy-presence-direction="forward"] {
+    opacity: 0;
+    transform: translate3d(-8px, 0, 0);
+}
+
+[data-happy-motion="desktop-presence-layer"][data-happy-presence-phase="exiting"][data-happy-presence-direction="back"] {
+    opacity: 0;
+    transform: translate3d(8px, 0, 0);
 }
 
 [data-happy-motion="popover"] {
@@ -111,6 +157,12 @@ button, input, textarea, select {
 
 @media (prefers-reduced-motion: reduce) {
     [data-happy-motion="desktop-panel"] {
+        transform: none;
+        transition: none;
+        will-change: auto;
+    }
+
+    [data-happy-motion="desktop-presence-layer"] {
         transform: none;
         transition: none;
         will-change: auto;
