@@ -65,6 +65,14 @@ type AgentSetting = 'agent' | 'model' | 'permission' | 'effort';
 
 const CUSTOM_PROJECT_PATH_KEY = '__custom_project_path__';
 
+// Focus mode dims the screen behind a fixed dark scrim (see `focusBackdrop`) in
+// BOTH themes, and the machine / project / worktree rows are drawn straight onto
+// it with no surface of their own — unlike the composer and the options sheet,
+// which each sit on light glass. So those rows have to be coloured for the
+// scrim, not for the theme: `theme.colors.text` is #000000 in the light theme,
+// which makes them black-on-black and reads as "the picker got dimmed too".
+const FOCUS_SCRIM_TEXT = '#FFFFFF';
+
 const AGENTS: Array<{ key: NewSessionAgentType; name: string }> = [
     { key: 'rig', name: 'Rig' },
     { key: 'claude', name: 'Claude Code' },
@@ -298,7 +306,7 @@ const styles = StyleSheet.create((theme) => ({
     focusConfigValue: {
         flex: 1,
         minWidth: 0,
-        color: theme.colors.text,
+        color: FOCUS_SCRIM_TEXT,
         fontSize: 17,
         ...Typography.default(),
     },
@@ -979,7 +987,7 @@ export const HomeDock = React.memo(({
                     <Ionicons
                         name={row.icon}
                         size={compact ? 21 : 18}
-                        color={theme.colors.text}
+                        color={compact ? FOCUS_SCRIM_TEXT : theme.colors.text}
                     />
                 </View>
                 {compact ? (
