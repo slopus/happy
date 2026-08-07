@@ -174,6 +174,40 @@ describe('SidebarAccountMenu', () => {
         expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
+    it('aligns the expanded menu with the account trigger at each density', () => {
+        const onOpenChange = vi.fn();
+        act(() => {
+            renderer = TestRenderer.create(
+                <SidebarAccountMenu
+                    displayName="Paws User"
+                    onNavigate={mocks.navigate}
+                    onOpenChange={onOpenChange}
+                    open
+                    profile={profile}
+                />,
+            );
+        });
+
+        expect(renderer.root.findByProps({ testID: 'sidebar-account-menu' }).props.style).toContainEqual(
+            expect.objectContaining({ left: 16, right: 16 }),
+        );
+
+        act(() => renderer.update(
+            <SidebarAccountMenu
+                desktopDensity
+                displayName="Paws User"
+                onNavigate={mocks.navigate}
+                onOpenChange={onOpenChange}
+                open
+                profile={profile}
+            />,
+        ));
+
+        expect(renderer.root.findByProps({ testID: 'sidebar-account-menu' }).props.style).toContainEqual(
+            expect.objectContaining({ left: 10, right: 10 }),
+        );
+    });
+
     it('logs out only after destructive confirmation', async () => {
         mocks.confirm.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
         const onOpenChange = vi.fn();
