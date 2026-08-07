@@ -105,6 +105,7 @@ export function DesktopPresenceTransition({
     }]);
     const frameRef = React.useRef<number | null>(null);
     const fallbackRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pendingSequenceRef = React.useRef<number | null>(null);
     const renderedKeyRef = React.useRef(transitionKey);
     const latestRef = React.useRef({ children, direction, transitionKey });
     const reducedMotionRef = React.useRef(
@@ -124,11 +125,12 @@ export function DesktopPresenceTransition({
     }, []);
 
     const settleTransition = React.useCallback((sequence: number) => {
-        if (sequenceRef.current !== sequence) return;
+        if (sequenceRef.current !== sequence || pendingSequenceRef.current !== sequence) return;
         cancelPendingWork();
+        pendingSequenceRef.current = null;
         setLayers((previous) => previous
             .filter((layer) => layer.phase !== 'exiting')
-            .map((layer) => layer.id === sequence && layer.phase === 'active'
+            .map((layer) => layer.id === sequence && (layer.phase === 'entering' || layer.phase === 'active')
                 ? { ...layer, phase: 'settled' }
                 : layer));
     }, [cancelPendingWork]);
@@ -136,6 +138,7 @@ export function DesktopPresenceTransition({
     React.useLayoutEffect(() => {
         if (immediate || reducedMotionRef.current) {
             cancelPendingWork();
+            pendingSequenceRef.current = null;
             const nextId = ++sequenceRef.current;
             renderedKeyRef.current = transitionKey;
             setLayers(createSettledLayer(children, direction, nextId, transitionKey));
@@ -160,6 +163,7 @@ export function DesktopPresenceTransition({
 
         cancelPendingWork();
         const nextId = ++sequenceRef.current;
+        pendingSequenceRef.current = nextId;
         renderedKeyRef.current = transitionKey;
         setLayers((previous) => {
             const active = previous.find((layer) => layer.phase !== 'exiting');
@@ -174,13 +178,13 @@ export function DesktopPresenceTransition({
             return [...outgoing, ...incoming];
         });
 
+        fallbackRef.current = setTimeout(() => settleTransition(nextId), TRANSITION_FALLBACK_MS);
         frameRef.current = requestAnimationFrame(() => {
             frameRef.current = null;
-            if (sequenceRef.current !== nextId) return;
+            if (sequenceRef.current !== nextId || pendingSequenceRef.current !== nextId) return;
             setLayers((previous) => previous.map((layer) => layer.id === nextId && layer.phase === 'entering'
                 ? { ...layer, phase: 'active' }
                 : layer));
-            fallbackRef.current = setTimeout(() => settleTransition(nextId), TRANSITION_FALLBACK_MS);
         });
     }, [cancelPendingWork, children, direction, immediate, settleTransition, transitionKey]);
 
@@ -191,6 +195,7 @@ export function DesktopPresenceTransition({
             if (!event.matches) return;
 
             cancelPendingWork();
+            pendingSequenceRef.current = null;
             const nextId = ++sequenceRef.current;
             const latest = latestRef.current;
             renderedKeyRef.current = latest.transitionKey;
@@ -207,6 +212,7 @@ export function DesktopPresenceTransition({
         return () => {
             mediaQuery.removeEventListener('change', listener);
             cancelPendingWork();
+            pendingSequenceRef.current = null;
         };
     }, [cancelPendingWork]);
 

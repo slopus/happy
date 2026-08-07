@@ -151,6 +151,44 @@ describe('DesktopPresenceTransition.web', () => {
         });
     });
 
+    it('settles from the fallback when requestAnimationFrame never runs', () => {
+        let capturedFrame: FrameRequestCallback | undefined;
+        const cancelAnimationFrame = vi.fn();
+        vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+            capturedFrame = callback;
+            return 73;
+        });
+        vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame);
+
+        act(() => {
+            renderer = TestRenderer.create(
+                <DesktopPresenceTransition direction="back" testID="presence" transitionKey="capabilities">
+                    <View testID="capabilities-content" />
+                </DesktopPresenceTransition>,
+            );
+        });
+        act(() => renderer.update(
+            <DesktopPresenceTransition direction="forward" testID="presence" transitionKey="files">
+                <View testID="files-content" />
+            </DesktopPresenceTransition>,
+        ));
+
+        expect(findHostViews(renderer, 'presence-layer').map((layer: any) => (
+            layer.props.dataSet.happyPresencePhase
+        ))).toEqual(['exiting', 'entering']);
+
+        act(() => vi.advanceTimersByTime(220));
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findPresenceLayer(renderer).props.dataSet.happyPresencePhase).toBe('settled');
+        expect(cancelAnimationFrame).toHaveBeenCalledWith(73);
+        expect(vi.getTimerCount()).toBe(0);
+
+        act(() => capturedFrame?.(220));
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findPresenceLayer(renderer).props.dataSet.happyPresencePhase).toBe('settled');
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
     it('discards stale outgoing layers and refreshes same-key children without another transition', () => {
         act(() => {
             renderer = TestRenderer.create(
