@@ -1,3 +1,13 @@
+# August 7 — Gemini 3.6 Flash, Rig sessions
+
+A new Gemini model, Rig as a first-class agent, and web scrolling fixes.
+
+- Gemini 3.6 Flash in the Antigravity model picker — High, Medium, and Low effort.
+- Start and manage native Rig sessions from Happy — connected Rig machines offer their models, permission modes, and effort levels right in the composer.
+- New sessions no longer launch with a stale agent after switching machines.
+- On web, wide tables and code blocks in chat scroll sideways with the trackpad.
+- Community Credits: [@abhisheksoni27](https://github.com/abhisheksoni27), [@charliezong18](https://github.com/charliezong18)
+
 # August 3 — Composer and tool calls
 
 Shorter tool output and a composer that behaves again.

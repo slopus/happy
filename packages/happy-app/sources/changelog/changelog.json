@@ -1,6 +1,11 @@
 {
   "entries": [
     {
+      "title": "August 7 — Gemini 3.6 Flash, Rig sessions",
+      "summary": "A new Gemini model, Rig as a first-class agent, and web scrolling fixes.",
+      "markdown": "- Gemini 3.6 Flash in the Antigravity model picker — High, Medium, and Low effort.\n- Start and manage native Rig sessions from Happy — connected Rig machines offer their models, permission modes, and effort levels right in the composer.\n- New sessions no longer launch with a stale agent after switching machines.\n- On web, wide tables and code blocks in chat scroll sideways with the trackpad.\n- Community Credits: [@abhisheksoni27](https://github.com/abhisheksoni27), [@charliezong18](https://github.com/charliezong18)"
+    },
+    {
       "title": "August 3 — Composer and tool calls",
       "summary": "Shorter tool output and a composer that behaves again.",
       "markdown": "- Tool calls show as one-line rows you can open for details — turn it off with Compact Tool Calls in Settings → Appearance.\n- The mic is back in the send button — voice when the composer is empty, send once you've typed, stop while the agent works.\n- Model and effort sit together next to the send button, and no longer get cut off when you switch.\n- Model, effort, and permission pickers are legible again on iOS 26.\n- The send button is visible again on the light theme.\n- Composer pickers stay tappable while the keyboard is open."
@@ -81,5 +86,5 @@
       "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],
-  "latestTitle": "August 3 — Composer and tool calls"
+  "latestTitle": "August 7 — Gemini 3.6 Flash, Rig sessions"
 }

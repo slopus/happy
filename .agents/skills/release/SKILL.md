@@ -449,6 +449,7 @@ Separate repo, not part of this monorepo. Guide the user to push to that repo.
 3. **Audience is phone users.** Most never touch the CLI or desktop. Be skeptical of CLI-only / desktop-only / web-only / beta-only items — a genuinely strong feature can still be wrong for *this* venue; announce those in CLI release notes / docs / GitHub instead.
 4. **Ask, don't assume.** When announce-vs-silent-ship, default state, or scope is unclear, ask the owner and confirm the final include/exclude list before writing. Never headline-announce on your own judgment.
 5. **Voice:** benefit-first, terse, em-dash, one line per item, grouped as a dated themed entry like existing ones. Edit `CHANGELOG.md` only, then regenerate via `tsx packages/happy-app/sources/scripts/parseChangelog.ts`.
+6. **Community Credits bullet.** End each entry with a single bullet crediting community contributors whose commits ship in it: `- Community Credits: [@user1](https://github.com/user1), [@user2](https://github.com/user2)`. Core team never appears there — Kirill (`bra1ndump` / kirill2003de@gmail.com), `Scoteezy`, and Steve (`ex3ndr`). To find contributors: get the previous OTA's commit via `eas update:list --branch preview` + `eas update:view <group-id> --json` (`gitCommitHash`), then `git log <hash>..HEAD` and keep non-core authors. GitHub handles come from the PR (`gh pr view <n> --json author`), not from the commit email. If an OTA shipped without a changelog entry, its uncredited community commits roll into the next entry's credits.
 
 ## Rules
 
