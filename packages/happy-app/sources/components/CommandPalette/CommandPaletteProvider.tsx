@@ -98,6 +98,10 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         }
     }, [logout]);
 
+    const openSettings = useCallback(() => {
+        router.push('/settings');
+    }, [router]);
+
     // Define available commands
     const commands = useMemo((): Command[] => {
         const cmds: Command[] = [
@@ -130,9 +134,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 icon: 'settings-outline',
                 category: t('commandPalette.navigation'),
                 shortcut: '⌘,',
-                action: () => {
-                    router.push('/settings');
-                }
+                action: openSettings,
             },
             {
                 id: 'account',
@@ -267,7 +269,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         }
 
         return cmds;
-    }, [router, sessions, firstUserMessageSummaries, machines, agents, currentViewingSessionId, navigateToSession, confirmLogout]);
+    }, [router, sessions, firstUserMessageSummaries, machines, agents, currentViewingSessionId, navigateToSession, confirmLogout, openSettings]);
 
     const showCommandPalette = useCallback(() => {
         if (Platform.OS !== 'web' || paletteOpeningRef.current) return;
@@ -285,7 +287,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
     }, [commands, showModal]);
 
     // The sidebar launcher remains available; this preference only controls the global shortcut.
-    useGlobalKeyboard(commandPaletteEnabled ? showCommandPalette : undefined);
+    useGlobalKeyboard(commandPaletteEnabled ? showCommandPalette : undefined, { onOpenSettings: openSettings });
 
     const launcher = useMemo((): CommandPaletteLauncher => ({
         isAvailable: Platform.OS === 'web',

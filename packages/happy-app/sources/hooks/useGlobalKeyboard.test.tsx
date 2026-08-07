@@ -14,20 +14,23 @@ import { useGlobalKeyboard } from './useGlobalKeyboard';
 
 function KeyboardHarness({
     onCommandPalette,
+    onOpenSettings,
     onToggleLeftSidebar,
     onToggleRightSidebar,
 }: {
     onCommandPalette: () => void;
+    onOpenSettings: () => void;
     onToggleLeftSidebar: () => void;
     onToggleRightSidebar: () => void;
 }) {
-    useGlobalKeyboard(onCommandPalette, { onToggleLeftSidebar, onToggleRightSidebar });
+    useGlobalKeyboard(onCommandPalette, { onOpenSettings, onToggleLeftSidebar, onToggleRightSidebar });
     return null;
 }
 
 describe('useGlobalKeyboard', () => {
     let renderer: any;
     const onCommandPalette = vi.fn();
+    const onOpenSettings = vi.fn();
     const onToggleLeftSidebar = vi.fn();
     const onToggleRightSidebar = vi.fn();
 
@@ -43,6 +46,7 @@ describe('useGlobalKeyboard', () => {
             renderer = TestRenderer.create(
                 <KeyboardHarness
                     onCommandPalette={onCommandPalette}
+                    onOpenSettings={onOpenSettings}
                     onToggleLeftSidebar={onToggleLeftSidebar}
                     onToggleRightSidebar={onToggleRightSidebar}
                 />,
@@ -96,5 +100,12 @@ describe('useGlobalKeyboard', () => {
 
         keydown({ ctrlKey: true, key: 'K', metaKey: false });
         expect(onCommandPalette).toHaveBeenCalledTimes(2);
+    });
+
+    it('opens app settings instead of the browser settings for Command+Comma', () => {
+        const event = keydown({ key: ',' });
+
+        expect(event.preventDefault).toHaveBeenCalledOnce();
+        expect(onOpenSettings).toHaveBeenCalledOnce();
     });
 });

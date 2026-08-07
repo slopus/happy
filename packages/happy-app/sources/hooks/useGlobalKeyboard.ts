@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 export function useGlobalKeyboard(
     onCommandPalette: (() => void) | undefined,
     options: {
+        onOpenSettings?: () => void;
         onToggleLeftSidebar?: () => void;
         onToggleRightSidebar?: () => void;
     } = {},
@@ -20,6 +21,8 @@ export function useGlobalKeyboard(
 
             if (isModifierPressed && !e.altKey && key === 'k') {
                 handler = onCommandPalette;
+            } else if (isModifierPressed && !e.altKey && key === ',') {
+                handler = options.onOpenSettings;
             } else if (isModifierPressed && e.altKey && key === 'b') {
                 handler = options.onToggleRightSidebar;
             } else if (isModifierPressed && !e.altKey && key === 'b') {
@@ -40,5 +43,5 @@ export function useGlobalKeyboard(
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
         };
-    }, [onCommandPalette, options.onToggleLeftSidebar, options.onToggleRightSidebar]);
+    }, [onCommandPalette, options.onOpenSettings, options.onToggleLeftSidebar, options.onToggleRightSidebar]);
 }
