@@ -2566,7 +2566,7 @@ const styles = StyleSheet.create((theme) => ({
         minHeight: Platform.select({ web: 0, default: 46 }),
     },
     mobileActionButtonsContainer: {
-        width: '100%',
+        alignSelf: 'stretch',
         minHeight: 40,
         justifyContent: 'space-between',
         gap: 2,
