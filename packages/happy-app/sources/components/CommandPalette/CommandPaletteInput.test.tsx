@@ -11,12 +11,29 @@ vi.mock('react-native', () => ({
     View: 'View',
 }));
 vi.mock('react-native-unistyles', () => ({
+    StyleSheet: {
+        hairlineWidth: 0.5,
+        create: (factory: any) => {
+            const styles = factory({
+                colors: {
+                    surface: '#fff',
+                    surfaceHigh: '#eee',
+                    text: '#111',
+                    textSecondary: '#666',
+                    divider: '#ddd',
+                },
+            });
+            return Object.assign(styles, { useVariants: () => {} });
+        },
+    },
     useUnistyles: () => ({
         theme: {
             colors: {
+                surface: '#fff',
                 surfaceHigh: '#eee',
                 text: '#111',
                 textSecondary: '#666',
+                divider: '#ddd',
             },
         },
     }),

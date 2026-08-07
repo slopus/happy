@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, Platform } from 'react-native';
 import { CommandPaletteInput } from './CommandPaletteInput';
 import { CommandPaletteResults } from './CommandPaletteResults';
 import { useCommandPalette } from './useCommandPalette';
 import { Command, CommandPaletteClose, getCommandPaletteOptionId } from './types';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 
 interface CommandPaletteProps {
     commands: Command[];
@@ -12,7 +12,7 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
-    const { theme } = useUnistyles();
+    const styles = stylesheet;
     const {
         searchQuery,
         selectedIndex,
@@ -34,16 +34,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
     return (
         <View
             testID="command-palette"
-            style={[
-                styles.container,
-                {
-                    backgroundColor: theme.colors.surface,
-                    borderColor: theme.colors.divider,
-                    ...(Platform.OS === 'web' ? {
-                        boxShadow: `0 12px 32px ${theme.colors.shadow.color}`,
-                    } as any : {}),
-                },
-            ]}
+            style={styles.container}
         >
             <CommandPaletteInput
                 value={searchQuery}
@@ -63,8 +54,10 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
     );
 }
 
-const styles = StyleSheet.create({
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.divider,
         borderRadius: 14,
         width: '100%',
         maxWidth: 720,
@@ -75,8 +68,12 @@ const styles = StyleSheet.create({
         }),
         overflow: 'hidden',
         ...Platform.select({
-            web: {},
+            web: {
+                boxShadow: `0 12px 32px ${theme.colors.shadow.color}`,
+            },
             default: {
+                shadowColor: theme.colors.shadow.color,
+                shadowOpacity: theme.colors.shadow.opacity,
                 shadowOffset: {
                     width: 0,
                     height: 8,
@@ -87,4 +84,4 @@ const styles = StyleSheet.create({
         }),
         borderWidth: StyleSheet.hairlineWidth,
     },
-});
+}));

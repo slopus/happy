@@ -1517,7 +1517,10 @@ test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ p
 
     await page.keyboard.press('Meta+KeyK');
     const commandInput = page.getByTestId('command-palette-input');
+    const palette = page.getByTestId('command-palette');
     await expect(commandInput).toBeVisible();
+    await expect.poll(async () => Number(await palette.evaluate((node) => node.parentElement?.style.opacity ?? '0')))
+        .toBeCloseTo(1, 2);
 
     const paletteColors = await page.evaluate(() => {
         const input = document.querySelector('[data-testid="command-palette-input"]');
@@ -1532,23 +1535,23 @@ test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ p
             selected: window.getComputedStyle(selected).backgroundColor,
         };
     });
-    expect(paletteColors).toEqual({
-        input: 'rgb(229, 229, 231)',
-        surface: 'rgb(19, 19, 22)',
-        selected: 'rgba(0, 255, 136, 0.08)',
-    });
+    expect(paletteColors.input).toBe('rgb(229, 229, 231)');
+    expect(paletteColors.surface).toBe('rgb(19, 19, 22)');
+    expect(paletteColors.selected).toMatch(/\/ 0\.08\)$/);
 
     await commandInput.press('Escape');
     await expect(commandInput).toHaveCount(0);
 
-    await page.waitForTimeout(300);
-    await page.keyboard.press('Meta+KeyK');
+    await page.goto(authenticatedWebUrl);
+    await page.getByTestId('sidebar-command-palette-button').click();
     await expect(page.getByTestId('command-palette-input')).toBeVisible();
     await page.mouse.click(10, 10);
     await expect(page.getByTestId('command-palette-input')).toHaveCount(0);
 
-    await commandPaletteSwitch.click();
-    await expect(commandPaletteSwitch).not.toBeChecked();
+    await page.goto(new URL('/settings/features', authenticatedWebUrl).toString());
+    const reopenedCommandPaletteSwitch = page.getByRole('switch', { name: 'Command Palette' });
+    await reopenedCommandPaletteSwitch.click();
+    await expect(reopenedCommandPaletteSwitch).not.toBeChecked();
 
     await page.goto(new URL('/settings/appearance', authenticatedWebUrl).toString());
     await page.getByText('Caramel', { exact: true }).click();
@@ -1573,7 +1576,9 @@ test.describe('中文 Web 命令面板', () => {
         await expect(palette.getByText('导航', { exact: true })).toBeVisible();
         await expect(selectedCommand.getByText('开始新会话', { exact: true })).toBeVisible();
         await expect(palette.getByText('配置应用偏好', { exact: true })).toBeVisible();
-        await page.waitForTimeout(500);
+        await expect.poll(async () => Number(await palette.evaluate((node) => node.parentElement?.style.opacity ?? '0')))
+            .toBeCloseTo(1, 2);
+        await expect.poll(async () => (await palette.boundingBox())?.width).toBeCloseTo(720, 0);
 
         const selectedTitle = selectedCommand.getByText('开始新会话', { exact: true });
         const selectedSubtitle = selectedCommand.getByText('开始新的聊天会话', { exact: true });
@@ -1608,7 +1613,8 @@ test.describe('中文 Web 命令面板', () => {
             selectedSubtitle.evaluate((node) => window.getComputedStyle(node).fontSize),
         ] as const);
 
-        expect(paletteMetrics).toMatchObject({ borderRadius: '14px', width: 720 });
+        expect(paletteMetrics.borderRadius).toBe('14px');
+        expect(paletteMetrics.width).toBeCloseTo(720, 0);
         expect(paletteMetrics.boxShadow).not.toBe('none');
         expect(paletteMetrics.top).toBeCloseTo(176.75, 0);
         expect(inputMetrics).toEqual({

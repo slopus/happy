@@ -4,10 +4,10 @@ import {
     Modal,
     Pressable,
     Animated,
-    StyleSheet,
     KeyboardAvoidingView,
     Platform
 } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 
 interface CommandPaletteModalProps {
     visible: boolean;

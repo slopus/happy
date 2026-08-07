@@ -13,6 +13,22 @@ vi.mock('react-native', () => ({
 }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => ({
+    StyleSheet: {
+        hairlineWidth: 0.5,
+        create: (factory: any) => {
+            const styles = factory({
+                colors: {
+                    accent: '#6750a4',
+                    surfaceHigh: '#eee',
+                    surfaceHighest: '#ddd',
+                    text: '#111',
+                    textSecondary: '#666',
+                    divider: '#ccc',
+                },
+            });
+            return Object.assign(styles, { useVariants: () => {} });
+        },
+    },
     useUnistyles: () => ({
         theme: {
             colors: {
@@ -105,7 +121,7 @@ describe('CommandPaletteItem', () => {
         });
 
         const item = renderer.root.findByProps({ testID: 'command-palette-item-new-session' });
-        expect(flattenStyle(item.props.style({ pressed: false }))).toMatchObject({
+        expect(flattenStyle(item.props.style)).toMatchObject({
             minHeight: 48,
             paddingHorizontal: 12,
             paddingVertical: 8,
