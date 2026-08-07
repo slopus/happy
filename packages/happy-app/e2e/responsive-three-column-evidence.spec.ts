@@ -332,16 +332,19 @@ function boxesOverlap(left: ElementBox, right: ElementBox): boolean {
 async function expectCriticalLayoutInsideCompactWorkspace(page: Page, drawer: Locator): Promise<void> {
     const host = page.getByTestId('right-swipe-panel-host');
     const leftSidebar = page.getByTestId('desktop-left-sidebar');
+    const desktopAgentChip = page.locator('[data-testid="session-header-chip"]:visible');
     const targets: Array<{ label: string; locator: Locator }> = [
         { label: 'main area', locator: page.getByTestId('right-swipe-panel-main') },
         { label: 'session title', locator: page.locator('[data-testid="session-header-title"]:visible') },
         { label: 'run status', locator: page.locator('[data-testid="session-header-run-status"]:visible') },
-        { label: 'Agent chip', locator: page.locator('[data-testid="session-header-chip"]:visible') },
         { label: 'header More action', locator: page.locator('[data-testid="session-header-more-button"]:visible') },
         { label: 'header right-panel toggle', locator: page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible') },
         { label: 'composer', locator: page.locator('[data-testid="message-composer-content"]:visible') },
         { label: 'permission action', locator: page.locator('[data-testid="permission-approve-button"]:visible') },
     ];
+    // Desktop Web intentionally uses the inline title/status identity from
+    // #289; the Agent chip remains a native/phone affordance only.
+    await expect(desktopAgentChip).toHaveCount(0);
     const hostBox = await host.boundingBox();
     const leftBox = await leftSidebar.boundingBox();
     const drawerBox = await drawer.boundingBox();

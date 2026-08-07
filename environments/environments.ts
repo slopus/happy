@@ -384,8 +384,21 @@ export async function startEnvironmentServices(name: string): Promise<void> {
     writePidFile(envDir, "web", webPid);
 
     try {
+        // A listening Metro socket does not mean the first Web bundle is
+        // ready. Production-like evidence runs clear the cache, so warm the
+        // document before Playwright starts its per-test five-second waits.
+        const waitForWeb = process.env.HAPPY_E2E_WEB_NO_DEV === "1"
+            ? async () => {
+                try {
+                    const response = await fetch(`http://localhost:${config.expoPort}/`);
+                    return response.ok;
+                } catch {
+                    return false;
+                }
+            }
+            : () => isPortInUse(config.expoPort);
         // Metro 首次构建依赖较多，冷启动在开发机上可能超过 30 秒。
-        await waitFor(() => isPortInUse(config.expoPort), 120_000, "web");
+        await waitFor(waitForWeb, 120_000, "web");
     } catch {
         throw new Error(`Web failed to start. Check logs: ${webLogFile}`);
     }
