@@ -533,7 +533,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                                 <View style={styles.scrimFill} />
                             </Pressable>
                         )}
-                        {responsiveMode === 'edge-handle' && (
+                        {Platform.OS === 'web' && responsiveMode === 'edge-handle' && (
                             <Pressable
                                 accessibilityLabel={open ? closeAccessibilityLabel : openAccessibilityLabel}
                                 accessibilityRole="button"

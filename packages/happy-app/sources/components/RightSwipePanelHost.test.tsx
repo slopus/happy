@@ -117,12 +117,13 @@ function flattenStyle(style: unknown): Record<string, unknown> {
     return Object.assign({}, ...style.filter(Boolean));
 }
 
-function renderHost(callback?: () => void) {
+function renderHost(callback?: () => void, enabled?: boolean) {
     let renderer: any;
     act(() => {
         renderer = TestRenderer.create(
             <RightSwipePanelHost
                 {...PANEL_ACCESSIBILITY_LABELS}
+                enabled={enabled}
                 panelContent={(
                     <>
                         <CloseControl callback={callback} testID="close-with-callback" />
@@ -252,40 +253,65 @@ describe('RightSwipePanelHost close completion', () => {
         act(() => renderer.unmount());
     });
 
-    it('keeps a focusable narrow-screen edge handle visible with expanded semantics', () => {
+    it('does not render a persistent edge handle on native phones', () => {
         const renderer = renderHost();
-        const handle = findControl(renderer, 'right-swipe-panel-edge-handle');
-        const closedDrawer = renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' });
 
-        expect(handle).toBeDefined();
-        expect(handle.props.accessibilityRole).toBe('button');
-        expect(handle.props.accessibilityState).toEqual({ expanded: false });
-        expect(handle.props['aria-expanded']).toBe(false);
-        expect(flattenStyle(handle.props.style)).toEqual(expect.objectContaining({
-            backgroundColor: '#111',
-            borderColor: '#333',
-            minHeight: 40,
-            minWidth: 40,
-            top: 336,
-        }));
-        expect(flattenStyle(closedDrawer.props.style)).toEqual(expect.objectContaining({
-            backgroundColor: '#111',
-            paddingBottom: 12,
-            paddingTop: 12,
-        }));
-        expect(closedDrawer.props.accessibilityElementsHidden).toBe(true);
-        expect(closedDrawer.props.importantForAccessibility).toBe('no-hide-descendants');
-
-        act(() => handle.props.onPress());
-        const openHandle = findControl(renderer, 'right-swipe-panel-edge-handle');
-        expect(openHandle.props['aria-expanded']).toBe(true);
-        expect(flattenStyle(openHandle.props.style)).toEqual(expect.objectContaining({ right: 288 }));
-        const openDrawer = renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' });
-        expect(openDrawer.props.accessibilityElementsHidden).toBe(false);
-        expect(openDrawer.props.importantForAccessibility).toBe('auto');
-        expect(findControl(renderer, 'right-swipe-panel-close-button').props.accessibilityRole).toBe('button');
+        expect(findControl(renderer, 'right-swipe-panel-edge-handle')).toBeUndefined();
 
         act(() => renderer.unmount());
+    });
+
+    it('keeps the native panel available through a left swipe', () => {
+        const renderer = renderHost();
+
+        act(() => {
+            mocks.gestureHandlers.onStart();
+            mocks.gestureHandlers.onUpdate({ translationX: -160 });
+            mocks.gestureHandlers.onEnd({ translationX: -160, velocityX: 0 });
+        });
+        expect(
+            renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' }).props.accessibilityElementsHidden,
+        ).toBe(false);
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps a focusable narrow-screen edge handle on the web with expanded semantics', () => {
+        (Platform as { OS: string }).OS = 'web';
+        const renderer = renderHost(undefined, true);
+
+        try {
+            const handle = findControl(renderer, 'right-swipe-panel-edge-handle');
+            const closedDrawer = renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' });
+
+            expect(handle).toBeDefined();
+            expect(handle.props.accessibilityRole).toBe('button');
+            expect(handle.props.accessibilityState).toEqual({ expanded: false });
+            expect(handle.props['aria-expanded']).toBe(false);
+            expect(flattenStyle(handle.props.style)).toEqual(expect.objectContaining({
+                backgroundColor: '#111',
+                borderColor: '#333',
+                minHeight: 40,
+                minWidth: 40,
+                top: 336,
+            }));
+            expect(flattenStyle(closedDrawer.props.style)).toEqual(expect.objectContaining({
+                backgroundColor: '#111',
+                paddingBottom: 12,
+                paddingTop: 12,
+            }));
+            expect(closedDrawer.props.accessibilityElementsHidden).toBeUndefined();
+            expect(closedDrawer.props.importantForAccessibility).toBeUndefined();
+
+            act(() => handle.props.onPress());
+            const openHandle = findControl(renderer, 'right-swipe-panel-edge-handle');
+            expect(openHandle.props['aria-expanded']).toBe(true);
+            expect(flattenStyle(openHandle.props.style)).toEqual(expect.objectContaining({ right: 288 }));
+            expect(findControl(renderer, 'right-swipe-panel-close-button').props.accessibilityRole).toBe('button');
+        } finally {
+            act(() => renderer.unmount());
+            (Platform as { OS: string }).OS = 'ios';
+        }
     });
 
     it('lets explicit hide controls close directly without consuming nested back', () => {
@@ -302,16 +328,15 @@ describe('RightSwipePanelHost close completion', () => {
             );
         });
 
-        const open = () => act(() => findControl(renderer, 'right-swipe-panel-edge-handle').props.onPress());
+        const open = () => act(() => {
+            mocks.gestureHandlers.onStart();
+            mocks.gestureHandlers.onUpdate({ translationX: -160 });
+            mocks.gestureHandlers.onEnd({ translationX: -160, velocityX: 0 });
+        });
         const completeClose = () => act(() => latestSpringCompletion()(true));
 
         open();
         act(() => findControl(renderer, 'right-swipe-panel-close-button').props.onPress());
-        completeClose();
-        expect(nestedBack).not.toHaveBeenCalled();
-
-        open();
-        act(() => findControl(renderer, 'right-swipe-panel-edge-handle').props.onPress());
         completeClose();
         expect(nestedBack).not.toHaveBeenCalled();
 
