@@ -95,6 +95,7 @@ export default function MachineDetailScreen() {
     const [terminalsLoading, setTerminalsLoading] = useState(false);
     const [isCreatingTerminal, setIsCreatingTerminal] = useState(false);
     const [approvalPolicy, setApprovalPolicy] = useState<TerminalApprovalPolicy>('per-session');
+    const [terminalsDisabled, setTerminalsDisabled] = useState(false);
     // Variant D only
 
     const machineSessions = useMemo(() => {
@@ -299,6 +300,7 @@ export default function MachineDetailScreen() {
     const loadTerminals = useCallback(async () => {
         if (!machineId) return;
         setTerminalsLoading(true);
+        setTerminalsDisabled(false);
         try {
             const [list, policyResult] = await Promise.all([
                 terminalList(machineId),
@@ -307,10 +309,13 @@ export default function MachineDetailScreen() {
             setTerminals(list);
             setApprovalPolicy(policyResult.policy);
         } catch (error) {
-            Modal.alert(
-                t('common.error'),
-                error instanceof Error ? error.message : 'Failed to load terminals',
-            );
+            const message = error instanceof Error ? error.message : 'Failed to load terminals';
+            if (message.includes('RPC method not available')) {
+                // The daemon runs with HAPPY_TERMINAL_ENABLED unset/off.
+                setTerminalsDisabled(true);
+            } else {
+                Modal.alert(t('common.error'), message);
+            }
         } finally {
             setTerminalsLoading(false);
         }
@@ -677,6 +682,13 @@ export default function MachineDetailScreen() {
                                 <Item
                                     title="No terminals yet"
                                     subtitle="Create one to keep a shell alive on this machine"
+                                    showChevron={false}
+                                />
+                            )}
+                            {!terminalsLoading && terminalsDisabled && (
+                                <Item
+                                    title="Terminals are disabled on this machine"
+                                    subtitle="Set HAPPY_TERMINAL_ENABLED=1 when starting the daemon to enable remote shells"
                                     showChevron={false}
                                 />
                             )}
