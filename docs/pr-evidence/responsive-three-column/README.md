@@ -4,7 +4,7 @@ Visible UI cases: 2
 
 ## Provenance
 
-- Exact before product base: `3fee0896703a8a07c37c75b4358f8a1c9cc00be7`
+- Exact before product base: `dbdd0d4f9ad5438a12aa025ad5ebcb6e55beed5a`
 - Before and after used the same authenticated local fixture, Chromium, light theme, English locale, and device pixel ratio 1.
 - Case 1 viewport: 390 × 844.
 - Case 2 viewport: 1024 × 768.
