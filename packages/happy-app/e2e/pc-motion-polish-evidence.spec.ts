@@ -236,6 +236,8 @@ type TabTransitionReading = {
     transitionProperty: string;
 };
 
+let presenceSampleSequence = 0;
+
 async function enableFileDiffsSidebar(page: Page): Promise<void> {
     await page.goto(authenticatedRoute('/settings/features'));
     const toggle = page.getByRole('switch', { name: 'File Diffs Sidebar' });
@@ -271,17 +273,109 @@ async function readPresenceLayers(page: Page, hostTestId: string): Promise<Prese
     ));
 }
 
+async function activateAndReadPresence(
+    page: Page,
+    trigger: Locator,
+    hostTestId: string,
+    action: () => Promise<void>,
+): Promise<PresenceTransitionReading> {
+    const sampleKey = `__happyE2ePresenceActivationSample${presenceSampleSequence++}`;
+    await trigger.evaluate((element, { hostTestId: targetHostTestId, sampleKey: targetSampleKey }) => {
+        type PresenceSampleState = {
+            listener: EventListener;
+            reading: PresenceLayerReading[] | null;
+            ready: boolean;
+            started: boolean;
+            target: Element;
+            timerId: number | null;
+        };
+        const sampleWindow = window as unknown as Record<string, PresenceSampleState | undefined>;
+        const state: PresenceSampleState = {
+            listener: () => undefined,
+            reading: null,
+            ready: false,
+            started: false,
+            target: element,
+            timerId: null,
+        };
+        const handleActivation: EventListener = (event) => {
+            if (event.type === 'keydown' && (!(event instanceof KeyboardEvent) || event.key !== 'Enter')) return;
+            if (state.started) return;
+            state.started = true;
+            state.timerId = window.setTimeout(() => {
+                const host = Array.from(document.querySelectorAll<HTMLElement>('[data-testid]'))
+                    .filter((candidate) => candidate.getAttribute('data-testid') === targetHostTestId)
+                    .at(-1);
+                const layers = host
+                    ? Array.from(host.children).filter((child): child is HTMLElement => (
+                        child instanceof HTMLElement
+                        && child.hasAttribute('data-happy-presence-phase')
+                    ))
+                    : [];
+                state.reading = layers.map((layer) => {
+                    const style = getComputedStyle(layer);
+                    return {
+                        direction: layer.getAttribute('data-happy-presence-direction'),
+                        opacity: style.opacity,
+                        phase: layer.getAttribute('data-happy-presence-phase'),
+                        pointerEvents: style.pointerEvents,
+                        transform: style.transform,
+                    };
+                });
+                state.ready = true;
+                state.timerId = null;
+            }, 40);
+        };
+        state.listener = handleActivation;
+        sampleWindow[targetSampleKey] = state;
+        element.addEventListener('click', handleActivation, { capture: true, once: true });
+        element.addEventListener('keydown', handleActivation, { capture: true, once: true });
+    }, { hostTestId, sampleKey });
+
+    let intermediate: PresenceLayerReading[] | null = null;
+    try {
+        await action();
+        const ready = await page.waitForFunction((targetSampleKey) => {
+            const sampleWindow = window as unknown as Record<string, { ready: boolean } | undefined>;
+            return sampleWindow[targetSampleKey]?.ready === true;
+        }, sampleKey, { polling: 5, timeout: 5_000 });
+        await ready.dispose();
+        intermediate = await page.evaluate((targetSampleKey) => {
+            const sampleWindow = window as unknown as Record<
+                string,
+                { reading: PresenceLayerReading[] | null } | undefined
+            >;
+            return sampleWindow[targetSampleKey]?.reading ?? null;
+        }, sampleKey);
+    } finally {
+        await page.evaluate((targetSampleKey) => {
+            type PresenceSampleState = {
+                listener: EventListener;
+                target: Element;
+                timerId: number | null;
+            };
+            const sampleWindow = window as unknown as Record<string, PresenceSampleState | undefined>;
+            const state = sampleWindow[targetSampleKey];
+            if (!state) return;
+            state.target.removeEventListener('click', state.listener, true);
+            state.target.removeEventListener('keydown', state.listener, true);
+            if (state.timerId !== null) window.clearTimeout(state.timerId);
+            delete sampleWindow[targetSampleKey];
+        }, sampleKey).catch(() => undefined);
+    }
+    if (intermediate === null) throw new Error('真实输入激活后未读取到 Presence 中间态。');
+
+    await page.waitForTimeout(180);
+    const settled = await readPresenceLayers(page, hostTestId);
+    return { intermediate, settled };
+}
+
 async function clickAndReadPresence(
     page: Page,
     trigger: Locator,
     hostTestId: string,
 ): Promise<PresenceTransitionReading> {
-    await trigger.click();
-    await page.waitForTimeout(40);
-    const intermediate = await readPresenceLayers(page, hostTestId);
-    await page.waitForTimeout(180);
-    const settled = await readPresenceLayers(page, hostTestId);
-    return { intermediate, settled };
+    return activateAndReadPresence(page, trigger, hostTestId, () => trigger.click());
 }
 
 async function pressEnterAndReadPresence(
@@ -291,14 +385,15 @@ async function pressEnterAndReadPresence(
 ): Promise<PresenceTransitionReading> {
     await trigger.focus();
     await expect(trigger).toBeFocused();
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(40);
-    const intermediate = await readPresenceLayers(page, hostTestId);
-    await page.waitForTimeout(180);
-    const settled = await readPresenceLayers(page, hostTestId);
+    const reading = await activateAndReadPresence(
+        page,
+        trigger,
+        hostTestId,
+        () => page.keyboard.press('Enter'),
+    );
     await expect(trigger).toBeFocused();
     expect(await trigger.evaluate((element) => document.activeElement === element)).toBe(true);
-    return { intermediate, settled };
+    return reading;
 }
 
 async function rapidSwitchAndReadPresence(
