@@ -241,6 +241,14 @@ export const it: TranslationStructure = {
         analyticsEnabled: 'Analisi anonime di utilizzo attive',
         imageUpload: 'Caricamento immagini',
         imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare dagli agenti supportati',
+        bashMode: 'Modalità comando Bash',
+        bashModeSubtitle: 'Inizia un messaggio con ! o $ per eseguirlo come comando della shell',
+    },
+
+    bashMode: {
+        noOutput: 'nessun output',
+        exitCode: ({ code }: { code: number }) => `uscito con codice ${code}`,
+        failed: ({ error }: { error: string }) => `Impossibile eseguire il comando: ${error}`,
     },
 
     errors: {

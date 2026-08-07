@@ -229,6 +229,14 @@ export const ru: TranslationStructure = {
         analyticsEnabled: 'Анонимная аналитика использования активна',
         imageUpload: 'Загрузка изображений',
         imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа поддерживаемыми агентами',
+        bashMode: 'Режим команд Bash',
+        bashModeSubtitle: 'Начните сообщение с ! или $, чтобы выполнить его как команду оболочки',
+    },
+
+    bashMode: {
+        noOutput: 'нет вывода',
+        exitCode: ({ code }: { code: number }) => `завершено с кодом ${code}`,
+        failed: ({ error }: { error: string }) => `Не удалось выполнить команду: ${error}`,
     },
 
     errors: {

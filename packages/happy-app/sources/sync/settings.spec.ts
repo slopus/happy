@@ -198,6 +198,7 @@ describe('settings', () => {
                 groupToolCalls: false,
                 compactToolCalls: true,
                 expImageUpload: false,
+                expBashMode: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
