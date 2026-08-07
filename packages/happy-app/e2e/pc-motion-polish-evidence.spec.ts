@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
@@ -15,10 +15,8 @@ function authenticatedRoute(pathname: string): string {
     return url.toString();
 }
 
-function evidencePath(fileName: string): string {
-    if (!evidenceDir) {
-        throw new Error('缺少 HAPPY_PC_MOTION_EVIDENCE_DIR。');
-    }
+function evidencePath(testInfo: TestInfo, fileName: string): string {
+    if (!evidenceDir) return testInfo.outputPath(fileName);
     mkdirSync(evidenceDir, { recursive: true });
     return join(evidenceDir, fileName);
 }
@@ -157,7 +155,7 @@ function distinctMotionFrames(readings: PanelMotionReading[]): number {
     return new Set(readings.map((reading) => `${reading.opacity}|${reading.transform}|${reading.visibility}`)).size;
 }
 
-test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request }) => {
+test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request }, testInfo) => {
     test.setTimeout(90_000);
     await page.setViewportSize({ width: 1280, height: 720 });
     const consoleErrors: string[] = [];
@@ -202,7 +200,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
     await page.mouse.move(640, 360);
     await page.waitForTimeout(isAfter ? 70 : 0);
     await page.screenshot({
-        path: evidencePath(`pc-motion-04-${evidencePhase}-left-sidebar-collapse.png`),
+        path: evidencePath(testInfo, `pc-motion-04-${evidencePhase}-left-sidebar-collapse.png`),
         fullPage: true,
     });
     await page.waitForTimeout(180);
@@ -232,7 +230,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
     await page.keyboard.press('Escape');
     const paletteVisibleImmediately = await page.getByTestId('command-palette').isVisible().catch(() => false);
     await page.screenshot({
-        path: evidencePath(`pc-motion-01-${evidencePhase}-palette-close.png`),
+        path: evidencePath(testInfo, `pc-motion-01-${evidencePhase}-palette-close.png`),
         fullPage: true,
     });
     expect(paletteVisibleImmediately).toBe(!isAfter);
@@ -263,7 +261,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
     expect(infoBox.y + infoBox.height).toBeLessThanOrEqual(720);
     expect(infoMotion.motion).toBe(isAfter ? 'popover' : null);
     await page.screenshot({
-        path: evidencePath(`pc-motion-02-${evidencePhase}-session-info.png`),
+        path: evidencePath(testInfo, `pc-motion-02-${evidencePhase}-session-info.png`),
         fullPage: true,
     });
     await pauseForReview(page);
@@ -312,7 +310,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
         expect(Math.abs(originX)).toBeLessThanOrEqual(2);
     }
     await page.screenshot({
-        path: evidencePath(`pc-motion-02-${evidencePhase}-session-menu.png`),
+        path: evidencePath(testInfo, `pc-motion-02-${evidencePhase}-session-menu.png`),
         fullPage: true,
     });
     await pauseForReview(page);
@@ -344,7 +342,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
     await page.mouse.move(640, 360);
     await page.waitForTimeout(isAfter ? 70 : 0);
     await page.screenshot({
-        path: evidencePath(`pc-motion-05-${evidencePhase}-right-sidebar-collapse.png`),
+        path: evidencePath(testInfo, `pc-motion-05-${evidencePhase}-right-sidebar-collapse.png`),
         fullPage: true,
     });
     await page.waitForTimeout(180);
@@ -384,7 +382,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
     const reducedHashB = await canvasPixelHash(page);
     expect(reducedHashB === reducedHashA).toBe(isAfter);
     await page.screenshot({
-        path: evidencePath(`pc-motion-03-${evidencePhase}-reduced-motion.png`),
+        path: evidencePath(testInfo, `pc-motion-03-${evidencePhase}-reduced-motion.png`),
         fullPage: true,
     });
     await pauseForReview(page);
@@ -405,7 +403,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
         unexpectedFailedRequests,
     };
     writeFileSync(
-        evidencePath(`pc-motion-${evidencePhase}-results.json`),
+        evidencePath(testInfo, `pc-motion-${evidencePhase}-results.json`),
         `${JSON.stringify(result, null, 2)}\n`,
         'utf8',
     );
