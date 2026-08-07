@@ -73,6 +73,69 @@ Edit `packages/happy-cli/package.json` directly — do NOT use `npm version` (it
 
 IMPORTANT: do this **before** build/test for the CLI. The build imports `package.json` and bakes the version into the generated bundle. If you build first and bump later, `happy --version` can still report the old prerelease version even though npm metadata shows the new one.
 
+### Step 4b: `@slopus/happy-wire` must stay bundled — do NOT move it back
+
+`packages/happy-cli/package.json` keeps `"@slopus/happy-wire": "workspace:*"` in
+**`devDependencies`, deliberately**. That is not a mistake to tidy up.
+
+pkgroll has no `--external` flag — its entire externals policy is derived from
+`dependencies`/`peerDependencies`. So the dependency section IS the bundling
+switch:
+
+- in `dependencies` → pkgroll emits a bare `import ... from '@slopus/happy-wire'`
+  and Node resolves it from the registry at runtime
+- in `devDependencies` → pkgroll inlines the code into `dist/`, and the dep
+  vanishes from the published `package.json` entirely
+
+It must stay in `devDependencies`. After any build change, verify:
+
+```bash
+# must return nothing — no runtime import may survive
+grep -rnE "(import|require).*@slopus/happy-wire" packages/happy-cli/dist/
+# must return the definitions, not just import mentions
+grep -rhoE "(function|const) (createEnvelope|stripLeadingTaskNotificationWrappers)" packages/happy-cli/dist/
+```
+
+(A bare `"@slopus/happy-wire": "workspace:*"` string does still appear in dist —
+that is the CLI's own package.json inlined as a JSON literal for the version
+string. Inert. Only an actual `import`/`require` matters.)
+
+**Why this exists.** `1.2.1-beta.0` shipped declaring `"@slopus/happy-wire":
+"0.1.0"` — the only version on npm, published 2026-02-13. Local happy-wire was
+*also* labeled `0.1.0` but had 18 commits of drift, including `f85b20c3` which
+added `stripLeadingTaskNotificationWrappers` and imported it from
+`happy-cli/src/codex/utils/sessionProtocolMapper.ts`. February's tarball had no
+such export, ESM failed at module load, and `happy` crashed on **every**
+invocation — dead on arrival, not degraded. `1.2.0` had survived the identical
+latent bug purely because none of its 15 import sites needed a post-February
+symbol. `workspace:*` publishes the local version NUMBER, never the local CODE.
+
+**No in-repo test can catch that class of bug.** Inside the monorepo
+`workspace:*` resolves to local source, so `prepublishOnly` — build, typecheck,
+all 792 unit tests — always sees the correct code. It only fails against the
+registry. The global-install smoke check in Step 11 is the ONLY gate.
+
+**Still exposed — `happy-agent` and `happy-server-self-host`** both keep
+happy-wire in `dependencies`, so they carry the original trap. Before publishing
+either, bundle it the same way or get happy-wire republished first.
+
+**Publish rights:** `@slopus/happy-wire` is owned solely by `steve.kite
+<steve@korshakov.com>`. `bra1ndump` is an owner of `happy` but NOT of the
+`@slopus` scope, so publishing happy-wire 404s for them. Bundling exists partly
+to route around that.
+
+Note: `happy --version` prints BOTH happy's own version and the Claude Code
+version it found:
+
+```
+happy version: 1.2.1-beta.1
+Using Claude Code v2.1.224 from native installer
+2.1.224 (Claude Code)
+```
+
+Do NOT pipe it through `tail -2` — that cuts the happy line off and makes it
+look like the command only reports Claude Code's version. Read the first line.
+
 ### Step 5: Build
 
 ```bash
