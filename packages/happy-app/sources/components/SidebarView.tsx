@@ -425,6 +425,7 @@ export const SidebarView = React.memo(({
                             onOpenChange={setAccountMenuOpen}
                             open={footerMenu === 'account'}
                             profile={profile}
+                            restoreFocusOnClose={footerMenu !== 'help'}
                             unreadCount={friendRequests.length}
                         />
                     </View>
@@ -443,6 +444,7 @@ export const SidebarView = React.memo(({
                     <SidebarHelpMenu
                         onOpenChange={setHelpMenuOpen}
                         open={footerMenu === 'help'}
+                        restoreFocusOnClose={footerMenu !== 'account'}
                     />
                 ) : null}
             </View>

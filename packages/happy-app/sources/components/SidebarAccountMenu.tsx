@@ -16,6 +16,7 @@ type SidebarAccountMenuProps = {
     onOpenChange: (open: boolean) => void;
     open: boolean;
     profile: Profile;
+    restoreFocusOnClose?: boolean;
     unreadCount?: number;
 };
 
@@ -60,6 +61,7 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
     onOpenChange,
     open,
     profile,
+    restoreFocusOnClose = true,
     unreadCount = 0,
 }: SidebarAccountMenuProps) {
     const { logout } = useAuth();
@@ -80,13 +82,13 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
         const timeout = setTimeout(() => {
             if (open) {
                 firstActionRef.current?.focus?.();
-            } else if (wasOpen) {
+            } else if (wasOpen && restoreFocusOnClose) {
                 triggerRef.current?.focus?.();
             }
         }, 0);
 
         return () => clearTimeout(timeout);
-    }, [open]);
+    }, [open, restoreFocusOnClose]);
 
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !open || typeof window === 'undefined') {

@@ -9,6 +9,7 @@ import TestRenderer from 'react-test-renderer';
 const mocks = vi.hoisted(() => ({
     firstActionFocus: vi.fn(),
     keydownHandler: null as ((event: any) => void) | null,
+    launcherAvailable: true,
     openExternalUrl: vi.fn(),
     openShortcuts: vi.fn(),
     triggerFocus: vi.fn(),
@@ -57,7 +58,7 @@ vi.mock('react-native-unistyles', () => {
 });
 vi.mock('@/components/KeyboardShortcuts', () => ({
     useKeyboardShortcutsLauncher: () => ({
-        isAvailable: true,
+        isAvailable: mocks.launcherAvailable,
         open: mocks.openShortcuts,
     }),
 }));
@@ -80,6 +81,7 @@ describe('SidebarHelpMenu', () => {
     beforeEach(() => {
         vi.useFakeTimers();
         vi.clearAllMocks();
+        mocks.launcherAvailable = true;
         mocks.keydownHandler = null;
         vi.stubGlobal('window', {
             addEventListener: vi.fn((event: string, handler: (event: any) => void) => {
@@ -169,6 +171,45 @@ describe('SidebarHelpMenu', () => {
         expect(mocks.triggerFocus).toHaveBeenCalledOnce();
         expect(preventDefault).toHaveBeenCalledOnce();
         expect(stopPropagation).toHaveBeenCalledOnce();
+    });
+
+    it('does not restore its trigger while focus transfers to another footer menu', () => {
+        const onOpenChange = vi.fn();
+        act(() => {
+            renderer = TestRenderer.create(
+                <SidebarHelpMenu
+                    onOpenChange={onOpenChange}
+                    open
+                    restoreFocusOnClose={false}
+                />,
+            );
+        });
+        act(() => vi.runOnlyPendingTimers());
+        mocks.triggerFocus.mockClear();
+
+        act(() => renderer.update(
+            <SidebarHelpMenu
+                onOpenChange={onOpenChange}
+                open={false}
+                restoreFocusOnClose={false}
+            />,
+        ));
+        act(() => vi.runOnlyPendingTimers());
+
+        expect(mocks.triggerFocus).not.toHaveBeenCalled();
+    });
+
+    it('renders no help affordance and closes stale state when shortcuts are unavailable', () => {
+        mocks.launcherAvailable = false;
+        const onOpenChange = vi.fn();
+
+        act(() => {
+            renderer = TestRenderer.create(<SidebarHelpMenu onOpenChange={onOpenChange} open />);
+        });
+
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-help-trigger' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-help-menu' })).toHaveLength(0);
+        expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
     it('anchors a fixed-width menu above the right-aligned trigger with menu semantics', () => {

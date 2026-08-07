@@ -13,6 +13,7 @@ const SUPPORT_URL = 'https://github.com/wangjs-jacky/happy/issues';
 type SidebarHelpMenuProps = {
     onOpenChange: (open: boolean) => void;
     open: boolean;
+    restoreFocusOnClose?: boolean;
 };
 
 type MenuActionProps = {
@@ -49,22 +50,27 @@ const MenuAction = React.forwardRef<any, MenuActionProps>(function MenuAction({
 export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
     onOpenChange,
     open,
+    restoreFocusOnClose = true,
 }: SidebarHelpMenuProps) {
     const { theme } = useUnistyles();
     const launcher = useKeyboardShortcutsLauncher();
+    const launcherAvailable = launcher?.isAvailable === true;
     const triggerRef = React.useRef<any>(null);
     const firstActionRef = React.useRef<any>(null);
     const wasOpenRef = React.useRef(false);
     const skipNextClosedFocusRef = React.useRef(false);
 
     React.useEffect(() => {
-        if (Platform.OS !== 'web') {
+        if (Platform.OS !== 'web' || !launcherAvailable) {
             wasOpenRef.current = open;
             return;
         }
 
         const wasOpen = wasOpenRef.current;
-        const shouldRestoreTrigger = wasOpen && !open && !skipNextClosedFocusRef.current;
+        const shouldRestoreTrigger = wasOpen
+            && !open
+            && restoreFocusOnClose
+            && !skipNextClosedFocusRef.current;
         if (wasOpen && !open && skipNextClosedFocusRef.current) {
             skipNextClosedFocusRef.current = false;
         }
@@ -79,10 +85,10 @@ export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
         }, 0);
 
         return () => clearTimeout(timeout);
-    }, [open]);
+    }, [launcherAvailable, open, restoreFocusOnClose]);
 
     React.useEffect(() => {
-        if (Platform.OS !== 'web' || !open || typeof window === 'undefined') {
+        if (!launcherAvailable || Platform.OS !== 'web' || !open || typeof window === 'undefined') {
             return;
         }
 
@@ -97,7 +103,13 @@ export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [onOpenChange, open]);
+    }, [launcherAvailable, onOpenChange, open]);
+
+    React.useEffect(() => {
+        if (!launcherAvailable && open) {
+            onOpenChange(false);
+        }
+    }, [launcherAvailable, onOpenChange, open]);
 
     const openKeyboardShortcuts = React.useCallback(() => {
         skipNextClosedFocusRef.current = true;
@@ -110,6 +122,10 @@ export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
         onOpenChange(false);
         void openExternalUrl(SUPPORT_URL);
     }, [onOpenChange]);
+
+    if (!launcherAvailable) {
+        return null;
+    }
 
     return (
         <View style={styles.footer} testID="sidebar-help-footer">

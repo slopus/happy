@@ -144,6 +144,38 @@ describe('SidebarAccountMenu', () => {
         expect(stopPropagation).toHaveBeenCalledOnce();
     });
 
+    it('does not restore its trigger while focus transfers to another footer menu', () => {
+        const onOpenChange = vi.fn();
+        act(() => {
+            renderer = TestRenderer.create(
+                <SidebarAccountMenu
+                    displayName="Paws User"
+                    onNavigate={mocks.navigate}
+                    onOpenChange={onOpenChange}
+                    open
+                    profile={profile}
+                    restoreFocusOnClose={false}
+                />,
+            );
+        });
+        act(() => vi.runOnlyPendingTimers());
+        mocks.triggerFocus.mockClear();
+
+        act(() => renderer.update(
+            <SidebarAccountMenu
+                displayName="Paws User"
+                onNavigate={mocks.navigate}
+                onOpenChange={onOpenChange}
+                open={false}
+                profile={profile}
+                restoreFocusOnClose={false}
+            />,
+        ));
+        act(() => vi.runOnlyPendingTimers());
+
+        expect(mocks.triggerFocus).not.toHaveBeenCalled();
+    });
+
     it('offers profile, settings, and account destinations without help actions', () => {
         const onOpenChange = vi.fn();
         act(() => {
