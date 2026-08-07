@@ -1,9 +1,9 @@
 import React, { useRef, useEffect } from 'react';
-import { View, ScrollView, Text, StyleSheet, Platform } from 'react-native';
+import { View, ScrollView, Text, Platform } from 'react-native';
 import { COMMAND_PALETTE_RESULTS_ID, Command, CommandCategory } from './types';
 import { CommandPaletteItem } from './CommandPaletteItem';
 import { Typography } from '@/constants/Typography';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 
 interface CommandPaletteResultsProps {
@@ -21,7 +21,7 @@ export function CommandPaletteResults({
     onSelectCommand, 
     onSelectionChange 
 }: CommandPaletteResultsProps) {
-    const { theme } = useUnistyles();
+    const styles = stylesheet;
     const scrollViewRef = useRef<ScrollView>(null);
     const itemRefs = useRef<{ [key: number]: View | null }>({});
     
@@ -47,7 +47,7 @@ export function CommandPaletteResults({
     if (categories.length === 0 || allCommands.length === 0) {
         return (
             <View style={styles.emptyContainer}>
-                <Text style={[styles.emptyText, Typography.default(), { color: theme.colors.textSecondary }]}>
+                <Text style={styles.emptyText}>
                     {t('commandPalette.noCommandsFound')}
                 </Text>
             </View>
@@ -96,11 +96,7 @@ export function CommandPaletteResults({
                 return (
                     <View key={category.id}>
                         <Text
-                            style={[
-                                styles.categoryTitle,
-                                Typography.default('semiBold'),
-                                { color: theme.colors.textSecondary },
-                            ]}
+                            style={styles.categoryTitle}
                         >
                             {category.title}
                         </Text>
@@ -112,31 +108,34 @@ export function CommandPaletteResults({
     );
 }
 
-const styles = StyleSheet.create({
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
-        // Use viewport-based height for better proportions
         ...(Platform.OS === 'web' ? {
-            maxHeight: '40vh', // 40% of viewport height for results
+            maxHeight: '48vh',
         } as any : {
-            maxHeight: 420, // Fallback for native
+            maxHeight: 420,
         }),
-        paddingVertical: 8,
+        paddingVertical: 7,
     },
     emptyContainer: {
-        padding: 48,
+        paddingHorizontal: 24,
+        paddingVertical: 40,
         alignItems: 'center',
     },
     emptyText: {
-        fontSize: 15,
-        letterSpacing: -0.2,
+        ...Typography.default(),
+        color: theme.colors.textSecondary,
+        fontSize: 13,
     },
     categoryTitle: {
-        paddingHorizontal: 32,
-        paddingTop: 16,
-        paddingBottom: 8,
-        fontSize: 12,
+        ...Typography.default('semiBold'),
+        color: theme.colors.textSecondary,
+        paddingHorizontal: 20,
+        paddingTop: 12,
+        paddingBottom: 6,
+        fontSize: 11,
         textTransform: 'uppercase',
-        letterSpacing: 0.8,
+        letterSpacing: 0.3,
         fontWeight: '600',
     },
-});
+}));
