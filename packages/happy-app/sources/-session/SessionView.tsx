@@ -9,6 +9,7 @@ import { SessionHeaderChip } from '@/components/SessionHeaderChip';
 import { SessionInfoDropdown } from '@/components/SessionInfoDropdown';
 import { DesktopRightPanel, DesktopRightPanelToggleButton } from '@/components/DesktopRightPanel';
 import { DesktopPresenceTransition } from '@/components/DesktopPresenceTransition';
+import type { DesktopTransitionDirection } from '@/components/DesktopPresenceTransition.types';
 import { DesktopShortcutTooltip } from '@/components/DesktopShortcutTooltip';
 import { RightSwipePanelHost } from '@/components/RightSwipePanelHost';
 import { ChatList } from '@/components/ChatList';
@@ -361,19 +362,38 @@ export const SessionView = React.memo((props: { id: string }) => {
         | { kind: 'none' }
         | { kind: 'diff'; file: string }
         | { kind: 'file'; path: string };
-    const [overlayHistory, setOverlayHistory] = React.useState<{ stack: OverlayEntry[]; cursor: number }>(
-        { stack: [{ kind: 'none' }], cursor: 0 }
-    );
+    type OverlayHistoryState = {
+        cursor: number;
+        direction: DesktopTransitionDirection;
+        immediate: boolean;
+        stack: OverlayEntry[];
+    };
+    const [overlayHistory, setOverlayHistory] = React.useState<OverlayHistoryState>({
+        cursor: 0,
+        direction: 'forward',
+        immediate: true,
+        stack: [{ kind: 'none' }],
+    });
     const overlayCurrent = overlayHistory.stack[overlayHistory.cursor] ?? { kind: 'none' };
     const diffViewOpen = overlayCurrent.kind === 'diff';
     const fileViewPath = overlayCurrent.kind === 'file' ? overlayCurrent.path : null;
     const scrollToFile = overlayCurrent.kind === 'diff' ? overlayCurrent.file : null;
+    const overlayTransitionKey = overlayCurrent.kind === 'diff'
+        ? `diff:${overlayCurrent.file}`
+        : overlayCurrent.kind === 'file'
+            ? `file:${overlayCurrent.path}`
+            : 'chat';
 
     const pushOverlay = React.useCallback((entry: OverlayEntry) => {
         setOverlayHistory((prev) => {
             const truncated = prev.stack.slice(0, prev.cursor + 1);
             truncated.push(entry);
-            return { stack: truncated, cursor: truncated.length - 1 };
+            return {
+                stack: truncated,
+                cursor: truncated.length - 1,
+                direction: 'forward',
+                immediate: false,
+            };
         });
     }, []);
 
@@ -389,12 +409,34 @@ export const SessionView = React.memo((props: { id: string }) => {
     // Don't close on zen mode toggle — keep the view visible.
     React.useEffect(() => {
         if (!canShowFilePanel) {
-            setOverlayHistory({ stack: [{ kind: 'none' }], cursor: 0 });
+            setOverlayHistory({
+                stack: [{ kind: 'none' }],
+                cursor: 0,
+                direction: 'back',
+                immediate: true,
+            });
         }
     }, [canShowFilePanel]);
 
     // Right-side header content published by the active overlay (diff toggle / save button).
-    const [headerRightSlot, setHeaderRightSlot] = React.useState<React.ReactNode>(null);
+    type OwnedHeaderRightSlot = { ownerKey: string; slot: React.ReactNode };
+    const [ownedHeaderRightSlot, setOwnedHeaderRightSlot] = React.useState<OwnedHeaderRightSlot>({
+        ownerKey: 'chat',
+        slot: null,
+    });
+    const headerRightSlot = ownedHeaderRightSlot.ownerKey === overlayTransitionKey
+        ? ownedHeaderRightSlot.slot
+        : null;
+    const publishOverlayHeaderRightSlot = React.useCallback((slot: React.ReactNode) => {
+        setOwnedHeaderRightSlot((current) => {
+            if (slot === null && current.ownerKey !== overlayTransitionKey) return current;
+            return { ownerKey: overlayTransitionKey, slot };
+        });
+    }, [overlayTransitionKey]);
+
+    React.useLayoutEffect(() => {
+        setOwnedHeaderRightSlot({ ownerKey: overlayTransitionKey, slot: null });
+    }, [overlayTransitionKey]);
 
     // Opens the phone session-list drawer (same root Drawer the compose home opens).
     const openSessionList = React.useCallback(() => {
@@ -411,14 +453,24 @@ export const SessionView = React.memo((props: { id: string }) => {
             back: () => {
                 if (!canOverlayBack) return false;
                 setOverlayHistory((prev) => (
-                    prev.cursor <= 0 ? prev : { ...prev, cursor: prev.cursor - 1 }
+                    prev.cursor <= 0 ? prev : {
+                        ...prev,
+                        cursor: prev.cursor - 1,
+                        direction: 'back',
+                        immediate: false,
+                    }
                 ));
                 return true;
             },
             forward: () => {
                 if (!canOverlayForward) return false;
                 setOverlayHistory((prev) => (
-                    prev.cursor >= prev.stack.length - 1 ? prev : { ...prev, cursor: prev.cursor + 1 }
+                    prev.cursor >= prev.stack.length - 1 ? prev : {
+                        ...prev,
+                        cursor: prev.cursor + 1,
+                        direction: 'forward',
+                        immediate: false,
+                    }
                 ));
                 return true;
             },
@@ -719,44 +771,41 @@ export const SessionView = React.memo((props: { id: string }) => {
                 testID="desktop-workspace-main"
             >
                 {mainContent}
-                {diffViewOpen && canShowFilePanel && (
-                    <View
-                        style={{
-                            pointerEvents: 'box-none',
-                            position: 'absolute',
-                            top: safeArea.top + headerHeight,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            backgroundColor: theme.colors.surface,
-                        }}
+                <View
+                    pointerEvents="box-none"
+                    style={{
+                        position: 'absolute',
+                        top: safeArea.top + headerHeight,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                    }}
+                >
+                    <DesktopPresenceTransition
+                        direction={overlayHistory.direction}
+                        immediate={overlayHistory.immediate}
+                        testID="workspace-overlay-transition"
+                        transitionKey={overlayTransitionKey}
                     >
-                        <AllFilesDiffView
-                            sessionId={sessionId}
-                            scrollToFile={scrollToFile}
-                            onHeaderRightSlotChange={setHeaderRightSlot}
-                        />
-                    </View>
-                )}
-                {fileViewPath && canShowFilePanel && (
-                    <View
-                        style={{
-                            pointerEvents: 'box-none',
-                            position: 'absolute',
-                            top: safeArea.top + headerHeight,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            backgroundColor: theme.colors.surface,
-                        }}
-                    >
-                        <FileViewPanel
-                            sessionId={sessionId}
-                            filePath={fileViewPath}
-                            onHeaderRightSlotChange={setHeaderRightSlot}
-                        />
-                    </View>
-                )}
+                        {diffViewOpen && canShowFilePanel ? (
+                            <View style={workspaceStyles.overlaySurface} testID="workspace-diff-panel">
+                                <AllFilesDiffView
+                                    onHeaderRightSlotChange={publishOverlayHeaderRightSlot}
+                                    scrollToFile={scrollToFile}
+                                    sessionId={sessionId}
+                                />
+                            </View>
+                        ) : fileViewPath && canShowFilePanel ? (
+                            <View style={workspaceStyles.overlaySurface} testID="workspace-file-panel">
+                                <FileViewPanel
+                                    filePath={fileViewPath}
+                                    onHeaderRightSlotChange={publishOverlayHeaderRightSlot}
+                                    sessionId={sessionId}
+                                />
+                            </View>
+                        ) : null}
+                    </DesktopPresenceTransition>
+                </View>
             </View>
             <Animated.View
                 aria-hidden={!showDesktopRightPanel}
@@ -1585,6 +1634,15 @@ const workspaceStyles = StyleSheet.create((theme) => ({
     desktopMain: {
         flex: 1,
         minWidth: DESKTOP_MAIN_MIN_WIDTH,
+    },
+    overlaySurface: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        backgroundColor: theme.colors.surface,
+        pointerEvents: 'box-none',
     },
     desktopPanelClip: {
         minWidth: 0,
