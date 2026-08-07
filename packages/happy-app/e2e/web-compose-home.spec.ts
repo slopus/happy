@@ -11,6 +11,15 @@ import {
 
 const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL!;
 const e2eServerUrl = process.env.HAPPY_E2E_SERVER_URL!;
+const projectHoverEvidenceDirectory = process.env.HAPPY_PROJECT_HOVER_EVIDENCE_DIR;
+const projectHoverEvidencePhase = process.env.HAPPY_PROJECT_HOVER_EVIDENCE_PHASE ?? 'after';
+
+function projectHoverScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
+    const filename = `case-1-${projectHoverEvidencePhase}.png`;
+    if (!projectHoverEvidenceDirectory) return testInfo.outputPath(filename);
+    fs.mkdirSync(projectHoverEvidenceDirectory, { recursive: true });
+    return path.join(projectHoverEvidenceDirectory, filename);
+}
 
 function authenticatedRoute(pathname: string): string {
     const url = new URL(authenticatedWebUrl);
@@ -1954,6 +1963,52 @@ test('[SESSION-LAYOUT] 左栏在项目分组与时间排序之间切换并记住
     await expect(layoutIcon).toHaveAttribute('data-icon-name', 'clock');
     await page.reload();
     await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
+});
+
+test('[PROJECT-HOVER-ACTIONS] PC 项目行悬浮显示快捷操作并复用会话菜单', async ({ page, request }, testInfo) => {
+    const sessionId = await createE2ESession(request, {
+        path: '/workspace/console',
+        host: 'studio-mac',
+        machineId: 'studio-machine',
+        homeDir: '/workspace',
+        name: 'Console hover actions',
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(authenticatedRoute(`/session/${sessionId}`));
+    expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+
+    const project = page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole');
+    const projectActions = page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-actions');
+    await expect(project).toBeVisible();
+    await project.hover();
+
+    if (projectHoverEvidencePhase === 'before') {
+        await expect(projectActions).toHaveCount(0);
+    } else {
+        await expect(projectActions).toBeVisible();
+        await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-more-action'))
+            .toHaveAccessibleName('More session actions');
+        await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-new-session-action'))
+            .toHaveAccessibleName('New session');
+        await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-more-action').locator('[data-icon-name="more-horizontal"]'))
+            .toHaveCount(1);
+        await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-new-session-action').locator('[data-icon-name="edit-3"]'))
+            .toHaveCount(1);
+    }
+    await page.screenshot({ path: projectHoverScreenshotPath(testInfo), fullPage: true });
+
+    if (projectHoverEvidencePhase !== 'before') {
+        await page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-more-action').click();
+        await expect(page.getByText('Pin Session', { exact: true })).toBeVisible();
+        await page.mouse.click(1000, 850);
+        await expect(page.getByText('Pin Session', { exact: true })).toHaveCount(0);
+
+        await project.hover();
+        await page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-new-session-action').click();
+        await expect(page).toHaveURL((url) => url.pathname === '/new');
+        await expect(page.locator('[data-testid="new-session-message-input"]:visible')).toBeVisible();
+    }
 });
 
 test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重连后保持一致', async ({ page, request }, testInfo) => {
