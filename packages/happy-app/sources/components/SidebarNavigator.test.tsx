@@ -124,8 +124,19 @@ vi.mock('@/hooks/useSessionSelection', () => ({
         selector: (state: { active: boolean; clearSelection: () => void }) => unknown,
     ) => selector({ active: false, clearSelection: mocks.clearSelection }),
 }));
+vi.mock('./KeyboardShortcuts', () => ({
+    KeyboardShortcutsProvider: ({ children }: { children: React.ReactNode }) => (
+        React.createElement('KeyboardShortcutsProvider', null, children)
+    ),
+}));
 vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({
-    DesktopWorkspaceLayoutProvider: ({ children }: { children: React.ReactNode }) => children,
+    DesktopWorkspaceLayoutProvider: ({
+        children,
+        enabled,
+    }: {
+        children: React.ReactNode;
+        enabled: boolean;
+    }) => React.createElement('DesktopWorkspaceLayoutProvider', { enabled }, children),
     useDesktopWorkspaceLayout: () => ({
         enabled: mocks.isTablet,
         leftExpandedWidth: mocks.isTablet ? 360 : 0,
@@ -163,6 +174,20 @@ describe('SidebarNavigator drawer behavior', () => {
     });
 
     afterEach(() => consoleErrorSpy.mockRestore());
+
+    it('mounts the shortcuts launcher inside the desktop workspace layout around navigator content', () => {
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<SidebarNavigator />);
+        });
+
+        const layout = renderer.root.findByType('DesktopWorkspaceLayoutProvider');
+        const shortcuts = layout.findByType('KeyboardShortcutsProvider');
+        expect(layout.props.enabled).toBe(true);
+        expect(shortcuts.findByType('Drawer')).toBeDefined();
+
+        act(() => renderer.unmount());
+    });
 
     it.each([
         { isTablet: true, expected: false, layout: 'desktop' },
