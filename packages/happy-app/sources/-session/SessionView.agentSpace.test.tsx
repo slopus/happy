@@ -542,8 +542,12 @@ describe('SessionView Agent-space boundary', () => {
 
         const filePublisher = renderer.root.findByType('FileViewPanel').props.onHeaderRightSlotChange;
         act(() => filePublisher('file-header-slot'));
+        act(() => oldDiffPublisher('stale-diff-slot'));
+        let header = renderer.root.findByType('ChatHeaderView');
+        expect(header.findAll((node: any) => node.children.includes('file-header-slot'))).not.toHaveLength(0);
+        expect(header.findAll((node: any) => node.children.includes('stale-diff-slot'))).toHaveLength(0);
         act(() => oldDiffPublisher(null));
-        const header = renderer.root.findByType('ChatHeaderView');
+        header = renderer.root.findByType('ChatHeaderView');
         expect(header.findAll((node: any) => node.children.includes('file-header-slot'))).not.toHaveLength(0);
         expect(renderer.root.findByType('MessageComposer')).toBe(chatContent);
 

@@ -427,10 +427,14 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerRightSlot = ownedHeaderRightSlot.ownerKey === overlayTransitionKey
         ? ownedHeaderRightSlot.slot
         : null;
+    const activeOverlayKeyRef = React.useRef(overlayTransitionKey);
+    activeOverlayKeyRef.current = overlayTransitionKey;
     const publishOverlayHeaderRightSlot = React.useCallback((slot: React.ReactNode) => {
+        const publisherOwnerKey = overlayTransitionKey;
+        if (activeOverlayKeyRef.current !== publisherOwnerKey) return;
         setOwnedHeaderRightSlot((current) => {
-            if (slot === null && current.ownerKey !== overlayTransitionKey) return current;
-            return { ownerKey: overlayTransitionKey, slot };
+            if (activeOverlayKeyRef.current !== publisherOwnerKey) return current;
+            return { ownerKey: publisherOwnerKey, slot };
         });
     }, [overlayTransitionKey]);
 
