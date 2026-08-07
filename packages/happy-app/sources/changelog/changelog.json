@@ -6,6 +6,11 @@
       "markdown": "- Gemini 3.6 Flash in the Antigravity model picker — High, Medium, and Low effort.\n- Start and manage native Rig sessions from Happy — connected Rig machines offer their models, permission modes, and effort levels right in the composer.\n- New sessions no longer launch with a stale agent after switching machines.\n- On web, wide tables and code blocks in chat scroll sideways with the trackpad.\n- Community Credits: [@abhisheksoni27](https://github.com/abhisheksoni27), [@charliezong18](https://github.com/charliezong18)"
     },
     {
+      "title": "August 7 — Remote terminals (experimental)",
+      "summary": "Persistent shells from your phone, end-to-end encrypted.",
+      "markdown": "- Open a real terminal on any connected machine from the app or web (Machine → Terminals).\n- Shells stay alive when you close the app — reconnect and pick up where you left off, with tmux-backed persistence on macOS/Linux.\n- Approval per session by default; configure none or once-per-machine in machine settings.\n- Mobile keyboard bar with Esc, Ctrl-C, Tab, arrows, and paste.\n- Requires daemon opt-in: `HAPPY_TERMINAL_ENABLED=1 happy daemon start`."
+    },
+    {
       "title": "August 3 — Composer and tool calls",
       "summary": "Shorter tool output and a composer that behaves again.",
       "markdown": "- Tool calls show as one-line rows you can open for details — turn it off with Compact Tool Calls in Settings → Appearance.\n- The mic is back in the send button — voice when the composer is empty, send once you've typed, stop while the agent works.\n- Model and effort sit together next to the send button, and no longer get cut off when you switch.\n- Model, effort, and permission pickers are legible again on iOS 26.\n- The send button is visible again on the light theme.\n- Composer pickers stay tappable while the keyboard is open."
