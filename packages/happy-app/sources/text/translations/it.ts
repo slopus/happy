@@ -241,6 +241,8 @@ export const it: TranslationStructure = {
         analyticsEnabled: 'Analisi anonime di utilizzo attive',
         imageUpload: 'Caricamento immagini',
         imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare dagli agenti supportati',
+        dirAutocomplete: 'Completamento automatico dei percorsi',
+        dirAutocompleteSubtitle: 'Suggerisce le directory mentre digiti il percorso della nuova sessione',
     },
 
     errors: {

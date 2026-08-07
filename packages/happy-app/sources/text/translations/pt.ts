@@ -242,6 +242,8 @@ export const pt: TranslationStructure = {
         analyticsEnabled: 'Análises anônimas de uso ativas',
         imageUpload: 'Upload de imagens',
         imageUploadSubtitle: 'Anexe imagens às mensagens para que agentes compatíveis as analisem',
+        dirAutocomplete: 'Autocompletar de caminhos',
+        dirAutocompleteSubtitle: 'Sugere diretórios enquanto você digita o caminho da nova sessão',
     },
 
     errors: {

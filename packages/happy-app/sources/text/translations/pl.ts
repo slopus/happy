@@ -260,6 +260,8 @@ export const pl: TranslationStructure = {
         analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
         imageUpload: 'Przesyłanie obrazów',
         imageUploadSubtitle: 'Dołączaj obrazy do wiadomości, aby obsługiwani agenci mogli je analizować',
+        dirAutocomplete: 'Autouzupełnianie ścieżek',
+        dirAutocompleteSubtitle: 'Podpowiada katalogi podczas wpisywania ścieżki nowej sesji',
     },
 
     errors: {

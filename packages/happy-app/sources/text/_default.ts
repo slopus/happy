@@ -241,6 +241,8 @@ export const en = {
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
         imageUploadSubtitle: 'Attach images to messages for supported agents to analyze',
+        dirAutocomplete: 'Path Autocomplete',
+        dirAutocompleteSubtitle: 'Suggest directories as you type the new-session path',
     },
 
     imageUpload: {
