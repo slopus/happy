@@ -13,7 +13,7 @@ const isAfter = evidencePhase === 'after';
 const fileTransitionPhase = process.env.HAPPY_PC_FILE_TRANSITION_PHASE === 'after' ? 'after' : 'before';
 const isFileTransitionAfter = fileTransitionPhase === 'after';
 
-if (evidenceDir) test.use({ video: 'on' });
+if (evidenceDir && process.env.HAPPY_E2E_RECORD !== '1') test.use({ video: 'on' });
 
 function authenticatedRoute(pathname: string): string {
     const url = new URL(authenticatedWebUrl);
