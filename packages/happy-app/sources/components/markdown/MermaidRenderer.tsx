@@ -5,8 +5,13 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
-// Tall diagrams scroll inside a capped container instead of taking over the chat
-const MAX_DIAGRAM_HEIGHT = 600;
+// Runaway guard on the WebView-reported height, NOT a design cap. It used to be
+// 600, which silently cropped any diagram taller than that: the container is a
+// fixed-height WebView, so the excess was only reachable by scrolling *inside*
+// it, and the chat list swallows that gesture on Android. Web has never capped
+// the diagram (see webStyle below), so the two platforms disagreed as well.
+// Keep a ceiling only so a bad measurement cannot produce an absurd box.
+const MAX_DIAGRAM_HEIGHT = 8000;
 
 // Style for Web platform
 const webStyle: any = {
