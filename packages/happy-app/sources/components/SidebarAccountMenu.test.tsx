@@ -12,7 +12,6 @@ const mocks = vi.hoisted(() => ({
     keydownHandler: null as ((event: any) => void) | null,
     logout: vi.fn(),
     navigate: vi.fn(),
-    openExternalUrl: vi.fn(),
     triggerFocus: vi.fn(),
 }));
 
@@ -64,7 +63,6 @@ vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }
 vi.mock('@/modal', () => ({ Modal: { confirm: mocks.confirm } }));
 vi.mock('@/sync/profile', () => ({ getAvatarUrl: () => null }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
-vi.mock('@/utils/openExternalUrl', () => ({ openExternalUrl: mocks.openExternalUrl }));
 
 import { SidebarAccountMenu } from './SidebarAccountMenu';
 
@@ -146,7 +144,7 @@ describe('SidebarAccountMenu', () => {
         expect(stopPropagation).toHaveBeenCalledOnce();
     });
 
-    it('offers profile, settings, account, and support destinations', () => {
+    it('offers profile, settings, and account destinations without help actions', () => {
         const onOpenChange = vi.fn();
         act(() => {
             renderer = TestRenderer.create(
@@ -163,14 +161,13 @@ describe('SidebarAccountMenu', () => {
         act(() => renderer.root.findByProps({ testID: 'sidebar-account-profile-action' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'sidebar-account-settings-action' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'sidebar-account-details-action' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'sidebar-account-help-action' }).props.onPress());
 
         expect(mocks.navigate.mock.calls).toEqual([
             ['/settings/profile'],
             ['/settings'],
             ['/settings/account'],
         ]);
-        expect(mocks.openExternalUrl).toHaveBeenCalledWith('https://github.com/wangjs-jacky/happy/issues');
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-account-help-action' })).toHaveLength(0);
         expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 

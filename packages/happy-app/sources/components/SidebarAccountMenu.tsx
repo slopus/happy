@@ -8,9 +8,6 @@ import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
 import { getAvatarUrl, type Profile } from '@/sync/profile';
 import { t } from '@/text';
-import { openExternalUrl } from '@/utils/openExternalUrl';
-
-const SUPPORT_URL = 'https://github.com/wangjs-jacky/happy/issues';
 
 type SidebarAccountMenuProps = {
     desktopDensity?: boolean;
@@ -114,11 +111,6 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
         onNavigate(path);
     }, [onNavigate, onOpenChange]);
 
-    const openSupport = React.useCallback(() => {
-        onOpenChange(false);
-        void openExternalUrl(SUPPORT_URL);
-    }, [onOpenChange]);
-
     const confirmLogout = React.useCallback(() => {
         onOpenChange(false);
         void (async () => {
@@ -168,12 +160,6 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                         label={t('settings.account')}
                         onPress={() => navigate('/settings/account')}
                         testID="sidebar-account-details-action"
-                    />
-                    <MenuAction
-                        icon="help-buoy-outline"
-                        label={t('settings.reportIssue')}
-                        onPress={openSupport}
-                        testID="sidebar-account-help-action"
                     />
                     <View style={styles.dangerGroup}>
                         <MenuAction

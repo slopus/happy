@@ -75,6 +75,7 @@ vi.mock('./useDrawerHaptics', () => ({ useDrawerHaptics: () => undefined }));
 vi.mock('./VoiceAssistantStatusBar', () => ({ VoiceAssistantStatusBar: 'VoiceAssistantStatusBar' }));
 vi.mock('./MainView', () => ({ MainView: 'MainView' }));
 vi.mock('./SidebarAccountMenu', () => ({ SidebarAccountMenu: 'SidebarAccountMenu' }));
+vi.mock('./SidebarHelpMenu', () => ({ SidebarHelpMenu: 'SidebarHelpMenu' }));
 vi.mock('./agents/AgentSheet', () => ({ AgentSheet: 'AgentSheet' }));
 vi.mock('@/hooks/useAgentSpace', () => ({
     useAgentSpace: () => ({
@@ -167,6 +168,14 @@ describe('SidebarView Agent space exit', () => {
             expect.objectContaining({ borderWidth: 0 }),
         );
         expect(renderer.root.findByType('SidebarAccountMenu').props.desktopDensity).toBe(true);
+        expect(renderer.root.findAllByType('SidebarAccountMenu')).toHaveLength(1);
+        expect(renderer.root.findAllByType('SidebarHelpMenu')).toHaveLength(1);
+        expect(renderer.root.findByProps({ testID: 'sidebar-footer-menus' }).props.style).toContainEqual(
+            expect.objectContaining({ flexDirection: 'row' }),
+        );
+        expect(renderer.root.findByProps({ testID: 'sidebar-account-menu-slot' }).props.style).toEqual(
+            expect.objectContaining({ flex: 1 }),
+        );
         expect(renderer.root.findAllByProps({ testID: 'sidebar-user-card' })).toHaveLength(0);
         expect(renderer.root.findAllByType('MainView')).toHaveLength(1);
         expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'agents.empty')).toBe(false);
@@ -186,6 +195,7 @@ describe('SidebarView Agent space exit', () => {
 
         expect(renderer.root.findAllByProps({ testID: 'sidebar-desktop-density' })).toHaveLength(0);
         expect(renderer.root.findByType('SidebarAccountMenu').props.desktopDensity).toBe(false);
+        expect(renderer.root.findAllByType('SidebarHelpMenu')).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'sidebar-user-card' })).toHaveLength(0);
         expect(renderer.root.findAllByType('Text').some(
             (node: any) => node.props.children === 'agents.empty',
@@ -198,6 +208,37 @@ describe('SidebarView Agent space exit', () => {
         expect(
             secondary.findByProps({ testID: 'sidebar-my-agents-button' }).props.style({ pressed: false }),
         ).toContainEqual(expect.objectContaining({ marginHorizontal: 16 }));
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the desktop footer menus mutually exclusive and dismisses either from one layer', () => {
+        mocks.spaceAgent = null;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(
+                <SidebarView closeDrawerOnNavigate={false} desktopDensity />,
+            );
+        });
+
+        act(() => renderer.root.findByType('SidebarAccountMenu').props.onOpenChange(true));
+        expect(renderer.root.findByType('SidebarAccountMenu').props.open).toBe(true);
+        expect(renderer.root.findByType('SidebarHelpMenu').props.open).toBe(false);
+
+        act(() => renderer.root.findByType('SidebarHelpMenu').props.onOpenChange(true));
+        expect(renderer.root.findByType('SidebarAccountMenu').props.open).toBe(false);
+        expect(renderer.root.findByType('SidebarHelpMenu').props.open).toBe(true);
+
+        act(() => renderer.root.findByType('SidebarAccountMenu').props.onOpenChange(true));
+        expect(renderer.root.findByType('SidebarAccountMenu').props.open).toBe(true);
+        expect(renderer.root.findByType('SidebarHelpMenu').props.open).toBe(false);
+
+        const dismissLayer = renderer.root.findByProps({ testID: 'sidebar-footer-menu-dismiss-layer' });
+        act(() => dismissLayer.props.onPress());
+        expect(renderer.root.findByType('SidebarAccountMenu').props.open).toBe(false);
+        expect(renderer.root.findByType('SidebarHelpMenu').props.open).toBe(false);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-footer-menu-dismiss-layer' })).toHaveLength(0);
 
         act(() => renderer.unmount());
     });
