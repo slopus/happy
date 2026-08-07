@@ -16,7 +16,7 @@ export function getDesktopTitlePromptMessageId(
             continue;
         }
 
-        const fallbackTitle = deriveSessionFallbackTitle(item.message.text);
+        const fallbackTitle = deriveSessionFallbackTitle(item.message.displayText || item.message.text);
         return fallbackTitle === sessionTitle.trim() ? item.message.id : null;
     }
 
