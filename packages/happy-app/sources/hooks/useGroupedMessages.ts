@@ -64,8 +64,9 @@ type ImageAgentPresentationState = {
  *
  * When enabled, intermediate agent work in a turn is collapsed into an
  * AgentWorkGroupItem while the final agent text remains visible. Tool calls
- * that remain outside a work group are collapsed only when adjacent visible
- * tool calls form a run. When disabled, every message passes through.
+ * that remain outside a work group are collapsed into compact tool groups;
+ * adjacent visible tool calls share one group. When disabled, every message
+ * passes through.
  */
 export function useGroupedMessages(
     messages: Message[],
@@ -203,7 +204,10 @@ export function groupMessagesForDisplay(
 
         if (msg.kind === 'tool-call') {
             const info = toolRuns.get(i);
-            if (info && info.msgs.length > 1 && i === info.oldestIdx) {
+            // Questions must remain inline so their answer controls stay immediately reachable.
+            const shouldGroupRun = info
+                && (info.msgs.length > 1 || msg.tool.name !== 'AskUserQuestion');
+            if (shouldGroupRun && i === info.oldestIdx) {
                 let hasRunning = false;
                 for (const m of info.msgs) {
                     if (m.kind === 'tool-call' && m.tool.state === 'running') {
@@ -220,7 +224,7 @@ export function groupMessagesForDisplay(
                     hasPendingPermission: hasPendingPermission(info.msgs),
                 });
             }
-            if (info && info.msgs.length > 1) {
+            if (shouldGroupRun) {
                 continue;
             }
         }
