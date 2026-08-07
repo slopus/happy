@@ -772,21 +772,21 @@ async function createConnectedE2EWorkingDirectorySession(request: APIRequestCont
         'X-Happy-Client': 'playwright-cwd-e2e',
     };
     const machineMetadata = encodeBase64(encryptLegacy({
-                host: 'playwright-cwd-agent',
-                platform: 'darwin',
-                happyCliVersion: '0.0.0-e2e',
-                happyHomeDir: join(workspace, '.happy'),
-                homeDir: workspace,
-                cliAvailability: {
-                    ask: true,
-                    claude: true,
-                    codex: true,
-                    gemini: true,
-                    opencode: true,
-                    openclaw: true,
-                    detectedAt: Date.now(),
-                },
-            }, encryptionKey));
+        host: 'playwright-cwd-agent',
+        platform: 'darwin',
+        happyCliVersion: '0.0.0-e2e',
+        happyHomeDir: join(workspace, '.happy'),
+        homeDir: workspace,
+        cliAvailability: {
+            ask: true,
+            claude: true,
+            codex: true,
+            gemini: true,
+            opencode: true,
+            openclaw: true,
+            detectedAt: Date.now(),
+        },
+    }, encryptionKey));
     const registerMachine = async () => {
         const response = await request.post(new URL('/v1/machines', e2eServerUrl).toString(), {
             data: { id: machineId, metadata: machineMetadata, dataEncryptionKey: null },
@@ -1762,108 +1762,108 @@ test('[R10-04] 高密度导航在搜索、归档和深链刷新后保持稳定',
             if (failure?.status === 'rejected') throw failure.reason;
         }
 
-    expect(machineIds).toHaveLength(3);
-    expect(projects).toHaveLength(10);
-    expect(sessions).toHaveLength(50);
+        expect(machineIds).toHaveLength(3);
+        expect(projects).toHaveLength(10);
+        expect(sessions).toHaveLength(50);
 
-    const searchTarget = sessions[17]!;
-    const archiveTarget = sessions[28]!;
-    const deepLinkTarget = sessions[47]!;
-    const disconnectedTarget = sessions[8]!;
-    const disconnectResponse = await request.post(
-        new URL(`/v1/sessions/${encodeURIComponent(disconnectedTarget.id)}/archive`, e2eServerUrl).toString(),
-        {
-            headers: cleanupHeaders,
-        },
-    );
-    expect(disconnectResponse.ok()).toBe(true);
+        const searchTarget = sessions[17]!;
+        const archiveTarget = sessions[28]!;
+        const deepLinkTarget = sessions[47]!;
+        const disconnectedTarget = sessions[8]!;
+        const disconnectResponse = await request.post(
+            new URL(`/v1/sessions/${encodeURIComponent(disconnectedTarget.id)}/archive`, e2eServerUrl).toString(),
+            {
+                headers: cleanupHeaders,
+            },
+        );
+        expect(disconnectResponse.ok()).toBe(true);
 
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto(authenticatedRoute('/new'));
-    await expect(page.getByRole('textbox')).toBeVisible();
-    const archiveToggle = page.getByTestId('session-archive-toggle');
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.goto(authenticatedRoute('/new'));
+        await expect(page.getByRole('textbox')).toBeVisible();
+        const archiveToggle = page.getByTestId('session-archive-toggle');
 
-    for (const machineId of machineIds) {
-        await expect(page.getByText(machineId, { exact: true })).toBeVisible();
-    }
-    for (const project of projects) {
-        const projectKey = `${encodeURIComponent(project.machineId)}--${encodeURIComponent(project.path)}`;
-        const toggle = page.getByTestId(`sidebar-project-toggle-${projectKey}`);
-        const projectSessions = sessions.filter(session => session.projectIndex === project.projectIndex);
-        const rows = page.getByTestId(`sidebar-project-sessions-${projectKey}`);
-        expect(projectSessions).toHaveLength(5);
-        await expect(toggle).toBeVisible();
-        await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-        for (const session of projectSessions) {
-            await expect(rows.getByTestId(`session-row-${session.id}`)).toBeVisible();
+        for (const machineId of machineIds) {
+            await expect(page.getByText(machineId, { exact: true })).toBeVisible();
         }
-    }
+        for (const project of projects) {
+            const projectKey = `${encodeURIComponent(project.machineId)}--${encodeURIComponent(project.path)}`;
+            const toggle = page.getByTestId(`sidebar-project-toggle-${projectKey}`);
+            const projectSessions = sessions.filter(session => session.projectIndex === project.projectIndex);
+            const rows = page.getByTestId(`sidebar-project-sessions-${projectKey}`);
+            expect(projectSessions).toHaveLength(5);
+            await expect(toggle).toBeVisible();
+            await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+            for (const session of projectSessions) {
+                await expect(rows.getByTestId(`session-row-${session.id}`)).toBeVisible();
+            }
+        }
 
-    const disconnectedRow = page.getByTestId(`session-row-${disconnectedTarget.id}`);
-    await expect(disconnectedRow).toHaveAccessibleName(/disconnected/i);
-    await disconnectedRow.scrollIntoViewIfNeeded();
-    await disconnectedRow.hover();
-    await expect(page.getByTestId('session-row-details')).toContainText(/disconnected/i);
+        const disconnectedRow = page.getByTestId(`session-row-${disconnectedTarget.id}`);
+        await expect(disconnectedRow).toHaveAccessibleName(/disconnected/i);
+        await disconnectedRow.scrollIntoViewIfNeeded();
+        await disconnectedRow.hover();
+        await expect(page.getByTestId('session-row-details')).toContainText(/disconnected/i);
 
-    await page.getByTestId('sidebar-command-palette-button').click();
-    const commandInput = page.getByTestId('command-palette-input');
-    await commandInput.fill(searchTarget.summary);
-    const searchResult = page.getByTestId(`command-palette-item-session-${searchTarget.id}`);
-    await expect(searchResult).toBeVisible();
-    await expect(searchResult).toContainText(searchTarget.path);
-    await expect(searchResult).toContainText(searchTarget.machineId);
+        await page.getByTestId('sidebar-command-palette-button').click();
+        const commandInput = page.getByTestId('command-palette-input');
+        await commandInput.fill(searchTarget.summary);
+        const searchResult = page.getByTestId(`command-palette-item-session-${searchTarget.id}`);
+        await expect(searchResult).toBeVisible();
+        await expect(searchResult).toContainText(searchTarget.path);
+        await expect(searchResult).toContainText(searchTarget.machineId);
 
-    const impossibleQuery = `r10-no-result-${fixtureKey}`;
-    await commandInput.fill(impossibleQuery);
-    await expect(page.getByText('No commands found', { exact: true })).toBeVisible();
-    await commandInput.press('Escape');
-    await expect(page.getByTestId('command-palette')).toHaveCount(0);
+        const impossibleQuery = `r10-no-result-${fixtureKey}`;
+        await commandInput.fill(impossibleQuery);
+        await expect(page.getByText('No commands found', { exact: true })).toBeVisible();
+        await commandInput.press('Escape');
+        await expect(page.getByTestId('command-palette')).toHaveCount(0);
 
-    let archiveRow = page.getByTestId(`session-row-${archiveTarget.id}`);
-    await archiveRow.scrollIntoViewIfNeeded();
-    await archiveRow.hover();
-    await page.getByTestId(`session-row-actions-${archiveTarget.id}`)
-        .getByTestId('session-row-archive-action')
-        .click();
-    await expect(archiveToggle).toContainText(/Show archived|Hide archived/);
-    if ((await archiveToggle.textContent())?.includes('Hide archived')) {
+        let archiveRow = page.getByTestId(`session-row-${archiveTarget.id}`);
+        await archiveRow.scrollIntoViewIfNeeded();
+        await archiveRow.hover();
+        await page.getByTestId(`session-row-actions-${archiveTarget.id}`)
+            .getByTestId('session-row-archive-action')
+            .click();
+        await expect(archiveToggle).toContainText(/Show archived|Hide archived/);
+        if ((await archiveToggle.textContent())?.includes('Hide archived')) {
+            await archiveToggle.click();
+        }
+        await expect(archiveToggle).toContainText('Show archived');
+        await expect(archiveRow).toHaveCount(0);
+
         await archiveToggle.click();
-    }
-    await expect(archiveToggle).toContainText('Show archived');
-    await expect(archiveRow).toHaveCount(0);
+        archiveRow = page.getByTestId(`session-row-${archiveTarget.id}`);
+        await expect(archiveRow).toBeVisible();
+        await archiveRow.scrollIntoViewIfNeeded();
+        await archiveRow.hover();
+        const restoreAction = page.getByTestId(`session-row-actions-${archiveTarget.id}`)
+            .getByTestId('session-row-restore-action');
+        await expect(restoreAction).toHaveAccessibleName('Restore Session');
+        await restoreAction.click();
 
-    await archiveToggle.click();
-    archiveRow = page.getByTestId(`session-row-${archiveTarget.id}`);
-    await expect(archiveRow).toBeVisible();
-    await archiveRow.scrollIntoViewIfNeeded();
-    await archiveRow.hover();
-    const restoreAction = page.getByTestId(`session-row-actions-${archiveTarget.id}`)
-        .getByTestId('session-row-restore-action');
-    await expect(restoreAction).toHaveAccessibleName('Restore Session');
-    await restoreAction.click();
+        const restoredRow = page.getByTestId(`session-row-${archiveTarget.id}`);
+        await expect(restoredRow).toBeVisible();
 
-    const restoredRow = page.getByTestId(`session-row-${archiveTarget.id}`);
-    await expect(restoredRow).toBeVisible();
+        const deepLinkProjectKey = `${encodeURIComponent(deepLinkTarget.machineId)}--${encodeURIComponent(deepLinkTarget.path)}`;
+        const deepLinkToggle = page.getByTestId(`sidebar-project-toggle-${deepLinkProjectKey}`);
+        await deepLinkToggle.scrollIntoViewIfNeeded();
+        await deepLinkToggle.click();
+        await expect(deepLinkToggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(page.getByTestId(`session-row-${deepLinkTarget.id}`)).toHaveCount(0);
 
-    const deepLinkProjectKey = `${encodeURIComponent(deepLinkTarget.machineId)}--${encodeURIComponent(deepLinkTarget.path)}`;
-    const deepLinkToggle = page.getByTestId(`sidebar-project-toggle-${deepLinkProjectKey}`);
-    await deepLinkToggle.scrollIntoViewIfNeeded();
-    await deepLinkToggle.click();
-    await expect(deepLinkToggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(page.getByTestId(`session-row-${deepLinkTarget.id}`)).toHaveCount(0);
+        await page.goto(authenticatedRoute(`/session/${deepLinkTarget.id}`));
+        const deepLinkRow = page.getByTestId(`session-row-${deepLinkTarget.id}`);
+        await expect(page.getByTestId('session-message-input')).toBeVisible();
+        await expect(deepLinkToggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(deepLinkRow).toBeVisible();
+        await expect(deepLinkRow).toHaveAttribute('aria-current', 'page');
 
-    await page.goto(authenticatedRoute(`/session/${deepLinkTarget.id}`));
-    const deepLinkRow = page.getByTestId(`session-row-${deepLinkTarget.id}`);
-    await expect(page.getByTestId('session-message-input')).toBeVisible();
-    await expect(deepLinkToggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(deepLinkRow).toBeVisible();
-    await expect(deepLinkRow).toHaveAttribute('aria-current', 'page');
-
-    await page.reload();
-    await expect(page.getByTestId('session-message-input')).toBeVisible();
-    await expect(deepLinkToggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(deepLinkRow).toBeVisible();
-    await expect(deepLinkRow).toHaveAttribute('aria-current', 'page');
+        await page.reload();
+        await expect(page.getByTestId('session-message-input')).toBeVisible();
+        await expect(deepLinkToggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(deepLinkRow).toBeVisible();
+        await expect(deepLinkRow).toHaveAttribute('aria-current', 'page');
     } finally {
         for (let index = 0; index < sessions.length; index += 5) {
             await Promise.all(sessions.slice(index, index + 5).map(async ({ id }) => {
@@ -1967,133 +1967,133 @@ test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重�
 
     try {
         await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(authenticatedRoute(`/session/${sessionId}`));
-    expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
-    await expect(page.getByTestId('session-message-input')).toBeVisible();
-    await expect(page.locator('[data-testid="message-composer-send-button"]:visible')).toHaveCount(1);
-    await expect(page.getByTestId('session-composer-mode-selector')).toHaveCount(0);
-    await expect(page.getByTestId('session-composer-permission-selector')).toHaveCount(0);
-    await page.screenshot({
-        path: testInfo.outputPath('mobile-composer-mode-001-after-390x844.png'),
-        fullPage: true,
-    });
+        await page.goto(authenticatedRoute(`/session/${sessionId}`));
+        expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+        await expect(page.getByTestId('session-message-input')).toBeVisible();
+        await expect(page.locator('[data-testid="message-composer-send-button"]:visible')).toHaveCount(1);
+        await expect(page.getByTestId('session-composer-mode-selector')).toHaveCount(0);
+        await expect(page.getByTestId('session-composer-permission-selector')).toHaveCount(0);
+        await page.screenshot({
+            path: testInfo.outputPath('mobile-composer-mode-001-after-390x844.png'),
+            fullPage: true,
+        });
 
-    await page.setViewportSize({ width: 1280, height: 900 });
+        await page.setViewportSize({ width: 1280, height: 900 });
 
-    const selector = page.locator('[data-testid="session-composer-mode-selector"]:visible');
-    const permissionSelector = page.locator('[data-testid="session-composer-permission-selector"]:visible');
-    const permissionTrigger = permissionSelector.getByTestId('session-composer-permission-trigger');
-    const modelTrigger = selector.getByTestId('session-composer-model-trigger');
-    const effortTrigger = selector.getByTestId('session-composer-effort-trigger');
-    await expect(permissionSelector).toBeVisible();
-    await expect(permissionTrigger).toContainText('Ask first');
-    await expect(permissionTrigger).toHaveAttribute('aria-label', 'Permissions: Needs confirmation');
-    await expect(permissionTrigger).toHaveAttribute('aria-expanded', 'false');
-    await expect(selector).toBeVisible();
-    await expect(modelTrigger).toContainText('gpt-5.6-sol');
-    await expect(modelTrigger).toHaveAttribute('aria-label', 'MODEL: gpt-5.6-sol');
-    await expect(effortTrigger).toContainText('xhigh');
-    await expect(effortTrigger).toHaveAttribute('aria-label', 'EFFORT: xhigh');
+        const selector = page.locator('[data-testid="session-composer-mode-selector"]:visible');
+        const permissionSelector = page.locator('[data-testid="session-composer-permission-selector"]:visible');
+        const permissionTrigger = permissionSelector.getByTestId('session-composer-permission-trigger');
+        const modelTrigger = selector.getByTestId('session-composer-model-trigger');
+        const effortTrigger = selector.getByTestId('session-composer-effort-trigger');
+        await expect(permissionSelector).toBeVisible();
+        await expect(permissionTrigger).toContainText('Ask first');
+        await expect(permissionTrigger).toHaveAttribute('aria-label', 'Permissions: Needs confirmation');
+        await expect(permissionTrigger).toHaveAttribute('aria-expanded', 'false');
+        await expect(selector).toBeVisible();
+        await expect(modelTrigger).toContainText('gpt-5.6-sol');
+        await expect(modelTrigger).toHaveAttribute('aria-label', 'MODEL: gpt-5.6-sol');
+        await expect(effortTrigger).toContainText('xhigh');
+        await expect(effortTrigger).toHaveAttribute('aria-label', 'EFFORT: xhigh');
 
-    await expect(page.getByText(historicalMessage, { exact: true })).toBeVisible();
-    const historicalModeLabel = page.getByTestId(/^message-user-mode-/).filter({
-        hasText: 'Needs confirmation · gpt-5.5 · medium',
-    });
-    await expect(historicalModeLabel).toHaveCount(1);
-    await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
-    await page.screenshot({
-        path: testInfo.outputPath('pc-composer-mode-001-after-1280x900.png'),
-        fullPage: true,
-    });
+        await expect(page.getByText(historicalMessage, { exact: true })).toBeVisible();
+        const historicalModeLabel = page.getByTestId(/^message-user-mode-/).filter({
+            hasText: 'Needs confirmation · gpt-5.5 · medium',
+        });
+        await expect(historicalModeLabel).toHaveCount(1);
+        await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-mode-001-after-1280x900.png'),
+            fullPage: true,
+        });
 
-    await permissionTrigger.click();
-    const permissionPicker = page.getByTestId('session-composer-permission-picker');
-    const confirmPermission = page.getByTestId('session-composer-permission-option-confirm');
-    const fullAccessPermission = page.getByTestId('session-composer-permission-option-full-access');
-    await expect(permissionPicker).toBeVisible();
-    await expect(permissionTrigger).toHaveAttribute('aria-expanded', 'true');
-    await expect(confirmPermission).toBeChecked();
-    await expect(fullAccessPermission).not.toBeChecked();
-    await expect(permissionPicker.getByText(
-        'Uses the agent confirmation flow for actions that need extra permission. Device and outer sandbox limits still apply.',
-        { exact: true },
-    )).toBeVisible();
-    await expect(permissionPicker.getByText(
-        'Bypasses agent confirmations where supported. Device and outer sandbox limits still apply.',
-        { exact: true },
-    )).toBeVisible();
-    await page.waitForTimeout(350); // Let the picker fade-in finish before visual evidence capture.
-    await page.screenshot({
-        path: testInfo.outputPath('pc-composer-permission-001-after-1280x900.png'),
-        fullPage: true,
-    });
+        await permissionTrigger.click();
+        const permissionPicker = page.getByTestId('session-composer-permission-picker');
+        const confirmPermission = page.getByTestId('session-composer-permission-option-confirm');
+        const fullAccessPermission = page.getByTestId('session-composer-permission-option-full-access');
+        await expect(permissionPicker).toBeVisible();
+        await expect(permissionTrigger).toHaveAttribute('aria-expanded', 'true');
+        await expect(confirmPermission).toBeChecked();
+        await expect(fullAccessPermission).not.toBeChecked();
+        await expect(permissionPicker.getByText(
+            'Uses the agent confirmation flow for actions that need extra permission. Device and outer sandbox limits still apply.',
+            { exact: true },
+        )).toBeVisible();
+        await expect(permissionPicker.getByText(
+            'Bypasses agent confirmations where supported. Device and outer sandbox limits still apply.',
+            { exact: true },
+        )).toBeVisible();
+        await page.waitForTimeout(350); // Let the picker fade-in finish before visual evidence capture.
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-permission-001-after-1280x900.png'),
+            fullPage: true,
+        });
 
-    await fullAccessPermission.click();
-    await expect(page.getByText('Enable full access?', { exact: true })).toBeVisible();
-    await expect(page.getByText(
-        'Full access bypasses agent confirmations where supported, including for potentially high-risk actions. It does not override device or outer sandbox limits. Only continue if you trust this task.',
-        { exact: true },
-    )).toBeVisible();
-    await page.waitForTimeout(350); // Let the risk modal fade-in finish before visual evidence capture.
-    await page.screenshot({
-        path: testInfo.outputPath('pc-composer-permission-002-after-1280x900.png'),
-        fullPage: true,
-    });
-    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await expect(page.getByText('Enable full access?', { exact: true })).toHaveCount(0);
-    await expect(permissionTrigger).toContainText('Ask first');
-    await expect(permissionTrigger).toBeFocused();
+        await fullAccessPermission.click();
+        await expect(page.getByText('Enable full access?', { exact: true })).toBeVisible();
+        await expect(page.getByText(
+            'Full access bypasses agent confirmations where supported, including for potentially high-risk actions. It does not override device or outer sandbox limits. Only continue if you trust this task.',
+            { exact: true },
+        )).toBeVisible();
+        await page.waitForTimeout(350); // Let the risk modal fade-in finish before visual evidence capture.
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-permission-002-after-1280x900.png'),
+            fullPage: true,
+        });
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(page.getByText('Enable full access?', { exact: true })).toHaveCount(0);
+        await expect(permissionTrigger).toContainText('Ask first');
+        await expect(permissionTrigger).toBeFocused();
 
-    await permissionTrigger.click();
-    await page.getByTestId('session-composer-permission-option-full-access').click();
-    await expect(page.getByText('Enable full access?', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Enable full access', exact: true }).click();
-    await expect(permissionTrigger).toContainText('Full');
-    await expect(permissionTrigger).toHaveAttribute('aria-label', 'Permissions: Full access');
-    await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
-    await page.screenshot({
-        path: testInfo.outputPath('pc-composer-permission-003-after-1280x900.png'),
-        fullPage: true,
-    });
+        await permissionTrigger.click();
+        await page.getByTestId('session-composer-permission-option-full-access').click();
+        await expect(page.getByText('Enable full access?', { exact: true })).toBeVisible();
+        await page.getByRole('button', { name: 'Enable full access', exact: true }).click();
+        await expect(permissionTrigger).toContainText('Full');
+        await expect(permissionTrigger).toHaveAttribute('aria-label', 'Permissions: Full access');
+        await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-permission-003-after-1280x900.png'),
+            fullPage: true,
+        });
 
-    await permissionTrigger.click();
-    await page.getByTestId('session-composer-permission-option-confirm').click();
-    await expect(permissionTrigger).toContainText('Ask first');
-    await permissionTrigger.click();
-    await page.getByTestId('session-composer-permission-option-full-access').click();
-    await expect(page.getByText('Enable full access?', { exact: true })).toHaveCount(0);
-    await expect(permissionTrigger).toContainText('Full');
-    await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
-    await page.screenshot({
-        path: testInfo.outputPath('pc-composer-permission-004-after-1280x900.png'),
-        fullPage: true,
-    });
+        await permissionTrigger.click();
+        await page.getByTestId('session-composer-permission-option-confirm').click();
+        await expect(permissionTrigger).toContainText('Ask first');
+        await permissionTrigger.click();
+        await page.getByTestId('session-composer-permission-option-full-access').click();
+        await expect(page.getByText('Enable full access?', { exact: true })).toHaveCount(0);
+        await expect(permissionTrigger).toContainText('Full');
+        await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-permission-004-after-1280x900.png'),
+            fullPage: true,
+        });
 
-    await modelTrigger.click();
-    const modelPicker = page.getByTestId('session-composer-model-picker');
-    await expect(modelPicker).toBeVisible();
-    await expect(modelTrigger).toHaveAttribute('aria-expanded', 'true');
-    await expect(modelPicker.getByRole('radio', { name: 'default model' })).toBeVisible();
-    await expect(modelPicker.getByRole('radio', { name: /^gpt-5\.5,/ })).toBeVisible();
-    await expect(modelPicker.getByRole('radio', { name: /^gpt-5\.6-sol,/ })).toBeChecked();
-    await page.waitForTimeout(350); // Let the picker fade-in finish before visual evidence capture.
-    await page.screenshot({
-        path: testInfo.outputPath('pc-composer-mode-002-after-1280x900.png'),
-        fullPage: true,
-    });
+        await modelTrigger.click();
+        const modelPicker = page.getByTestId('session-composer-model-picker');
+        await expect(modelPicker).toBeVisible();
+        await expect(modelTrigger).toHaveAttribute('aria-expanded', 'true');
+        await expect(modelPicker.getByRole('radio', { name: 'default model' })).toBeVisible();
+        await expect(modelPicker.getByRole('radio', { name: /^gpt-5\.5,/ })).toBeVisible();
+        await expect(modelPicker.getByRole('radio', { name: /^gpt-5\.6-sol,/ })).toBeChecked();
+        await page.waitForTimeout(350); // Let the picker fade-in finish before visual evidence capture.
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-mode-002-after-1280x900.png'),
+            fullPage: true,
+        });
 
-    await page.getByTestId('session-composer-mode-picker-scrim').click({ position: { x: 8, y: 8 } });
-    await expect(modelPicker).toHaveCount(0);
-    await expect(modelTrigger).toHaveAttribute('aria-expanded', 'false');
+        await page.getByTestId('session-composer-mode-picker-scrim').click({ position: { x: 8, y: 8 } });
+        await expect(modelPicker).toHaveCount(0);
+        await expect(modelTrigger).toHaveAttribute('aria-expanded', 'false');
 
-    await effortTrigger.click();
-    const effortPicker = page.getByTestId('session-composer-effort-picker');
-    await expect(effortPicker).toBeVisible();
-    await expect(effortTrigger).toHaveAttribute('aria-expanded', 'true');
-    await expect(effortPicker.getByRole('radio', { name: 'default effort' })).toBeVisible();
-    await expect(effortPicker.getByRole('radio', { name: /^medium,/ })).toBeVisible();
-    await expect(effortPicker.getByRole('radio', { name: /^high,/ })).toBeVisible();
-    await expect(effortPicker.getByRole('radio', { name: /^xhigh,/ })).toBeChecked();
+        await effortTrigger.click();
+        const effortPicker = page.getByTestId('session-composer-effort-picker');
+        await expect(effortPicker).toBeVisible();
+        await expect(effortTrigger).toHaveAttribute('aria-expanded', 'true');
+        await expect(effortPicker.getByRole('radio', { name: 'default effort' })).toBeVisible();
+        await expect(effortPicker.getByRole('radio', { name: /^medium,/ })).toBeVisible();
+        await expect(effortPicker.getByRole('radio', { name: /^high,/ })).toBeVisible();
+        await expect(effortPicker.getByRole('radio', { name: /^xhigh,/ })).toBeChecked();
 
         await effortPicker.getByRole('radio', { name: /^high,/ }).click();
         await expect(effortTrigger).toContainText('high');
