@@ -1,13 +1,19 @@
-import { expect, test, type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { expect, test, type APIRequestContext, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
+import { io } from 'socket.io-client';
+import { decodeBase64, decryptLegacy, encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
 
 const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL!;
 const e2eServerUrl = process.env.HAPPY_E2E_SERVER_URL!;
 const evidenceDir = process.env.HAPPY_PC_MOTION_EVIDENCE_DIR;
 const evidencePhase = process.env.HAPPY_PC_MOTION_EVIDENCE_PHASE === 'before' ? 'before' : 'after';
 const isAfter = evidencePhase === 'after';
+const fileTransitionPhase = process.env.HAPPY_PC_FILE_TRANSITION_PHASE === 'after' ? 'after' : 'before';
+const isFileTransitionAfter = fileTransitionPhase === 'after';
+
+if (evidenceDir) test.use({ video: 'on' });
 
 function authenticatedRoute(pathname: string): string {
     const url = new URL(authenticatedWebUrl);
@@ -54,6 +60,310 @@ async function createSession(request: APIRequestContext): Promise<string> {
     expect(response.ok()).toBe(true);
     const body = await response.json() as { session: { id: string } };
     return body.session.id;
+}
+
+async function createConnectedFileSession(request: APIRequestContext): Promise<{
+    changedFile: string;
+    close: () => void;
+    rpcCalls: Array<{ method: string; params: { command?: string; path?: string } | null }>;
+    secondFile: string;
+    sessionId: string;
+    workspace: string;
+}> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少创建文件动效验收会话所需的本地认证配置。');
+    }
+
+    const workspace = mkdtempSync(join(tmpdir(), 'happy-file-motion-e2e-'));
+    const changedFile = 'src/changed-motion.ts';
+    const secondFile = 'src/second-motion.ts';
+    mkdirSync(join(workspace, 'src'), { recursive: true });
+    writeFileSync(join(workspace, changedFile), 'export const changedMotion = true;\n', 'utf8');
+    writeFileSync(join(workspace, secondFile), 'export const secondMotion = true;\n', 'utf8');
+    const bashReplies = (command: string) => {
+        if (command.includes('status --porcelain=v2')) {
+            return '# branch.head main\n? src/changed-motion.ts\n';
+        }
+        if (command.includes('diff --numstat')) {
+            return '1\t0\tsrc/changed-motion.ts\n---STAGED---\n';
+        }
+        if (command.includes('ls-files')) {
+            return `${changedFile}\n${secondFile}\n`;
+        }
+        return '';
+    };
+
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+    const metadata = encodeBase64(encryptLegacy({
+        path: workspace,
+        homeDir: workspace,
+        host: 'playwright-file-motion',
+        machineId: 'playwright-file-motion-machine',
+        name: 'File motion',
+        summary: { text: 'File motion', updatedAt: Date.now() },
+        flavor: 'codex',
+        lifecycleState: 'running',
+        startedBy: 'terminal',
+    }, encryptionKey));
+    const response = await request.post(new URL('/v1/sessions', e2eServerUrl).toString(), {
+        data: {
+            tag: `pc-file-motion-e2e-${Date.now()}-${Math.random()}`,
+            metadata,
+            agentState: null,
+            dataEncryptionKey: null,
+        },
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Happy-Client': 'playwright-file-motion',
+        },
+    });
+    if (!response.ok()) {
+        rmSync(workspace, { force: true, recursive: true });
+        throw new Error(`创建文件动效验收会话失败：HTTP ${response.status()}`);
+    }
+    const body = await response.json() as { session: { id: string } };
+    const sessionId = body.session.id;
+    const rpcCalls: Array<{ method: string; params: { command?: string; path?: string } | null }> = [];
+    const rpcSocket = io(e2eServerUrl, {
+        auth: {
+            token,
+            clientType: 'session-scoped',
+            sessionId,
+            happyClient: 'playwright-file-motion-rpc',
+        },
+        autoConnect: false,
+        path: '/v1/updates',
+        reconnection: false,
+        transports: ['websocket'],
+    });
+    rpcSocket.on('rpc-request', (
+        data: { method: string; params: string },
+        callback: (responseValue: string) => void,
+    ) => {
+        const params = decryptLegacy(decodeBase64(data.params), encryptionKey) as {
+            command?: string;
+            path?: string;
+        } | null;
+        rpcCalls.push({ method: data.method, params });
+        let result: unknown;
+        if (data.method === `${sessionId}:bash`) {
+            result = {
+                success: true,
+                stdout: bashReplies(params?.command ?? ''),
+                stderr: '',
+                exitCode: 0,
+            };
+        } else if (data.method === `${sessionId}:readFile`) {
+            const fileContent = params?.path === changedFile || params?.path === join(workspace, changedFile)
+                ? 'export const changedMotion = true;\n'
+                : params?.path === secondFile || params?.path === join(workspace, secondFile)
+                    ? 'export const secondMotion = true;\n'
+                    : null;
+            result = fileContent === null
+                ? { success: false, error: 'Unknown E2E file' }
+                : { success: true, content: Buffer.from(fileContent, 'utf8').toString('base64') };
+        } else {
+            result = { success: false, error: 'Unknown E2E RPC request' };
+        }
+        callback(encodeBase64(encryptLegacy(result, encryptionKey)));
+    });
+
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('文件动效 E2E RPC 连接超时。')), 10_000);
+            const handleConnectError = (error: Error) => {
+                clearTimeout(timeout);
+                reject(error);
+            };
+            rpcSocket.once('connect_error', handleConnectError);
+            rpcSocket.once('connect', () => {
+                rpcSocket.off('connect_error', handleConnectError);
+                const pendingMethods = new Set([
+                    `${sessionId}:bash`,
+                    `${sessionId}:readFile`,
+                ]);
+                const handleRegistered = ({ method }: { method: string }) => {
+                    pendingMethods.delete(method);
+                    if (pendingMethods.size === 0) {
+                        clearTimeout(timeout);
+                        rpcSocket.off('rpc-registered', handleRegistered);
+                        resolve();
+                    }
+                };
+                rpcSocket.on('rpc-registered', handleRegistered);
+                rpcSocket.emit('rpc-register', { method: `${sessionId}:bash` });
+                rpcSocket.emit('rpc-register', { method: `${sessionId}:readFile` });
+            });
+            rpcSocket.connect();
+        });
+    } catch (error) {
+        rpcSocket.close();
+        rmSync(workspace, { force: true, recursive: true });
+        throw error;
+    }
+
+    return {
+        changedFile,
+        close: () => {
+            rpcSocket.close();
+            rmSync(workspace, { force: true, recursive: true });
+        },
+        secondFile,
+        rpcCalls,
+        sessionId,
+        workspace,
+    };
+}
+
+type PresenceLayerReading = {
+    direction: string | null;
+    opacity: string;
+    phase: string | null;
+    pointerEvents: string;
+    transform: string;
+};
+
+type PresenceTransitionReading = {
+    intermediate: PresenceLayerReading[];
+    settled: PresenceLayerReading[];
+};
+
+type TabTransitionReading = {
+    transitionDuration: string;
+    transitionProperty: string;
+};
+
+async function enableFileDiffsSidebar(page: Page): Promise<void> {
+    await page.goto(authenticatedRoute('/settings/features'));
+    const toggle = page.getByRole('switch', { name: 'File Diffs Sidebar' });
+    await expect(toggle).toBeVisible();
+    if (!await toggle.isChecked()) {
+        const settingsSaved = page.waitForResponse((response) => (
+            response.request().method() === 'POST'
+            && new URL(response.url()).pathname === '/v1/account/settings'
+        ));
+        await toggle.click();
+        const response = await settingsSaved;
+        expect(response.ok()).toBe(true);
+        expect(await response.finished()).toBeNull();
+    }
+    await expect(toggle).toBeChecked();
+}
+
+async function readPresenceLayers(page: Page, hostTestId: string): Promise<PresenceLayerReading[]> {
+    return page.locator(`[data-testid="${hostTestId}"] [data-happy-presence-phase]`).evaluateAll((layers) => (
+        layers.map((layer) => {
+            const style = getComputedStyle(layer);
+            return {
+                direction: layer.getAttribute('data-happy-presence-direction'),
+                opacity: style.opacity,
+                phase: layer.getAttribute('data-happy-presence-phase'),
+                pointerEvents: style.pointerEvents,
+                transform: style.transform,
+            };
+        })
+    ));
+}
+
+async function clickAndReadPresence(
+    page: Page,
+    trigger: Locator,
+    hostTestId: string,
+): Promise<PresenceTransitionReading> {
+    await trigger.click();
+    await page.waitForTimeout(40);
+    const intermediate = await readPresenceLayers(page, hostTestId);
+    await page.waitForTimeout(180);
+    const settled = await readPresenceLayers(page, hostTestId);
+    return { intermediate, settled };
+}
+
+async function pressEnterAndReadPresence(
+    page: Page,
+    trigger: Locator,
+    hostTestId: string,
+): Promise<PresenceTransitionReading> {
+    await trigger.focus();
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(40);
+    const intermediate = await readPresenceLayers(page, hostTestId);
+    await page.waitForTimeout(180);
+    const settled = await readPresenceLayers(page, hostTestId);
+    await expect(trigger).toBeFocused();
+    expect(await trigger.evaluate((element) => document.activeElement === element)).toBe(true);
+    return { intermediate, settled };
+}
+
+async function rapidSwitchAndReadPresence(
+    page: Page,
+    firstTrigger: Locator,
+    secondTrigger: Locator,
+    hostTestId: string,
+): Promise<PresenceLayerReading[][]> {
+    await firstTrigger.click();
+    await page.waitForTimeout(30);
+    const afterFirst = await readPresenceLayers(page, hostTestId);
+    await secondTrigger.click();
+    await page.waitForTimeout(30);
+    const afterSecond = await readPresenceLayers(page, hostTestId);
+    await page.waitForTimeout(190);
+    const settled = await readPresenceLayers(page, hostTestId);
+    return [afterFirst, afterSecond, settled];
+}
+
+async function readTabTransition(trigger: Locator): Promise<TabTransitionReading> {
+    return trigger.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+            transitionDuration: style.transitionDuration,
+            transitionProperty: style.transitionProperty,
+        };
+    });
+}
+
+function expectPresenceTransition(
+    reading: PresenceTransitionReading,
+    expected: { direction: 'back' | 'forward'; intermediateCount: number; settledCount: number },
+): void {
+    if (!isFileTransitionAfter) {
+        expect(reading.intermediate).toEqual([]);
+        expect(reading.settled).toEqual([]);
+        return;
+    }
+    expect(reading.intermediate).toHaveLength(expected.intermediateCount);
+    expect(new Set(reading.intermediate.map((layer) => layer.direction))).toEqual(new Set([expected.direction]));
+    const exiting = reading.intermediate.find((layer) => layer.phase === 'exiting');
+    if (exiting) expect(exiting.pointerEvents).toBe('none');
+    expect(reading.settled).toHaveLength(expected.settledCount);
+    if (expected.settledCount === 1) expect(reading.settled[0]?.phase).toBe('settled');
+}
+
+function expectRapidPresence(readings: PresenceLayerReading[][], reducedMotion: boolean): void {
+    expect(Math.max(...readings.map((layers) => layers.length))).toBeLessThanOrEqual(2);
+    if (!isFileTransitionAfter) {
+        expect(readings.flat()).toEqual([]);
+        return;
+    }
+    if (reducedMotion) {
+        expect(readings.flat().some((layer) => layer.phase === 'entering' || layer.phase === 'exiting')).toBe(false);
+    }
+    expect(readings.at(-1)).toHaveLength(1);
+}
+
+function expectTabTransition(reading: TabTransitionReading): void {
+    if (!isFileTransitionAfter) return;
+    expect(reading.transitionDuration.split(',').map((duration) => duration.trim())).toContain('0.12s');
+    const properties = reading.transitionProperty.split(',').map((property) => property.trim());
+    expect(properties).not.toContain('width');
+    expect(properties).not.toContain('height');
+}
+
+function presenceDirection(reading: PresenceTransitionReading): string | null {
+    return reading.intermediate.find((layer) => layer.direction)?.direction ?? null;
 }
 
 async function pauseForReview(page: Page, duration = 850): Promise<void> {
@@ -156,7 +466,7 @@ function distinctMotionFrames(readings: PanelMotionReading[]): number {
 }
 
 test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request }, testInfo) => {
-    test.setTimeout(90_000);
+    test.setTimeout(180_000);
     await page.setViewportSize({ width: 1280, height: 720 });
     const consoleErrors: string[] = [];
     const pageErrors: string[] = [];
@@ -170,7 +480,8 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
     });
 
     const result: Record<string, unknown> = {
-        phase: evidencePhase,
+        motionPhase: evidencePhase,
+        fileTransitionPhase,
         viewport: { width: 1280, height: 720, dpr: 1 },
     };
 
@@ -387,6 +698,309 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
     });
     await pauseForReview(page);
     result.particles = { normalHashA, normalHashB, reducedHashA, reducedHashB };
+
+    const fileTransitionResults: Record<string, {
+        fileTransitionPhase: typeof fileTransitionPhase;
+        viewports: Record<string, unknown>;
+    }> = {
+        'PC-MOTION-06': { fileTransitionPhase, viewports: {} },
+        'PC-MOTION-07': { fileTransitionPhase, viewports: {} },
+        'PC-MOTION-08': { fileTransitionPhase, viewports: {} },
+    };
+    const fixture = await createConnectedFileSession(request);
+    try {
+        for (const viewport of [{ width: 1280, height: 720 }, { width: 1920, height: 1080 }]) {
+            const viewportKey = `${viewport.width}x${viewport.height}`;
+            await page.setViewportSize(viewport);
+            await page.emulateMedia({ reducedMotion: 'no-preference' });
+            await enableFileDiffsSidebar(page);
+            await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
+            // Expo Router retains earlier session route trees in the DOM; the last
+            // desktop panel is the active route reached by the page navigation.
+            const rightPanel = page.getByTestId('desktop-right-panel').last();
+            const workspaceMain = page.getByTestId('desktop-workspace-main').last();
+            await expect(rightPanel).toBeVisible();
+
+            // PC-MOTION-06 — the right-panel content follows the primary tab direction.
+            const filesTab = rightPanel.getByTestId('desktop-right-panel-files-tab');
+            const capabilitiesTab = rightPanel.getByTestId('desktop-right-panel-capabilities-tab');
+            const filesSwitch = await clickAndReadPresence(
+                page,
+                filesTab,
+                'desktop-right-panel-content-transition',
+            );
+            expectPresenceTransition(filesSwitch, {
+                direction: 'forward',
+                intermediateCount: 2,
+                settledCount: 1,
+            });
+            await expect(rightPanel.getByTestId('session-files-sidebar')).toBeVisible();
+            const primaryTabStyles = {
+                capabilities: await readTabTransition(capabilitiesTab),
+                files: await readTabTransition(filesTab),
+            };
+            expectTabTransition(primaryTabStyles.capabilities);
+            expectTabTransition(primaryTabStyles.files);
+            const case06Screenshot = evidencePath(
+                testInfo,
+                `pc-motion-06-${fileTransitionPhase}-${viewportKey}-right-panel-tabs.png`,
+            );
+            await page.screenshot({ path: case06Screenshot, fullPage: true });
+            await pauseForReview(page, 650);
+
+            const capabilitiesKeyboard = await pressEnterAndReadPresence(
+                page,
+                capabilitiesTab,
+                'desktop-right-panel-content-transition',
+            );
+            expectPresenceTransition(capabilitiesKeyboard, {
+                direction: 'back',
+                intermediateCount: 2,
+                settledCount: 1,
+            });
+            await expect(rightPanel.getByTestId('session-files-sidebar')).toHaveCount(0);
+            const filesKeyboard = await pressEnterAndReadPresence(
+                page,
+                filesTab,
+                'desktop-right-panel-content-transition',
+            );
+            expectPresenceTransition(filesKeyboard, {
+                direction: 'forward',
+                intermediateCount: 2,
+                settledCount: 1,
+            });
+            await expect(rightPanel.getByTestId('session-files-sidebar')).toBeVisible();
+            if (isFileTransitionAfter) {
+                expect(presenceDirection(capabilitiesKeyboard)).not.toBe(presenceDirection(filesKeyboard));
+            }
+
+            const primaryRapid = await rapidSwitchAndReadPresence(
+                page,
+                capabilitiesTab,
+                filesTab,
+                'desktop-right-panel-content-transition',
+            );
+            expectRapidPresence(primaryRapid, false);
+            await page.emulateMedia({ reducedMotion: 'reduce' });
+            const primaryReduced = await rapidSwitchAndReadPresence(
+                page,
+                capabilitiesTab,
+                filesTab,
+                'desktop-right-panel-content-transition',
+            );
+            expectRapidPresence(primaryReduced, true);
+            await page.emulateMedia({ reducedMotion: 'no-preference' });
+            await expect(rightPanel.getByTestId('session-files-sidebar')).toBeVisible();
+
+            fileTransitionResults['PC-MOTION-06'].viewports[viewportKey] = {
+                fileTransitionPhase,
+                filesSwitch,
+                keyboard: { capabilities: capabilitiesKeyboard, files: filesKeyboard },
+                rapid: primaryRapid,
+                reducedMotion: primaryReduced,
+                screenshot: case06Screenshot,
+                tabStyles: primaryTabStyles,
+            };
+
+            // PC-MOTION-07 — the file body moves while its header remains stable.
+            const allFilesTab = rightPanel.getByTestId('session-files-all-tab');
+            const changesTab = rightPanel.getByTestId('session-files-changes-tab');
+            const allFilesSwitch = await clickAndReadPresence(
+                page,
+                allFilesTab,
+                'session-files-mode-transition',
+            );
+            expectPresenceTransition(allFilesSwitch, {
+                direction: 'forward',
+                intermediateCount: 2,
+                settledCount: 1,
+            });
+            await expect(rightPanel.getByPlaceholder('Search files...')).toBeVisible();
+            await expect(rightPanel.getByText('second-motion.ts', { exact: true })).toBeVisible();
+            expect(fixture.rpcCalls.some((call) => call.params?.command?.includes('ls-files'))).toBe(true);
+            const fileTabStyles = {
+                allFiles: await readTabTransition(allFilesTab),
+                changes: await readTabTransition(changesTab),
+            };
+            expectTabTransition(fileTabStyles.allFiles);
+            expectTabTransition(fileTabStyles.changes);
+            const case07Screenshot = evidencePath(
+                testInfo,
+                `pc-motion-07-${fileTransitionPhase}-${viewportKey}-file-tabs.png`,
+            );
+            await page.screenshot({ path: case07Screenshot, fullPage: true });
+            await pauseForReview(page, 650);
+
+            const changesKeyboard = await pressEnterAndReadPresence(
+                page,
+                changesTab,
+                'session-files-mode-transition',
+            );
+            expectPresenceTransition(changesKeyboard, {
+                direction: 'back',
+                intermediateCount: 2,
+                settledCount: 1,
+            });
+            await expect(rightPanel.getByPlaceholder('Search files...')).toHaveCount(0);
+            const allFilesKeyboard = await pressEnterAndReadPresence(
+                page,
+                allFilesTab,
+                'session-files-mode-transition',
+            );
+            expectPresenceTransition(allFilesKeyboard, {
+                direction: 'forward',
+                intermediateCount: 2,
+                settledCount: 1,
+            });
+            await expect(rightPanel.getByPlaceholder('Search files...')).toBeVisible();
+            if (isFileTransitionAfter) {
+                expect(presenceDirection(changesKeyboard)).not.toBe(presenceDirection(allFilesKeyboard));
+            }
+
+            const fileTabsRapid = await rapidSwitchAndReadPresence(
+                page,
+                changesTab,
+                allFilesTab,
+                'session-files-mode-transition',
+            );
+            expectRapidPresence(fileTabsRapid, false);
+            await page.emulateMedia({ reducedMotion: 'reduce' });
+            const fileTabsReduced = await rapidSwitchAndReadPresence(
+                page,
+                changesTab,
+                allFilesTab,
+                'session-files-mode-transition',
+            );
+            expectRapidPresence(fileTabsReduced, true);
+            await page.emulateMedia({ reducedMotion: 'no-preference' });
+            await expect(rightPanel.getByPlaceholder('Search files...')).toBeVisible();
+
+            fileTransitionResults['PC-MOTION-07'].viewports[viewportKey] = {
+                fileTransitionPhase,
+                keyboard: { allFiles: allFilesKeyboard, changes: changesKeyboard },
+                modeSwitch: allFilesSwitch,
+                rapid: fileTabsRapid,
+                reducedMotion: fileTabsReduced,
+                screenshot: case07Screenshot,
+                tabStyles: fileTabStyles,
+            };
+
+            // PC-MOTION-08 — push/back/forward carries directional workspace intent.
+            const secondFileSwitch = await clickAndReadPresence(
+                page,
+                rightPanel.getByText('second-motion.ts', { exact: true }),
+                'workspace-overlay-transition',
+            );
+            expectPresenceTransition(secondFileSwitch, {
+                direction: 'forward',
+                intermediateCount: 1,
+                settledCount: 1,
+            });
+            if (isFileTransitionAfter) {
+                await expect(workspaceMain.getByTestId('workspace-file-panel')).toBeVisible();
+            } else {
+                await expect(workspaceMain.getByText('export const secondMotion = true;', { exact: true }).last()).toBeVisible();
+            }
+
+            const backSwitch = await clickAndReadPresence(
+                page,
+                page.getByTestId('desktop-navigation-back-button').last(),
+                'workspace-overlay-transition',
+            );
+            expectPresenceTransition(backSwitch, {
+                direction: 'back',
+                intermediateCount: 1,
+                settledCount: 0,
+            });
+            const forwardSwitch = await clickAndReadPresence(
+                page,
+                page.getByTestId('desktop-navigation-forward-button').last(),
+                'workspace-overlay-transition',
+            );
+            expectPresenceTransition(forwardSwitch, {
+                direction: 'forward',
+                intermediateCount: 1,
+                settledCount: 1,
+            });
+            if (isFileTransitionAfter) {
+                expect(presenceDirection(backSwitch)).not.toBe(presenceDirection(forwardSwitch));
+            }
+
+            const changesSwitch = await clickAndReadPresence(
+                page,
+                rightPanel.getByTestId('session-files-changes-tab'),
+                'session-files-mode-transition',
+            );
+            expectPresenceTransition(changesSwitch, {
+                direction: 'back',
+                intermediateCount: 2,
+                settledCount: 1,
+            });
+            await expect(rightPanel.getByText('changed-motion.ts', { exact: true })).toBeVisible();
+            const diffAssetsFinished = viewport.width === 1280
+                ? Promise.all([
+                    'typescript.bundle',
+                    'github-light-default.bundle',
+                ].map(async (assetName) => {
+                    const response = await page.waitForResponse((candidate) => (
+                        new URL(candidate.url()).pathname.endsWith(assetName)
+                    ));
+                    expect(response.ok()).toBe(true);
+                    expect(await response.finished()).toBeNull();
+                }))
+                : Promise.resolve();
+            const changedFileSwitch = await clickAndReadPresence(
+                page,
+                rightPanel.getByText('changed-motion.ts', { exact: true }),
+                'workspace-overlay-transition',
+            );
+            await diffAssetsFinished;
+            expectPresenceTransition(changedFileSwitch, {
+                direction: 'forward',
+                intermediateCount: 2,
+                settledCount: 1,
+            });
+            if (isFileTransitionAfter) {
+                await expect(workspaceMain.getByTestId('workspace-diff-panel')).toBeVisible();
+            } else {
+                await expect(workspaceMain.getByText('src/changed-motion.ts', { exact: true })).toBeVisible();
+            }
+            const finalPresenceLayers = {
+                fileMode: await readPresenceLayers(page, 'session-files-mode-transition'),
+                rightPanel: await readPresenceLayers(page, 'desktop-right-panel-content-transition'),
+                workspace: await readPresenceLayers(page, 'workspace-overlay-transition'),
+            };
+            if (isFileTransitionAfter) {
+                expect(finalPresenceLayers.fileMode).toHaveLength(1);
+                expect(finalPresenceLayers.rightPanel).toHaveLength(1);
+                expect(finalPresenceLayers.workspace).toHaveLength(1);
+            } else {
+                expect(finalPresenceLayers.fileMode).toEqual([]);
+                expect(finalPresenceLayers.rightPanel).toEqual([]);
+                expect(finalPresenceLayers.workspace).toEqual([]);
+            }
+            const case08Screenshot = evidencePath(
+                testInfo,
+                `pc-motion-08-${fileTransitionPhase}-${viewportKey}-workspace-history.png`,
+            );
+            await page.screenshot({ path: case08Screenshot, fullPage: true });
+            await pauseForReview(page, 650);
+
+            fileTransitionResults['PC-MOTION-08'].viewports[viewportKey] = {
+                fileTransitionPhase,
+                back: backSwitch,
+                changes: changesSwitch,
+                changedFile: changedFileSwitch,
+                finalPresenceLayers,
+                forward: forwardSwitch,
+                screenshot: case08Screenshot,
+                secondFile: secondFileSwitch,
+            };
+        }
+    } finally {
+        fixture.close();
+    }
+    result.fileTransitions = fileTransitionResults;
 
     const unexpectedFailedRequests = failedRequests.filter((requestValue) => (
         !requestValue.startsWith('POST /logs:')
