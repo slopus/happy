@@ -21,6 +21,8 @@ import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { useUserMessageAnchors, type UserMessageAnchor } from '@/hooks/useUserMessageAnchors';
 import { AnchorListSheet } from './AnchorListSheet';
 import { t } from '@/text';
+import { getSessionName } from '@/utils/sessionUtils';
+import { getDesktopTitlePromptMessageId } from '@/utils/desktopTitlePrompt';
 
 const SCROLL_THRESHOLD = 300;
 // How long the anchor pill lingers after the user stops scrolling.
@@ -102,7 +104,17 @@ const ChatListInternal = React.memo((props: {
         () => ({ collapseCurrentTurn }),
         [collapseCurrentTurn],
     );
-    const displayItems = useGroupedMessages(props.messages, groupToolCalls, groupingOptions);
+    const groupedDisplayItems = useGroupedMessages(props.messages, groupToolCalls, groupingOptions);
+    const desktopTitlePromptMessageId = React.useMemo(() => (
+        Platform.OS === 'web' && session
+            ? getDesktopTitlePromptMessageId(groupedDisplayItems, getSessionName(session))
+            : null
+    ), [groupedDisplayItems, session]);
+    const displayItems = React.useMemo(() => (
+        desktopTitlePromptMessageId
+            ? groupedDisplayItems.filter(item => item.id !== desktopTitlePromptMessageId)
+            : groupedDisplayItems
+    ), [desktopTitlePromptMessageId, groupedDisplayItems]);
     const latestVisibleUserMessageId = React.useMemo(() => {
         for (const item of displayItems) {
             if (item.type === 'message' && item.message.kind === 'user-text') {
