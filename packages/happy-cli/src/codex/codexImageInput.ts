@@ -118,3 +118,29 @@ export function buildCodexImageAttachmentNotice(
         imageList,
     ].join('\n');
 }
+
+/**
+ * Assemble the exact payload consumed by Codex app-server.
+ *
+ * Keeping the text and image extraction together prevents callers from
+ * accidentally discarding the media-path notice added by buildCodexInput.
+ */
+export function buildCodexTurnPayload(
+    prompt: string,
+    attachments: PendingAttachment[] | undefined,
+): {
+    prompt: string;
+    images: Array<{ type: 'localImage'; path: string }>;
+} {
+    const input = buildCodexInput(prompt, attachments);
+    const images = input.filter(
+        (item): item is { type: 'localImage'; path: string } => item.type === 'localImage',
+    );
+    const text = input.find((item): item is { type: 'text'; text: string } => item.type === 'text')?.text ?? prompt;
+    const imageNotice = buildCodexImageAttachmentNotice(images);
+
+    return {
+        prompt: imageNotice ? `${imageNotice}\n\n${text}` : text,
+        images,
+    };
+}

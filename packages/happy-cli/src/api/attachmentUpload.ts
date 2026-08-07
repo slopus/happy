@@ -53,6 +53,10 @@ export async function uploadMediaFile(
 
     const response = await axios.put(descriptor.uploadUrl, createReadStream(filePath), {
         headers,
+        // A presigned OSS/S3 URL is already fully authenticated. Axios would
+        // otherwise inherit HTTP(S)_PROXY and route the streaming body through
+        // the agent proxy, which OSS rejects with HTTP 400.
+        ...(presigned ? { proxy: false as const } : {}),
         timeout: 15 * 60 * 1000,
         maxContentLength: 500 * 1024 * 1024,
         maxBodyLength: 500 * 1024 * 1024,

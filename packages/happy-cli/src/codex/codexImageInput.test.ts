@@ -5,6 +5,7 @@ import type { PendingAttachment } from '@/utils/MessageQueue2';
 import {
     buildCodexImageAttachmentNotice,
     buildCodexInput,
+    buildCodexTurnPayload,
     detectCodexImage,
     materializeCodexImageItems,
 } from './codexImageInput';
@@ -82,6 +83,43 @@ describe('buildCodexInput', () => {
     it('returns just the text item when there are no attachments', () => {
         expect(buildCodexInput('hi', undefined)).toEqual([{ type: 'text', text: 'hi' }]);
         expect(buildCodexInput('hi', [])).toEqual([{ type: 'text', text: 'hi' }]);
+    });
+});
+
+describe('buildCodexTurnPayload', () => {
+    it('delivers the staged video path in the prompt sent to Codex', () => {
+        const video: PendingAttachment = {
+            kind: 'video',
+            localPath: '/Users/jacky/.happy/attachments/current-upload.mp4',
+            size: 1_522_082,
+            mimeType: 'video/mp4',
+            name: 'current-upload.mp4',
+        };
+
+        const payload = buildCodexTurnPayload('inspect this interaction', [video]);
+
+        expect(payload.images).toEqual([]);
+        expect(payload.prompt).toContain('/Users/jacky/.happy/attachments/current-upload.mp4');
+        expect(payload.prompt).toContain('Video 1');
+        expect(payload.prompt).toContain('inspect this interaction');
+    });
+
+    it('preserves image delivery while adding the video notice', () => {
+        const video: PendingAttachment = {
+            kind: 'video',
+            localPath: '/Users/jacky/.happy/attachments/current-upload.mp4',
+            size: 1_522_082,
+            mimeType: 'video/mp4',
+            name: 'current-upload.mp4',
+        };
+
+        const payload = buildCodexTurnPayload('compare both attachments', [att(PNG, 'reference.png'), video]);
+
+        expect(payload.images).toHaveLength(1);
+        written.push(payload.images[0].path);
+        expect(payload.prompt).toContain('Happy attached 1 user-uploaded image');
+        expect(payload.prompt).toContain('/Users/jacky/.happy/attachments/current-upload.mp4');
+        expect(payload.prompt).toContain('compare both attachments');
     });
 });
 
