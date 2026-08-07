@@ -108,11 +108,16 @@ export function DesktopPresenceTransition({
     const fallbackRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingSequenceRef = React.useRef<number | null>(null);
     const renderedKeyRef = React.useRef(transitionKey);
+    const committedLayersRef = React.useRef(layers);
     const latestRef = React.useRef({ children, direction, transitionKey });
     const reducedMotionRef = React.useRef(
         typeof window !== 'undefined' && window.matchMedia(REDUCED_MOTION_QUERY).matches,
     );
-    latestRef.current = { children, direction, transitionKey };
+
+    React.useLayoutEffect(() => {
+        committedLayersRef.current = layers;
+        latestRef.current = { children, direction, transitionKey };
+    }, [children, direction, layers, transitionKey]);
 
     const cancelPendingWork = React.useCallback(() => {
         if (frameRef.current !== null) {
@@ -178,6 +183,25 @@ export function DesktopPresenceTransition({
                     ? { ...layer, node: children }
                     : layer);
             });
+            return;
+        }
+
+        const matchingOutgoing = children === null
+            ? undefined
+            : committedLayersRef.current.find((layer) => (
+                layer.phase === 'exiting' && layer.key === transitionKey
+            ));
+        if (matchingOutgoing) {
+            cancelPendingWork();
+            ++sequenceRef.current;
+            pendingSequenceRef.current = null;
+            renderedKeyRef.current = transitionKey;
+            setLayers([{
+                ...matchingOutgoing,
+                direction,
+                node: children,
+                phase: 'settled',
+            }]);
             return;
         }
 

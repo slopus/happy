@@ -504,6 +504,10 @@ function expectRapidPresence(readings: PresenceLayerReading[][], reducedMotion: 
         expect(readings.flat()).toEqual([]);
         return;
     }
+    expect(readings.every((layers) => (
+        layers.length > 0
+        && layers.some((layer) => Number.parseFloat(layer.opacity) > 0.01)
+    ))).toBe(true);
     if (reducedMotion) {
         expect(readings.every((layers) => layers.length <= 1)).toBe(true);
         expect(readings.flat().some((layer) => layer.phase === 'entering' || layer.phase === 'exiting')).toBe(false);

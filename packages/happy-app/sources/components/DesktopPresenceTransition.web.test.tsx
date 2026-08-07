@@ -190,7 +190,49 @@ describe('DesktopPresenceTransition.web', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('discards stale outgoing layers and refreshes same-key children without another transition', () => {
+    it('restores the matching outgoing layer when a transition reverses before its first frame', () => {
+        let capturedFrame: FrameRequestCallback | undefined;
+        vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+            capturedFrame = callback;
+            return 74;
+        });
+        vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+        act(() => {
+            renderer = TestRenderer.create(
+                <DesktopPresenceTransition direction="back" testID="presence" transitionKey="capabilities">
+                    <View testID="capabilities-content" />
+                </DesktopPresenceTransition>,
+            );
+        });
+        const originalLayerElement = findLayerElement('settled');
+
+        act(() => renderer.update(
+            <DesktopPresenceTransition direction="forward" testID="presence" transitionKey="files">
+                <View testID="files-content" />
+            </DesktopPresenceTransition>,
+        ));
+        expect(findHostViews(renderer, 'presence-layer').map((layer: any) => (
+            layer.props.dataSet.happyPresencePhase
+        ))).toEqual(['exiting', 'entering']);
+
+        act(() => renderer.update(
+            <DesktopPresenceTransition direction="back" testID="presence" transitionKey="capabilities">
+                <View testID="capabilities-content-restored" />
+            </DesktopPresenceTransition>,
+        ));
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findPresenceLayer(renderer).props.dataSet.happyPresencePhase).toBe('settled');
+        expect(findLayerElement('settled')).toBe(originalLayerElement);
+        expect(findHostViews(renderer, 'capabilities-content-restored')).toHaveLength(1);
+        expect(vi.getTimerCount()).toBe(0);
+
+        act(() => capturedFrame?.(220));
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findPresenceLayer(renderer).props.dataSet.happyPresencePhase).toBe('settled');
+    });
+
+    it('discards stale interrupted callbacks and refreshes same-key children without another transition', () => {
         act(() => {
             renderer = TestRenderer.create(
                 <DesktopPresenceTransition direction="back" testID="presence" transitionKey="capabilities">
@@ -212,11 +254,12 @@ describe('DesktopPresenceTransition.web', () => {
             </DesktopPresenceTransition>,
         ));
         expect(findHostViews(renderer, 'presence-layer').length).toBeLessThanOrEqual(2);
+        expect(replacedLayerElement.listenerCount()).toBe(0);
         act(() => vi.advanceTimersByTime(16));
         act(() => replacedLayerElement.dispatchTransition('opacity'));
         expect(findHostViews(renderer, 'presence-layer').map((layer: any) => (
             layer.props.dataSet.happyPresencePhase
-        ))).toEqual(['exiting', 'active']);
+        ))).toEqual(['settled']);
         act(() => vi.advanceTimersByTime(220));
         expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
         expect(findHostViews(renderer, 'capabilities-content-next')).toHaveLength(1);
