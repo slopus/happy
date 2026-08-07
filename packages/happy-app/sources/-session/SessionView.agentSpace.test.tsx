@@ -219,6 +219,7 @@ vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({
         rightPanelAvailable: mocks.isTablet
             && (mocks.platformOS === 'web' || mocks.runningOnMac)
             && mocks.windowWidth >= 1100,
+        rightExpandedWidth: getDesktopRightPanelWidth(mocks.windowWidth),
         rightVisible: !mocks.desktopRightPanelCollapsed,
         rightMaximumWidth: 640,
         rightWidth: getDesktopRightPanelWidth(mocks.windowWidth),
@@ -506,6 +507,11 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-collapse-button' })).toHaveLength(0);
         const toggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
         expect(toggle.props['aria-expanded']).toBe(true);
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-motion' }).props.dataSet).toMatchObject({
+            happyMotion: 'desktop-panel',
+            happyMotionSide: 'right',
+            happyMotionState: 'open',
+        });
         act(() => toggle.props.onPress());
         expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenCalledWith(true);
 
@@ -516,6 +522,11 @@ describe('SessionView Agent-space boundary', () => {
         });
         const collapsedToggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
         expect(collapsedToggle.props['aria-expanded']).toBe(false);
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-motion' }).props.dataSet).toMatchObject({
+            happyMotion: 'desktop-panel',
+            happyMotionSide: 'right',
+            happyMotionState: 'closed',
+        });
         act(() => collapsedToggle.props.onPress());
         expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenLastCalledWith(false);
 

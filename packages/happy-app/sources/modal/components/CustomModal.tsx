@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { BaseModal } from './BaseModal';
 import { CustomModalConfig } from '../types';
 import { CommandPaletteModal } from '@/components/CommandPalette/CommandPaletteModal';
@@ -50,6 +51,13 @@ function CommandPaletteWithAnimation({ config, onClose }: CustomModalProps) {
         isClosingRef.current = true;
         afterCloseRef.current = afterClose;
         setIsClosing(true);
+        if (Platform.OS === 'web') {
+            // Keyboard-driven surfaces should disappear in the same task. The
+            // command itself still runs after provider cleanup, preserving the
+            // focus-restoration ordering without adding perceptible latency.
+            onClose();
+            return;
+        }
         // Wait for animation to complete before unmounting
         setTimeout(onClose, 200);
     }, [onClose]);

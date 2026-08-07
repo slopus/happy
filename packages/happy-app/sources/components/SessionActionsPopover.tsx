@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Pressable, Modal as RNModal, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, Modal as RNModal, Text, View, useWindowDimensions } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -147,8 +147,28 @@ export function SessionActionsPopover({
         return null;
     }
 
+    if (!position) {
+        return null;
+    }
+
+    const anchorTop = anchor.y;
+    const motionSide = position.top < anchorTop ? 'above' : 'below';
+    const motionAlign = inline || anchor.type === 'rect'
+        ? 'right'
+        : anchor.x >= position.left + WEB_MENU_WIDTH / 2
+            ? 'right'
+            : 'left';
     const content = (
-        <View style={[styles.card, { backgroundColor: theme.colors.header.background }]}>
+        <View
+            {...(Platform.OS === 'web' ? {
+                dataSet: {
+                    happyMotion: 'popover',
+                    happyMotionAlign: motionAlign,
+                    happyMotionSide: motionSide,
+                },
+            } as any : {})}
+            style={[styles.card, { backgroundColor: theme.colors.header.background }]}
+        >
             {actions.map((action, index) => {
                 const isLast = index === actions.length - 1;
                 const color = action.destructive ? theme.colors.status.error : theme.colors.text;
@@ -178,10 +198,6 @@ export function SessionActionsPopover({
         </View>
     );
 
-    if (!position) {
-        return null;
-    }
-
     if (inline) {
         return (
             <View style={styles.inlineMenu} testID="session-actions-inline-menu">
@@ -195,7 +211,7 @@ export function SessionActionsPopover({
     // bottom sheet. Matches the lightweight popover shown on web.
     return (
         <RNModal
-            animationType="fade"
+            animationType={Platform.OS === 'web' ? 'none' : 'fade'}
             onRequestClose={onClose}
             transparent
             visible={visible}

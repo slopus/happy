@@ -16,6 +16,75 @@ button, input, textarea, select {
     font-family: inherit;
 }
 
+:root {
+    --happy-motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --happy-motion-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --happy-motion-panel-duration: 180ms;
+    --happy-motion-popover-duration: 180ms;
+}
+
+[data-happy-motion="desktop-panel"] {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    visibility: visible;
+    will-change: opacity, transform;
+    transition:
+        opacity 160ms var(--happy-motion-ease-out),
+        transform var(--happy-motion-panel-duration) var(--happy-motion-ease-out),
+        visibility 0s linear 0s;
+}
+
+[data-happy-motion="desktop-panel"][data-happy-motion-state="closed"] {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+    transition-delay: 0s, 0s, var(--happy-motion-panel-duration);
+    transition-timing-function:
+        var(--happy-motion-ease-in),
+        var(--happy-motion-ease-in),
+        linear;
+}
+
+[data-happy-motion="desktop-panel"][data-happy-motion-side="left"][data-happy-motion-state="closed"] {
+    transform: translate3d(-14px, 0, 0);
+}
+
+[data-happy-motion="desktop-panel"][data-happy-motion-side="right"][data-happy-motion-state="closed"] {
+    transform: translate3d(14px, 0, 0);
+}
+
+[data-happy-motion="popover"] {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transform-origin: top left;
+    transition:
+        opacity var(--happy-motion-popover-duration) var(--happy-motion-ease-out),
+        transform var(--happy-motion-popover-duration) var(--happy-motion-ease-out);
+}
+
+[data-happy-motion="popover"][data-happy-motion-side="above"] {
+    transform-origin: bottom left;
+}
+
+[data-happy-motion="popover"][data-happy-motion-align="right"] {
+    transform-origin: top right;
+}
+
+[data-happy-motion="popover"][data-happy-motion-side="above"][data-happy-motion-align="right"] {
+    transform-origin: bottom right;
+}
+
+@starting-style {
+    [data-happy-motion="popover"] {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.96);
+    }
+
+    [data-happy-motion="popover"][data-happy-motion-side="above"] {
+        transform: translateY(4px) scale(0.96);
+    }
+}
+
 /* Codex-style session rows keep long titles quiet by default, then pan the
    clipped text on hover/focus so the full title can be read without widening
    the navigation rail. */
@@ -41,6 +110,25 @@ button, input, textarea, select {
 }
 
 @media (prefers-reduced-motion: reduce) {
+    [data-happy-motion="desktop-panel"] {
+        transform: none;
+        transition: none;
+        will-change: auto;
+    }
+
+    [data-happy-motion="popover"] {
+        transform: none;
+        transition: opacity 120ms var(--happy-motion-ease-out);
+    }
+
+    @starting-style {
+        [data-happy-motion="popover"],
+        [data-happy-motion="popover"][data-happy-motion-side="above"] {
+            opacity: 0;
+            transform: none;
+        }
+    }
+
     [data-testid="session-row-title"][data-marquee-active="true"] > [data-testid="session-row-title-text"] {
         animation: none;
     }

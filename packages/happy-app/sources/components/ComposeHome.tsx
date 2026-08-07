@@ -137,6 +137,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         leftVisible: desktopLeftSidebarVisible,
         leftWidth: desktopLeftSidebarWidth,
         rightPanelAvailable: desktopRightPanelAvailable,
+        rightExpandedWidth: desktopRightPanelExpandedWidth,
         rightWidth: desktopRightPanelWidth,
     } = useDesktopWorkspaceLayout();
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
@@ -1091,8 +1092,31 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             <View style={styles.desktopWorkspaceMain} testID="desktop-workspace-main">
                 {composeContent}
             </View>
-            {showDesktopRightPanel && (
-                <View style={[styles.desktopWorkspacePanel, { width: desktopRightPanelWidth }]}>
+            <View
+                aria-hidden={!showDesktopRightPanel}
+                accessibilityElementsHidden={!showDesktopRightPanel}
+                importantForAccessibility={showDesktopRightPanel ? 'auto' : 'no-hide-descendants'}
+                pointerEvents={showDesktopRightPanel ? 'auto' : 'none'}
+                style={[
+                    styles.desktopWorkspacePanelClip,
+                    { width: showDesktopRightPanel ? desktopRightPanelWidth : 0 },
+                ]}
+            >
+                <View
+                    {...(Platform.OS === 'web' ? {
+                        dataSet: {
+                            happyMotion: 'desktop-panel',
+                            happyMotionSide: 'right',
+                            happyMotionState: showDesktopRightPanel ? 'open' : 'closed',
+                        },
+                    } as any : {})}
+                    style={[
+                        styles.desktopWorkspacePanel,
+                        { width: desktopRightPanelExpandedWidth },
+                        Platform.OS === 'web' && styles.desktopWorkspacePanelWeb,
+                    ]}
+                    testID="desktop-right-panel-motion"
+                >
                     <DesktopRightPanel
                         activeTab="capabilities"
                         collapseAccessibilityLabel={t('desktopWorkspace.hidePanel', {
@@ -1111,7 +1135,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         <SessionCapabilityHub />
                     </DesktopRightPanel>
                 </View>
-            )}
+            </View>
         </View>
     );
 });
@@ -1126,7 +1150,19 @@ const styles = StyleSheet.create((theme) => ({
         minWidth: DESKTOP_MAIN_MIN_WIDTH,
     },
     desktopWorkspacePanel: {
+        flex: 1,
         flexShrink: 0,
+    },
+    desktopWorkspacePanelClip: {
+        minWidth: 0,
+        alignSelf: 'stretch',
+        overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
+    },
+    desktopWorkspacePanelWeb: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
     },
     desktopHeaderActions: {
         flexDirection: 'row',

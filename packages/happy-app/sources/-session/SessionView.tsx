@@ -303,6 +303,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         leftVisible: desktopLeftSidebarVisible,
         leftWidth: desktopLeftSidebarWidth,
         rightPanelAvailable: layoutRightPanelAvailable,
+        rightExpandedWidth: layoutRightPanelExpandedWidth,
         rightWidth: layoutRightPanelWidth,
     } = useDesktopWorkspaceLayout();
     const sessionComposerHandleRef = React.useRef<ChatComposerHandle | null>(null);
@@ -318,7 +319,9 @@ export const SessionView = React.memo((props: { id: string }) => {
     });
     const showDesktopRightPanel = desktopRightPanelPresentation === 'expanded';
 
-    const rightPanelWidth = desktopRightPanelAvailable ? layoutRightPanelWidth : 0;
+    const rightPanelWidth = desktopRightPanelAvailable
+        ? Math.max(layoutRightPanelWidth, layoutRightPanelExpandedWidth)
+        : 0;
 
     // Animate diff sidebar width.
     //
@@ -337,8 +340,8 @@ export const SessionView = React.memo((props: { id: string }) => {
     }, [showDesktopRightPanel]);
     const animatedRightPanelStyle = useAnimatedStyle(() => ({
         width: rightPanelAnim.value * rightPanelWidth,
-        opacity: rightPanelAnim.value,
-        overflow: 'hidden' as const,
+        opacity: Platform.OS === 'web' ? 1 : rightPanelAnim.value,
+        overflow: Platform.OS === 'web' ? 'visible' as const : 'hidden' as const,
     }));
 
     const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
@@ -755,10 +758,27 @@ export const SessionView = React.memo((props: { id: string }) => {
                 )}
             </View>
             <Animated.View
+                aria-hidden={!showDesktopRightPanel}
+                accessibilityElementsHidden={!showDesktopRightPanel}
+                importantForAccessibility={showDesktopRightPanel ? 'auto' : 'no-hide-descendants'}
                 pointerEvents={showDesktopRightPanel ? 'auto' : 'none'}
                 style={[workspaceStyles.desktopPanelClip, animatedRightPanelStyle]}
             >
-                <View style={[workspaceStyles.desktopPanel, { width: rightPanelWidth }]}>
+                <View
+                    {...(Platform.OS === 'web' ? {
+                        dataSet: {
+                            happyMotion: 'desktop-panel',
+                            happyMotionSide: 'right',
+                            happyMotionState: showDesktopRightPanel ? 'open' : 'closed',
+                        },
+                    } as any : {})}
+                    style={[
+                        workspaceStyles.desktopPanel,
+                        { width: rightPanelWidth },
+                        Platform.OS === 'web' && workspaceStyles.desktopPanelWeb,
+                    ]}
+                    testID="desktop-right-panel-motion"
+                >
                     <DesktopRightPanel
                         activeTab={desktopPanelMode}
                         collapseAccessibilityLabel={t('desktopWorkspace.hidePanel', {
@@ -1564,5 +1584,11 @@ const workspaceStyles = StyleSheet.create((theme) => ({
     },
     desktopPanel: {
         flex: 1,
+    },
+    desktopPanelWeb: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
     },
 }));
