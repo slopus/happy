@@ -20,11 +20,10 @@ type PresenceLayer = {
     phase: PresencePhase;
 };
 
-type TransitionEndEvent = {
-    nativeEvent?: {
-        propertyName?: string;
-    };
-    propertyName?: string;
+type PresenceLayerViewProps = {
+    layer: PresenceLayer;
+    onOpacityTransitionEnd: (sequence: number) => void;
+    sequence: number;
 };
 
 function createSettledLayer(
@@ -40,6 +39,53 @@ function createSettledLayer(
         node: children,
         phase: 'settled',
     }];
+}
+
+function PresenceLayerView({ layer, onOpacityTransitionEnd, sequence }: PresenceLayerViewProps) {
+    const removeListenerRef = React.useRef<(() => void) | null>(null);
+    const exiting = layer.phase === 'exiting';
+
+    const setElementRef = React.useCallback((instance: View | null) => {
+        removeListenerRef.current?.();
+        removeListenerRef.current = null;
+
+        const element = instance as unknown as HTMLElement | null;
+        if (!element) return;
+
+        const listener = (event: TransitionEvent) => {
+            if (event.target !== element || event.propertyName !== 'opacity') return;
+            onOpacityTransitionEnd(sequence);
+        };
+
+        element.addEventListener('transitionend', listener);
+        removeListenerRef.current = () => element.removeEventListener('transitionend', listener);
+    }, [onOpacityTransitionEnd, sequence]);
+
+    React.useEffect(() => () => {
+        removeListenerRef.current?.();
+        removeListenerRef.current = null;
+    }, []);
+
+    return (
+        <View
+            aria-hidden={exiting}
+            accessibilityElementsHidden={exiting}
+            {...({
+                dataSet: {
+                    happyMotion: 'desktop-presence-layer',
+                    happyPresenceDirection: layer.direction,
+                    happyPresencePhase: layer.phase,
+                },
+            } as any)}
+            importantForAccessibility={exiting ? 'no-hide-descendants' : 'auto'}
+            pointerEvents={exiting ? 'none' : 'auto'}
+            ref={setElementRef}
+            style={styles.layer}
+            testID="presence-layer"
+        >
+            {layer.node}
+        </View>
+    );
 }
 
 export function DesktopPresenceTransition({
@@ -164,40 +210,18 @@ export function DesktopPresenceTransition({
         };
     }, [cancelPendingWork]);
 
-    const handleTransitionEnd = React.useCallback((event: TransitionEndEvent, sequence: number) => {
-        const propertyName = event.nativeEvent?.propertyName ?? event.propertyName;
-        if (propertyName !== 'opacity') return;
-        settleTransition(sequence);
-    }, [settleTransition]);
-
     const renderSequence = sequenceRef.current;
 
     return (
         <View pointerEvents="box-none" style={styles.host} testID={testID}>
-            {layers.map((layer) => {
-                const exiting = layer.phase === 'exiting';
-                return (
-                    <View
-                        aria-hidden={exiting}
-                        accessibilityElementsHidden={exiting}
-                        {...({
-                            dataSet: {
-                                happyMotion: 'desktop-presence-layer',
-                                happyPresenceDirection: layer.direction,
-                                happyPresencePhase: layer.phase,
-                            },
-                            onTransitionEnd: (event: TransitionEndEvent) => handleTransitionEnd(event, renderSequence),
-                        } as any)}
-                        importantForAccessibility={exiting ? 'no-hide-descendants' : 'auto'}
-                        key={layer.id}
-                        pointerEvents={exiting ? 'none' : 'auto'}
-                        style={styles.layer}
-                        testID="presence-layer"
-                    >
-                        {layer.node}
-                    </View>
-                );
-            })}
+            {layers.map((layer) => (
+                <PresenceLayerView
+                    key={layer.id}
+                    layer={layer}
+                    onOpacityTransitionEnd={settleTransition}
+                    sequence={renderSequence}
+                />
+            ))}
         </View>
     );
 }

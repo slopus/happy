@@ -6,14 +6,52 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
 
-const viewMock = vi.hoisted(() => ({
-    View: 'View',
-}));
+const viewMock = vi.hoisted(() => {
+    const elements = new Set<any>();
 
-vi.mock('react-native', () => ({
-    StyleSheet: { create: (styles: object) => styles },
-    View: viewMock.View,
-}));
+    return {
+        createElement() {
+            const listeners = new Set<(event: { propertyName: string; target: any }) => void>();
+            const element = {
+                addEventListener(type: string, listener: (event: { propertyName: string; target: any }) => void) {
+                    if (type === 'transitionend') listeners.add(listener);
+                },
+                dispatchTransition(propertyName: string, target?: any) {
+                    listeners.forEach((listener) => listener({
+                        propertyName,
+                        target: target ?? element,
+                    }));
+                },
+                listenerCount() {
+                    return listeners.size;
+                },
+                props: {} as any,
+                removeEventListener(type: string, listener: (event: { propertyName: string; target: any }) => void) {
+                    if (type === 'transitionend') listeners.delete(listener);
+                },
+            };
+            elements.add(element);
+            return element;
+        },
+        elements,
+    };
+});
+
+vi.mock('react-native', async () => {
+    const ReactModule = await import('react');
+    const View = ReactModule.forwardRef<any, any>((props, ref) => {
+        const elementRef = ReactModule.useRef<any>(null);
+        if (elementRef.current === null) elementRef.current = viewMock.createElement();
+        elementRef.current.props = props;
+        ReactModule.useImperativeHandle(ref, () => elementRef.current, []);
+        return ReactModule.createElement('View', props, props.children);
+    });
+
+    return {
+        StyleSheet: { create: (styles: object) => styles },
+        View,
+    };
+});
 
 import { DesktopPresenceTransition } from './DesktopPresenceTransition.web';
 
@@ -35,6 +73,23 @@ function createMediaQuery() {
     };
 }
 
+function findLayerElement(phase: string) {
+    return [...viewMock.elements].find((element) => (
+        element.props.testID === 'presence-layer'
+        && element.props.dataSet?.happyPresencePhase === phase
+    ));
+}
+
+function findHostViews(renderer: any, testID: string) {
+    return renderer.root.findAll((node: any) => (
+        node.type === 'View' && node.props.testID === testID
+    ));
+}
+
+function findPresenceLayer(renderer: any) {
+    return findHostViews(renderer, 'presence-layer')[0];
+}
+
 describe('DesktopPresenceTransition.web', () => {
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
     let mediaQuery: ReturnType<typeof createMediaQuery>;
@@ -42,6 +97,7 @@ describe('DesktopPresenceTransition.web', () => {
 
     beforeEach(() => {
         vi.useFakeTimers();
+        viewMock.elements.clear();
         mediaQuery = createMediaQuery();
         vi.stubGlobal('window', {
             cancelAnimationFrame: (handle: ReturnType<typeof setTimeout>) => clearTimeout(handle),
@@ -71,14 +127,14 @@ describe('DesktopPresenceTransition.web', () => {
                 </DesktopPresenceTransition>,
             );
         });
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' })).toHaveLength(1);
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
 
         act(() => renderer.update(
             <DesktopPresenceTransition direction="forward" testID="presence" transitionKey="files">
                 <View testID="files-content" />
             </DesktopPresenceTransition>,
         ));
-        const transitionLayers = renderer.root.findAllByProps({ testID: 'presence-layer' });
+        const transitionLayers = findHostViews(renderer, 'presence-layer');
         expect(transitionLayers).toHaveLength(2);
         expect(transitionLayers.find((layer: any) => layer.props.dataSet.happyPresencePhase === 'exiting')?.props).toMatchObject({
             'aria-hidden': true,
@@ -88,8 +144,8 @@ describe('DesktopPresenceTransition.web', () => {
         });
 
         act(() => vi.advanceTimersByTime(220));
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' })).toHaveLength(1);
-        expect(renderer.root.findByProps({ testID: 'presence-layer' }).props.dataSet).toMatchObject({
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findPresenceLayer(renderer).props.dataSet).toMatchObject({
             happyPresenceDirection: 'forward',
             happyPresencePhase: 'settled',
         });
@@ -109,32 +165,38 @@ describe('DesktopPresenceTransition.web', () => {
             </DesktopPresenceTransition>,
         ));
         act(() => vi.advanceTimersByTime(30));
+        const replacedLayerElement = findLayerElement('active');
+        expect(replacedLayerElement.listenerCount()).toBe(1);
         act(() => renderer.update(
             <DesktopPresenceTransition direction="back" testID="presence" transitionKey="capabilities">
                 <View testID="capabilities-content-next" />
             </DesktopPresenceTransition>,
         ));
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' }).length).toBeLessThanOrEqual(2);
+        expect(findHostViews(renderer, 'presence-layer').length).toBeLessThanOrEqual(2);
+        act(() => vi.advanceTimersByTime(16));
+        expect(replacedLayerElement.listenerCount()).toBe(1);
+        act(() => replacedLayerElement.dispatchTransition('opacity'));
+        expect(replacedLayerElement.listenerCount()).toBe(0);
         act(() => vi.advanceTimersByTime(220));
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' })).toHaveLength(1);
-        expect(renderer.root.findAllByProps({ testID: 'capabilities-content-next' })).toHaveLength(1);
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findHostViews(renderer, 'capabilities-content-next')).toHaveLength(1);
 
         act(() => renderer.update(
             <DesktopPresenceTransition direction="forward" testID="presence" transitionKey="capabilities">
                 <View testID="capabilities-content-refreshed" />
             </DesktopPresenceTransition>,
         ));
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' })).toHaveLength(1);
-        expect(renderer.root.findByProps({ testID: 'presence-layer' }).props.dataSet.happyPresencePhase).toBe('settled');
-        expect(renderer.root.findAllByProps({ testID: 'capabilities-content-refreshed' })).toHaveLength(1);
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findPresenceLayer(renderer).props.dataSet.happyPresencePhase).toBe('settled');
+        expect(findHostViews(renderer, 'capabilities-content-refreshed')).toHaveLength(1);
 
         act(() => renderer.update(
             <DesktopPresenceTransition direction="forward" immediate testID="presence" transitionKey="files">
                 <View testID="files-immediate" />
             </DesktopPresenceTransition>,
         ));
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' })).toHaveLength(1);
-        expect(renderer.root.findByProps({ testID: 'presence-layer' }).props.dataSet.happyPresencePhase).toBe('settled');
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findPresenceLayer(renderer).props.dataSet.happyPresencePhase).toBe('settled');
         expect(vi.getTimerCount()).toBe(0);
     });
 
@@ -146,7 +208,7 @@ describe('DesktopPresenceTransition.web', () => {
                 </DesktopPresenceTransition>,
             );
         });
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' })).toHaveLength(0);
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(0);
         act(() => renderer.update(
             <DesktopPresenceTransition direction="forward" testID="presence" transitionKey="files">
                 <View testID="files-content" />
@@ -158,10 +220,10 @@ describe('DesktopPresenceTransition.web', () => {
                 {null}
             </DesktopPresenceTransition>,
         ));
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' })).toHaveLength(1);
-        expect(renderer.root.findByProps({ testID: 'presence-layer' }).props.dataSet.happyPresencePhase).toBe('exiting');
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findPresenceLayer(renderer).props.dataSet.happyPresencePhase).toBe('exiting');
         act(() => vi.advanceTimersByTime(220));
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' })).toHaveLength(0);
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(0);
 
         mediaQuery.matches = true;
         act(() => mediaQuery.dispatch(true));
@@ -170,8 +232,8 @@ describe('DesktopPresenceTransition.web', () => {
                 <View testID="file-content" />
             </DesktopPresenceTransition>,
         ));
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' })).toHaveLength(1);
-        expect(renderer.root.findByProps({ testID: 'presence-layer' }).props.dataSet.happyPresencePhase).toBe('settled');
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findPresenceLayer(renderer).props.dataSet.happyPresencePhase).toBe('settled');
         expect(vi.getTimerCount()).toBe(0);
 
         act(() => mediaQuery.dispatch(false));
@@ -187,7 +249,7 @@ describe('DesktopPresenceTransition.web', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('settles only on opacity transitionend and leaves no fallback work after the race', () => {
+    it('settles from the layer DOM opacity listener and removes it on unmount', () => {
         act(() => {
             renderer = TestRenderer.create(
                 <DesktopPresenceTransition direction="back" testID="presence" transitionKey="capabilities">
@@ -202,17 +264,32 @@ describe('DesktopPresenceTransition.web', () => {
         ));
         act(() => vi.advanceTimersByTime(16));
 
-        const activeLayer = renderer.root.findAllByProps({ testID: 'presence-layer' })
+        const activeLayer = findHostViews(renderer, 'presence-layer')
             .find((layer: any) => layer.props.dataSet.happyPresencePhase === 'active');
-        act(() => activeLayer.props.onTransitionEnd({ nativeEvent: { propertyName: 'transform' } }));
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' })).toHaveLength(2);
+        const activeElement = findLayerElement('active');
+        const exitingElement = findLayerElement('exiting');
+        expect(activeLayer.props.onTransitionEnd).toBeUndefined();
+        expect(activeElement.listenerCount()).toBe(1);
+        expect(exitingElement.listenerCount()).toBe(1);
 
-        act(() => activeLayer.props.onTransitionEnd({ nativeEvent: { propertyName: 'opacity' } }));
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' })).toHaveLength(1);
-        expect(renderer.root.findByProps({ testID: 'presence-layer' }).props.dataSet.happyPresencePhase).toBe('settled');
+        act(() => activeElement.dispatchTransition('opacity', { parent: activeElement }));
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(2);
+
+        act(() => activeElement.dispatchTransition('transform'));
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(2);
+
+        act(() => activeElement.dispatchTransition('opacity'));
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findPresenceLayer(renderer).props.dataSet.happyPresencePhase).toBe('settled');
+        expect(exitingElement.listenerCount()).toBe(0);
+        expect(activeElement.listenerCount()).toBe(1);
         expect(vi.getTimerCount()).toBe(0);
 
         act(() => vi.advanceTimersByTime(220));
-        expect(renderer.root.findAllByProps({ testID: 'presence-layer' })).toHaveLength(1);
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+
+        act(() => renderer.unmount());
+        renderer = undefined;
+        expect(activeElement.listenerCount()).toBe(0);
     });
 });
