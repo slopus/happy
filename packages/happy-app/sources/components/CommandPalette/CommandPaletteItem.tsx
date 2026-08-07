@@ -105,8 +105,8 @@ export function CommandPaletteItem({
         style: ({ pressed }: any) => [
             styles.container,
             isSelected && {
-                backgroundColor: theme.colors.surfaceHighest,
-                borderColor: multiplyColorOpacity(theme.colors.accent, 0.2),
+                backgroundColor: multiplyColorOpacity(theme.colors.accent, 0.08),
+                borderColor: multiplyColorOpacity(theme.colors.accent, 0.22),
             },
             isHovered && !isSelected && { backgroundColor: theme.colors.surfaceHigh },
             pressed && Platform.OS === 'web' && {
@@ -134,10 +134,19 @@ export function CommandPaletteItem({
         <Pressable {...pressableProps}>
             <View style={styles.content}>
                 {command.icon && (
-                    <View style={[styles.iconContainer, { backgroundColor: theme.colors.surfaceHigh }]}>
+                    <View
+                        style={[
+                            styles.iconContainer,
+                            {
+                                backgroundColor: isSelected
+                                    ? multiplyColorOpacity(theme.colors.accent, 0.1)
+                                    : theme.colors.surfaceHigh,
+                            },
+                        ]}
+                    >
                         <Ionicons 
                             name={command.icon as any} 
-                            size={20} 
+                            size={18}
                             color={isSelected ? theme.colors.accent : theme.colors.textSecondary}
                         />
                     </View>
@@ -146,7 +155,7 @@ export function CommandPaletteItem({
                     <HighlightedText
                         text={command.title}
                         query={searchQuery}
-                        style={[styles.title, Typography.default(), { color: theme.colors.text }]}
+                        style={[styles.title, Typography.default('semiBold'), { color: theme.colors.text }]}
                         highlightColor={theme.colors.accent}
                         numberOfLines={1}
                     />
@@ -177,14 +186,24 @@ export function CommandPaletteItem({
                     )}
                 </View>
                 {quickSelectNumber !== undefined && (
-                    <View style={[styles.shortcutContainer, { backgroundColor: theme.colors.surfaceHigh }]}>
+                    <View
+                        style={[
+                            styles.shortcutContainer,
+                            { backgroundColor: theme.colors.surfaceHigh, borderColor: theme.colors.divider },
+                        ]}
+                    >
                         <Text style={[styles.shortcut, Typography.mono(), { color: theme.colors.textSecondary }]}>
                             {`Alt+${quickSelectNumber}`}
                         </Text>
                     </View>
                 )}
                 {command.shortcut && (
-                    <View style={[styles.shortcutContainer, { backgroundColor: theme.colors.surfaceHigh }]}>
+                    <View
+                        style={[
+                            styles.shortcutContainer,
+                            { backgroundColor: theme.colors.surfaceHigh, borderColor: theme.colors.divider },
+                        ]}
+                    >
                         <Text style={[styles.shortcut, Typography.mono(), { color: theme.colors.textSecondary }]}>
                             {command.shortcut}
                         </Text>
@@ -197,13 +216,14 @@ export function CommandPaletteItem({
 
 const styles = StyleSheet.create({
     container: {
-        paddingHorizontal: 24,
-        paddingVertical: 12,
+        minHeight: 48,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
         backgroundColor: 'transparent',
         marginHorizontal: 8,
-        marginVertical: 2,
-        borderRadius: 8,
-        borderWidth: 2,
+        marginVertical: 1,
+        borderRadius: 10,
+        borderWidth: 1,
         borderColor: 'transparent',
     },
     content: {
@@ -212,32 +232,33 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
     },
     iconContainer: {
-        width: 32,
-        height: 32,
+        width: 30,
+        height: 30,
         borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 12,
+        marginRight: 10,
     },
     textContainer: {
         flex: 1,
-        marginRight: 12,
+        marginRight: 10,
     },
     title: {
-        fontSize: 15,
-        marginBottom: 2,
-        letterSpacing: -0.2,
+        fontSize: 14,
+        lineHeight: 19,
+        marginBottom: 1,
+        letterSpacing: -0.1,
     },
     subtitle: {
-        fontSize: 13,
-        letterSpacing: -0.1,
+        fontSize: 12,
+        lineHeight: 16,
     },
     metadataRow: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         alignItems: 'center',
-        gap: 10,
-        marginTop: 5,
+        gap: 8,
+        marginTop: 4,
     },
     metadataItem: {
         flexDirection: 'row',
@@ -251,17 +272,18 @@ const styles = StyleSheet.create({
         letterSpacing: -0.1,
     },
     match: {
-        fontWeight: '700',
-        textDecorationLine: 'underline',
+        fontWeight: '600',
     },
     shortcutContainer: {
-        paddingHorizontal: 10,
-        paddingVertical: 5,
+        paddingHorizontal: 7,
+        paddingVertical: 3,
         borderRadius: 6,
-        marginLeft: 6,
+        borderWidth: StyleSheet.hairlineWidth,
+        marginLeft: 5,
     },
     shortcut: {
-        fontSize: 12,
+        fontSize: 10,
+        lineHeight: 14,
         fontWeight: '500',
     },
 });

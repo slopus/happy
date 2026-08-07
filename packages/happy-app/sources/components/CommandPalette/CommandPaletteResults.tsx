@@ -114,29 +114,28 @@ export function CommandPaletteResults({
 
 const styles = StyleSheet.create({
     container: {
-        // Use viewport-based height for better proportions
         ...(Platform.OS === 'web' ? {
-            maxHeight: '40vh', // 40% of viewport height for results
+            maxHeight: '48vh',
         } as any : {
-            maxHeight: 420, // Fallback for native
+            maxHeight: 420,
         }),
-        paddingVertical: 8,
+        paddingVertical: 7,
     },
     emptyContainer: {
-        padding: 48,
+        paddingHorizontal: 24,
+        paddingVertical: 40,
         alignItems: 'center',
     },
     emptyText: {
-        fontSize: 15,
-        letterSpacing: -0.2,
+        fontSize: 13,
     },
     categoryTitle: {
-        paddingHorizontal: 32,
-        paddingTop: 16,
-        paddingBottom: 8,
-        fontSize: 12,
+        paddingHorizontal: 20,
+        paddingTop: 12,
+        paddingBottom: 6,
+        fontSize: 11,
         textTransform: 'uppercase',
-        letterSpacing: 0.8,
+        letterSpacing: 0.3,
         fontWeight: '600',
     },
 });

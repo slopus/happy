@@ -3,7 +3,6 @@ import { View, TextInput, StyleSheet, Platform } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { useUnistyles } from 'react-native-unistyles';
-import { multiplyColorOpacity } from '@/utils/colorOpacity';
 import { COMMAND_PALETTE_RESULTS_ID } from './types';
 
 interface CommandPaletteInputProps {
@@ -41,8 +40,8 @@ export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef,
             style={[
                 styles.container,
                 {
-                    backgroundColor: theme.colors.surfaceHigh,
-                    borderBottomColor: multiplyColorOpacity(theme.colors.text, 0.12),
+                    backgroundColor: theme.colors.surface,
+                    borderBottomColor: theme.colors.divider,
                 },
             ]}
         >
@@ -71,13 +70,14 @@ export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef,
 
 const styles = StyleSheet.create({
     container: {
-        borderBottomWidth: 1,
+        borderBottomWidth: StyleSheet.hairlineWidth,
     },
     input: {
-        paddingHorizontal: 32,
-        paddingVertical: 24,
-        fontSize: 20,
-        letterSpacing: -0.3,
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        fontSize: 16,
+        lineHeight: 22,
+        letterSpacing: -0.15,
         // Remove outline on web
         ...(Platform.OS === 'web' ? {
             outlineStyle: 'none',

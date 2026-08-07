@@ -6,7 +6,7 @@ import TestRenderer from 'react-test-renderer';
 
 vi.mock('react-native', () => ({
     Platform: { OS: 'web' },
-    StyleSheet: { create: (styles: object) => styles },
+    StyleSheet: { create: (styles: object) => styles, hairlineWidth: 0.5 },
     TextInput: 'TextInput',
     View: 'View',
 }));
@@ -62,6 +62,10 @@ describe('CommandPaletteInput keyboard handling', () => {
         return { preventDefault, stopPropagation };
     }
 
+    function flattenStyle(style: any) {
+        return Object.assign({}, ...(Array.isArray(style) ? style.flat(Infinity).filter(Boolean) : [style]));
+    }
+
     it('lets bare digits reach the input and reserves Alt/Option+1..9 for quick selection', () => {
         const bareDigit = press('1');
         expect(bareDigit.preventDefault).not.toHaveBeenCalled();
@@ -79,5 +83,15 @@ describe('CommandPaletteInput keyboard handling', () => {
         expect(input.props['aria-expanded']).toBe(true);
         expect(input.props['aria-controls']).toBe('command-palette-results');
         expect(input.props['aria-activedescendant']).toBe('command-palette-option-session-alpha');
+    });
+
+    it('uses the compact desktop input scale', () => {
+        const input = renderer.root.findByType('TextInput');
+        expect(flattenStyle(input.props.style)).toMatchObject({
+            fontSize: 16,
+            lineHeight: 22,
+            paddingHorizontal: 20,
+            paddingVertical: 16,
+        });
     });
 });

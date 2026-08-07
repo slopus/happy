@@ -21,7 +21,7 @@ export function CommandPaletteModal({
     children
 }: CommandPaletteModalProps) {
     const fadeAnim = useRef(new Animated.Value(0)).current;
-    const scaleAnim = useRef(new Animated.Value(0.95)).current;
+    const scaleAnim = useRef(new Animated.Value(0.97)).current;
     const [isModalVisible, setIsModalVisible] = React.useState(true);
 
     useEffect(() => {
@@ -52,7 +52,7 @@ export function CommandPaletteModal({
                 useNativeDriver: Platform.OS !== 'web'
             }),
             Animated.timing(scaleAnim, {
-                toValue: 0.95,
+                toValue: 0.97,
                 duration: 150,
                 useNativeDriver: Platform.OS !== 'web'
             })
@@ -92,7 +92,7 @@ export function CommandPaletteModal({
                         {
                             opacity: fadeAnim.interpolate({
                                 inputRange: [0, 1],
-                                outputRange: [0, 0.7]
+                                outputRange: [0, 1]
                             })
                         }
                     ]}
@@ -125,28 +125,22 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'flex-start',
         alignItems: 'center',
-        // Position at 30% from top of viewport
+        paddingHorizontal: 16,
+        // Keep the palette above the visual center, where desktop command menus
+        // conventionally appear, without pinning it to a fixed pixel offset.
         ...(Platform.OS === 'web' ? {
-            paddingTop: '30vh',
+            paddingTop: '18vh',
         } as any : {
-            paddingTop: 200, // Fallback for native
+            paddingTop: 120,
         })
     },
     backdrop: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(15, 15, 15, 0.75)',
-        // Remove blur for better performance - use darker overlay instead
-        // Blur can be re-enabled if needed but with optimizations
-        ...(Platform.OS === 'web' ? {
-            // backdropFilter: 'blur(2px)',
-            // WebkitBackdropFilter: 'blur(2px)',
-            // willChange: 'backdrop-filter',
-            // transform: 'translateZ(0)', // Force GPU acceleration
-        } as any : {})
+        backgroundColor: 'rgba(0, 0, 0, 0.42)',
     },
     content: {
         zIndex: 1,
-        width: '90%',
-        maxWidth: 800, // Increased from 640
+        width: '100%',
+        maxWidth: 720,
     }
 });

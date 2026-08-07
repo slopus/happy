@@ -5,7 +5,6 @@ import { CommandPaletteResults } from './CommandPaletteResults';
 import { useCommandPalette } from './useCommandPalette';
 import { Command, CommandPaletteClose, getCommandPaletteOptionId } from './types';
 import { useUnistyles } from 'react-native-unistyles';
-import { multiplyColorOpacity } from '@/utils/colorOpacity';
 
 interface CommandPaletteProps {
     commands: Command[];
@@ -39,7 +38,10 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
                 styles.container,
                 {
                     backgroundColor: theme.colors.surface,
-                    borderColor: multiplyColorOpacity(theme.colors.text, 0.12),
+                    borderColor: theme.colors.divider,
+                    ...(Platform.OS === 'web' ? {
+                        boxShadow: `0 12px 32px ${theme.colors.shadow.color}`,
+                    } as any : {}),
                 },
             ]}
         >
@@ -63,31 +65,26 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
 
 const styles = StyleSheet.create({
     container: {
-        borderRadius: 16,
+        borderRadius: 14,
         width: '100%',
-        maxWidth: 800, // Increased from 640 for wider input
-        // Use viewport-based height for better layout
+        maxWidth: 720,
         ...(Platform.OS === 'web' ? {
-            maxHeight: '60vh', // Takes up to 60% of viewport height
+            maxHeight: '64vh',
         } as any : {
-            maxHeight: 500, // Fallback for native
+            maxHeight: 500,
         }),
         overflow: 'hidden',
         ...Platform.select({
-            web: {
-                boxShadow: '0 20px 40px rgba(0, 0, 0, 0.25)',
-            },
+            web: {},
             default: {
-                shadowColor: '#000',
                 shadowOffset: {
                     width: 0,
-                    height: 20,
+                    height: 8,
                 },
-                shadowOpacity: 0.25,
-                shadowRadius: 40,
-                elevation: 20,
+                shadowRadius: 18,
+                elevation: 10,
             },
         }),
-        borderWidth: 1,
+        borderWidth: StyleSheet.hairlineWidth,
     },
 });
