@@ -28,8 +28,9 @@
 
 `T09-03` is an assertion-only browser case. At `800`, `1024`, and `1440` it
 checks center hit-testing, ordered non-overlap, no horizontal overflow, a title
-target of at least `32px`, and an Agent chip of at least `116px`. At `1440` it
-also requires a title target of at least `120px`, a status of at least `44px`,
-and includes the right-panel toggle in the non-overlap chain. At `390×844`, it
-proves the desktop title/status/More controls stay absent while the phone Agent
-chip and new-session action remain available.
+target of at least `32px`, and `40px` More and right-panel toggle targets. At
+`1440` it also requires a title target of at least `120px` and a status target
+of at least `44px`. PC Web intentionally uses the inline title/status identity
+and does not render an Agent chip. At `390×844`, the case proves the desktop
+title/status/More controls stay absent while the phone Agent chip and
+new-session action remain available.

@@ -6,6 +6,7 @@ const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL!;
 const e2eServerUrl = process.env.HAPPY_E2E_SERVER_URL!;
 const evidenceDirectory = process.env.HAPPY_RESPONSIVE_LAYOUT_EVIDENCE_DIR;
 const evidencePhase = process.env.HAPPY_RESPONSIVE_LAYOUT_EVIDENCE_PHASE ?? 'after';
+const finalRegressionEvidenceDirectory = process.env.HAPPY_FINAL_REGRESSION_EVIDENCE_DIR;
 const cleanEvidenceRuntime = process.env.HAPPY_E2E_WEB_NO_DEV === '1';
 const sessionReadyTimeout = cleanEvidenceRuntime ? 30_000 : 10_000;
 
@@ -46,6 +47,11 @@ async function installStoredCredentials(page: Page): Promise<void> {
 function screenshotPath(testInfo: TestInfo, caseNumber: number): string {
     const filename = `case-${caseNumber}-${evidencePhase}.png`;
     return evidenceDirectory ? `${evidenceDirectory}/${filename}` : testInfo.outputPath(filename);
+}
+
+function finalRegressionScreenshotPath(testInfo: TestInfo, viewport: string): string {
+    const filename = `r10-05-${viewport}.png`;
+    return finalRegressionEvidenceDirectory ? `${finalRegressionEvidenceDirectory}/${filename}` : testInfo.outputPath(filename);
 }
 
 function captureBrowserDiagnostics(page: Page): string[] {
@@ -701,6 +707,126 @@ test('T08-03 all locked widths keep exactly one reachable right-panel presentati
         await expect(page.locator('[data-testid="desktop-right-panel"]:visible')).toHaveCount(1);
         await page.setViewportSize({ width: 1024, height: 768 });
         await expect(page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible')).toHaveAttribute('aria-expanded', 'false');
+    } finally {
+        fixture.close();
+    }
+});
+
+test('[R10-05] final responsive acceptance keeps one hit-testable right-panel path', async ({ page, request }, testInfo) => {
+    const fixture = await createFixture(request);
+    const browserDiagnostics = captureBrowserDiagnostics(page);
+    try {
+        await installStoredCredentials(page);
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.goto(route(`/session/${fixture.sessionId}`));
+        await expect(page.getByTestId('session-message-input')).toBeVisible({ timeout: sessionReadyTimeout });
+        expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+
+        for (const viewport of [
+            { width: 390, height: 844 },
+            { width: 799, height: 768 },
+        ]) {
+            await page.setViewportSize(viewport);
+            const handle = page.getByTestId('right-swipe-panel-edge-handle');
+            await expect(handle).toBeVisible();
+            await expect(handle).toHaveAttribute('aria-expanded', 'false');
+            await expect(page.getByTestId('desktop-right-panel-toggle-button')).toHaveCount(0);
+            await expect(page.locator('[data-testid="desktop-right-panel"]:visible')).toHaveCount(0);
+            await expectCenterHitTestable(handle);
+            await handle.focus();
+            await handle.click();
+
+            const drawer = page.getByRole('dialog', { name: 'Capability Hub' });
+            await expect(drawer).toBeVisible();
+            await expectDrawerSettled(page, drawer);
+            await expectDrawerDoesNotCoverCriticalControls(page, drawer);
+            await expectNoHorizontalOverflow(page);
+
+            if (viewport.width === 390) {
+                await waitForFastRefreshIndicatorToSettle(page);
+                await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
+                await page.screenshot({
+                    path: finalRegressionScreenshotPath(testInfo, '390x844'),
+                    fullPage: true,
+                });
+            }
+
+            await page.getByTestId('right-swipe-panel-close-button').click();
+            await expect(drawer).toHaveCount(0);
+            await expect(handle).toBeFocused();
+        }
+
+        for (const viewport of [
+            { width: 800, height: 768 },
+            { width: 1024, height: 768 },
+        ]) {
+            await page.setViewportSize(viewport);
+            const toggle = page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible');
+            await expect(toggle).toBeVisible();
+            await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+            await expect(page.getByTestId('right-swipe-panel-edge-handle')).toHaveCount(0);
+            await expect(page.locator('[data-testid="desktop-right-panel"]:visible')).toHaveCount(0);
+            await expectCenterHitTestable(toggle);
+            await toggle.focus();
+            await toggle.click();
+
+            const drawer = page.getByRole('dialog', { name: 'Capability Hub' });
+            await expect(drawer).toBeVisible();
+            await expectDrawerSettled(page, drawer);
+            await expectDrawerDoesNotCoverCriticalControls(page, drawer);
+            await expectNoHorizontalOverflow(page);
+
+            if (viewport.width === 1024) {
+                await expectCriticalLayoutInsideCompactWorkspace(page, drawer);
+                await waitForFastRefreshIndicatorToSettle(page);
+                await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
+                await page.screenshot({
+                    path: finalRegressionScreenshotPath(testInfo, '1024x768'),
+                    fullPage: true,
+                });
+            }
+
+            await page.getByTestId('right-swipe-panel-close-button').click();
+            await expect(drawer).toHaveCount(0);
+            await expect(toggle).toBeFocused();
+        }
+
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.waitForTimeout(350); // Let breakpoint ownership settle before toggling the persistent panel.
+        const persistentToggle = page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible');
+        const left = page.getByTestId('desktop-left-sidebar');
+        const main = page.locator('[data-testid="desktop-workspace-main"]:visible');
+        const right = page.locator('[data-testid="desktop-right-panel"]:visible');
+        await expect(persistentToggle).toBeVisible();
+        await expectCenterHitTestable(persistentToggle);
+        if (!await right.isVisible()) await persistentToggle.click();
+        await expect(right).toBeVisible();
+        await expect(page.getByTestId('right-swipe-panel-edge-handle')).toHaveCount(0);
+        await expect(page.getByRole('dialog', { name: 'Capability Hub' })).toHaveCount(0);
+
+        const leftBox = await left.boundingBox();
+        const mainBox = await main.boundingBox();
+        const rightBox = await right.boundingBox();
+        expect(leftBox).not.toBeNull();
+        expect(mainBox).not.toBeNull();
+        expect(rightBox).not.toBeNull();
+        expect(leftBox!.x + leftBox!.width).toBeLessThanOrEqual(mainBox!.x + 1);
+        expect(mainBox!.x + mainBox!.width).toBeLessThanOrEqual(rightBox!.x + 1);
+        expect(mainBox!.width).toBeGreaterThanOrEqual(480);
+        expect(rightBox!.width).toBeGreaterThanOrEqual(280);
+        await expect(right.getByTestId('capability-block-outputs')).toBeVisible();
+        await expect(right.getByTestId('capability-block-sources')).toBeVisible();
+        await expectNoHorizontalOverflow(page);
+        await page.getByTestId('session-message-input').hover();
+        await page.getByTestId('session-message-input').focus();
+        await expect(page.getByTestId('session-header-title-tooltip')).toHaveCount(0);
+        await expect(page.getByTestId('desktop-right-panel-toggle-tooltip')).toHaveCount(0);
+        await waitForFastRefreshIndicatorToSettle(page);
+        await expectNoDevelopmentWarningSurface(page, browserDiagnostics);
+        await page.screenshot({
+            path: finalRegressionScreenshotPath(testInfo, '1440x900'),
+            fullPage: true,
+        });
     } finally {
         fixture.close();
     }
