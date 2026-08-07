@@ -15,7 +15,8 @@
 - Content transitions use exactly 150ms, 8px horizontal translation, opacity, and transform; do not animate width, height, row geometry, or scroll position.
 - Enter easing is `cubic-bezier(0.22, 1, 0.36, 1)` and exit easing is `cubic-bezier(0.4, 0, 1, 1)`.
 - Tab background, text, and icon colors transition for exactly 120ms.
-- Each Presence Host has at most two layers during a transition and one layer at rest.
+- The right-panel and file-tab content Presence Hosts have exactly two layers during content-to-content transitions and one settled layer at rest.
+- The workspace Presence Host contains only Diff/File overlays: Chat → Diff/File has one incoming intermediate layer and one settled layer; Diff ↔ File has one outgoing plus one incoming intermediate layer and one settled layer; Diff/File → Chat has one outgoing intermediate layer and zero settled layers.
 - An outgoing layer becomes pointer-disabled and hidden from the accessibility tree in the same React commit that starts its visual exit.
 - `prefers-reduced-motion: reduce` replaces content immediately and leaves no timer, animation frame, or overlapping layer.
 - Chat remains mounted beneath Diff/File overlays; no implementation may clone the chat subtree.
@@ -255,7 +256,7 @@ if (isFileTransitionAfter) {
 }
 ```
 
-For each click, read layers after 40ms and again after 220ms. In file-transition before mode assert no Presence layer attributes. In file-transition after mode assert intermediate layer count is 2, the exiting layer has pointer events `none`, forward/back directions are opposite, and every host settles to one layer. Focus each source tab before pressing Enter and assert `document.activeElement` remains that tab after the content key changes. Add a rapid `files → capabilities → files` and `allFiles → changes → allFiles` sequence with 30ms between clicks and assert the sampled layer count never exceeds 2. Run the same sequence under `page.emulateMedia({ reducedMotion: 'reduce' })` and assert no layer has phase `entering` or `exiting`. Read computed tab styles in after mode and assert a `0.12s` transition duration without a width or height transition.
+For each click, read layers after 40ms and again after 220ms. In file-transition before mode assert no Presence layer attributes. In file-transition after mode, right-panel and file-tab content-to-content transitions have exactly two intermediate layers (one exiting with pointer events `none`) and one settled layer. The workspace overlay Host follows the approved non-cloning contract: Chat → Diff/File has one intermediate layer, zero exiting layers, and one settled layer; Diff ↔ File has two intermediate layers, exactly one pointer-disabled exiting layer, and one settled layer; Diff/File → Chat has one intermediate exiting layer with pointer events `none` and zero settled layers. Chat stays mounted below the workspace overlay Host and is never one of its Presence layers. Assert forward/back directions are opposite. Focus each source tab before pressing Enter and assert `document.activeElement` remains that tab after the content key changes. Add a rapid `files → capabilities → files` and `allFiles → changes → allFiles` sequence with 30ms between clicks and assert the sampled layer count never exceeds 2. Run the same sequence under `page.emulateMedia({ reducedMotion: 'reduce' })` and assert no layer has phase `entering` or `exiting`. Read computed tab styles in after mode and assert a `0.12s` transition duration constrained to `background-color` and/or `color`, never `all`, `width`, or `height`.
 
 Use `fileTransitionPhase`, not the older `evidencePhase`, in every Case 06–08 screenshot filename and in the Case 06–08 JSON subtree. Record both `motionPhase: evidencePhase` and `fileTransitionPhase` at the result root so the baseline run is unambiguous.
 
@@ -1123,7 +1124,7 @@ HAPPY_E2E_RECORD=1 \
 pnpm test:e2e:web -- pc-motion-polish-evidence.spec.ts
 ```
 
-Expected: Cases 01–08 pass, both desktop viewports produce after evidence, every Presence host records multiple intermediate frames, and runtime error increments are all zero.
+Expected: Cases 01–08 pass, both desktop viewports produce after evidence, right-panel/file content switches record two intermediate layers, workspace overlay transitions record the exact `1 → 1`, `2 → 1`, and `1 → 0` intermediate/settled contracts for Chat → overlay, overlay ↔ overlay, and overlay → Chat respectively, and runtime error increments are all zero. Chat never appears as a workspace Presence layer.
 
 - [ ] **Step 5: Inspect the visual artifacts side by side**
 

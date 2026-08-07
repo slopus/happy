@@ -327,7 +327,12 @@ async function readTabTransition(trigger: Locator): Promise<TabTransitionReading
 
 function expectPresenceTransition(
     reading: PresenceTransitionReading,
-    expected: { direction: 'back' | 'forward'; intermediateCount: number; settledCount: number },
+    expected: {
+        direction: 'back' | 'forward';
+        exitingCount: number;
+        intermediateCount: number;
+        settledCount: number;
+    },
 ): void {
     if (!isFileTransitionAfter) {
         expect(reading.intermediate).toEqual([]);
@@ -336,8 +341,9 @@ function expectPresenceTransition(
     }
     expect(reading.intermediate).toHaveLength(expected.intermediateCount);
     expect(new Set(reading.intermediate.map((layer) => layer.direction))).toEqual(new Set([expected.direction]));
-    const exiting = reading.intermediate.find((layer) => layer.phase === 'exiting');
-    if (exiting) expect(exiting.pointerEvents).toBe('none');
+    const exiting = reading.intermediate.filter((layer) => layer.phase === 'exiting');
+    expect(exiting).toHaveLength(expected.exitingCount);
+    if (expected.exitingCount === 1) expect(exiting[0]?.pointerEvents).toBe('none');
     expect(reading.settled).toHaveLength(expected.settledCount);
     if (expected.settledCount === 1) expect(reading.settled[0]?.phase).toBe('settled');
 }
@@ -358,8 +364,8 @@ function expectTabTransition(reading: TabTransitionReading): void {
     if (!isFileTransitionAfter) return;
     expect(reading.transitionDuration.split(',').map((duration) => duration.trim())).toContain('0.12s');
     const properties = reading.transitionProperty.split(',').map((property) => property.trim());
-    expect(properties).not.toContain('width');
-    expect(properties).not.toContain('height');
+    expect(properties.length).toBeGreaterThan(0);
+    expect(properties.every((property) => property === 'background-color' || property === 'color')).toBe(true);
 }
 
 function presenceDirection(reading: PresenceTransitionReading): string | null {
@@ -731,6 +737,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             );
             expectPresenceTransition(filesSwitch, {
                 direction: 'forward',
+                exitingCount: 1,
                 intermediateCount: 2,
                 settledCount: 1,
             });
@@ -755,6 +762,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             );
             expectPresenceTransition(capabilitiesKeyboard, {
                 direction: 'back',
+                exitingCount: 1,
                 intermediateCount: 2,
                 settledCount: 1,
             });
@@ -766,6 +774,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             );
             expectPresenceTransition(filesKeyboard, {
                 direction: 'forward',
+                exitingCount: 1,
                 intermediateCount: 2,
                 settledCount: 1,
             });
@@ -812,6 +821,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             );
             expectPresenceTransition(allFilesSwitch, {
                 direction: 'forward',
+                exitingCount: 1,
                 intermediateCount: 2,
                 settledCount: 1,
             });
@@ -838,6 +848,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             );
             expectPresenceTransition(changesKeyboard, {
                 direction: 'back',
+                exitingCount: 1,
                 intermediateCount: 2,
                 settledCount: 1,
             });
@@ -849,6 +860,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             );
             expectPresenceTransition(allFilesKeyboard, {
                 direction: 'forward',
+                exitingCount: 1,
                 intermediateCount: 2,
                 settledCount: 1,
             });
@@ -893,6 +905,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             );
             expectPresenceTransition(secondFileSwitch, {
                 direction: 'forward',
+                exitingCount: 0,
                 intermediateCount: 1,
                 settledCount: 1,
             });
@@ -909,6 +922,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             );
             expectPresenceTransition(backSwitch, {
                 direction: 'back',
+                exitingCount: 1,
                 intermediateCount: 1,
                 settledCount: 0,
             });
@@ -919,6 +933,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             );
             expectPresenceTransition(forwardSwitch, {
                 direction: 'forward',
+                exitingCount: 0,
                 intermediateCount: 1,
                 settledCount: 1,
             });
@@ -933,6 +948,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             );
             expectPresenceTransition(changesSwitch, {
                 direction: 'back',
+                exitingCount: 1,
                 intermediateCount: 2,
                 settledCount: 1,
             });
@@ -957,6 +973,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             await diffAssetsFinished;
             expectPresenceTransition(changedFileSwitch, {
                 direction: 'forward',
+                exitingCount: 1,
                 intermediateCount: 2,
                 settledCount: 1,
             });
