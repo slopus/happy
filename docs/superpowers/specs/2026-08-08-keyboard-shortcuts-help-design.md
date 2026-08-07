@@ -1,7 +1,7 @@
 # Keyboard Shortcuts Help Design
 
 Date: 2026-08-08
-Status: Approved direction, pending implementation plan
+Status: Approved
 
 ## Context
 
@@ -239,7 +239,7 @@ Expected files are:
 - `packages/happy-app/sources/components/SidebarAccountMenu.tsx`
 - `packages/happy-app/sources/components/SidebarAccountMenu.test.tsx`
 - `packages/happy-app/sources/components/SidebarView.tsx`
-- `packages/happy-app/sources/app/_layout.tsx`
+- `packages/happy-app/sources/components/SidebarNavigator.tsx`
 - All supported translation files for newly visible strings.
 
 No server, database, native module, OTA runtime, or CLI change is required.
