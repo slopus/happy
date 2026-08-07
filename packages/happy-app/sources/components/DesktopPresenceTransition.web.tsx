@@ -50,7 +50,7 @@ function PresenceLayerView({ layer, onOpacityTransitionEnd, sequence }: Presence
         removeListenerRef.current = null;
 
         const element = instance as unknown as HTMLElement | null;
-        if (!element) return;
+        if (!element || exiting) return;
 
         const listener = (event: TransitionEvent) => {
             if (event.target !== element || event.propertyName !== 'opacity') return;
@@ -59,7 +59,7 @@ function PresenceLayerView({ layer, onOpacityTransitionEnd, sequence }: Presence
 
         element.addEventListener('transitionend', listener);
         removeListenerRef.current = () => element.removeEventListener('transitionend', listener);
-    }, [onOpacityTransitionEnd, sequence]);
+    }, [exiting, onOpacityTransitionEnd, sequence]);
 
     React.useEffect(() => () => {
         removeListenerRef.current?.();
@@ -76,6 +76,7 @@ function PresenceLayerView({ layer, onOpacityTransitionEnd, sequence }: Presence
                     happyPresenceDirection: layer.direction,
                     happyPresencePhase: layer.phase,
                 },
+                inert: exiting ? true : undefined,
             } as any)}
             importantForAccessibility={exiting ? 'no-hide-descendants' : 'auto'}
             pointerEvents={exiting ? 'none' : 'auto'}
@@ -139,9 +140,28 @@ export function DesktopPresenceTransition({
         if (immediate || reducedMotionRef.current) {
             cancelPendingWork();
             pendingSequenceRef.current = null;
-            const nextId = ++sequenceRef.current;
+            const preserveActiveLayer = renderedKeyRef.current === transitionKey;
+            const nextId = preserveActiveLayer
+                ? sequenceRef.current
+                : ++sequenceRef.current;
             renderedKeyRef.current = transitionKey;
-            setLayers(createSettledLayer(children, direction, nextId, transitionKey));
+            setLayers((previous) => {
+                if (children === null) return [];
+                const active = preserveActiveLayer
+                    ? previous.find((layer) => (
+                        layer.phase !== 'exiting' && layer.key === transitionKey
+                    ))
+                    : undefined;
+                if (active) {
+                    return [{
+                        ...active,
+                        direction,
+                        node: children,
+                        phase: 'settled',
+                    }];
+                }
+                return createSettledLayer(children, direction, nextId, transitionKey);
+            });
             return;
         }
 
@@ -199,12 +219,26 @@ export function DesktopPresenceTransition({
             const nextId = ++sequenceRef.current;
             const latest = latestRef.current;
             renderedKeyRef.current = latest.transitionKey;
-            setLayers(createSettledLayer(
-                latest.children,
-                latest.direction,
-                nextId,
-                latest.transitionKey,
-            ));
+            setLayers((previous) => {
+                if (latest.children === null) return [];
+                const active = previous.find((layer) => (
+                    layer.phase !== 'exiting' && layer.key === latest.transitionKey
+                ));
+                if (active) {
+                    return [{
+                        ...active,
+                        direction: latest.direction,
+                        node: latest.children,
+                        phase: 'settled',
+                    }];
+                }
+                return createSettledLayer(
+                    latest.children,
+                    latest.direction,
+                    nextId,
+                    latest.transitionKey,
+                );
+            });
         };
 
         reducedMotionRef.current = mediaQuery.matches;

@@ -72,6 +72,7 @@ button, input, textarea, select {
 }
 
 [data-happy-motion="desktop-presence-layer"][data-happy-presence-phase="settled"] {
+    transition: none;
     will-change: auto;
 }
 

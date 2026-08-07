@@ -738,7 +738,9 @@ describe('SessionView Agent-space boundary', () => {
         });
         const collapsedToggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
         expect(collapsedToggle.props['aria-expanded']).toBe(false);
-        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-motion' }).props.dataSet).toMatchObject({
+        const collapsedPanelMotion = renderer.root.findByProps({ testID: 'desktop-right-panel-motion' });
+        expect(collapsedPanelMotion.parent?.props.inert).toBe(true);
+        expect(collapsedPanelMotion.props.dataSet).toMatchObject({
             happyMotion: 'desktop-panel',
             happyMotionSide: 'right',
             happyMotionState: 'closed',

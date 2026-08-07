@@ -812,6 +812,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                 </View>
             </View>
             <Animated.View
+                {...(Platform.OS === 'web' ? { inert: showDesktopRightPanel ? undefined : true } as any : {})}
                 aria-hidden={!showDesktopRightPanel}
                 accessibilityElementsHidden={!showDesktopRightPanel}
                 importantForAccessibility={showDesktopRightPanel ? 'auto' : 'no-hide-descendants'}

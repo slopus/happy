@@ -159,6 +159,7 @@ const SidebarNavigatorContent = React.memo(() => {
                         happyMotionSide: 'left',
                         happyMotionState: showSidebar ? 'open' : 'closed',
                     },
+                    inert: showSidebar ? undefined : true,
                 } as any : {})}
                 style={[
                     styles.drawerContent,

@@ -140,6 +140,7 @@ describe('DesktopPresenceTransition.web', () => {
             'aria-hidden': true,
             accessibilityElementsHidden: true,
             importantForAccessibility: 'no-hide-descendants',
+            inert: true,
             pointerEvents: 'none',
         });
 
@@ -212,9 +213,10 @@ describe('DesktopPresenceTransition.web', () => {
         ));
         expect(findHostViews(renderer, 'presence-layer').length).toBeLessThanOrEqual(2);
         act(() => vi.advanceTimersByTime(16));
-        expect(replacedLayerElement.listenerCount()).toBe(1);
         act(() => replacedLayerElement.dispatchTransition('opacity'));
-        expect(replacedLayerElement.listenerCount()).toBe(0);
+        expect(findHostViews(renderer, 'presence-layer').map((layer: any) => (
+            layer.props.dataSet.happyPresencePhase
+        ))).toEqual(['exiting', 'active']);
         act(() => vi.advanceTimersByTime(220));
         expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
         expect(findHostViews(renderer, 'capabilities-content-next')).toHaveLength(1);
@@ -287,6 +289,87 @@ describe('DesktopPresenceTransition.web', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it('cancels an active transition when reduced motion turns on and ignores stale callbacks', () => {
+        let capturedFrame: FrameRequestCallback | undefined;
+        const cancelAnimationFrame = vi.fn();
+        vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+            capturedFrame = callback;
+            return 91;
+        });
+        vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame);
+
+        act(() => {
+            renderer = TestRenderer.create(
+                <DesktopPresenceTransition direction="back" testID="presence" transitionKey="capabilities">
+                    <View testID="capabilities-content" />
+                </DesktopPresenceTransition>,
+            );
+        });
+        act(() => renderer.update(
+            <DesktopPresenceTransition direction="forward" testID="presence" transitionKey="files">
+                <View testID="files-content" />
+            </DesktopPresenceTransition>,
+        ));
+        expect(findHostViews(renderer, 'presence-layer').map((layer: any) => (
+            layer.props.dataSet.happyPresencePhase
+        ))).toEqual(['exiting', 'entering']);
+        const staleIncomingElement = findLayerElement('entering');
+        expect(staleIncomingElement.listenerCount()).toBe(1);
+
+        act(() => mediaQuery.dispatch(true));
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findPresenceLayer(renderer).props.dataSet.happyPresencePhase).toBe('settled');
+        expect(findHostViews(renderer, 'files-content')).toHaveLength(1);
+        expect(findLayerElement('settled')).toBe(staleIncomingElement);
+        expect(cancelAnimationFrame).toHaveBeenCalledWith(91);
+        expect(staleIncomingElement.listenerCount()).toBe(1);
+        expect(vi.getTimerCount()).toBe(0);
+
+        act(() => capturedFrame?.(220));
+        act(() => staleIncomingElement.dispatchTransition('opacity'));
+        expect(findHostViews(renderer, 'presence-layer')).toHaveLength(1);
+        expect(findPresenceLayer(renderer).props.dataSet.happyPresencePhase).toBe('settled');
+        expect(findHostViews(renderer, 'files-content')).toHaveLength(1);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('preserves the settled child tree for same-key updates under reduced motion', () => {
+        const mountSpy = vi.fn();
+        const unmountSpy = vi.fn();
+
+        function PublishedOverlay({ version }: { version: number }) {
+            React.useEffect(() => {
+                mountSpy();
+                return unmountSpy;
+            }, []);
+            return <View testID={`published-overlay-${version}`} />;
+        }
+
+        mediaQuery.matches = true;
+        act(() => {
+            renderer = TestRenderer.create(
+                <DesktopPresenceTransition direction="forward" testID="presence" transitionKey="diff:src/a.ts">
+                    <PublishedOverlay version={1} />
+                </DesktopPresenceTransition>,
+            );
+        });
+        const settledElement = findLayerElement('settled');
+        expect(mountSpy).toHaveBeenCalledTimes(1);
+        expect(unmountSpy).not.toHaveBeenCalled();
+
+        act(() => renderer.update(
+            <DesktopPresenceTransition direction="back" testID="presence" transitionKey="diff:src/a.ts">
+                <PublishedOverlay version={2} />
+            </DesktopPresenceTransition>,
+        ));
+
+        expect(findLayerElement('settled')).toBe(settledElement);
+        expect(findHostViews(renderer, 'published-overlay-2')).toHaveLength(1);
+        expect(mountSpy).toHaveBeenCalledTimes(1);
+        expect(unmountSpy).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
     it('settles from the layer DOM opacity listener and removes it on unmount', () => {
         act(() => {
             renderer = TestRenderer.create(
@@ -308,7 +391,7 @@ describe('DesktopPresenceTransition.web', () => {
         const exitingElement = findLayerElement('exiting');
         expect(activeLayer.props.onTransitionEnd).toBeUndefined();
         expect(activeElement.listenerCount()).toBe(1);
-        expect(exitingElement.listenerCount()).toBe(1);
+        expect(exitingElement.listenerCount()).toBe(0);
 
         act(() => activeElement.dispatchTransition('opacity', { parent: activeElement }));
         expect(findHostViews(renderer, 'presence-layer')).toHaveLength(2);

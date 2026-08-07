@@ -1093,6 +1093,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                 {composeContent}
             </View>
             <View
+                {...(Platform.OS === 'web' ? { inert: showDesktopRightPanel ? undefined : true } as any : {})}
                 aria-hidden={!showDesktopRightPanel}
                 accessibilityElementsHidden={!showDesktopRightPanel}
                 importantForAccessibility={showDesktopRightPanel ? 'auto' : 'no-hide-descendants'}

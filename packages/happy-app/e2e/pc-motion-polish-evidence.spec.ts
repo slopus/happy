@@ -220,6 +220,7 @@ async function createConnectedFileSession(request: APIRequestContext): Promise<{
 
 type PresenceLayerReading = {
     direction: string | null;
+    inert: boolean;
     opacity: string;
     phase: string | null;
     pointerEvents: string;
@@ -237,6 +238,7 @@ type TabTransitionReading = {
 };
 
 let presenceSampleSequence = 0;
+let panelMotionSampleSequence = 0;
 
 async function enableFileDiffsSidebar(page: Page): Promise<void> {
     await page.goto(authenticatedRoute('/settings/features'));
@@ -264,6 +266,7 @@ async function readPresenceLayers(page: Page, hostTestId: string): Promise<Prese
             const style = getComputedStyle(layer);
             return {
                 direction: layer.getAttribute('data-happy-presence-direction'),
+                inert: (layer as HTMLElement).inert,
                 opacity: style.opacity,
                 phase: layer.getAttribute('data-happy-presence-phase'),
                 pointerEvents: style.pointerEvents,
@@ -316,6 +319,7 @@ async function activateAndReadPresence(
                     const style = getComputedStyle(layer);
                     return {
                         direction: layer.getAttribute('data-happy-presence-direction'),
+                        inert: layer.inert,
                         opacity: style.opacity,
                         phase: layer.getAttribute('data-happy-presence-phase'),
                         pointerEvents: style.pointerEvents,
@@ -413,6 +417,51 @@ async function rapidSwitchAndReadPresence(
     return [afterFirst, afterSecond, settled];
 }
 
+async function clickVisibleTestIdWithMouse(page: Page, testId: string): Promise<void> {
+    const point = await page.evaluate((targetTestId) => {
+        const candidate = Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="${targetTestId}"]`))
+            .map((element) => {
+                const rect = element.getBoundingClientRect();
+                const style = getComputedStyle(element);
+                return {
+                    area: rect.width * rect.height,
+                    disabled: element.matches(':disabled, [aria-disabled="true"]'),
+                    element,
+                    rect,
+                    visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
+                };
+            })
+            .filter((entry) => entry.visible)
+            .sort((left, right) => right.area - left.area)[0];
+        if (!candidate || candidate.disabled) throw new Error(`缺少可点击控件：${targetTestId}`);
+        const x = candidate.rect.x + candidate.rect.width / 2;
+        const y = candidate.rect.y + candidate.rect.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        if (!hit || (hit !== candidate.element && !candidate.element.contains(hit))) {
+            throw new Error(`控件中心被遮挡：${targetTestId}`);
+        }
+        return { x, y };
+    }, testId);
+    await page.mouse.click(point.x, point.y);
+}
+
+async function rapidMouseSwitchAndReadPresence(
+    page: Page,
+    firstTriggerTestId: string,
+    secondTriggerTestId: string,
+    hostTestId: string,
+): Promise<PresenceLayerReading[][]> {
+    await clickVisibleTestIdWithMouse(page, firstTriggerTestId);
+    await page.waitForTimeout(30);
+    const afterFirst = await readPresenceLayers(page, hostTestId);
+    await clickVisibleTestIdWithMouse(page, secondTriggerTestId);
+    await page.waitForTimeout(30);
+    const afterSecond = await readPresenceLayers(page, hostTestId);
+    await page.waitForTimeout(190);
+    const settled = await readPresenceLayers(page, hostTestId);
+    return [afterFirst, afterSecond, settled];
+}
+
 async function readTabTransition(trigger: Locator): Promise<TabTransitionReading> {
     return trigger.evaluate((element) => {
         const style = getComputedStyle(element);
@@ -441,7 +490,10 @@ function expectPresenceTransition(
     expect(new Set(reading.intermediate.map((layer) => layer.direction))).toEqual(new Set([expected.direction]));
     const exiting = reading.intermediate.filter((layer) => layer.phase === 'exiting');
     expect(exiting).toHaveLength(expected.exitingCount);
-    if (expected.exitingCount === 1) expect(exiting[0]?.pointerEvents).toBe('none');
+    if (expected.exitingCount === 1) {
+        expect(exiting[0]?.inert).toBe(true);
+        expect(exiting[0]?.pointerEvents).toBe('none');
+    }
     expect(reading.settled).toHaveLength(expected.settledCount);
     if (expected.settledCount === 1) expect(reading.settled[0]?.phase).toBe('settled');
 }
@@ -453,9 +505,15 @@ function expectRapidPresence(readings: PresenceLayerReading[][], reducedMotion: 
         return;
     }
     if (reducedMotion) {
+        expect(readings.every((layers) => layers.length <= 1)).toBe(true);
         expect(readings.flat().some((layer) => layer.phase === 'entering' || layer.phase === 'exiting')).toBe(false);
     }
-    expect(readings.at(-1)).toHaveLength(1);
+    expect(readings.flat().filter((layer) => layer.phase === 'exiting').every((layer) => layer.inert)).toBe(true);
+    const finalLayers = readings.at(-1) ?? [];
+    expect(finalLayers).toHaveLength(1);
+    expect(finalLayers[0]?.phase).toBe('settled');
+    expect(Number.parseFloat(finalLayers[0]?.opacity ?? '0')).toBeGreaterThan(0.99);
+    expect(['matrix(1, 0, 0, 1, 0, 0)', 'none']).toContain(finalLayers[0]?.transform);
 }
 
 function expectTabTransition(reading: TabTransitionReading): void {
@@ -523,7 +581,18 @@ async function toggleAndSamplePanelMotion(
     triggerTestId: string,
     panelSelectors: string[],
 ): Promise<{ motion: string | null; readings: PanelMotionReading[] }> {
-    return page.evaluate(async ({ panelSelectors: selectors, triggerTestId: triggerId }) => {
+    const sampleKey = `__happyE2ePanelMotionSample${panelMotionSampleSequence++}`;
+    const triggerLocator = page.locator(`[data-testid="${triggerTestId}"]:visible`).first();
+    await expect(triggerLocator).toBeVisible();
+    const motion = await page.evaluate(({ panelSelectors: selectors, sampleKey: targetSampleKey, triggerTestId: triggerId }) => {
+        type PanelMotionSampleState = {
+            listener: EventListener;
+            motion: string | null;
+            readings: PanelMotionReading[];
+            ready: boolean;
+            trigger: HTMLElement;
+        };
+        const sampleWindow = window as unknown as Record<string, PanelMotionSampleState | undefined>;
         const findPanel = () => selectors
             .flatMap((selector) => Array.from(document.querySelectorAll<HTMLElement>(selector)))
             .map((element) => {
@@ -554,15 +623,58 @@ async function toggleAndSamplePanelMotion(
         };
         const wait = (duration: number) => new Promise<void>((resolve) => window.setTimeout(resolve, duration));
 
-        trigger.click();
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        read();
-        for (const duration of [40, 45, 55, 70]) {
-            await wait(duration);
-            read();
-        }
+        const state: PanelMotionSampleState = {
+            listener: () => undefined,
+            motion,
+            readings,
+            ready: false,
+            trigger,
+        };
+        const listener: EventListener = () => {
+            void (async () => {
+                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                read();
+                for (const duration of [40, 45, 55, 70]) {
+                    await wait(duration);
+                    read();
+                }
+                state.ready = true;
+            })();
+        };
+        state.listener = listener;
+        sampleWindow[targetSampleKey] = state;
+        trigger.addEventListener('click', listener, { capture: true, once: true });
+        return motion;
+    }, { panelSelectors, sampleKey, triggerTestId });
+
+    try {
+        await triggerLocator.click();
+        const ready = await page.waitForFunction((targetSampleKey) => {
+            const sampleWindow = window as unknown as Record<string, { ready: boolean } | undefined>;
+            return sampleWindow[targetSampleKey]?.ready === true;
+        }, sampleKey, { polling: 5, timeout: 5_000 });
+        await ready.dispose();
+        const readings = await page.evaluate((targetSampleKey) => {
+            const sampleWindow = window as unknown as Record<
+                string,
+                { readings: PanelMotionReading[] } | undefined
+            >;
+            return sampleWindow[targetSampleKey]?.readings ?? [];
+        }, sampleKey);
         return { motion, readings };
-    }, { panelSelectors, triggerTestId });
+    } finally {
+        await page.evaluate((targetSampleKey) => {
+            type PanelMotionSampleState = {
+                listener: EventListener;
+                trigger: HTMLElement;
+            };
+            const sampleWindow = window as unknown as Record<string, PanelMotionSampleState | undefined>;
+            const state = sampleWindow[targetSampleKey];
+            if (!state) return;
+            state.trigger.removeEventListener('click', state.listener, true);
+            delete sampleWindow[targetSampleKey];
+        }, sampleKey).catch(() => undefined);
+    }
 }
 
 function distinctMotionFrames(readings: PanelMotionReading[]): number {
@@ -604,12 +716,15 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
         '[data-testid="desktop-left-sidebar"]',
     ]);
     await expect(leftToggle).toHaveAttribute('aria-expanded', 'false');
+    const leftInertWhenClosed = await leftSidebar.evaluate((element) => (element as HTMLElement).inert);
+    if (isAfter) expect(leftInertWhenClosed).toBe(true);
     const leftMainWidthClosed = (await desktopMain.boundingBox())?.width ?? 0;
     expect(leftMainWidthClosed).toBeGreaterThan(leftMainWidthOpen + 200);
     expect(leftMotion.motion).toBe(isAfter ? 'desktop-panel' : null);
     expect(distinctMotionFrames(leftMotion.readings) > 1).toBe(isAfter);
     await leftToggle.click();
     await expect(leftToggle).toHaveAttribute('aria-expanded', 'true');
+    if (isAfter) expect(await leftSidebar.evaluate((element) => (element as HTMLElement).inert)).toBe(false);
     await page.waitForTimeout(220);
     await leftToggle.click();
     await page.mouse.move(640, 360);
@@ -633,6 +748,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
     result.leftSidebar = {
         mainWidthOpen: leftMainWidthOpen,
         mainWidthClosed: leftMainWidthClosed,
+        inertWhenClosed: leftInertWhenClosed,
         motion: leftMotion.motion,
         motionFrames: distinctMotionFrames(leftMotion.readings),
         readings: leftMotion.readings,
@@ -685,12 +801,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
 
     const row = page.getByTestId(`session-row-${sessionId}`);
     await expect(row).toBeVisible();
-    await row.dispatchEvent('contextmenu', {
-        bubbles: true,
-        cancelable: true,
-        clientX: 20,
-        clientY: 300,
-    });
+    await row.click({ button: 'right' });
     const selectLabel = page.getByText('Select', { exact: true });
     await expect(selectLabel).toBeVisible();
     await page.waitForTimeout(350);
@@ -746,12 +857,21 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
         '[data-testid="desktop-right-panel"]',
     ]);
     await expect(rightToggle).toHaveAttribute('aria-expanded', 'false');
+    const rightInertWhenClosed = await rightMotionTarget.evaluate((element) => (
+        (element.parentElement as HTMLElement | null)?.inert ?? false
+    ));
+    if (isAfter) expect(rightInertWhenClosed).toBe(true);
     const rightMainWidthClosed = (await desktopMain.boundingBox())?.width ?? 0;
     expect(rightMainWidthClosed).toBeGreaterThan(rightMainWidthOpen + 200);
     expect(rightMotion.motion).toBe(isAfter ? 'desktop-panel' : null);
     expect(distinctMotionFrames(rightMotion.readings) > 1).toBe(isAfter);
     await rightToggle.click();
     await expect(rightToggle).toHaveAttribute('aria-expanded', 'true');
+    if (isAfter) {
+        expect(await rightMotionTarget.evaluate((element) => (
+            (element.parentElement as HTMLElement | null)?.inert ?? false
+        ))).toBe(false);
+    }
     await page.waitForTimeout(220);
     await rightToggle.click();
     await page.mouse.move(640, 360);
@@ -775,6 +895,7 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
     result.rightSidebar = {
         mainWidthOpen: rightMainWidthOpen,
         mainWidthClosed: rightMainWidthClosed,
+        inertWhenClosed: rightInertWhenClosed,
         motion: rightMotion.motion,
         motionFrames: distinctMotionFrames(rightMotion.readings),
         readings: rightMotion.readings,
@@ -824,6 +945,10 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             const rightPanel = page.getByTestId('desktop-right-panel').last();
             const workspaceMain = page.getByTestId('desktop-workspace-main').last();
             await expect(rightPanel).toBeVisible();
+            const chatComposer = page.getByTestId('session-message-input').last();
+            await expect(chatComposer).toBeAttached();
+            const chatComposerNode = await chatComposer.elementHandle();
+            if (!chatComposerNode) throw new Error('缺少用于验证 Chat 持续挂载的输入节点。');
 
             // PC-MOTION-06 — the right-panel content follows the primary tab direction.
             const filesTab = rightPanel.getByTestId('desktop-right-panel-files-tab');
@@ -1087,6 +1212,40 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
             } else {
                 await expect(workspaceMain.getByText('src/changed-motion.ts', { exact: true })).toBeVisible();
             }
+
+            const workspaceRapid = await rapidMouseSwitchAndReadPresence(
+                page,
+                'desktop-navigation-back-button',
+                'desktop-navigation-forward-button',
+                'workspace-overlay-transition',
+            );
+            expectRapidPresence(workspaceRapid, false);
+            await page.emulateMedia({ reducedMotion: 'reduce' });
+            await allFilesTab.click();
+            await expect(rightPanel.getByPlaceholder('Search files...')).toBeVisible();
+            const workspaceReduced = await rapidSwitchAndReadPresence(
+                page,
+                rightPanel.getByText('second-motion.ts', { exact: true }),
+                rightPanel.getByText('changed-motion.ts', { exact: true }),
+                'workspace-overlay-transition',
+            );
+            expectRapidPresence(workspaceReduced, true);
+            await page.emulateMedia({ reducedMotion: 'no-preference' });
+            await changesTab.click();
+            await expect(rightPanel.getByPlaceholder('Search files...')).toHaveCount(0);
+            await rightPanel.getByText('changed-motion.ts', { exact: true }).click();
+            await page.waitForTimeout(220);
+            if (isFileTransitionAfter) {
+                await expect(workspaceMain.getByTestId('workspace-diff-panel')).toBeVisible();
+            } else {
+                await expect(workspaceMain.getByText('src/changed-motion.ts', { exact: true })).toBeVisible();
+            }
+            const chatIdentityPreserved = await chatComposer.evaluate(
+                (element, original) => element.isSameNode(original),
+                chatComposerNode,
+            );
+            expect(chatIdentityPreserved).toBe(true);
+            await chatComposerNode.dispose();
             const finalPresenceLayers = {
                 fileMode: await readPresenceLayers(page, 'session-files-mode-transition'),
                 rightPanel: await readPresenceLayers(page, 'desktop-right-panel-content-transition'),
@@ -1113,8 +1272,11 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
                 back: backSwitch,
                 changes: changesSwitch,
                 changedFile: changedFileSwitch,
+                chatIdentityPreserved,
                 finalPresenceLayers,
                 forward: forwardSwitch,
+                rapid: workspaceRapid,
+                reducedMotion: workspaceReduced,
                 screenshot: case08Screenshot,
                 secondFile: secondFileSwitch,
             };
