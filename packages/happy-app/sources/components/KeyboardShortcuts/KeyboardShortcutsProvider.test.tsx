@@ -209,4 +209,23 @@ describe('KeyboardShortcutsProvider', () => {
 
         expect(latestLauncher?.isAvailable).toBe(expected);
     });
+
+    it('does not register the global shortcut while the desktop workspace is disabled', () => {
+        mocks.desktopLayout.enabled = false;
+        renderProvider();
+
+        expect(mocks.keyboardOptions?.onOpenKeyboardShortcuts).toBeUndefined();
+        act(() => mocks.keyboardOptions?.onOpenKeyboardShortcuts?.());
+        expect(mocks.modalShow).not.toHaveBeenCalled();
+    });
+
+    it('does not open from the launcher while the desktop workspace is disabled', () => {
+        mocks.desktopLayout.enabled = false;
+        renderProvider();
+
+        act(() => latestLauncher?.open());
+
+        expect(mocks.modalShow).not.toHaveBeenCalled();
+        expect(mocks.createShortcutSections).not.toHaveBeenCalled();
+    });
 });

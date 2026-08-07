@@ -44,7 +44,7 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
     }, [shortcutsAreOpen]);
 
     const open = React.useCallback(() => {
-        if (Platform.OS !== 'web' || shortcutsOpeningRef.current) return;
+        if (Platform.OS !== 'web' || !enabled || shortcutsOpeningRef.current) return;
 
         shortcutsOpeningRef.current = true;
         const sections = createShortcutSections({
@@ -59,9 +59,9 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
             component: KeyboardShortcutsModal,
             props: { sections },
         } as Omit<CustomModalConfig, 'id'>);
-    }, [commandPaletteEnabled, enterToSend, rightPanelAvailable, showModal]);
+    }, [commandPaletteEnabled, enabled, enterToSend, rightPanelAvailable, showModal]);
 
-    useGlobalKeyboard(undefined, { onOpenKeyboardShortcuts: open });
+    useGlobalKeyboard(undefined, { onOpenKeyboardShortcuts: enabled ? open : undefined });
 
     const launcher = React.useMemo<KeyboardShortcutsLauncher>(() => ({
         isAvailable: Platform.OS === 'web' && enabled,
