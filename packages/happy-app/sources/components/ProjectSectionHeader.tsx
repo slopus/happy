@@ -68,12 +68,6 @@ export const ProjectSectionHeader = React.memo(({
         .pop() || displayPath;
     const showActions = Platform.OS === 'web' && (hovered || !!menuAnchor);
 
-    const openMenu = React.useCallback((event: any) => {
-        event.preventDefault?.();
-        event.stopPropagation?.();
-        setMenuAnchor((currentAnchor) => currentAnchor ? null : anchorFromEvent(event));
-    }, []);
-
     const openContextMenu = React.useCallback((event: any) => {
         event.preventDefault?.();
         event.stopPropagation?.();
@@ -137,12 +131,6 @@ export const ProjectSectionHeader = React.memo(({
 
             {showActions ? (
                 <View style={styles.actionCluster} testID={`${testID}-actions`}>
-                    <ProjectHeaderAction
-                        icon="more-horizontal"
-                        label={t('sessionInfo.sessionRowMoreActions')}
-                        onPress={openMenu}
-                        testID={`${testID}-more-action`}
-                    />
                     <ProjectHeaderAction
                         icon="edit-3"
                         label={t('sidebar.newSession')}

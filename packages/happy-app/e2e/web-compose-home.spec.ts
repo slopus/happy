@@ -2033,7 +2033,7 @@ test('[SESSION-LAYOUT] 左栏在项目分组与时间排序之间切换并记住
     await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
 });
 
-test('[PROJECT-HOVER-ACTIONS] PC 项目行悬浮显示快捷操作并复用会话菜单', async ({ page, request }, testInfo) => {
+test('[PROJECT-HOVER-ACTIONS] PC 项目行悬浮仅显示新建会话操作', async ({ page, request }, testInfo) => {
     const sessionId = await createE2ESession(request, {
         path: '/workspace/console',
         host: 'studio-mac',
@@ -2052,22 +2052,22 @@ test('[PROJECT-HOVER-ACTIONS] PC 项目行悬浮显示快捷操作并复用会�
     await project.hover();
 
     if (projectHoverEvidencePhase === 'before') {
-        await expect(projectActions).toHaveCount(0);
+        await expect(projectActions).toBeVisible();
+        await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-more-action'))
+            .toBeVisible();
     } else {
         await expect(projectActions).toBeVisible();
         await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-more-action'))
-            .toHaveAccessibleName('More session actions');
+            .toHaveCount(0);
         await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-new-session-action'))
             .toHaveAccessibleName('New session');
-        await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-more-action').locator('[data-icon-name="more-horizontal"]'))
-            .toHaveCount(1);
         await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-new-session-action').locator('[data-icon-name="edit-3"]'))
             .toHaveCount(1);
     }
     await page.screenshot({ path: projectHoverScreenshotPath(testInfo), fullPage: true });
 
     if (projectHoverEvidencePhase !== 'before') {
-        await page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-more-action').click();
+        await project.click({ button: 'right' });
         await expect(page.getByText('Pin Session', { exact: true })).toBeVisible();
         await page.mouse.click(1000, 850);
         await expect(page.getByText('Pin Session', { exact: true })).toHaveCount(0);

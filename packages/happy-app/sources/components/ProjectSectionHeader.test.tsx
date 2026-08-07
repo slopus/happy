@@ -97,7 +97,7 @@ describe('ProjectSectionHeader desktop hover actions', () => {
 
     afterEach(() => consoleErrorSpy.mockRestore());
 
-    it('shows the matching more and new-session icons only while hovered', () => {
+    it('shows only the new-session icon while hovered', () => {
         const { renderer } = renderHeader();
         const header = findHostByTestId(renderer, 'project-console-container');
 
@@ -107,8 +107,7 @@ describe('ProjectSectionHeader desktop hover actions', () => {
         act(() => header.props.onMouseEnter());
 
         const actions = renderer.root.findByProps({ testID: 'project-console-actions' });
-        expect(actions.findByProps({ testID: 'project-console-more-action' }).findByType('Feather').props.name)
-            .toBe('more-horizontal');
+        expect(actions.findAllByProps({ testID: 'project-console-more-action' })).toHaveLength(0);
         expect(actions.findByProps({ testID: 'project-console-new-session-action' }).findByType('Feather').props.name)
             .toBe('edit-3');
         expect(renderer.root.findAllByType('StatusDot')).toHaveLength(0);
@@ -148,28 +147,12 @@ describe('ProjectSectionHeader desktop hover actions', () => {
         act(() => renderer.unmount());
     });
 
-    it('opens the unchanged session action popover from the more icon and right click', () => {
+    it('keeps the unchanged right-click session action popover', () => {
         const { renderer } = renderHeader();
-        const header = findHostByTestId(renderer, 'project-console-container');
-        act(() => header.props.onMouseEnter());
         const anchorTarget = {
             getBoundingClientRect: () => ({ left: 20, top: 30, width: 28, height: 28 }),
         };
 
-        act(() => renderer.root.findByProps({ testID: 'project-console-more-action' }).props.onPress({
-            currentTarget: anchorTarget,
-            preventDefault: vi.fn(),
-            stopPropagation: vi.fn(),
-        }));
-
-        let popover = renderer.root.findByType('SessionActionsPopover');
-        expect(popover.props).toMatchObject({
-            anchor: { type: 'rect', x: 20, y: 30, width: 28, height: 28 },
-            sessionId: 'session-1',
-            visible: true,
-        });
-
-        act(() => popover.props.onClose());
         const disclosure = findHostByTestId(renderer, 'project-console');
         act(() => disclosure.props.onContextMenu({
             currentTarget: anchorTarget,
@@ -177,9 +160,12 @@ describe('ProjectSectionHeader desktop hover actions', () => {
             stopPropagation: vi.fn(),
         }));
 
-        popover = renderer.root.findByType('SessionActionsPopover');
-        expect(popover.props.visible).toBe(true);
-        expect(popover.props.sessionId).toBe('session-1');
+        const popover = renderer.root.findByType('SessionActionsPopover');
+        expect(popover.props).toMatchObject({
+            anchor: { type: 'rect', x: 20, y: 30, width: 28, height: 28 },
+            sessionId: 'session-1',
+            visible: true,
+        });
         act(() => renderer.unmount());
     });
 });
