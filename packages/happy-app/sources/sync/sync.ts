@@ -59,7 +59,7 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { resolveControlHandoffDirection } from './controlHandoff';
-import { resolveMessageModeMeta } from './messageMeta';
+import { resolveAgentDefaultPin, resolveMessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { encryptBlob } from '@/encryption/blob';
@@ -596,6 +596,13 @@ class Sync {
         }
 
         const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
+        // Adopt the settings-level defaults as the session's own picks the first
+        // time it uses them, so editing the default later cannot re-model a
+        // session that is already running.
+        const defaultPin = resolveAgentDefaultPin(session, storage.getState().settings);
+        if (Object.keys(defaultPin).length > 0) {
+            sessionSetAgentModes(sessionId, defaultPin);
+        }
         const { displayText, source = 'chat', attachments } = options ?? {};
 
         const flavor = session.metadata?.flavor;

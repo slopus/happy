@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveMessageModeMeta } from './messageMeta';
+import { resolveAgentDefaultPin, resolveMessageModeMeta } from './messageMeta';
 import { rigMetadataFixture } from './__testdata__/rigMetadata';
 
 describe('resolveMessageModeMeta', () => {
@@ -112,5 +112,90 @@ describe('resolveMessageModeMeta', () => {
         } as any);
 
         expect(meta.effort).toBe('high');
+    });
+});
+
+describe('resolveAgentDefaultPin', () => {
+    const claudeDefaults = {
+        agentDefaultOverrides: {
+            claude: {
+                permissionMode: 'bypassPermissions',
+                modelMode: 'opus',
+                effortLevel: 'medium',
+            },
+        },
+    } as any;
+
+    it('pins the settings-level defaults a session falls back to', () => {
+        const pin = resolveAgentDefaultPin({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
+        } as any, claudeDefaults);
+
+        expect(pin).toEqual({
+            permissionMode: 'bypassPermissions',
+            modelMode: 'opus',
+            effortLevel: 'medium',
+        });
+    });
+
+    it('leaves a session that already made its own picks alone', () => {
+        const pin = resolveAgentDefaultPin({
+            permissionMode: 'default',
+            modelMode: 'sonnet',
+            effortLevel: 'xhigh',
+            metadata: { flavor: 'claude' },
+        } as any, claudeDefaults);
+
+        expect(pin).toEqual({});
+    });
+
+    it('pins only the fields the session is missing', () => {
+        const pin = resolveAgentDefaultPin({
+            permissionMode: null,
+            modelMode: 'sonnet',
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
+        } as any, claudeDefaults);
+
+        expect(pin).toEqual({
+            permissionMode: 'bypassPermissions',
+            effortLevel: 'medium',
+        });
+    });
+
+    it('pins nothing when the user set no agent defaults', () => {
+        const pin = resolveAgentDefaultPin({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
+        } as any, { agentDefaultOverrides: {} } as any);
+
+        expect(pin).toEqual({});
+    });
+
+    it('pins nothing for a different agent than the one that was configured', () => {
+        const pin = resolveAgentDefaultPin({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'codex' },
+        } as any, claudeDefaults);
+
+        expect(pin).toEqual({});
+    });
+
+    it('pins nothing for Rig sessions — the agent carries its own model state', () => {
+        const pin = resolveAgentDefaultPin({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: rigMetadataFixture,
+        } as any, claudeDefaults);
+
+        expect(pin).toEqual({});
     });
 });

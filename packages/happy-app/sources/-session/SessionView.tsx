@@ -837,9 +837,15 @@ export function SessionViewLoaded({
 
     const handleAbort = React.useCallback(() => {
         // Mode picks live in synced metadata — clear them there, otherwise the
-        // next inbound metadata update resurrects them (#1492)
+        // next inbound metadata update resurrects them (#1492).
+        // Only the permission mode is cleared: both agents reset it to the
+        // launch value on abort, but deliberately keep the model and effort
+        // (runClaude.ts / runCodex.ts `resetCurrentModeDefaults`, #1595).
+        // Clearing those two here re-opened the same desync from the app side —
+        // and dropped the session back onto whatever the agent default happens
+        // to be at that moment.
         if (!isRig) {
-            sessionSetAgentModes(sessionId, { permissionMode: null, modelMode: null, effortLevel: null });
+            sessionSetAgentModes(sessionId, { permissionMode: null });
         }
         sessionAbort(sessionId);
     }, [sessionId, isRig]);
