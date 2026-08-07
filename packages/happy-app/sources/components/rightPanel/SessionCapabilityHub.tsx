@@ -78,12 +78,23 @@ const SessionCapabilityHubLoaded = React.memo(function SessionCapabilityHubLoade
     }, [props.sessionId]);
 
     React.useEffect(() => {
+        if (panel?.isOpen === false) setSelectedKey(null);
+    }, [panel?.isOpen]);
+
+    const returnToSummary = React.useCallback(() => {
+        setSelectedKey(null);
+        // The detail trigger unmounts during this state change. Restore focus
+        // to the still-open dialog after React commits the summary view.
+        panel?.focusPanel?.();
+    }, [panel]);
+
+    React.useEffect(() => {
         if (!selectedKey) return;
         return panel?.registerBackHandler(() => {
-            setSelectedKey(null);
+            returnToSummary();
             return true;
         });
-    }, [panel, selectedKey]);
+    }, [panel, returnToSummary, selectedKey]);
 
     const addQuickPrompt = React.useCallback(() => {
         Modal.show({
@@ -145,7 +156,7 @@ const SessionCapabilityHubLoaded = React.memo(function SessionCapabilityHubLoade
                 <SessionActionsDetailView
                     actions={actionItems}
                     onActionPress={runSessionAction}
-                    onBack={() => setSelectedKey(null)}
+                    onBack={returnToSummary}
                     title={t('rightPanelCapabilityHub.blocks.sessionActions')}
                 />
             );
@@ -159,7 +170,7 @@ const SessionCapabilityHubLoaded = React.memo(function SessionCapabilityHubLoade
             return (
                 <SessionFolderBrowserView
                     homeDir={homeDir}
-                    onExit={() => setSelectedKey(null)}
+                    onExit={returnToSummary}
                     rootPath={rootPath}
                     sessionId={sessionId}
                 />
@@ -171,7 +182,7 @@ const SessionCapabilityHubLoaded = React.memo(function SessionCapabilityHubLoade
                 count={model.details[selectedKey].length}
                 items={model.details[selectedKey]}
                 onAddQuickPrompt={selectedKey === 'quickPrompts' ? addQuickPrompt : undefined}
-                onBack={() => setSelectedKey(null)}
+                onBack={returnToSummary}
                 onDeleteQuickPrompt={deleteQuickPrompt}
                 onInsertQuickPrompt={insertQuickPrompt}
                 onRunQuickPrompt={runQuickPrompt}

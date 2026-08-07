@@ -15,6 +15,7 @@ import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { useDraft } from '@/hooks/useDraft';
 import { useImagePicker } from '@/hooks/useImagePicker';
+import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
 import { requestScreenshot } from '@/sync/ops.screenshot';
@@ -40,6 +41,7 @@ import {
     getPersistentHeaderContentInset,
     getDesktopRightPanelPresentation,
     getPersistentNavigationControlsWidth,
+    getResponsiveRightPanelMode,
     shouldUseCompactSessionHeader,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
@@ -85,6 +87,17 @@ const AGENT_LABELS: Record<string, string> = {
 
 const CAN_COPY_SESSION_ID = Application.applicationId === 'build.paws.preview';
 
+function hasVisibleWebDialog(): boolean {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return false;
+
+    return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]:not([aria-hidden="true"])')).some((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return false;
+        const style = typeof window === 'undefined' ? null : window.getComputedStyle(element);
+        return style?.display !== 'none' && style?.visibility !== 'hidden';
+    });
+}
+
 function SessionNewSessionAction({
     onPress,
 }: {
@@ -92,7 +105,7 @@ function SessionNewSessionAction({
 }) {
     const { theme } = useUnistyles();
     const [pressed, setPressed] = React.useState(false);
-    workspaceStyles.useVariants({ pressState: pressed ? 'pressed' : 'idle' });
+    sessionNewActionStyles.useVariants({ pressState: pressed ? 'pressed' : 'idle' });
 
     return (
         <Pressable
@@ -102,7 +115,7 @@ function SessionNewSessionAction({
             onPressIn={() => setPressed(true)}
             onPressOut={() => setPressed(false)}
             hitSlop={10}
-            style={workspaceStyles.headerAction}
+            style={sessionNewActionStyles.headerAction}
             testID="session-header-new-session-button"
         >
             <Ionicons
@@ -111,7 +124,7 @@ function SessionNewSessionAction({
                 color={theme.colors.button.primary.tint}
                 testID="session-header-new-session-icon"
             />
-            <Text numberOfLines={1} ellipsizeMode="tail" style={workspaceStyles.headerActionText}>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={sessionNewActionStyles.headerActionText}>
                 {t('sidebar.newSession')}
             </Text>
         </Pressable>
@@ -119,10 +132,12 @@ function SessionNewSessionAction({
 }
 
 function SessionHeaderTitle({
+    compact = false,
     session,
     title,
     tintColor,
 }: {
+    compact?: boolean;
     session: Session;
     title: string;
     tintColor?: string;
@@ -170,10 +185,11 @@ function SessionHeaderTitle({
         draftTitleRef.current = value;
         setDraftTitle(value);
     }, []);
+    sessionHeaderTitleStyles.useVariants({ headerTitleDensity: compact ? 'compact' : 'regular' });
 
     return (
-        <View style={workspaceStyles.headerTitleWrapper}>
-            <View style={workspaceStyles.headerTitleLine}>
+        <View style={sessionHeaderTitleStyles.headerTitleWrapper}>
+            <View style={sessionHeaderTitleStyles.headerTitleLine}>
                 {editing ? (
                     <TextInput
                         accessibilityLabel={t('sessionInfo.renameSession')}
@@ -189,7 +205,7 @@ function SessionHeaderTitle({
                         returnKeyType="done"
                         selectTextOnFocus
                         style={[
-                            workspaceStyles.headerTitleInput,
+                            sessionHeaderTitleStyles.headerTitleInput,
                             tintColor ? { color: tintColor, borderColor: tintColor } : null,
                         ]}
                         testID="session-header-title-input"
@@ -205,13 +221,13 @@ function SessionHeaderTitle({
                         onHoverIn={() => setTooltipVisible(true)}
                         onHoverOut={() => setTooltipVisible(false)}
                         onPress={beginEditing}
-                        style={workspaceStyles.headerTitleTarget}
+                        style={sessionHeaderTitleStyles.headerTitleTarget}
                         testID="session-header-title"
                     >
                         <Text
                             numberOfLines={1}
                             ellipsizeMode="tail"
-                            style={[workspaceStyles.headerTitleText, tintColor ? { color: tintColor } : null]}
+                            style={[sessionHeaderTitleStyles.headerTitleText, tintColor ? { color: tintColor } : null]}
                         >
                             {title}
                         </Text>
@@ -222,13 +238,13 @@ function SessionHeaderTitle({
                 ) : null}
                 <View
                     accessibilityLabel={sessionStatus.statusText}
-                    style={workspaceStyles.headerRunStatus}
+                    style={sessionHeaderTitleStyles.headerRunStatus}
                     testID="session-header-run-status"
                 >
-                    <View style={[workspaceStyles.headerRunStatusDot, { backgroundColor: sessionStatus.statusDotColor }]} />
+                    <View style={[sessionHeaderTitleStyles.headerRunStatusDot, { backgroundColor: sessionStatus.statusDotColor }]} />
                     <Text
                         numberOfLines={1}
-                        style={[workspaceStyles.headerRunStatusText, { color: sessionStatus.statusColor }]}
+                        style={[sessionHeaderTitleStyles.headerRunStatusText, { color: sessionStatus.statusColor }]}
                     >
                         {sessionStatus.statusText}
                     </Text>
@@ -299,6 +315,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
     const [desktopRightPanelCollapsed, setDesktopRightPanelCollapsed] = useLocalSettingMutable('desktopRightPanelCollapsed');
+    const [rightDrawerOpen, setRightDrawerOpen] = React.useState(false);
     const {
         leftVisible: desktopLeftSidebarVisible,
         leftWidth: desktopLeftSidebarWidth,
@@ -310,6 +327,13 @@ export const SessionView = React.memo((props: { id: string }) => {
     // The capability hub is a first-class desktop panel. File browsing is an
     // optional mode inside that same panel instead of a separate fourth column.
     const desktopRightPanelAvailable = layoutRightPanelAvailable && isDataReady && !!session;
+    const widthRightPanelMode = getResponsiveRightPanelMode(windowWidth);
+    const responsiveRightPanelMode = desktopRightPanelAvailable
+        ? 'persistent'
+        : widthRightPanelMode === 'edge-handle'
+            ? 'edge-handle'
+            : 'drawer-toggle';
+    const compactRightDrawerAvailable = responsiveRightPanelMode === 'drawer-toggle' && isDataReady && !!session;
     const canShowFilePanel = desktopRightPanelAvailable && fileDiffsSidebarEnabled;
     const desktopRightPanelPresentation = getDesktopRightPanelPresentation({
         available: desktopRightPanelAvailable,
@@ -317,6 +341,12 @@ export const SessionView = React.memo((props: { id: string }) => {
         zenMode,
     });
     const showDesktopRightPanel = desktopRightPanelPresentation === 'expanded';
+
+    React.useEffect(() => {
+        if (responsiveRightPanelMode === 'persistent' || !isDataReady || !session) {
+            setRightDrawerOpen(false);
+        }
+    }, [isDataReady, responsiveRightPanelMode, session]);
 
     const rightPanelWidth = desktopRightPanelAvailable ? layoutRightPanelWidth : 0;
 
@@ -450,6 +480,22 @@ export const SessionView = React.memo((props: { id: string }) => {
     // agent + machine + connection state. The dropdown keeps runtime identity
     // read-only while letting next-turn model, effort, and permissions update.
     const [infoPanelOpen, setInfoPanelOpen] = React.useState(false);
+    const toggleCompactRightDrawer = React.useCallback(() => {
+        if (!compactRightDrawerAvailable) return;
+        if (rightDrawerOpen) {
+            setRightDrawerOpen(false);
+            return;
+        }
+        // Do not stack the Capability Hub over another top-level dialog such
+        // as the composer permission picker. The open drawer itself remains
+        // closable through this same shortcut.
+        if (hasVisibleWebDialog()) return;
+        setInfoPanelOpen(false);
+        setRightDrawerOpen(true);
+    }, [compactRightDrawerAvailable, rightDrawerOpen]);
+    useGlobalKeyboard(undefined, {
+        onToggleRightSidebar: compactRightDrawerAvailable ? toggleCompactRightDrawer : undefined,
+    });
     const sessionOnline = session?.presence === 'online';
     const agentLabel = React.useMemo(() => {
         const flavor = session?.metadata?.flavor ?? 'claude';
@@ -462,17 +508,24 @@ export const SessionView = React.memo((props: { id: string }) => {
         || session?.metadata?.host
         || null;
     const showChip = isDataReady && !!session;
+    const compactSessionHeader = shouldUseCompactSessionHeader({ isTablet, windowWidth });
+    const constrainedDrawerHeader = compactSessionHeader && compactRightDrawerAvailable && rightDrawerOpen;
     // 会话内「进入空间/退出空间」：进入 = 设 agentSpaceId + 拉出工作台抽屉；退出 = 清空间并回首页。
     const { enter: enterSpace, exit: exitSpace } = useAgentSpace();
 
     // Resolve the session's persisted Agent once through the canonical matcher,
     // then share that identity between the header skin and the phone panel.
     const spaceAgent = useSpaceAgentForSession(session);
+    workspaceStyles.useVariants({
+        agentChipDensity: constrainedDrawerHeader ? 'constrained' : 'regular',
+        headerDensity: compactSessionHeader ? 'compact' : 'regular',
+    });
 
     const sessionHeaderChip = showChip ? (
         <SessionHeaderChip
             agentLabel={agentLabel}
-            compact={shouldUseCompactSessionHeader({ isTablet, windowWidth })}
+            compact={compactSessionHeader}
+            condensed={constrainedDrawerHeader}
             machineName={machineName}
             online={sessionOnline}
             open={infoPanelOpen}
@@ -483,11 +536,11 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerTitleSlot = showChip ? (
         desktopWebHeader ? (
             <View style={workspaceStyles.headerIdentity}>
-                <SessionHeaderTitle session={session!} title={headerProps.title} />
+                <SessionHeaderTitle compact={compactSessionHeader} session={session!} title={headerProps.title} />
             </View>
         ) : isTablet ? (
             <View style={workspaceStyles.headerIdentity}>
-                <SessionHeaderTitle session={session!} title={headerProps.title} />
+                <SessionHeaderTitle compact={compactSessionHeader} session={session!} title={headerProps.title} />
                 <View style={workspaceStyles.headerAgentChip}>
                     {sessionHeaderChip}
                 </View>
@@ -531,13 +584,28 @@ export const SessionView = React.memo((props: { id: string }) => {
     const desktopPanelLabel = desktopPanelMode === 'files' && canShowFilePanel
         ? t('common.files')
         : t('rightPanelCapabilityHub.title');
-    const rightPanelToggleButton = desktopRightPanelAvailable && desktopRightPanelPresentation !== 'zen' ? (
+    const compactPanelLabel = spaceAgent
+        ? t('agentSpace.companion.panelTitle')
+        : t('rightPanelCapabilityHub.title');
+    const rightPanelToggleLabel = desktopRightPanelAvailable
+        ? desktopPanelLabel
+        : compactPanelLabel;
+    const rightPanelToggleButton = (
+        (desktopRightPanelAvailable && desktopRightPanelPresentation !== 'zen')
+        || compactRightDrawerAvailable
+    ) ? (
         <DesktopRightPanelToggleButton
-            expanded={showDesktopRightPanel}
-            label={showDesktopRightPanel
-                ? t('desktopWorkspace.hidePanel', { panel: desktopPanelLabel })
-                : t('desktopWorkspace.showPanel', { panel: desktopPanelLabel })}
-            onPress={() => setDesktopRightPanelCollapsed(showDesktopRightPanel)}
+            expanded={desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen}
+            label={(desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen)
+                ? t('desktopWorkspace.hidePanel', { panel: rightPanelToggleLabel })
+                : t('desktopWorkspace.showPanel', { panel: rightPanelToggleLabel })}
+            onPress={() => {
+                if (desktopRightPanelAvailable) {
+                    setDesktopRightPanelCollapsed(showDesktopRightPanel);
+                    return;
+                }
+                toggleCompactRightDrawer();
+            }}
         />
     ) : null;
 
@@ -624,6 +692,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         backgroundColor={spaceAgent ? spaceAgent.color : undefined}
                         tintColor={spaceAgent ? spaceTint : undefined}
                         headerContentLeftInset={persistentHeaderContentInset}
+                        compactRightSlot={compactSessionHeader}
                         leftSlot={enterSpaceButton}
                         titleSlot={spaceAgent ? spaceTitleSlot : headerTitleSlot}
                         rightSlot={(diffViewOpen || !!fileViewPath) ? overlayHeaderRightSlot : defaultHeaderRightSlot}
@@ -681,7 +750,19 @@ export const SessionView = React.memo((props: { id: string }) => {
             />
         );
         return (
-            <RightSwipePanelHost panelContent={rightPanel}>
+            <RightSwipePanelHost
+                closeAccessibilityLabel={t('desktopWorkspace.hidePanel', { panel: compactPanelLabel })}
+                enabled={isDataReady && !!session}
+                mode={responsiveRightPanelMode === 'edge-handle' ? 'edge-handle' : 'drawer-toggle'}
+                onOpenChange={(nextOpen) => {
+                    if (nextOpen) setInfoPanelOpen(false);
+                    setRightDrawerOpen(nextOpen);
+                }}
+                open={rightDrawerOpen}
+                openAccessibilityLabel={t('desktopWorkspace.showPanel', { panel: compactPanelLabel })}
+                panelAccessibilityLabel={compactPanelLabel}
+                panelContent={rightPanel}
+            >
                 {mainContent}
             </RightSwipePanelHost>
         );
@@ -1430,7 +1511,7 @@ function CenteredInputWidth(props: {
     );
 }
 
-const workspaceStyles = StyleSheet.create((theme) => ({
+const sessionNewActionStyles = StyleSheet.create((theme) => ({
     headerAction: {
         minHeight: 32,
         flexDirection: 'row',
@@ -1457,24 +1538,37 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         fontSize: 12,
         fontWeight: '600',
     },
-    headerIdentity: {
-        flex: 1,
-        alignSelf: 'stretch',
-        minWidth: 0,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-    },
+}));
+
+const sessionHeaderTitleStyles = StyleSheet.create((theme) => ({
     headerTitleWrapper: {
         position: 'relative',
         flex: 1,
-        minWidth: 64,
+        variants: {
+            headerTitleDensity: {
+                regular: {
+                    minWidth: 64,
+                },
+                compact: {
+                    minWidth: 39,
+                },
+            },
+        },
     },
     headerTitleLine: {
         minWidth: 0,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        variants: {
+            headerTitleDensity: {
+                regular: {
+                    gap: 8,
+                },
+                compact: {
+                    gap: 0,
+                },
+            },
+        },
     },
     headerTitleTarget: {
         minHeight: 40,
@@ -1525,16 +1619,56 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         fontSize: 11,
         fontWeight: '600',
     },
+}));
+
+const workspaceStyles = StyleSheet.create((theme) => ({
+    headerIdentity: {
+        flex: 1,
+        alignSelf: 'stretch',
+        minWidth: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        variants: {
+            headerDensity: {
+                regular: {
+                    gap: 10,
+                },
+                compact: {
+                    gap: 0,
+                },
+            },
+        },
+    },
     headerAgentChip: {
-        flexBasis: 160,
         flexShrink: 1,
-        minWidth: 116,
-        maxWidth: 220,
+        variants: {
+            agentChipDensity: {
+                regular: {
+                    flexBasis: 160,
+                    minWidth: 116,
+                    maxWidth: 220,
+                },
+                constrained: {
+                    flexBasis: 60,
+                    minWidth: 60,
+                    maxWidth: 60,
+                },
+            },
+        },
     },
     headerActions: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 5,
+        variants: {
+            headerDensity: {
+                regular: {
+                    gap: 5,
+                },
+                compact: {
+                    gap: 3,
+                },
+            },
+        },
     },
     headerIconWrapper: {
         position: 'relative',
