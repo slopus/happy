@@ -235,6 +235,12 @@ export const SidebarView = React.memo(({
     const commandPaletteLauncher = useCommandPaletteLauncher();
     const displayName = getDisplayName(profile) ?? t('settings.title');
 
+    React.useEffect(() => {
+        if (!desktopDensity) {
+            setFooterMenu((current) => current === 'help' ? null : current);
+        }
+    }, [desktopDensity]);
+
     const closeDrawer = React.useCallback(() => {
         if (!closeDrawerOnNavigate) {
             return;

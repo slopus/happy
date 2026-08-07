@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,11 +9,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
+    applyLocalSettings: vi.fn(),
+    dismissTopModal: vi.fn(() => true),
     firstActionFocus: vi.fn(),
-    keydownHandler: null as ((event: any) => void) | null,
     launcherAvailable: true,
+    overlayBack: vi.fn(() => true),
     openExternalUrl: vi.fn(),
     openShortcuts: vi.fn(),
+    routeBack: vi.fn(),
+    syncRoutePathname: vi.fn(),
     triggerFocus: vi.fn(),
 }));
 
@@ -65,12 +71,65 @@ vi.mock('@/components/KeyboardShortcuts', () => ({
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/utils/openExternalUrl', () => ({ openExternalUrl: mocks.openExternalUrl }));
+vi.mock('@/modal', () => ({
+    useModal: () => ({ dismissTopModal: mocks.dismissTopModal }),
+}));
+vi.mock('@/-session/sessionOverlayNav', () => ({
+    useOverlayNav: {
+        getState: () => ({ back: mocks.overlayBack }),
+    },
+}));
+vi.mock('@/navigation/browserNavigation', () => ({
+    canRouteBack: () => true,
+    canRouteForward: () => false,
+    canUseRouteBack: () => true,
+    getNavigatorCanGoBack: () => true,
+    getKeyboardNavigationDirection: (event: KeyboardEvent) => event.key === 'Escape' ? 'back' : null,
+    getMouseNavigationDirection: () => null,
+}));
+vi.mock('@/navigation/browserNavigationStore', () => {
+    const state = {
+        markRouteBack: vi.fn(),
+        markRouteForward: vi.fn(),
+        routeHistory: { entries: ['/'], index: 0 },
+        syncRoutePathname: mocks.syncRoutePathname,
+    };
+    const useBrowserNavigationStore = Object.assign(
+        (selector: (value: typeof state) => unknown) => selector(state),
+        { getState: () => state },
+    );
+    return { useBrowserNavigationStore };
+});
+vi.mock('@/sync/storage', () => ({
+    storage: {
+        getState: () => ({
+            applyLocalSettings: mocks.applyLocalSettings,
+            localSettings: { zenMode: true },
+        }),
+    },
+}));
+vi.mock('expo-router', () => ({
+    useGlobalSearchParams: () => ({}),
+    usePathname: () => '/',
+    useRouter: () => ({ back: mocks.routeBack, canGoBack: () => true }),
+}));
 
 import { SidebarHelpMenu } from './SidebarHelpMenu';
+import { BrowserNavigationShortcuts } from '@/hooks/useBrowserNavigationShortcuts';
 
 function HelpMenuHarness() {
     const [open, setOpen] = React.useState(false);
     return <SidebarHelpMenu onOpenChange={setOpen} open={open} />;
+}
+
+function BrowserAndHelpHarness() {
+    const [open, setOpen] = React.useState(true);
+    return (
+        <>
+            <BrowserNavigationShortcuts />
+            <SidebarHelpMenu onOpenChange={setOpen} open={open} />
+        </>
+    );
 }
 
 describe('SidebarHelpMenu', () => {
@@ -82,13 +141,7 @@ describe('SidebarHelpMenu', () => {
         vi.useFakeTimers();
         vi.clearAllMocks();
         mocks.launcherAvailable = true;
-        mocks.keydownHandler = null;
-        vi.stubGlobal('window', {
-            addEventListener: vi.fn((event: string, handler: (event: any) => void) => {
-                if (event === 'keydown') mocks.keydownHandler = handler;
-            }),
-            removeEventListener: vi.fn(),
-        });
+        mocks.dismissTopModal.mockReturnValue(true);
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
@@ -162,15 +215,36 @@ describe('SidebarHelpMenu', () => {
         act(() => renderer.root.findByProps({ testID: 'sidebar-help-trigger' }).props.onPress());
         act(() => vi.runOnlyPendingTimers());
 
-        const preventDefault = vi.fn();
-        const stopPropagation = vi.fn();
-        act(() => mocks.keydownHandler?.({ key: 'Escape', preventDefault, stopPropagation }));
+        const event = new KeyboardEvent('keydown', { cancelable: true, key: 'Escape' });
+        const stopPropagation = vi.spyOn(event, 'stopPropagation');
+        const stopImmediatePropagation = vi.spyOn(event, 'stopImmediatePropagation');
+        act(() => window.dispatchEvent(event));
         expect(renderer.root.findAllByProps({ testID: 'sidebar-help-menu' })).toHaveLength(0);
 
         act(() => vi.runOnlyPendingTimers());
         expect(mocks.triggerFocus).toHaveBeenCalledOnce();
-        expect(preventDefault).toHaveBeenCalledOnce();
+        expect(event.defaultPrevented).toBe(true);
         expect(stopPropagation).toHaveBeenCalledOnce();
+        expect(stopImmediatePropagation).toHaveBeenCalledOnce();
+    });
+
+    it('closes Help before the browser Escape handler can dismiss another application layer', () => {
+        act(() => {
+            renderer = TestRenderer.create(<BrowserAndHelpHarness />);
+        });
+        act(() => vi.runOnlyPendingTimers());
+
+        act(() => window.dispatchEvent(new KeyboardEvent('keydown', {
+            bubbles: true,
+            cancelable: true,
+            key: 'Escape',
+        })));
+
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-help-menu' })).toHaveLength(0);
+        expect(mocks.dismissTopModal).not.toHaveBeenCalled();
+        expect(mocks.applyLocalSettings).not.toHaveBeenCalled();
+        expect(mocks.overlayBack).not.toHaveBeenCalled();
+        expect(mocks.routeBack).not.toHaveBeenCalled();
     });
 
     it('does not restore its trigger while focus transfers to another footer menu', () => {
@@ -219,6 +293,7 @@ describe('SidebarHelpMenu', () => {
 
         const menu = renderer.root.findByProps({ testID: 'sidebar-help-menu' });
         expect(menu.props.accessibilityRole).toBe('menu');
+        expect(menu.props.accessibilityLabel).toBe('keyboardShortcuts.help');
         expect(menu.props.accessibilityViewIsModal).toBe(true);
         expect(menu.props.style).toEqual(expect.objectContaining({
             bottom: '100%',

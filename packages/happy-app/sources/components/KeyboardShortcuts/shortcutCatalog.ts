@@ -36,6 +36,10 @@ function formatKeyToken(token: string, isMac: boolean): string {
             return isMac ? '⌘' : 'Ctrl';
         case 'Alt':
             return isMac ? '⌥' : 'Alt';
+        case 'Shift':
+            return isMac ? '⇧' : 'Shift';
+        case 'Enter':
+            return isMac ? '↵' : 'Enter';
         case 'ArrowUp':
             return '↑';
         case 'ArrowDown':

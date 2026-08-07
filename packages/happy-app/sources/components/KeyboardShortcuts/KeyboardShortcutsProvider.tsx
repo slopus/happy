@@ -7,6 +7,7 @@ import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { useModal } from '@/modal';
 import type { CustomModalConfig } from '@/modal/types';
 import { storage, useSetting } from '@/sync/storage';
+import { t } from '@/text';
 import { isTauri } from '@/utils/isTauri';
 
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
@@ -57,6 +58,7 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
         showModal({
             type: 'custom',
             component: KeyboardShortcutsModal,
+            accessibilityLabel: t('keyboardShortcuts.title'),
             props: { sections },
         } as Omit<CustomModalConfig, 'id'>);
     }, [commandPaletteEnabled, enabled, enterToSend, rightPanelAvailable, showModal]);

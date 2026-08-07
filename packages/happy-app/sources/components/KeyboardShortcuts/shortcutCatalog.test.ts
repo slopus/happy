@@ -27,6 +27,9 @@ describe('createShortcutSections', () => {
         expect(getRow(baseContext, 'open-command-palette')?.alternatives).toEqual([['⌘', 'K']]);
         expect(getRow(baseContext, 'toggle-right-panel')?.alternatives).toEqual([['⌥', '⌘', 'B']]);
         expect(getRow(baseContext, 'open-keyboard-shortcuts')?.alternatives).toEqual([['⌘', '/']]);
+        expect(getRow(baseContext, 'send-message')?.alternatives).toEqual([['↵']]);
+        expect(getRow(baseContext, 'insert-new-line')?.alternatives).toEqual([['⇧', '↵']]);
+        expect(getRow(baseContext, 'run-selected')?.alternatives).toEqual([['↵']]);
     });
 
     it('formats Windows and Linux shortcuts with text keycaps', () => {
@@ -35,6 +38,8 @@ describe('createShortcutSections', () => {
         expect(getRow(context, 'open-command-palette')?.alternatives).toEqual([['Ctrl', 'K']]);
         expect(getRow(context, 'toggle-right-panel')?.alternatives).toEqual([['Alt', 'Ctrl', 'B']]);
         expect(getRow(context, 'open-keyboard-shortcuts')?.alternatives).toEqual([['Ctrl', '/']]);
+        expect(getRow(context, 'send-message')?.alternatives).toEqual([['Enter']]);
+        expect(getRow(context, 'insert-new-line')?.alternatives).toEqual([['Shift', 'Enter']]);
     });
 
     it('only includes desktop zoom shortcuts in Tauri', () => {

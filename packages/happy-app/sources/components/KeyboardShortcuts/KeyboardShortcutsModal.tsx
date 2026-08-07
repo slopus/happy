@@ -13,15 +13,6 @@ type KeyboardShortcutsModalProps = {
     sections: readonly ShortcutSection[];
 };
 
-const FOCUSABLE_SELECTOR = [
-    'button:not([disabled])',
-    '[href]',
-    'input:not([disabled])',
-    'select:not([disabled])',
-    'textarea:not([disabled])',
-    '[tabindex]:not([tabindex="-1"])',
-].join(', ');
-
 function ShortcutKeycap({ token }: { token: string }) {
     return (
         <View style={styles.keycap} testID={`keyboard-shortcut-keycap-${token}`}>
@@ -48,7 +39,20 @@ function ShortcutAlternatives({ alternatives }: Pick<ShortcutRow, 'alternatives'
                     ) : null}
                     <View style={styles.chord}>
                         {chord.map((token, tokenIndex) => (
-                            <ShortcutKeycap key={`${tokenIndex}-${token}`} token={token} />
+                            <React.Fragment key={`${tokenIndex}-${token}`}>
+                                {tokenIndex > 0 ? (
+                                    <Text
+                                        aria-hidden={Platform.OS === 'web' ? true : undefined}
+                                        accessibilityElementsHidden
+                                        importantForAccessibility="no-hide-descendants"
+                                        style={styles.chordSeparator}
+                                        testID="keyboard-shortcut-chord-separator"
+                                    >
+                                        +
+                                    </Text>
+                                ) : null}
+                                <ShortcutKeycap token={token} />
+                            </React.Fragment>
                         ))}
                     </View>
                 </React.Fragment>
@@ -96,56 +100,15 @@ export const KeyboardShortcutsModal = React.memo(function KeyboardShortcutsModal
 }: KeyboardShortcutsModalProps) {
     const { theme } = useUnistyles();
     const closeRef = React.useRef<any>(null);
-    const panelRef = React.useRef<any>(null);
 
     React.useEffect(() => {
-        if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-
-        const panel = panelRef.current as HTMLElement | null;
-        const savedFocus = document.activeElement as HTMLElement | null;
-        closeRef.current?.focus?.();
-
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key !== 'Tab') return;
-
-            if (!panel) return;
-
-            const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
-            const first = focusable[0];
-            const last = focusable[focusable.length - 1];
-            if (!first || !last) {
-                event.preventDefault();
-                closeRef.current?.focus?.();
-                return;
-            }
-
-            const activeElement = document.activeElement;
-            if (!panel.contains(activeElement)) {
-                event.preventDefault();
-                first.focus();
-            } else if (event.shiftKey && activeElement === first) {
-                event.preventDefault();
-                last.focus();
-            } else if (!event.shiftKey && activeElement === last) {
-                event.preventDefault();
-                first.focus();
-            }
-        };
-
-        panel?.addEventListener('keydown', handleKeyDown, true);
-        return () => {
-            panel?.removeEventListener('keydown', handleKeyDown, true);
-            savedFocus?.focus?.({ preventScroll: true });
-        };
+        if (Platform.OS !== 'web') return;
+        const timeout = setTimeout(() => closeRef.current?.focus?.(), 0);
+        return () => clearTimeout(timeout);
     }, []);
 
     return (
         <View
-            ref={panelRef}
-            aria-modal={Platform.OS === 'web' ? true : undefined}
-            accessibilityLabel={t('keyboardShortcuts.title')}
-            accessibilityViewIsModal
-            role="dialog"
             style={styles.panel}
             testID="keyboard-shortcuts-dialog"
         >
@@ -298,6 +261,11 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
+    },
+    chordSeparator: {
+        color: theme.colors.textSecondary,
+        fontSize: 11,
+        ...Typography.mono(),
     },
     keycap: {
         minWidth: 28,

@@ -20,8 +20,8 @@ function KeyboardHarness({
     onToggleRightSidebar,
 }: {
     onCommandPalette: () => void;
-    onOpenKeyboardShortcuts: () => void;
-    onOpenSettings: () => void;
+    onOpenKeyboardShortcuts?: () => void;
+    onOpenSettings?: () => void;
     onToggleLeftSidebar: () => void;
     onToggleRightSidebar: () => void;
 }) {
@@ -109,11 +109,38 @@ describe('useGlobalKeyboard', () => {
         expect(onCommandPalette).toHaveBeenCalledTimes(2);
     });
 
-    it('opens app settings instead of the browser settings for Command+Comma', () => {
-        const event = keydown({ key: ',' });
+    it('opens app settings and consumes Command+Comma and Ctrl+Comma', () => {
+        const commandEvent = keydown({ key: ',' });
 
-        expect(event.preventDefault).toHaveBeenCalledOnce();
+        expect(commandEvent.preventDefault).toHaveBeenCalledOnce();
+        expect(commandEvent.stopPropagation).toHaveBeenCalledOnce();
         expect(onOpenSettings).toHaveBeenCalledOnce();
+
+        const ctrlEvent = keydown({ ctrlKey: true, key: ',', metaKey: false });
+        expect(ctrlEvent.preventDefault).toHaveBeenCalledOnce();
+        expect(ctrlEvent.stopPropagation).toHaveBeenCalledOnce();
+        expect(onOpenSettings).toHaveBeenCalledTimes(2);
+    });
+
+    it('leaves comma and slash events untouched when their callbacks are undefined', () => {
+        act(() => renderer.unmount());
+        act(() => {
+            renderer = TestRenderer.create(
+                <KeyboardHarness
+                    onCommandPalette={onCommandPalette}
+                    onToggleLeftSidebar={onToggleLeftSidebar}
+                    onToggleRightSidebar={onToggleRightSidebar}
+                />,
+            );
+        });
+
+        const commaEvent = keydown({ key: ',' });
+        const slashEvent = keydown({ key: '/' });
+
+        expect(commaEvent.preventDefault).not.toHaveBeenCalled();
+        expect(commaEvent.stopPropagation).not.toHaveBeenCalled();
+        expect(slashEvent.preventDefault).not.toHaveBeenCalled();
+        expect(slashEvent.stopPropagation).not.toHaveBeenCalled();
     });
 
     it('opens keyboard shortcuts for Command+Slash and Ctrl+Slash', () => {
@@ -122,15 +149,23 @@ describe('useGlobalKeyboard', () => {
         expect(commandEvent.stopPropagation).toHaveBeenCalledOnce();
         expect(onOpenKeyboardShortcuts).toHaveBeenCalledOnce();
 
-        expect(keydown({ ctrlKey: true, key: '/', metaKey: false }).preventDefault).toHaveBeenCalledOnce();
+        const ctrlEvent = keydown({ ctrlKey: true, key: '/', metaKey: false });
+        expect(ctrlEvent.preventDefault).toHaveBeenCalledOnce();
+        expect(ctrlEvent.stopPropagation).toHaveBeenCalledOnce();
         expect(onOpenKeyboardShortcuts).toHaveBeenCalledTimes(2);
     });
 
-    it('ignores modified, composing, and repeated slash events', () => {
-        keydown({ altKey: true, key: '/' });
-        keydown({ isComposing: true, key: '/' });
-        keydown({ key: '/', repeat: true });
+    it('leaves modified, composing, and repeated slash events untouched', () => {
+        const events = [
+            keydown({ altKey: true, key: '/' }),
+            keydown({ isComposing: true, key: '/' }),
+            keydown({ key: '/', repeat: true }),
+        ];
 
         expect(onOpenKeyboardShortcuts).not.toHaveBeenCalled();
+        for (const event of events) {
+            expect(event.preventDefault).not.toHaveBeenCalled();
+            expect(event.stopPropagation).not.toHaveBeenCalled();
+        }
     });
 });

@@ -98,11 +98,12 @@ export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
             }
             event.preventDefault();
             event.stopPropagation();
+            event.stopImmediatePropagation();
             onOpenChange(false);
         };
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [launcherAvailable, onOpenChange, open]);
 
     React.useEffect(() => {
@@ -131,6 +132,7 @@ export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
         <View style={styles.footer} testID="sidebar-help-footer">
             {open ? (
                 <View
+                    accessibilityLabel={t('keyboardShortcuts.help')}
                     accessibilityRole="menu"
                     accessibilityViewIsModal
                     style={styles.menu}

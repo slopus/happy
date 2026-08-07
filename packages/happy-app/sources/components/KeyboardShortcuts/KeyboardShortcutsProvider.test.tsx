@@ -62,6 +62,8 @@ vi.mock('@/utils/isTauri', () => ({
     isTauri: () => mocks.inTauri,
 }));
 
+vi.mock('@/text', () => ({ t: (key: string) => `localized:${key}` }));
+
 vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({
     useDesktopWorkspaceLayout: () => mocks.desktopLayout,
 }));
@@ -161,6 +163,7 @@ describe('KeyboardShortcutsProvider', () => {
         expect(mocks.modalShow).toHaveBeenCalledWith({
             type: 'custom',
             component: KeyboardShortcutsModal,
+            accessibilityLabel: 'localized:keyboardShortcuts.title',
             props: {
                 sections: [{ id: 'common', title: 'Common', rows: [] }],
             },

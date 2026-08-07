@@ -93,6 +93,7 @@ describe('KeyboardShortcutsModal in React Native Web', () => {
     let root: Root | undefined;
 
     beforeEach(() => {
+        vi.useFakeTimers();
         container = document.createElement('div');
         opener = document.createElement('button');
         opener.textContent = 'Open shortcuts';
@@ -109,6 +110,7 @@ describe('KeyboardShortcutsModal in React Native Web', () => {
         container.remove();
         opener.remove();
         vi.clearAllMocks();
+        vi.useRealTimers();
     });
 
     function renderModal(onClose = vi.fn()) {
@@ -116,6 +118,7 @@ describe('KeyboardShortcutsModal in React Native Web', () => {
             root = createRoot(container);
             root.render(<KeyboardShortcutsModal onClose={onClose} sections={sections} />);
         });
+        act(() => vi.advanceTimersByTime(0));
         return onClose;
     }
 
@@ -125,13 +128,13 @@ describe('KeyboardShortcutsModal in React Native Web', () => {
         return element;
     }
 
-    it('exposes the localized panel as an actual modal dialog with a fixed header and scrolling body', () => {
+    it('renders a presentational panel with a fixed header and scrolling body', () => {
         renderModal();
 
         const panel = getByTestID('keyboard-shortcuts-dialog');
-        expect(panel.getAttribute('role')).toBe('dialog');
-        expect(panel.getAttribute('aria-modal')).toBe('true');
-        expect(panel.getAttribute('aria-label')).toBe('localized:keyboardShortcuts.title');
+        expect(panel.getAttribute('role')).toBeNull();
+        expect(panel.getAttribute('aria-modal')).toBeNull();
+        expect(panel.getAttribute('aria-label')).toBeNull();
         expect(Array.from(panel.children).map((child) => child.getAttribute('data-testid'))).toEqual([
             'keyboard-shortcuts-header',
             'keyboard-shortcuts-scroll',
@@ -170,7 +173,7 @@ describe('KeyboardShortcutsModal in React Native Web', () => {
         ]);
     });
 
-    it('renders separate keycaps, visual alternatives, and hidden decorative content', () => {
+    it('renders separate keycaps with visible hidden-from-AT chord and alternative separators', () => {
         renderModal();
 
         const row = getByTestID('keyboard-shortcut-row-first-action');
@@ -183,6 +186,11 @@ describe('KeyboardShortcutsModal in React Native Web', () => {
         );
         expect(separator?.textContent).toBe('/');
         expect(separator?.getAttribute('aria-hidden')).toBe('true');
+        const chordSeparators = Array.from(row.querySelectorAll<HTMLElement>(
+            '[data-testid="keyboard-shortcut-chord-separator"]',
+        ));
+        expect(chordSeparators.map((element) => element.textContent)).toEqual(['+', '+']);
+        expect(chordSeparators.every((element) => element.getAttribute('aria-hidden') === 'true')).toBe(true);
         expect(Array.from(container.querySelectorAll<HTMLElement>('[data-icon]'))
             .every((icon) => icon.getAttribute('aria-hidden') === 'true')).toBe(true);
     });
@@ -195,7 +203,7 @@ describe('KeyboardShortcutsModal in React Native Web', () => {
         expect(onClose).toHaveBeenCalledOnce();
     });
 
-    it('focuses close, contains forward and reverse Tab movement, and restores the opener', () => {
+    it('focuses the close control without creating a competing focus trap', () => {
         renderModal();
 
         const panel = getByTestID('keyboard-shortcuts-dialog');
@@ -212,23 +220,9 @@ describe('KeyboardShortcutsModal in React Native Web', () => {
             key: 'Tab',
         });
         act(() => lastControl.dispatchEvent(forwardTab));
-        expect(forwardTab.defaultPrevented).toBe(true);
-        expect(document.activeElement).toBe(close);
-        expect(panel.contains(document.activeElement)).toBe(true);
-
-        const reverseTab = new KeyboardEvent('keydown', {
-            bubbles: true,
-            cancelable: true,
-            key: 'Tab',
-            shiftKey: true,
-        });
-        act(() => close.dispatchEvent(reverseTab));
-        expect(reverseTab.defaultPrevented).toBe(true);
-        expect(document.activeElement).toBe(lastControl);
-        expect(panel.contains(document.activeElement)).toBe(true);
+        expect(forwardTab.defaultPrevented).toBe(false);
 
         act(() => root?.unmount());
         root = undefined;
-        expect(document.activeElement).toBe(opener);
     });
 });

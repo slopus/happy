@@ -262,6 +262,29 @@ describe('SidebarView Agent space exit', () => {
         act(() => renderer.unmount());
     });
 
+    it('clears an open Help footer layer when desktop density turns off', () => {
+        mocks.spaceAgent = null;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(
+                <SidebarView closeDrawerOnNavigate={false} desktopDensity />,
+            );
+        });
+        act(() => renderer.root.findByType('SidebarHelpMenu').props.onOpenChange(true));
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-footer-menu-dismiss-layer' })).toHaveLength(1);
+
+        act(() => renderer.update(
+            <SidebarView closeDrawerOnNavigate={false} desktopDensity={false} />,
+        ));
+
+        expect(renderer.root.findAllByType('SidebarHelpMenu')).toHaveLength(0);
+        expect(renderer.root.findByType('SidebarAccountMenu').props.open).toBe(false);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-footer-menu-dismiss-layer' })).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
+
     it('keeps the desktop footer menus mutually exclusive and dismisses either from one layer', () => {
         mocks.spaceAgent = null;
         let renderer: any;

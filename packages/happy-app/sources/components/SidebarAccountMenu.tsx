@@ -101,11 +101,12 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
             }
             event.preventDefault();
             event.stopPropagation();
+            event.stopImmediatePropagation();
             onOpenChange(false);
         };
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [onOpenChange, open]);
 
     const navigate = React.useCallback((path: string) => {

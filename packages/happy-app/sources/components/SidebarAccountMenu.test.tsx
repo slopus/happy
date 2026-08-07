@@ -9,6 +9,7 @@ import TestRenderer from 'react-test-renderer';
 const mocks = vi.hoisted(() => ({
     confirm: vi.fn(),
     firstActionFocus: vi.fn(),
+    keydownCapture: false,
     keydownHandler: null as ((event: any) => void) | null,
     logout: vi.fn(),
     navigate: vi.fn(),
@@ -97,10 +98,14 @@ describe('SidebarAccountMenu', () => {
     beforeEach(() => {
         vi.useFakeTimers();
         vi.clearAllMocks();
+        mocks.keydownCapture = false;
         mocks.keydownHandler = null;
         vi.stubGlobal('window', {
-            addEventListener: vi.fn((event: string, handler: (event: any) => void) => {
-                if (event === 'keydown') mocks.keydownHandler = handler;
+            addEventListener: vi.fn((event: string, handler: (event: any) => void, capture?: boolean) => {
+                if (event === 'keydown') {
+                    mocks.keydownCapture = capture === true;
+                    mocks.keydownHandler = handler;
+                }
             }),
             removeEventListener: vi.fn(),
         });
@@ -135,13 +140,21 @@ describe('SidebarAccountMenu', () => {
 
         const preventDefault = vi.fn();
         const stopPropagation = vi.fn();
-        act(() => mocks.keydownHandler?.({ key: 'Escape', preventDefault, stopPropagation }));
+        const stopImmediatePropagation = vi.fn();
+        act(() => mocks.keydownHandler?.({
+            key: 'Escape',
+            preventDefault,
+            stopImmediatePropagation,
+            stopPropagation,
+        }));
         expect(renderer.root.findAllByProps({ testID: 'sidebar-account-menu' })).toHaveLength(0);
 
         act(() => vi.runOnlyPendingTimers());
         expect(mocks.triggerFocus).toHaveBeenCalledOnce();
         expect(preventDefault).toHaveBeenCalledOnce();
         expect(stopPropagation).toHaveBeenCalledOnce();
+        expect(stopImmediatePropagation).toHaveBeenCalledOnce();
+        expect(mocks.keydownCapture).toBe(true);
     });
 
     it('does not restore its trigger while focus transfers to another footer menu', () => {
