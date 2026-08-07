@@ -2269,9 +2269,6 @@ class Sync {
                 }
             }
 
-            // Ping session
-            this.onSessionVisible(updateData.body.sid);
-
         } else if (updateData.body.t === 'new-session') {
             log.log('🆕 New session update received');
             this.sessionsSync.invalidate();
