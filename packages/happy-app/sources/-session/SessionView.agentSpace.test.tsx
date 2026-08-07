@@ -42,6 +42,8 @@ const mocks = vi.hoisted(() => ({
     renameSessionToTitle: vi.fn(),
     overlayPublish: vi.fn(),
     overlayReset: vi.fn(),
+    suspendFileViewPanel: false,
+    fileViewPanelSuspender: null as Promise<void> | null,
     session: {
         id: 'session-1',
         seq: 1,
@@ -185,7 +187,17 @@ vi.mock('@/components/DesktopPresenceTransition', async () => {
     };
 });
 vi.mock('@/components/AllFilesDiffView', () => ({ AllFilesDiffView: 'AllFilesDiffView' }));
-vi.mock('@/components/FileViewPanel', () => ({ FileViewPanel: 'FileViewPanel' }));
+vi.mock('@/components/FileViewPanel', async () => {
+    const ReactModule = await import('react');
+    return {
+        FileViewPanel: (props: Record<string, unknown>) => {
+            if (mocks.suspendFileViewPanel && mocks.fileViewPanelSuspender) {
+                throw mocks.fileViewPanelSuspender;
+            }
+            return ReactModule.createElement('FileViewPanel', props);
+        },
+    };
+});
 vi.mock('@/components/diff/PierreDiffView', () => ({ prefetchPierreDiff: vi.fn() }));
 vi.mock('@/hooks/useDraft', () => ({ useDraft: () => ({ clearDraft: vi.fn() }) }));
 vi.mock('@/hooks/useImagePicker', () => ({
@@ -350,6 +362,8 @@ describe('SessionView Agent-space boundary', () => {
         mocks.isTablet = false;
         mocks.platformOS = 'android';
         mocks.desktopRightPanelCollapsed = false;
+        mocks.suspendFileViewPanel = false;
+        mocks.fileViewPanelSuspender = null;
         mocks.spaceAgent = null;
         mocks.useSpaceAgentForSession.mockImplementation(() => mocks.spaceAgent);
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -584,6 +598,64 @@ describe('SessionView Agent-space boundary', () => {
         });
         expect(renderer.root.findAllByProps({ testID: 'workspace-diff-panel' })).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'workspace-file-panel' })).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
+
+    it('changes overlay publisher ownership only after a suspended overlay commits', async () => {
+        mocks.isDataReady = true;
+        mocks.fileDiffsSidebarEnabled = true;
+        mocks.windowWidth = 1400;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        let renderer: any;
+
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />, {
+                unstable_isConcurrent: true,
+            } as any);
+        });
+
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.onPress());
+        const filesSidebar = renderer.root.findByType('FilesSidebar');
+        act(() => filesSidebar.props.onFilePress({
+            status: 'modified',
+            fullPath: 'src/changed-motion.ts',
+        }));
+        const diffPublisher = renderer.root.findByType('AllFilesDiffView').props.onHeaderRightSlotChange;
+        act(() => diffPublisher('committed-diff-slot'));
+
+        let releaseFilePanel!: () => void;
+        mocks.fileViewPanelSuspender = new Promise<void>((resolve) => {
+            releaseFilePanel = resolve;
+        });
+        mocks.suspendFileViewPanel = true;
+        act(() => {
+            React.startTransition(() => {
+                filesSidebar.props.onAllFilesFilePress('src/suspended-motion.ts');
+            });
+        });
+
+        expect(renderer.root.findByProps({ testID: 'workspace-overlay-transition' }).props.transitionKey)
+            .toBe('diff:src/changed-motion.ts');
+        act(() => diffPublisher('still-current-diff-slot'));
+        let header = renderer.root.findByType('ChatHeaderView');
+        expect(header.findAll((node: any) => node.children.includes('still-current-diff-slot'))).not.toHaveLength(0);
+
+        mocks.suspendFileViewPanel = false;
+        await act(async () => {
+            releaseFilePanel();
+            await mocks.fileViewPanelSuspender;
+        });
+        expect(renderer.root.findByProps({ testID: 'workspace-overlay-transition' }).props.transitionKey)
+            .toBe('file:src/suspended-motion.ts');
+
+        const filePublisher = renderer.root.findByType('FileViewPanel').props.onHeaderRightSlotChange;
+        act(() => filePublisher('committed-file-slot'));
+        act(() => diffPublisher('stale-after-file-commit'));
+        header = renderer.root.findByType('ChatHeaderView');
+        expect(header.findAll((node: any) => node.children.includes('committed-file-slot'))).not.toHaveLength(0);
+        expect(header.findAll((node: any) => node.children.includes('stale-after-file-commit'))).toHaveLength(0);
 
         act(() => renderer.unmount());
     });

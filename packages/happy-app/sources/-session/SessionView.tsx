@@ -428,7 +428,6 @@ export const SessionView = React.memo((props: { id: string }) => {
         ? ownedHeaderRightSlot.slot
         : null;
     const activeOverlayKeyRef = React.useRef(overlayTransitionKey);
-    activeOverlayKeyRef.current = overlayTransitionKey;
     const publishOverlayHeaderRightSlot = React.useCallback((slot: React.ReactNode) => {
         const publisherOwnerKey = overlayTransitionKey;
         if (activeOverlayKeyRef.current !== publisherOwnerKey) return;
@@ -439,6 +438,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     }, [overlayTransitionKey]);
 
     React.useLayoutEffect(() => {
+        activeOverlayKeyRef.current = overlayTransitionKey;
         setOwnedHeaderRightSlot({ ownerKey: overlayTransitionKey, slot: null });
     }, [overlayTransitionKey]);
 
