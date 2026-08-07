@@ -254,7 +254,10 @@ async function enableFileDiffsSidebar(page: Page): Promise<void> {
 }
 
 async function readPresenceLayers(page: Page, hostTestId: string): Promise<PresenceLayerReading[]> {
-    return page.locator(`[data-testid="${hostTestId}"] [data-happy-presence-phase]`).evaluateAll((layers) => (
+    // Expo Router can retain earlier route trees, so the last matching Host is
+    // the active route. Only read direct layers: a right-panel layer can contain
+    // another Presence Host for the FilesSidebar tabs.
+    return page.getByTestId(hostTestId).last().locator(':scope > [data-happy-presence-phase]').evaluateAll((layers) => (
         layers.map((layer) => {
             const style = getComputedStyle(layer);
             return {
@@ -742,6 +745,13 @@ test('[PC-MOTION] PC/Web 动效优化逐项视觉验收', async ({ page, request
                 settledCount: 1,
             });
             await expect(rightPanel.getByTestId('session-files-sidebar')).toBeVisible();
+            if (isFileTransitionAfter) {
+                const activeRightPanelHost = page.getByTestId('desktop-right-panel-content-transition').last();
+                const directLayers = activeRightPanelHost.locator(':scope > [data-happy-presence-phase]');
+                const descendantLayers = activeRightPanelHost.locator('[data-happy-presence-phase]');
+                await expect(directLayers).toHaveCount(1);
+                expect(await descendantLayers.count()).toBeGreaterThan(await directLayers.count());
+            }
             const primaryTabStyles = {
                 capabilities: await readTabTransition(capabilitiesTab),
                 files: await readTabTransition(filesTab),
