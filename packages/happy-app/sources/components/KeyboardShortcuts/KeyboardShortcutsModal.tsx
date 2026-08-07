@@ -37,6 +37,7 @@ function ShortcutAlternatives({ alternatives }: Pick<ShortcutRow, 'alternatives'
                 <React.Fragment key={`${alternativeIndex}-${chord.join('-')}`}>
                     {alternativeIndex > 0 ? (
                         <Text
+                            aria-hidden={Platform.OS === 'web' ? true : undefined}
                             accessibilityElementsHidden
                             importantForAccessibility="no-hide-descendants"
                             style={styles.alternativeSeparator}
@@ -62,6 +63,7 @@ function ShortcutReferenceRow({ row }: { row: ShortcutRow }) {
     return (
         <View style={styles.row} testID={`keyboard-shortcut-row-${row.id}`}>
             <Ionicons
+                aria-hidden={Platform.OS === 'web' ? true : undefined}
                 accessibilityElementsHidden
                 color={theme.colors.textSecondary}
                 importantForAccessibility="no-hide-descendants"
@@ -140,6 +142,7 @@ export const KeyboardShortcutsModal = React.memo(function KeyboardShortcutsModal
     return (
         <View
             ref={panelRef}
+            aria-modal={Platform.OS === 'web' ? true : undefined}
             accessibilityLabel={t('keyboardShortcuts.title')}
             accessibilityViewIsModal
             role="dialog"
@@ -159,6 +162,7 @@ export const KeyboardShortcutsModal = React.memo(function KeyboardShortcutsModal
                     testID="keyboard-shortcuts-close"
                 >
                     <Ionicons
+                        aria-hidden={Platform.OS === 'web' ? true : undefined}
                         accessibilityElementsHidden
                         color={theme.colors.textSecondary}
                         importantForAccessibility="no-hide-descendants"
@@ -190,11 +194,18 @@ const styles = StyleSheet.create((theme) => ({
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
         backgroundColor: theme.colors.surface,
-        shadowColor: theme.colors.shadow.color,
-        shadowOpacity: theme.colors.shadow.opacity,
-        shadowRadius: 18,
-        shadowOffset: { width: 0, height: 8 },
-        elevation: 10,
+        ...Platform.select({
+            web: {
+                boxShadow: `0 8px 18px ${theme.colors.shadow.color}`,
+            },
+            default: {
+                shadowColor: theme.colors.shadow.color,
+                shadowOpacity: theme.colors.shadow.opacity,
+                shadowRadius: 18,
+                shadowOffset: { width: 0, height: 8 },
+                elevation: 10,
+            },
+        }),
     },
     header: {
         minHeight: 56,

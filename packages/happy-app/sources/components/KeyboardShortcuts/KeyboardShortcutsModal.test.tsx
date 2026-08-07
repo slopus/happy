@@ -1,50 +1,28 @@
+// @vitest-environment jsdom
+
 import * as React from 'react';
 import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-// react-test-renderer does not publish TypeScript declarations with the package.
-// @ts-expect-error The test only needs the small create/unmount surface typed below.
-import TestRenderer from 'react-test-renderer';
 
 import type { ShortcutSection } from './shortcutCatalog';
 
-const mocks = vi.hoisted(() => ({
-    closeFocus: vi.fn(),
-    keydownHandler: null as ((event: any) => void) | null,
-    panelAddEventListener: vi.fn(),
-    panelContains: vi.fn(),
-    panelQuerySelectorAll: vi.fn(),
-    panelRemoveEventListener: vi.fn(),
-    restoreFocus: vi.fn(),
-}));
-
 vi.mock('react-native', async () => {
+    // react-native-web 0.21 does not publish TypeScript declarations.
+    // @ts-expect-error The test exercises its runtime DOM implementation directly.
+    return import('react-native-web');
+});
+vi.mock('@expo/vector-icons', async () => {
     const ReactModule = await import('react');
-    const Pressable = ReactModule.forwardRef<any, any>((props, ref) => {
-        ReactModule.useImperativeHandle(ref, () => ({ focus: mocks.closeFocus }), []);
-        return ReactModule.createElement('Pressable', props, props.children);
-    });
-    const View = ReactModule.forwardRef<any, any>((props, ref) => {
-        ReactModule.useImperativeHandle(ref, () => props.testID === 'keyboard-shortcuts-dialog'
-            ? {
-                addEventListener: mocks.panelAddEventListener,
-                contains: mocks.panelContains,
-                querySelectorAll: mocks.panelQuerySelectorAll,
-                removeEventListener: mocks.panelRemoveEventListener,
-            }
-            : {}, [props.testID]);
-        return ReactModule.createElement('View', props, props.children);
-    });
-
     return {
-        Platform: { OS: 'web', select: (values: any) => values.web ?? values.default },
-        Pressable,
-        ScrollView: 'ScrollView',
-        Text: 'Text',
-        View,
+        Ionicons: ({
+            accessibilityElementsHidden: _accessibilityElementsHidden,
+            importantForAccessibility: _importantForAccessibility,
+            name,
+            ...props
+        }: any) => ReactModule.createElement('span', { ...props, 'data-icon': name }),
     };
 });
-vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => {
     const theme = {
         colors: {
@@ -109,147 +87,148 @@ const sections: ShortcutSection[] = [
     },
 ];
 
-describe('KeyboardShortcutsModal', () => {
-    const originalConsoleError = console.error;
-    const closeControl = { focus: mocks.closeFocus };
-    let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
-    let renderer: any;
-    let documentStub: any;
+describe('KeyboardShortcutsModal in React Native Web', () => {
+    let container: HTMLDivElement;
+    let opener: HTMLButtonElement;
+    let root: Root | undefined;
 
     beforeEach(() => {
-        vi.clearAllMocks();
-        mocks.keydownHandler = null;
-        documentStub = {
-            activeElement: { focus: mocks.restoreFocus },
-        };
-        mocks.panelAddEventListener.mockImplementation((event: string, handler: (event: any) => void) => {
-                if (event === 'keydown') mocks.keydownHandler = handler;
-        });
-        mocks.closeFocus.mockImplementation(() => {
-            documentStub.activeElement = closeControl;
-        });
-        mocks.panelContains.mockImplementation((element: unknown) => element === closeControl);
-        mocks.panelQuerySelectorAll.mockReturnValue([closeControl]);
-        vi.stubGlobal('document', documentStub);
+        container = document.createElement('div');
+        opener = document.createElement('button');
+        opener.textContent = 'Open shortcuts';
+        document.body.append(opener, container);
+        opener.focus();
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-        consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
-            if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
-            originalConsoleError(...values);
-        });
     });
 
     afterEach(() => {
-        if (renderer) {
-            act(() => renderer.unmount());
+        if (root) {
+            act(() => root?.unmount());
         }
-        renderer = undefined;
-        consoleErrorSpy.mockRestore();
-        vi.unstubAllGlobals();
+        root = undefined;
+        container.remove();
+        opener.remove();
+        vi.clearAllMocks();
     });
 
     function renderModal(onClose = vi.fn()) {
         act(() => {
-            renderer = TestRenderer.create(
-                <KeyboardShortcutsModal onClose={onClose} sections={sections} />,
-            );
+            root = createRoot(container);
+            root.render(<KeyboardShortcutsModal onClose={onClose} sections={sections} />);
         });
         return onClose;
     }
 
-    function findHostByTestID(testID: string, type = 'View') {
-        return renderer.root.findAllByProps({ testID })
-            .find((node: any) => node.type === type);
+    function getByTestID(testID: string): HTMLElement {
+        const element = container.querySelector<HTMLElement>(`[data-testid="${testID}"]`);
+        if (!element) throw new Error(`Missing testID: ${testID}`);
+        return element;
     }
 
-    it('exposes localized dialog semantics with a fixed header and scrolling body', () => {
+    it('exposes the localized panel as an actual modal dialog with a fixed header and scrolling body', () => {
         renderModal();
 
-        const panel = findHostByTestID('keyboard-shortcuts-dialog');
-        expect(panel.props.accessibilityViewIsModal).toBe(true);
-        expect(panel.props.accessibilityLabel).toBe('localized:keyboardShortcuts.title');
-        expect(panel.props.role).toBe('dialog');
-        expect(panel.props.style).toEqual(expect.objectContaining({
-            borderRadius: 14,
-            maxHeight: '76vh',
-            maxWidth: 720,
-            width: 'calc(100vw - 32px)',
-        }));
-        expect(panel?.children.map((child: any) => child.props.testID)).toEqual([
+        const panel = getByTestID('keyboard-shortcuts-dialog');
+        expect(panel.getAttribute('role')).toBe('dialog');
+        expect(panel.getAttribute('aria-modal')).toBe('true');
+        expect(panel.getAttribute('aria-label')).toBe('localized:keyboardShortcuts.title');
+        expect(Array.from(panel.children).map((child) => child.getAttribute('data-testid'))).toEqual([
             'keyboard-shortcuts-header',
             'keyboard-shortcuts-scroll',
         ]);
-        expect(renderer.root.findByProps({ testID: 'keyboard-shortcuts-title' }).children).toEqual([
-            'localized:keyboardShortcuts.title',
-        ]);
-        expect(renderer.root.findByProps({ testID: 'keyboard-shortcuts-close' }).props.accessibilityLabel)
+        expect(getByTestID('keyboard-shortcuts-title').textContent)
+            .toBe('localized:keyboardShortcuts.title');
+        expect(getByTestID('keyboard-shortcuts-close').getAttribute('aria-label'))
             .toBe('localized:keyboardShortcuts.close');
+
+        const panelStyle = getComputedStyle(panel);
+        expect(panelStyle.width).toBe('calc(100vw - 32px)');
+        expect(panelStyle.maxWidth).toBe('720px');
+        expect(panelStyle.maxHeight).toBe('76vh');
+        expect(panelStyle.borderTopLeftRadius).toBe('14px');
     });
 
-    it('preserves section and row order', () => {
+    it('preserves section and row order in the rendered DOM', () => {
         renderModal();
 
-        const scroll = findHostByTestID('keyboard-shortcuts-scroll', 'ScrollView');
-        expect(scroll?.findAll((node: any) => node.type === 'View'
-            && node.props.testID?.startsWith('keyboard-shortcut-section-'))
-            .map((node: any) => node.props.testID)).toEqual([
+        expect(Array.from(container.querySelectorAll<HTMLElement>(
+            '[data-testid^="keyboard-shortcut-section-"]',
+        )).map((element) => element.dataset.testid)).toEqual([
             'keyboard-shortcut-section-common',
             'keyboard-shortcut-section-navigation',
         ]);
-        expect(findHostByTestID('keyboard-shortcut-section-common')
-            .findAll((node: any) => node.type === 'View'
-                && node.props.testID?.startsWith('keyboard-shortcut-row-'))
-            .map((node: any) => node.props.testID)).toEqual([
-                'keyboard-shortcut-row-first-action',
-                'keyboard-shortcut-row-second-action',
-            ]);
-        expect(findHostByTestID('keyboard-shortcut-section-navigation')
-            .findAll((node: any) => node.type === 'View'
-                && node.props.testID?.startsWith('keyboard-shortcut-row-'))
-            .map((node: any) => node.props.testID)).toEqual([
-                'keyboard-shortcut-row-third-action',
-            ]);
+        expect(Array.from(getByTestID('keyboard-shortcut-section-common').querySelectorAll<HTMLElement>(
+            '[data-testid^="keyboard-shortcut-row-"]',
+        )).map((element) => element.dataset.testid)).toEqual([
+            'keyboard-shortcut-row-first-action',
+            'keyboard-shortcut-row-second-action',
+        ]);
+        expect(Array.from(getByTestID('keyboard-shortcut-section-navigation').querySelectorAll<HTMLElement>(
+            '[data-testid^="keyboard-shortcut-row-"]',
+        )).map((element) => element.dataset.testid)).toEqual([
+            'keyboard-shortcut-row-third-action',
+        ]);
     });
 
-    it('renders every chord token in its own keycap and separates alternatives visually', () => {
+    it('renders separate keycaps, visual alternatives, and hidden decorative content', () => {
         renderModal();
 
-        const row = findHostByTestID('keyboard-shortcut-row-first-action');
-        expect(row.findAll((node: any) => node.type === 'View'
-            && node.props.testID?.startsWith('keyboard-shortcut-keycap-'))
-            .map((node: any) => node.children[0]?.children[0])).toEqual(['⌘', 'K', 'Ctrl', 'K']);
-        expect(row.findAllByProps({ testID: 'keyboard-shortcut-alternative-separator' }))
-            .toHaveLength(1);
-        expect(row.findByProps({ testID: 'keyboard-shortcut-alternative-separator' }).children)
-            .toEqual(['/']);
+        const row = getByTestID('keyboard-shortcut-row-first-action');
+        expect(Array.from(row.querySelectorAll<HTMLElement>(
+            '[data-testid^="keyboard-shortcut-keycap-"]',
+        )).map((element) => element.textContent)).toEqual(['⌘', 'K', 'Ctrl', 'K']);
+
+        const separator = row.querySelector<HTMLElement>(
+            '[data-testid="keyboard-shortcut-alternative-separator"]',
+        );
+        expect(separator?.textContent).toBe('/');
+        expect(separator?.getAttribute('aria-hidden')).toBe('true');
+        expect(Array.from(container.querySelectorAll<HTMLElement>('[data-icon]'))
+            .every((icon) => icon.getAttribute('aria-hidden') === 'true')).toBe(true);
     });
 
-    it('closes from the accessible close control', () => {
+    it('closes from the actual accessible close control', () => {
         const onClose = renderModal();
 
-        act(() => renderer.root.findByProps({ testID: 'keyboard-shortcuts-close' }).props.onPress());
+        act(() => getByTestID('keyboard-shortcuts-close').click());
 
         expect(onClose).toHaveBeenCalledOnce();
     });
 
-    it('focuses close, traps Tab in the dialog, and restores prior focus on unmount', () => {
+    it('focuses close, contains forward and reverse Tab movement, and restores the opener', () => {
         renderModal();
-        expect(mocks.closeFocus).toHaveBeenCalledOnce();
 
-        documentStub.activeElement = documentStub.activeElement === closeControl
-            ? { focus: vi.fn() }
-            : documentStub.activeElement;
-        const preventDefault = vi.fn();
-        act(() => mocks.keydownHandler?.({ key: 'Tab', preventDefault, shiftKey: false }));
-        expect(preventDefault).toHaveBeenCalledOnce();
-        expect(mocks.closeFocus).toHaveBeenCalledTimes(2);
+        const panel = getByTestID('keyboard-shortcuts-dialog');
+        const close = getByTestID('keyboard-shortcuts-close');
+        const lastControl = document.createElement('button');
+        lastControl.textContent = 'Last control';
+        panel.append(lastControl);
+        expect(document.activeElement).toBe(close);
 
-        act(() => renderer.unmount());
-        renderer = undefined;
-        expect(mocks.restoreFocus).toHaveBeenCalledOnce();
-        expect(mocks.panelRemoveEventListener).toHaveBeenCalledWith(
-            'keydown',
-            expect.any(Function),
-            true,
-        );
+        act(() => lastControl.focus());
+        const forwardTab = new KeyboardEvent('keydown', {
+            bubbles: true,
+            cancelable: true,
+            key: 'Tab',
+        });
+        act(() => lastControl.dispatchEvent(forwardTab));
+        expect(forwardTab.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(close);
+        expect(panel.contains(document.activeElement)).toBe(true);
+
+        const reverseTab = new KeyboardEvent('keydown', {
+            bubbles: true,
+            cancelable: true,
+            key: 'Tab',
+            shiftKey: true,
+        });
+        act(() => close.dispatchEvent(reverseTab));
+        expect(reverseTab.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(lastControl);
+        expect(panel.contains(document.activeElement)).toBe(true);
+
+        act(() => root?.unmount());
+        root = undefined;
+        expect(document.activeElement).toBe(opener);
     });
 });
