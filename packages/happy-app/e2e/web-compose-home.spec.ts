@@ -286,6 +286,7 @@ async function createE2ECompletedToolCall(
     options: {
         callId: string;
         input: Record<string, unknown>;
+        isError?: boolean;
         name: string;
         output?: unknown;
     },
@@ -327,6 +328,7 @@ async function createE2ECompletedToolCall(
                             type: 'tool-result',
                             callId: options.callId,
                             id: `${options.callId}-result`,
+                            isError: options.isError ?? false,
                             output: options.output ?? { success: true },
                         }),
                         localId: `${options.callId}-result-${Date.now()}-${Math.random()}`,
@@ -2647,17 +2649,24 @@ test('[R10-03][TASK-CONTEXT] Capability Hub 仅投影成功资源并跨会话刷
     await createE2ECompletedToolCall(request, sessionId, {
         callId: 'failed-write',
         input: { file_path: '/tmp/task-context-failed.md', content: 'must stay excluded' },
+        isError: true,
         name: 'Write',
-        output: { success: false, error: 'write failed' },
+        output: 'R10 write failed',
     });
     await createE2ECompletedToolCall(request, sessionId, {
         callId: 'failed-fetch',
         input: { url: 'https://failed.example.com/excluded' },
+        isError: true,
         name: 'WebFetch',
-        output: { success: false, error: 'fetch failed' },
+        output: 'R10 fetch failed',
     });
 
     await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(authenticatedRoute(`/session/${sessionId}`));
+    await expect(page.getByText('R10 write failed', { exact: true })).toBeVisible();
+    await page.getByText('failed.example.com', { exact: true }).click();
+    await expect(page.getByText('Error', { exact: true })).toBeVisible();
+    await expect(page.getByText('R10 fetch failed', { exact: true })).toBeVisible();
     await page.goto(authenticatedRoute(`/session/${sessionId}`));
     if (!await page.locator('[data-testid="desktop-right-panel"]:visible').isVisible()) {
         await page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible').click();
