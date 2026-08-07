@@ -18,39 +18,37 @@ function userMessage(id: string, text: string, displayText?: string): DisplayIte
 }
 
 describe('getDesktopTitlePromptMessageId', () => {
-    it('returns the oldest user prompt when it produced the session title', () => {
+    it('returns the oldest user prompt', () => {
         const items = [
             userMessage('message-2', 'Follow-up prompt'),
             userMessage('message-1', '  # Optimize batch image generation  '),
         ];
 
-        expect(getDesktopTitlePromptMessageId(items, 'Optimize batch image generation')).toBe('message-1');
+        expect(getDesktopTitlePromptMessageId(items, true)).toBe('message-1');
     });
 
-    it('keeps the first prompt when the session has a different title', () => {
+    it('keeps hiding the title prompt after the session is renamed', () => {
         expect(getDesktopTitlePromptMessageId(
             [userMessage('message-1', 'Optimize batch image generation')],
-            'Image workflow follow-up',
-        )).toBeNull();
-    });
-
-    it('matches the visible prompt text when the raw payload is decorated', () => {
-        expect(getDesktopTitlePromptMessageId(
-            [userMessage(
-                'message-1',
-                'Optimize batch image generation\n\n[hidden attachment and runtime instructions]',
-                'Optimize batch image generation',
-            )],
-            'Optimize batch image generation',
+            true,
         )).toBe('message-1');
     });
 
-    it('only considers the oldest visible user prompt', () => {
+    it('only removes the oldest user prompt', () => {
         const items = [
             userMessage('message-2', 'Image workflow follow-up'),
             userMessage('message-1', 'Optimize batch image generation'),
         ];
 
-        expect(getDesktopTitlePromptMessageId(items, 'Image workflow follow-up')).toBeNull();
+        expect(getDesktopTitlePromptMessageId(items, true)).toBe('message-1');
+    });
+
+    it('keeps every loaded user message while older pages are still available', () => {
+        const items = [
+            userMessage('message-102', 'Newest follow-up'),
+            userMessage('message-3', 'Oldest user message in the loaded page'),
+        ];
+
+        expect(getDesktopTitlePromptMessageId(items, false)).toBeNull();
     });
 });
