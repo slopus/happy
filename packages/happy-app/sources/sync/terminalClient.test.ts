@@ -73,8 +73,14 @@ describe('terminal control RPCs', () => {
     });
 
     it('creates, approves, attaches, closes, and sets policy', async () => {
-        const { terminalCreate, terminalApprove, terminalAttach, terminalClose, terminalSetPolicy } =
-            await import('./terminalClient');
+        const {
+            terminalCreate,
+            terminalApprove,
+            terminalAttach,
+            terminalClose,
+            terminalSetPolicy,
+            terminalGetPolicy,
+        } = await import('./terminalClient');
 
         machineRPC.mockResolvedValue({ type: 'success', terminalId: 't1' });
         await terminalCreate('machine-1', { cwd: '/tmp', cols: 80, rows: 24 });
@@ -105,6 +111,9 @@ describe('terminal control RPCs', () => {
         expect(machineRPC).toHaveBeenCalledWith('machine-1', 'terminal-set-policy', {
             policy: 'per-session',
         });
+
+        await terminalGetPolicy('machine-1');
+        expect(machineRPC).toHaveBeenCalledWith('machine-1', 'terminal-get-policy', {});
     });
 });
 

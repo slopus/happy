@@ -402,6 +402,10 @@ export class ApiMachineClient {
 
         this.rpcHandlerManager.registerHandler('terminal-list', async () => manager.list());
 
+        this.rpcHandlerManager.registerHandler('terminal-get-policy', async () => ({
+            policy: manager.policyStore.get(),
+        }));
+
         this.rpcHandlerManager.registerHandler('terminal-close', async (params: any) => {
             const { terminalId } = params || {};
             if (typeof terminalId !== 'string' || terminalId.length === 0) {

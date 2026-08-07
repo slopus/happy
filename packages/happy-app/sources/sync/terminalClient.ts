@@ -95,6 +95,16 @@ export async function terminalSetPolicy(
     );
 }
 
+export async function terminalGetPolicy(
+    machineId: string,
+): Promise<{ policy: TerminalApprovalPolicy }> {
+    return apiSocket.machineRPC<{ policy: TerminalApprovalPolicy }, Record<string, never>>(
+        machineId,
+        'terminal-get-policy',
+        {},
+    );
+}
+
 function getMachineEncryption(machineId: string): MachineEncryption {
     const encryption = sync.encryption.getMachineEncryption(machineId);
     if (!encryption) {
