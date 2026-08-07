@@ -81,6 +81,23 @@ describe('imageStyleOptions', () => {
         expect(prompt).toContain('selected illustration medium');
     });
 
+    it('keeps the complete Lakeside Minimal Diptych variant in continuation batches', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/photo-illustration-diptych/2');
+        expect(style).toBeTruthy();
+
+        const prompt = buildImageStyleContinuationPrompt([style!]);
+
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('github-skills/photo-illustration-diptych/2');
+        expect(prompt).toContain('Photo–Illustration Diptych v1 visual compiler');
+        expect(prompt).toContain('Apply the Lakeside Minimal Diptych variant');
+        expect(prompt).toContain('path or boardwalk curve, dock rhythm, vessel position');
+        expect(prompt).toContain('Remove roughly 85–95%');
+        expect(prompt).toContain('必须有源图片');
+        expect(prompt).toContain('一次只能处理一张源图片');
+        expect(prompt).toContain('source-derived palette, and geometric reduction');
+    });
+
     it('keeps the complete Scene Distillation compiler in continuation batches', () => {
         const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/scene-distillation-zine/1');
         expect(style).toBeTruthy();

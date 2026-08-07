@@ -19,6 +19,21 @@ This ledger records the immutable source and intentional adaptation boundary for
 - Changed: default output is text-free unless the user supplies or requests exact copy; the gallery cover uses an original 4:3 harbor demonstration while generated task outputs default to a 3:5 poster.
 - Omitted: phone status/navigation bars, social viewer controls, progress indicators, download/play UI, original source-photo pixels, inferred place names, and any unverified third-party prompt or implementation.
 
+## Lakeside Minimal Diptych
+
+- Style: `github-skills/photo-illustration-diptych/2`
+- Source: lakeside specialization of the original Happy/Paws compiler in `wangjs-jacky/happy@532e49bb711283cbe2738439039298f9cea1ef7b`; no third-party Skill code, prompt text, or asset was copied.
+- License: MIT; complete notice in `photoIllustrationDiptychPrompt.ts`.
+- User authorization: the user uploaded both references in this integration task and explicitly asked to add the result to the gallery. Ownership beyond that task authorization was not independently verified.
+- Visual output reference: `/Users/jacky/.happy/attachments/2026-08-07T17-58-03-556Z-0-137505.jpg` — SHA-256 `01ce83204149de7527030defeabfb684a4b10fe8b4b989901b958a1fa6737eb4`.
+- Written specification reference: `/Users/jacky/.happy/attachments/2026-08-07T17-58-03-645Z-1-137504.jpg` — SHA-256 `4379e11740be18567d86fc90ce93c8e3e461ce0b011695c674438ec2a3e43b1e`.
+- Built-in image-tool source: `/Users/jacky/.codex/generated_images/019fdd5f-f182-7e03-ac57-b6c12c2d9913/exec-bff14c13-6ccd-45a2-87e8-56d4d5bd7767.png` — SHA-256 `81af6a580680f3ceeeb496e532564e196cf4dd9a72fcdc52d2dd8da8745331c8`.
+- Shipped metadata-free 4:3 cover SHA-256: `4b094e1fa099e72c59403bd90a35ae51708746e3090703349e028ee0ab83d314`.
+- Preview relationship: the cover is an original, text-free built-in image-tool adaptation. It demonstrates the reference's lake, boardwalk, dock, boat, shoreline, horizon, mountains, source-derived palette, and upper-photo/lower-geometry hierarchy without shipping screenshot pixels or phone/viewer UI.
+- Preserved: truthful photographic upper panel; scene-map correspondence; original subject order and color atmosphere; radically simplified lower geometry; flat source-derived colors; fine lines; broad warm-ivory negative space; optional exact user-supplied typography; premium editorial restraint.
+- Changed: the shared compiler gains a dedicated waterside mode that explicitly locks the path curve, dock rhythm, vessel position, shoreline, horizon, and distant landform while removing 85–95% of lower-panel detail.
+- Omitted: phone status/navigation bars, social viewer controls, progress/download/play UI, screenshot pixels, automatic captions, inferred place names, gradients, decorative symbols, and unrelated stock-vector detail.
+
 ## Minimal Zine Paper Poster
 
 - Style: `github-skills/minimal-zine-poster/1`

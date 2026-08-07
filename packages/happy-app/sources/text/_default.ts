@@ -2241,6 +2241,8 @@ export const en = {
         imageStyleGithubSkills: 'GitHub Skills',
         imageStylePhotoIllustrationDiptych: 'Photo–Illustration Diptych',
         imageStylePhotoIllustrationDiptychHint: 'Pair one supplied photo with a composition-matched illustration in a calm 3:5 paper poster.\nPreserves landmark count, horizon, spatial order, and movement; medium adapts from ink wash to flat editorial, geometric skyline, or Art Deco.',
+        imageStylePhotoIllustrationDiptychLakeside: 'Lakeside Minimal Diptych',
+        imageStylePhotoIllustrationDiptychLakesideHint: 'Pair one lakeside photo with a radically simplified geometric rendering of the same scene.\nPreserve the boardwalk curve, dock rhythm, boat position, shoreline, horizon, and mountain profile using source-derived blue, green, coral, and warm-ivory color fields.',
         imageStyleMinimalZinePoster: 'Minimal Zine Paper Poster',
         imageStyleMinimalZinePosterHint: 'Theme, short line, object, mood, article idea, or photo → 3:5 vertical minimal paper poster.\nAged-paper negative space, small torn-paper/photo anchor, sparse typewriter text, one vivid accent, and photocopy/scan texture.',
         imageStyleSceneDistillationZine: 'Scene Distillation Zine',

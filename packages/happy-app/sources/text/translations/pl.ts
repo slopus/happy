@@ -1693,6 +1693,8 @@ export const pl: TranslationStructure = {
         imageStyleGithubSkills: 'Umiejętności GitHub',
         imageStylePhotoIllustrationDiptych: 'Dyptyk zdjęcia i ilustracji',
         imageStylePhotoIllustrationDiptychHint: 'Połącz dostarczone zdjęcie z ilustracją o dopasowanej kompozycji na stonowanym papierowym plakacie 3:5.\nZachowaj liczbę charakterystycznych obiektów, linię horyzontu, układ przestrzenny i ruch; technika dostosowuje się od lawowania tuszem po płaską ilustrację redakcyjną, geometryczną panoramę miasta lub Art Deco.',
+        imageStylePhotoIllustrationDiptychLakeside: 'Minimalistyczny dyptyk nad jeziorem',
+        imageStylePhotoIllustrationDiptychLakesideHint: 'Połącz jedno zdjęcie znad jeziora z radykalnie uproszczonym, geometrycznym ujęciem tej samej sceny. Zachowaj krzywiznę kładki, rytm pomostu, położenie łodzi, linię brzegu, horyzont i profil gór, wykorzystując zaczerpnięte ze zdjęcia źródłowego pola barw w odcieniach błękitu, zieleni, koralu i ciepłej kości słoniowej.',
         imageStyleMinimalZinePoster: 'Minimalistyczny papierowy plakat Zine',
         imageStyleMinimalZinePosterHint: 'Temat, krótka fraza, przedmiot, nastrój, pomysł na artykuł lub zdjęcie → pionowy minimalistyczny plakat 3:5.\nPostarzany papier z dużą ilością wolnej przestrzeni, mały akcent z podartego papieru/zdjęcia, oszczędna typografia maszynowa, jeden nasycony kolor i faktura ksero/skanu.',
         imageStyleSceneDistillationZine: 'Zine — destylacja sceny',
