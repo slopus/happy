@@ -190,11 +190,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingTop: 2,
     },
     secondaryNavigation: {
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: theme.colors.divider,
-        marginHorizontal: 10,
         marginTop: 5,
-        paddingTop: 3,
+    },
+    secondaryNavigationDivider: {
+        height: StyleSheet.hairlineWidth,
+        marginHorizontal: 10,
+        marginBottom: 3,
+        backgroundColor: theme.colors.divider,
     },
 }));
 
@@ -334,6 +336,10 @@ export const SidebarView = React.memo(({
             </View>
 
             <View style={styles.secondaryNavigation} testID="sidebar-secondary-navigation">
+                <View
+                    style={styles.secondaryNavigationDivider}
+                    testID="sidebar-secondary-navigation-divider"
+                />
                 {/* My Agents remains available, while its add action is a compact
                     secondary affordance instead of another primary navigation row. */}
                 <Pressable

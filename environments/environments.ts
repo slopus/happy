@@ -374,7 +374,9 @@ export async function startEnvironmentServices(name: string): Promise<void> {
     const webLogFile = path.join(envDir, "web", "stdout.log");
     fs.mkdirSync(path.join(envDir, "web"), { recursive: true });
     console.log(`Starting web on port ${config.expoPort}...`);
-    const webPid = spawnService("pnpm", ["web", "--port", String(config.expoPort)], {
+    const webArgs = ["web", "--port", String(config.expoPort)];
+    if (process.env.HAPPY_E2E_WEB_NO_DEV === "1") webArgs.push("--no-dev", "--clear");
+    const webPid = spawnService("pnpm", webArgs, {
         cwd: path.join(REPO_ROOT, "packages", "happy-app"),
         env: { ...mergedEnv, BROWSER: "none" },
         logFile: webLogFile,
@@ -382,8 +384,21 @@ export async function startEnvironmentServices(name: string): Promise<void> {
     writePidFile(envDir, "web", webPid);
 
     try {
+        // A listening Metro socket does not mean the first Web bundle is
+        // ready. Production-like evidence runs clear the cache, so warm the
+        // document before Playwright starts its per-test five-second waits.
+        const waitForWeb = process.env.HAPPY_E2E_WEB_NO_DEV === "1"
+            ? async () => {
+                try {
+                    const response = await fetch(`http://localhost:${config.expoPort}/`);
+                    return response.ok;
+                } catch {
+                    return false;
+                }
+            }
+            : () => isPortInUse(config.expoPort);
         // Metro 首次构建依赖较多，冷启动在开发机上可能超过 30 秒。
-        await waitFor(() => isPortInUse(config.expoPort), 120_000, "web");
+        await waitFor(waitForWeb, 120_000, "web");
     } catch {
         throw new Error(`Web failed to start. Check logs: ${webLogFile}`);
     }

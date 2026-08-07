@@ -1,11 +1,11 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
+import { View, Text, Platform, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import { layout } from '@/components/layout';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 interface ChatHeaderViewProps {
     title: string;
@@ -23,6 +23,8 @@ interface ChatHeaderViewProps {
     leftSlot?: React.ReactNode;
     /** Optional content rendered at the right edge of the header (used by file-view / diff overlays). */
     rightSlot?: React.ReactNode;
+    /** Lets a crowded desktop header use the full gap before its right-side actions. */
+    compactRightSlot?: boolean;
     onTitlePress?: () => void;
     onBackPress?: () => void;
     /** Opens the session-list drawer. Shown as a ☰ button left of the back arrow on phones. */
@@ -41,6 +43,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     titleSlot,
     leftSlot,
     rightSlot,
+    compactRightSlot = false,
     onTitlePress,
     onBackPress,
     onListPress,
@@ -61,6 +64,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     // sidebar), so mirror the back button's phone-only visibility.
     const showListButton = !isTablet && !!onListPress;
     const hasExtra = !!extraPathSegment;
+    styles.useVariants({ rightSlotDensity: compactRightSlot ? 'compact' : 'regular' });
 
     return (
         <View style={[styles.container, { paddingTop: insets.top, backgroundColor: headerBg }]}>
@@ -221,8 +225,17 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        marginLeft: 12,
         flexShrink: 0,
+        variants: {
+            rightSlotDensity: {
+                regular: {
+                    marginLeft: 12,
+                },
+                compact: {
+                    marginLeft: 0,
+                },
+            },
+        },
     },
     backButton: {
         paddingHorizontal: 8,

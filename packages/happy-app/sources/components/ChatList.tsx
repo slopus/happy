@@ -21,6 +21,8 @@ import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { useUserMessageAnchors, type UserMessageAnchor } from '@/hooks/useUserMessageAnchors';
 import { AnchorListSheet } from './AnchorListSheet';
 import { t } from '@/text';
+import { getSessionName } from '@/utils/sessionUtils';
+import { getDesktopTitlePromptMessageId } from '@/utils/desktopTitlePrompt';
 
 const SCROLL_THRESHOLD = 300;
 // How long the anchor pill lingers after the user stops scrolling.
@@ -102,7 +104,25 @@ const ChatListInternal = React.memo((props: {
         () => ({ collapseCurrentTurn }),
         [collapseCurrentTurn],
     );
-    const displayItems = useGroupedMessages(props.messages, groupToolCalls, groupingOptions);
+    const groupedDisplayItems = useGroupedMessages(props.messages, groupToolCalls, groupingOptions);
+    const desktopTitlePromptMessageId = React.useMemo(() => (
+        Platform.OS === 'web' && session
+            ? getDesktopTitlePromptMessageId(groupedDisplayItems, getSessionName(session))
+            : null
+    ), [groupedDisplayItems, session]);
+    const displayItems = React.useMemo(() => (
+        desktopTitlePromptMessageId
+            ? groupedDisplayItems.filter(item => item.id !== desktopTitlePromptMessageId)
+            : groupedDisplayItems
+    ), [desktopTitlePromptMessageId, groupedDisplayItems]);
+    const latestVisibleUserMessageId = React.useMemo(() => {
+        for (const item of displayItems) {
+            if (item.type === 'message' && item.message.kind === 'user-text') {
+                return item.message.id;
+            }
+        }
+        return null;
+    }, [displayItems]);
 
     // The user's own messages are the chat's natural chapters — surface them
     // as jump anchors. `displayIndex` indexes back into `displayItems`.
@@ -246,6 +266,13 @@ const ChatListInternal = React.memo((props: {
         } as any);
     }, [props.sessionId]);
 
+    const handleEditUserMessage = useCallback(async (messageId: string, messageText: string) => {
+        await sync.sendMessage(props.sessionId, messageText, {
+            source: 'chat',
+            editedFromMessageId: messageId,
+        });
+    }, [props.sessionId]);
+
     const renderItem = useCallback(({ item }: { item: DisplayItem }) => {
         if (item.type === 'tool-group') {
             return (
@@ -286,9 +313,29 @@ const ChatListInternal = React.memo((props: {
                 metadata={props.metadata}
                 sessionId={props.sessionId}
                 onForkFromUserMessage={canFork ? handleForkFromMessage : undefined}
+                showUserMessageActions={Platform.OS === 'web'}
+                canEditUserMessage={
+                    Platform.OS === 'web'
+                    && item.message.kind === 'user-text'
+                    && item.message.id === latestVisibleUserMessageId
+                    && session?.thinking !== true
+                    && !hasPendingPermission
+                }
+                onEditUserMessage={handleEditUserMessage}
             />
         );
-    }, [props.metadata, props.sessionId, canFork, handleForkFromMessage, collapsedGroups, handleToggleGroup]);
+    }, [
+        props.metadata,
+        props.sessionId,
+        canFork,
+        handleForkFromMessage,
+        collapsedGroups,
+        handleToggleGroup,
+        latestVisibleUserMessageId,
+        session?.thinking,
+        hasPendingPermission,
+        handleEditUserMessage,
+    ]);
 
     // In inverted FlatList, offset 0 = latest messages (visual bottom).
     // Offset increases as user scrolls up to see older messages.

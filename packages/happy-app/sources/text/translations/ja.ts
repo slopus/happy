@@ -793,6 +793,8 @@ export const ja: TranslationStructure = {
         showArchived: 'アーカイブを表示',
         hideArchived: 'アーカイブを非表示',
         newSession: '新しいセッション',
+        sortSessionsByTime: 'セッションを時間順に並べ替え',
+        groupSessionsByProject: 'セッションをプロジェクト別にグループ化',
         emptySessionsTitle: 'アクティブなセッションはありません',
         emptySessionsOnlineDescription: '接続済みのマシンのいずれかで新しいセッションを開始してください。',
         emptySessionsOfflineDescription: 'コンピューターで新しいターミナルを開き、セッションを開始してください。',
@@ -1265,6 +1267,8 @@ export const ja: TranslationStructure = {
         foldedPromptSummary: ({ lines, chars }: { lines: number; chars: number }) => `${lines}行 · ${chars}文字`,
         showPrompt: '表示',
         hidePrompt: '隠す',
+        editInput: '編集',
+        sendEdit: '送信',
     },
 
     codex: {
@@ -1659,6 +1663,8 @@ export const ja: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'GitHub Skills',
+        imageStylePhotoIllustrationDiptych: '写真とイラストの二連画',
+        imageStylePhotoIllustrationDiptychHint: '提供された写真1枚と構図を合わせたイラストを、落ち着いた3:5比率の紙ポスターにまとめます。\nランドマークの数、水平線、空間の並び、動きを保ち、画法を題材に応じて墨のにじみ、フラットなエディトリアル表現、幾何学的なスカイライン、Art Decoに調整します。',
         imageStyleMinimalZinePoster: 'ミニマル Zine ペーパーポスター',
         imageStyleMinimalZinePosterHint: 'テーマ、短い一文、物、気分、記事のアイデア、写真を3:5縦型のミニマルな紙ポスターに。\n古紙の余白、小さな破り紙／写真のアクセント、控えめなタイプライター文字、鮮やかな差し色1色、コピー／スキャン質感。',
         imageStyleSceneDistillationZine: 'シーン蒸留 Zine',

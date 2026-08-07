@@ -23,6 +23,16 @@ function standaloneToolScreenshotPath(testInfo: TestInfo): string {
     return path.join(standaloneToolEvidenceDirectory, filename);
 }
 
+const projectHoverEvidenceDirectory = process.env.HAPPY_PROJECT_HOVER_EVIDENCE_DIR;
+const projectHoverEvidencePhase = process.env.HAPPY_PROJECT_HOVER_EVIDENCE_PHASE ?? 'after';
+
+function projectHoverScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
+    const filename = `case-1-${projectHoverEvidencePhase}.png`;
+    if (!projectHoverEvidenceDirectory) return testInfo.outputPath(filename);
+    fs.mkdirSync(projectHoverEvidenceDirectory, { recursive: true });
+    return path.join(projectHoverEvidenceDirectory, filename);
+}
+
 function authenticatedRoute(pathname: string): string {
     const url = new URL(authenticatedWebUrl);
     url.pathname = pathname;
@@ -247,12 +257,57 @@ async function createE2EUserMessage(
     expect(response.ok()).toBe(true);
 }
 
+async function readE2EUserMessage(
+    request: APIRequestContext,
+    sessionId: string,
+    expectedText: string,
+): Promise<Record<string, unknown> | null> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少读取 E2E 用户消息所需的本地认证配置。');
+    }
+
+    const response = await request.get(
+        new URL(`/v3/sessions/${encodeURIComponent(sessionId)}/messages`, e2eServerUrl).toString(),
+        {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'X-Happy-Client': 'playwright-e2e',
+            },
+        },
+    );
+    expect(response.ok()).toBe(true);
+    const body = await response.json() as {
+        messages: Array<{ content: string | { t?: string; c?: string } }>;
+    };
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+
+    for (const message of body.messages) {
+        const encrypted = typeof message.content === 'string' ? message.content : message.content.c;
+        if (!encrypted) continue;
+        const record = decryptLegacy(decodeBase64(encrypted), encryptionKey) as Record<string, unknown>;
+        const content = record.content;
+        if (
+            record.role === 'user'
+            && typeof content === 'object'
+            && content !== null
+            && (content as Record<string, unknown>).text === expectedText
+        ) {
+            return record;
+        }
+    }
+    return null;
+}
+
 async function createE2ECompletedToolCall(
     request: APIRequestContext,
     sessionId: string,
     options: {
         callId: string;
         input: Record<string, unknown>;
+        isError?: boolean;
         name: string;
         output?: unknown;
     },
@@ -294,6 +349,7 @@ async function createE2ECompletedToolCall(
                             type: 'tool-result',
                             callId: options.callId,
                             id: `${options.callId}-result`,
+                            isError: options.isError ?? false,
                             output: options.output ?? { success: true },
                         }),
                         localId: `${options.callId}-result-${Date.now()}-${Math.random()}`,
@@ -419,10 +475,274 @@ async function createConnectedE2EFileSession(request: APIRequestContext): Promis
     };
 }
 
+async function createConnectedE2EAbortSession(request: APIRequestContext): Promise<{
+    abortCalls: Array<{ reason?: string } | null>;
+    client: { close: () => void };
+    sessionId: string;
+    setThinking: (thinking: boolean) => void;
+}> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少创建停止快捷键 E2E 会话所需的本地认证配置。');
+    }
+
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+    const sessionId = await createE2ESession(request, {
+        name: 'Double Escape abort regression',
+        summary: 'Confirm abort only after pressing Escape twice',
+    });
+    const abortCalls: Array<{ reason?: string } | null> = [];
+    const rpcSocket = io(e2eServerUrl, {
+        auth: {
+            token,
+            clientType: 'session-scoped',
+            sessionId,
+            happyClient: 'playwright-abort-rpc',
+        },
+        autoConnect: false,
+        path: '/v1/updates',
+        reconnection: false,
+        transports: ['websocket'],
+    });
+
+    rpcSocket.on('rpc-request', (
+        data: { method: string; params: string },
+        callback: (response: string) => void,
+    ) => {
+        const params = decryptLegacy(
+            decodeBase64(data.params),
+            encryptionKey,
+        ) as { reason?: string } | null;
+        const isAbort = data.method === `${sessionId}:abort`;
+        if (isAbort) {
+            abortCalls.push(params);
+        }
+        callback(encodeBase64(encryptLegacy(
+            isAbort ? { success: true } : { success: false, error: 'Unknown E2E RPC request' },
+            encryptionKey,
+        )));
+    });
+    let thinking = true;
+    const pulse = () => rpcSocket.emit('session-alive', {
+        sid: sessionId,
+        time: Date.now(),
+        thinking,
+    });
+
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('停止快捷键 E2E RPC 连接超时。')), 10_000);
+            const handleConnectError = (error: Error) => {
+                clearTimeout(timeout);
+                reject(error);
+            };
+            rpcSocket.once('connect_error', handleConnectError);
+            rpcSocket.once('connect', () => {
+                rpcSocket.off('connect_error', handleConnectError);
+                rpcSocket.once('rpc-registered', () => {
+                    clearTimeout(timeout);
+                    pulse();
+                    resolve();
+                });
+                rpcSocket.emit('rpc-register', { method: `${sessionId}:abort` });
+            });
+            rpcSocket.connect();
+        });
+    } catch (error) {
+        rpcSocket.close();
+        throw error;
+    }
+    const keepAlive = setInterval(pulse, 500);
+
+    return {
+        abortCalls,
+        client: {
+            close: () => {
+                clearInterval(keepAlive);
+                rpcSocket.close();
+            },
+        },
+        sessionId,
+        setThinking: (nextThinking: boolean) => {
+            thinking = nextThinking;
+            pulse();
+        },
+    };
+}
+
+async function createConnectedE2EComposerModeSession(request: APIRequestContext): Promise<{
+    client: {
+        close: () => Promise<void>;
+        goOffline: () => Promise<void>;
+        reconnect: () => Promise<void>;
+    };
+    sessionId: string;
+}> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少创建输入区模式 E2E 会话所需的本地认证配置。');
+    }
+
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+    const machineId = `composer-mode-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const headers = {
+        Authorization: `Bearer ${token}`,
+        'X-Happy-Client': 'playwright-composer-mode-e2e',
+    };
+    const machineMetadata = encodeBase64(encryptLegacy({
+        host: 'playwright-model-host',
+        platform: 'darwin',
+        happyCliVersion: '0.0.0-e2e',
+        happyHomeDir: '/tmp/.happy',
+        homeDir: '/tmp',
+        cliAvailability: {
+            ask: true,
+            claude: true,
+            codex: true,
+            gemini: true,
+            opencode: true,
+            openclaw: true,
+            detectedAt: Date.now(),
+        },
+    }, encryptionKey));
+
+    const registerMachine = async () => {
+        const response = await request.post(new URL('/v1/machines', e2eServerUrl).toString(), {
+            data: { id: machineId, metadata: machineMetadata, dataEncryptionKey: null },
+            headers,
+        });
+        expect(response.ok()).toBe(true);
+    };
+    const deleteMachine = async () => {
+        const response = await request.delete(
+            new URL(`/v1/machines/${encodeURIComponent(machineId)}`, e2eServerUrl).toString(),
+            { headers },
+        );
+        expect(response.ok() || response.status() === 404).toBe(true);
+    };
+    await registerMachine();
+    let sessionId: string;
+    try {
+        sessionId = await createE2ESession(request, {
+            path: '/workspace/composer-mode-e2e',
+            host: 'playwright-model-host',
+            name: 'Composer permission, model and effort regression',
+            summary: 'Validate UI metadata and offline continuity',
+            flavor: 'codex',
+            machineId,
+            homeDir: '/tmp',
+            currentOperatingModeCode: 'acceptEdits',
+            models: [
+                { code: 'gpt-5.5', value: 'gpt-5.5', description: 'Stable coding model' },
+                { code: 'gpt-5.6-sol', value: 'gpt-5.6-sol', description: 'Current coding model' },
+            ],
+            currentModelCode: 'gpt-5.6-sol',
+            thoughtLevels: [
+                { code: 'medium', value: 'medium', description: 'Balanced reasoning' },
+                { code: 'high', value: 'high', description: 'Deep reasoning' },
+                { code: 'xhigh', value: 'xhigh', description: 'Maximum reasoning' },
+            ],
+            currentThoughtLevelCode: 'xhigh',
+        });
+    } catch (error) {
+        await deleteMachine();
+        throw error;
+    }
+    const deactivateSession = async () => {
+        const response = await request.post(
+            new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/archive`, e2eServerUrl).toString(),
+            { headers },
+        );
+        expect(response.ok()).toBe(true);
+    };
+
+    let socket: ReturnType<typeof io> | null = null;
+    let keepAlive: ReturnType<typeof setInterval> | null = null;
+    const pulse = () => socket?.emit('session-alive', {
+        sid: sessionId,
+        time: Date.now(),
+        thinking: false,
+    });
+    const connect = async () => {
+        socket = io(e2eServerUrl, {
+            auth: {
+                token,
+                clientType: 'session-scoped',
+                sessionId,
+                happyClient: 'playwright-composer-mode-rpc',
+            },
+            autoConnect: false,
+            path: '/v1/updates',
+            reconnection: false,
+            transports: ['websocket'],
+        });
+        await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('输入区模式 E2E Agent 连接超时。')), 10_000);
+            socket!.once('connect_error', (error: Error) => {
+                clearTimeout(timeout);
+                reject(error);
+            });
+            socket!.once('connect', () => {
+                clearTimeout(timeout);
+                pulse();
+                resolve();
+            });
+            socket!.connect();
+        });
+        keepAlive = setInterval(pulse, 500);
+    };
+    const disconnect = () => {
+        if (keepAlive) clearInterval(keepAlive);
+        keepAlive = null;
+        socket?.close();
+        socket = null;
+    };
+
+    try {
+        await connect();
+    } catch (error) {
+        disconnect();
+        await deleteMachine();
+        throw error;
+    }
+    return {
+        client: {
+            close: async () => {
+                disconnect();
+                try {
+                    await deleteMachine();
+                } catch {
+                    // The request fixture may already be closed after an aborted Playwright run.
+                }
+            },
+            goOffline: async () => {
+                disconnect();
+                await deactivateSession();
+                await deleteMachine();
+            },
+            reconnect: async () => {
+                await registerMachine();
+                await connect();
+            },
+        },
+        sessionId,
+    };
+}
+
 async function createConnectedE2EWorkingDirectorySession(request: APIRequestContext): Promise<{
-    client: { close: () => Promise<void>; pulse: () => void };
+    client: {
+        close: () => Promise<void>;
+        goOffline: () => Promise<void>;
+        pulse: () => void;
+        reconnect: () => Promise<void>;
+    };
     currentPath: string;
     invalidPath: string;
+    outsidePath: string;
     recentPath: string;
     rpcCalls: Array<{
         method: string;
@@ -451,6 +771,7 @@ async function createConnectedE2EWorkingDirectorySession(request: APIRequestCont
     const currentPath = join(workspace, 'current-project');
     const recentPath = join(workspace, 'recent-project');
     const invalidPath = join(workspace, 'missing-project');
+    const outsidePath = path.dirname(workspace);
     fs.mkdirSync(currentPath, { recursive: true });
     fs.mkdirSync(recentPath, { recursive: true });
 
@@ -473,32 +794,43 @@ async function createConnectedE2EWorkingDirectorySession(request: APIRequestCont
         Authorization: `Bearer ${token}`,
         'X-Happy-Client': 'playwright-cwd-e2e',
     };
-    const machineResponse = await request.post(new URL('/v1/machines', e2eServerUrl).toString(), {
-        data: {
-            id: machineId,
-            metadata: encodeBase64(encryptLegacy({
-                host: 'playwright-cwd-agent',
-                platform: 'darwin',
-                happyCliVersion: '0.0.0-e2e',
-                happyHomeDir: join(workspace, '.happy'),
-                homeDir: workspace,
-                cliAvailability: {
-                    ask: true,
-                    claude: true,
-                    codex: true,
-                    gemini: true,
-                    opencode: true,
-                    openclaw: true,
-                    detectedAt: Date.now(),
-                },
-            }, encryptionKey)),
-            dataEncryptionKey: null,
+    const machineMetadata = encodeBase64(encryptLegacy({
+        host: 'playwright-cwd-agent',
+        platform: 'darwin',
+        happyCliVersion: '0.0.0-e2e',
+        happyHomeDir: join(workspace, '.happy'),
+        homeDir: workspace,
+        cliAvailability: {
+            ask: true,
+            claude: true,
+            codex: true,
+            gemini: true,
+            opencode: true,
+            openclaw: true,
+            detectedAt: Date.now(),
         },
-        headers,
-    });
-    if (!machineResponse.ok()) {
+    }, encryptionKey));
+    const registerMachine = async () => {
+        const response = await request.post(new URL('/v1/machines', e2eServerUrl).toString(), {
+            data: { id: machineId, metadata: machineMetadata, dataEncryptionKey: null },
+            headers,
+        });
+        if (!response.ok()) {
+            throw new Error(`创建工作目录 E2E Agent 失败：HTTP ${response.status()}`);
+        }
+    };
+    const deleteMachine = async () => {
+        const response = await request.delete(
+            new URL(`/v1/machines/${encodeURIComponent(machineId)}`, e2eServerUrl).toString(),
+            { headers },
+        );
+        expect(response.ok() || response.status() === 404).toBe(true);
+    };
+    try {
+        await registerMachine();
+    } catch (error) {
         rmSync(workspace, { force: true, recursive: true });
-        throw new Error(`创建工作目录 E2E Agent 失败：HTTP ${machineResponse.status()}`);
+        throw error;
     }
 
     await createE2ESession(request, {
@@ -521,19 +853,9 @@ async function createConnectedE2EWorkingDirectorySession(request: APIRequestCont
         codexThreadId: sourceCodexThreadId,
     });
 
-    const rpcSocket = io(e2eServerUrl, {
-        auth: {
-            token,
-            clientType: 'machine-scoped',
-            machineId,
-            happyClient: 'playwright-cwd-rpc',
-        },
-        autoConnect: false,
-        path: '/v1/updates',
-        reconnection: false,
-        transports: ['websocket'],
-    });
-    rpcSocket.on('rpc-request', (
+    let rpcSocket: ReturnType<typeof io> | null = null;
+    let keepAlive: ReturnType<typeof setInterval> | null = null;
+    const attachRpcHandler = (socket: ReturnType<typeof io>) => socket.on('rpc-request', (
         data: { method: string; params: string },
         callback: (response: string) => void,
     ) => {
@@ -608,52 +930,93 @@ async function createConnectedE2EWorkingDirectorySession(request: APIRequestCont
         });
     });
 
-    const pulse = () => rpcSocket.emit('machine-alive', { machineId, time: Date.now() });
-    try {
+    const pulse = () => rpcSocket?.emit('machine-alive', { machineId, time: Date.now() });
+    const disconnect = () => {
+        if (keepAlive) clearInterval(keepAlive);
+        keepAlive = null;
+        rpcSocket?.close();
+        rpcSocket = null;
+    };
+    const connect = async () => {
+        const socket = io(e2eServerUrl, {
+            auth: {
+                token,
+                clientType: 'machine-scoped',
+                machineId,
+                happyClient: 'playwright-cwd-rpc',
+            },
+            autoConnect: false,
+            path: '/v1/updates',
+            reconnection: false,
+            transports: ['websocket'],
+        });
+        rpcSocket = socket;
+        attachRpcHandler(socket);
         await new Promise<void>((resolve, reject) => {
             const timeout = setTimeout(() => reject(new Error('工作目录 E2E RPC 连接超时。')), 10_000);
-            const handleConnectError = (error: Error) => {
+            const pendingMethods = new Set([
+                `${machineId}:browseDirectory`,
+                `${machineId}:codex-fork-thread`,
+                `${machineId}:spawn-happy-session`,
+            ]);
+            const handleRegistered = ({ method }: { method: string }) => {
+                pendingMethods.delete(method);
+                if (pendingMethods.size > 0) return;
                 clearTimeout(timeout);
-                reject(error);
-            };
-            rpcSocket.once('connect_error', handleConnectError);
-            rpcSocket.once('connect', () => {
-                clearTimeout(timeout);
-                rpcSocket.off('connect_error', handleConnectError);
-                rpcSocket.emit('rpc-register', { method: `${machineId}:browseDirectory` });
-                rpcSocket.emit('rpc-register', { method: `${machineId}:codex-fork-thread` });
-                rpcSocket.emit('rpc-register', { method: `${machineId}:spawn-happy-session` });
+                socket.off('connect_error', handleConnectError);
+                socket.off('rpc-registered', handleRegistered);
                 pulse();
                 resolve();
+            };
+            const handleConnectError = (error: Error) => {
+                clearTimeout(timeout);
+                socket.off('rpc-registered', handleRegistered);
+                reject(error);
+            };
+            socket.once('connect_error', handleConnectError);
+            socket.on('rpc-registered', handleRegistered);
+            socket.once('connect', () => {
+                for (const method of pendingMethods) socket.emit('rpc-register', { method });
             });
-            rpcSocket.connect();
+            socket.connect();
         });
+        keepAlive = setInterval(pulse, 500);
+    };
+    try {
+        await connect();
     } catch (error) {
-        rpcSocket.close();
-        await request.delete(new URL(`/v1/machines/${machineId}`, e2eServerUrl).toString(), { headers });
+        disconnect();
+        await deleteMachine();
         rmSync(workspace, { force: true, recursive: true });
         throw error;
     }
 
-    const keepAlive = setInterval(pulse, 500);
     return {
         client: {
             pulse,
             close: async () => {
-                clearInterval(keepAlive);
-                rpcSocket.close();
+                disconnect();
                 try {
-                    await request.delete(new URL(`/v1/machines/${machineId}`, e2eServerUrl).toString(), { headers });
+                    await deleteMachine();
                 } catch {
                     // The request fixture is already closed when Playwright aborts on timeout.
                 } finally {
                     rmSync(workspace, { force: true, recursive: true });
                 }
             },
+            goOffline: async () => {
+                disconnect();
+                await deleteMachine();
+            },
+            reconnect: async () => {
+                await registerMachine();
+                await connect();
+            },
         },
         currentPath,
         forkedCodexThreadId,
         invalidPath,
+        outsidePath,
         recentPath,
         rpcCalls,
         sessionId,
@@ -753,7 +1116,7 @@ test('中文欢迎页在四档桌面视口没有孤字收尾', async ({ browser 
 });
 
 test.describe('会话行组织可见回归', () => {
-    test('NAV-13-01：桌面悬停显示诚实位置、溢出标题与完整详情', async ({ page, request }, testInfo) => {
+    test('NAV-13-01：Codex 项目行默认收敛，悬停滚动标题并在右侧显示详情', async ({ page, request }, testInfo) => {
         const title = 'Session row title that is intentionally long enough to overflow the compact navigation column';
         const sessionId = await createE2ESession(request, {
             path: '/workspace/session-row-location-details',
@@ -765,7 +1128,10 @@ test.describe('会话行组织可见回归', () => {
         await page.goto(authenticatedRoute('/new'));
         const row = page.getByTestId(`session-row-${sessionId}`);
         await expect(row).toBeVisible();
-        await expect(row.getByLabel('Location unknown/local')).toBeVisible();
+        await expect(page.getByTestId(`session-row-status-${sessionId}`)).toHaveCount(0);
+        await expect(page.getByTestId(`session-row-actions-${sessionId}`).getByRole('button')).toHaveCount(0);
+        const titleViewport = row.getByTestId('session-row-title');
+        await expect(titleViewport).toHaveAttribute('data-marquee-active', 'false');
 
         await row.hover();
         const details = page.getByTestId('session-row-details');
@@ -773,7 +1139,26 @@ test.describe('会话行组织可见回归', () => {
         await expect(details).toContainText(title);
         await expect(details).toContainText('/workspace/session-row-location-details');
         await expect(details).toContainText('Codex');
-        await expect(row.locator(`[title="${title}"]`)).toHaveCount(1);
+        await expect(titleViewport).toHaveAttribute('data-marquee-active', 'true');
+        await expect(page.getByTestId('session-row-hover-status')).toBeVisible();
+        const pinAction = page.getByTestId(`session-row-actions-${sessionId}`).getByTestId('session-row-pin-action');
+        const deleteAction = page.getByTestId(`session-row-actions-${sessionId}`).getByTestId('session-row-delete-action');
+        const archiveAction = page.getByTestId(`session-row-actions-${sessionId}`).getByTestId('session-row-archive-action');
+        await expect(pinAction).toBeVisible();
+        await expect(deleteAction).toBeVisible();
+        await expect(archiveAction).toBeVisible();
+        await expect(pinAction.getByTestId('session-row-pin-action-icon')).toHaveAttribute('data-icon-name', 'pin');
+        await expect(deleteAction.getByTestId('session-row-delete-action-icon')).toHaveAttribute('data-icon-name', 'trash');
+        await expect(archiveAction.getByTestId('session-row-archive-action-icon')).toHaveAttribute('data-icon-name', 'archive');
+        await expect(deleteAction).toHaveAccessibleName('Delete Session');
+        await deleteAction.hover();
+        await expect(page.getByTestId('session-row-delete-action-tooltip')).toContainText('Delete Session');
+        const sidebarBox = await page.getByTestId('desktop-left-sidebar').boundingBox();
+        const detailsBox = await details.boundingBox();
+        const actionsBox = await page.getByTestId(`session-row-actions-${sessionId}`).boundingBox();
+        if (!sidebarBox || !detailsBox || !actionsBox) throw new Error('找不到 Codex 侧栏、操作区或右侧详情浮层');
+        expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(sidebarBox.x + sidebarBox.width + 1);
+        expect(detailsBox.x).toBeGreaterThan(sidebarBox.x + sidebarBox.width);
         await page.screenshot({
             path: testInfo.outputPath('nav-13-01-hover-details-1280x900.png'),
             fullPage: true,
@@ -796,8 +1181,13 @@ test.describe('会话行组织可见回归', () => {
         await expect(row).toBeFocused();
         await expect(page.getByTestId('session-row-details')).toBeVisible();
 
+        await expect(page.getByTestId('session-row-details-action')).toHaveCount(0);
+        await expect(page.getByTestId('session-row-hover-status')).toBeVisible();
         const pinAction = page.getByTestId('session-row-pin-action');
         await expect(pinAction).toHaveAccessibleName('Pin Session');
+        await pinAction.hover();
+        await expect(page.getByTestId('session-row-pin-action-tooltip')).toBeVisible();
+        await expect(page.getByTestId('session-row-pin-action-tooltip')).toContainText('Pin Session');
         await pinAction.click();
         await expect.poll(() => new URL(page.url()).pathname).toBe('/new');
         await expect(pinAction).toHaveAccessibleName('Unpin Session');
@@ -832,6 +1222,7 @@ test.describe('会话行组织可见回归', () => {
         const restoreAction = page.getByTestId(`session-row-actions-${sessionId}`)
             .getByTestId('session-row-restore-action');
         await expect(restoreAction).toHaveAccessibleName('Restore Session');
+        await expect(restoreAction.getByTestId('session-row-restore-action-icon')).toHaveAttribute('data-icon-name', 'undo');
         await expect(page.getByRole('button', { name: 'Resume Session' })).toHaveCount(0);
         await page.screenshot({
             path: testInfo.outputPath('nav-13-03-archived-restore-1280x900.png'),
@@ -859,10 +1250,12 @@ test.describe('会话行组织可见回归', () => {
         const more = page.getByTestId(`session-row-actions-${sessionId}`)
             .getByTestId('session-row-more-action');
         await expect(more).toBeVisible();
+        await expect(more.getByTestId('session-row-more-action-icon')).toHaveAttribute('data-icon-name', 'kebab-horizontal');
         await more.click();
         await expect(page.getByTestId('session-actions-inline-menu')).toBeVisible();
         await expect(page.getByRole('button', { name: 'Pin Session' })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Archive Session' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Delete Session' })).toBeVisible();
         await page.screenshot({
             path: testInfo.outputPath('nav-13-04-narrow-more-799x900.png'),
             fullPage: true,
@@ -938,7 +1331,7 @@ test('Web 启动不会注册无效的 push token listener', async ({ page }) => 
     expect(unsupportedPushTokenWarnings).toEqual([]);
 });
 
-test('CWD-03-01：PC 输入区展示、验证并切换后续消息的 Agent 工作目录', async ({ page, request }, testInfo) => {
+test('[R10-02][CWD-03-01] 工作目录拒绝越界并在 Agent 离线重连后继续', async ({ page, request }, testInfo) => {
     const fixture = await createConnectedE2EWorkingDirectorySession(request);
     const draft = 'Keep this draft when continuing in the selected directory.';
 
@@ -1003,7 +1396,29 @@ test('CWD-03-01：PC 输入区展示、验证并切换后续消息的 Agent 工�
             fullPage: true,
         });
 
-        await recentDirectory.click();
+        await directoryInput.fill(fixture.outsidePath);
+        await dialog.getByTestId('session-working-directory-continue').click();
+        await expect(error).toContainText('Access denied: Path is outside this Agent home directory.');
+        await expect(sendButton).toHaveAttribute('aria-disabled', 'true');
+
+        await directoryInput.fill(fixture.recentPath);
+        await fixture.client.goOffline();
+        await expect(directoryInput).toHaveValue(fixture.recentPath);
+        await expect(input).toHaveValue(draft);
+        const browseButton = dialog.getByTestId('session-working-directory-browse');
+        const continueButton = dialog.getByTestId('session-working-directory-continue');
+        await expect(browseButton).toHaveAttribute('aria-disabled', 'true');
+        await continueButton.click();
+        await expect(error).toContainText('The Agent machine is offline. Reconnect it before changing directories.');
+        await expect(directoryInput).toHaveValue(fixture.recentPath);
+        await expect(input).toHaveValue(draft);
+        await expect(sendButton).toHaveAttribute('aria-disabled', 'true');
+
+        await fixture.client.reconnect();
+        await expect(browseButton).not.toHaveAttribute('aria-disabled', 'true');
+        await expect(directoryInput).toHaveValue(fixture.recentPath);
+        await expect(input).toHaveValue(draft);
+        await continueButton.click();
         await expect.poll(() => new URL(page.url()).pathname, { timeout: 15_000 })
             .not.toBe(`/session/${fixture.sessionId}`);
         await expect(page.getByTestId('session-message-input')).toHaveValue(draft);
@@ -1123,7 +1538,10 @@ test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ p
 
     await page.keyboard.press('Meta+KeyK');
     const commandInput = page.getByTestId('command-palette-input');
+    const palette = page.getByTestId('command-palette');
     await expect(commandInput).toBeVisible();
+    await expect.poll(async () => Number(await palette.evaluate((node) => node.parentElement?.style.opacity ?? '0')))
+        .toBeCloseTo(1, 2);
 
     const paletteColors = await page.evaluate(() => {
         const input = document.querySelector('[data-testid="command-palette-input"]');
@@ -1138,22 +1556,23 @@ test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ p
             selected: window.getComputedStyle(selected).backgroundColor,
         };
     });
-    expect(paletteColors).toEqual({
-        input: 'rgb(229, 229, 231)',
-        surface: 'rgb(19, 19, 22)',
-        selected: 'rgb(32, 32, 38)',
-    });
+    expect(paletteColors.input).toBe('rgb(229, 229, 231)');
+    expect(paletteColors.surface).toBe('rgb(19, 19, 22)');
+    expect(paletteColors.selected).toMatch(/\/ 0\.08\)$/);
 
     await commandInput.press('Escape');
     await expect(commandInput).toHaveCount(0);
 
-    await page.keyboard.press('Meta+KeyK');
+    await page.goto(authenticatedWebUrl);
+    await page.getByTestId('sidebar-command-palette-button').click();
     await expect(page.getByTestId('command-palette-input')).toBeVisible();
     await page.mouse.click(10, 10);
     await expect(page.getByTestId('command-palette-input')).toHaveCount(0);
 
-    await commandPaletteSwitch.click();
-    await expect(commandPaletteSwitch).not.toBeChecked();
+    await page.goto(new URL('/settings/features', authenticatedWebUrl).toString());
+    const reopenedCommandPaletteSwitch = page.getByRole('switch', { name: 'Command Palette' });
+    await reopenedCommandPaletteSwitch.click();
+    await expect(reopenedCommandPaletteSwitch).not.toBeChecked();
 
     await page.goto(new URL('/settings/appearance', authenticatedWebUrl).toString());
     await page.getByText('Caramel', { exact: true }).click();
@@ -1162,25 +1581,89 @@ test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ p
 test.describe('中文 Web 命令面板', () => {
     test.use({ locale: 'zh-CN' });
 
-    test('静态命令、类别和空结果均完成本地化', async ({ page }) => {
+    test('静态命令、类别和空结果均完成本地化', async ({ page }, testInfo) => {
+        await page.setViewportSize({ width: 2048, height: 982 });
         await page.goto(new URL('/settings/features', authenticatedWebUrl).toString());
 
         const commandPaletteSwitch = page.getByRole('switch', { name: '命令面板' });
         await expect(commandPaletteSwitch).toBeChecked();
-        await page.keyboard.press('Meta+KeyK');
+        await page.goto(authenticatedWebUrl);
+        await page.getByTestId('sidebar-command-palette-button').click();
 
         const commandInput = page.getByTestId('command-palette-input');
+        const palette = page.getByTestId('command-palette');
+        const selectedCommand = page.getByTestId('command-palette-item-new-session');
         await expect(commandInput).toHaveAttribute('placeholder', '输入命令或搜索...');
-        await expect(page.getByText('导航', { exact: true })).toBeVisible();
-        await expect(page.getByText('开始新会话', { exact: true })).toBeVisible();
-        await expect(page.getByText('配置应用偏好', { exact: true })).toBeVisible();
+        await expect(palette.getByText('导航', { exact: true })).toBeVisible();
+        await expect(selectedCommand.getByText('开始新会话', { exact: true })).toBeVisible();
+        await expect(palette.getByText('配置应用偏好', { exact: true })).toBeVisible();
+        await expect.poll(async () => Number(await palette.evaluate((node) => node.parentElement?.style.opacity ?? '0')))
+            .toBeCloseTo(1, 2);
+        await expect.poll(async () => (await palette.boundingBox())?.width).toBeCloseTo(720, 0);
+
+        const selectedTitle = selectedCommand.getByText('开始新会话', { exact: true });
+        const selectedSubtitle = selectedCommand.getByText('开始新的聊天会话', { exact: true });
+        const [paletteMetrics, inputMetrics, selectedMetrics, titleFontSize, subtitleFontSize] = await Promise.all([
+            palette.evaluate((node) => {
+                const style = window.getComputedStyle(node);
+                return {
+                    borderRadius: style.borderRadius,
+                    boxShadow: style.boxShadow,
+                    width: node.getBoundingClientRect().width,
+                    top: node.getBoundingClientRect().top,
+                };
+            }),
+            commandInput.evaluate((node) => {
+                const style = window.getComputedStyle(node);
+                return {
+                    fontSize: style.fontSize,
+                    lineHeight: style.lineHeight,
+                    paddingLeft: style.paddingLeft,
+                    paddingTop: style.paddingTop,
+                };
+            }),
+            selectedCommand.evaluate((node) => {
+                const style = window.getComputedStyle(node);
+                return {
+                    borderWidth: style.borderWidth,
+                    borderRadius: style.borderRadius,
+                    height: node.getBoundingClientRect().height,
+                };
+            }),
+            selectedTitle.evaluate((node) => window.getComputedStyle(node).fontSize),
+            selectedSubtitle.evaluate((node) => window.getComputedStyle(node).fontSize),
+        ] as const);
+
+        expect(paletteMetrics.borderRadius).toBe('14px');
+        expect(paletteMetrics.width).toBeCloseTo(720, 0);
+        expect(paletteMetrics.boxShadow).not.toBe('none');
+        expect(paletteMetrics.top).toBeCloseTo(176.75, 0);
+        expect(inputMetrics).toEqual({
+            fontSize: '16px',
+            lineHeight: '22px',
+            paddingLeft: '20px',
+            paddingTop: '16px',
+        });
+        expect(selectedMetrics).toMatchObject({ borderWidth: '1px', borderRadius: '10px' });
+        expect(selectedMetrics.height).toBeGreaterThanOrEqual(48);
+        expect(selectedMetrics.height).toBeLessThanOrEqual(56);
+        expect(titleFontSize).toBe('14px');
+        expect(subtitleFontSize).toBe('12px');
+
+        await page.screenshot({
+            path: testInfo.outputPath('pc-command-palette-visual-after-2048x982.png'),
+            fullPage: true,
+        });
 
         await commandInput.fill('不会匹配任何命令的关键词');
         await expect(page.getByText('未找到命令', { exact: true })).toBeVisible();
 
         await commandInput.press('Escape');
-        await commandPaletteSwitch.click();
-        await expect(commandPaletteSwitch).not.toBeChecked();
+        await expect(palette).toHaveCount(0);
+        await page.goto(new URL('/settings/features', authenticatedWebUrl).toString());
+        const cleanupSwitch = page.getByRole('switch', { name: '命令面板' });
+        await cleanupSwitch.click();
+        await expect(cleanupSwitch).not.toBeChecked();
     });
 });
 
@@ -1325,26 +1808,292 @@ test('左栏稳定导航、机器项目分组与折叠共同保持当前会话�
     await expect(betaToggle).toHaveAttribute('aria-expanded', 'true');
 });
 
-test('每轮权限、模型与推理强度在输入区、选择器和历史消息中保持一致', async ({ page, request }, testInfo) => {
-    const sessionId = await createE2ESession(request, {
-        path: '/workspace/composer-mode-e2e',
-        host: 'playwright-model-host',
-        name: 'Composer permission, model and effort visual regression',
-        summary: 'Validate per-turn permission, model and reasoning effort',
-        flavor: 'codex',
-        currentOperatingModeCode: 'acceptEdits',
-        models: [
-            { code: 'gpt-5.5', value: 'gpt-5.5', description: 'Stable coding model' },
-            { code: 'gpt-5.6-sol', value: 'gpt-5.6-sol', description: 'Current coding model' },
-        ],
-        currentModelCode: 'gpt-5.6-sol',
-        thoughtLevels: [
-            { code: 'medium', value: 'medium', description: 'Balanced reasoning' },
-            { code: 'high', value: 'high', description: 'Deep reasoning' },
-            { code: 'xhigh', value: 'xhigh', description: 'Maximum reasoning' },
-        ],
-        currentThoughtLevelCode: 'xhigh',
+test('[R10-04] 高密度导航在搜索、归档和深链刷新后保持稳定', async ({ page, request }) => {
+    test.slow();
+    const fixtureKey = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const machineIds = Array.from({ length: 3 }, (_, index) => `r10-machine-${index + 1}-${fixtureKey}`);
+    const projects = Array.from({ length: 10 }, (_, projectIndex) => ({
+        machineId: machineIds[projectIndex % machineIds.length]!,
+        path: `/workspace/r10-${fixtureKey}/project-${String(projectIndex + 1).padStart(2, '0')}`,
+        projectIndex,
+    }));
+    const sessions: Array<{
+        id: string;
+        machineId: string;
+        path: string;
+        projectIndex: number;
+        summary: string;
+    }> = [];
+    const authToken = new URL(authenticatedWebUrl).searchParams.get('dev_token');
+    if (!authToken) throw new Error('缺少高密度导航 E2E 所需的本地认证配置。');
+    const cleanupHeaders = {
+        Authorization: `Bearer ${authToken}`,
+        'X-Happy-Client': 'playwright-r10-navigation',
+    };
+
+    try {
+        for (const project of projects) {
+            const creationResults = await Promise.allSettled(
+                Array.from({ length: 5 }, async (_, sessionIndex) => {
+                    const summary = `R10 ${fixtureKey} project ${project.projectIndex + 1} session ${sessionIndex + 1}`;
+                    const id = await createE2ESession(request, {
+                        path: project.path,
+                        host: project.machineId,
+                        machineId: project.machineId,
+                        name: summary,
+                        summary,
+                    });
+                    return { ...project, id, summary };
+                }),
+            );
+            for (const result of creationResults) {
+                if (result.status === 'fulfilled') sessions.push(result.value);
+            }
+            const failure = creationResults.find(result => result.status === 'rejected');
+            if (failure?.status === 'rejected') throw failure.reason;
+        }
+
+        expect(machineIds).toHaveLength(3);
+        expect(projects).toHaveLength(10);
+        expect(sessions).toHaveLength(50);
+
+        const searchTarget = sessions[17]!;
+        const archiveTarget = sessions[28]!;
+        const deepLinkTarget = sessions[47]!;
+        const disconnectedTarget = sessions[8]!;
+        const disconnectResponse = await request.post(
+            new URL(`/v1/sessions/${encodeURIComponent(disconnectedTarget.id)}/archive`, e2eServerUrl).toString(),
+            {
+                headers: cleanupHeaders,
+            },
+        );
+        expect(disconnectResponse.ok()).toBe(true);
+
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.goto(authenticatedRoute('/new'));
+        await expect(page.getByRole('textbox')).toBeVisible();
+        const archiveToggle = page.getByTestId('session-archive-toggle');
+
+        for (const machineId of machineIds) {
+            await expect(page.getByText(machineId, { exact: true })).toBeVisible();
+        }
+        for (const project of projects) {
+            const projectKey = `${encodeURIComponent(project.machineId)}--${encodeURIComponent(project.path)}`;
+            const toggle = page.getByTestId(`sidebar-project-toggle-${projectKey}`);
+            const projectSessions = sessions.filter(session => session.projectIndex === project.projectIndex);
+            const rows = page.getByTestId(`sidebar-project-sessions-${projectKey}`);
+            expect(projectSessions).toHaveLength(5);
+            await expect(toggle).toBeVisible();
+            await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+            for (const session of projectSessions) {
+                await expect(rows.getByTestId(`session-row-${session.id}`)).toBeVisible();
+            }
+        }
+
+        const disconnectedRow = page.getByTestId(`session-row-${disconnectedTarget.id}`);
+        await expect(disconnectedRow).toHaveAccessibleName(/disconnected/i);
+        await disconnectedRow.scrollIntoViewIfNeeded();
+        await disconnectedRow.hover();
+        await expect(page.getByTestId('session-row-details')).toContainText(/disconnected/i);
+
+        await page.getByTestId('sidebar-command-palette-button').click();
+        const commandInput = page.getByTestId('command-palette-input');
+        await commandInput.fill(searchTarget.summary);
+        const searchResult = page.getByTestId(`command-palette-item-session-${searchTarget.id}`);
+        await expect(searchResult).toBeVisible();
+        await expect(searchResult).toContainText(searchTarget.path);
+        await expect(searchResult).toContainText(searchTarget.machineId);
+
+        const impossibleQuery = `r10-no-result-${fixtureKey}`;
+        await commandInput.fill(impossibleQuery);
+        await expect(page.getByText('No commands found', { exact: true })).toBeVisible();
+        await commandInput.press('Escape');
+        await expect(page.getByTestId('command-palette')).toHaveCount(0);
+
+        let archiveRow = page.getByTestId(`session-row-${archiveTarget.id}`);
+        await archiveRow.scrollIntoViewIfNeeded();
+        await archiveRow.hover();
+        await page.getByTestId(`session-row-actions-${archiveTarget.id}`)
+            .getByTestId('session-row-archive-action')
+            .click();
+        await expect(archiveToggle).toContainText(/Show archived|Hide archived/);
+        if ((await archiveToggle.textContent())?.includes('Hide archived')) {
+            await archiveToggle.click();
+        }
+        await expect(archiveToggle).toContainText('Show archived');
+        await expect(archiveRow).toHaveCount(0);
+
+        await archiveToggle.click();
+        archiveRow = page.getByTestId(`session-row-${archiveTarget.id}`);
+        await expect(archiveRow).toBeVisible();
+        await archiveRow.scrollIntoViewIfNeeded();
+        await archiveRow.hover();
+        const restoreAction = page.getByTestId(`session-row-actions-${archiveTarget.id}`)
+            .getByTestId('session-row-restore-action');
+        await expect(restoreAction).toHaveAccessibleName('Restore Session');
+        await restoreAction.click();
+
+        const restoredRow = page.getByTestId(`session-row-${archiveTarget.id}`);
+        await expect(restoredRow).toBeVisible();
+
+        const deepLinkProjectKey = `${encodeURIComponent(deepLinkTarget.machineId)}--${encodeURIComponent(deepLinkTarget.path)}`;
+        const deepLinkToggle = page.getByTestId(`sidebar-project-toggle-${deepLinkProjectKey}`);
+        await deepLinkToggle.scrollIntoViewIfNeeded();
+        await deepLinkToggle.click();
+        await expect(deepLinkToggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(page.getByTestId(`session-row-${deepLinkTarget.id}`)).toHaveCount(0);
+
+        await page.goto(authenticatedRoute(`/session/${deepLinkTarget.id}`));
+        const deepLinkRow = page.getByTestId(`session-row-${deepLinkTarget.id}`);
+        await expect(page.getByTestId('session-message-input')).toBeVisible();
+        await expect(deepLinkToggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(deepLinkRow).toBeVisible();
+        await expect(deepLinkRow).toHaveAttribute('aria-current', 'page');
+
+        await page.reload();
+        await expect(page.getByTestId('session-message-input')).toBeVisible();
+        await expect(deepLinkToggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(deepLinkRow).toBeVisible();
+        await expect(deepLinkRow).toHaveAttribute('aria-current', 'page');
+    } finally {
+        for (let index = 0; index < sessions.length; index += 5) {
+            await Promise.all(sessions.slice(index, index + 5).map(async ({ id }) => {
+                const archiveResponse = await request.post(
+                    new URL(`/v1/sessions/${encodeURIComponent(id)}/archive`, e2eServerUrl).toString(),
+                    { headers: cleanupHeaders },
+                );
+                expect(archiveResponse.ok()).toBe(true);
+                const deleteResponse = await request.delete(
+                    new URL(`/v1/sessions/${encodeURIComponent(id)}`, e2eServerUrl).toString(),
+                    { headers: cleanupHeaders },
+                );
+                expect(deleteResponse.ok()).toBe(true);
+            }));
+        }
+    }
+});
+
+test('[SESSION-LAYOUT] 左栏在项目分组与时间排序之间切换并记住选择', async ({ page, request }, testInfo) => {
+    const oldestSessionId = await createE2ESession(request, {
+        path: '/workspace/atlas',
+        host: 'studio-mac',
+        machineId: 'studio-machine',
+        homeDir: '/workspace',
+        name: 'Atlas dependency review',
     });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const middleSessionId = await createE2ESession(request, {
+        path: '/workspace/beta',
+        host: 'studio-mac',
+        machineId: 'studio-machine',
+        homeDir: '/workspace',
+        name: 'Beta integration checks',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const newestSessionId = await createE2ESession(request, {
+        path: '/workspace/atlas',
+        host: 'studio-mac',
+        machineId: 'studio-machine',
+        homeDir: '/workspace',
+        name: 'Atlas navigation polish',
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(authenticatedRoute(`/session/${newestSessionId}`));
+    expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+
+    const layoutToggle = page.getByTestId('session-list-layout-toggle');
+    const layoutIcon = page.getByTestId('session-list-layout-toggle-icon');
+    const projectScreenshot = testInfo.outputPath('session-list-project-layout-1280x900.png');
+    const timeScreenshot = testInfo.outputPath('session-list-time-layout-1280x900.png');
+
+    await expect(layoutToggle).toHaveAccessibleName('Sort sessions by time');
+    await expect(layoutIcon).toHaveAttribute('data-icon-name', 'clock');
+    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
+    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fbeta')).toBeVisible();
+    await page.screenshot({ path: projectScreenshot, fullPage: true });
+
+    await layoutToggle.hover();
+    await expect(page.getByTestId('session-list-layout-tooltip')).toHaveText('Sort sessions by time');
+    await layoutToggle.click();
+
+    await expect(layoutToggle).toHaveAccessibleName('Group sessions by project');
+    await expect(layoutIcon).toHaveAttribute('data-icon-name', 'folder');
+    await expect(page.getByTestId('session-list-layout-tooltip')).toHaveText('Group sessions by project');
+    await expect(page.getByTestId('session-time-group-0')).toBeVisible();
+    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toHaveCount(0);
+    await expect(page.getByTestId(`session-row-${newestSessionId}`)).toContainText('~/atlas · studio-machine');
+    await expect(page.getByTestId(`session-row-${middleSessionId}`)).toContainText('~/beta · studio-machine');
+
+    const recencyOrder = await Promise.all([
+        newestSessionId,
+        middleSessionId,
+        oldestSessionId,
+    ].map(async (sessionId) => (await page.getByTestId(`session-row-${sessionId}`).boundingBox())?.y ?? -1));
+    expect(recencyOrder[0]).toBeGreaterThan(0);
+    expect(recencyOrder[0]).toBeLessThan(recencyOrder[1]);
+    expect(recencyOrder[1]).toBeLessThan(recencyOrder[2]);
+    await page.screenshot({ path: timeScreenshot, fullPage: true });
+
+    await page.reload();
+    await expect(page.getByTestId('session-time-group-0')).toBeVisible();
+    await expect(layoutIcon).toHaveAttribute('data-icon-name', 'folder');
+    await layoutToggle.click();
+    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
+    await expect(layoutIcon).toHaveAttribute('data-icon-name', 'clock');
+    await page.reload();
+    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
+});
+
+test('[PROJECT-HOVER-ACTIONS] PC 项目行悬浮仅显示新建会话操作', async ({ page, request }, testInfo) => {
+    const sessionId = await createE2ESession(request, {
+        path: '/workspace/console',
+        host: 'studio-mac',
+        machineId: 'studio-machine',
+        homeDir: '/workspace',
+        name: 'Console hover actions',
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(authenticatedRoute(`/session/${sessionId}`));
+    expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+
+    const project = page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole');
+    const projectActions = page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-actions');
+    await expect(project).toBeVisible();
+    await project.hover();
+
+    if (projectHoverEvidencePhase === 'before') {
+        await expect(projectActions).toBeVisible();
+        await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-more-action'))
+            .toBeVisible();
+    } else {
+        await expect(projectActions).toBeVisible();
+        await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-more-action'))
+            .toHaveCount(0);
+        await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-new-session-action'))
+            .toHaveAccessibleName('New session');
+        await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-new-session-action').locator('[data-icon-name="edit-3"]'))
+            .toHaveCount(1);
+    }
+    await page.screenshot({ path: projectHoverScreenshotPath(testInfo), fullPage: true });
+
+    if (projectHoverEvidencePhase !== 'before') {
+        await project.click({ button: 'right' });
+        await expect(page.getByText('Pin Session', { exact: true })).toBeVisible();
+        await page.mouse.click(1000, 850);
+        await expect(page.getByText('Pin Session', { exact: true })).toHaveCount(0);
+
+        await project.hover();
+        await page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fconsole-new-session-action').click();
+        await expect(page).toHaveURL((url) => url.pathname === '/new');
+        await expect(page.locator('[data-testid="new-session-message-input"]:visible')).toBeVisible();
+    }
+});
+
+test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重连后保持一致', async ({ page, request }, testInfo) => {
+    const fixture = await createConnectedE2EComposerModeSession(request);
+    const sessionId = fixture.sessionId;
     const historicalMessage = 'Historical turn used the previous runtime configuration.';
     await createE2EUserMessage(request, sessionId, {
         text: historicalMessage,
@@ -1353,134 +2102,191 @@ test('每轮权限、模型与推理强度在输入区、选择器和历史消�
         permission: 'acceptEdits',
     });
 
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(authenticatedRoute(`/session/${sessionId}`));
-    expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
-    await expect(page.getByTestId('session-message-input')).toBeVisible();
-    await expect(page.locator('[data-testid="message-composer-send-button"]:visible')).toHaveCount(1);
-    await expect(page.getByTestId('session-composer-mode-selector')).toHaveCount(0);
-    await expect(page.getByTestId('session-composer-permission-selector')).toHaveCount(0);
-    await page.screenshot({
-        path: testInfo.outputPath('mobile-composer-mode-001-after-390x844.png'),
-        fullPage: true,
-    });
+    try {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.goto(authenticatedRoute(`/session/${sessionId}`));
+        expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+        await expect(page.getByTestId('session-message-input')).toBeVisible();
+        await expect(page.locator('[data-testid="message-composer-send-button"]:visible')).toHaveCount(1);
+        await expect(page.getByTestId('session-composer-mode-selector')).toHaveCount(0);
+        await expect(page.getByTestId('session-composer-permission-selector')).toHaveCount(0);
+        await page.screenshot({
+            path: testInfo.outputPath('mobile-composer-mode-001-after-390x844.png'),
+            fullPage: true,
+        });
 
-    await page.setViewportSize({ width: 1280, height: 900 });
+        await page.setViewportSize({ width: 1280, height: 900 });
 
-    const selector = page.locator('[data-testid="session-composer-mode-selector"]:visible');
-    const permissionSelector = page.locator('[data-testid="session-composer-permission-selector"]:visible');
-    const permissionTrigger = permissionSelector.getByTestId('session-composer-permission-trigger');
-    const modelTrigger = selector.getByTestId('session-composer-model-trigger');
-    const effortTrigger = selector.getByTestId('session-composer-effort-trigger');
-    await expect(permissionSelector).toBeVisible();
-    await expect(permissionTrigger).toContainText('Ask first');
-    await expect(permissionTrigger).toHaveAttribute('aria-label', 'Permissions: Needs confirmation');
-    await expect(permissionTrigger).toHaveAttribute('aria-expanded', 'false');
-    await expect(selector).toBeVisible();
-    await expect(modelTrigger).toContainText('gpt-5.6-sol');
-    await expect(modelTrigger).toHaveAttribute('aria-label', 'MODEL: gpt-5.6-sol');
-    await expect(effortTrigger).toContainText('xhigh');
-    await expect(effortTrigger).toHaveAttribute('aria-label', 'EFFORT: xhigh');
+        const selector = page.locator('[data-testid="session-composer-mode-selector"]:visible');
+        const permissionSelector = page.locator('[data-testid="session-composer-permission-selector"]:visible');
+        const permissionTrigger = permissionSelector.getByTestId('session-composer-permission-trigger');
+        const modelTrigger = selector.getByTestId('session-composer-model-trigger');
+        const effortTrigger = selector.getByTestId('session-composer-effort-trigger');
+        await expect(permissionSelector).toBeVisible();
+        await expect(permissionTrigger).toContainText('Ask first');
+        await expect(permissionTrigger).toHaveAttribute('aria-label', 'Permissions: Needs confirmation');
+        await expect(permissionTrigger).toHaveAttribute('aria-expanded', 'false');
+        await expect(selector).toBeVisible();
+        await expect(modelTrigger).toContainText('gpt-5.6-sol');
+        await expect(modelTrigger).toHaveAttribute('aria-label', 'MODEL: gpt-5.6-sol');
+        await expect(effortTrigger).toContainText('xhigh');
+        await expect(effortTrigger).toHaveAttribute('aria-label', 'EFFORT: xhigh');
 
-    await expect(page.getByText(historicalMessage, { exact: true })).toBeVisible();
-    const historicalModeLabel = page.getByTestId(/^message-user-mode-/).filter({
-        hasText: 'Needs confirmation · gpt-5.5 · medium',
-    });
-    await expect(historicalModeLabel).toHaveCount(1);
-    await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
-    await page.screenshot({
-        path: testInfo.outputPath('pc-composer-mode-001-after-1280x900.png'),
-        fullPage: true,
-    });
+        await expect(page.getByText(historicalMessage, { exact: true })).toBeVisible();
+        const historicalModeLabel = page.getByTestId(/^message-user-mode-/).filter({
+            hasText: 'Needs confirmation · gpt-5.5 · medium',
+        });
+        await expect(historicalModeLabel).toHaveCount(1);
+        await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-mode-001-after-1280x900.png'),
+            fullPage: true,
+        });
 
-    await permissionTrigger.click();
-    const permissionPicker = page.getByTestId('session-composer-permission-picker');
-    const confirmPermission = page.getByTestId('session-composer-permission-option-confirm');
-    const fullAccessPermission = page.getByTestId('session-composer-permission-option-full-access');
-    await expect(permissionPicker).toBeVisible();
-    await expect(permissionTrigger).toHaveAttribute('aria-expanded', 'true');
-    await expect(confirmPermission).toBeChecked();
-    await expect(fullAccessPermission).not.toBeChecked();
-    await expect(permissionPicker.getByText(
-        'Uses the agent confirmation flow for actions that need extra permission. Device and outer sandbox limits still apply.',
-        { exact: true },
-    )).toBeVisible();
-    await expect(permissionPicker.getByText(
-        'Bypasses agent confirmations where supported. Device and outer sandbox limits still apply.',
-        { exact: true },
-    )).toBeVisible();
-    await page.waitForTimeout(350); // Let the picker fade-in finish before visual evidence capture.
-    await page.screenshot({
-        path: testInfo.outputPath('pc-composer-permission-001-after-1280x900.png'),
-        fullPage: true,
-    });
+        await permissionTrigger.click();
+        const permissionPicker = page.getByTestId('session-composer-permission-picker');
+        const confirmPermission = page.getByTestId('session-composer-permission-option-confirm');
+        const fullAccessPermission = page.getByTestId('session-composer-permission-option-full-access');
+        await expect(permissionPicker).toBeVisible();
+        await expect(permissionTrigger).toHaveAttribute('aria-expanded', 'true');
+        await expect(confirmPermission).toBeChecked();
+        await expect(fullAccessPermission).not.toBeChecked();
+        await expect(permissionPicker.getByText(
+            'Uses the agent confirmation flow for actions that need extra permission. Device and outer sandbox limits still apply.',
+            { exact: true },
+        )).toBeVisible();
+        await expect(permissionPicker.getByText(
+            'Bypasses agent confirmations where supported. Device and outer sandbox limits still apply.',
+            { exact: true },
+        )).toBeVisible();
+        await page.waitForTimeout(350); // Let the picker fade-in finish before visual evidence capture.
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-permission-001-after-1280x900.png'),
+            fullPage: true,
+        });
 
-    await fullAccessPermission.click();
-    await expect(page.getByText('Enable full access?', { exact: true })).toBeVisible();
-    await expect(page.getByText(
-        'Full access bypasses agent confirmations where supported, including for potentially high-risk actions. It does not override device or outer sandbox limits. Only continue if you trust this task.',
-        { exact: true },
-    )).toBeVisible();
-    await page.waitForTimeout(350); // Let the risk modal fade-in finish before visual evidence capture.
-    await page.screenshot({
-        path: testInfo.outputPath('pc-composer-permission-002-after-1280x900.png'),
-        fullPage: true,
-    });
-    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await expect(page.getByText('Enable full access?', { exact: true })).toHaveCount(0);
-    await expect(permissionTrigger).toContainText('Ask first');
-    await expect(permissionTrigger).toBeFocused();
+        await fullAccessPermission.click();
+        await expect(page.getByText('Enable full access?', { exact: true })).toBeVisible();
+        await expect(page.getByText(
+            'Full access bypasses agent confirmations where supported, including for potentially high-risk actions. It does not override device or outer sandbox limits. Only continue if you trust this task.',
+            { exact: true },
+        )).toBeVisible();
+        await page.waitForTimeout(350); // Let the risk modal fade-in finish before visual evidence capture.
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-permission-002-after-1280x900.png'),
+            fullPage: true,
+        });
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(page.getByText('Enable full access?', { exact: true })).toHaveCount(0);
+        await expect(permissionTrigger).toContainText('Ask first');
+        await expect(permissionTrigger).toBeFocused();
 
-    await permissionTrigger.click();
-    await page.getByTestId('session-composer-permission-option-full-access').click();
-    await expect(page.getByText('Enable full access?', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Enable full access', exact: true }).click();
-    await expect(permissionTrigger).toContainText('Full');
-    await expect(permissionTrigger).toHaveAttribute('aria-label', 'Permissions: Full access');
-    await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
-    await page.screenshot({
-        path: testInfo.outputPath('pc-composer-permission-003-after-1280x900.png'),
-        fullPage: true,
-    });
+        await permissionTrigger.click();
+        await page.getByTestId('session-composer-permission-option-full-access').click();
+        await expect(page.getByText('Enable full access?', { exact: true })).toBeVisible();
+        await page.getByRole('button', { name: 'Enable full access', exact: true }).click();
+        await expect(permissionTrigger).toContainText('Full');
+        await expect(permissionTrigger).toHaveAttribute('aria-label', 'Permissions: Full access');
+        await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-permission-003-after-1280x900.png'),
+            fullPage: true,
+        });
 
-    await permissionTrigger.click();
-    await page.getByTestId('session-composer-permission-option-confirm').click();
-    await expect(permissionTrigger).toContainText('Ask first');
-    await permissionTrigger.click();
-    await page.getByTestId('session-composer-permission-option-full-access').click();
-    await expect(page.getByText('Enable full access?', { exact: true })).toHaveCount(0);
-    await expect(permissionTrigger).toContainText('Full');
-    await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
-    await page.screenshot({
-        path: testInfo.outputPath('pc-composer-permission-004-after-1280x900.png'),
-        fullPage: true,
-    });
+        await permissionTrigger.click();
+        await page.getByTestId('session-composer-permission-option-confirm').click();
+        await expect(permissionTrigger).toContainText('Ask first');
+        await permissionTrigger.click();
+        await page.getByTestId('session-composer-permission-option-full-access').click();
+        await expect(page.getByText('Enable full access?', { exact: true })).toHaveCount(0);
+        await expect(permissionTrigger).toContainText('Full');
+        await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-permission-004-after-1280x900.png'),
+            fullPage: true,
+        });
 
-    await modelTrigger.click();
-    const modelPicker = page.getByTestId('session-composer-model-picker');
-    await expect(modelPicker).toBeVisible();
-    await expect(modelTrigger).toHaveAttribute('aria-expanded', 'true');
-    await expect(modelPicker.getByRole('radio', { name: 'default model' })).toBeVisible();
-    await expect(modelPicker.getByRole('radio', { name: /^gpt-5\.5,/ })).toBeVisible();
-    await expect(modelPicker.getByRole('radio', { name: /^gpt-5\.6-sol,/ })).toBeChecked();
-    await page.waitForTimeout(350); // Let the picker fade-in finish before visual evidence capture.
-    await page.screenshot({
-        path: testInfo.outputPath('pc-composer-mode-002-after-1280x900.png'),
-        fullPage: true,
-    });
+        await modelTrigger.click();
+        const modelPicker = page.getByTestId('session-composer-model-picker');
+        await expect(modelPicker).toBeVisible();
+        await expect(modelTrigger).toHaveAttribute('aria-expanded', 'true');
+        await expect(modelPicker.getByRole('radio', { name: 'default model' })).toBeVisible();
+        await expect(modelPicker.getByRole('radio', { name: /^gpt-5\.5,/ })).toBeVisible();
+        await expect(modelPicker.getByRole('radio', { name: /^gpt-5\.6-sol,/ })).toBeChecked();
+        await page.waitForTimeout(350); // Let the picker fade-in finish before visual evidence capture.
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-mode-002-after-1280x900.png'),
+            fullPage: true,
+        });
 
-    await page.getByTestId('session-composer-mode-picker-scrim').click({ position: { x: 8, y: 8 } });
-    await expect(modelPicker).toHaveCount(0);
-    await expect(modelTrigger).toHaveAttribute('aria-expanded', 'false');
+        await page.getByTestId('session-composer-mode-picker-scrim').click({ position: { x: 8, y: 8 } });
+        await expect(modelPicker).toHaveCount(0);
+        await expect(modelTrigger).toHaveAttribute('aria-expanded', 'false');
 
-    await effortTrigger.click();
-    const effortPicker = page.getByTestId('session-composer-effort-picker');
-    await expect(effortPicker).toBeVisible();
-    await expect(effortTrigger).toHaveAttribute('aria-expanded', 'true');
-    await expect(effortPicker.getByRole('radio', { name: 'default effort' })).toBeVisible();
-    await expect(effortPicker.getByRole('radio', { name: /^medium,/ })).toBeVisible();
-    await expect(effortPicker.getByRole('radio', { name: /^high,/ })).toBeVisible();
-    await expect(effortPicker.getByRole('radio', { name: /^xhigh,/ })).toBeChecked();
+        await effortTrigger.click();
+        const effortPicker = page.getByTestId('session-composer-effort-picker');
+        await expect(effortPicker).toBeVisible();
+        await expect(effortTrigger).toHaveAttribute('aria-expanded', 'true');
+        await expect(effortPicker.getByRole('radio', { name: 'default effort' })).toBeVisible();
+        await expect(effortPicker.getByRole('radio', { name: /^medium,/ })).toBeVisible();
+        await expect(effortPicker.getByRole('radio', { name: /^high,/ })).toBeVisible();
+        await expect(effortPicker.getByRole('radio', { name: /^xhigh,/ })).toBeChecked();
+
+        await effortPicker.getByRole('radio', { name: /^high,/ }).click();
+        await expect(effortTrigger).toContainText('high');
+        await modelTrigger.click();
+        await page.getByTestId('session-composer-model-picker')
+            .getByRole('radio', { name: /^gpt-5\.5,/ })
+            .click();
+        await expect(modelTrigger).toContainText('gpt-5.5');
+        await expect(permissionTrigger).toContainText('Full');
+
+        const sentMessage = `UI metadata regression ${Date.now()}`;
+        const input = page.getByTestId('session-message-input');
+        await input.fill(sentMessage);
+        await page.locator('[data-testid="message-composer-send-button"]:visible').click();
+        await expect(page.getByText(sentMessage, { exact: true })).toBeVisible();
+        await expect.poll(async () => {
+            const record = await readE2EUserMessage(request, sessionId, sentMessage);
+            const meta = record?.meta as Record<string, unknown> | undefined;
+            return JSON.stringify({
+                sentFrom: meta?.sentFrom,
+                permissionMode: meta?.permissionMode,
+                permissionModeExplicit: meta?.permissionModeExplicit,
+                model: meta?.model,
+                effort: meta?.effort,
+            });
+        }, { timeout: 10_000 }).toBe(JSON.stringify({
+            sentFrom: 'web',
+            permissionMode: 'yolo',
+            permissionModeExplicit: true,
+            model: 'gpt-5.5',
+            effort: 'high',
+        }));
+
+        await fixture.client.goOffline();
+        await expect(permissionTrigger).toHaveAttribute('aria-disabled', 'true');
+        await expect(modelTrigger).toHaveAttribute('aria-disabled', 'true');
+        await expect(effortTrigger).toHaveAttribute('aria-disabled', 'true');
+        await expect(page.getByTestId('session-composer-permission-disabled-reason')).toHaveText('Machine is offline');
+        await expect(page.getByTestId('session-composer-disabled-reason')).toHaveText('Machine is offline');
+        await expect(permissionTrigger).toContainText('Full');
+        await expect(modelTrigger).toContainText('gpt-5.5');
+        await expect(effortTrigger).toContainText('high');
+
+        await fixture.client.reconnect();
+        await expect(permissionTrigger).not.toHaveAttribute('aria-disabled', 'true');
+        await expect(modelTrigger).not.toHaveAttribute('aria-disabled', 'true');
+        await expect(effortTrigger).not.toHaveAttribute('aria-disabled', 'true');
+        await expect(page.getByTestId('session-composer-permission-disabled-reason')).toHaveCount(0);
+        await expect(page.getByTestId('session-composer-disabled-reason')).toHaveCount(0);
+        await expect(permissionTrigger).toContainText('Full');
+        await expect(modelTrigger).toContainText('gpt-5.5');
+        await expect(effortTrigger).toContainText('high');
+        await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
+    } finally {
+        await fixture.client.close();
+    }
 });
 
 test('Web 账户页不会让用户触发不支持的推送重新注册', async ({ page }) => {
@@ -1753,6 +2559,128 @@ test('超宽桌面左右侧栏保持各自最大宽度', async ({ page }) => {
     });
 });
 
+test('PC 端连续按两次 Esc 才发送停止指令', async ({ page, request }, testInfo) => {
+    const fixture = await createConnectedE2EAbortSession(request);
+
+    try {
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
+
+        const input = page.getByTestId('session-message-input');
+        await expect(input).toBeVisible();
+        await expect(page.locator('[data-testid="message-composer-abort-button"]:visible')).toBeVisible();
+        await page.screenshot({
+            path: testInfo.outputPath('pc-double-escape-before.png'),
+            fullPage: true,
+        });
+
+        await input.press('Escape');
+        const armedAbortButton = page.locator('[data-testid="message-composer-abort-button"]:visible');
+        await expect(armedAbortButton).toHaveText('Esc');
+        expect(fixture.abortCalls).toHaveLength(0);
+        await page.screenshot({
+            path: testInfo.outputPath('pc-double-escape-after-first-escape.png'),
+            fullPage: true,
+        });
+
+        await input.press('Escape');
+        await expect.poll(() => fixture.abortCalls.length).toBe(1);
+        const readyAbortButton = page.locator('[data-testid="message-composer-abort-button"]:visible');
+        await expect(readyAbortButton).toBeVisible();
+        await expect(readyAbortButton).toBeEnabled();
+
+        // A running task can still be stopped with the shortcut while a
+        // supplemental message has temporarily changed the primary action to send.
+        await input.fill('Additional context while the task is running');
+        await expect(page.locator('[data-testid="message-composer-send-button"]:visible')).toBeVisible();
+        await input.press('Escape');
+        await expect(page.locator('[data-testid="message-composer-abort-button"]:visible')).toHaveText('Esc');
+        expect(fixture.abortCalls).toHaveLength(1);
+        await input.press('Escape');
+        await expect.poll(() => fixture.abortCalls.length).toBe(2);
+    } finally {
+        fixture.client.close();
+    }
+});
+
+test('PC 暂停后可复制并原位编辑最后一条输入', async ({ context, page, request }, testInfo) => {
+    const fixture = await createConnectedE2EAbortSession(request);
+    const originalMessage = 'Please verify the paused task using the original instructions.';
+    const editedMessage = 'Please verify the paused task and include the browser evidence.';
+
+    try {
+        fixture.setThinking(false);
+        await createE2EUserMessage(request, fixture.sessionId, {
+            text: originalMessage,
+            model: 'gpt-5.6-sol',
+            effort: 'xhigh',
+            permission: 'default',
+        });
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+            origin: new URL(authenticatedWebUrl).origin,
+        });
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
+
+        const originalText = page.getByText(originalMessage, { exact: true });
+        await expect(originalText).toBeVisible();
+        const originalContainer = page.locator('[data-testid^="message-user-"]').filter({ has: originalText }).first();
+        const copyButton = originalContainer.getByRole('button', { name: 'Copy' });
+        const editButton = originalContainer.getByRole('button', { name: 'Edit' });
+        await expect(copyButton).toBeVisible();
+        await expect(editButton).toBeVisible();
+        await page.screenshot({
+            path: testInfo.outputPath('pc-paused-message-actions-after.png'),
+            fullPage: true,
+        });
+        await pauseForRecordedReview(page, 900);
+
+        await copyButton.click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(originalMessage);
+        const copiedButton = originalContainer.getByRole('button', { name: 'Copied' });
+        const copiedFeedback = originalContainer.getByTestId(/^message-user-copy-feedback-/);
+        await expect(copiedButton).toBeVisible();
+        await expect(copiedFeedback).toHaveText('Copied');
+        await page.screenshot({
+            path: testInfo.outputPath('pc-paused-message-copy-feedback-after.png'),
+            fullPage: true,
+        });
+        await pauseForRecordedReview(page, 1100);
+        await expect(originalContainer.getByRole('button', { name: 'Copy' })).toBeVisible({ timeout: 3_000 });
+
+        await editButton.click();
+        const editor = page.getByRole('textbox', { name: 'Edit' });
+        await expect(editor).toHaveValue(originalMessage);
+        await pauseForRecordedReview(page, 900);
+        await editor.fill('Temporary edit that should be cancelled.');
+        await pauseForRecordedReview(page, 900);
+        await page.getByRole('button', { name: 'Cancel' }).click();
+        await expect(originalText).toBeVisible();
+        await expect(editor).toHaveCount(0);
+        await pauseForRecordedReview(page, 900);
+
+        await originalContainer.getByRole('button', { name: 'Edit' }).click();
+        const reopenedEditor = page.getByRole('textbox', { name: 'Edit' });
+        await reopenedEditor.fill(editedMessage);
+        await page.screenshot({
+            path: testInfo.outputPath('pc-paused-message-editor-after.png'),
+            fullPage: true,
+        });
+        await pauseForRecordedReview(page, 900);
+        await page.getByRole('button', { name: 'Send' }).click();
+
+        await expect(page.getByText(editedMessage, { exact: true })).toBeVisible();
+        await expect(page.getByText(originalMessage, { exact: true })).toHaveCount(0);
+        await pauseForRecordedReview(page, 1200);
+        await page.reload();
+        await expect(page.getByText(editedMessage, { exact: true })).toBeVisible();
+        await expect(page.getByText(originalMessage, { exact: true })).toHaveCount(0);
+        await pauseForRecordedReview(page, 900);
+    } finally {
+        fixture.client.close();
+    }
+});
+
 test('活跃会话页面复用左右拖拽与折叠约束', async ({ page, request }) => {
     const sessionId = await createE2ESession(request);
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -1837,7 +2765,7 @@ test('PC 从右侧文件列表打开详情后标题与正文保持正确对齐',
     }
 });
 
-test('[TASK-CONTEXT] Capability Hub 投影当前会话的 Outputs 与 Sources 并实时持久更新', async ({ page, request }, testInfo) => {
+test('[R10-03][TASK-CONTEXT] Capability Hub 仅投影成功资源并跨会话刷新隔离', async ({ page, request }, testInfo) => {
     const sessionId = await createE2ESession(request, { name: 'Task context active session' });
     const otherSessionId = await createE2ESession(request, { name: 'Task context isolated session' });
     const filePath = '/tmp/task-context-panel.md';
@@ -1853,8 +2781,27 @@ test('[TASK-CONTEXT] Capability Hub 投影当前会话的 Outputs 与 Sources �
         input: { url: 'https://other.example/context' },
         name: 'WebFetch',
     });
+    await createE2ECompletedToolCall(request, sessionId, {
+        callId: 'failed-write',
+        input: { file_path: '/tmp/task-context-failed.md', content: 'must stay excluded' },
+        isError: true,
+        name: 'Write',
+        output: 'R10 write failed',
+    });
+    await createE2ECompletedToolCall(request, sessionId, {
+        callId: 'failed-fetch',
+        input: { url: 'https://failed.example.com/excluded' },
+        isError: true,
+        name: 'WebFetch',
+        output: 'R10 fetch failed',
+    });
 
     await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(authenticatedRoute(`/session/${sessionId}`));
+    await expect(page.getByText('R10 write failed', { exact: true })).toBeVisible();
+    await page.getByText('failed.example.com', { exact: true }).click();
+    await expect(page.getByText('Error', { exact: true })).toBeVisible();
+    await expect(page.getByText('R10 fetch failed', { exact: true })).toBeVisible();
     await page.goto(authenticatedRoute(`/session/${sessionId}`));
     if (!await page.locator('[data-testid="desktop-right-panel"]:visible').isVisible()) {
         await page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible').click();
@@ -1866,6 +2813,8 @@ test('[TASK-CONTEXT] Capability Hub 投影当前会话的 Outputs 与 Sources �
     await expect(outputsBlock).toBeVisible();
     await expect(outputsBlock).toContainText('Files, previews, and other task results will appear here.');
     await expect(sourcesBlock).toContainText('Web links and attachments used in this task will appear here.');
+    await expect(outputsBlock).not.toContainText('task-context-failed.md');
+    await expect(sourcesBlock).not.toContainText('failed.example.com');
     await page.screenshot({
         path: testInfo.outputPath('task-context-empty-before-1280x720.png'),
         fullPage: true,
@@ -2011,7 +2960,7 @@ test('桌面图片效果使用有边界的居中弹窗且支持 Escape 关闭', 
 
     await page.getByRole('button', { name: /GitHub Skills/ }).click();
     const githubSkillCovers = dialog.locator('img');
-    await expect(githubSkillCovers).toHaveCount(5);
+    await expect(githubSkillCovers).toHaveCount(6);
     await expect.poll(async () => githubSkillCovers.evaluateAll((images) => images.every((image) => {
         const element = image as HTMLImageElement;
         return element.complete && element.naturalWidth > 0 && element.naturalHeight > 0;
@@ -2052,8 +3001,21 @@ test('桌面图片效果使用有边界的居中弹窗且支持 Escape 关闭', 
     await expect(dialog).toHaveCount(0);
 });
 
-test('手机首页保留菜单按钮并能打开抽屉', async ({ page }) => {
-    await page.setViewportSize({ width: 799, height: 900 });
+test('手机首页抽屉、Agent 卡片与账户菜单保持全宽对齐', async ({ page, request }, testInfo) => {
+    const sessionId = await createE2ESession(request, {
+        path: '/workspace/mobile-layout',
+        host: 'mobile-e2e',
+        machineId: 'mobile-e2e-machine',
+        name: 'Mobile sidebar layout review',
+    });
+    await createE2ESession(request, {
+        path: '/workspace/mobile-layout',
+        host: 'mobile-e2e',
+        machineId: 'mobile-e2e-machine',
+        name: 'Mobile account menu spacing',
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(authenticatedWebUrl);
     await expect(page.getByRole('textbox')).toBeVisible();
 
@@ -2066,6 +3028,59 @@ test('手机首页保留菜单按钮并能打开抽屉', async ({ page }) => {
 
     await phoneDrawerButton.click();
     await expect.poll(async () => (await accountFooter.boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
+
+    const newSession = page.getByTestId('sidebar-new-session-button');
+    const myAgents = page.getByTestId('sidebar-my-agents-button');
+    const accountTrigger = page.getByTestId('sidebar-account-trigger');
+    const firstSession = page.getByTestId(`session-row-${sessionId}`);
+    await expect(newSession).toBeVisible();
+    await expect(myAgents).toBeVisible();
+    await expect(accountTrigger).toBeVisible();
+    await expect(firstSession).toBeVisible();
+
+    const newSessionBox = await newSession.boundingBox();
+    const myAgentsBox = await myAgents.boundingBox();
+    const accountTriggerBox = await accountTrigger.boundingBox();
+    const firstSessionBox = await firstSession.boundingBox();
+    expect(newSessionBox).not.toBeNull();
+    expect(myAgentsBox).not.toBeNull();
+    expect(accountTriggerBox).not.toBeNull();
+    expect(firstSessionBox).not.toBeNull();
+    expect(Math.abs(myAgentsBox!.x - newSessionBox!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(myAgentsBox!.width - newSessionBox!.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(accountTriggerBox!.x - newSessionBox!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(accountTriggerBox!.width - newSessionBox!.width)).toBeLessThanOrEqual(1);
+    expect(firstSessionBox!.y).toBeGreaterThanOrEqual(myAgentsBox!.y + myAgentsBox!.height);
+    await pauseForRecordedReview(page, 900);
+
+    await page.screenshot({
+        path: testInfo.outputPath('mobile-sidebar-open-390x844.png'),
+        fullPage: true,
+    });
+
+    await accountTrigger.click();
+    const accountMenu = page.getByTestId('sidebar-account-menu');
+    await expect(accountMenu).toBeVisible();
+    await expect(newSession).toBeInViewport();
+    await expect(accountTrigger).toBeInViewport();
+    const accountMenuBox = await accountMenu.boundingBox();
+    const expandedTriggerBox = await accountTrigger.boundingBox();
+    const expandedNewSessionBox = await newSession.boundingBox();
+    expect(accountMenuBox).not.toBeNull();
+    expect(expandedTriggerBox).not.toBeNull();
+    expect(expandedNewSessionBox).not.toBeNull();
+    expect(Math.abs(accountMenuBox!.x - expandedTriggerBox!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(accountMenuBox!.width - expandedTriggerBox!.width)).toBeLessThanOrEqual(1);
+    expect(accountMenuBox!.y).toBeGreaterThanOrEqual(0);
+    expect(accountMenuBox!.y + accountMenuBox!.height).toBeLessThanOrEqual(expandedTriggerBox!.y);
+    expect(expandedNewSessionBox!.y).toBeGreaterThanOrEqual(0);
+    expect(expandedTriggerBox!.y + expandedTriggerBox!.height).toBeLessThanOrEqual(844);
+    await pauseForRecordedReview(page, 1100);
+
+    await page.screenshot({
+        path: testInfo.outputPath('mobile-account-menu-open-390x844.png'),
+        fullPage: true,
+    });
 });
 
 test('侧栏底部账户菜单统一提供身份与系统操作并恢复焦点', async ({ page }, testInfo) => {
@@ -2111,6 +3126,59 @@ test('侧栏底部账户菜单统一提供身份与系统操作并恢复焦点',
     await expect(page.getByTestId('sidebar-account-menu')).toBeVisible();
 });
 
+test('[R10-06] Logout 取消在桌面和手机保持认证并恢复账户入口交互', async ({ page }) => {
+    const scenarios = [
+        { name: 'desktop', viewport: { width: 1280, height: 900 }, opensDrawer: false },
+        { name: 'phone', viewport: { width: 390, height: 844 }, opensDrawer: true },
+    ] as const;
+
+    for (const scenario of scenarios) {
+        await test.step(scenario.name, async () => {
+            await page.setViewportSize(scenario.viewport);
+            await page.goto(authenticatedWebUrl);
+            await expect(page.getByRole('textbox')).toBeVisible();
+
+            if (scenario.opensDrawer) {
+                await page.getByTestId('compose-home-drawer-button').click();
+            }
+
+            const trigger = page.getByTestId('sidebar-account-trigger');
+            const menu = page.getByTestId('sidebar-account-menu');
+            await expect(trigger).toBeVisible();
+            await trigger.click();
+            await expect(menu).toBeVisible();
+
+            await page.getByTestId('sidebar-account-logout-action').click();
+            const dialog = page.getByRole('dialog', { name: 'Logout', exact: true });
+            await expect(dialog).toBeVisible();
+            await expect(menu).toHaveCount(0);
+            await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+            await expect(dialog).toHaveCount(0);
+            await expect(menu).toHaveCount(0);
+            await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+            await trigger.click();
+            await expect(menu).toBeVisible();
+            await expect(page.getByTestId('sidebar-account-profile-action')).toBeFocused();
+            await page.keyboard.press('Escape');
+            await expect(menu).toHaveCount(0);
+            await expect(trigger).toBeFocused();
+
+            if (scenario.opensDrawer) {
+                await page.getByTestId('compose-home-drawer-button').click();
+                await expect(trigger).toBeVisible();
+            }
+
+            await trigger.click();
+            await expect(menu).toBeVisible();
+            await page.getByTestId('sidebar-account-details-action').click();
+            await expect.poll(() => new URL(page.url()).pathname).toBe('/settings/account');
+            await expect(page.getByText('Logout', { exact: true })).toBeVisible();
+        });
+    }
+});
+
 test('生产截图脱敏锚点随底部账户入口更新', async ({ page }) => {
     await installProductionRedaction(page);
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -2140,12 +3208,10 @@ for (const width of [800, 1280]) {
         await expect(page.getByTestId('compose-home-back-button')).toHaveCount(0);
         const navigationControls = page.getByTestId('desktop-navigation-controls');
         const backButton = page.getByTestId('desktop-navigation-back-button');
-        const modelChip = page.locator('[data-testid="compose-home-model-chip"]:visible');
         const controlsBox = await navigationControls.boundingBox();
-        const modelChipBox = await modelChip.boundingBox();
         expect(controlsBox).not.toBeNull();
-        expect(modelChipBox).not.toBeNull();
-        expect(modelChipBox!.x - 8).toBeGreaterThanOrEqual(controlsBox!.x + controlsBox!.width + 10);
+        await expect(page.locator('[data-testid="compose-home-model-chip"]:visible')).toHaveCount(1);
+        await expect(page.locator('[data-testid="new-session-composer-controls"]:visible')).toBeVisible();
         await expect(backButton).toBeEnabled();
         await backButton.click();
 
@@ -2154,13 +3220,25 @@ for (const width of [800, 1280]) {
     });
 }
 
+test('窄屏新建会话保留头部配置下拉且不重复渲染底栏入口', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(authenticatedRoute('/new'));
+    await expect(page.getByRole('textbox')).toBeVisible();
+
+    const modelChip = page.locator('[data-testid="compose-home-model-chip"]:visible');
+    await expect(modelChip).toBeVisible();
+    await expect(page.getByTestId('new-session-composer-controls')).toHaveCount(0);
+    await modelChip.click();
+    await expect(page.getByTestId('compose-home-config-panel')).toBeVisible();
+});
+
 for (const width of [1024, 1280, 1440]) {
     test(`宽度 ${width}px 的模型选择器使用有边界的 PC 弹窗`, async ({ page }) => {
         await page.setViewportSize({ width, height: 720 });
         await page.goto(authenticatedRoute('/new'));
         await expect(page.getByRole('textbox')).toBeVisible();
 
-        await page.locator('[data-testid="compose-home-model-chip"]:visible').click();
+        await page.locator('[data-testid="new-session-composer-controls"]:visible [data-testid="compose-home-model-chip"]:visible').click();
         const configPanel = page.getByTestId('compose-home-config-panel');
         await expect(configPanel).toBeVisible();
         const configBox = await configPanel.boundingBox();
@@ -2202,7 +3280,7 @@ test('桌面 Machine Picker 各关闭入口重复退出后都把焦点返回触�
 
     const machineTrigger = page.getByTestId('session-config-machine-trigger');
     if (!await machineTrigger.isVisible()) {
-        await page.locator('[data-testid="compose-home-model-chip"]:visible').click();
+        await page.locator('[data-testid="new-session-composer-controls"]:visible [data-testid="compose-home-model-chip"]:visible').click();
     }
     await expect(machineTrigger).toBeVisible();
 
@@ -2235,7 +3313,7 @@ test('桌面 Machine 与 Agent Picker 支持标准键盘激活并在关闭后回
 
     const machineTrigger = page.getByTestId('session-config-machine-trigger');
     if (!await machineTrigger.isVisible()) {
-        await page.locator('[data-testid="compose-home-model-chip"]:visible').click();
+        await page.locator('[data-testid="new-session-composer-controls"]:visible [data-testid="compose-home-model-chip"]:visible').click();
     }
 
     for (const picker of [
@@ -2292,11 +3370,9 @@ for (const width of [1024, 1280, 1440]) {
         await zenButton.click();
 
         const controlsBox = await page.getByTestId('desktop-navigation-controls').boundingBox();
-        const targetBox = await page.locator('[data-testid="compose-home-model-chip"]:visible').boundingBox();
         expect(controlsBox).not.toBeNull();
-        expect(targetBox).not.toBeNull();
         expect(controlsBox!.x).toBeLessThanOrEqual(32);
-        expect(targetBox!.x - 8).toBeGreaterThanOrEqual(controlsBox!.x + controlsBox!.width + 10);
+        await expect(page.locator('[data-testid="new-session-composer-controls"]:visible')).toBeVisible();
 
         await zenButton.click();
     });

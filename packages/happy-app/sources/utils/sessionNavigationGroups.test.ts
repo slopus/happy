@@ -3,6 +3,7 @@ import type { SessionRowData } from '@/sync/storage';
 import type { Machine } from '@/sync/storageTypes';
 import {
     buildSessionNavigationGroups,
+    buildSessionNavigationTimeGroups,
     getSessionNavigationProjectKey,
 } from './sessionNavigationGroups';
 
@@ -56,6 +57,21 @@ function machine(id: string, displayName: string): Machine {
 }
 
 describe('session navigation groups', () => {
+    it('sorts the time layout by latest activity and groups local calendar days', () => {
+        const now = new Date(2026, 7, 6, 12).getTime();
+        const groups = buildSessionNavigationTimeGroups([
+            session({ id: 'yesterday', activeAt: new Date(2026, 7, 5, 18).getTime(), createdAt: 1 }),
+            session({ id: 'today-created', createdAt: new Date(2026, 7, 6, 8).getTime() }),
+            session({ id: 'today-active', activeAt: new Date(2026, 7, 6, 10).getTime(), createdAt: 1 }),
+            session({ id: 'older', createdAt: new Date(2026, 7, 3, 20).getTime() }),
+        ], now);
+
+        expect(groups.map((group) => group.dayOffset)).toEqual([0, 1, 3]);
+        expect(groups[0].sessions.map((item) => item.id)).toEqual(['today-active', 'today-created']);
+        expect(groups[1].sessions.map((item) => item.id)).toEqual(['yesterday']);
+        expect(groups[2].sessions.map((item) => item.id)).toEqual(['older']);
+    });
+
     it('uses machines as grouping and projects as sorted collapsible units', () => {
         const groups = buildSessionNavigationGroups({
             machines: [machine('machine-b', 'Studio'), machine('machine-a', 'Remote')],

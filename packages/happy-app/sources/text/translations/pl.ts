@@ -808,6 +808,8 @@ export const pl: TranslationStructure = {
         showArchived: 'Pokaż zarchiwizowane',
         hideArchived: 'Ukryj zarchiwizowane',
         newSession: 'Nowa sesja',
+        sortSessionsByTime: 'Sortuj sesje według czasu',
+        groupSessionsByProject: 'Grupuj sesje według projektu',
         emptySessionsTitle: 'Brak aktywnych sesji',
         emptySessionsOnlineDescription: 'Rozpocznij nową sesję na dowolnej z połączonych maszyn.',
         emptySessionsOfflineDescription: 'Otwórz nowy terminal na komputerze, aby rozpocząć sesję.',
@@ -1280,6 +1282,8 @@ export const pl: TranslationStructure = {
         foldedPromptSummary: ({ lines, chars }: { lines: number; chars: number }) => `${lines} wierszy · ${chars} znaków`,
         showPrompt: 'Pokaż',
         hidePrompt: 'Ukryj',
+        editInput: 'Edytuj',
+        sendEdit: 'Wyślij',
     },
 
     codex: {
@@ -1687,6 +1691,8 @@ export const pl: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Umiejętności GitHub',
+        imageStylePhotoIllustrationDiptych: 'Dyptyk zdjęcia i ilustracji',
+        imageStylePhotoIllustrationDiptychHint: 'Połącz dostarczone zdjęcie z ilustracją o dopasowanej kompozycji na stonowanym papierowym plakacie 3:5.\nZachowaj liczbę charakterystycznych obiektów, linię horyzontu, układ przestrzenny i ruch; technika dostosowuje się od lawowania tuszem po płaską ilustrację redakcyjną, geometryczną panoramę miasta lub Art Deco.',
         imageStyleMinimalZinePoster: 'Minimalistyczny papierowy plakat Zine',
         imageStyleMinimalZinePosterHint: 'Temat, krótka fraza, przedmiot, nastrój, pomysł na artykuł lub zdjęcie → pionowy minimalistyczny plakat 3:5.\nPostarzany papier z dużą ilością wolnej przestrzeni, mały akcent z podartego papieru/zdjęcia, oszczędna typografia maszynowa, jeden nasycony kolor i faktura ksero/skanu.',
         imageStyleSceneDistillationZine: 'Zine — destylacja sceny',

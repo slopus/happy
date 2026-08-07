@@ -790,6 +790,8 @@ export const it: TranslationStructure = {
         showArchived: 'Mostra archiviate',
         hideArchived: 'Nascondi archiviate',
         newSession: 'Nuova sessione',
+        sortSessionsByTime: 'Ordina le sessioni per data',
+        groupSessionsByProject: 'Raggruppa le sessioni per progetto',
         emptySessionsTitle: 'Nessuna sessione attiva',
         emptySessionsOnlineDescription: 'Avvia una nuova sessione su una qualsiasi delle tue macchine connesse.',
         emptySessionsOfflineDescription: 'Apri un nuovo terminale sul computer per avviare una sessione.',
@@ -1262,6 +1264,8 @@ export const it: TranslationStructure = {
         foldedPromptSummary: ({ lines, chars }: { lines: number; chars: number }) => `${lines} righe · ${chars} caratteri`,
         showPrompt: 'Mostra',
         hidePrompt: 'Nascondi',
+        editInput: 'Modifica',
+        sendEdit: 'Invia',
     },
 
     codex: {
@@ -1656,6 +1660,8 @@ export const it: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Skill di GitHub',
+        imageStylePhotoIllustrationDiptych: 'Dittico foto–illustrazione',
+        imageStylePhotoIllustrationDiptychHint: 'Abbina una foto fornita a un’illustrazione dalla composizione corrispondente, in un sobrio poster su carta 3:5.\nMantieni il numero di punti di riferimento, l’orizzonte, l’ordine spaziale e il movimento; la tecnica si adatta dal lavis a inchiostro allo stile editoriale a campiture piatte, allo skyline geometrico o all’Art Deco.',
         imageStyleMinimalZinePoster: 'Poster Zine minimalista su carta',
         imageStyleMinimalZinePosterHint: 'Tema, frase breve, oggetto, atmosfera, idea per un articolo o foto → poster verticale minimalista su carta 3:5.\nSpazio negativo su carta invecchiata, piccolo elemento in carta strappata/foto, testo dattiloscritto essenziale, un accento saturo e texture da fotocopia/scansione.',
         imageStyleSceneDistillationZine: 'Zine di distillazione della scena',

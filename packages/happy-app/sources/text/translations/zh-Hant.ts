@@ -792,6 +792,8 @@ export const zhHant: TranslationStructure = {
         showArchived: '顯示已封存',
         hideArchived: '隱藏已封存',
         newSession: '新建對話',
+        sortSessionsByTime: '依時間排序工作階段',
+        groupSessionsByProject: '依專案分組工作階段',
         emptySessionsTitle: '目前沒有活躍的工作階段',
         emptySessionsOnlineDescription: '在任一台已連線的裝置上開始新的工作階段。',
         emptySessionsOfflineDescription: '在電腦上開啟新的終端機以開始工作階段。',
@@ -1364,6 +1366,8 @@ export const zhHant: TranslationStructure = {
         foldedPromptSummary: ({ lines, chars }: { lines: number; chars: number }) => `${lines} 行 · ${chars} 字元`,
         showPrompt: '展開',
         hidePrompt: '收起',
+        editInput: '編輯',
+        sendEdit: '傳送',
     },
 
     codex: {
@@ -1757,6 +1761,8 @@ export const zhHant: TranslationStructure = {
         customImageStyleDeleteTitle: '刪除自訂風格？',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `確定刪除「${name}」嗎？`,
         imageStyleGithubSkills: 'GitHub Skills',
+        imageStylePhotoIllustrationDiptych: '實景插畫對照海報',
+        imageStylePhotoIllustrationDiptychHint: '將一張實景照片與構圖對應的插畫上下並置，生成安靜的 3:5 紙張海報。\n保留地標數量、地平線、空間順序與動勢；依題材自適應鋼筆淡彩、扁平編輯插畫、幾何城市或裝飾藝術。',
         imageStyleMinimalZinePoster: '極簡 Zine 紙張海報',
         imageStyleMinimalZinePosterHint: '將主題、短句、物件、情緒、文章點子或照片變成 3:5 直式極簡紙張海報。\n做舊紙張留白、小幅撕紙/照片錨點、稀疏打字機排版、單一高飽和強調色與影印/掃描質感。',
         imageStyleSceneDistillationZine: '場景提煉 Zine',

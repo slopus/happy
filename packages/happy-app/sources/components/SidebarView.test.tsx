@@ -190,6 +190,14 @@ describe('SidebarView Agent space exit', () => {
         expect(renderer.root.findAllByType('Text').some(
             (node: any) => node.props.children === 'agents.empty',
         )).toBe(true);
+        const secondary = renderer.root.findByProps({ testID: 'sidebar-secondary-navigation' });
+        expect(secondary.props.style).not.toHaveProperty('marginHorizontal');
+        expect(secondary.findByProps({ testID: 'sidebar-secondary-navigation-divider' }).props.style).toEqual(
+            expect.objectContaining({ marginHorizontal: 10 }),
+        );
+        expect(
+            secondary.findByProps({ testID: 'sidebar-my-agents-button' }).props.style({ pressed: false }),
+        ).toContainEqual(expect.objectContaining({ marginHorizontal: 16 }));
 
         act(() => renderer.unmount());
     });

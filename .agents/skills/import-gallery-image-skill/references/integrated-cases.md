@@ -1,6 +1,23 @@
 # Integrated gallery Skill provenance
 
-This ledger records the immutable source and intentional adaptation boundary for the first four imports produced with this SOP. The user uploaded the screenshots in this integration task and explicitly asked for these cases to be integrated into the App gallery, which is the recorded consent for using them as references for text-free cover adaptations. Ownership beyond that task authorization was not independently verified. The shipped covers were generated with the built-in image tool from the exact recorded sources, then recompressed without EXIF/XMP metadata; the original screenshots are not shipped as gallery assets. The covers demonstrate the requested visual/use-case target but do not prove the behavior of the pinned upstream revision; the pinned repository content remains the behavioral source of truth.
+This ledger records the immutable source and intentional adaptation boundary for gallery imports produced with this SOP. The user uploaded the screenshots in each integration task and explicitly asked for those cases to be integrated into the App gallery, which is the recorded consent for using them as references for text-free cover adaptations. Ownership beyond that task authorization was not independently verified. Original screenshots are not shipped as gallery assets; each entry records how its cover was produced and whether a separate pinned upstream source governs behavior.
+
+## Photo–Illustration Diptych
+
+- Style: `github-skills/photo-illustration-diptych/1`
+- Source: original Happy/Paws compiler in `wangjs-jacky/happy@532e49bb711283cbe2738439039298f9cea1ef7b`; no third-party Skill code or prompt text was copied.
+- Source discovery note: `ZzzLc0405/photo-abstract-editorial@82636602dcd386b38a3377df5a05a30702ad7e05` was found later through `gh` and is visually related, but the repository has no `LICENSE` file or GitHub-recognized license. Its Skill text, linked bilingual prompts, and example assets are therefore intentionally excluded. The Happy/Paws compiler remains an independent implementation derived from the four user-authorized references.
+- License: MIT; complete notice in `photoIllustrationDiptychPrompt.ts`.
+- Visual references explicitly supplied for this integration:
+  - `/Users/jacky/.happy/attachments/2026-08-06T04-48-25-084Z-0-136591.jpg` — SHA-256 `ebee855eee975c52b3a66b771109b51fa3844ea19fff0feef67f67a3e7098a38`
+  - `/Users/jacky/.happy/attachments/2026-08-06T04-48-25-089Z-1-136590.jpg` — SHA-256 `950d196e49445589320f06302d50a9d175d23f44be341b04e2bdc4572423f40e`
+  - `/Users/jacky/.happy/attachments/2026-08-06T04-48-25-093Z-2-136589.jpg` — SHA-256 `a446177824e2db40ae0db53957e98ca0b40b6054c3e42f22756800d7dd22aa42`
+  - `/Users/jacky/.happy/attachments/2026-08-06T04-48-25-095Z-3-136588.jpg` — SHA-256 `365fdc33e9aeac5d6950f06b9c4d3c82fed0c33e9d15459a5dc9d1f26477162f`
+- Shipped text-free 4:3 cover SHA-256: `1be05966cb6631a9150626fb06c6fcce7150666efe0d5455c57962c1d8b130e9`.
+- Preview relationship: the cover is an original vector harbor scene authored for this integration. It demonstrates a shared top/bottom skyline, horizon, landmark order, palette, and sailboat position while using no pixels, people, place names, or UI from the supplied screenshots. The screenshots themselves are not shipped.
+- Preserved: vertical photo-above/illustration-below hierarchy; one scene expressed twice; shared semantic geometry; warm paper; subject-aware switching among ink wash, flat editorial, geometric skyline, and Art Deco; optional restrained caption treatment.
+- Changed: default output is text-free unless the user supplies or requests exact copy; the gallery cover uses an original 4:3 harbor demonstration while generated task outputs default to a 3:5 poster.
+- Omitted: phone status/navigation bars, social viewer controls, progress indicators, download/play UI, original source-photo pixels, inferred place names, and any unverified third-party prompt or implementation.
 
 ## Minimal Zine Paper Poster
 

@@ -1,11 +1,10 @@
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, Platform } from 'react-native';
 import { CommandPaletteInput } from './CommandPaletteInput';
 import { CommandPaletteResults } from './CommandPaletteResults';
 import { useCommandPalette } from './useCommandPalette';
 import { Command, CommandPaletteClose, getCommandPaletteOptionId } from './types';
-import { useUnistyles } from 'react-native-unistyles';
-import { multiplyColorOpacity } from '@/utils/colorOpacity';
+import { StyleSheet } from 'react-native-unistyles';
 
 interface CommandPaletteProps {
     commands: Command[];
@@ -13,7 +12,7 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
-    const { theme } = useUnistyles();
+    const styles = stylesheet;
     const {
         searchQuery,
         selectedIndex,
@@ -35,13 +34,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
     return (
         <View
             testID="command-palette"
-            style={[
-                styles.container,
-                {
-                    backgroundColor: theme.colors.surface,
-                    borderColor: multiplyColorOpacity(theme.colors.text, 0.12),
-                },
-            ]}
+            style={styles.container}
         >
             <CommandPaletteInput
                 value={searchQuery}
@@ -61,33 +54,34 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
     );
 }
 
-const styles = StyleSheet.create({
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
-        borderRadius: 16,
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.divider,
+        borderRadius: 14,
         width: '100%',
-        maxWidth: 800, // Increased from 640 for wider input
-        // Use viewport-based height for better layout
+        maxWidth: 720,
         ...(Platform.OS === 'web' ? {
-            maxHeight: '60vh', // Takes up to 60% of viewport height
+            maxHeight: '64vh',
         } as any : {
-            maxHeight: 500, // Fallback for native
+            maxHeight: 500,
         }),
         overflow: 'hidden',
         ...Platform.select({
             web: {
-                boxShadow: '0 20px 40px rgba(0, 0, 0, 0.25)',
+                boxShadow: `0 12px 32px ${theme.colors.shadow.color}`,
             },
             default: {
-                shadowColor: '#000',
+                shadowColor: theme.colors.shadow.color,
+                shadowOpacity: theme.colors.shadow.opacity,
                 shadowOffset: {
                     width: 0,
-                    height: 20,
+                    height: 8,
                 },
-                shadowOpacity: 0.25,
-                shadowRadius: 40,
-                elevation: 20,
+                shadowRadius: 18,
+                elevation: 10,
             },
         }),
-        borderWidth: 1,
+        borderWidth: StyleSheet.hairlineWidth,
     },
-});
+}));

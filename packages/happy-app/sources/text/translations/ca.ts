@@ -792,6 +792,8 @@ export const ca: TranslationStructure = {
         showArchived: 'Mostra arxivades',
         hideArchived: 'Amaga arxivades',
         newSession: 'Nova sessió',
+        sortSessionsByTime: 'Ordena les sessions per data',
+        groupSessionsByProject: 'Agrupa les sessions per projecte',
         emptySessionsTitle: 'No hi ha sessions actives',
         emptySessionsOnlineDescription: 'Inicia una sessió nova en qualsevol de les teves màquines connectades.',
         emptySessionsOfflineDescription: "Obre un terminal nou a l'ordinador per iniciar una sessió.",
@@ -1264,6 +1266,8 @@ export const ca: TranslationStructure = {
         foldedPromptSummary: ({ lines, chars }: { lines: number; chars: number }) => `${lines} línies · ${chars} caràcters`,
         showPrompt: 'Mostra',
         hidePrompt: 'Amaga',
+        editInput: 'Edita',
+        sendEdit: 'Envia',
     },
 
     codex: {
@@ -1657,6 +1661,8 @@ export const ca: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Skills de GitHub',
+        imageStylePhotoIllustrationDiptych: 'Díptic de foto i il·lustració',
+        imageStylePhotoIllustrationDiptychHint: 'Combina una fotografia proporcionada amb una il·lustració de composició equivalent en un cartell serè sobre paper, en format 3:5.\nConserva el nombre de punts de referència, l’horitzó, l’ordre espacial i el moviment; la tècnica s’adapta des de l’aiguada de tinta fins a la il·lustració editorial plana, el perfil urbà geomètric o l’Art Deco.',
         imageStyleMinimalZinePoster: 'Pòster Zine minimalista en paper',
         imageStyleMinimalZinePosterHint: 'Tema, frase breu, objecte, estat d’ànim, idea d’article o foto → pòster vertical minimalista en paper 3:5.\nEspai negatiu de paper envellit, petit ancoratge de paper estripat/foto, tipografia de màquina d’escriure, un accent intens i textura de fotocòpia/escaneig.',
         imageStyleSceneDistillationZine: 'Zine de destil·lació d’escena',

@@ -144,7 +144,10 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
             {open ? (
                 <View
                     accessibilityViewIsModal
-                    style={styles.menu}
+                    style={[
+                        styles.menu,
+                        desktopDensity ? styles.menuDesktop : styles.menuRegular,
+                    ]}
                     testID="sidebar-account-menu"
                 >
                     <MenuAction
@@ -283,8 +286,6 @@ const styles = StyleSheet.create((theme) => ({
     },
     menu: {
         position: 'absolute',
-        left: 10,
-        right: 10,
         bottom: '100%',
         marginBottom: 5,
         overflow: 'hidden',
@@ -297,6 +298,14 @@ const styles = StyleSheet.create((theme) => ({
         shadowRadius: 18,
         shadowOffset: { width: 0, height: 8 },
         elevation: 10,
+    },
+    menuRegular: {
+        left: 16,
+        right: 16,
+    },
+    menuDesktop: {
+        left: 10,
+        right: 10,
     },
     menuAction: {
         minHeight: 42,

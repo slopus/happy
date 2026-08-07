@@ -86,6 +86,8 @@ export type ImageAgentStyleLabelKey =
     | 'agents.imageStyleScenesGatheredZineHint'
     | 'agents.imageStyleScenesGatheredZineSea'
     | 'agents.imageStyleScenesGatheredZineSeaHint'
+    | 'agents.imageStylePhotoIllustrationDiptych'
+    | 'agents.imageStylePhotoIllustrationDiptychHint'
     | 'agents.imageStyleVintageFilm'
     | 'agents.imageStylePremiumStudio'
     | 'agents.imageStyleWhiteProduct'

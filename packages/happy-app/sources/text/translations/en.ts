@@ -806,6 +806,8 @@ export const en: TranslationStructure = {
         showArchived: 'Show archived',
         hideArchived: 'Hide archived',
         newSession: 'New session',
+        sortSessionsByTime: 'Sort sessions by time',
+        groupSessionsByProject: 'Group sessions by project',
         emptySessionsTitle: 'No active sessions',
         emptySessionsOnlineDescription: 'Start a new session on any of your connected machines.',
         emptySessionsOfflineDescription: 'Open a new terminal on your computer to start a session.',
@@ -1278,6 +1280,8 @@ export const en: TranslationStructure = {
         foldedPromptSummary: ({ lines, chars }: { lines: number; chars: number }) => `${lines} lines · ${chars} chars`,
         showPrompt: 'Show',
         hidePrompt: 'Hide',
+        editInput: 'Edit',
+        sendEdit: 'Send',
     },
 
     codex: {
@@ -1672,6 +1676,8 @@ export const en: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'GitHub Skills',
+        imageStylePhotoIllustrationDiptych: 'Photo–Illustration Diptych',
+        imageStylePhotoIllustrationDiptychHint: 'Pair one supplied photo with a composition-matched illustration in a calm 3:5 paper poster.\nPreserves landmark count, horizon, spatial order, and movement; medium adapts from ink wash to flat editorial, geometric skyline, or Art Deco.',
         imageStyleMinimalZinePoster: 'Minimal Zine Paper Poster',
         imageStyleMinimalZinePosterHint: 'Theme, short line, object, mood, article idea, or photo → 3:5 vertical minimal paper poster.\nAged-paper negative space, small torn-paper/photo anchor, sparse typewriter text, one vivid accent, and photocopy/scan texture.',
         imageStyleSceneDistillationZine: 'Scene Distillation Zine',

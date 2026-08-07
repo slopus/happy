@@ -8,6 +8,7 @@ import {
     getDesktopSidebarWidth,
     getDesktopRightPanelWidth,
     getDesktopRightPanelPresentation,
+    getResponsiveRightPanelMode,
     isDesktopRightPanelAvailable,
     shouldUseCompactSessionHeader,
     getPersistentHeaderPointerEvents,
@@ -20,6 +21,19 @@ import {
 } from './desktopNavigationLayout';
 
 describe('desktopNavigationLayout', () => {
+    it.each([
+        { width: 390, expected: 'edge-handle' },
+        { width: 500, expected: 'edge-handle' },
+        { width: 799, expected: 'edge-handle' },
+        { width: 800, expected: 'drawer-toggle' },
+        { width: 1024, expected: 'drawer-toggle' },
+        { width: 1280, expected: 'persistent' },
+        { width: 1440, expected: 'persistent' },
+        { width: 1920, expected: 'persistent' },
+    ] as const)('uses $expected right-panel access at $width px', ({ width, expected }) => {
+        expect(getResponsiveRightPanelMode(width)).toBe(expected);
+    });
+
     it.each([
         { isWeb: true, windowWidth: 799, expected: false },
         { isWeb: true, windowWidth: 800, expected: true },

@@ -792,6 +792,8 @@ export const es: TranslationStructure = {
         showArchived: 'Mostrar archivadas',
         hideArchived: 'Ocultar archivadas',
         newSession: 'Nueva sesión',
+        sortSessionsByTime: 'Ordenar sesiones por fecha',
+        groupSessionsByProject: 'Agrupar sesiones por proyecto',
         emptySessionsTitle: 'No hay sesiones activas',
         emptySessionsOnlineDescription: 'Inicia una nueva sesión en cualquiera de tus máquinas conectadas.',
         emptySessionsOfflineDescription: 'Abre un nuevo terminal en tu computadora para iniciar una sesión.',
@@ -1264,6 +1266,8 @@ export const es: TranslationStructure = {
         foldedPromptSummary: ({ lines, chars }: { lines: number; chars: number }) => `${lines} líneas · ${chars} caracteres`,
         showPrompt: 'Mostrar',
         hidePrompt: 'Ocultar',
+        editInput: 'Editar',
+        sendEdit: 'Enviar',
     },
 
     codex: {
@@ -1658,6 +1662,8 @@ export const es: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Skills de GitHub',
+        imageStylePhotoIllustrationDiptych: 'Díptico de foto e ilustración',
+        imageStylePhotoIllustrationDiptychHint: 'Combina una foto proporcionada con una ilustración de composición equivalente en un sereno póster de papel 3:5.\nConserva el número de puntos de referencia, el horizonte, el orden espacial y el movimiento; la técnica se adapta desde la aguada de tinta hasta la ilustración editorial plana, el skyline geométrico o el Art Deco.',
         imageStyleMinimalZinePoster: 'Póster Zine minimalista en papel',
         imageStyleMinimalZinePosterHint: 'Tema, frase breve, objeto, estado de ánimo, idea de artículo o foto → póster vertical minimalista en papel 3:5.\nEspacio negativo de papel envejecido, pequeño anclaje de papel rasgado/foto, tipografía de máquina de escribir, un acento intenso y textura de fotocopia/escaneo.',
         imageStyleSceneDistillationZine: 'Zine de destilación de escena',

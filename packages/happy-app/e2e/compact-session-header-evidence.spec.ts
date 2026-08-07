@@ -151,15 +151,16 @@ test('T14-01 desktop header stays compact and keeps every required control', asy
     expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
     await expect(page.getByTestId('session-message-input')).toBeVisible();
 
-    const agentChip = page.locator('[data-testid="session-header-chip"]:visible');
-    await expect(agentChip).toBeVisible();
-    await agentChip.click();
-    await expect(page.getByTestId('session-agent-panel')).toBeVisible();
-
     if (evidencePhase === 'before') {
+        const agentChip = page.locator('[data-testid="session-header-chip"]:visible');
+        await expect(agentChip).toBeVisible();
+        await agentChip.click();
+        await expect(page.getByTestId('session-agent-panel')).toBeVisible();
         await page.screenshot({ path: screenshotPath(testInfo), fullPage: true });
         return;
     }
+
+    await expect(page.getByTestId('session-header-chip')).toHaveCount(0);
 
     const title = page.locator('[data-testid="session-header-title"]:visible');
     await expect(title).toHaveAccessibleName(/Refactor the desktop session header/);
@@ -175,11 +176,12 @@ test('T14-01 desktop header stays compact and keeps every required control', asy
     await title.focus();
     await expectTooltipFullyReadable(page, titleTooltip);
 
-    await agentChip.click();
     const more = page.locator('[data-testid="session-header-more-button"]:visible');
     await expect(more).toHaveAccessibleName('Session details');
+    await more.hover();
+    await expect(page.getByTestId('session-header-more-tooltip')).toHaveCount(0);
     await more.focus();
-    await expect(page.getByTestId('session-header-more-tooltip')).toContainText('Session details');
+    await expect(page.getByTestId('session-header-more-tooltip')).toHaveCount(0);
     await more.click();
     await expect(page.getByTestId('session-agent-panel')).toBeVisible();
 
@@ -198,9 +200,9 @@ test('T14-01 desktop header stays compact and keeps every required control', asy
         })).toBe(true);
     }
 
-    // Regression for the first implementation: the long title must never sit
-    // above the adjacent Agent, More, or panel controls in the hit-test tree.
-    for (const control of [agentChip, more, rightToggle]) {
+    // The long title must never sit above the adjacent More or panel controls
+    // in the hit-test tree after the desktop Agent chip is removed.
+    for (const control of [more, rightToggle]) {
         await control.click();
         await control.click();
     }
@@ -225,7 +227,7 @@ test('T14-01 desktop header stays compact and keeps every required control', asy
     await expect(page.getByTestId('sidebar-new-session-button')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-    await agentChip.click();
+    await more.click();
     await expect(page.getByTestId('session-agent-panel')).toBeVisible();
     await page.screenshot({ path: screenshotPath(testInfo), fullPage: true });
 });
