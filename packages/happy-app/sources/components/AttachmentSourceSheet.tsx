@@ -2,7 +2,7 @@
  * Attachment source chooser rendered as a custom modal (via Modal.show).
  *
  * Replaces the plain OS-style alert row with a card picker: one card per source
- * (photo / audio-video), icon over label, matching the app's dark surface style.
+ * (photo / audio-video / PDF), icon over label, matching the app's dark surface style.
  * Each card dismisses the sheet first, then runs its picker on the next tick so
  * the modal is gone before the system picker opens.
  */
@@ -15,11 +15,12 @@ import { t } from '@/text';
 interface AttachmentSourceSheetProps {
     onPickPhoto: () => void;
     onPickMedia: () => void;
+    onPickPdf: () => void;
     /** Injected by the modal host. */
     onClose?: () => void;
 }
 
-export function AttachmentSourceSheet({ onPickPhoto, onPickMedia, onClose }: AttachmentSourceSheetProps) {
+export function AttachmentSourceSheet({ onPickPhoto, onPickMedia, onPickPdf, onClose }: AttachmentSourceSheetProps) {
     const { theme } = useUnistyles();
 
     const choose = React.useCallback((run: () => void) => {
@@ -45,6 +46,12 @@ export function AttachmentSourceSheet({ onPickPhoto, onPickMedia, onClose }: Att
                     label={t('imageUpload.chooseSourceMedia')}
                     theme={theme}
                     onPress={() => choose(onPickMedia)}
+                />
+                <SourceCard
+                    icon="document-text-outline"
+                    label={t('imageUpload.chooseSourcePdf')}
+                    theme={theme}
+                    onPress={() => choose(onPickPdf)}
                 />
             </View>
         </View>
@@ -88,7 +95,7 @@ function SourceCard({
 // this same modal host) uses this exact plain-StyleSheet + inline-theme pattern.
 const styles = StyleSheet.create({
     panel: {
-        width: 320,
+        width: 440,
         maxWidth: '90%',
         borderRadius: 20,
         paddingHorizontal: 16,

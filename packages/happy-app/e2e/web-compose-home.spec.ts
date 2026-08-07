@@ -3,7 +3,8 @@ import fs, { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { join } from 'node:path';
 import { io } from 'socket.io-client';
-import { decodeBase64, decryptLegacy, encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
+import { decodeBase64, decryptBlob, decryptLegacy, encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
+import { deriveKey } from '../../happy-cli/src/utils/deriveKey';
 import {
     expectProductionRedactionReady,
     installProductionRedaction,
@@ -308,6 +309,89 @@ async function readE2EUserMessage(
         }
     }
     return null;
+}
+
+type E2EFileEvent = {
+    encrypted?: boolean;
+    kind?: string;
+    mimeType?: string;
+    name: string;
+    ref: string;
+    size: number;
+    t: 'file';
+};
+
+async function readE2EFileEvent(
+    request: APIRequestContext,
+    sessionId: string,
+    expectedName: string,
+): Promise<E2EFileEvent | null> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少读取 E2E 文件事件所需的本地认证配置。');
+    }
+
+    const response = await request.get(
+        new URL(`/v3/sessions/${encodeURIComponent(sessionId)}/messages`, e2eServerUrl).toString(),
+        {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'X-Happy-Client': 'playwright-pdf-e2e',
+            },
+        },
+    );
+    expect(response.ok()).toBe(true);
+    const body = await response.json() as {
+        messages: Array<{ content: string | { t?: string; c?: string } }>;
+    };
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+
+    for (const message of body.messages) {
+        const encrypted = typeof message.content === 'string' ? message.content : message.content.c;
+        if (!encrypted) continue;
+        const record = decryptLegacy(decodeBase64(encrypted), encryptionKey) as Record<string, unknown> | null;
+        const content = record?.content;
+        if (record?.role !== 'session' || typeof content !== 'object' || content === null) continue;
+        const data = (content as { type?: string; data?: { ev?: E2EFileEvent } }).data;
+        const event = data?.ev;
+        if (event?.t === 'file' && event.name === expectedName) return event;
+    }
+    return null;
+}
+
+async function downloadE2EAttachment(
+    request: APIRequestContext,
+    sessionId: string,
+    ref: string,
+): Promise<Buffer> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    if (!token || !e2eServerUrl) {
+        throw new Error('缺少下载 E2E 附件所需的本地认证配置。');
+    }
+
+    const sourceResponse = await request.post(
+        new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/attachments/request-download`, e2eServerUrl).toString(),
+        {
+            data: { ref },
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'X-Happy-Client': 'playwright-pdf-e2e',
+            },
+        },
+    );
+    expect(sourceResponse.ok()).toBe(true);
+    const { downloadUrl } = await sourceResponse.json() as { downloadUrl: string };
+    const downloadResponse = await request.get(
+        downloadUrl,
+        new URL(downloadUrl).origin === new URL(e2eServerUrl).origin
+            ? { headers: { Authorization: `Bearer ${token}` } }
+            : {},
+    );
+    expect(downloadResponse.ok()).toBe(true);
+    return downloadResponse.body();
 }
 
 async function createE2ECompletedToolCall(
@@ -4125,6 +4209,118 @@ test.describe('中文 Web 消息与工具演示', () => {
         await exerciseInlineVideo(page, 'media-attachment-player-user');
         await pauseForRecordedReview(page, 1_100);
         await page.screenshot({ path: testInfo.outputPath('mp4-user-after.png'), fullPage: true });
+    });
+
+    test('[PDF-USER] 选择、加密发送并重新下载原始 PDF', async ({ page, request }, testInfo) => {
+        test.setTimeout(120_000);
+        const fileName = '室内平面图-e2e.pdf';
+        const fixture = Buffer.from([
+            '%PDF-1.4',
+            '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+            '2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj',
+            'trailer << /Root 1 0 R >>',
+            '%%EOF',
+            '',
+        ].join('\n'), 'utf8');
+        const sessionId = await createE2ESession(request, {
+            name: 'PDF attachment E2E',
+            summary: 'PDF attachment E2E',
+        });
+
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.goto(authenticatedRoute(`/session/${sessionId}`));
+        await expect(page.getByTestId('session-message-input')).toBeVisible();
+
+        await page.getByRole('button', { name: /添加附件|Add attachment/i }).click();
+        const fileChooserPromise = page.waitForEvent('filechooser');
+        await page.getByRole('button', { name: /PDF 文档|PDF document/i }).click();
+        const fileChooser = await fileChooserPromise;
+        expect(await fileChooser.element().getAttribute('accept')).toBe('application/pdf');
+        await fileChooser.setFiles({
+            name: fileName,
+            mimeType: 'application/pdf',
+            buffer: fixture,
+        });
+
+        const pendingCard = page.getByTestId('document-attachment-card-pending');
+        await expect(pendingCard).toBeVisible();
+        await expect(pendingCard).toContainText(fileName);
+        await expect(pendingCard).toContainText('PDF 文档');
+        await pauseForRecordedReview(page, 1_000);
+
+        await page.locator('[data-testid="message-composer-send-button"]:not([aria-disabled="true"])').click();
+
+        const sentCard = page.getByTestId('document-attachment-card-user');
+        await expect(sentCard).toBeVisible({ timeout: 20_000 });
+        await expect(sentCard).toContainText(fileName);
+        await expect(sentCard).toContainText(`${fixture.length}B`);
+        await expect(pendingCard).toHaveCount(0);
+
+        await expect.poll(
+            () => readE2EFileEvent(request, sessionId, fileName),
+            { timeout: 20_000 },
+        ).toMatchObject({
+            t: 'file',
+            name: fileName,
+            size: fixture.length,
+            kind: 'file',
+            mimeType: 'application/pdf',
+        });
+        const fileEvent = await readE2EFileEvent(request, sessionId, fileName);
+        if (!fileEvent) throw new Error('PDF 文件事件未写入本地 E2E Server');
+        expect(fileEvent.encrypted).not.toBe(false);
+        expect(fileEvent.ref).toMatch(/^sessions\/.+\/attachments\/.+\.enc$/);
+
+        const encryptedBlob = await downloadE2EAttachment(request, sessionId, fileEvent.ref);
+        expect(encryptedBlob.equals(fixture)).toBe(false);
+        expect(encryptedBlob.includes(Buffer.from('%PDF-1.4', 'utf8'))).toBe(false);
+        expect(encryptedBlob.length).toBe(fixture.length + 40);
+
+        const authUrl = new URL(authenticatedWebUrl);
+        const secret = authUrl.searchParams.get('dev_secret');
+        if (!secret) throw new Error('缺少解密 E2E PDF 所需的本地密钥');
+        const masterSecret = new Uint8Array(Buffer.from(secret, 'base64url'));
+        const blobKey = await deriveKey(masterSecret, 'Happy Blobs', ['master']);
+        const decryptedBlob = decryptBlob(new Uint8Array(encryptedBlob), blobKey);
+        expect(decryptedBlob).not.toBeNull();
+        expect(Buffer.from(decryptedBlob!)).toEqual(fixture);
+
+        await page.reload();
+        await expect(page.getByTestId('session-message-input')).toBeVisible();
+        await expect(sentCard).toBeVisible({ timeout: 20_000 });
+        await expect(sentCard).toContainText(fileName);
+        await expect(sentCard).toContainText(`${fixture.length}B`);
+
+        // The operating-system Web Share sheet is outside Playwright's control.
+        // Model a browser without file sharing so this E2E exercises the real
+        // user-visible download fallback instead of hanging on the native sheet.
+        await page.evaluate(() => {
+            const scope = globalThis as typeof globalThis & { __pdfE2EShareCalls: number };
+            scope.__pdfE2EShareCalls = 0;
+            Object.defineProperty(navigator, 'share', {
+                configurable: true,
+                value: async () => {
+                    scope.__pdfE2EShareCalls += 1;
+                },
+            });
+            Object.defineProperty(navigator, 'canShare', {
+                configurable: true,
+                value: () => false,
+            });
+        });
+        const browserDownload = page.waitForEvent('download');
+        await sentCard.click();
+        const downloadedPdf = await browserDownload;
+        expect(downloadedPdf.suggestedFilename()).toBe(fileName);
+        const downloadedPath = await downloadedPdf.path();
+        if (!downloadedPath) throw new Error('浏览器没有保留下载后的 E2E PDF');
+        expect(fs.readFileSync(downloadedPath)).toEqual(fixture);
+        expect(await page.evaluate(
+            () => (globalThis as typeof globalThis & { __pdfE2EShareCalls: number }).__pdfE2EShareCalls,
+        )).toBe(0);
+
+        await pauseForRecordedReview(page, 1_100);
+        await page.screenshot({ path: testInfo.outputPath('pdf-user-after.png'), fullPage: true });
     });
 
     test('宽屏图片消息与正文阅读列对齐，不再横向铺满', async ({ page }) => {

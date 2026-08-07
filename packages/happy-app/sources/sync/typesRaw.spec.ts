@@ -1811,6 +1811,8 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                             ref: 'upload-file-1',
                             name: 'report.pdf',
                             size: 1234,
+                            kind: 'file',
+                            mimeType: 'application/pdf',
                             source: 'generated'
                         }
                     }
@@ -1826,6 +1828,8 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         ref: 'upload-file-1',
                         name: 'report.pdf',
                         size: 1234,
+                        kind: 'file',
+                        mimeType: 'application/pdf',
                         source: 'generated'
                     },
                     description: 'Attached file: report.pdf'

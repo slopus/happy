@@ -14,6 +14,7 @@ export type ResolveMediaAttachmentSourceInput = {
     sessionId: string;
     ref: string;
     mimeType: string;
+    fileName?: string;
     encrypted?: boolean;
 };
 
@@ -26,7 +27,9 @@ export async function resolveMediaAttachmentSource(
 
     if (input.encrypted === false) {
         const source = await requestAttachmentDownloadSource(credentials, input.sessionId, input.ref);
-        return downloadMediaPlaybackSource(source, input.mimeType);
+        return input.fileName
+            ? downloadMediaPlaybackSource(source, input.mimeType, input.fileName)
+            : downloadMediaPlaybackSource(source, input.mimeType);
     }
 
     const blobKey = sync.encryption.getSessionBlobKey(input.sessionId);
@@ -36,5 +39,7 @@ export async function resolveMediaAttachmentSource(
     const encrypted = await downloadEncryptedAttachment(credentials, input.sessionId, input.ref);
     const decrypted = decryptBlob(encrypted, blobKey);
     if (!decrypted) throw new Error('Attachment decryption failed');
-    return createMediaPlaybackSource(decrypted, input.mimeType);
+    return input.fileName
+        ? createMediaPlaybackSource(decrypted, input.mimeType, input.fileName)
+        : createMediaPlaybackSource(decrypted, input.mimeType);
 }

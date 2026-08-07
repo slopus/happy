@@ -392,6 +392,23 @@ describe('MessageQueue2', () => {
         expect(batch2?.mode.type).toBe('A');
     });
 
+    it('atomically returns attachments displaced by an isolated message', () => {
+        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+        const displaced = {
+            kind: 'file' as const,
+            localPath: '/tmp/displaced.pdf',
+            size: 123,
+            mimeType: 'application/pdf',
+            name: 'displaced.pdf',
+        };
+
+        queue.push('message1', { type: 'A' }, [displaced]);
+        const discarded = queue.pushIsolateAndClear('isolated', { type: 'A' });
+
+        expect(discarded).toEqual([displaced]);
+        expect(queue.queue.map((item) => item.message)).toEqual(['isolated']);
+    });
+
     it('should stop batching when hitting isolated message', async () => {
         const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
         

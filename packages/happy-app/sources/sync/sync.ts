@@ -660,11 +660,10 @@ class Sync {
                                     ref: att.ref,
                                     name: att.name,
                                     size: att.size,
-                                    // Media is uploaded as plaintext through a private presigned
-                                    // URL and explicitly tagged encrypted:false, allowing the
-                                    // terminal to stream it directly to disk. Images keep the
-                                    // historical encrypted lane and omit this flag.
-                                    ...(att.kind === 'audio' || att.kind === 'video'
+                                    // Non-image attachments need kind + MIME metadata so the
+                                    // terminal stages them to a local path. Audio/video may be
+                                    // plaintext (encrypted:false); PDF files stay E2E encrypted.
+                                    ...(att.kind && att.kind !== 'image'
                                         ? { kind: att.kind, ...(att.mimeType ? { mimeType: att.mimeType } : {}) }
                                         : {}),
                                     ...(att.encrypted !== undefined ? { encrypted: att.encrypted } : {}),

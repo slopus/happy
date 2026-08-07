@@ -242,6 +242,23 @@ describe('useGroupedMessages', () => {
         }
     });
 
+    it('keeps PDF documents as individual file cards instead of image galleries', () => {
+        const pdf = fileMessage('user-pdf', 2);
+        pdf.tool.input = {
+            ref: 'sessions/s1/attachments/floor-plan.enc',
+            name: 'floor-plan.pdf',
+            size: 4096,
+            kind: 'file',
+            mimeType: 'application/pdf',
+        };
+
+        for (const enabled of [false, true]) {
+            const grouped = groupMessagesForDisplay([pdf], enabled);
+            expect(grouped).toHaveLength(1);
+            expect(grouped[0]).toMatchObject({ type: 'message', id: 'user-pdf' });
+        }
+    });
+
     it('stores grouped tools in chronological render order', () => {
         const messages: Message[] = [
             {

@@ -19,9 +19,9 @@ import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
-import { MessageQueue2 } from '@/utils/MessageQueue2';
-import type { PendingAttachment } from '@/utils/MessageQueue2';
-import { isPlaintextMediaEvent, resolveMediaKind, stagedMediaPath, isMediaFileEvent, buildMediaAttachmentFromBytes } from '@/api/mediaAttachment';
+import { createSerializedTaskRunner, MessageQueue2 } from '@/utils/MessageQueue2';
+import { isMediaAttachment, type PendingAttachment } from '@/utils/MessageQueue2';
+import { isPlaintextMediaEvent, resolveMediaKind, stagedMediaPath, isMediaFileEvent, buildMediaAttachmentFromBytes, cleanupAllStagedMediaAttachments, cleanupMediaAttachments, secureAndRegisterStagedMediaPath } from '@/api/mediaAttachment';
 import { buildCodexTurnPayload } from './codexImageInput';
 import { projectPath } from '@/projectPath';
 import { join } from 'node:path';
@@ -518,6 +518,7 @@ export async function runCodex(opts: {
                     const kind = resolveMediaKind(ev);
                     const destPath = stagedMediaPath(ev, new Date().toISOString(), 0);
                     await session.streamAttachmentToDisk(ev.ref, destPath);
+                    await secureAndRegisterStagedMediaPath(destPath);
                     logger.debug(`[Codex] Streamed ${kind} attachment to ${destPath} (${ev.size} bytes)`);
                     return { kind, localPath: destPath, size: ev.size, mimeType: ev.mimeType ?? 'application/octet-stream', name: ev.name };
                 }
@@ -543,80 +544,88 @@ export async function runCodex(opts: {
         session.trackAttachmentDownload(downloadPromise);
     });
 
-    session.onUserMessage(async (message) => {
+    const runUserMessageTask = createSerializedTaskRunner((error) => {
+        logger.debug('[Codex] Failed to process remote user message:', error);
+    });
+    session.onUserMessage((message) => {
         // Claim every file attachment that arrived strictly before this text.
         // New file events from this point on belong to the next user message.
-        const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
+        const attachmentsForThisMessagePromise = session.drainAttachmentsForUserMessage();
 
-        // Resolve permission mode (validate against Codex-native modes)
-        let messagePermissionMode = currentPermissionMode;
-        if (message.meta?.permissionMode) {
-            const incoming = message.meta.permissionMode as PermissionMode;
-            if (isRemoteCodexPermissionMode(incoming)) {
-                messagePermissionMode = incoming;
-                applyPermissionMode(messagePermissionMode, 'user message');
+        return runUserMessageTask(async () => {
+            const attachmentsForThisMessage = await attachmentsForThisMessagePromise;
+
+            // Resolve permission mode (validate against Codex-native modes)
+            let messagePermissionMode = currentPermissionMode;
+            if (message.meta?.permissionMode) {
+                const incoming = message.meta.permissionMode as PermissionMode;
+                if (isRemoteCodexPermissionMode(incoming)) {
+                    messagePermissionMode = incoming;
+                    applyPermissionMode(messagePermissionMode, 'user message');
+                } else {
+                    logger.debug(`[Codex] Ignoring invalid permission mode from user message: ${String(message.meta.permissionMode)}`);
+                }
             } else {
-                logger.debug(`[Codex] Ignoring invalid permission mode from user message: ${String(message.meta.permissionMode)}`);
+                logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
             }
-        } else {
-            logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
-        }
 
-        // Resolve model; explicit null resets to default (undefined)
-        let messageModel = currentModel;
-        if (message.meta?.hasOwnProperty('model')) {
-            messageModel = message.meta.model || undefined;
-            currentModel = messageModel;
-            logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
-        } else {
-            logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
-        }
-
-        // Resolve effort — passed straight to sendTurnAndWait. Validate the
-        // incoming value against ReasoningEffort so a stale/garbage entry on
-        // the wire doesn't poison the per-turn options.
-        let messageEffort = currentEffort;
-        if (message.meta?.hasOwnProperty('effort')) {
-            const incoming = (message.meta as Record<string, unknown>).effort;
-            if (incoming === null || incoming === undefined) {
-                messageEffort = undefined;
-                currentEffort = undefined;
-                logger.debug(`[Codex] Effort reset to default`);
-            } else if (typeof incoming === 'string' && (VALID_REMOTE_EFFORTS as readonly string[]).includes(incoming)) {
-                messageEffort = incoming as ReasoningEffort;
-                currentEffort = messageEffort;
-                logger.debug(`[Codex] Effort updated from user message: ${messageEffort}`);
+            // Resolve model; explicit null resets to default (undefined)
+            let messageModel = currentModel;
+            if (message.meta?.hasOwnProperty('model')) {
+                messageModel = message.meta.model || undefined;
+                currentModel = messageModel;
+                logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
             } else {
-                logger.debug(`[Codex] Ignoring invalid effort from user message: ${String(incoming)}`);
+                logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
             }
-        } else {
-            logger.debug(`[Codex] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
-        }
 
-        let messageAppendSystemPrompt = currentAppendSystemPrompt;
-        if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
-            messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined;
-            currentAppendSystemPrompt = messageAppendSystemPrompt;
-            logger.debug(`[Codex] Append system prompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to none'}`);
-        } else {
-            logger.debug(`[Codex] User message received with no append system prompt override, using current: ${currentAppendSystemPrompt ? 'set' : 'none'}`);
-        }
+            // Resolve effort — passed straight to sendTurnAndWait. Validate the
+            // incoming value against ReasoningEffort so a stale/garbage entry on
+            // the wire doesn't poison the per-turn options.
+            let messageEffort = currentEffort;
+            if (message.meta?.hasOwnProperty('effort')) {
+                const incoming = (message.meta as Record<string, unknown>).effort;
+                if (incoming === null || incoming === undefined) {
+                    messageEffort = undefined;
+                    currentEffort = undefined;
+                    logger.debug(`[Codex] Effort reset to default`);
+                } else if (typeof incoming === 'string' && (VALID_REMOTE_EFFORTS as readonly string[]).includes(incoming)) {
+                    messageEffort = incoming as ReasoningEffort;
+                    currentEffort = messageEffort;
+                    logger.debug(`[Codex] Effort updated from user message: ${messageEffort}`);
+                } else {
+                    logger.debug(`[Codex] Ignoring invalid effort from user message: ${String(incoming)}`);
+                }
+            } else {
+                logger.debug(`[Codex] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
+            }
 
-        const enhancedMode: EnhancedMode = {
-            permissionMode: messagePermissionMode || 'default',
-            model: messageModel,
-            appendSystemPrompt: messageAppendSystemPrompt,
-            effort: messageEffort,
-        };
-        const enqueueResult = enqueueCodexUserText({
-            text: message.content.text,
-            mode: enhancedMode,
-            attachments: attachmentsForThisMessage,
-            queue: messageQueue,
+            let messageAppendSystemPrompt = currentAppendSystemPrompt;
+            if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
+                messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined;
+                currentAppendSystemPrompt = messageAppendSystemPrompt;
+                logger.debug(`[Codex] Append system prompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to none'}`);
+            } else {
+                logger.debug(`[Codex] User message received with no append system prompt override, using current: ${currentAppendSystemPrompt ? 'set' : 'none'}`);
+            }
+
+            const enhancedMode: EnhancedMode = {
+                permissionMode: messagePermissionMode || 'default',
+                model: messageModel,
+                appendSystemPrompt: messageAppendSystemPrompt,
+                effort: messageEffort,
+            };
+            const enqueueResult = enqueueCodexUserText({
+                text: message.content.text,
+                mode: enhancedMode,
+                attachments: attachmentsForThisMessage,
+                queue: messageQueue,
+            });
+            await cleanupMediaAttachments(enqueueResult.displacedAttachments.filter(isMediaAttachment));
+            if (enqueueResult.status !== 'queued') {
+                logger.debug(`[Codex] /${enqueueResult.status} command pushed to isolated queue`);
+            }
         });
-        if (enqueueResult !== 'queued') {
-            logger.debug(`[Codex] /${enqueueResult} command pushed to isolated queue`);
-        }
     });
     let thinking = false;
     let currentTurnId: string | null = null;
@@ -768,11 +777,13 @@ export async function runCodex(opts: {
 
             // Stop Happy MCP server
             happyServer.stop();
+            await cleanupAllStagedMediaAttachments();
 
             logger.debug('[Codex] Session termination complete, exiting');
             process.exit(0);
         } catch (error) {
             logger.debug('[Codex] Error during session termination:', error);
+            await cleanupAllStagedMediaAttachments();
             process.exit(1);
         }
     };
@@ -1328,37 +1339,41 @@ export async function runCodex(opts: {
             mode: EnhancedMode;
             attachments?: PendingAttachment[];
         }) => {
-            const { executionPolicy } = await ensureCodexThread(opts.mode);
+            try {
+                const { executionPolicy } = await ensureCodexThread(opts.mode);
 
-            const includeAppendSystemPrompt = Boolean(
-                opts.mode.appendSystemPrompt && !appendSystemPromptInjected,
-            );
-            const turnPrompt = buildCodexTurnPrompt({
-                message: opts.prompt,
-                mode: opts.mode,
-                includeAppendSystemPrompt,
-                includeTitleInstruction: first,
-            });
+                const includeAppendSystemPrompt = Boolean(
+                    opts.mode.appendSystemPrompt && !appendSystemPromptInjected,
+                );
+                const turnPrompt = buildCodexTurnPrompt({
+                    message: opts.prompt,
+                    mode: opts.mode,
+                    includeAppendSystemPrompt,
+                    includeTitleInstruction: first,
+                });
 
-            const turnPayload = buildCodexTurnPayload(turnPrompt, opts.attachments);
-            if (turnPayload.images.length > 0) {
-                logger.debug(`[Codex] Attaching ${turnPayload.images.length} image(s) to turn`);
-            }
+                const turnPayload = buildCodexTurnPayload(turnPrompt, opts.attachments);
+                if (turnPayload.images.length > 0) {
+                    logger.debug(`[Codex] Attaching ${turnPayload.images.length} image(s) to turn`);
+                }
 
-            const result = await client.sendTurnAndWait(turnPayload.prompt, {
-                model: opts.mode.model,
-                approvalPolicy: executionPolicy.approvalPolicy,
-                sandbox: executionPolicy.sandbox,
-                effort: opts.mode.effort,
-                images: turnPayload.images,
-            });
-            first = false;
-            if (includeAppendSystemPrompt) {
-                appendSystemPromptInjected = true;
-            }
+                const result = await client.sendTurnAndWait(turnPayload.prompt, {
+                    model: opts.mode.model,
+                    approvalPolicy: executionPolicy.approvalPolicy,
+                    sandbox: executionPolicy.sandbox,
+                    effort: opts.mode.effort,
+                    images: turnPayload.images,
+                });
+                first = false;
+                if (includeAppendSystemPrompt) {
+                    appendSystemPromptInjected = true;
+                }
 
-            if (result.aborted) {
-                logger.debug('[Codex] Turn aborted');
+                if (result.aborted) {
+                    logger.debug('[Codex] Turn aborted');
+                }
+            } finally {
+                await cleanupMediaAttachments((opts.attachments ?? []).filter(isMediaAttachment));
             }
         };
 
@@ -1406,6 +1421,9 @@ export async function runCodex(opts: {
             }
 
             const specialCommand = parseSpecialCommand(message.message);
+            if (specialCommand.type && specialCommand.type !== 'plan') {
+                await cleanupMediaAttachments((message.attachments ?? []).filter(isMediaAttachment));
+            }
 
             if (specialCommand.type === 'skills') {
                 const skills = session.getMetadata()?.skills ?? [];
@@ -1582,6 +1600,7 @@ export async function runCodex(opts: {
     } finally {
         // Clean up resources when main loop exits
         logger.debug('[codex]: Final cleanup start');
+        await cleanupAllStagedMediaAttachments();
         logActiveHandles('cleanup-start');
 
         // Cancel offline reconnection if still running

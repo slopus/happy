@@ -8,6 +8,7 @@ import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
     release: vi.fn(),
+    openDocument: vi.fn(async () => undefined),
     resolveSource: vi.fn(async () => ({
         uri: 'https://files.test/acceptance.mp4',
         headers: {},
@@ -27,6 +28,7 @@ vi.mock('@/hooks/useAttachmentImage', () => ({ useAttachmentImage: () => ({ uri:
 vi.mock('@/utils/thumbhash', () => ({ thumbhashToDataUri: () => null }));
 vi.mock('@/sync/imageViewer', () => ({ imageViewer: { open: vi.fn() } }));
 vi.mock('@/sync/resolveMediaAttachmentSource', () => ({ resolveMediaAttachmentSource: mocks.resolveSource }));
+vi.mock('@/sync/openDocumentAttachment', () => ({ openDocumentAttachment: mocks.openDocument }));
 vi.mock('./MediaAttachmentPlayer', () => ({ MediaAttachmentPlayer: 'MediaAttachmentPlayer' }));
 vi.mock('@/text', () => ({
     t: (key: string, params?: { name?: string }) => `${key}:${params?.name ?? ''}`,
@@ -62,12 +64,28 @@ function videoTool(input: { encrypted?: boolean; source?: 'generated' } = {}) {
     } as any;
 }
 
+function pdfTool(input: { size?: number } = {}) {
+    return {
+        name: 'file',
+        state: 'completed',
+        input: {
+            ref: 'sessions/s1/attachments/floor-plan.enc',
+            name: 'floor-plan.pdf',
+            size: 4096,
+            kind: 'file',
+            mimeType: 'application/pdf',
+            ...input,
+        },
+    } as any;
+}
+
 describe('FileView media playback', () => {
     let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         mocks.release.mockClear();
+        mocks.openDocument.mockClear();
         mocks.resolveSource.mockClear();
         consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     });
@@ -109,6 +127,63 @@ describe('FileView media playback', () => {
         }));
         expect(renderer.root.findAllByProps({ testID: 'media-attachment-card-user' })).toHaveLength(0);
         expect(renderer.root.findByType('MediaAttachmentPlayer').props.testID).toBe('media-attachment-player-user');
+        act(() => renderer.unmount());
+    });
+
+    it('renders an encrypted PDF as a document card and shares the decrypted file on press', async () => {
+        mocks.resolveSource.mockResolvedValueOnce({
+            uri: 'file:///tmp/floor-plan.pdf',
+            headers: {},
+            release: mocks.release,
+        });
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(
+                <FileView tool={pdfTool()} sessionId="s1" metadata={null} messages={[]} />,
+            );
+        });
+
+        const card = renderer.root.findByProps({ testID: 'document-attachment-card-user' });
+        expect(mocks.resolveSource).not.toHaveBeenCalled();
+
+        await act(async () => {
+            await card.props.onPress();
+        });
+
+        expect(mocks.resolveSource).toHaveBeenCalledWith({
+            sessionId: 's1',
+            ref: 'sessions/s1/attachments/floor-plan.enc',
+            mimeType: 'application/pdf',
+            fileName: 'floor-plan.pdf',
+            encrypted: undefined,
+        });
+        expect(mocks.openDocument).toHaveBeenCalledWith(
+            'file:///tmp/floor-plan.pdf',
+            'floor-plan.pdf',
+            'application/pdf',
+        );
+        expect(mocks.release).toHaveBeenCalledTimes(1);
+        act(() => renderer.unmount());
+    });
+
+    it('does not decrypt a historical PDF above the safe whole-buffer limit', async () => {
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(
+                <FileView tool={pdfTool({ size: 11 * 1024 * 1024 })} sessionId="s1" metadata={null} messages={[]} />,
+            );
+        });
+
+        const card = renderer.root.findByProps({ testID: 'document-attachment-card-user' });
+        await act(async () => {
+            await card.props.onPress();
+        });
+
+        expect(mocks.resolveSource).not.toHaveBeenCalled();
+        expect(mocks.openDocument).not.toHaveBeenCalled();
+        expect(renderer.root.findAllByType('Text').some((node: any) => (
+            node.props.children === 'imageUpload.documentOpenFailed:'
+        ))).toBe(true);
         act(() => renderer.unmount());
     });
 });

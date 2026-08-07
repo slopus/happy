@@ -614,7 +614,7 @@ function isUserAttachment(msg: Message): boolean {
 function isImageAttachment(msg: Message): boolean {
     if (msg.kind !== 'tool-call' || msg.tool.name !== 'file') return false;
     const kind = msg.tool.input?.kind;
-    return kind !== 'audio' && kind !== 'video';
+    return kind !== 'audio' && kind !== 'video' && kind !== 'file';
 }
 
 function hasPendingPermission(messages: Message[]): boolean {

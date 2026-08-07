@@ -1434,7 +1434,11 @@ export const pl: TranslationStructure = {
     imageUpload: {
         chooseSourceTitle: 'Dodaj załącznik',
         chooseSourcePhoto: 'Zdjęcie lub obraz',
-        chooseSourceMedia: 'Plik audio lub wideo',
+        chooseSourceMedia: 'Audio lub wideo',
+        chooseSourcePdf: 'Dokument PDF',
+        documentPdf: 'Dokument PDF',
+        documentOpen: ({ name }: { name: string }) => `Otwórz „${name}”`,
+        documentOpenFailed: 'Nie udało się otworzyć tego pliku PDF.',
         mediaVideo: 'Wideo',
         mediaAudio: 'Audio',
         mediaPlay: ({ name }: { name: string }) => `Odtwórz „${name}”`,

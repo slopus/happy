@@ -1,6 +1,7 @@
 import type { AuthCredentials } from '@/auth/tokenStorage';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import type { RequestUploadResult } from './apiAttachments';
+import { MAX_PDF_FILE_SIZE } from './attachmentLimits';
 
 export type AttachmentUploadDependencies = {
     requestUpload: (
@@ -8,7 +9,7 @@ export type AttachmentUploadDependencies = {
         sessionId: string,
         filename: string,
         size: number,
-        kind?: 'image' | 'audio' | 'video',
+        kind?: 'image' | 'audio' | 'video' | 'file',
     ) => Promise<RequestUploadResult>;
     uploadMediaFile: (
         upload: RequestUploadResult,
@@ -16,7 +17,7 @@ export type AttachmentUploadDependencies = {
         mimeType: string,
         credentials: AuthCredentials,
     ) => Promise<void>;
-    readFileBytes: (uri: string) => Promise<Uint8Array>;
+    readFileBytes: (uri: string, maxBytes?: number) => Promise<Uint8Array>;
     encryptBlob: (bytes: Uint8Array, blobKey: Uint8Array) => Uint8Array;
     uploadEncryptedBlob: (
         upload: RequestUploadResult,
@@ -63,7 +64,13 @@ export async function uploadAttachmentForSession(
     if (!blobKey) {
         throw new Error(`Attachment encryption key is unavailable for ${attachment.name}`);
     }
-    const bytes = await dependencies.readFileBytes(attachment.uri);
+    const bytes = await dependencies.readFileBytes(
+        attachment.uri,
+        kind === 'file' ? MAX_PDF_FILE_SIZE : undefined,
+    );
+    if (kind === 'file' && bytes.length > MAX_PDF_FILE_SIZE) {
+        throw new Error('PDF attachment is too large');
+    }
     const encrypted = dependencies.encryptBlob(bytes, blobKey);
     const upload = await dependencies.requestUpload(
         credentials,
@@ -79,5 +86,6 @@ export async function uploadAttachmentForSession(
         width: attachment.width,
         height: attachment.height,
         thumbhash: attachment.thumbhash,
+        ...(kind === 'file' ? { kind, mimeType: attachment.mimeType } : {}),
     };
 }

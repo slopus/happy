@@ -44,11 +44,10 @@ export function AgentInputAttachmentStrip({ images, onRemove, presentation = 'co
             contentContainerStyle={styles.stripContent}
             keyboardShouldPersistTaps="always"
         >
-            {images.map((img, index) => (
+            {images.map((img) => (
                 <AttachmentThumbnail
                     key={img.id}
                     image={img}
-                    index={index}
                     images={images}
                     onRemove={onRemove}
                     presentation={presentation}
@@ -61,14 +60,12 @@ export function AgentInputAttachmentStrip({ images, onRemove, presentation = 'co
 
 function AttachmentThumbnail({
     image,
-    index,
     images,
     onRemove,
     presentation,
     theme,
 }: {
     image: AttachmentPreview;
-    index: number;
     images: AttachmentPreview[];
     onRemove: (id: string) => void;
     presentation: AttachmentGalleryPresentation;
@@ -187,6 +184,46 @@ function AttachmentThumbnail({
         );
     }
 
+    if (image.kind === 'file') {
+        return (
+            <View style={styles.mediaContainer}>
+                <View
+                    testID="document-attachment-card-pending"
+                    style={[
+                        styles.mediaCard,
+                        { borderColor: theme.colors.divider, backgroundColor: theme.colors.surfaceHigh },
+                    ]}
+                >
+                    <Ionicons name="document-text-outline" size={22} color={theme.colors.text} />
+                    <View style={styles.mediaMeta}>
+                        <Text numberOfLines={1} style={[styles.mediaName, { color: theme.colors.text }]}>
+                            {image.name}
+                        </Text>
+                        <Text numberOfLines={1} style={[styles.mediaType, { color: theme.colors.textSecondary }]}>
+                            {t('imageUpload.documentPdf')}
+                        </Text>
+                    </View>
+                </View>
+                <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t('common.delete')}
+                    onPress={() => onRemove(image.id)}
+                    hitSlop={6}
+                    style={(p) => [
+                        styles.removeButton,
+                        {
+                            backgroundColor: theme.colors.surfaceHigh,
+                            borderColor: theme.colors.divider,
+                            opacity: p.pressed ? 0.7 : 1,
+                        },
+                    ]}
+                >
+                    <Ionicons name="close" size={12} color={theme.colors.text} />
+                </Pressable>
+            </View>
+        );
+    }
+
     const maxFeaturedWidth = Math.max(THUMB_SIZE, Math.min(FEATURED_MAX_WIDTH, windowDimensions.width - 64));
     const displaySize = computeInputAttachmentImageSize({
         presentation,
@@ -196,14 +233,16 @@ function AttachmentThumbnail({
         maxHeight: FEATURED_MAX_HEIGHT,
     });
     const isFeatured = presentation === 'featured';
+    const viewerImages = images.filter((item) => (item.kind ?? 'image') === 'image');
+    const viewerIndex = viewerImages.findIndex((item) => item.id === image.id);
 
     return (
         <View style={[styles.thumbContainer, displaySize]}>
             {/* Tap the image to open the fullscreen swipeable viewer at this one. */}
             <Pressable
                 onPress={() => imageViewer.open(
-                    images.map((it) => ({ uri: it.uri, width: it.width, height: it.height, filename: it.name })),
-                    index,
+                    viewerImages.map((it) => ({ uri: it.uri, width: it.width, height: it.height, filename: it.name })),
+                    Math.max(0, viewerIndex),
                 )}
                 style={[styles.thumbPressable, displaySize, { borderColor: theme.colors.divider }]}
             >

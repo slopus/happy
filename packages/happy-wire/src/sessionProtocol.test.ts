@@ -85,6 +85,17 @@ describe('session protocol schemas', () => {
     expect(sessionEventSchema.safeParse(video).success).toBe(true);
   });
 
+  it('accepts encrypted PDF file events with the generic file kind', () => {
+    expect(sessionEventSchema.safeParse({
+      t: 'file',
+      ref: 'upload-pdf',
+      name: 'floor-plan.pdf',
+      size: 2_500_000,
+      mimeType: 'application/pdf',
+      kind: 'file',
+    }).success).toBe(true);
+  });
+
   it('stays backward compatible: legacy image file events omit kind/encrypted', () => {
     const legacy = { t: 'file', ref: 'upload-legacy', name: 'old.png', size: 2048, mimeType: 'image/png' };
     const parsed = sessionFileEventSchema.parse(legacy);

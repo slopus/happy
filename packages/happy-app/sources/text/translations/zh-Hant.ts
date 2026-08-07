@@ -1504,7 +1504,11 @@ export const zhHant: TranslationStructure = {
     imageUpload: {
         chooseSourceTitle: '新增附件',
         chooseSourcePhoto: '圖片',
-        chooseSourceMedia: '音訊 / 視訊檔案',
+        chooseSourceMedia: '音訊 / 視訊',
+        chooseSourcePdf: 'PDF 文件',
+        documentPdf: 'PDF 文件',
+        documentOpen: ({ name }: { name: string }) => `開啟「${name}」`,
+        documentOpenFailed: '無法開啟此 PDF 文件。',
         mediaVideo: '視訊',
         mediaAudio: '音訊',
         mediaPlay: ({ name }: { name: string }) => `播放「${name}」`,

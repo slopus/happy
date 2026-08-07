@@ -7,10 +7,12 @@
 /**
  * Attachment lane:
  * - 'image' (default): E2E-encrypted, read into memory, sent as base64/localImage.
+ * - 'file': E2E-encrypted document, decrypted and staged to a local path for
+ *   the model. The picker currently accepts PDF only.
  * - 'audio' | 'video': plaintext, streamed from disk straight to OSS, no
  *   thumbnail; the terminal streams it back to disk and hands the model a path.
  */
-export type AttachmentKind = 'image' | 'audio' | 'video';
+export type AttachmentKind = 'image' | 'audio' | 'video' | 'file';
 
 export type AttachmentPreview = {
     /** Stable unique identifier for use as React key and for removal. */

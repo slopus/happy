@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import {
     isPlaintextMediaEvent,
     resolveMediaKind,
@@ -7,10 +7,11 @@ import {
     formatMediaAttachmentNotice,
     isMediaFileEvent,
     buildMediaAttachmentFromBytes,
+    cleanupMediaAttachments,
     type MediaFileEvent,
 } from './mediaAttachment';
 import { buildCodexInput } from '@/codex/codexImageInput';
-import type { MediaAttachment, PendingAttachment } from '@/utils/MessageQueue2';
+import { isMediaAttachment, type MediaAttachment, type PendingAttachment } from '@/utils/MessageQueue2';
 
 const ev = (over: Partial<MediaFileEvent>): MediaFileEvent => ({
     ref: 'r',
@@ -40,16 +41,24 @@ describe('resolveMediaKind', () => {
         expect(resolveMediaKind(ev({ name: 'clip.mkv' }))).toBe('video');
         expect(resolveMediaKind(ev({ name: 'noext' }))).toBe('video');
     });
+    it('preserves the generic file kind for PDF documents', () => {
+        expect(resolveMediaKind(ev({ kind: 'file' as any, mimeType: 'application/pdf', name: 'plan.pdf' }))).toBe('file');
+    });
 });
 
 describe('stagedMediaPath', () => {
-    it('keeps extension, sanitises name, is collision-resistant via stamp+index', () => {
+    it('keeps extension, sanitises name, and includes a stable ref-derived collision key', () => {
         const p = stagedMediaPath(ev({ name: 'my clip!.mp4' }), '2026-07-13T00:00:00.000Z', 2);
-        expect(p).toMatch(/2026-07-13T00-00-00-000Z-2-my_clip_\.mp4$/);
+        expect(p).toMatch(/2026-07-13T00-00-00-000Z-2-[a-f0-9]{12}-my_clip_\.mp4$/);
     });
     it('handles names without extension', () => {
         const p = stagedMediaPath(ev({ name: 'recording' }), '2026-01-01T00:00:00Z', 0);
-        expect(p).toMatch(/2026-01-01T00-00-00Z-0-recording$/);
+        expect(p).toMatch(/2026-01-01T00-00-00Z-0-[a-f0-9]{12}-recording$/);
+    });
+    it('does not collide for same-name files received in the same millisecond', () => {
+        const first = stagedMediaPath(ev({ ref: 'attachment-a', name: 'plan.pdf' }), '2026-08-08T00:00:00.000Z', 0);
+        const second = stagedMediaPath(ev({ ref: 'attachment-b', name: 'plan.pdf' }), '2026-08-08T00:00:00.000Z', 0);
+        expect(first).not.toBe(second);
     });
 });
 
@@ -77,6 +86,20 @@ describe('formatMediaAttachmentNotice', () => {
         expect(notice).toContain('3.0MB');
         expect(notice).toMatch(/ffmpeg|whisper/);
     });
+    it('lists PDF paths as directly readable files', () => {
+        const notice = formatMediaAttachmentNotice([
+            media({
+                kind: 'file' as any,
+                localPath: '/tmp/floor-plan.pdf',
+                mimeType: 'application/pdf',
+                size: 2 * 1024 * 1024,
+                name: 'floor-plan.pdf',
+            }),
+        ]);
+        expect(notice).toContain('File 1: /tmp/floor-plan.pdf');
+        expect(notice).toContain('Use the exact local file path');
+        expect(notice).not.toContain('无法直接读取音视频内容');
+    });
 });
 
 describe('isMediaFileEvent', () => {
@@ -85,6 +108,11 @@ describe('isMediaFileEvent', () => {
         expect(isMediaFileEvent(ev({ mimeType: 'video/mp4' }))).toBe(true);
         expect(isMediaFileEvent(ev({ mimeType: 'image/png' }))).toBe(false);
         expect(isMediaFileEvent(ev({}))).toBe(false);
+    });
+    it('detects generic PDF file events without treating images as files', () => {
+        expect(isMediaFileEvent(ev({ kind: 'file' as any, mimeType: 'application/pdf' }))).toBe(true);
+        expect(isMediaFileEvent(ev({ mimeType: 'application/pdf', name: 'plan.pdf' }))).toBe(true);
+        expect(isMediaFileEvent(ev({ mimeType: 'image/png', name: 'plan.png' }))).toBe(false);
     });
 });
 
@@ -103,7 +131,22 @@ describe('buildMediaAttachmentFromBytes', () => {
         expect(att.localPath).toMatch(/voice\.mp3$/);
         const written = await readFile(att.localPath);
         expect(Array.from(written)).toEqual([1, 2, 3, 4, 5]);
-        await rm(att.localPath, { force: true });
+        await cleanupMediaAttachments([att]);
+    });
+    it('stages a decrypted PDF with its original extension', async () => {
+        const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+        const att = await buildMediaAttachmentFromBytes(
+            ev({ name: 'floor-plan.pdf', mimeType: 'application/pdf', kind: 'file' as any }),
+            bytes,
+            '2026-08-08T00:00:00Z',
+            0,
+        );
+        expect(att.kind).toBe('file');
+        expect(att.localPath).toMatch(/floor-plan\.pdf$/);
+        expect(new Uint8Array(await readFile(att.localPath))).toEqual(bytes);
+        expect((await stat(att.localPath)).mode & 0o777).toBe(0o600);
+        await cleanupMediaAttachments([att]);
+        await expect(readFile(att.localPath)).rejects.toMatchObject({ code: 'ENOENT' });
     });
 });
 
@@ -118,5 +161,23 @@ describe('buildCodexInput with media attachments', () => {
         const text = input.find((i) => i.type === 'text') as { type: 'text'; text: string };
         expect(text.text).toContain('/tmp/clip.mp4');
         expect(text.text).toContain('transcribe this');
+    });
+    it('injects the exact PDF path into Codex text input', () => {
+        const pdf = {
+            kind: 'file' as any,
+            localPath: '/tmp/floor-plan.pdf',
+            size: 2048,
+            mimeType: 'application/pdf',
+            name: 'floor-plan.pdf',
+        } as PendingAttachment;
+        expect(isMediaAttachment(pdf)).toBe(true);
+        if (!isMediaAttachment(pdf)) return;
+        const attachments: PendingAttachment[] = [pdf];
+        const input = buildCodexInput('review this plan', attachments);
+        expect(input.filter((item) => item.type === 'localImage')).toHaveLength(0);
+        expect(input).toContainEqual(expect.objectContaining({
+            type: 'text',
+            text: expect.stringContaining('/tmp/floor-plan.pdf'),
+        }));
     });
 });

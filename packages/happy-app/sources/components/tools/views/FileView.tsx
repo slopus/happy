@@ -21,12 +21,14 @@ import { resolveMediaAttachmentSource } from '@/sync/resolveMediaAttachmentSourc
 import type { MediaPlaybackSource } from '@/sync/mediaPlaybackSourceTypes';
 import { MediaAttachmentPlayer } from './MediaAttachmentPlayer';
 import { t } from '@/text';
+import { openDocumentAttachment } from '@/sync/openDocumentAttachment';
+import { MAX_PDF_FILE_SIZE } from '@/sync/attachmentLimits';
 
 const fileInputSchema = z.object({
     ref: z.string(),
     name: z.string(),
     size: z.number().optional(),
-    kind: z.enum(['image', 'audio', 'video']).optional(),
+    kind: z.enum(['image', 'audio', 'video', 'file']).optional(),
     mimeType: z.string().optional(),
     encrypted: z.boolean().optional(),
     source: z.enum(['user', 'generated']).optional(),
@@ -78,8 +80,98 @@ export const FileView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
             />
         );
     }
+    if (parsed.data.kind === 'file') {
+        return (
+            <DocumentFileCard
+                ref_={parsed.data.ref}
+                sessionId={sessionId}
+                name={parsed.data.name}
+                size={parsed.data.size}
+                mimeType={parsed.data.mimeType}
+                encrypted={parsed.data.encrypted}
+                source={parsed.data.source}
+            />
+        );
+    }
     return <ImageFileView name={parsed.data.name} image={parsed.data.image} ref_={parsed.data.ref} sessionId={sessionId} />;
 });
+
+function DocumentFileCard({ ref_, sessionId, name, size, mimeType, encrypted, source }: {
+    ref_: string;
+    sessionId?: string;
+    name: string;
+    size?: number;
+    mimeType?: string;
+    encrypted?: boolean;
+    source?: 'user' | 'generated';
+}) {
+    const { theme } = useUnistyles();
+    const [loading, setLoading] = React.useState(false);
+    const [error, setError] = React.useState(false);
+    const resolvedMimeType = mimeType ?? 'application/pdf';
+    const sourceType = source === 'generated' ? 'generated' : 'user';
+    const sizeLabel = humanSize(size);
+
+    const handleOpen = React.useCallback(async () => {
+        if (!sessionId || loading) return;
+        setLoading(true);
+        setError(false);
+        let resolved: MediaPlaybackSource | null = null;
+        try {
+            if (size !== undefined && size > MAX_PDF_FILE_SIZE) {
+                throw new Error('PDF attachment exceeds the safe open limit');
+            }
+            resolved = await resolveMediaAttachmentSource({
+                sessionId,
+                ref: ref_,
+                mimeType: resolvedMimeType,
+                fileName: name,
+                encrypted,
+            });
+            await openDocumentAttachment(resolved.uri, name, resolvedMimeType);
+        } catch (cause) {
+            console.warn(`[document-attachment] failed to open ${name}`, cause);
+            setError(true);
+        } finally {
+            await resolved?.release?.();
+            setLoading(false);
+        }
+    }, [encrypted, loading, name, ref_, resolvedMimeType, sessionId, size]);
+
+    return (
+        <View style={styles.inlineContainer}>
+            <Pressable
+                testID={`document-attachment-card-${sourceType}`}
+                accessibilityRole="button"
+                accessibilityLabel={t('imageUpload.documentOpen', { name })}
+                accessibilityState={{ disabled: !sessionId || loading, busy: loading }}
+                disabled={!sessionId || loading}
+                onPress={handleOpen}
+                style={(press) => [
+                    styles.mediaCard,
+                    { borderColor: theme.colors.divider, backgroundColor: theme.colors.surfaceHigh },
+                    press.pressed && styles.mediaCardPressed,
+                ]}
+            >
+                <Ionicons name="document-text-outline" size={22} color={theme.colors.text} />
+                <View style={styles.mediaMeta}>
+                    <Text style={[styles.filename, { color: theme.colors.text }]} numberOfLines={1}>{name}</Text>
+                    <Text style={[styles.mediaSub, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                        {t('imageUpload.documentPdf')}{sizeLabel ? ` · ${sizeLabel}` : ''}
+                    </Text>
+                </View>
+                {loading
+                    ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    : <Ionicons name="open-outline" size={20} color={theme.colors.textSecondary} />}
+            </Pressable>
+            {error ? (
+                <Text style={[styles.mediaError, { color: theme.colors.textDestructive }]}>
+                    {t('imageUpload.documentOpenFailed')}
+                </Text>
+            ) : null}
+        </View>
+    );
+}
 
 function InlineVideoFile({ ref_, sessionId, name, mimeType, encrypted, source: attachmentSource }: {
     ref_: string;

@@ -1406,7 +1406,11 @@ export const ja: TranslationStructure = {
     imageUpload: {
         chooseSourceTitle: '添付を追加',
         chooseSourcePhoto: '写真・画像',
-        chooseSourceMedia: '音声・動画ファイル',
+        chooseSourceMedia: '音声・動画',
+        chooseSourcePdf: 'PDF文書',
+        documentPdf: 'PDF文書',
+        documentOpen: ({ name }: { name: string }) => `「${name}」を開く`,
+        documentOpenFailed: 'このPDFを開けませんでした。',
         mediaVideo: '動画',
         mediaAudio: '音声',
         mediaPlay: ({ name }: { name: string }) => `「${name}」を再生`,

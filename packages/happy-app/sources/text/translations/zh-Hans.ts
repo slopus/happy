@@ -1974,7 +1974,11 @@ export const zhHans: TranslationStructure = {
     imageUpload: {
         chooseSourceTitle: '添加附件',
         chooseSourcePhoto: '图片',
-        chooseSourceMedia: '音频 / 视频文件',
+        chooseSourceMedia: '音频 / 视频',
+        chooseSourcePdf: 'PDF 文档',
+        documentPdf: 'PDF 文档',
+        documentOpen: ({ name }: { name: string }) => `打开“${name}”`,
+        documentOpenFailed: '无法打开此 PDF 文档。',
         mediaVideo: '视频',
         mediaAudio: '音频',
         mediaPlay: ({ name }: { name: string }) => `播放“${name}”`,

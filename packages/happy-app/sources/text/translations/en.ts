@@ -1419,7 +1419,11 @@ export const en: TranslationStructure = {
     imageUpload: {
         chooseSourceTitle: 'Add attachment',
         chooseSourcePhoto: 'Photo or image',
-        chooseSourceMedia: 'Audio or video file',
+        chooseSourceMedia: 'Audio or video',
+        chooseSourcePdf: 'PDF document',
+        documentPdf: 'PDF document',
+        documentOpen: ({ name }: { name: string }) => `Open ${name}`,
+        documentOpenFailed: 'Could not open this PDF.',
         mediaVideo: 'Video',
         mediaAudio: 'Audio',
         mediaPlay: ({ name }: { name: string }) => `Play ${name}`,

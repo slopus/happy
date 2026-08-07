@@ -17,8 +17,8 @@ import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
 import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
-import { isMediaAttachment } from '@/utils/MessageQueue2';
-import { formatMediaAttachmentNotice } from '@/api/mediaAttachment';
+import { isMediaAttachment, type MediaAttachment, type PendingAttachment } from '@/utils/MessageQueue2';
+import { cleanupAllStagedMediaAttachments, cleanupMediaAttachments, formatMediaAttachmentNotice } from '@/api/mediaAttachment';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { configuration } from '@/configuration';
@@ -77,6 +77,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     let exitReason: 'switch' | 'exit' | null = null;
     let abortController: AbortController | null = null;
     let abortFuture: Future<void> | null = null;
+    let mediaAwaitingCleanup: MediaAttachment[] = [];
 
     async function abort() {
         if (abortController && !abortController.signal.aborted) {
@@ -279,11 +280,66 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         }
     }
 
+    type QueuedClaudeMessage = {
+        message: string;
+        mode: EnhancedMode;
+        hash: string;
+        isolate: boolean;
+        attachments?: PendingAttachment[];
+    };
+
+    const prepareRemoteMessage = (msg: QueuedClaudeMessage): {
+        message: MessageParam['content'];
+        mode: EnhancedMode;
+    } => {
+        permissionHandler.handleModeChange(msg.mode.permissionMode);
+        const attachments = msg.attachments ?? [];
+        if (attachments.length === 0) {
+            return { message: msg.message, mode: msg.mode };
+        }
+
+        const contentBlocks: ContentBlockParam[] = [];
+        const mediaItems = attachments.filter(isMediaAttachment);
+        mediaAwaitingCleanup.push(...mediaItems);
+        const mediaNotice = formatMediaAttachmentNotice(mediaItems);
+
+        for (const att of attachments) {
+            if (isMediaAttachment(att)) continue;
+
+            // Archive the original before the SDK downsizes the image.
+            try {
+                const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const safeName = (att.name || 'attachment').replace(/[^\w.\-]+/g, '_');
+                const archivePath = join(configuration.attachmentsDir, `${stamp}-${safeName}`);
+                writeFileSync(archivePath, att.data);
+                logger.debug(`[remote] Archived original attachment to ${archivePath} (${att.data.length} bytes)`);
+            } catch (error) {
+                logger.debug(`[remote] Failed to archive attachment ${att.name}: ${error}`);
+            }
+
+            const detected = detectClaudeImageMime(att.data);
+            if (!detected) {
+                logger.debug(`[remote] Skipping unsupported attachment (no magic-byte match): ${att.name}, claimed mimeType=${att.mimeType}`);
+                continue;
+            }
+            contentBlocks.push({
+                type: 'image',
+                source: {
+                    type: 'base64',
+                    media_type: detected,
+                    data: Buffer.from(att.data).toString('base64'),
+                },
+            });
+        }
+
+        const text = mediaNotice ? `${mediaNotice}\n\n${msg.message}` : msg.message;
+        contentBlocks.push({ type: 'text', text });
+        logger.debug(`[remote] Combined ${contentBlocks.length - 1} image block(s) + ${mediaItems.length} media path(s) with text message`);
+        return { message: contentBlocks, mode: msg.mode };
+    };
+
     try {
-        let pending: {
-            message: MessageParam['content'];
-            mode: EnhancedMode;
-        } | null = null;
+        let pending: QueuedClaudeMessage | null = null;
 
         // Track session ID to detect when it actually changes
         // This prevents context loss when mode changes (permission mode, model, etc.)
@@ -312,7 +368,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             abortController = controller;
             abortFuture = new Future<void>();
             let modeHash: string | null = null;
-            let mode: EnhancedMode | null = null;
             try {
                 const remoteResult = await claudeRemote({
                     sessionId: session.sessionId,
@@ -327,91 +382,22 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     },
                     nextMessage: async () => {
                         if (pending) {
-                            let p = pending;
+                            const p = pending;
                             pending = null;
-                            permissionHandler.handleModeChange(p.mode.permissionMode);
-                            return p;
+                            return prepareRemoteMessage(p);
                         }
 
-                        let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
+                        const msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
+                        if (!msg) return null;
 
                         // Check if mode has changed
-                        if (msg) {
-                            if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
-                                logger.debug('[remote]: mode has changed, pending message');
-                                pending = msg;
-                                return null;
-                            }
-                            modeHash = msg.hash;
-                            mode = msg.mode;
-                            permissionHandler.handleModeChange(mode.permissionMode);
-
-                            // Per-message attachments are already claimed by the message
-                            // when it was pushed onto the queue, so there is no race window
-                            // to wait out here — just consume what travelled with the batch.
-                            const attachments = msg.attachments ?? [];
-                            if (attachments.length > 0) {
-                                const contentBlocks: ContentBlockParam[] = [];
-                                // Audio/video are already streamed to disk; inject their
-                                // paths as a text notice and let the model run ffmpeg/whisper.
-                                const mediaItems = attachments.filter(isMediaAttachment);
-                                const mediaNotice = formatMediaAttachmentNotice(mediaItems);
-                                for (const att of attachments) {
-                                    if (isMediaAttachment(att)) {
-                                        continue; // handled via mediaNotice text below
-                                    }
-                                    // Archive the ORIGINAL full-resolution bytes to the staging
-                                    // dir before they are base64'd and handed to the SDK (which
-                                    // downscales images to the model's max dimensions). This is
-                                    // the only point where we still hold the untouched original.
-                                    try {
-                                        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-                                        const safeName = (att.name || 'attachment').replace(/[^\w.\-]+/g, '_');
-                                        const archivePath = join(configuration.attachmentsDir, `${stamp}-${safeName}`);
-                                        writeFileSync(archivePath, att.data);
-                                        logger.debug(`[remote] Archived original attachment to ${archivePath} (${att.data.length} bytes)`);
-                                    } catch (e) {
-                                        logger.debug(`[remote] Failed to archive attachment ${att.name}: ${e}`);
-                                    }
-
-                                    // Detect media type from the decrypted bytes' magic header
-                                    // rather than trusting the wire-supplied mimeType. iOS image
-                                    // pickers happily report things like "image/heic" or no
-                                    // mimeType at all, which the Anthropic API rejects with a
-                                    // strict enum validation error. If the bytes look like one
-                                    // of the four formats Claude accepts, send that label —
-                                    // otherwise skip the attachment with a debug log.
-                                    const detected = detectClaudeImageMime(att.data);
-                                    if (!detected) {
-                                        logger.debug(`[remote] Skipping unsupported attachment (no magic-byte match): ${att.name}, claimed mimeType=${att.mimeType}`);
-                                        continue;
-                                    }
-                                    contentBlocks.push({
-                                        type: 'image' as const,
-                                        source: {
-                                            type: 'base64' as const,
-                                            media_type: detected,
-                                            data: Buffer.from(att.data).toString('base64'),
-                                        },
-                                    });
-                                }
-                                const text = mediaNotice ? `${mediaNotice}\n\n${msg.message}` : msg.message;
-                                contentBlocks.push({ type: 'text' as const, text });
-                                logger.debug(`[remote] Combined ${contentBlocks.length - 1} image block(s) + ${mediaItems.length} media path(s) with text message`);
-                                return {
-                                    message: contentBlocks,
-                                    mode: msg.mode,
-                                };
-                            }
-
-                            return {
-                                message: msg.message,
-                                mode: msg.mode
-                            }
+                        if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
+                            logger.debug('[remote]: mode has changed, pending message');
+                            pending = msg;
+                            return null;
                         }
-
-                        // Exit
-                        return null;
+                        modeHash = msg.hash;
+                        return prepareRemoteMessage(msg);
                     },
                     onSessionFound: (sessionId) => {
                         // Update converter's session ID when new session is found
@@ -446,6 +432,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         session.clearSessionId();
                     },
                     onReady: () => {
+                        const completedMedia = mediaAwaitingCleanup;
+                        mediaAwaitingCleanup = [];
+                        void cleanupMediaAttachments(completedMedia);
                         session.client.closeClaudeSessionTurn('completed');
                         if (!pending && session.queue.size() === 0) {
                             session.api.push().sendSessionNotification({
@@ -479,6 +468,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             } finally {
 
                 logger.debug('[remote]: launch finally');
+                await cleanupMediaAttachments(mediaAwaitingCleanup);
+                mediaAwaitingCleanup = [];
 
                 // Terminate all ongoing tool calls
                 for (let [toolCallId, { parentToolCallId }] of ongoingToolCalls) {
@@ -503,10 +494,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 logger.debug('[remote]: launch done');
                 permissionHandler.reset();
                 modeHash = null;
-                mode = null;
             }
         }
     } finally {
+
+        await cleanupAllStagedMediaAttachments();
 
         // Clean up permission handler
         permissionHandler.reset();
