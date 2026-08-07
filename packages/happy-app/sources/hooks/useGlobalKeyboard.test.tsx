@@ -14,22 +14,25 @@ import { useGlobalKeyboard } from './useGlobalKeyboard';
 
 function KeyboardHarness({
     onCommandPalette,
+    onOpenKeyboardShortcuts,
     onOpenSettings,
     onToggleLeftSidebar,
     onToggleRightSidebar,
 }: {
     onCommandPalette: () => void;
+    onOpenKeyboardShortcuts: () => void;
     onOpenSettings: () => void;
     onToggleLeftSidebar: () => void;
     onToggleRightSidebar: () => void;
 }) {
-    useGlobalKeyboard(onCommandPalette, { onOpenSettings, onToggleLeftSidebar, onToggleRightSidebar });
+    useGlobalKeyboard(onCommandPalette, { onOpenKeyboardShortcuts, onOpenSettings, onToggleLeftSidebar, onToggleRightSidebar });
     return null;
 }
 
 describe('useGlobalKeyboard', () => {
     let renderer: any;
     const onCommandPalette = vi.fn();
+    const onOpenKeyboardShortcuts = vi.fn();
     const onOpenSettings = vi.fn();
     const onToggleLeftSidebar = vi.fn();
     const onToggleRightSidebar = vi.fn();
@@ -46,6 +49,7 @@ describe('useGlobalKeyboard', () => {
             renderer = TestRenderer.create(
                 <KeyboardHarness
                     onCommandPalette={onCommandPalette}
+                    onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
                     onOpenSettings={onOpenSettings}
                     onToggleLeftSidebar={onToggleLeftSidebar}
                     onToggleRightSidebar={onToggleRightSidebar}
@@ -59,7 +63,10 @@ describe('useGlobalKeyboard', () => {
         vi.unstubAllGlobals();
     });
 
-    function keydown(overrides: Partial<KeyboardEvent>): { preventDefault: ReturnType<typeof vi.fn> } {
+    function keydown(overrides: Partial<KeyboardEvent>): {
+        preventDefault: ReturnType<typeof vi.fn>;
+        stopPropagation: ReturnType<typeof vi.fn>;
+    } {
         const preventDefault = vi.fn();
         const stopPropagation = vi.fn();
         listeners.get('keydown')?.({
@@ -71,7 +78,7 @@ describe('useGlobalKeyboard', () => {
             stopPropagation,
             ...overrides,
         } as unknown as Event);
-        return { preventDefault };
+        return { preventDefault, stopPropagation };
     }
 
     it('maps Command+B and Option+Command+B to separate desktop panels', () => {
@@ -107,5 +114,23 @@ describe('useGlobalKeyboard', () => {
 
         expect(event.preventDefault).toHaveBeenCalledOnce();
         expect(onOpenSettings).toHaveBeenCalledOnce();
+    });
+
+    it('opens keyboard shortcuts for Command+Slash and Ctrl+Slash', () => {
+        const commandEvent = keydown({ key: '/' });
+        expect(commandEvent.preventDefault).toHaveBeenCalledOnce();
+        expect(commandEvent.stopPropagation).toHaveBeenCalledOnce();
+        expect(onOpenKeyboardShortcuts).toHaveBeenCalledOnce();
+
+        expect(keydown({ ctrlKey: true, key: '/', metaKey: false }).preventDefault).toHaveBeenCalledOnce();
+        expect(onOpenKeyboardShortcuts).toHaveBeenCalledTimes(2);
+    });
+
+    it('ignores modified, composing, and repeated slash events', () => {
+        keydown({ altKey: true, key: '/' });
+        keydown({ isComposing: true, key: '/' });
+        keydown({ key: '/', repeat: true });
+
+        expect(onOpenKeyboardShortcuts).not.toHaveBeenCalled();
     });
 });
