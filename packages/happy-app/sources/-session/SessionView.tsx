@@ -8,6 +8,7 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { SessionHeaderChip } from '@/components/SessionHeaderChip';
 import { SessionInfoDropdown } from '@/components/SessionInfoDropdown';
 import { DesktopRightPanel, DesktopRightPanelToggleButton } from '@/components/DesktopRightPanel';
+import { DesktopPresenceTransition } from '@/components/DesktopPresenceTransition';
 import { DesktopShortcutTooltip } from '@/components/DesktopShortcutTooltip';
 import { RightSwipePanelHost } from '@/components/RightSwipePanelHost';
 import { ChatList } from '@/components/ChatList';
@@ -790,22 +791,29 @@ export const SessionView = React.memo((props: { id: string }) => {
                         showCollapseButton={false}
                         tabs={desktopPanelTabs}
                     >
-                        {desktopPanelMode === 'files' && canShowFilePanel ? (
-                            <FilesSidebar
-                                sessionId={sessionId}
-                                selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
-                                onFilePress={handleSidebarFilePress}
-                                mode={sidebarMode}
-                                onModeChange={setSidebarMode}
-                                onAllFilesFilePress={handleAllFilesFilePress}
-                            />
-                        ) : (
-                            <SessionRightPanelContent
-                                composerHandleRef={sessionComposerHandleRef}
-                                sessionId={sessionId}
-                                spaceAgent={spaceAgent}
-                            />
-                        )}
+                        <DesktopPresenceTransition
+                            direction={desktopPanelMode === 'files' ? 'forward' : 'back'}
+                            immediate={!canShowFilePanel}
+                            testID="desktop-right-panel-content-transition"
+                            transitionKey={desktopPanelMode}
+                        >
+                            {desktopPanelMode === 'files' && canShowFilePanel ? (
+                                <FilesSidebar
+                                    mode={sidebarMode}
+                                    onAllFilesFilePress={handleAllFilesFilePress}
+                                    onFilePress={handleSidebarFilePress}
+                                    onModeChange={setSidebarMode}
+                                    selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
+                                    sessionId={sessionId}
+                                />
+                            ) : (
+                                <SessionRightPanelContent
+                                    composerHandleRef={sessionComposerHandleRef}
+                                    sessionId={sessionId}
+                                    spaceAgent={spaceAgent}
+                                />
+                            )}
+                        </DesktopPresenceTransition>
                     </DesktopRightPanel>
                 </View>
             </Animated.View>

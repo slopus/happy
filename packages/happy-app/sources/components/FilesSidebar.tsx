@@ -15,6 +15,7 @@ import { FileIcon } from '@/components/FileIcon';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { DesktopPresenceTransition } from '@/components/DesktopPresenceTransition';
 
 export type SidebarMode = 'changes' | 'allFiles';
 
@@ -204,6 +205,34 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
         });
     }, []);
 
+    const changesContent = (
+        <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+            {!hasFiles ? (
+                <View style={styles.emptyState}>
+                    <View style={styles.emptyIconWrap}>
+                        <Octicons name="check" size={28} style={styles.emptyIcon} />
+                    </View>
+                    <Text style={styles.emptyTitle}>{t('files.noChangesTitle')}</Text>
+                    <Text style={styles.emptySubtitle}>{t('files.noChangesSubtitle')}</Text>
+                </View>
+            ) : (
+                <View style={styles.tree}>
+                    {filteredTree.map((node) => (
+                        <TreeNodeRow
+                            key={node.path}
+                            node={node}
+                            depth={0}
+                            selectedPath={selectedPath ?? null}
+                            collapsed={effectiveCollapsed}
+                            onToggleDir={toggleDir}
+                            onFilePress={handleFilePress}
+                        />
+                    ))}
+                </View>
+            )}
+        </ScrollView>
+    );
+
     return (
         <View testID="session-files-sidebar" style={styles.container}>
             {/* Tab selector */}
@@ -211,6 +240,14 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                 {onModeChange ? (
                     <View style={styles.tabRow}>
                         <Pressable
+                            accessibilityRole="tab"
+                            accessibilityState={{ selected: mode === 'changes' }}
+                            {...(Platform.OS === 'web' ? {
+                                dataSet: {
+                                    happyMotion: 'desktop-tab',
+                                    happyMotionState: mode === 'changes' ? 'selected' : 'idle',
+                                },
+                            } as any : {})}
                             testID="session-files-changes-tab"
                             onPress={() => onModeChange('changes')}
                             style={[
@@ -226,6 +263,14 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                             </Text>
                         </Pressable>
                         <Pressable
+                            accessibilityRole="tab"
+                            accessibilityState={{ selected: mode === 'allFiles' }}
+                            {...(Platform.OS === 'web' ? {
+                                dataSet: {
+                                    happyMotion: 'desktop-tab',
+                                    happyMotionState: mode === 'allFiles' ? 'selected' : 'idle',
+                                },
+                            } as any : {})}
                             testID="session-files-all-tab"
                             onPress={() => onModeChange('allFiles')}
                             style={[
@@ -258,39 +303,19 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                 ) : null}
             </View>
 
-            {mode === 'changes' ? (
-                <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-                    {!hasFiles ? (
-                        <View style={styles.emptyState}>
-                            <View style={styles.emptyIconWrap}>
-                                <Octicons name="check" size={28} style={styles.emptyIcon} />
-                            </View>
-                            <Text style={styles.emptyTitle}>{t('files.noChangesTitle')}</Text>
-                            <Text style={styles.emptySubtitle}>{t('files.noChangesSubtitle')}</Text>
-                        </View>
-                    ) : (
-                        <View style={styles.tree}>
-                            {filteredTree.map((node) => (
-                                <TreeNodeRow
-                                    key={node.path}
-                                    node={node}
-                                    depth={0}
-                                    selectedPath={selectedPath ?? null}
-                                    collapsed={effectiveCollapsed}
-                                    onToggleDir={toggleDir}
-                                    onFilePress={handleFilePress}
-                                />
-                            ))}
-                        </View>
-                    )}
-                </ScrollView>
-            ) : (
-                <AllFilesTab
-                    sessionId={sessionId}
-                    selectedPath={selectedPath ?? null}
-                    onFilePress={onAllFilesFilePress}
-                />
-            )}
+            <DesktopPresenceTransition
+                direction={mode === 'allFiles' ? 'forward' : 'back'}
+                testID="session-files-mode-transition"
+                transitionKey={mode}
+            >
+                {mode === 'changes' ? changesContent : (
+                    <AllFilesTab
+                        onFilePress={onAllFilesFilePress}
+                        selectedPath={selectedPath ?? null}
+                        sessionId={sessionId}
+                    />
+                )}
+            </DesktopPresenceTransition>
         </View>
     );
 });

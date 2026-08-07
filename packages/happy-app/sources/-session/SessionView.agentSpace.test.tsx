@@ -174,6 +174,14 @@ vi.mock('@/components/Deferred', () => ({ Deferred: ({ children }: { children: R
 vi.mock('@/components/EmptyMessages', () => ({ EmptyMessages: 'EmptyMessages' }));
 vi.mock('@/components/ScreenshotGalleryDrawer', () => ({ ScreenshotGalleryDrawer: 'ScreenshotGalleryDrawer' }));
 vi.mock('@/components/FilesSidebar', () => ({ FilesSidebar: 'FilesSidebar' }));
+vi.mock('@/components/DesktopPresenceTransition', async () => {
+    const ReactModule = await import('react');
+    return {
+        DesktopPresenceTransition: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
+            ReactModule.createElement('DesktopPresenceTransition', props, children)
+        ),
+    };
+});
 vi.mock('@/components/AllFilesDiffView', () => ({ AllFilesDiffView: 'AllFilesDiffView' }));
 vi.mock('@/components/FileViewPanel', () => ({ FileViewPanel: 'FileViewPanel' }));
 vi.mock('@/components/diff/PierreDiffView', () => ({ prefetchPierreDiff: vi.fn() }));
@@ -427,6 +435,7 @@ describe('SessionView Agent-space boundary', () => {
         mocks.runningOnMac = true;
         mocks.windowWidth = 1400;
         mocks.isTablet = true;
+        mocks.platformOS = 'web';
         let renderer: any;
 
         act(() => {
@@ -436,8 +445,29 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(1);
         expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(0);
         expect(renderer.root.findAllByType('RightSwipePanelHost')).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-content-transition' }).props).toMatchObject({
+            direction: 'back',
+            transitionKey: 'capabilities',
+        });
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-capabilities-tab' }).props.dataSet).toMatchObject({
+            happyMotion: 'desktop-tab',
+            happyMotionState: 'selected',
+        });
 
-        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.onPress());
+        const filesTab = renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' });
+        expect(filesTab.props.accessibilityRole).toBe('tab');
+        expect(filesTab.props.dataSet).toMatchObject({
+            happyMotion: 'desktop-tab',
+            happyMotionState: 'idle',
+        });
+
+        act(() => filesTab.props.onPress());
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-content-transition' }).props).toMatchObject({
+            direction: 'forward',
+            transitionKey: 'files',
+        });
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-capabilities-tab' }).props.dataSet.happyMotionState).toBe('idle');
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.dataSet.happyMotionState).toBe('selected');
         expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(1);
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(0);
 

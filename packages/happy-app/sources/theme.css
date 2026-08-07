@@ -99,6 +99,13 @@ button, input, textarea, select {
     transform: translate3d(8px, 0, 0);
 }
 
+[data-happy-motion="desktop-tab"],
+[data-happy-motion="desktop-tab"] * {
+    transition:
+        background-color var(--happy-motion-tab-duration) var(--happy-motion-content-ease-out),
+        color var(--happy-motion-tab-duration) var(--happy-motion-content-ease-out);
+}
+
 [data-happy-motion="popover"] {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -166,6 +173,11 @@ button, input, textarea, select {
         transform: none;
         transition: none;
         will-change: auto;
+    }
+
+    [data-happy-motion="desktop-tab"],
+    [data-happy-motion="desktop-tab"] * {
+        transition: none;
     }
 
     [data-happy-motion="popover"] {
