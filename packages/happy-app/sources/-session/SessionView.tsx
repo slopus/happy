@@ -8,7 +8,6 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { SessionHeaderChip } from '@/components/SessionHeaderChip';
 import { SessionInfoDropdown } from '@/components/SessionInfoDropdown';
 import { DesktopRightPanel, DesktopRightPanelToggleButton } from '@/components/DesktopRightPanel';
-import { DesktopShortcutTooltip } from '@/components/DesktopShortcutTooltip';
 import { RightSwipePanelHost } from '@/components/RightSwipePanelHost';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
@@ -145,7 +144,6 @@ function SessionHeaderTitle({
     const { theme } = useUnistyles();
     const [editing, setEditing] = React.useState(false);
     const [draftTitle, setDraftTitle] = React.useState(title);
-    const [tooltipVisible, setTooltipVisible] = React.useState(false);
     const editingRef = React.useRef(false);
     const draftTitleRef = React.useRef(title);
     const { renameSessionToTitle, renamingSession } = useSessionQuickActions(session);
@@ -159,7 +157,6 @@ function SessionHeaderTitle({
     }, [title]);
 
     const beginEditing = React.useCallback(() => {
-        setTooltipVisible(false);
         draftTitleRef.current = title;
         setDraftTitle(title);
         editingRef.current = true;
@@ -216,10 +213,6 @@ function SessionHeaderTitle({
                         accessibilityLabel={`${t('sessionInfo.renameSession')}: ${title}`}
                         accessibilityRole="button"
                         {...({ tabIndex: 0 } as any)}
-                        onBlur={() => setTooltipVisible(false)}
-                        onFocus={() => setTooltipVisible(true)}
-                        onHoverIn={() => setTooltipVisible(true)}
-                        onHoverOut={() => setTooltipVisible(false)}
                         onPress={beginEditing}
                         style={sessionHeaderTitleStyles.headerTitleTarget}
                         testID="session-header-title"
@@ -250,13 +243,6 @@ function SessionHeaderTitle({
                     </Text>
                 </View>
             </View>
-            <DesktopShortcutTooltip
-                align="right"
-                label={title}
-                multiline
-                testID="session-header-title-tooltip"
-                visible={tooltipVisible && !editing}
-            />
         </View>
     );
 }

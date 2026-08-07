@@ -26,8 +26,8 @@ function standaloneToolScreenshotPath(testInfo: TestInfo): string {
 
 const projectHoverEvidenceDirectory = process.env.HAPPY_PROJECT_HOVER_EVIDENCE_DIR;
 const projectHoverEvidencePhase = process.env.HAPPY_PROJECT_HOVER_EVIDENCE_PHASE ?? 'after';
-const titlePromptEvidenceDirectory = process.env.HAPPY_TITLE_PROMPT_EVIDENCE_DIR;
-const titlePromptEvidencePhase = process.env.HAPPY_TITLE_PROMPT_EVIDENCE_PHASE ?? 'after';
+const titleTooltipEvidenceDirectory = process.env.HAPPY_TITLE_TOOLTIP_EVIDENCE_DIR;
+const titleTooltipEvidencePhase = process.env.HAPPY_TITLE_TOOLTIP_EVIDENCE_PHASE ?? 'after';
 
 function projectHoverScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
     const filename = `case-1-${projectHoverEvidencePhase}.png`;
@@ -36,11 +36,11 @@ function projectHoverScreenshotPath(testInfo: { outputPath: (filename: string) =
     return path.join(projectHoverEvidenceDirectory, filename);
 }
 
-function titlePromptScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
-    const filename = `case-1-${titlePromptEvidencePhase}.png`;
-    if (!titlePromptEvidenceDirectory) return testInfo.outputPath(filename);
-    fs.mkdirSync(titlePromptEvidenceDirectory, { recursive: true });
-    return path.join(titlePromptEvidenceDirectory, filename);
+function titleTooltipScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
+    const filename = `case-1-${titleTooltipEvidencePhase}.png`;
+    if (!titleTooltipEvidenceDirectory) return testInfo.outputPath(filename);
+    fs.mkdirSync(titleTooltipEvidenceDirectory, { recursive: true });
+    return path.join(titleTooltipEvidenceDirectory, filename);
 }
 
 function authenticatedRoute(pathname: string): string {
@@ -2184,21 +2184,14 @@ test('[PROJECT-HOVER-ACTIONS] PC 项目行悬浮仅显示新建会话操作', as
     }
 });
 
-test('[PC-TITLE-PROMPT] PC 会话改名后仍隐藏首条标题提示', async ({ page, request }, testInfo) => {
-    const initialTitlePrompt = '优化批量图片生成体验';
-    const followUpPrompt = '这条后续消息必须继续显示。';
+test('[PC-TITLE-TOOLTIP] PC 标题悬浮和聚焦不再重复显示标题提示', async ({ page, request }, testInfo) => {
+    const userPrompt = '这是一条真实用户消息，必须继续显示。';
     const sessionId = await createE2ESession(request, {
-        summary: '已重新命名的会话',
-        name: 'Renamed title-prompt regression',
+        summary: 'PC 标题不再重复提示',
+        name: 'Desktop title-tooltip regression',
     });
     await createE2EUserMessage(request, sessionId, {
-        text: initialTitlePrompt,
-        model: 'gpt-5.6-sol',
-        effort: 'high',
-        permission: 'default',
-    });
-    await createE2EUserMessage(request, sessionId, {
-        text: followUpPrompt,
+        text: userPrompt,
         model: 'gpt-5.6-sol',
         effort: 'high',
         permission: 'default',
@@ -2206,23 +2199,28 @@ test('[PC-TITLE-PROMPT] PC 会话改名后仍隐藏首条标题提示', async ({
 
     await page.setViewportSize({ width: 1496, height: 768 });
     await page.goto(authenticatedRoute(`/session/${sessionId}`));
-    await expect(page.getByTestId('session-header-title')).toHaveText('已重新命名的会话');
-    await expect(page.getByText(followUpPrompt, { exact: true })).toBeVisible();
-    if (titlePromptEvidencePhase === 'before') {
-        await expect(page.getByText(initialTitlePrompt, { exact: true })).toBeVisible();
-    } else {
-        await expect(page.getByText(initialTitlePrompt, { exact: true })).toHaveCount(0);
+    const title = page.locator('[data-testid="session-header-title"]:visible');
+    await expect(title).toHaveText('PC 标题不再重复提示');
+    await title.hover();
+    if (titleTooltipEvidencePhase === 'before') {
+        await expect(page.getByTestId('session-header-title-tooltip')).toBeVisible();
+        await pauseForRecordedReview(page, 1_000);
+        await page.screenshot({
+            path: titleTooltipScreenshotPath(testInfo),
+            fullPage: true,
+        });
+        return;
     }
+    await expect(page.getByTestId('session-header-title-tooltip')).toHaveCount(0);
+    await expect(page.getByText(userPrompt, { exact: true })).toBeVisible();
     await pauseForRecordedReview(page, 1_000);
     await page.screenshot({
-        path: titlePromptScreenshotPath(testInfo),
+        path: titleTooltipScreenshotPath(testInfo),
         fullPage: true,
     });
 
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.reload();
-    await expect(page.getByText(initialTitlePrompt, { exact: true })).toBeVisible();
-    await expect(page.getByText(followUpPrompt, { exact: true })).toBeVisible();
+    await title.focus();
+    await expect(page.getByTestId('session-header-title-tooltip')).toHaveCount(0);
 });
 
 test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重连后保持一致', async ({ page, request }, testInfo) => {

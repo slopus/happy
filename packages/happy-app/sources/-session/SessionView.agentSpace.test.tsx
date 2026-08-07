@@ -741,13 +741,9 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByProps({ testID: 'session-header-title-edit-icon' })).toHaveLength(0);
         expect(renderer.root.findByProps({ testID: 'session-header-run-status' }).props.accessibilityLabel).toBe('Online');
         expect(title.parent.props.style).not.toMatchObject({ overflow: 'hidden' });
-        act(() => title.props.onFocus());
-        const titleTooltip = renderer.root.findAllByType('View').find(
-            (node: any) => node.props.testID === 'session-header-title-tooltip',
-        );
-        expect(titleTooltip).toBeDefined();
-        expect(titleTooltip!.props.style).toContainEqual(expect.objectContaining({ width: 380, maxWidth: 380 }));
-        expect(titleTooltip!.findByType('Text').props.numberOfLines).toBeUndefined();
+        expect(title.props.onFocus).toBeUndefined();
+        expect(title.props.onHoverIn).toBeUndefined();
+        expect(renderer.root.findAllByProps({ testID: 'session-header-title-tooltip' })).toHaveLength(0);
 
         act(() => title.props.onPress());
         const titleInput = renderer.root.findByProps({ testID: 'session-header-title-input' });

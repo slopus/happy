@@ -3,7 +3,7 @@ import { useSession, useSessionMessages, useSetting } from "@/sync/storage";
 import { sync } from '@/sync/sync';
 import { ActivityIndicator, AppState, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, Text, View } from 'react-native';
 import { useCallback } from 'react';
-import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
+import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
 import { AgentWorkGroupView, ToolGroupView } from './ToolGroupView';
@@ -21,7 +21,6 @@ import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { useUserMessageAnchors, type UserMessageAnchor } from '@/hooks/useUserMessageAnchors';
 import { AnchorListSheet } from './AnchorListSheet';
 import { t } from '@/text';
-import { getDesktopTitlePromptMessageId } from '@/utils/desktopTitlePrompt';
 
 const SCROLL_THRESHOLD = 300;
 // How long the anchor pill lingers after the user stops scrolling.
@@ -76,8 +75,6 @@ const ChatListInternal = React.memo((props: {
     isLoadingOlder: boolean,
 }) => {
     const { theme } = useUnistyles();
-    const isTablet = useIsTablet();
-    const isDesktopWeb = Platform.OS === 'web' && isTablet;
     const flatListRef = React.useRef<FlatList>(null);
     const [showScrollButton, setShowScrollButton] = React.useState(false);
     // Tracks whether the scroll-button is currently shown, so we only call
@@ -107,20 +104,7 @@ const ChatListInternal = React.memo((props: {
         () => ({ collapseCurrentTurn }),
         [collapseCurrentTurn],
     );
-    const groupedDisplayItems = useGroupedMessages(props.messages, groupToolCalls, groupingOptions);
-    const desktopTitlePromptMessageId = React.useMemo(() => (
-        isDesktopWeb
-            ? getDesktopTitlePromptMessageId(
-                groupedDisplayItems,
-                props.isLoaded && !props.hasMoreOlder,
-            )
-            : null
-    ), [groupedDisplayItems, isDesktopWeb, props.hasMoreOlder, props.isLoaded]);
-    const displayItems = React.useMemo(() => (
-        desktopTitlePromptMessageId
-            ? groupedDisplayItems.filter(item => item.id !== desktopTitlePromptMessageId)
-            : groupedDisplayItems
-    ), [desktopTitlePromptMessageId, groupedDisplayItems]);
+    const displayItems = useGroupedMessages(props.messages, groupToolCalls, groupingOptions);
     const latestVisibleUserMessageId = React.useMemo(() => {
         for (const item of displayItems) {
             if (item.type === 'message' && item.message.kind === 'user-text') {
