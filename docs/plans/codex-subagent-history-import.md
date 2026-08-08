@@ -142,4 +142,3 @@ continues storing opaque parent-session messages and enforcing ownership.
 - End-to-end fixture: parent activity plus a separate completed child rollout
   becomes visible in the existing inspector after one import, without exposing
   hidden reasoning.
-
