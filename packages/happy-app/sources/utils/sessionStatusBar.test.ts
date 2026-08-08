@@ -70,6 +70,23 @@ describe('usage limit helpers', () => {
         expect(chips[0].id).toBe('seven_day');
     });
 
+    it('chips the fable weekly window alongside the plan windows', () => {
+        const limits = {
+            capturedAt: 1,
+            windows: [
+                { id: 'five_hour', status: 'allowed', utilization: 52, resetsAt: 100 },
+                { id: 'seven_day', status: 'allowed', utilization: 10, resetsAt: 200 },
+                { id: 'weekly_fable', label: 'Fable', status: 'allowed', utilization: 17, resetsAt: 200 },
+            ],
+        };
+        const chips = getUsageLimitChips(limits, false);
+        expect(chips.map(c => c.id)).toEqual(['five_hour', 'seven_day', 'weekly_fable']);
+        expect(chips[2].shortLabel).toBe('fable');
+        expect(chips[2].utilization).toBe(17);
+        // The popover keeps the CLI-provided display name.
+        expect(getUsageLimitRows(limits).find(r => r.id === 'weekly_fable')?.label).toBe('Fable');
+    });
+
     it('hides chips for windows without numeric utilization and for absent data', () => {
         expect(getUsageLimitChips({ capturedAt: 1, windows: [{ id: 'five_hour', utilization: null }] }, false)).toEqual([]);
         expect(getUsageLimitChips(undefined, false)).toEqual([]);
