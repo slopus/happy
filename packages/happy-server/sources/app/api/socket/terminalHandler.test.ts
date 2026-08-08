@@ -137,6 +137,63 @@ describe('terminalHandler', () => {
         expect(daemonInputs).not.toContain('FROM-A-VIEW');
     });
 
+    it('resolves concurrent takeovers to exactly one writer', async () => {
+        const daemon = await connect('user1', 'machine-scoped');
+        const clientA = await connect('user1', 'user-scoped');
+        const clientB = await connect('user1', 'user-scoped');
+        const terminalId = 'term-race';
+
+        daemon.emit('terminal:register', { terminalId });
+        clientA.emit('terminal:subscribe', { terminalId });
+        clientB.emit('terminal:subscribe', { terminalId });
+        await delay(50);
+
+        const daemonInputs: string[] = [];
+        daemon.on('terminal:input', (data: { payload: string }) => daemonInputs.push(data.payload));
+
+        // Fire both takeovers without waiting: takeover must be serialized and
+        // end with exactly one writer, never zero or two.
+        clientA.emit('terminal:takeover', { terminalId });
+        clientB.emit('terminal:takeover', { terminalId });
+        await delay(100);
+
+        clientA.emit('terminal:input', { terminalId, payload: 'FROM-A' });
+        clientB.emit('terminal:input', { terminalId, payload: 'FROM-B' });
+        await delay(100);
+
+        expect(daemonInputs).toHaveLength(1);
+        expect(['FROM-A', 'FROM-B']).toContain(daemonInputs[0]);
+    });
+
+    it('clears the writer seat on unsubscribe', async () => {
+        const daemon = await connect('user1', 'machine-scoped');
+        const clientA = await connect('user1', 'user-scoped');
+        const clientB = await connect('user1', 'user-scoped');
+        const terminalId = 'term-unsub';
+
+        daemon.emit('terminal:register', { terminalId });
+        clientA.emit('terminal:subscribe', { terminalId });
+        clientB.emit('terminal:subscribe', { terminalId });
+        await delay(50);
+
+        const daemonInputs: string[] = [];
+        daemon.on('terminal:input', (data: { payload: string }) => daemonInputs.push(data.payload));
+
+        clientA.emit('terminal:takeover', { terminalId });
+        await delay(50);
+        clientA.emit('terminal:unsubscribe', { terminalId });
+        await delay(50);
+        clientA.emit('terminal:input', { terminalId, payload: 'FROM-A-AFTER' });
+        await delay(100);
+        expect(daemonInputs).toEqual([]);
+
+        clientB.emit('terminal:takeover', { terminalId });
+        await delay(50);
+        clientB.emit('terminal:input', { terminalId, payload: 'FROM-B' });
+        await delay(100);
+        expect(daemonInputs).toEqual(['FROM-B']);
+    });
+
     it('drops malformed terminal ids and empty payloads', async () => {
         const daemon = await connect('user1', 'machine-scoped');
         const client = await connect('user1', 'user-scoped');
