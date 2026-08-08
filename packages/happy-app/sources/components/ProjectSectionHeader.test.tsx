@@ -57,7 +57,12 @@ const session = {
 
 function renderHeader(overrides: Record<string, unknown> = {}) {
     const props = {
-        activity: { color: '#00f', isPulsing: false },
+        activity: {
+            color: '#00f',
+            isPulsing: false,
+            label: 'Completed · Disconnected',
+            textColor: '#0a0',
+        },
         current: false,
         displayPath: '~/console',
         expanded: true,
@@ -103,6 +108,8 @@ describe('ProjectSectionHeader desktop hover actions', () => {
 
         expect(renderer.root.findAllByProps({ testID: 'project-console-actions' })).toHaveLength(0);
         expect(renderer.root.findAllByType('StatusDot')).toHaveLength(1);
+        expect(renderer.root.findByProps({ testID: 'project-console-status' }).findByType('Text').props.children)
+            .toBe('Completed · Disconnected');
 
         act(() => header.props.onMouseEnter());
 
@@ -111,6 +118,7 @@ describe('ProjectSectionHeader desktop hover actions', () => {
         expect(actions.findByProps({ testID: 'project-console-new-session-action' }).findByType('Feather').props.name)
             .toBe('edit-3');
         expect(renderer.root.findAllByType('StatusDot')).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'project-console-status' })).toHaveLength(0);
 
         act(() => header.props.onMouseLeave());
         expect(renderer.root.findAllByProps({ testID: 'project-console-actions' })).toHaveLength(0);

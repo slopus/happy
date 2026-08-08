@@ -26,6 +26,8 @@ function standaloneToolScreenshotPath(testInfo: TestInfo): string {
 
 const projectHoverEvidenceDirectory = process.env.HAPPY_PROJECT_HOVER_EVIDENCE_DIR;
 const projectHoverEvidencePhase = process.env.HAPPY_PROJECT_HOVER_EVIDENCE_PHASE ?? 'after';
+const sessionStatusEvidenceDirectory = process.env.HAPPY_SESSION_STATUS_EVIDENCE_DIR;
+const sessionStatusEvidencePhase = process.env.HAPPY_SESSION_STATUS_EVIDENCE_PHASE ?? 'after';
 const titleTooltipEvidenceDirectory = process.env.HAPPY_TITLE_TOOLTIP_EVIDENCE_DIR;
 const titleTooltipEvidencePhase = process.env.HAPPY_TITLE_TOOLTIP_EVIDENCE_PHASE ?? 'after';
 const subagentInspectorEvidenceDirectory = process.env.HAPPY_SUBAGENT_INSPECTOR_EVIDENCE_DIR;
@@ -35,6 +37,16 @@ function projectHoverScreenshotPath(testInfo: { outputPath: (filename: string) =
     if (!projectHoverEvidenceDirectory) return testInfo.outputPath(filename);
     fs.mkdirSync(projectHoverEvidenceDirectory, { recursive: true });
     return path.join(projectHoverEvidenceDirectory, filename);
+}
+
+function sessionStatusScreenshotPath(
+    testInfo: { outputPath: (filename: string) => string },
+    caseId: 1 | 2,
+): string {
+    const filename = `case-${caseId}-${sessionStatusEvidencePhase}.png`;
+    if (!sessionStatusEvidenceDirectory) return testInfo.outputPath(filename);
+    fs.mkdirSync(sessionStatusEvidenceDirectory, { recursive: true });
+    return path.join(sessionStatusEvidenceDirectory, filename);
 }
 
 function titleTooltipScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
@@ -165,6 +177,7 @@ async function exerciseInlineVideo(page: Page, playerTestId: string): Promise<vo
 }
 
 type CreateE2ESessionOptions = {
+    agentState?: Record<string, unknown>;
     path?: string;
     host?: string;
     name?: string;
@@ -234,7 +247,46 @@ async function createE2ESession(
     });
     expect(response.ok()).toBe(true);
     const body = await response.json() as { session: { id: string } };
-    return body.session.id;
+    const sessionId = body.session.id;
+    if (options.agentState) {
+        const socket = io(e2eServerUrl, {
+            auth: {
+                token,
+                clientType: 'session-scoped',
+                sessionId,
+                happyClient: 'playwright-session-state',
+            },
+            autoConnect: false,
+            path: '/v1/updates',
+            reconnection: false,
+            transports: ['websocket'],
+        });
+        try {
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('写入 E2E 会话状态超时。')), 10_000);
+                socket.once('connect_error', (error: Error) => {
+                    clearTimeout(timeout);
+                    reject(error);
+                });
+                socket.once('connect', () => {
+                    const encrypted = encodeBase64(encryptLegacy(options.agentState, encryptionKey));
+                    socket.emit('update-state', {
+                        sid: sessionId,
+                        expectedVersion: 0,
+                        agentState: encrypted,
+                    }, (result: { result: string }) => {
+                        clearTimeout(timeout);
+                        if (result.result === 'success') resolve();
+                        else reject(new Error(`写入 E2E 会话状态失败：${result.result}`));
+                    });
+                });
+                socket.connect();
+            });
+        } finally {
+            socket.close();
+        }
+    }
+    return sessionId;
 }
 
 async function appendE2ESessionEnvelopes(
@@ -1945,6 +1997,114 @@ test('左栏稳定导航、机器项目分组与折叠共同保持当前会话�
     await expect(betaToggle).toHaveAttribute('aria-expanded', 'true');
 });
 
+test('[SESSION-ARCHIVE-STATUS] 当前项目状态常驻且归档会话保持紧凑', async ({ page, request }, testInfo) => {
+    test.slow();
+    const fixtureKey = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const machineId = `visual-mac-mini-${fixtureKey}`;
+    const projectPath = `/workspace/session-status-${fixtureKey}`;
+    const activeSessionId = await createE2ESession(request, {
+        path: projectPath,
+        host: 'mac-mini',
+        machineId,
+        homeDir: '/workspace',
+        name: 'Current Mac progress status',
+    });
+    const archivedSessionId = await createE2ESession(request, {
+        agentState: {
+            turnStatus: {
+                status: 'completed',
+                updatedAt: Date.now(),
+                turnId: `turn-completed-${fixtureKey}`,
+            },
+        },
+        path: projectPath,
+        host: 'mac-mini',
+        machineId,
+        homeDir: '/workspace',
+        name: 'Archived compact session row',
+    });
+    const authToken = new URL(authenticatedWebUrl).searchParams.get('dev_token');
+    if (!authToken) throw new Error('缺少会话状态视觉验收所需的本地认证配置。');
+    const cleanupHeaders = {
+        Authorization: `Bearer ${authToken}`,
+        'X-Happy-Client': 'playwright-session-status',
+    };
+
+    try {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.goto(authenticatedRoute(`/session/${activeSessionId}`));
+        await expect(page.getByTestId('session-message-input')).toBeVisible();
+
+        const projectKey = `${encodeURIComponent(machineId)}--${encodeURIComponent(projectPath)}`;
+        const projectToggle = page.getByTestId(`sidebar-project-toggle-${projectKey}`);
+        const projectContainer = page.getByTestId(`sidebar-project-toggle-${projectKey}-container`);
+        const projectStatus = page.getByTestId(`sidebar-project-toggle-${projectKey}-status`);
+        const activeSessionRow = page.getByTestId(`session-row-${activeSessionId}`);
+        await expect(projectToggle).toBeVisible();
+        await expect(projectToggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(activeSessionRow).toHaveAttribute('aria-current', 'page');
+
+        if (sessionStatusEvidencePhase === 'before') {
+            await expect(projectStatus).toHaveCount(0);
+            await expect(activeSessionRow.getByTestId('session-row-status')).toHaveCount(0);
+        } else {
+            await expect(projectStatus).toContainText(/idle/i);
+            await expect(activeSessionRow.getByTestId('session-row-status')).toContainText(/idle/i);
+        }
+        await pauseForRecordedReview(page, 1_000);
+        await projectContainer.screenshot({ path: sessionStatusScreenshotPath(testInfo, 1) });
+
+        let archivedSessionRow = page.getByTestId(`session-row-${archivedSessionId}`);
+        await archivedSessionRow.hover();
+        await pauseForRecordedReview(page, 1_000);
+        await page.getByTestId(`session-row-actions-${archivedSessionId}`)
+            .getByTestId('session-row-archive-action')
+            .click();
+        const deactivateResponse = await request.post(
+            new URL(`/v1/sessions/${encodeURIComponent(archivedSessionId)}/archive`, e2eServerUrl).toString(),
+            { headers: cleanupHeaders },
+        );
+        expect(deactivateResponse.ok()).toBe(true);
+        await page.reload();
+        await expect(page.getByTestId('session-message-input')).toBeVisible();
+        const archiveToggle = page.getByTestId('session-archive-toggle');
+        await expect(archiveToggle).toBeVisible();
+        await archiveToggle.scrollIntoViewIfNeeded();
+        if ((await archiveToggle.textContent())?.includes('Show archived')) {
+            await archiveToggle.click();
+        }
+        archivedSessionRow = page.getByTestId(`session-row-${archivedSessionId}`);
+        await expect(archivedSessionRow).toBeVisible();
+        await archivedSessionRow.scrollIntoViewIfNeeded();
+        const archivedRowSurface = archivedSessionRow.locator('..');
+        const archivedRowBox = await archivedRowSurface.boundingBox();
+        if (!archivedRowBox) throw new Error('无法测量归档会话行。');
+
+        if (sessionStatusEvidencePhase === 'before') {
+            expect(archivedRowBox.height).toBeGreaterThanOrEqual(80);
+        } else {
+            expect(archivedRowBox.height).toBeLessThan(80);
+            const archivedStatus = archivedSessionRow.getByTestId('session-row-status');
+            await expect(archivedStatus).toContainText(/completed.*disconnected/i);
+            await expect(archivedStatus.getByText(/completed.*disconnected/i)).toHaveCSS('color', 'rgb(52, 199, 89)');
+        }
+        await pauseForRecordedReview(page, 2_000);
+        await archivedRowSurface.screenshot({ path: sessionStatusScreenshotPath(testInfo, 2) });
+    } finally {
+        for (const sessionId of [activeSessionId, archivedSessionId]) {
+            await request.post(
+                new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/archive`, e2eServerUrl).toString(),
+                { headers: cleanupHeaders },
+            );
+            const deleteResponse = await request.delete(
+                new URL(`/v1/sessions/${encodeURIComponent(sessionId)}`, e2eServerUrl).toString(),
+                { headers: cleanupHeaders },
+            );
+            expect(deleteResponse.ok()).toBe(true);
+        }
+    }
+});
+
 test('[R10-04] 高密度导航在搜索、归档和深链刷新后保持稳定', async ({ page, request }) => {
     test.slow();
     const fixtureKey = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -2027,8 +2187,15 @@ test('[R10-04] 高密度导航在搜索、归档和深链刷新后保持稳定',
             }
         }
 
+        const activeStatus = page
+            .getByTestId(`session-row-${searchTarget.id}`)
+            .getByTestId('session-row-status');
+        await expect(activeStatus).toBeVisible();
+        await expect(activeStatus).toHaveText(/\S/);
+
         const disconnectedRow = page.getByTestId(`session-row-${disconnectedTarget.id}`);
         await expect(disconnectedRow).toHaveAccessibleName(/disconnected/i);
+        await expect(disconnectedRow.getByTestId('session-row-status')).toContainText(/disconnected/i);
         await disconnectedRow.scrollIntoViewIfNeeded();
         await disconnectedRow.hover();
         await expect(page.getByTestId('session-row-details')).toContainText(/disconnected/i);
@@ -2063,6 +2230,9 @@ test('[R10-04] 高密度导航在搜索、归档和深链刷新后保持稳定',
         await archiveToggle.click();
         archiveRow = page.getByTestId(`session-row-${archiveTarget.id}`);
         await expect(archiveRow).toBeVisible();
+        await expect(archiveRow.getByTestId('session-row-status')).toBeVisible();
+        const archivedRowBox = await archiveRow.boundingBox();
+        expect(archivedRowBox?.height).toBeLessThan(80);
         await archiveRow.scrollIntoViewIfNeeded();
         await archiveRow.hover();
         const restoreAction = page.getByTestId(`session-row-actions-${archiveTarget.id}`)
@@ -2086,6 +2256,7 @@ test('[R10-04] 高密度导航在搜索、归档和深链刷新后保持稳定',
         await expect(deepLinkToggle).toHaveAttribute('aria-expanded', 'true');
         await expect(deepLinkRow).toBeVisible();
         await expect(deepLinkRow).toHaveAttribute('aria-current', 'page');
+        await expect(page.getByTestId(`sidebar-project-toggle-${deepLinkProjectKey}-status`)).toHaveText(/\S/);
 
         await page.reload();
         await expect(page.getByTestId('session-message-input')).toBeVisible();
