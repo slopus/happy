@@ -53,13 +53,13 @@ export type SyncSocketListener = (state: SyncSocketState) => void;
 // Main Class
 //
 
-class ApiSocket {
+export class ApiSocket {
 
     // State
     private socket: Socket | null = null;
     private config: SyncSocketConfig | null = null;
     private encryption: Encryption | null = null;
-    private messageHandlers: Map<string, (data: any) => void> = new Map();
+    private messageHandlers: Map<string, Set<(data: any) => void>> = new Map();
     private reconnectedListeners: Set<() => void> = new Set();
     private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
     private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
@@ -138,12 +138,21 @@ class ApiSocket {
     //
 
     onMessage(event: string, handler: (data: any) => void) {
-        this.messageHandlers.set(event, handler);
-        return () => this.messageHandlers.delete(event);
+        const handlers = this.messageHandlers.get(event) ?? new Set();
+        handlers.add(handler);
+        this.messageHandlers.set(event, handlers);
+        return () => this.offMessage(event, handler);
     }
 
     offMessage(event: string, handler: (data: any) => void) {
-        this.messageHandlers.delete(event);
+        const handlers = this.messageHandlers.get(event);
+        if (!handlers) {
+            return;
+        }
+        handlers.delete(handler);
+        if (handlers.size === 0) {
+            this.messageHandlers.delete(event);
+        }
     }
 
     /**
@@ -204,6 +213,10 @@ class ApiSocket {
             throw new Error('Socket not connected');
         }
         return await this.socket.emitWithAck(event, data);
+    }
+
+    getSocketId(): string | null {
+        return this.socket?.id ?? null;
     }
 
     //
@@ -309,9 +322,11 @@ class ApiSocket {
             if (this.isVerboseLogging()) {
                 console.log(`📥 SyncSocket: Received event '${event}':`, JSON.stringify(data).substring(0, 200));
             }
-            const handler = this.messageHandlers.get(event);
-            if (handler) {
-                handler(data);
+            const handlers = this.messageHandlers.get(event);
+            if (handlers) {
+                for (const handler of handlers) {
+                    handler(data);
+                }
             }
         });
     }

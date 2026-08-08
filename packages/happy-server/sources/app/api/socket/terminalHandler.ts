@@ -62,6 +62,16 @@ redis.call('SET', KEYS[1], ARGV[1] .. ':' .. tostring(gen + 1), 'EX', ARGV[2])
 return tostring(gen + 1)
 `;
 
+const CLAIM_WRITER_IF_EMPTY_LUA = `
+local current = redis.call('GET', KEYS[1])
+if current then
+  return { current, '0' }
+end
+local value = ARGV[1] .. ':1'
+redis.call('SET', KEYS[1], value, 'EX', ARGV[2])
+return { value, '1' }
+`;
+
 const DELETE_WRITER_IF_MATCH_LUA = `
 if redis.call('GET', KEYS[1]) == ARGV[1] then
   redis.call('DEL', KEYS[1])
@@ -75,10 +85,30 @@ if (process.env.REDIS_URL) {
     redis = new Redis(process.env.REDIS_URL);
 }
 
+interface WriterSeat {
+    socketId: string;
+    generation: number;
+    value: string;
+}
+
+interface WriterSeatReference extends WriterSeat {
+    key: string;
+    userId: string;
+    terminalId: string;
+}
+
+interface TerminalWriterState {
+    writerSocketId: string | null;
+    generation: number;
+    isWriter: boolean;
+}
+
+type TerminalWriterAck = (state: TerminalWriterState) => void;
+
 /** Single-replica fallback writer state + per-terminal serialization. */
 const writerState = new Map<string, { socketId: string; generation: number }>();
-/** socketId -> [{ key, value }] so disconnect can release owned seats exactly. */
-const socketWriterSeats = new Map<string, Array<{ key: string; value: string }>>();
+/** socketId -> terminal key -> latest exact generation owned by that socket. */
+const socketWriterSeats = new Map<string, Map<string, WriterSeatReference>>();
 
 class KeyedSerialExecutor {
     private readonly tails = new Map<string, Promise<void>>();
@@ -122,75 +152,161 @@ export function terminalOpQueueSize(): number {
     return terminalOperations.size;
 }
 
-async function claimWriter(key: string, socketId: string): Promise<number> {
+function parseWriterSeat(value: string | null): WriterSeat | null {
+    if (!value) {
+        return null;
+    }
+    const separator = value.lastIndexOf(':');
+    if (separator <= 0) {
+        return null;
+    }
+    const socketId = value.slice(0, separator);
+    const generation = Number(value.slice(separator + 1));
+    if (!socketId || !Number.isSafeInteger(generation) || generation <= 0) {
+        return null;
+    }
+    return { socketId, generation, value };
+}
+
+function rememberWriterSeat(reference: WriterSeatReference): void {
+    const seats = socketWriterSeats.get(reference.socketId) ?? new Map();
+    seats.set(reference.key, reference);
+    socketWriterSeats.set(reference.socketId, seats);
+}
+
+async function claimWriterIfEmpty(
+    key: string,
+    socketId: string,
+): Promise<{ seat: WriterSeat; claimed: boolean }> {
     if (redis) {
-        const generation = await redis.eval(
+        const result = await redis.eval(
+            CLAIM_WRITER_IF_EMPTY_LUA,
+            1,
+            key,
+            socketId,
+            String(WRITER_TTL_SECONDS),
+        ) as [string, string];
+        const seat = parseWriterSeat(result[0]);
+        if (!seat) {
+            throw new Error(`Invalid terminal writer seat for ${key}`);
+        }
+        return { seat, claimed: result[1] === '1' };
+    }
+
+    const current = writerState.get(key);
+    if (current) {
+        return {
+            seat: {
+                ...current,
+                value: `${current.socketId}:${current.generation}`,
+            },
+            claimed: false,
+        };
+    }
+    const seat = { socketId, generation: 1, value: `${socketId}:1` };
+    writerState.set(key, { socketId, generation: seat.generation });
+    return { seat, claimed: true };
+}
+
+async function takeWriter(key: string, socketId: string): Promise<WriterSeat> {
+    if (redis) {
+        const generation = Number(await redis.eval(
             TAKE_WRITER_LUA,
             1,
             key,
             socketId,
             String(WRITER_TTL_SECONDS),
-        ) as string;
-        const value = `${socketId}:${generation}`;
-        socketWriterSeats.set(socketId, [...(socketWriterSeats.get(socketId) ?? []), { key, value }]);
-        return Number(generation);
+        ));
+        return { socketId, generation, value: `${socketId}:${generation}` };
     }
 
     const generation = (writerState.get(key)?.generation ?? 0) + 1;
     writerState.set(key, { socketId, generation });
-    socketWriterSeats.set(socketId, [...(socketWriterSeats.get(socketId) ?? []), {
-        key,
-        value: socketId,
-    }]);
-    return generation;
+    return { socketId, generation, value: `${socketId}:${generation}` };
+}
+
+async function currentWriter(key: string): Promise<WriterSeat | null> {
+    if (redis) {
+        return parseWriterSeat(await redis.get(key));
+    }
+    const state = writerState.get(key);
+    return state
+        ? { ...state, value: `${state.socketId}:${state.generation}` }
+        : null;
 }
 
 async function writerGeneration(key: string, socketId: string): Promise<number> {
-    if (redis) {
-        const current = await redis.get(key);
-        if (current === null || current.split(':')[0] !== socketId) {
-            return 0;
-        }
-        return Number(current.split(':')[1] ?? 0);
-    }
-    const state = writerState.get(key);
-    return state && state.socketId === socketId ? state.generation : 0;
+    const state = await currentWriter(key);
+    return state?.socketId === socketId ? state.generation : 0;
 }
 
-async function releaseWriterIfOwned(key: string, value: string): Promise<void> {
+async function releaseWriterIfOwned(reference: WriterSeatReference): Promise<boolean> {
     if (redis) {
-        await redis.eval(DELETE_WRITER_IF_MATCH_LUA, 1, key, value);
-        return;
+        return Number(await redis.eval(
+            DELETE_WRITER_IF_MATCH_LUA,
+            1,
+            reference.key,
+            reference.value,
+        )) === 1;
     }
-    const current = writerState.get(key);
-    if (current && current.socketId === value.split(':')[0]) {
-        writerState.delete(key);
+    const current = writerState.get(reference.key);
+    if (current && `${current.socketId}:${current.generation}` === reference.value) {
+        writerState.delete(reference.key);
+        return true;
     }
+    return false;
 }
 
-async function releaseSocketWriters(socketId: string): Promise<void> {
+function broadcastWriter(
+    io: Server,
+    userId: string,
+    terminalId: string,
+    seat: WriterSeat | null,
+): void {
+    io.to(clientRoom(userId, terminalId)).emit('terminal:writer', {
+        terminalId,
+        writerSocketId: seat?.socketId ?? null,
+        generation: seat?.generation ?? 0,
+    });
+}
+
+function writerAck(seat: WriterSeat | null, socketId: string): TerminalWriterState {
+    return {
+        writerSocketId: seat?.socketId ?? null,
+        generation: seat?.generation ?? 0,
+        isWriter: seat?.socketId === socketId,
+    };
+}
+
+async function releaseSocketWriters(socketId: string, io: Server): Promise<void> {
     const seats = socketWriterSeats.get(socketId);
     if (!seats) {
         return;
     }
     socketWriterSeats.delete(socketId);
-    await Promise.all(seats.map(({ key, value }) => releaseWriterIfOwned(key, value)));
+    await Promise.all(Array.from(seats.values()).map((reference) => (
+        withTerminalOpLock(reference.key, async () => {
+            if (await releaseWriterIfOwned(reference)) {
+                broadcastWriter(io, reference.userId, reference.terminalId, null);
+            }
+        })
+    )));
 }
 
-async function releaseWriterSeat(socketId: string, key: string): Promise<void> {
+async function releaseWriterSeat(socketId: string, key: string): Promise<WriterSeatReference | null> {
     const seats = socketWriterSeats.get(socketId);
     if (!seats) {
-        return;
+        return null;
     }
-    const seat = seats.find((candidate) => candidate.key === key);
-    if (!seat) {
-        return;
+    const reference = seats.get(key);
+    if (!reference) {
+        return null;
     }
-    socketWriterSeats.set(
-        socketId,
-        seats.filter((candidate) => candidate.key !== key),
-    );
-    await releaseWriterIfOwned(key, seat.value);
+    seats.delete(key);
+    if (seats.size === 0) {
+        socketWriterSeats.delete(socketId);
+    }
+    return await releaseWriterIfOwned(reference) ? reference : null;
 }
 
 function isValidTerminalId(value: unknown): value is string {
@@ -278,13 +394,35 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
     }
 
     // User-scoped sockets: subscribe / unsubscribe / writer seat / input.
-    socket.on('terminal:subscribe', (data: { terminalId?: unknown }) => {
+    socket.on('terminal:subscribe', async (
+        data: { terminalId?: unknown },
+        acknowledge: TerminalWriterAck = () => undefined,
+    ) => {
         const terminalId = data?.terminalId;
         if (!isValidTerminalId(terminalId)) {
+            acknowledge(writerAck(null, socket.id));
             return;
         }
-        socket.join(clientRoom(userId, terminalId));
-        terminalEventsCounter.inc({ event: 'subscribe', role: 'user' });
+        await socket.join(clientRoom(userId, terminalId));
+        const key = writerKey(userId, terminalId);
+        await withTerminalOpLock(key, async () => {
+            const { seat, claimed } = await claimWriterIfEmpty(key, socket.id);
+            if (seat.socketId === socket.id) {
+                rememberWriterSeat({ ...seat, key, userId, terminalId });
+            }
+            if (!socket.connected) {
+                const released = await releaseWriterSeat(socket.id, key);
+                if (released) {
+                    broadcastWriter(io, userId, terminalId, null);
+                }
+                return;
+            }
+            acknowledge(writerAck(seat, socket.id));
+            if (claimed) {
+                broadcastWriter(io, userId, terminalId, seat);
+            }
+            terminalEventsCounter.inc({ event: 'subscribe', role: 'user' });
+        });
     });
 
     socket.on('terminal:unsubscribe', (data: { terminalId?: unknown }) => {
@@ -292,31 +430,44 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
         if (!isValidTerminalId(terminalId)) {
             return;
         }
-        socket.leave(clientRoom(userId, terminalId));
-        void releaseWriterSeat(socket.id, writerKey(userId, terminalId));
-        terminalEventsCounter.inc({ event: 'unsubscribe', role: 'user' });
+        const key = writerKey(userId, terminalId);
+        void (async () => {
+            await socket.leave(clientRoom(userId, terminalId));
+            await withTerminalOpLock(key, async () => {
+                if (await releaseWriterSeat(socket.id, key)) {
+                    broadcastWriter(io, userId, terminalId, null);
+                }
+                terminalEventsCounter.inc({ event: 'unsubscribe', role: 'user' });
+            });
+        })().catch((error) => {
+            log({ module: 'websocket' }, `Terminal unsubscribe failed: ${error}`);
+        });
     });
 
-    socket.on('terminal:takeover', async (data: { terminalId?: unknown }) => {
+    socket.on('terminal:takeover', async (
+        data: { terminalId?: unknown },
+        acknowledge: TerminalWriterAck = () => undefined,
+    ) => {
         const terminalId = data?.terminalId;
         if (!isValidTerminalId(terminalId)) {
+            acknowledge(writerAck(null, socket.id));
             return;
         }
 
         const key = writerKey(userId, terminalId);
         await withTerminalOpLock(key, async () => {
-            const generation = await claimWriter(key, socket.id);
+            const seat = await takeWriter(key, socket.id);
+            rememberWriterSeat({ ...seat, key, userId, terminalId });
             if (!socket.connected) {
                 // Socket died while the takeover was queued; drop the seat again.
-                await releaseWriterSeat(socket.id, key);
+                if (await releaseWriterSeat(socket.id, key)) {
+                    broadcastWriter(io, userId, terminalId, null);
+                }
                 return;
             }
             terminalEventsCounter.inc({ event: 'takeover', role: 'user' });
-            io.to(clientRoom(userId, terminalId)).emit('terminal:writer', {
-                terminalId,
-                writerSocketId: socket.id,
-                generation,
-            });
+            acknowledge(writerAck(seat, socket.id));
+            broadcastWriter(io, userId, terminalId, seat);
         });
     });
 
@@ -355,6 +506,8 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
     socket.on('terminal:signal', forwardWriterFrame('terminal:signal'));
 
     socket.on('disconnect', () => {
-        void releaseSocketWriters(socket.id);
+        void releaseSocketWriters(socket.id, io).catch((error) => {
+            log({ module: 'websocket' }, `Terminal disconnect cleanup failed: ${error}`);
+        });
     });
 }
