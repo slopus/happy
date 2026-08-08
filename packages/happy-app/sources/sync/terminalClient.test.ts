@@ -8,6 +8,7 @@ const {
     socketOnReconnected,
     socketHandlers,
     fakeEncryption,
+    randomUUID,
 } = vi.hoisted(() => {
     const handlers: Record<string, (data: any) => void> = {};
     return {
@@ -25,6 +26,7 @@ const {
             encryptRaw: vi.fn(async (value: unknown) => `enc:${JSON.stringify(value)}`),
             decryptRaw: vi.fn(async (payload: string) => JSON.parse(payload.slice(4))),
         },
+        randomUUID: vi.fn(),
     };
 });
 
@@ -38,7 +40,7 @@ vi.mock('./apiSocket', () => ({
 }));
 
 vi.mock('expo-crypto', () => ({
-    randomUUID: () => 'stream-test-1',
+    randomUUID,
 }));
 
 vi.mock('./sync', () => ({
@@ -128,11 +130,23 @@ describe('TerminalStream', () => {
         for (const key of Object.keys(socketHandlers)) {
             delete socketHandlers[key];
         }
+        randomUUID.mockReset();
+        randomUUID
+            .mockReturnValueOnce('stream-test-1')
+            .mockReturnValueOnce('stream-test-2')
+            .mockReturnValue('stream-test-3');
+        fakeEncryption.encryptRaw.mockImplementation(
+            async (value: unknown) => `enc:${JSON.stringify(value)}`,
+        );
+        fakeEncryption.decryptRaw.mockImplementation(
+            async (payload: string) => JSON.parse(payload.slice(4)),
+        );
         machineRPC.mockResolvedValue(runningAttach());
     });
 
     const outFrame = (seq: number, data: string) => ({
-        version: 2,
+        version: 3,
+        epoch: 'epoch-1',
         terminalId: 't1',
         machineId: 'machine-1',
         direction: 'daemon-to-client',
@@ -247,7 +261,7 @@ describe('TerminalStream', () => {
         expect(inputCall).toBeDefined();
         const inputFrame = JSON.parse(inputCall![1].payload.slice(4));
         expect(inputFrame).toMatchObject({
-            version: 2,
+            version: 3,
             epoch: 'epoch-1',
             streamId: expect.any(String),
             terminalId: 't1',
@@ -259,13 +273,19 @@ describe('TerminalStream', () => {
         });
 
         emit('terminal:input-ack', {
-            version: 2,
+            version: 3,
+            epoch: 'epoch-1',
             streamId: inputFrame.streamId,
             terminalId: 't1',
             machineId: 'machine-1',
             direction: 'daemon-to-client',
             seq: 1,
             kind: 'input-ack',
+        });
+        emit('terminal:output', {
+            ...outFrame(3, ''),
+            kind: 'error',
+            error: 'stale-error',
         });
         await flush();
 
@@ -305,6 +325,7 @@ describe('TerminalStream', () => {
             truncated: false,
             replayFrames: [],
             exitCode: 2,
+            streamEpoch: 'epoch-1',
         });
         await stream.attach();
 
@@ -314,16 +335,192 @@ describe('TerminalStream', () => {
         expect(socketSend).not.toHaveBeenCalledWith('terminal:takeover', { terminalId: 't1' });
 
         emit('terminal:exit', {
-            version: 2,
+            version: 3,
+            epoch: 'epoch-1',
             terminalId: 't1',
             machineId: 'machine-1',
             direction: 'daemon-to-client',
-            seq: 5,
+            seq: 1,
             kind: 'exit',
             exitCode: 3,
         });
         await flush();
         expect(exits).toEqual([2, 3]);
+    });
+
+    it('preserves Socket.IO order when frame decryption completes out of order', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const outputs: string[] = [];
+        let resolveFirst!: (value: object) => void;
+        fakeEncryption.decryptRaw.mockImplementation((payload: string) => {
+            const frame = JSON.parse(payload.slice(4));
+            if (frame.kind === 'output' && frame.seq === 3) {
+                return new Promise((resolve) => {
+                    resolveFirst = resolve;
+                });
+            }
+            return Promise.resolve(frame);
+        });
+
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: (data) => outputs.push(data),
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+        await stream.attach();
+
+        emit('terminal:output', outFrame(3, 'first'));
+        emit('terminal:output', outFrame(4, 'second'));
+        await flush();
+        expect(outputs).toEqual([]);
+
+        resolveFirst(outFrame(3, 'first'));
+        await flush();
+        await flush();
+        expect(outputs).toEqual(['first', 'second']);
+        expect(machineRPC).toHaveBeenCalledTimes(1);
+    });
+
+    it('resyncs once on a daemon epoch announcement and ignores stale frames', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const outputs: string[] = [];
+        const exits: number[] = [];
+        const resets: number[] = [];
+        const errors: string[] = [];
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: (data) => outputs.push(data),
+            onExit: (code) => exits.push(code),
+            onError: (message) => errors.push(message),
+            onWriter: () => undefined,
+            onEpochReset: () => resets.push(1),
+            onStatusChange: () => undefined,
+        });
+        await stream.attach();
+        await stream.sendInput('npm publish');
+
+        machineRPC.mockResolvedValueOnce(runningAttach(3, 'epoch-2'));
+        const epochFrame = {
+            version: 3,
+            epoch: 'epoch-2',
+            terminalId: 't1',
+            machineId: 'machine-1',
+            direction: 'daemon-to-client',
+            seq: 0,
+            kind: 'epoch',
+        };
+        emit('terminal:epoch', epochFrame);
+        emit('terminal:epoch', epochFrame);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(machineRPC).toHaveBeenCalledTimes(2);
+        expect(resets).toHaveLength(1);
+        expect(stream.streamId).toBe('stream-test-2');
+
+        emit('terminal:output', outFrame(3, 'stale-output'));
+        emit('terminal:exit', {
+            ...outFrame(3, ''),
+            kind: 'exit',
+            exitCode: 9,
+        });
+        emit('terminal:input-ack', {
+            version: 3,
+            epoch: 'epoch-1',
+            streamId: 'stream-test-1',
+            terminalId: 't1',
+            machineId: 'machine-1',
+            direction: 'daemon-to-client',
+            seq: 1,
+            kind: 'input-ack',
+        });
+        await flush();
+        await flush();
+        expect(outputs).toEqual([]);
+        expect(exits).toEqual([]);
+        expect(errors).toEqual([]);
+
+        await stream.sendInput('pwd');
+        const latestInput = socketSend.mock.calls.filter(
+            (call) => call[0] === 'terminal:input',
+        ).at(-1);
+        expect(JSON.parse(latestInput![1].payload.slice(4))).toMatchObject({
+            version: 3,
+            epoch: 'epoch-2',
+            streamId: 'stream-test-2',
+            seq: 1,
+            kind: 'input',
+            data: 'pwd',
+        });
+    });
+
+    it('forwards current-epoch daemon errors to the stream handler', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const errors: string[] = [];
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: (message) => errors.push(message),
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+        await stream.attach();
+
+        emit('terminal:output', {
+            version: 3,
+            epoch: 'epoch-1',
+            terminalId: 't1',
+            machineId: 'machine-1',
+            direction: 'daemon-to-client',
+            seq: 3,
+            kind: 'error',
+            error: 'pty failed',
+        });
+        await flush();
+        expect(errors).toEqual(['pty failed']);
+    });
+
+    it('accepts exit only at the next output sequence', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const exits: number[] = [];
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: (code) => exits.push(code),
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+        await stream.attach();
+
+        emit('terminal:exit', {
+            version: 3,
+            epoch: 'epoch-1',
+            terminalId: 't1',
+            machineId: 'machine-1',
+            direction: 'daemon-to-client',
+            seq: 2,
+            kind: 'exit',
+            exitCode: 9,
+        });
+        await flush();
+        expect(exits).toEqual([]);
+
+        emit('terminal:exit', {
+            version: 3,
+            epoch: 'epoch-1',
+            terminalId: 't1',
+            machineId: 'machine-1',
+            direction: 'daemon-to-client',
+            seq: 3,
+            kind: 'exit',
+            exitCode: 0,
+        });
+        await flush();
+        expect(exits).toEqual([0]);
     });
 
     it('sends resize and input on one ordered sequence', async () => {
@@ -350,7 +547,7 @@ describe('TerminalStream', () => {
         expect(resizeCall).toBeDefined();
         expect(inputCall).toBeDefined();
         expect(JSON.parse(resizeCall![1].payload.slice(4))).toMatchObject({
-            version: 2,
+            version: 3,
             epoch: 'epoch-1',
             seq: 1,
             kind: 'resize',
@@ -358,7 +555,7 @@ describe('TerminalStream', () => {
             rows: 40,
         });
         expect(JSON.parse(inputCall![1].payload.slice(4))).toMatchObject({
-            version: 2,
+            version: 3,
             epoch: 'epoch-1',
             seq: 2,
             kind: 'input',

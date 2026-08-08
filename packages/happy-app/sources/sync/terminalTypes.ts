@@ -47,7 +47,7 @@ export interface TerminalAttachResult {
     streamEpoch: string;
 }
 
-export const TERMINAL_FRAME_VERSION = 2;
+export const TERMINAL_FRAME_VERSION = 3;
 
 /** Encrypted streaming frame payload (client → daemon). */
 export interface TerminalInputFrame {
@@ -68,12 +68,13 @@ export interface TerminalInputFrame {
 /** Encrypted streaming frame payload (daemon → client). */
 export interface TerminalOutputFrame {
     version: typeof TERMINAL_FRAME_VERSION;
+    epoch: string;
     streamId?: string;
     terminalId: string;
     machineId: string;
     direction: 'daemon-to-client';
     seq: number;
-    kind: 'output' | 'exit' | 'error' | 'input-ack';
+    kind: 'output' | 'exit' | 'error' | 'input-ack' | 'epoch';
     data?: string;
     exitCode?: number;
     error?: string;

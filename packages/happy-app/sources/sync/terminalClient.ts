@@ -149,7 +149,7 @@ export interface TerminalStreamHandlers {
  *   only while unacked; the daemon dedupes by stream seq.
  */
 export class TerminalStream {
-    readonly streamId: string;
+    private controlStreamId: string;
     private streamEpoch = '';
     private lastOutputSeq = 0;
     private inputSeq = 0;
@@ -158,7 +158,10 @@ export class TerminalStream {
     private wired = false;
     private status: TerminalStreamStatus = 'connecting';
     private attaching = false;
-    private bufferedFrames: Array<{ seq: number; data: string }> = [];
+    private bufferedFrames: Array<{ epoch: string; seq: number; data: string }> = [];
+    private inboundQueue: Promise<void> = Promise.resolve();
+    private attachInFlight: Promise<TerminalAttachResult> | null = null;
+    private lastNotifiedEpoch = '';
     private resyncAttempts = 0;
     private static readonly MAX_RESYNC_ATTEMPTS = 3;
 
@@ -167,15 +170,46 @@ export class TerminalStream {
         private readonly terminalId: string,
         private readonly handlers: TerminalStreamHandlers,
     ) {
-        this.streamId = Crypto.randomUUID();
+        this.controlStreamId = Crypto.randomUUID();
+    }
+
+    get streamId(): string {
+        return this.controlStreamId;
     }
 
     async attach(): Promise<TerminalAttachResult> {
         this.resyncAttempts = 0;
-        return this.performAttach();
+        return this.ensureAttached();
     }
 
-    private async performAttach(): Promise<TerminalAttachResult> {
+    private ensureAttached(): Promise<TerminalAttachResult> {
+        if (this.attachInFlight) {
+            return this.attachInFlight;
+        }
+        const attachPromise = this.performAttachWithRetries().finally(() => {
+            if (this.attachInFlight === attachPromise) {
+                this.attachInFlight = null;
+            }
+        });
+        this.attachInFlight = attachPromise;
+        return attachPromise;
+    }
+
+    private async performAttachWithRetries(): Promise<TerminalAttachResult> {
+        while (true) {
+            const { result, gap } = await this.performAttach();
+            if (!gap) {
+                return result;
+            }
+            if (this.resyncAttempts >= TerminalStream.MAX_RESYNC_ATTEMPTS) {
+                throw new Error('Connection is unstable; terminal output may be incomplete. Reconnecting…');
+            }
+            this.resyncAttempts++;
+            this.setStatus('reconnecting');
+        }
+    }
+
+    private async performAttach(): Promise<{ result: TerminalAttachResult; gap: boolean }> {
         this.setStatus('connecting');
         if (!this.wired) {
             this.wireSocketEvents();
@@ -194,34 +228,25 @@ export class TerminalStream {
             // Daemon generation changed (daemon restarted, tmux kept running):
             // old unacked input may already have executed, so it is dropped
             // (at-most-once) instead of being re-sent and run twice.
-            if (result.streamEpoch) {
-                const epochChanged = this.streamEpoch !== ''
-                    && result.streamEpoch !== this.streamEpoch;
-                this.streamEpoch = result.streamEpoch;
-                if (epochChanged) {
-                    this.unackedInputs.clear();
-                    this.handlers.onEpochReset?.();
-                }
-            }
+            this.acceptEpoch(result.streamEpoch);
             this.handlers.onAttach(result);
 
             if (result.status === 'running') {
                 const gap = this.applyAttachBarrier(result);
                 if (gap) {
-                    await this.resync();
-                } else {
-                    // From here on, frames are handled live: anything arriving
-                    // during takeover/resend must not be buffered and dropped.
-                    this.attaching = false;
-                    this.takeControl();
-                    await this.resendUnackedInputs();
-                    this.setStatus('attached');
+                    return { result, gap: true };
                 }
+                // From here on, frames are handled live: anything arriving
+                // during takeover/resend must not be buffered and dropped.
+                this.attaching = false;
+                this.takeControl();
+                await this.resendUnackedInputs();
+                this.setStatus('attached');
             } else if (result.status === 'exited') {
                 this.setStatus('exited');
                 this.handlers.onExit(result.exitCode ?? 0);
             }
-            return result;
+            return { result, gap: false };
         } finally {
             this.attaching = false;
             this.bufferedFrames = [];
@@ -231,17 +256,22 @@ export class TerminalStream {
     async sendInput(data: string): Promise<void> {
         const seq = ++this.inputSeq;
         this.unackedInputs.set(seq, data);
-        const payload = await this.encrypt<TerminalInputFrame>(
-            this.inputFrame({ seq, kind: 'input', data }),
-        );
+        const frame = this.inputFrame({ seq, kind: 'input', data });
+        const payload = await this.encrypt<TerminalInputFrame>(frame);
+        if (frame.epoch !== this.streamEpoch || frame.streamId !== this.streamId) {
+            this.unackedInputs.delete(seq);
+            return;
+        }
         apiSocket.send('terminal:input', { terminalId: this.terminalId, payload });
     }
 
     async sendResize(cols: number, rows: number): Promise<void> {
         const seq = ++this.inputSeq;
-        const payload = await this.encrypt<TerminalInputFrame>(
-            this.inputFrame({ seq, kind: 'resize', cols, rows }),
-        );
+        const frame = this.inputFrame({ seq, kind: 'resize', cols, rows });
+        const payload = await this.encrypt<TerminalInputFrame>(frame);
+        if (frame.epoch !== this.streamEpoch || frame.streamId !== this.streamId) {
+            return;
+        }
         apiSocket.send('terminal:resize', { terminalId: this.terminalId, payload });
     }
 
@@ -267,21 +297,28 @@ export class TerminalStream {
             if (data?.terminalId !== this.terminalId || typeof data.payload !== 'string') {
                 return;
             }
-            void this.handleOutputFrame(data.payload);
+            this.enqueueInbound(() => this.handleOutputFrame(data.payload));
         }));
 
         this.disposers.push(apiSocket.onMessage('terminal:exit', (data: any) => {
             if (data?.terminalId !== this.terminalId || typeof data.payload !== 'string') {
                 return;
             }
-            void this.handleExitFrame(data.payload);
+            this.enqueueInbound(() => this.handleExitFrame(data.payload));
         }));
 
         this.disposers.push(apiSocket.onMessage('terminal:input-ack', (data: any) => {
             if (data?.terminalId !== this.terminalId || typeof data.payload !== 'string') {
                 return;
             }
-            void this.handleInputAckFrame(data.payload);
+            this.enqueueInbound(() => this.handleInputAckFrame(data.payload));
+        }));
+
+        this.disposers.push(apiSocket.onMessage('terminal:epoch', (data: any) => {
+            if (data?.terminalId !== this.terminalId || typeof data.payload !== 'string') {
+                return;
+            }
+            this.enqueueInbound(() => this.handleEpochFrame(data.payload));
         }));
 
         this.disposers.push(apiSocket.onMessage('terminal:writer', (data: any) => {
@@ -297,13 +334,27 @@ export class TerminalStream {
 
     private async handleOutputFrame(payload: string): Promise<void> {
         const frame = await this.decrypt<TerminalOutputFrame>(payload);
-        if (!this.isValidOutputFrame(frame) || frame.kind !== 'output') {
+        if (!this.isValidOutputFrame(frame)) {
+            return;
+        }
+        if (frame.kind === 'error') {
+            if (frame.epoch === this.streamEpoch) {
+                this.handlers.onError(frame.error ?? 'Terminal error');
+            }
+            return;
+        }
+        if (frame.kind !== 'output') {
             return;
         }
         if (this.attaching) {
-            if (frame.seq > this.lastOutputSeq) {
-                this.bufferedFrames.push({ seq: frame.seq, data: frame.data ?? '' });
-            }
+            this.bufferedFrames.push({
+                epoch: frame.epoch,
+                seq: frame.seq,
+                data: frame.data ?? '',
+            });
+            return;
+        }
+        if (frame.epoch !== this.streamEpoch) {
             return;
         }
         if (frame.seq <= this.lastOutputSeq) {
@@ -322,9 +373,18 @@ export class TerminalStream {
 
     private async handleExitFrame(payload: string): Promise<void> {
         const frame = await this.decrypt<TerminalOutputFrame>(payload);
-        if (!this.isValidOutputFrame(frame) || frame.kind !== 'exit') {
+        if (!this.isValidOutputFrame(frame)
+            || frame.kind !== 'exit'
+            || frame.epoch !== this.streamEpoch) {
             return;
         }
+        if (frame.seq !== this.lastOutputSeq + 1) {
+            if (frame.seq > this.lastOutputSeq + 1) {
+                void this.resync();
+            }
+            return;
+        }
+        this.lastOutputSeq = frame.seq;
         this.setStatus('exited');
         this.handlers.onExit(frame.exitCode ?? 0);
     }
@@ -333,24 +393,28 @@ export class TerminalStream {
         const frame = await this.decrypt<TerminalOutputFrame>(payload);
         if (!this.isValidOutputFrame(frame)
             || frame.kind !== 'input-ack'
+            || frame.epoch !== this.streamEpoch
             || frame.streamId !== this.streamId) {
             return;
         }
         this.unackedInputs.delete(frame.seq);
     }
 
-    private async resync(): Promise<void> {
-        if (this.resyncAttempts >= TerminalStream.MAX_RESYNC_ATTEMPTS) {
-            this.setStatus('error');
-            this.handlers.onError(
-                'Connection is unstable; terminal output may be incomplete. Reconnecting…',
-            );
+    private async handleEpochFrame(payload: string): Promise<void> {
+        const frame = await this.decrypt<TerminalOutputFrame>(payload);
+        if (!this.isValidOutputFrame(frame) || frame.kind !== 'epoch') {
             return;
         }
-        this.resyncAttempts++;
+        if (!this.acceptEpoch(frame.epoch)) {
+            return;
+        }
+        await this.resync();
+    }
+
+    private async resync(): Promise<void> {
         this.setStatus('reconnecting');
         try {
-            await this.performAttach();
+            await this.ensureAttached();
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.setStatus('error');
@@ -366,7 +430,7 @@ export class TerminalStream {
     private applyAttachBarrier(result: TerminalAttachResult): boolean {
         this.lastOutputSeq = result.nextSeq - 1;
         const ordered = [...this.bufferedFrames]
-            .filter((frame) => frame.seq > this.lastOutputSeq)
+            .filter((frame) => frame.epoch === this.streamEpoch && frame.seq > this.lastOutputSeq)
             .sort((a, b) => a.seq - b.seq);
 
         let expected = result.nextSeq;
@@ -423,8 +487,38 @@ export class TerminalStream {
             && frame.direction === 'daemon-to-client'
             && frame.terminalId === this.terminalId
             && frame.machineId === this.machineId
+            && typeof frame.epoch === 'string'
+            && frame.epoch.length > 0
             && Number.isSafeInteger(frame.seq)
-            && frame.seq > 0;
+            && (frame.kind === 'epoch' ? frame.seq === 0 : frame.seq > 0);
+    }
+
+    private acceptEpoch(epoch: string): boolean {
+        if (!epoch || epoch === this.streamEpoch) {
+            return false;
+        }
+        const previousEpoch = this.streamEpoch;
+        this.streamEpoch = epoch;
+        if (!previousEpoch) {
+            return false;
+        }
+
+        this.unackedInputs.clear();
+        this.inputSeq = 0;
+        this.controlStreamId = Crypto.randomUUID();
+        if (this.lastNotifiedEpoch !== epoch) {
+            this.lastNotifiedEpoch = epoch;
+            this.handlers.onEpochReset?.();
+        }
+        return true;
+    }
+
+    private enqueueInbound(operation: () => Promise<void>): void {
+        const next = this.inboundQueue.then(operation);
+        this.inboundQueue = next.catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.handlers.onError(message);
+        });
     }
 
     private async encrypt<T>(frame: T): Promise<string> {

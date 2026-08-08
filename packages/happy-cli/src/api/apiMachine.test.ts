@@ -197,6 +197,7 @@ describe('ApiMachineClient socket reconnection', () => {
             applyFrame: vi.fn(() => 'applied'),
             setTransportPaused: vi.fn(),
             getRunningTerminalIds: vi.fn(() => ['term-1']),
+            getStreamEpoch: vi.fn(() => 'epoch-1'),
             policyStore: { get: vi.fn(() => 'per-session'), set: vi.fn() },
         } as any;
 
@@ -225,11 +226,29 @@ describe('ApiMachineClient socket reconnection', () => {
         // Running terminals re-register their stream rooms on connect.
         expect(mockSocket.emit).toHaveBeenCalledWith('terminal:register', { terminalId: 'term-1' });
 
-        // Encrypted input frames are decrypted, authenticated, and acked.
         const { encrypt, encodeBase64, decodeBase64, decrypt } = await import('@/api/encryption');
         const machine = makeMachine();
+        const epochCalls = mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:epoch',
+        );
+        expect(epochCalls).toHaveLength(2);
+        expect(decrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            decodeBase64(epochCalls[0][1].payload),
+        )).toEqual(expect.objectContaining({
+            version: 3,
+            epoch: 'epoch-1',
+            terminalId: 'term-1',
+            machineId: 'test-machine-id',
+            direction: 'daemon-to-client',
+            seq: 0,
+            kind: 'epoch',
+        }));
+
+        // Encrypted input frames are decrypted, authenticated, and acked.
         const inputFrame = {
-            version: 2,
+            version: 3,
             epoch: 'epoch-1',
             streamId: 'stream-1',
             terminalId: 'term-1',
@@ -247,7 +266,7 @@ describe('ApiMachineClient socket reconnection', () => {
         emitSocketEvent('terminal:input', { terminalId: 'term-1', payload });
 
         expect(terminalManager.applyFrame).toHaveBeenCalledWith('term-1', expect.objectContaining({
-            version: 2,
+            version: 3,
             epoch: 'epoch-1',
             streamId: 'stream-1',
             terminalId: 'term-1',
@@ -267,7 +286,8 @@ describe('ApiMachineClient socket reconnection', () => {
             decodeBase64(ackCalls[0][1].payload),
         );
         expect(ack).toEqual(expect.objectContaining({
-            version: 2,
+            version: 3,
+            epoch: 'epoch-1',
             streamId: 'stream-1',
             terminalId: 'term-1',
             machineId: 'test-machine-id',
@@ -301,7 +321,7 @@ describe('ApiMachineClient socket reconnection', () => {
             machine.encryptionKey,
             machine.encryptionVariant,
             {
-                version: 2,
+                version: 3,
                 epoch: 'epoch-1',
                 streamId: 'stream-1',
                 terminalId: 'term-1',
@@ -315,7 +335,7 @@ describe('ApiMachineClient socket reconnection', () => {
         ));
         emitSocketEvent('terminal:resize', { terminalId: 'term-1', payload: resizePayload });
         expect(terminalManager.applyFrame).toHaveBeenCalledWith('term-1', expect.objectContaining({
-            version: 2,
+            version: 3,
             epoch: 'epoch-1',
             streamId: 'stream-1',
             seq: 8,

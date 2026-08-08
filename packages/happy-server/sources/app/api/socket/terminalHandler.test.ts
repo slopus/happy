@@ -132,6 +132,22 @@ describe('terminalHandler', () => {
         await expect(exitPromise).resolves.toBe('ENCRYPTED-EXIT');
     });
 
+    it('relays encrypted daemon epoch announcements to subscribed clients', async () => {
+        const daemon = await connect('user1', 'machine-scoped');
+        const client = await connect('user1', 'user-scoped');
+        const terminalId = 'term-epoch';
+
+        daemon.emit('terminal:register', { terminalId });
+        client.emit('terminal:subscribe', { terminalId });
+        await delay(50);
+
+        const epochPromise = new Promise<string>((resolve) => {
+            client.on('terminal:epoch', (data: { payload: string }) => resolve(data.payload));
+        });
+        daemon.emit('terminal:epoch', { terminalId, payload: 'ENCRYPTED-EPOCH' });
+        await expect(epochPromise).resolves.toBe('ENCRYPTED-EPOCH');
+    });
+
     it('enforces a single writer seat and forwards only writer input', async () => {
         const daemon = await connect('user1', 'machine-scoped');
         const clientA = await connect('user1', 'user-scoped');
