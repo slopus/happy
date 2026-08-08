@@ -5,7 +5,7 @@ import React, {
     useRef,
     useState,
 } from 'react';
-import { View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system';
@@ -104,6 +104,8 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
     function TerminalView({ onData, onResize, readOnly = false }, ref) {
         const webviewRef = useRef<WebView | null>(null);
         const [html, setHtml] = useState<string | null>(null);
+        const [ready, setReady] = useState(false);
+        const [rendererError, setRendererError] = useState<string | null>(null);
         const onDataRef = useRef(onData);
         const onResizeRef = useRef(onResize);
         const readOnlyRef = useRef(readOnly);
@@ -155,7 +157,9 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
                     setHtml(buildHtml(xtermJs, addonFitJs, xtermCss));
                 }
             }).catch(() => {
-                // The screen shows a connection error state; renderer stays blank.
+                if (!cancelled) {
+                    setRendererError('Unable to prepare terminal renderer.');
+                }
             });
             return () => {
                 cancelled = true;
@@ -182,6 +186,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
                 };
                 if (message.type === 'ready') {
                     operationQueue.markReady();
+                    setReady(true);
                 } else if (message.type === 'data' && !readOnlyRef.current) {
                     onDataRef.current(String(message.data ?? ''));
                 } else if (message.type === 'resize') {
@@ -195,12 +200,18 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
             }
         };
 
+        const handleLoadStart = () => {
+            setReady(false);
+            setRendererError(null);
+            operationQueue.markNotReady();
+        };
+
         const handleLayout = () => {
             operationQueue.enqueue({ type: 'fit' });
         };
 
         return (
-            <View style={{ flex: 1, backgroundColor: '#0d1117' }} onLayout={handleLayout}>
+            <View style={styles.container} onLayout={handleLayout}>
                 {html ? (
                     <WebView
                         ref={webviewRef}
@@ -209,8 +220,9 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
                         javaScriptEnabled
                         domStorageEnabled
                         onMessage={handleMessage}
-                        onLoadStart={() => operationQueue.markNotReady()}
-                        style={{ flex: 1, backgroundColor: '#0d1117' }}
+                        onLoadStart={handleLoadStart}
+                        onError={() => setRendererError('Unable to load terminal renderer.')}
+                        style={styles.webview}
                         setSupportMultipleWindows={false}
                         overScrollMode="never"
                         bounces={false}
@@ -219,7 +231,37 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
                         showsHorizontalScrollIndicator={false}
                     />
                 ) : null}
+                {!ready && (
+                    <View pointerEvents="none" style={styles.loadingOverlay}>
+                        {!rendererError && <ActivityIndicator size="small" color="#8b949e" />}
+                        <Text style={styles.loadingText}>
+                            {rendererError || 'Preparing terminal…'}
+                        </Text>
+                    </View>
+                )}
             </View>
         );
     },
 );
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#0d1117',
+    },
+    webview: {
+        flex: 1,
+        backgroundColor: '#0d1117',
+    },
+    loadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#0d1117',
+        gap: 10,
+    },
+    loadingText: {
+        color: '#8b949e',
+        fontSize: 13,
+    },
+});
