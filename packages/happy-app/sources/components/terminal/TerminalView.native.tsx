@@ -56,7 +56,7 @@ function buildHtml(xtermJs: string, addonFitJs: string, xtermCss: string): strin
   <script>
     (function () {
       var term = new Terminal({
-        cursorBlink: true,
+        cursorBlink: false,
         fontSize: 14,
         fontFamily: 'Menlo, Monaco, Consolas, monospace',
         scrollback: 5000,
@@ -85,7 +85,12 @@ function buildHtml(xtermJs: string, addonFitJs: string, xtermCss: string): strin
       window.__termClear = function () { term.reset(); };
       window.__termFocus = function () { term.focus(); };
       window.__termFit = function () { try { fitAddon.fit(); } catch (e) {} };
-      window.__termSetReadOnly = function (readOnly) { term.options.disableStdin = Boolean(readOnly); };
+      window.__termSetReadOnly = function (readOnly) {
+        var nextReadOnly = Boolean(readOnly);
+        term.options.disableStdin = nextReadOnly;
+        term.options.cursorBlink = !nextReadOnly;
+        if (nextReadOnly) term.blur();
+      };
 
       window.addEventListener('resize', function () { window.__termFit(); });
       setTimeout(function () { window.__termFit(); post('ready', {}); }, 50);
