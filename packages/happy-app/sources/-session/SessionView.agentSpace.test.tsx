@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => ({
     switchDirectory: vi.fn(),
     renameSession: vi.fn(),
     renameSessionToTitle: vi.fn(),
+    sessionAbort: vi.fn(),
     overlayPublish: vi.fn(),
     overlayReset: vi.fn(),
     suspendFileViewPanel: false,
@@ -295,7 +296,7 @@ vi.mock('@/sync/storage', () => ({
     useSetting: (key: string) => key === 'fileDiffsSidebar' ? mocks.fileDiffsSidebarEnabled : false,
 }));
 vi.mock('@/sync/gitStatusSync', () => ({ gitStatusSync: { getSync: vi.fn() } }));
-vi.mock('@/sync/ops', () => ({ sessionAbort: vi.fn() }));
+vi.mock('@/sync/ops', () => ({ sessionAbort: mocks.sessionAbort }));
 vi.mock('@/sync/ops.screenshot', () => ({ requestScreenshot: vi.fn() }));
 vi.mock('@/sync/screenshotGallery', () => ({
     addScreenshotEntry: vi.fn(),
@@ -402,6 +403,23 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(0);
         expect(renderer.root.findByType('RightSwipePanelHost').props.panelAccessibilityLabel)
             .toBe('agentSpace.companion.panelTitle');
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the composer abort pending until the session RPC settles', () => {
+        mocks.isDataReady = true;
+        const pendingAbort = new Promise<void>(() => {});
+        mocks.sessionAbort.mockReturnValueOnce(pendingAbort);
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        const composer = renderer.root.findByType('MessageComposer');
+        expect(composer.props.onAbort()).toBe(pendingAbort);
+        expect(mocks.sessionAbort).toHaveBeenCalledWith('session-1');
 
         act(() => renderer.unmount());
     });

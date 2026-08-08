@@ -1224,7 +1224,7 @@ function SessionViewLoaded({
 
     const handleAbort = React.useCallback(() => {
         storage.getState().resetSessionAgentOverrides(sessionId);
-        sessionAbort(sessionId);
+        return sessionAbort(sessionId);
     }, [sessionId]);
 
     const handleFileViewerPress = React.useCallback(() => {

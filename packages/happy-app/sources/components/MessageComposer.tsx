@@ -195,9 +195,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexShrink: 0,
     },
     sendButton: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        width: Platform.select({ web: 32, default: 40 }),
+        height: Platform.select({ web: 32, default: 40 }),
+        borderRadius: Platform.select({ web: 16, default: 20 }),
         justifyContent: 'center',
         alignItems: 'center',
         flexShrink: 0,
@@ -1175,7 +1175,9 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             justifyContent: 'center',
                                             opacity: p.pressed ? 0.7 : 1,
                                         })}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        hitSlop={Platform.OS === 'web'
+                                            ? { top: 5, bottom: 10, left: 0, right: 0 }
+                                            : { top: 4, bottom: 4, left: 4, right: 4 }}
                                         onPress={isAbortConfirmationArmed
                                             ? confirmAbortShortcut
                                             : isAbortAction
