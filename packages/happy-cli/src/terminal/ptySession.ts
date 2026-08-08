@@ -24,7 +24,7 @@ const { Terminal: HeadlessTerminal } = require('@xterm/headless') as {
         scrollback: number;
         allowProposedApi?: boolean;
     }) => {
-        write(data: string): void;
+        write(data: string, callback?: () => void): void;
         resize(cols: number, rows: number): void;
         loadAddon(addon: unknown): void;
     };
@@ -54,6 +54,12 @@ export class PtyShellSession implements ShellSession {
     private readonly errorListeners = new Set<ErrorListener>();
     private exited = false;
     private paused = false;
+    /**
+     * Ordered flush barrier for the headless emulator: every write is queued
+     * with a completion callback so `snapshot()` never serializes a screen
+     * state that is still being parsed.
+     */
+    private headlessFlush: Promise<void> = Promise.resolve();
 
     constructor(options: PtySessionOptions) {
         this.headless = new HeadlessTerminal({
@@ -84,7 +90,13 @@ export class PtyShellSession implements ShellSession {
             if (this.paused || this.exited) {
                 return;
             }
-            this.headless.write(data);
+            this.headlessFlush = this.headlessFlush.then(() => new Promise<void>((resolve) => {
+                try {
+                    this.headless.write(data, () => resolve());
+                } catch {
+                    resolve();
+                }
+            }));
             for (const listener of this.outputListeners) {
                 listener(data);
             }
@@ -129,6 +141,7 @@ export class PtyShellSession implements ShellSession {
     }
 
     async snapshot(): Promise<string> {
+        await this.headlessFlush;
         return this.serialize.serialize();
     }
 
