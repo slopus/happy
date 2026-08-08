@@ -23,6 +23,8 @@ export interface TmuxSessionOptions {
     cols: number;
     rows: number;
     env?: NodeJS.ProcessEnv;
+    /** Previously recorded pane id; verified and used when it still exists. */
+    paneId?: string;
 }
 
 type OutputListener = (data: string) => void;
@@ -31,6 +33,20 @@ type ErrorListener = (error: Error) => void;
 
 function tmuxTarget(terminalId: string): string {
     return `happy-term-${terminalId}`;
+}
+
+function pickActivePane(listOutput: string): string {
+    for (const line of listOutput.split('\n')) {
+        const [id, active] = line.trim().split(/\s+/);
+        if (id && /^%\d+$/.test(id) && active === '1') {
+            return id;
+        }
+    }
+    const first = listOutput
+        .split('\n')
+        .map((line) => line.trim().split(/\s+/)[0])
+        .find((id) => id && /^%\d+$/.test(id));
+    return first ?? '';
 }
 
 /** Unescape tmux control-mode octal escapes (`\015`, `\012`, `\033`, ...). */
@@ -58,7 +74,6 @@ export class TmuxShellSession implements ShellSession {
     readonly tmuxTarget: string;
 
     private readonly child: ChildProcessWithoutNullStreams;
-    private readonly paneId: string;
     private lineBuffer = '';
     private exited = false;
     private paused = false;
@@ -67,7 +82,7 @@ export class TmuxShellSession implements ShellSession {
     private readonly errorListeners = new Set<ErrorListener>();
     private static readonly MAX_SEND_BYTES = 1024;
 
-    private constructor(options: TmuxSessionOptions, paneId: string) {
+    private constructor(options: TmuxSessionOptions, readonly paneId: string) {
         this.tmuxTarget = tmuxTarget(options.terminalId);
         this.paneId = paneId;
 
@@ -130,12 +145,27 @@ export class TmuxShellSession implements ShellSession {
             );
         }
 
-        const { stdout } = await execFileAsync(
-            'tmux',
-            ['list-panes', '-t', target, '-F', '#{pane_id}'],
-            { env },
-        );
-        const paneId = stdout.trim();
+        let paneId = options.paneId ?? '';
+        if (paneId) {
+            // Verify the recorded pane still exists (users may have split or
+            // closed panes since the terminal was created).
+            const { stdout } = await execFileAsync(
+                'tmux',
+                ['list-panes', '-t', target, '-F', '#{pane_id}'],
+                { env },
+            );
+            if (!stdout.split('\n').map((line) => line.trim()).includes(paneId)) {
+                paneId = '';
+            }
+        }
+        if (!paneId) {
+            const { stdout } = await execFileAsync(
+                'tmux',
+                ['list-panes', '-t', target, '-F', '#{pane_id} #{pane_active}'],
+                { env },
+            );
+            paneId = pickActivePane(stdout);
+        }
         if (!/^%\d+$/.test(paneId)) {
             throw new Error(`Failed to resolve tmux pane for ${target}: ${paneId}`);
         }
