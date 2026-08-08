@@ -50,7 +50,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
 
         useEffect(() => {
             const terminal = new Terminal({
-                cursorBlink: true,
+                cursorBlink: !readOnly,
                 fontSize,
                 fontFamily: 'Menlo, Monaco, Consolas, "Liberation Mono", monospace',
                 scrollback: 5000,
@@ -108,6 +108,10 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
         useEffect(() => {
             if (terminalRef.current) {
                 terminalRef.current.options.disableStdin = readOnly;
+                terminalRef.current.options.cursorBlink = !readOnly;
+                if (readOnly) {
+                    terminalRef.current.blur();
+                }
             }
         }, [readOnly]);
 

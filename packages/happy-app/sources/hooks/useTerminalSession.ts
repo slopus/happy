@@ -80,8 +80,8 @@ export function useTerminalSession(
         void streamRef.current?.sendSignal(signal);
     }, []);
 
-    const takeControl = useCallback(() => {
-        void streamRef.current?.takeControl();
+    const takeControl = useCallback(async () => {
+        await streamRef.current?.takeControl();
     }, []);
 
     const refresh = useCallback(() => {
