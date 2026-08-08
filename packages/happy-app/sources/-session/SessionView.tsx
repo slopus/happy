@@ -10,7 +10,6 @@ import { SessionInfoDropdown } from '@/components/SessionInfoDropdown';
 import { DesktopRightPanel, DesktopRightPanelToggleButton } from '@/components/DesktopRightPanel';
 import { DesktopPresenceTransition } from '@/components/DesktopPresenceTransition';
 import type { DesktopTransitionDirection } from '@/components/DesktopPresenceTransition.types';
-import { DesktopShortcutTooltip } from '@/components/DesktopShortcutTooltip';
 import { RightSwipePanelHost } from '@/components/RightSwipePanelHost';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
