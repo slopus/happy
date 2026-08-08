@@ -6,7 +6,7 @@
  * control-mode client streams `%output` notifications (octal-escaped) and
  * accepts tmux commands on stdin; raw terminal input is injected with
  * `send-keys -H <hex>` and the client size is set with `refresh-client -C`.
- * Screen snapshots come from `capture-pane -e -p`.
+ * Screen snapshots come from `capture-pane -e -p` against the managed pane.
  */
 
 import { execFile } from 'node:child_process';
@@ -35,6 +35,15 @@ function tmuxTarget(terminalId: string): string {
     return `happy-term-${terminalId}`;
 }
 
+function tmuxEnv(options: TmuxSessionOptions): NodeJS.ProcessEnv {
+    return {
+        ...process.env,
+        ...options.env,
+        TERM: 'xterm-256color',
+        COLORTERM: 'truecolor',
+    };
+}
+
 function pickActivePane(listOutput: string): string {
     for (const line of listOutput.split('\n')) {
         const [id, active] = line.trim().split(/\s+/);
@@ -47,6 +56,36 @@ function pickActivePane(listOutput: string): string {
         .map((line) => line.trim().split(/\s+/)[0])
         .find((id) => id && /^%\d+$/.test(id));
     return first ?? '';
+}
+
+async function resolvePane(
+    target: string,
+    recordedPaneId: string | undefined,
+    env: NodeJS.ProcessEnv,
+): Promise<string> {
+    let paneId = recordedPaneId ?? '';
+    if (paneId) {
+        const { stdout } = await execFileAsync(
+            'tmux',
+            ['list-panes', '-t', target, '-F', '#{pane_id}'],
+            { env },
+        );
+        if (!stdout.split('\n').map((line) => line.trim()).includes(paneId)) {
+            paneId = '';
+        }
+    }
+    if (!paneId) {
+        const { stdout } = await execFileAsync(
+            'tmux',
+            ['list-panes', '-t', target, '-F', '#{pane_id} #{pane_active}'],
+            { env },
+        );
+        paneId = pickActivePane(stdout);
+    }
+    if (!/^%\d+$/.test(paneId)) {
+        throw new Error(`Failed to resolve tmux pane for ${target}: ${paneId}`);
+    }
+    return paneId;
 }
 
 /** Unescape tmux control-mode octal escapes (`\015`, `\012`, `\033`, ...). */
@@ -86,12 +125,7 @@ export class TmuxShellSession implements ShellSession {
         this.tmuxTarget = tmuxTarget(options.terminalId);
         this.paneId = paneId;
 
-        const env: NodeJS.ProcessEnv = {
-            ...process.env,
-            ...options.env,
-            TERM: 'xterm-256color',
-            COLORTERM: 'truecolor',
-        };
+        const env = tmuxEnv(options);
 
         this.child = spawn('tmux', ['-C', 'attach-session', '-t', this.tmuxTarget], {
             env,
@@ -125,50 +159,24 @@ export class TmuxShellSession implements ShellSession {
         });
     }
 
-    /** Create the detached tmux session if missing, then attach a control client. */
-    static async create(options: TmuxSessionOptions): Promise<TmuxShellSession> {
+    static async createNew(options: TmuxSessionOptions): Promise<TmuxShellSession> {
         const target = tmuxTarget(options.terminalId);
-        const env: NodeJS.ProcessEnv = {
-            ...process.env,
-            ...options.env,
-            TERM: 'xterm-256color',
-            COLORTERM: 'truecolor',
-        };
+        const env = tmuxEnv(options);
+        await execFileAsync(
+            'tmux',
+            ['new-session', '-d', '-s', target, '-c', options.cwd, options.shell],
+            { env },
+        );
+        const paneId = await resolvePane(target, undefined, env);
 
-        try {
-            await execFileAsync('tmux', ['has-session', '-t', target], { env });
-        } catch {
-            await execFileAsync(
-                'tmux',
-                ['new-session', '-d', '-s', target, '-c', options.cwd, options.shell],
-                { env },
-            );
-        }
+        return new TmuxShellSession(options, paneId);
+    }
 
-        let paneId = options.paneId ?? '';
-        if (paneId) {
-            // Verify the recorded pane still exists (users may have split or
-            // closed panes since the terminal was created).
-            const { stdout } = await execFileAsync(
-                'tmux',
-                ['list-panes', '-t', target, '-F', '#{pane_id}'],
-                { env },
-            );
-            if (!stdout.split('\n').map((line) => line.trim()).includes(paneId)) {
-                paneId = '';
-            }
-        }
-        if (!paneId) {
-            const { stdout } = await execFileAsync(
-                'tmux',
-                ['list-panes', '-t', target, '-F', '#{pane_id} #{pane_active}'],
-                { env },
-            );
-            paneId = pickActivePane(stdout);
-        }
-        if (!/^%\d+$/.test(paneId)) {
-            throw new Error(`Failed to resolve tmux pane for ${target}: ${paneId}`);
-        }
+    static async attachExisting(options: TmuxSessionOptions): Promise<TmuxShellSession> {
+        const target = tmuxTarget(options.terminalId);
+        const env = tmuxEnv(options);
+        await execFileAsync('tmux', ['has-session', '-t', target], { env });
+        const paneId = await resolvePane(target, options.paneId, env);
 
         return new TmuxShellSession(options, paneId);
     }
@@ -210,7 +218,7 @@ export class TmuxShellSession implements ShellSession {
     async snapshot(): Promise<string> {
         const { stdout } = await execFileAsync(
             'tmux',
-            ['capture-pane', '-e', '-p', '-t', this.tmuxTarget],
+            ['capture-pane', '-e', '-p', '-t', this.paneId],
             { maxBuffer: 4 * 1024 * 1024 },
         );
         return stdout;
