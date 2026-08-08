@@ -109,6 +109,16 @@ describe('useGlobalKeyboard', () => {
         expect(onCommandPalette).toHaveBeenCalledTimes(2);
     });
 
+    it('uses physical key codes for global shortcuts when a keyboard layout changes event.key', () => {
+        const commandPaletteEvent = keydown({ code: 'KeyK', key: 'к' });
+        expect(commandPaletteEvent.preventDefault).toHaveBeenCalledOnce();
+        expect(onCommandPalette).toHaveBeenCalledOnce();
+
+        const rightSidebarEvent = keydown({ altKey: true, code: 'KeyB', key: '∫' });
+        expect(rightSidebarEvent.preventDefault).toHaveBeenCalledOnce();
+        expect(onToggleRightSidebar).toHaveBeenCalledOnce();
+    });
+
     it('opens app settings and consumes Command+Comma and Ctrl+Comma', () => {
         const commandEvent = keydown({ key: ',' });
 
