@@ -50,7 +50,15 @@ export default function RemoteTerminalScreen() {
         onWriter: () => undefined,
     });
 
-    const { status, sendInput, sendResize, takeControl, epochReset, controlReset } = useTerminalSession(
+    const {
+        status,
+        isWriter,
+        sendInput,
+        sendResize,
+        takeControl,
+        epochReset,
+        controlReset,
+    } = useTerminalSession(
         machineId!,
         terminalId!,
         callbacksRef.current,
@@ -59,7 +67,7 @@ export default function RemoteTerminalScreen() {
     const statusLabel = (() => {
         switch (status) {
             case 'connecting': return 'Connecting…';
-            case 'attached': return 'Connected';
+            case 'attached': return isWriter ? 'Connected' : 'View only';
             case 'reconnecting': return 'Reconnecting…';
             case 'exited': return 'Session exited';
             case 'error': return sessionError || 'Connection error';
@@ -68,7 +76,7 @@ export default function RemoteTerminalScreen() {
     })();
 
     const statusColor = status === 'attached'
-        ? '#34C759'
+        ? isWriter ? '#34C759' : '#FF9F0A'
         : status === 'reconnecting' || status === 'connecting'
             ? '#FF9F0A'
             : '#FF3B30';
@@ -136,11 +144,11 @@ export default function RemoteTerminalScreen() {
                     headerShown: true,
                     headerTitle: terminalName,
                     headerBackTitle: t('machine.back'),
-                    headerRight: () => (
+                    headerRight: () => status === 'attached' && !isWriter ? (
                         <Pressable onPress={takeControl} hitSlop={10}>
                             <Ionicons name="hand-left-outline" size={22} color={theme.colors.text} />
                         </Pressable>
-                    ),
+                    ) : null,
                 }}
             />
 
@@ -163,6 +171,7 @@ export default function RemoteTerminalScreen() {
                     ref={viewRef}
                     onData={(data) => void sendInput(data)}
                     onResize={(cols, rows) => void sendResize(cols, rows)}
+                    readOnly={!isWriter || status !== 'attached'}
                 />
             </View>
 
@@ -184,7 +193,7 @@ export default function RemoteTerminalScreen() {
 
             {Platform.OS !== 'web' && (
                 <MobileKeyboardBar
-                    visible={keyboardVisible && status === 'attached'}
+                    visible={keyboardVisible && status === 'attached' && isWriter}
                     onKey={(data) => void sendInput(data)}
                 />
             )}
