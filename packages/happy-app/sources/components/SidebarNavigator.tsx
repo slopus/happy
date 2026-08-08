@@ -152,7 +152,9 @@ const SidebarNavigatorContent = React.memo(() => {
                 aria-hidden={isDesktopLayout && !showSidebar}
                 accessibilityElementsHidden={isDesktopLayout && !showSidebar}
                 importantForAccessibility={isDesktopLayout && !showSidebar ? 'no-hide-descendants' : 'auto'}
-                pointerEvents={isDesktopLayout && !showSidebar ? 'none' : 'auto'}
+                {...(Platform.OS !== 'web' ? {
+                    pointerEvents: isDesktopLayout && !showSidebar ? 'none' : 'auto',
+                } : {})}
                 {...(isDesktopLayout && Platform.OS === 'web' ? {
                     dataSet: {
                         happyMotion: 'desktop-panel',
@@ -164,6 +166,9 @@ const SidebarNavigatorContent = React.memo(() => {
                 style={[
                     styles.drawerContent,
                     isDesktopLayout && Platform.OS === 'web' && { width: fullDrawerWidth },
+                    Platform.OS === 'web' && {
+                        pointerEvents: isDesktopLayout && !showSidebar ? 'none' : 'auto',
+                    },
                     isDesktopLayout && !showSidebar && Platform.OS !== 'web' && styles.drawerContentHidden,
                 ]}
                 testID={isDesktopLayout ? 'desktop-left-sidebar' : undefined}

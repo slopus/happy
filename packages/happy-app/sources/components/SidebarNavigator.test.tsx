@@ -218,13 +218,14 @@ describe('SidebarNavigator drawer behavior', () => {
         expect(drawerContent.props.accessibilityElementsHidden).toBe(true);
         expect(drawerContent.props.importantForAccessibility).toBe('no-hide-descendants');
         expect(drawerContent.props.inert).toBe(true);
-        expect(drawerContent.props.pointerEvents).toBe('none');
+        expect(drawerContent.props.pointerEvents).toBeUndefined();
         expect(drawerContent.props.dataSet).toMatchObject({
             happyMotion: 'desktop-panel',
             happyMotionSide: 'left',
             happyMotionState: 'closed',
         });
         expect(drawerContent.props.style).toContainEqual(expect.objectContaining({ width: 360 }));
+        expect(drawerContent.props.style).toContainEqual(expect.objectContaining({ pointerEvents: 'none' }));
         expect(drawerContent.props.style).not.toContainEqual({ display: 'none' });
 
         const sidebarToggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
