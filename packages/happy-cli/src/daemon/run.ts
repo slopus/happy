@@ -27,6 +27,9 @@ import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
+import { TerminalManager } from '@/terminal/terminalManager';
+import { TerminalPolicyStore } from '@/terminal/terminalPolicyStore';
+import { defaultShell } from '@/terminal/types';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import {
   buildSessionChildEnvironment,
@@ -871,12 +874,26 @@ export async function startDaemon(): Promise<void> {
     // Create realtime machine session
     const apiMachine = api.machineSyncClient(machine);
 
+    // Remote terminal manager: persistent shells owned by this daemon.
+    const terminalManager = new TerminalManager({
+      terminalsFile: join(configuration.happyHomeDir, 'terminals.json'),
+      policyStore: new TerminalPolicyStore(
+        join(configuration.happyHomeDir, 'terminal.settings.json'),
+      ),
+      shell: defaultShell(),
+      emitOutput: (terminalId, frame) => apiMachine.emitTerminalOutput(terminalId, frame),
+      emitExit: (terminalId, frame) => apiMachine.emitTerminalExit(terminalId, frame),
+      emitError: (terminalId, frame) => apiMachine.emitTerminalError(terminalId, frame),
+    });
+    await terminalManager.start();
+
     // Set RPC handlers
     apiMachine.setRPCHandlers({
       spawnSession,
       resumeSession,
       stopSession,
-      requestShutdown: () => requestShutdown('happy-app')
+      requestShutdown: () => requestShutdown('happy-app'),
+      terminalManager
     });
 
     // Connect to server
@@ -936,6 +953,7 @@ export async function startDaemon(): Promise<void> {
         // isDaemonRunningCurrentlyInstalledHappyVersion() === true, and exits —
         // leaving nothing running once we also exit.
         apiMachine.shutdown();
+        await terminalManager.stop();
         await stopControlServer();
         await cleanupDaemonState();
         await releaseDaemonLock(daemonLockHandle);
@@ -1005,6 +1023,7 @@ export async function startDaemon(): Promise<void> {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       apiMachine.shutdown();
+      await terminalManager.stop();
       await stopControlServer();
       await cleanupDaemonState();
       await stopCaffeinate();
