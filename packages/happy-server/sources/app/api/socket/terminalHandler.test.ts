@@ -159,6 +159,27 @@ describe('terminalHandler', () => {
         await expect(epochPromise).resolves.toBe('ENCRYPTED-EPOCH');
     });
 
+    it('relays encrypted control acknowledgements and gap notices', async () => {
+        const daemon = await connect('user1', 'machine-scoped');
+        const client = await connect('user1', 'user-scoped');
+        const terminalId = 'term-control-ack';
+
+        daemon.emit('terminal:register', { terminalId });
+        await subscribe(client, terminalId);
+
+        const ackPromise = new Promise<string>((resolve) => {
+            client.on('terminal:control-ack', (data: { payload: string }) => resolve(data.payload));
+        });
+        const nackPromise = new Promise<string>((resolve) => {
+            client.on('terminal:control-nack', (data: { payload: string }) => resolve(data.payload));
+        });
+        daemon.emit('terminal:control-ack', { terminalId, payload: 'ENCRYPTED-ACK' });
+        daemon.emit('terminal:control-nack', { terminalId, payload: 'ENCRYPTED-NACK' });
+
+        await expect(ackPromise).resolves.toBe('ENCRYPTED-ACK');
+        await expect(nackPromise).resolves.toBe('ENCRYPTED-NACK');
+    });
+
     it('enforces a single writer seat and forwards only writer input', async () => {
         const daemon = await connect('user1', 'machine-scoped');
         const clientA = await connect('user1', 'user-scoped');

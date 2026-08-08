@@ -353,20 +353,20 @@ describe('TerminalManager', () => {
         });
 
         expect(manager.applyFrame(terminalId, frame({ seq: 1, kind: 'input', data: 'echo one' })))
-            .toBe('applied');
+            .toEqual({ status: 'applied', expectedSeq: 2 });
         // Duplicate (lost ACK, client resent) must be acked but never re-run.
         expect(manager.applyFrame(terminalId, frame({ seq: 1, kind: 'input', data: 'echo one' })))
-            .toBe('duplicate');
+            .toEqual({ status: 'duplicate', expectedSeq: 2 });
         // Out-of-order input is rejected without executing.
         expect(manager.applyFrame(terminalId, frame({ seq: 3, kind: 'input', data: 'echo three' })))
-            .toBe('gap');
+            .toEqual({ status: 'gap', expectedSeq: 2 });
         // A different writer stream starts its own sequence.
         expect(manager.applyFrame(terminalId, frame({
             streamId: 'stream-b',
             seq: 1,
             kind: 'input',
             data: 'echo bee',
-        }))).toBe('applied');
+        }))).toEqual({ status: 'applied', expectedSeq: 2 });
 
         expect(session.written).toEqual(['echo one', 'echo bee']);
     });
@@ -397,9 +397,9 @@ describe('TerminalManager', () => {
             kind: 'resize',
             cols: 120,
             rows: 40,
-        }))).toBe('applied');
+        }))).toEqual({ status: 'applied', expectedSeq: 2 });
         expect(manager.applyFrame(terminalId, frame({ seq: 2, kind: 'input', data: 'ls' })))
-            .toBe('applied');
+            .toEqual({ status: 'applied', expectedSeq: 3 });
         expect(session.resizeCalls).toEqual([[120, 40]]);
         expect(session.written).toEqual(['ls']);
 
@@ -409,8 +409,55 @@ describe('TerminalManager', () => {
             kind: 'resize',
             cols: 100,
             rows: 30,
-        }))).toBe('duplicate');
+        }))).toEqual({ status: 'duplicate', expectedSeq: 3 });
         expect(session.resizeCalls).toEqual([[120, 40]]);
+    });
+
+    it('executes input exactly once after a missing resize is replayed', async () => {
+        const { manager, sessions } = await createHarness({ policy: 'none' });
+        await manager.start();
+        const result = await manager.create({ cwd: tmpdir(), cols: 80, rows: 24 });
+        const terminalId = (result as { terminalId: string }).terminalId;
+        const session = sessions.get(terminalId)!;
+        const epoch = manager.getStreamEpoch();
+        const frame = (partial: Partial<TerminalInputFrame>): TerminalInputFrame => ({
+            version: 3,
+            epoch,
+            streamId: 'stream-gap',
+            terminalId,
+            machineId: 'machine-1',
+            direction: 'client-to-daemon',
+            seq: 1,
+            kind: 'input',
+            ...partial,
+        });
+
+        expect(manager.applyFrame(terminalId, frame({
+            seq: 2,
+            kind: 'input',
+            data: 'echo once',
+        }))).toEqual({ status: 'gap', expectedSeq: 1 });
+        expect(session.written).toEqual([]);
+
+        expect(manager.applyFrame(terminalId, frame({
+            seq: 1,
+            kind: 'resize',
+            cols: 100,
+            rows: 30,
+        }))).toEqual({ status: 'applied', expectedSeq: 2 });
+        expect(manager.applyFrame(terminalId, frame({
+            seq: 2,
+            kind: 'input',
+            data: 'echo once',
+        }))).toEqual({ status: 'applied', expectedSeq: 3 });
+        expect(manager.applyFrame(terminalId, frame({
+            seq: 2,
+            kind: 'input',
+            data: 'echo once',
+        }))).toEqual({ status: 'duplicate', expectedSeq: 3 });
+
+        expect(session.resizeCalls).toEqual([[100, 30]]);
+        expect(session.written).toEqual(['echo once']);
     });
 
     it('rejects frames from an older daemon epoch', async () => {
@@ -430,7 +477,7 @@ describe('TerminalManager', () => {
             seq: 1,
             kind: 'input',
             data: 'rm -rf /tmp/x',
-        })).toBe('invalid');
+        })).toEqual({ status: 'invalid', expectedSeq: 1 });
         expect(session.written).toEqual([]);
     });
 
@@ -453,27 +500,27 @@ describe('TerminalManager', () => {
         });
 
         expect(manager.applyFrame(terminalId, frame({ streamId: '', seq: 1, kind: 'input', data: 'x' })))
-            .toBe('invalid');
+            .toEqual({ status: 'invalid', expectedSeq: 1 });
         expect(manager.applyFrame(terminalId, frame({ seq: 0, kind: 'input', data: 'x' })))
-            .toBe('invalid');
+            .toEqual({ status: 'invalid', expectedSeq: 1 });
         expect(manager.applyFrame(terminalId, frame({ seq: 1.5, kind: 'input', data: 'x' })))
-            .toBe('invalid');
+            .toEqual({ status: 'invalid', expectedSeq: 1 });
         expect(manager.applyFrame(terminalId, frame({
             seq: 1,
             kind: 'input',
             data: 'x'.repeat(1024 * 1024 + 1),
-        }))).toBe('invalid');
+        }))).toEqual({ status: 'invalid', expectedSeq: 1 });
         expect(manager.applyFrame(terminalId, frame({
             seq: 1,
             kind: 'resize',
             cols: 0,
             rows: 24,
-        }))).toBe('invalid');
+        }))).toEqual({ status: 'invalid', expectedSeq: 1 });
         expect(manager.applyFrame(terminalId, frame({
             seq: 1,
             kind: 'signal',
             signal: 'SIGKILL',
-        }))).toBe('invalid');
+        }))).toEqual({ status: 'invalid', expectedSeq: 1 });
     });
 
     it('rejects invalid create parameters at the daemon boundary', async () => {

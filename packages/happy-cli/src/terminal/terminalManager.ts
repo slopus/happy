@@ -22,6 +22,7 @@ import {
     ApprovalPolicy,
     ShellSession,
     TerminalAttachResult,
+    TerminalControlApplyResult,
     TerminalCreateOptions,
     TerminalCreateResult,
     TerminalInputFrame,
@@ -316,37 +317,38 @@ export class TerminalManager {
     applyFrame(
         terminalId: string,
         frame: TerminalInputFrame,
-    ): 'applied' | 'duplicate' | 'gap' | 'invalid' {
+    ): TerminalControlApplyResult {
         if (frame.epoch !== this.streamEpoch) {
-            return 'invalid';
+            return { status: 'invalid', expectedSeq: 1 };
         }
         if (typeof frame.streamId !== 'string'
             || frame.streamId.length === 0
             || frame.streamId.length > 128) {
-            return 'invalid';
+            return { status: 'invalid', expectedSeq: 1 };
         }
+        const key = `${terminalId}:${frame.streamId}`;
+        const last = this.lastProcessedInputSeqByStream.get(key) ?? 0;
+        const expectedSeq = last + 1;
         if (!Number.isSafeInteger(frame.seq) || frame.seq <= 0) {
-            return 'invalid';
+            return { status: 'invalid', expectedSeq };
         }
         if (frame.kind === 'input'
             && (typeof frame.data !== 'string'
                 || Buffer.byteLength(frame.data, 'utf8') > MAX_INPUT_BYTES)) {
-            return 'invalid';
+            return { status: 'invalid', expectedSeq };
         }
         if ((frame.kind === 'resize' && (!isValidDimension(frame.cols ?? 0)
             || !isValidDimension(frame.rows ?? 0)))
             || (frame.kind === 'signal'
                 && (typeof frame.signal !== 'string' || frame.signal.length === 0))) {
-            return 'invalid';
+            return { status: 'invalid', expectedSeq };
         }
 
-        const key = `${terminalId}:${frame.streamId}`;
-        const last = this.lastProcessedInputSeqByStream.get(key) ?? 0;
         if (frame.seq <= last) {
-            return 'duplicate';
+            return { status: 'duplicate', expectedSeq };
         }
-        if (frame.seq !== last + 1) {
-            return 'gap';
+        if (frame.seq !== expectedSeq) {
+            return { status: 'gap', expectedSeq };
         }
 
         const session = this.requireRunningSession(terminalId);
@@ -361,12 +363,12 @@ export class TerminalManager {
                 if (frame.signal === 'SIGINT') {
                     session.write('\x03');
                 } else {
-                    return 'invalid';
+                    return { status: 'invalid', expectedSeq };
                 }
                 break;
         }
         this.lastProcessedInputSeqByStream.set(key, frame.seq);
-        return 'applied';
+        return { status: 'applied', expectedSeq: frame.seq + 1 };
     }
 
     resize(terminalId: string, cols: number, rows: number): void {

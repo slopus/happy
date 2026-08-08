@@ -194,7 +194,10 @@ describe('ApiMachineClient socket reconnection', () => {
             attach: vi.fn(),
             list: vi.fn(async () => []),
             close: vi.fn(),
-            applyFrame: vi.fn(() => 'applied'),
+            applyFrame: vi.fn((_terminalId: string, frame: { seq: number }) => ({
+                status: 'applied',
+                expectedSeq: frame.seq + 1,
+            })),
             setTransportPaused: vi.fn(),
             getRunningTerminalIds: vi.fn(() => ['term-1']),
             getStreamEpoch: vi.fn(() => 'epoch-1'),
@@ -277,7 +280,7 @@ describe('ApiMachineClient socket reconnection', () => {
             data: 'ls -la',
         }));
         const ackCalls = mockSocket.emit.mock.calls.filter(
-            ([event]: [string]) => event === 'terminal:input-ack',
+            ([event]: [string]) => event === 'terminal:control-ack',
         );
         expect(ackCalls).toHaveLength(1);
         const ack = decrypt(
@@ -293,14 +296,15 @@ describe('ApiMachineClient socket reconnection', () => {
             machineId: 'test-machine-id',
             direction: 'daemon-to-client',
             seq: 7,
-            kind: 'input-ack',
+            kind: 'control-ack',
+            status: 'applied',
         }));
 
         // Duplicate frames are acked again but never re-applied.
-        terminalManager.applyFrame.mockReturnValueOnce('duplicate');
+        terminalManager.applyFrame.mockReturnValueOnce({ status: 'duplicate', expectedSeq: 8 });
         emitSocketEvent('terminal:input', { terminalId: 'term-1', payload });
         const ackCallsAfterDuplicate = mockSocket.emit.mock.calls.filter(
-            ([event]: [string]) => event === 'terminal:input-ack',
+            ([event]: [string]) => event === 'terminal:control-ack',
         );
         expect(ackCallsAfterDuplicate).toHaveLength(2);
 
@@ -313,7 +317,7 @@ describe('ApiMachineClient socket reconnection', () => {
         emitSocketEvent('terminal:input', { terminalId: 'term-1', payload: misroutedPayload });
         expect(terminalManager.applyFrame).toHaveBeenCalledTimes(2);
         expect(mockSocket.emit.mock.calls.filter(
-            ([event]: [string]) => event === 'terminal:input-ack',
+            ([event]: [string]) => event === 'terminal:control-ack',
         )).toHaveLength(2);
 
         // Resize frames are authenticated and routed to the manager.
@@ -342,6 +346,57 @@ describe('ApiMachineClient socket reconnection', () => {
             kind: 'resize',
             cols: 120,
             rows: 40,
+        }));
+        expect(mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:control-ack',
+        )).toHaveLength(3);
+
+        const appliedSignalPayload = encodeBase64(encrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            {
+                ...inputFrame,
+                seq: 9,
+                kind: 'signal',
+                signal: 'SIGINT',
+                data: undefined,
+            },
+        ));
+        emitSocketEvent('terminal:signal', { terminalId: 'term-1', payload: appliedSignalPayload });
+        expect(mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:control-ack',
+        )).toHaveLength(4);
+
+        terminalManager.applyFrame.mockReturnValueOnce({ status: 'gap', expectedSeq: 10 });
+        const signalPayload = encodeBase64(encrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            {
+                ...inputFrame,
+                seq: 11,
+                kind: 'signal',
+                signal: 'SIGINT',
+                data: undefined,
+            },
+        ));
+        emitSocketEvent('terminal:signal', { terminalId: 'term-1', payload: signalPayload });
+        const nackCalls = mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:control-nack',
+        );
+        expect(nackCalls).toHaveLength(1);
+        expect(decrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            decodeBase64(nackCalls[0][1].payload),
+        )).toEqual(expect.objectContaining({
+            version: 3,
+            epoch: 'epoch-1',
+            streamId: 'stream-1',
+            seq: 11,
+            kind: 'control-nack',
+            receivedSeq: 11,
+            expectedSeq: 10,
+            reason: 'gap',
         }));
 
         client.shutdown();

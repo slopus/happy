@@ -101,10 +101,19 @@ export interface TerminalOutputFrame {
     machineId: string;
     direction: 'daemon-to-client';
     seq: number;
-    kind: TerminalOutputEvent['kind'] | 'input-ack' | 'epoch';
+    kind: TerminalOutputEvent['kind'] | 'control-ack' | 'control-nack' | 'epoch';
     data?: string;
     exitCode?: number;
     error?: string;
+    status?: 'applied' | 'duplicate';
+    receivedSeq?: number;
+    expectedSeq?: number;
+    reason?: 'gap' | 'invalid';
+}
+
+export interface TerminalControlApplyResult {
+    status: 'applied' | 'duplicate' | 'gap' | 'invalid';
+    expectedSeq: number;
 }
 
 /**

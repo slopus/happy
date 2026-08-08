@@ -131,6 +131,8 @@ export interface TerminalStreamHandlers {
     onWriter(state: TerminalWriterState): void;
     /** Daemon restarted while this stream was connected; queued input dropped. */
     onEpochReset?(): void;
+    /** Control sequence could not be repaired; destructive controls were dropped. */
+    onControlReset?(): void;
     onStatusChange(status: TerminalStreamStatus): void;
 }
 
@@ -138,6 +140,15 @@ export interface TerminalWriterState {
     writerSocketId: string | null;
     generation: number;
     isWriter: boolean;
+}
+
+type TerminalControlEvent = 'terminal:input' | 'terminal:resize' | 'terminal:signal';
+
+interface PendingTerminalControl {
+    seq: number;
+    kind: TerminalInputFrame['kind'];
+    event: TerminalControlEvent;
+    payload: string;
 }
 
 /**
@@ -158,21 +169,24 @@ export class TerminalStream {
     private controlStreamId: string;
     private streamEpoch = '';
     private lastOutputSeq = 0;
-    private inputSeq = 0;
-    private readonly unackedInputs = new Map<number, string>();
+    private controlSeq = 0;
+    private readonly pendingControls = new Map<number, PendingTerminalControl>();
     private desiredSize: { cols: number; rows: number } | null = null;
+    private desiredSizeDirty = false;
     private readonly disposers: Array<() => void> = [];
     private wired = false;
     private status: TerminalStreamStatus = 'connecting';
     private attaching = false;
     private bufferedFrames: Array<{ epoch: string; seq: number; data: string }> = [];
     private inboundQueue: Promise<void> = Promise.resolve();
+    private outboundQueue: Promise<void> = Promise.resolve();
     private attachInFlight: Promise<TerminalAttachResult> | null = null;
     private lastNotifiedEpoch = '';
     private currentWriterSocketId: string | null = null;
     private writerGeneration = 0;
     private writerStateInitialized = false;
     private writer = false;
+    private controlReady = false;
     private resyncAttempts = 0;
     private static readonly MAX_RESYNC_ATTEMPTS = 3;
 
@@ -226,6 +240,7 @@ export class TerminalStream {
 
     private async performAttach(): Promise<{ result: TerminalAttachResult; gap: boolean }> {
         this.setStatus('connecting');
+        this.controlReady = false;
         if (!this.wired) {
             this.wireSocketEvents();
             this.wired = true;
@@ -258,11 +273,16 @@ export class TerminalStream {
                 // From here on, frames are handled live: anything arriving
                 // during takeover/resend must not be buffered and dropped.
                 this.attaching = false;
+                this.controlReady = true;
                 if (this.isWriter) {
-                    await this.resendUnackedInputs();
+                    await this.enqueueOutbound(async () => {
+                        await this.resendPendingControls();
+                        await this.sendDesiredResizeIfNeeded();
+                    });
                 }
                 this.setStatus('attached');
             } else if (result.status === 'exited') {
+                this.controlReady = false;
                 this.setStatus('exited');
                 this.handlers.onExit(result.exitCode ?? 0);
             }
@@ -274,32 +294,39 @@ export class TerminalStream {
     }
 
     async sendInput(data: string): Promise<void> {
-        if (!this.isWriter) {
-            return;
-        }
-        const seq = ++this.inputSeq;
-        this.unackedInputs.set(seq, data);
-        const frame = this.inputFrame({ seq, kind: 'input', data });
-        const payload = await this.encrypt<TerminalInputFrame>(frame);
-        if (frame.epoch !== this.streamEpoch || frame.streamId !== this.streamId) {
-            this.unackedInputs.delete(seq);
-            return;
-        }
-        apiSocket.send('terminal:input', { terminalId: this.terminalId, payload });
+        await this.enqueueOutbound(async () => {
+            if (!this.canSendControls()) {
+                return;
+            }
+            await this.createAndSendControl('terminal:input', {
+                kind: 'input',
+                data,
+            });
+        });
     }
 
     async sendResize(cols: number, rows: number): Promise<void> {
-        this.desiredSize = { cols, rows };
-        if (!this.isWriter) {
-            return;
-        }
-        const seq = ++this.inputSeq;
-        const frame = this.inputFrame({ seq, kind: 'resize', cols, rows });
-        const payload = await this.encrypt<TerminalInputFrame>(frame);
-        if (frame.epoch !== this.streamEpoch || frame.streamId !== this.streamId) {
-            return;
-        }
-        apiSocket.send('terminal:resize', { terminalId: this.terminalId, payload });
+        const desiredSize = { cols, rows };
+        this.desiredSize = desiredSize;
+        this.desiredSizeDirty = true;
+        await this.enqueueOutbound(async () => {
+            if (this.desiredSize !== desiredSize || !this.canSendControls()) {
+                return;
+            }
+            await this.sendDesiredResizeIfNeeded();
+        });
+    }
+
+    async sendSignal(signal: string): Promise<void> {
+        await this.enqueueOutbound(async () => {
+            if (!this.canSendControls()) {
+                return;
+            }
+            await this.createAndSendControl('terminal:signal', {
+                kind: 'signal',
+                signal,
+            });
+        });
     }
 
     async takeControl(): Promise<void> {
@@ -323,6 +350,8 @@ export class TerminalStream {
         this.writerStateInitialized = false;
         this.currentWriterSocketId = null;
         this.writerGeneration = 0;
+        this.controlReady = false;
+        this.pendingControls.clear();
         apiSocket.send('terminal:unsubscribe', { terminalId: this.terminalId });
         this.setStatus('detached');
     }
@@ -342,11 +371,18 @@ export class TerminalStream {
             this.enqueueInbound(() => this.handleExitFrame(data.payload));
         }));
 
-        this.disposers.push(apiSocket.onMessage('terminal:input-ack', (data: any) => {
+        this.disposers.push(apiSocket.onMessage('terminal:control-ack', (data: any) => {
             if (data?.terminalId !== this.terminalId || typeof data.payload !== 'string') {
                 return;
             }
-            this.enqueueInbound(() => this.handleInputAckFrame(data.payload));
+            this.enqueueInbound(() => this.handleControlAckFrame(data.payload));
+        }));
+
+        this.disposers.push(apiSocket.onMessage('terminal:control-nack', (data: any) => {
+            if (data?.terminalId !== this.terminalId || typeof data.payload !== 'string') {
+                return;
+            }
+            this.enqueueInbound(() => this.handleControlNackFrame(data.payload));
         }));
 
         this.disposers.push(apiSocket.onMessage('terminal:epoch', (data: any) => {
@@ -431,15 +467,32 @@ export class TerminalStream {
         this.handlers.onExit(frame.exitCode ?? 0);
     }
 
-    private async handleInputAckFrame(payload: string): Promise<void> {
+    private async handleControlAckFrame(payload: string): Promise<void> {
         const frame = await this.decrypt<TerminalOutputFrame>(payload);
         if (!this.isValidOutputFrame(frame)
-            || frame.kind !== 'input-ack'
+            || frame.kind !== 'control-ack'
             || frame.epoch !== this.streamEpoch
-            || frame.streamId !== this.streamId) {
+            || frame.streamId !== this.streamId
+            || (frame.status !== 'applied' && frame.status !== 'duplicate')) {
             return;
         }
-        this.unackedInputs.delete(frame.seq);
+        this.pendingControls.delete(frame.seq);
+    }
+
+    private async handleControlNackFrame(payload: string): Promise<void> {
+        const frame = await this.decrypt<TerminalOutputFrame>(payload);
+        if (!this.isValidOutputFrame(frame)
+            || frame.kind !== 'control-nack'
+            || frame.epoch !== this.streamEpoch
+            || frame.streamId !== this.streamId
+            || (frame.reason !== 'gap' && frame.reason !== 'invalid')
+            || !Number.isSafeInteger(frame.expectedSeq)
+            || (frame.expectedSeq ?? 0) <= 0) {
+            return;
+        }
+        await this.enqueueOutbound(async () => {
+            await this.resendPendingControls(frame.expectedSeq);
+        });
     }
 
     private async handleEpochFrame(payload: string): Promise<void> {
@@ -493,15 +546,102 @@ export class TerminalStream {
         return false;
     }
 
-    private async resendUnackedInputs(): Promise<void> {
-        const pending = Array.from(this.unackedInputs.entries())
-            .sort(([a], [b]) => a - b);
-        for (const [seq, data] of pending) {
-            const payload = await this.encrypt<TerminalInputFrame>(
-                this.inputFrame({ seq, kind: 'input', data }),
-            );
-            apiSocket.send('terminal:input', { terminalId: this.terminalId, payload });
+    private canSendControls(): boolean {
+        return this.controlReady
+            && this.isWriter
+            && this.streamEpoch.length > 0;
+    }
+
+    private async createAndSendControl(
+        event: TerminalControlEvent,
+        partial: {
+            kind: TerminalInputFrame['kind'];
+            data?: string;
+            cols?: number;
+            rows?: number;
+            signal?: string;
+        },
+    ): Promise<boolean> {
+        if (!this.canSendControls()) {
+            return false;
         }
+        const seq = ++this.controlSeq;
+        const frame = this.inputFrame({ seq, ...partial });
+        let payload: string;
+        try {
+            payload = await this.encrypt<TerminalInputFrame>(frame);
+        } catch (error) {
+            if (frame.epoch === this.streamEpoch
+                && frame.streamId === this.streamId
+                && this.controlSeq === seq) {
+                this.controlSeq--;
+            }
+            throw error;
+        }
+        if (!this.canSendControls()
+            || frame.epoch !== this.streamEpoch
+            || frame.streamId !== this.streamId) {
+            if (frame.epoch === this.streamEpoch
+                && frame.streamId === this.streamId
+                && this.controlSeq === seq) {
+                this.controlSeq--;
+            }
+            return false;
+        }
+
+        const control: PendingTerminalControl = {
+            seq,
+            kind: frame.kind,
+            event,
+            payload,
+        };
+        this.pendingControls.set(seq, control);
+        this.emitPendingControl(control);
+        return true;
+    }
+
+    private async sendDesiredResizeIfNeeded(): Promise<void> {
+        const desiredSize = this.desiredSize;
+        if (!desiredSize || !this.desiredSizeDirty || !this.canSendControls()) {
+            return;
+        }
+        const sent = await this.createAndSendControl('terminal:resize', {
+            kind: 'resize',
+            cols: desiredSize.cols,
+            rows: desiredSize.rows,
+        });
+        if (sent && this.desiredSize === desiredSize) {
+            this.desiredSizeDirty = false;
+        }
+    }
+
+    private async resendPendingControls(expectedSeq?: number): Promise<void> {
+        if (!this.canSendControls()) {
+            return;
+        }
+        if (expectedSeq !== undefined && !this.pendingControls.has(expectedSeq)) {
+            await this.recoverMissingControl();
+            return;
+        }
+        const pending = Array.from(this.pendingControls.values())
+            .filter((control) => expectedSeq === undefined || control.seq >= expectedSeq)
+            .sort((a, b) => a.seq - b.seq);
+        for (const control of pending) {
+            this.emitPendingControl(control);
+        }
+    }
+
+    private async recoverMissingControl(): Promise<void> {
+        this.rotateControlStream();
+        this.handlers.onControlReset?.();
+        await this.sendDesiredResizeIfNeeded();
+    }
+
+    private emitPendingControl(control: PendingTerminalControl): void {
+        apiSocket.send(control.event, {
+            terminalId: this.terminalId,
+            payload: control.payload,
+        });
     }
 
     private inputFrame(partial: {
@@ -564,6 +704,9 @@ export class TerminalStream {
             && writerSocketId !== this.currentWriterSocketId;
         const ownershipChanged = this.writerStateInitialized
             && this.writer !== (state.isWriter === true);
+        const becameWriter = this.writerStateInitialized
+            && !this.writer
+            && state.isWriter === true;
 
         this.currentWriterSocketId = writerSocketId;
         this.writerGeneration = generation;
@@ -578,12 +721,16 @@ export class TerminalStream {
             generation: this.writerGeneration,
             isWriter: this.writer,
         });
+        if (becameWriter && this.controlReady) {
+            void this.enqueueOutbound(() => this.sendDesiredResizeIfNeeded());
+        }
     }
 
     private rotateControlStream(): void {
-        this.unackedInputs.clear();
-        this.inputSeq = 0;
+        this.pendingControls.clear();
+        this.controlSeq = 0;
         this.controlStreamId = Crypto.randomUUID();
+        this.desiredSizeDirty = this.desiredSize !== null;
     }
 
     private enqueueInbound(operation: () => Promise<void>): void {
@@ -592,6 +739,15 @@ export class TerminalStream {
             const message = error instanceof Error ? error.message : String(error);
             this.handlers.onError(message);
         });
+    }
+
+    private enqueueOutbound(operation: () => Promise<void>): Promise<void> {
+        const next = this.outboundQueue.then(operation);
+        this.outboundQueue = next.catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.handlers.onError(message);
+        });
+        return this.outboundQueue;
     }
 
     private async encrypt<T>(frame: T): Promise<string> {
