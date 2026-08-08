@@ -18,7 +18,9 @@ import { TerminalManager } from '@/terminal/terminalManager';
 import {
     ApprovalPolicy,
     TerminalInputFrame,
+    TerminalOutputEvent,
     TerminalOutputFrame,
+    TERMINAL_FRAME_VERSION,
 } from '@/terminal/types';
 import { getProjectPath } from '@/claude/utils/path';
 import {
@@ -642,21 +644,29 @@ export class ApiMachineClient {
         }
     }
 
-    emitTerminalOutput(terminalId: string, frame: TerminalOutputFrame): void {
-        this.socket?.emit('terminal:output', {
+    emitTerminalOutput(terminalId: string, frame: TerminalOutputEvent): void {
+        if (!this.socket?.connected) {
+            // The ring buffer + attach snapshot are the recovery path; never
+            // build an unbounded Socket.IO outbound queue while offline.
+            return;
+        }
+        this.socket.emit('terminal:output', {
             terminalId,
-            payload: this.encryptFrame(frame),
+            payload: this.encryptFrame(this.enrichOutputFrame(terminalId, frame)),
         });
     }
 
-    emitTerminalExit(terminalId: string, frame: TerminalOutputFrame): void {
-        this.socket?.emit('terminal:exit', {
+    emitTerminalExit(terminalId: string, frame: TerminalOutputEvent): void {
+        if (!this.socket?.connected) {
+            return;
+        }
+        this.socket.emit('terminal:exit', {
             terminalId,
-            payload: this.encryptFrame(frame),
+            payload: this.encryptFrame(this.enrichOutputFrame(terminalId, frame)),
         });
     }
 
-    emitTerminalError(terminalId: string, frame: TerminalOutputFrame): void {
+    emitTerminalError(terminalId: string, frame: TerminalOutputEvent): void {
         // Errors travel on the output channel; clients branch on frame.kind.
         this.emitTerminalOutput(terminalId, frame);
     }
@@ -689,16 +699,34 @@ export class ApiMachineClient {
             logger.debug('[API MACHINE] Failed to decrypt terminal frame:', error);
             return;
         }
-        if (!frame || frame.kind !== kind) {
+        if (!frame
+            || frame.version !== TERMINAL_FRAME_VERSION
+            || frame.direction !== 'client-to-daemon'
+            || frame.terminalId !== terminalId
+            || frame.machineId !== this.machine.id
+            || frame.kind !== kind) {
+            // Routing metadata is authenticated inside the ciphertext: a
+            // misrouted or replayed frame from a compromised relay is dropped.
+            logger.debug('[API MACHINE] Rejected terminal frame (binding mismatch)');
             return;
         }
 
         try {
             switch (kind) {
-                case 'input':
-                    this.terminalManager.write(terminalId, frame.data ?? '');
-                    this.emitTerminalInputAck(terminalId, frame.seq);
+                case 'input': {
+                    const status = this.terminalManager.applyInput(
+                        terminalId,
+                        frame.streamId,
+                        frame.seq,
+                        frame.data ?? '',
+                    );
+                    if (status === 'applied' || status === 'duplicate') {
+                        this.emitTerminalInputAck(terminalId, frame.streamId, frame.seq);
+                    } else {
+                        logger.debug('[API MACHINE] Terminal input rejected', { status });
+                    }
                     break;
+                }
                 case 'resize':
                     this.terminalManager.resize(
                         terminalId,
@@ -715,11 +743,38 @@ export class ApiMachineClient {
         }
     }
 
-    private emitTerminalInputAck(terminalId: string, seq: number): void {
+    private emitTerminalInputAck(terminalId: string, streamId: string, seq: number): void {
+        if (!this.socket.connected) {
+            return;
+        }
         this.socket.emit('terminal:input-ack', {
             terminalId,
-            payload: this.encryptFrame({ seq, kind: 'input-ack' as const }),
+            payload: this.encryptFrame(this.enrichOutputFrame(terminalId, {
+                seq,
+                streamId,
+                kind: 'input-ack' as const,
+            })),
         });
+    }
+
+    private enrichOutputFrame(
+        terminalId: string,
+        frame: {
+            seq: number;
+            streamId?: string;
+            kind: TerminalOutputFrame['kind'];
+            data?: string;
+            exitCode?: number;
+            error?: string;
+        },
+    ): TerminalOutputFrame {
+        return {
+            ...frame,
+            version: TERMINAL_FRAME_VERSION,
+            terminalId,
+            machineId: this.machine.id,
+            direction: 'daemon-to-client',
+        };
     }
 
     private encryptFrame(frame: unknown): string {

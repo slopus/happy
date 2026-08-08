@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ApprovalPolicy, ShellSession, TerminalOutputFrame, TerminalRecord } from './types';
+import { ApprovalPolicy, ShellSession, TerminalOutputEvent, TerminalRecord } from './types';
 import { TerminalManager } from './terminalManager';
 import { TerminalPolicyStore } from './terminalPolicyStore';
 
@@ -91,7 +91,7 @@ class FakeSession implements ShellSession {
 interface Harness {
     manager: TerminalManager;
     sessions: Map<string, FakeSession>;
-    frames: TerminalOutputFrame[];
+    frames: TerminalOutputEvent[];
     files: { terminals: string; policy: string };
     dir: string;
 }
@@ -110,7 +110,7 @@ async function createHarness(
         await policyStore.set(options.policy);
     }
     const sessions = new Map<string, FakeSession>();
-    const frames: TerminalOutputFrame[] = [];
+    const frames: TerminalOutputEvent[] = [];
 
     const manager = new TerminalManager({
         terminalsFile: files.terminals,
@@ -302,5 +302,62 @@ describe('TerminalManager', () => {
 
         expect(session.written).toEqual(['echo hi', '\x03']);
         expect(session.resizeCalls).toEqual([[100, 30]]);
+    });
+
+    it('applies input idempotently per stream', async () => {
+        const { manager, sessions } = await createHarness({ policy: 'none' });
+        await manager.start();
+        const result = await manager.create({ cwd: tmpdir(), cols: 80, rows: 24 });
+        const terminalId = (result as { terminalId: string }).terminalId;
+        const session = sessions.get(terminalId)!;
+
+        expect(manager.applyInput(terminalId, 'stream-a', 1, 'echo one')).toBe('applied');
+        // Duplicate (lost ACK, client resent) must be acked but never re-run.
+        expect(manager.applyInput(terminalId, 'stream-a', 1, 'echo one')).toBe('duplicate');
+        // Out-of-order input is rejected without executing.
+        expect(manager.applyInput(terminalId, 'stream-a', 3, 'echo three')).toBe('gap');
+        // A different writer stream starts its own sequence.
+        expect(manager.applyInput(terminalId, 'stream-b', 1, 'echo bee')).toBe('applied');
+
+        expect(session.written).toEqual(['echo one', 'echo bee']);
+    });
+
+    it('rejects invalid input frames', async () => {
+        const { manager } = await createHarness({ policy: 'none' });
+        await manager.start();
+        const result = await manager.create({ cwd: tmpdir(), cols: 80, rows: 24 });
+        const terminalId = (result as { terminalId: string }).terminalId;
+
+        expect(manager.applyInput(terminalId, '', 1, 'x')).toBe('invalid');
+        expect(manager.applyInput(terminalId, 'stream-a', 0, 'x')).toBe('invalid');
+        expect(manager.applyInput(terminalId, 'stream-a', 1.5, 'x')).toBe('invalid');
+        expect(manager.applyInput(terminalId, 'stream-a', 1, 'x'.repeat(1024 * 1024 + 1))).toBe('invalid');
+    });
+
+    it('rejects invalid create parameters at the daemon boundary', async () => {
+        const { manager } = await createHarness({ policy: 'none' });
+        await manager.start();
+
+        await expect(manager.create({ cwd: 'relative/path', cols: 80, rows: 24 }))
+            .resolves.toMatchObject({ type: 'error' });
+        await expect(manager.create({ cwd: tmpdir(), cols: 0, rows: 24 }))
+            .resolves.toMatchObject({ type: 'error' });
+        await expect(manager.create({ cwd: tmpdir(), cols: 80, rows: Number.POSITIVE_INFINITY }))
+            .resolves.toMatchObject({ type: 'error' });
+        await expect(manager.create({ cwd: tmpdir(), cols: 80, rows: 24, name: 'x'.repeat(81) }))
+            .resolves.toMatchObject({ type: 'error' });
+        await expect(manager.create({ cwd: tmpdir(), cols: 80, rows: 24, shell: '' }))
+            .resolves.toMatchObject({ type: 'error' });
+    });
+
+    it('rejects invalid resize dimensions', async () => {
+        const { manager } = await createHarness({ policy: 'none' });
+        await manager.start();
+        const result = await manager.create({ cwd: tmpdir(), cols: 80, rows: 24 });
+        const terminalId = (result as { terminalId: string }).terminalId;
+
+        expect(() => manager.resize(terminalId, 0, 24)).toThrow();
+        expect(() => manager.resize(terminalId, 80, Number.NaN)).toThrow();
+        expect(() => manager.resize(terminalId, 80.5, 24)).toThrow();
     });
 });

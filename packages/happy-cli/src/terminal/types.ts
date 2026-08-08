@@ -19,6 +19,8 @@ export interface TerminalRecord {
     status: TerminalStatus;
     /** tmux session name when the shell is tmux-backed (`happy-term-<id>`). */
     tmuxTarget?: string;
+    /** Exact tmux pane id (`%0`) owned by this terminal, for split-pane safe recovery. */
+    tmuxPaneId?: string;
     createdAt: number;
     lastAttachedAt?: number;
     exitCode?: number;
@@ -52,8 +54,19 @@ export interface TerminalAttachResult {
     exitCode?: number;
 }
 
-/** Plaintext control frame carried inside the encrypted streaming payload. */
+export const TERMINAL_FRAME_VERSION = 1;
+
+/**
+ * Authenticated control frame carried inside the encrypted streaming payload.
+ * The routing metadata (terminalId/machineId/streamId/direction) is bound to
+ * the ciphertext so a compromised relay cannot cross-route or replay frames.
+ */
 export interface TerminalInputFrame {
+    version: typeof TERMINAL_FRAME_VERSION;
+    streamId: string;
+    terminalId: string;
+    machineId: string;
+    direction: 'client-to-daemon';
     seq: number;
     kind: 'input' | 'resize' | 'signal';
     data?: string;
@@ -62,10 +75,27 @@ export interface TerminalInputFrame {
     signal?: string;
 }
 
-/** Plaintext output frame carried inside the encrypted streaming payload. */
-export interface TerminalOutputFrame {
+/**
+ * Transport-agnostic output event produced by the terminal manager.
+ * The wire layer (ApiMachineClient) binds routing metadata before encrypting.
+ */
+export interface TerminalOutputEvent {
     seq: number;
-    kind: 'output' | 'exit' | 'error' | 'input-ack';
+    kind: 'output' | 'exit' | 'error';
+    data?: string;
+    exitCode?: number;
+    error?: string;
+}
+
+/** Authenticated output frame carried inside the encrypted streaming payload. */
+export interface TerminalOutputFrame {
+    version: typeof TERMINAL_FRAME_VERSION;
+    streamId?: string;
+    terminalId: string;
+    machineId: string;
+    direction: 'daemon-to-client';
+    seq: number;
+    kind: TerminalOutputEvent['kind'] | 'input-ack';
     data?: string;
     exitCode?: number;
     error?: string;
@@ -91,9 +121,9 @@ export interface ShellSession {
 }
 
 export interface TerminalManagerEvents {
-    output: (terminalId: string, frame: TerminalOutputFrame) => void;
-    exit: (terminalId: string, frame: TerminalOutputFrame) => void;
-    error: (terminalId: string, frame: TerminalOutputFrame) => void;
+    output: (terminalId: string, frame: TerminalOutputEvent) => void;
+    exit: (terminalId: string, frame: TerminalOutputEvent) => void;
+    error: (terminalId: string, frame: TerminalOutputEvent) => void;
 }
 
 export function isApprovalPolicy(value: unknown): value is ApprovalPolicy {
