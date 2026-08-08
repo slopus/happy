@@ -78,8 +78,31 @@ if (process.env.REDIS_URL) {
 /** Single-replica fallback writer state + per-terminal serialization. */
 const writerState = new Map<string, { socketId: string; generation: number }>();
 const takeoverQueues = new Map<string, Promise<void>>();
+const terminalOpQueues = new Map<string, Promise<void>>();
 /** socketId -> [{ key, value }] so disconnect can release owned seats exactly. */
 const socketWriterSeats = new Map<string, Array<{ key: string; value: string }>>();
+
+/**
+ * Per-terminal in-process serialization for writer operations. Forwarding and
+ * takeover share the same lock so an old writer cannot emit after a swap.
+ */
+export async function withTerminalOpLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const previous = terminalOpQueues.get(key) ?? Promise.resolve();
+    let release: () => void = () => undefined;
+    const current = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    terminalOpQueues.set(key, previous.then(() => current));
+    await previous;
+    try {
+        return await fn();
+    } finally {
+        release();
+        if (terminalOpQueues.get(key) === current) {
+            terminalOpQueues.delete(key);
+        }
+    }
+}
 
 async function claimWriter(key: string, socketId: string): Promise<number> {
     if (redis) {
@@ -118,12 +141,16 @@ async function claimWriter(key: string, socketId: string): Promise<number> {
     }
 }
 
-async function isWriter(key: string, socketId: string): Promise<boolean> {
+async function writerGeneration(key: string, socketId: string): Promise<number> {
     if (redis) {
         const current = await redis.get(key);
-        return current !== null && current.split(':')[0] === socketId;
+        if (current === null || current.split(':')[0] !== socketId) {
+            return 0;
+        }
+        return Number(current.split(':')[1] ?? 0);
     }
-    return writerState.get(key)?.socketId === socketId;
+    const state = writerState.get(key);
+    return state && state.socketId === socketId ? state.generation : 0;
 }
 
 async function releaseWriterIfOwned(key: string, value: string): Promise<void> {
@@ -264,17 +291,19 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
         }
 
         const key = writerKey(userId, terminalId);
-        const generation = await claimWriter(key, socket.id);
-        if (!socket.connected) {
-            // Socket died while the takeover was queued; drop the seat again.
-            await releaseWriterSeat(socket.id, key);
-            return;
-        }
-        terminalEventsCounter.inc({ event: 'takeover', role: 'user' });
-        io.to(clientRoom(userId, terminalId)).emit('terminal:writer', {
-            terminalId,
-            writerSocketId: socket.id,
-            generation,
+        await withTerminalOpLock(key, async () => {
+            const generation = await claimWriter(key, socket.id);
+            if (!socket.connected) {
+                // Socket died while the takeover was queued; drop the seat again.
+                await releaseWriterSeat(socket.id, key);
+                return;
+            }
+            terminalEventsCounter.inc({ event: 'takeover', role: 'user' });
+            io.to(clientRoom(userId, terminalId)).emit('terminal:writer', {
+                terminalId,
+                writerSocketId: socket.id,
+                generation,
+            });
         });
     });
 
@@ -285,16 +314,27 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
         if (!isValidTerminalId(terminalId) || !isValidPayload(payload)) {
             return;
         }
-        if (!await isWriter(writerKey(userId, terminalId), socket.id)) {
-            return; // View-only sockets cannot write.
-        }
+        const key = writerKey(userId, terminalId);
+        await withTerminalOpLock(key, async () => {
+            const generation = await writerGeneration(key, socket.id);
+            if (!generation) {
+                return; // View-only sockets cannot write.
+            }
 
-        const targets = await fetchDaemonSockets(io, daemonRoom(userId, terminalId));
-        if (targets.length === 0) {
-            return;
-        }
-        targets[0].emit(event, { terminalId, payload });
-        terminalEventsCounter.inc({ event, role: 'user' });
+            const targets = await fetchDaemonSockets(io, daemonRoom(userId, terminalId));
+            if (targets.length === 0) {
+                return;
+            }
+            if (redis) {
+                // Cross-replica fencing: another replica may have swapped the
+                // writer while we were looking up the daemon socket.
+                if (await writerGeneration(key, socket.id) !== generation) {
+                    return;
+                }
+            }
+            targets[0].emit(event, { terminalId, payload });
+            terminalEventsCounter.inc({ event, role: 'user' });
+        });
     };
 
     socket.on('terminal:input', forwardWriterFrame('terminal:input'));
