@@ -60,16 +60,21 @@ Streaming plane (Socket.IO rooms, payloads encrypted with the machine key):
   view-only until takeover.
 
 Every encrypted frame binds `version`, `terminalId`, `machineId`, `streamId`,
-and `direction` inside the ciphertext, so a relay cannot cross-route or replay
-a frame. Attach returns a serialized ANSI snapshot plus buffered frames after
-`lastSeq`; clients subscribe before attaching, buffer live frames during the
-snapshot RPC, and apply them against the attach barrier. Output is only
-accepted when `seq === lastSeq + 1`; any gap triggers a resync.
+`direction`, and a daemon `epoch` inside the ciphertext, so a relay cannot
+cross-route, replay, or re-run a frame after a daemon restart. Attach returns a
+serialized ANSI snapshot as the authoritative barrier; `replayFrames` only
+contains output pushed after the snapshot was captured, so applying snapshot +
+replay never duplicates state. Clients subscribe before attaching, buffer live
+frames during the snapshot RPC, and apply them against the attach barrier.
+Output is only accepted when `seq === lastSeq + 1`; any gap triggers a resync.
 
-Input is idempotent per writer stream: the daemon tracks
-`lastProcessedSeqByStream` and re-acks duplicate frames without executing them,
-so a command re-sent after a lost ACK never runs twice. Unacknowledged input is
-re-sent in order after reconnect.
+All control frames (input, resize, signal) share one ordered per-stream
+sequence. The daemon tracks `lastProcessedSeqByStream` and re-acks duplicates
+without executing them, so a command re-sent after a lost ACK never runs twice.
+Unacknowledged input is re-sent in order after reconnect while the daemon epoch
+is unchanged. If the daemon restarts (tmux keeps the shell alive), the client
+sees a new epoch and drops queued input instead of risking a duplicate
+destructive command (at-most-once); the UI shows a one-time notice.
 
 ## Security
 
@@ -98,7 +103,10 @@ re-sent in order after reconnect.
   reconnected state with no duplicated input.
 - Two devices: first is writer, second is view-only; takeover switches the writer.
   Concurrent takeovers resolve to exactly one writer (serialized in-process,
-  atomic Redis Lua cross-replica).
+  atomic Redis Lua cross-replica). Forwarding and takeover share a per-terminal
+  lock, so an old writer cannot emit after a swap; cross-replica forwarding
+  re-checks the writer generation and at most one in-flight stale frame can
+  slip through in multi-node deployments.
 - Close from either device kills the shell; exited state offers Reopen.
 - `HAPPY_TERMINAL_ENABLED=1` on daemon: tab works. Without it: disabled notice.
 - Windows daemon (no tmux): PTY fallback works; restart marks sessions exited.
