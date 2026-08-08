@@ -50,7 +50,7 @@ export default function RemoteTerminalScreen() {
         onWriter: () => undefined,
     });
 
-    const { status, sendInput, sendResize, takeControl } = useTerminalSession(
+    const { status, sendInput, sendResize, takeControl, epochReset } = useTerminalSession(
         machineId!,
         terminalId!,
         callbacksRef.current,
@@ -147,6 +147,9 @@ export default function RemoteTerminalScreen() {
             <View style={[styles.statusBar, { borderBottomColor: theme.colors.divider }]}>
                 <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
                 <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+                {epochReset && status === 'attached' && (
+                    <Text style={styles.epochResetText}>Daemon restarted; unsent input dropped</Text>
+                )}
                 {truncated && (
                     <Text style={styles.truncatedText}>Output was truncated while you were away</Text>
                 )}
@@ -210,6 +213,12 @@ const styles = StyleSheet.create((theme) => ({
         fontFamily: 'Menlo, Monaco, monospace',
     },
     truncatedText: {
+        flex: 1,
+        textAlign: 'right',
+        fontSize: 12,
+        color: '#FF9F0A',
+    },
+    epochResetText: {
         flex: 1,
         textAlign: 'right',
         fontSize: 12,
