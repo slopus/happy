@@ -95,6 +95,8 @@
     "@types/resolve-path": "^1.4.3",
     "@types/uuid": "^10.0.0",
     "@uiw/react-codemirror": "^4.25.9",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "axios": "^1.10.0",
     "color": "^5.0.0",
     "diff": "^8.0.2",
