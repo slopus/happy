@@ -1983,8 +1983,15 @@ test('[R10-04] 高密度导航在搜索、归档和深链刷新后保持稳定',
             }
         }
 
+        const activeStatus = page
+            .getByTestId(`session-row-${searchTarget.id}`)
+            .getByTestId('session-row-status');
+        await expect(activeStatus).toBeVisible();
+        await expect(activeStatus).toHaveText(/\S/);
+
         const disconnectedRow = page.getByTestId(`session-row-${disconnectedTarget.id}`);
         await expect(disconnectedRow).toHaveAccessibleName(/disconnected/i);
+        await expect(disconnectedRow.getByTestId('session-row-status')).toContainText(/disconnected/i);
         await disconnectedRow.scrollIntoViewIfNeeded();
         await disconnectedRow.hover();
         await expect(page.getByTestId('session-row-details')).toContainText(/disconnected/i);
@@ -2019,6 +2026,9 @@ test('[R10-04] 高密度导航在搜索、归档和深链刷新后保持稳定',
         await archiveToggle.click();
         archiveRow = page.getByTestId(`session-row-${archiveTarget.id}`);
         await expect(archiveRow).toBeVisible();
+        await expect(archiveRow.getByTestId('session-row-status')).toBeVisible();
+        const archivedRowBox = await archiveRow.boundingBox();
+        expect(archivedRowBox?.height).toBeLessThan(80);
         await archiveRow.scrollIntoViewIfNeeded();
         await archiveRow.hover();
         const restoreAction = page.getByTestId(`session-row-actions-${archiveTarget.id}`)
@@ -2042,6 +2052,7 @@ test('[R10-04] 高密度导航在搜索、归档和深链刷新后保持稳定',
         await expect(deepLinkToggle).toHaveAttribute('aria-expanded', 'true');
         await expect(deepLinkRow).toBeVisible();
         await expect(deepLinkRow).toHaveAttribute('aria-current', 'page');
+        await expect(page.getByTestId(`sidebar-project-toggle-${deepLinkProjectKey}-status`)).toHaveText(/\S/);
 
         await page.reload();
         await expect(page.getByTestId('session-message-input')).toBeVisible();

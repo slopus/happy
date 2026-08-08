@@ -203,7 +203,10 @@ export function ActiveSessionsGroupCompact({
                             if (!firstSession) return null;
                             const expanded = !collapsedProjects.has(projectGroup.key);
                             const current = projectGroup.key === selectedProjectKey;
-                            const activitySession = projectGroup.sessions.find((candidate) => (
+                            const selectedSession = selectedSessionId
+                                ? projectGroup.sessions.find((candidate) => candidate.id === selectedSessionId)
+                                : null;
+                            const activitySession = selectedSession ?? projectGroup.sessions.find((candidate) => (
                                 candidate.state === 'permission_required'
                                 || candidate.state === 'running'
                                 || candidate.hasUnread
@@ -211,9 +214,11 @@ export function ActiveSessionsGroupCompact({
                             const activity = activitySession
                                 ? {
                                     color: activitySession.hasUnread && activitySession.state === 'idle'
-                                        ? '#78B9F2'
+                                        ? theme.colors.accent
                                         : STATUS_CONFIG[activitySession.state].dotColor,
                                     isPulsing: STATUS_CONFIG[activitySession.state].isPulsing,
+                                    label: `${getSessionStateLabel(activitySession.state)}${activitySession.isConnected ? '' : ` · ${t('status.disconnected')}`}`,
+                                    textColor: STATUS_CONFIG[activitySession.state].color,
                                 }
                                 : null;
 
@@ -282,8 +287,9 @@ export function ActiveSessionsGroupCompact({
     );
 }
 
-// Compact Codex-style session row. Status and actions are disclosed on hover.
-const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selectionMode, showBorder, showLocation = false, onStartSelection, onToggleSelection }: {
+// Compact Codex-style session row. Runtime status stays visible while actions
+// and richer metadata remain available through hover disclosure.
+export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selectionMode, showBorder, showLocation = false, onStartSelection, onToggleSelection }: {
     session: SessionRowData;
     selected?: boolean;
     bulkSelected?: boolean;
@@ -294,11 +300,16 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
     onToggleSelection?: (sessionId: string) => void;
 }) => {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
     const navigateToSession = useNavigateToSession();
     const router = useRouter();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const disclosure = useSessionRowDisclosure(session.name);
     const presentation = useSessionRowPresentation(session);
+    const baseStatus = STATUS_CONFIG[session.state];
+    const status = session.hasUnread
+        ? { ...baseStatus, dotColor: theme.colors.accent, isPulsing: false }
+        : baseStatus;
 
     const handlePress = React.useCallback(async () => {
         if (selectionMode) {
@@ -428,6 +439,14 @@ const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selecti
                             </Text>
                         </View>
                     ) : null}
+                    <View style={styles.statusRow} testID="session-row-status">
+                        <View style={styles.statusDotContainer}>
+                            <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />
+                        </View>
+                        <Text style={[styles.statusText, { color: baseStatus.color }]} numberOfLines={1}>
+                            {presentation.status}
+                        </Text>
+                    </View>
                 </View>
             </Pressable>
             {!selectionMode ? (
@@ -543,12 +562,12 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         marginHorizontal: 8,
-        minHeight: 46,
+        minHeight: 52,
         paddingLeft: 38,
         paddingRight: 8,
     },
     sessionRowByTime: {
-        minHeight: 58,
+        minHeight: 68,
         paddingLeft: 10,
     },
     sessionRowWithBorder: {
@@ -572,6 +591,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         flex: 1,
         justifyContent: 'center',
         minWidth: 0,
+        paddingVertical: 5,
     },
     sessionContentByTime: {
         paddingVertical: 7,
@@ -588,6 +608,23 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 12,
         lineHeight: 16,
         ...Typography.default('regular'),
+    },
+    statusRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        minWidth: 0,
+    },
+    statusDotContainer: {
+        alignItems: 'center',
+        height: 16,
+        justifyContent: 'center',
+        marginRight: 4,
+    },
+    statusText: {
+        flexShrink: 1,
+        fontSize: 12,
+        lineHeight: 16,
+        ...Typography.default('semiBold'),
     },
     sessionPressTarget: {
         alignItems: 'center',

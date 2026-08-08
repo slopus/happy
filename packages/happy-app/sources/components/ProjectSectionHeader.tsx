@@ -47,7 +47,7 @@ export const ProjectSectionHeader = React.memo(({
     session,
     testID,
 }: {
-    activity: { color: string; isPulsing: boolean } | null;
+    activity: { color: string; isPulsing: boolean; label: string; textColor: string } | null;
     current: boolean;
     displayPath: string;
     expanded: boolean;
@@ -123,8 +123,11 @@ export const ProjectSectionHeader = React.memo(({
                     {repoFolderName}
                 </Text>
                 {activity && !showActions ? (
-                    <View style={styles.projectActivity}>
+                    <View style={styles.projectActivity} testID={`${testID}-status`}>
                         <StatusDot color={activity.color} isPulsing={activity.isPulsing} />
+                        <Text numberOfLines={1} style={[styles.projectActivityText, { color: activity.textColor }]}>
+                            {activity.label}
+                        </Text>
                     </View>
                 ) : null}
             </Pressable>
@@ -230,10 +233,18 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     projectActivity: {
         alignItems: 'center',
+        flexDirection: 'row',
+        gap: 4,
         height: 18,
         justifyContent: 'center',
         marginLeft: 8,
-        width: 18,
+        maxWidth: '50%',
+    },
+    projectActivityText: {
+        flexShrink: 1,
+        fontSize: 12,
+        lineHeight: 16,
+        ...Typography.default('semiBold'),
     },
     actionCluster: {
         alignItems: 'center',
