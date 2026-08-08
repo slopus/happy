@@ -23,6 +23,9 @@ export interface ImageViewerSource extends ImageDownloadSource {
     /** Optional intrinsic size; lets the viewer fit the image before it loads. */
     width?: number;
     height?: number;
+    /** Encrypted attachment identity used to load the full-resolution source lazily. */
+    sessionId?: string;
+    attachmentRef?: string;
     /** Optional contextual action shown in the fullscreen viewer. */
     actionLabel?: string;
     onAction?: () => void;
@@ -36,6 +39,7 @@ interface ImageViewerState {
     index: number;
     open: (sources: ImageViewerSource | ImageViewerSource[], index?: number) => void;
     close: () => void;
+    clear: () => void;
 }
 
 export const useImageViewerStore = create<ImageViewerState>()((set) => ({
@@ -49,6 +53,10 @@ export const useImageViewerStore = create<ImageViewerState>()((set) => ({
         set({ visible: true, sources: list, index: clamped });
     },
     close: () => set({ visible: false }),
+    clear: () => set((state) => {
+        if (state.visible || state.sources.length === 0) return state;
+        return { sources: [], index: 0 };
+    }),
 }));
 
 /**
@@ -64,5 +72,8 @@ export const imageViewer = {
     },
     close() {
         useImageViewerStore.getState().close();
+    },
+    clear() {
+        useImageViewerStore.getState().clear();
     },
 };

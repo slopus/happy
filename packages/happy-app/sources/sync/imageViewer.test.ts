@@ -52,6 +52,21 @@ describe('imageViewer store', () => {
         expect(s.sources).toEqual([{ uri: 'file:///a.png' }]);
     });
 
+    it('clear() releases gallery references after dismissal without clearing a reopened viewer', () => {
+        imageViewer.open([{ uri: 'file:///a.png' }, { uri: 'file:///b.png' }], 1);
+        imageViewer.close();
+        imageViewer.clear();
+        expect(useImageViewerStore.getState()).toMatchObject({
+            visible: false,
+            sources: [],
+            index: 0,
+        });
+
+        imageViewer.open({ uri: 'file:///new.png' });
+        imageViewer.clear();
+        expect(useImageViewerStore.getState().sources).toEqual([{ uri: 'file:///new.png' }]);
+    });
+
     it('open() replaces a previous gallery', () => {
         imageViewer.open({ uri: 'file:///a.png' });
         imageViewer.open([{ uri: 'file:///b.png' }, { uri: 'file:///c.png' }], 1);
