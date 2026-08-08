@@ -6,7 +6,7 @@
  * streaming plane:
  *
  * - daemon sockets (machine-scoped) register terminal rooms and push
- *   encrypted output/exit/input-ack frames;
+ *   encrypted output/exit/control ACK/NACK frames;
  * - user sockets (user-scoped) subscribe to terminal rooms, request the
  *   single writer seat, and send encrypted input/resize/signal frames;
  * - the server relays opaque, already-encrypted payloads — it never sees
@@ -381,13 +381,22 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
             io.to(clientRoom(userId, terminalId)).emit('terminal:exit', { terminalId, payload });
         });
 
-        socket.on('terminal:input-ack', (data: { terminalId?: unknown; payload?: unknown }) => {
+        socket.on('terminal:control-ack', (data: { terminalId?: unknown; payload?: unknown }) => {
             const { terminalId, payload } = data ?? {};
             if (!isValidTerminalId(terminalId) || !isValidPayload(payload)) {
                 return;
             }
-            terminalEventsCounter.inc({ event: 'input-ack', role: 'daemon' });
-            io.to(clientRoom(userId, terminalId)).emit('terminal:input-ack', { terminalId, payload });
+            terminalEventsCounter.inc({ event: 'control-ack', role: 'daemon' });
+            io.to(clientRoom(userId, terminalId)).emit('terminal:control-ack', { terminalId, payload });
+        });
+
+        socket.on('terminal:control-nack', (data: { terminalId?: unknown; payload?: unknown }) => {
+            const { terminalId, payload } = data ?? {};
+            if (!isValidTerminalId(terminalId) || !isValidPayload(payload)) {
+                return;
+            }
+            terminalEventsCounter.inc({ event: 'control-nack', role: 'daemon' });
+            io.to(clientRoom(userId, terminalId)).emit('terminal:control-nack', { terminalId, payload });
         });
 
         return;

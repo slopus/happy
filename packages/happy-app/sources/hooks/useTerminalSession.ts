@@ -28,10 +28,12 @@ export function useTerminalSession(
     const [exitCode, setExitCode] = useState<number | undefined>();
     const [error, setError] = useState<string | null>(null);
     const [epochReset, setEpochReset] = useState(false);
+    const [controlReset, setControlReset] = useState(false);
     const streamRef = useRef<TerminalStream | null>(null);
 
     useEffect(() => {
         setEpochReset(false);
+        setControlReset(false);
         const stream = new TerminalStream(machineId, terminalId, {
             onAttach: (result) => callbacksRef.current.onAttach(result),
             onOutput: (data) => callbacksRef.current.onOutput(data),
@@ -49,6 +51,7 @@ export function useTerminalSession(
                 callbacksRef.current.onWriter(writerState);
             },
             onEpochReset: () => setEpochReset(true),
+            onControlReset: () => setControlReset(true),
             onStatusChange: setStatus,
         });
         streamRef.current = stream;
@@ -73,6 +76,10 @@ export function useTerminalSession(
         void streamRef.current?.sendResize(cols, rows);
     }, []);
 
+    const sendSignal = useCallback((signal: string) => {
+        void streamRef.current?.sendSignal(signal);
+    }, []);
+
     const takeControl = useCallback(() => {
         void streamRef.current?.takeControl();
     }, []);
@@ -88,8 +95,10 @@ export function useTerminalSession(
         exitCode,
         error,
         epochReset,
+        controlReset,
         sendInput,
         sendResize,
+        sendSignal,
         takeControl,
         refresh,
     };

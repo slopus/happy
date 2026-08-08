@@ -50,7 +50,7 @@ export default function RemoteTerminalScreen() {
         onWriter: () => undefined,
     });
 
-    const { status, sendInput, sendResize, takeControl, epochReset } = useTerminalSession(
+    const { status, sendInput, sendResize, takeControl, epochReset, controlReset } = useTerminalSession(
         machineId!,
         terminalId!,
         callbacksRef.current,
@@ -149,6 +149,9 @@ export default function RemoteTerminalScreen() {
                 <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
                 {epochReset && status === 'attached' && (
                     <Text style={styles.epochResetText}>Daemon restarted; unsent input dropped</Text>
+                )}
+                {controlReset && status === 'attached' && !epochReset && (
+                    <Text style={styles.epochResetText}>Input queue reset; unsent input dropped</Text>
                 )}
                 {truncated && (
                     <Text style={styles.truncatedText}>Output was truncated while you were away</Text>

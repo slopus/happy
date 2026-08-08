@@ -74,8 +74,12 @@ export interface TerminalOutputFrame {
     machineId: string;
     direction: 'daemon-to-client';
     seq: number;
-    kind: 'output' | 'exit' | 'error' | 'input-ack' | 'epoch';
+    kind: 'output' | 'exit' | 'error' | 'control-ack' | 'control-nack' | 'epoch';
     data?: string;
     exitCode?: number;
     error?: string;
+    status?: 'applied' | 'duplicate';
+    receivedSeq?: number;
+    expectedSeq?: number;
+    reason?: 'gap' | 'invalid';
 }

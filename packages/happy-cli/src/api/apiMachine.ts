@@ -103,7 +103,8 @@ interface DaemonToServerEvents {
     'terminal:epoch': (data: { terminalId: string; payload: string }) => void;
     'terminal:output': (data: { terminalId: string; payload: string }) => void;
     'terminal:exit': (data: { terminalId: string; payload: string }) => void;
-    'terminal:input-ack': (data: { terminalId: string; payload: string }) => void;
+    'terminal:control-ack': (data: { terminalId: string; payload: string }) => void;
+    'terminal:control-nack': (data: { terminalId: string; payload: string }) => void;
 }
 
 type MachineRpcHandlers = {
@@ -727,27 +728,68 @@ export class ApiMachineClient {
         }
 
         try {
-            const status = this.terminalManager.applyFrame(terminalId, frame);
-            if (kind === 'input' && (status === 'applied' || status === 'duplicate')) {
-                this.emitTerminalInputAck(terminalId, frame.streamId, frame.seq);
-            } else if (status === 'gap' || status === 'invalid') {
-                logger.debug('[API MACHINE] Terminal frame rejected', { kind, status });
+            const result = this.terminalManager.applyFrame(terminalId, frame);
+            if (result.status === 'applied' || result.status === 'duplicate') {
+                this.emitTerminalControlAck(
+                    terminalId,
+                    frame.streamId,
+                    frame.seq,
+                    result.status,
+                );
+            } else {
+                this.emitTerminalControlNack(
+                    terminalId,
+                    frame.streamId,
+                    frame.seq,
+                    result.expectedSeq,
+                    result.status,
+                );
+                logger.debug('[API MACHINE] Terminal frame rejected', { kind, status: result.status });
             }
         } catch (error) {
             logger.debug('[API MACHINE] Terminal frame handling failed:', error);
         }
     }
 
-    private emitTerminalInputAck(terminalId: string, streamId: string, seq: number): void {
+    private emitTerminalControlAck(
+        terminalId: string,
+        streamId: string,
+        seq: number,
+        status: 'applied' | 'duplicate',
+    ): void {
         if (!this.socket.connected) {
             return;
         }
-        this.socket.emit('terminal:input-ack', {
+        this.socket.emit('terminal:control-ack', {
             terminalId,
             payload: this.encryptFrame(this.enrichOutputFrame(terminalId, {
                 seq,
                 streamId,
-                kind: 'input-ack' as const,
+                kind: 'control-ack' as const,
+                status,
+            })),
+        });
+    }
+
+    private emitTerminalControlNack(
+        terminalId: string,
+        streamId: string,
+        receivedSeq: number,
+        expectedSeq: number,
+        reason: 'gap' | 'invalid',
+    ): void {
+        if (!this.socket.connected) {
+            return;
+        }
+        this.socket.emit('terminal:control-nack', {
+            terminalId,
+            payload: this.encryptFrame(this.enrichOutputFrame(terminalId, {
+                seq: receivedSeq,
+                streamId,
+                kind: 'control-nack' as const,
+                receivedSeq,
+                expectedSeq,
+                reason,
             })),
         });
     }
@@ -761,6 +803,10 @@ export class ApiMachineClient {
             data?: string;
             exitCode?: number;
             error?: string;
+            status?: 'applied' | 'duplicate';
+            receivedSeq?: number;
+            expectedSeq?: number;
+            reason?: 'gap' | 'invalid';
         },
     ): TerminalOutputFrame {
         const epoch = this.terminalManager?.getStreamEpoch();

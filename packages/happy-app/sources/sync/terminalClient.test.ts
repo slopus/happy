@@ -242,6 +242,48 @@ describe('TerminalStream', () => {
         expect(outputs).toEqual(['live-3']);
     });
 
+    it('allocates no control sequence before attach and sends only the latest resize first', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        let resolveAttach!: (value: TerminalAttachResult) => void;
+        machineRPC.mockReturnValueOnce(new Promise((resolve) => {
+            resolveAttach = resolve;
+        }));
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+
+        const attachPromise = stream.attach();
+        await flush();
+        await stream.sendInput('too-early');
+        await stream.sendResize(80, 24);
+        await stream.sendResize(100, 40);
+        expect(socketSend.mock.calls.some(([event]) => [
+            'terminal:input',
+            'terminal:resize',
+            'terminal:signal',
+        ].includes(event))).toBe(false);
+
+        resolveAttach(runningAttach());
+        await attachPromise;
+        const controls = socketSend.mock.calls
+            .filter(([event]) => event === 'terminal:resize' || event === 'terminal:input')
+            .map(([event, data]) => ({ event, frame: JSON.parse(data.payload.slice(4)) }));
+        expect(controls).toEqual([{
+            event: 'terminal:resize',
+            frame: expect.objectContaining({
+                seq: 1,
+                kind: 'resize',
+                cols: 100,
+                rows: 40,
+            }),
+        }]);
+    });
+
     it('resyncs when a live output frame is missing', async () => {
         const { TerminalStream } = await import('./terminalClient');
         const stream = new TerminalStream('machine-1', 't1', {
@@ -291,7 +333,7 @@ describe('TerminalStream', () => {
             data: 'ls -la',
         });
 
-        emit('terminal:input-ack', {
+        emit('terminal:control-ack', {
             version: 3,
             epoch: 'epoch-1',
             streamId: inputFrame.streamId,
@@ -299,7 +341,8 @@ describe('TerminalStream', () => {
             machineId: 'machine-1',
             direction: 'daemon-to-client',
             seq: 1,
-            kind: 'input-ack',
+            kind: 'control-ack',
+            status: 'applied',
         });
         emit('terminal:output', {
             ...outFrame(3, ''),
@@ -446,7 +489,7 @@ describe('TerminalStream', () => {
             kind: 'exit',
             exitCode: 9,
         });
-        emit('terminal:input-ack', {
+        emit('terminal:control-ack', {
             version: 3,
             epoch: 'epoch-1',
             streamId: 'stream-test-1',
@@ -454,7 +497,8 @@ describe('TerminalStream', () => {
             machineId: 'machine-1',
             direction: 'daemon-to-client',
             seq: 1,
-            kind: 'input-ack',
+            kind: 'control-ack',
+            status: 'applied',
         });
         await flush();
         await flush();
@@ -583,6 +627,198 @@ describe('TerminalStream', () => {
         });
     });
 
+    it('serializes sequence allocation, encryption, and emit order', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+        await stream.attach();
+        socketSend.mockClear();
+
+        let resolveFirst!: (value: string) => void;
+        fakeEncryption.encryptRaw.mockImplementation((value: unknown) => {
+            const frame = value as { data?: string };
+            if (frame.data === 'first') {
+                return new Promise((resolve) => {
+                    resolveFirst = resolve;
+                });
+            }
+            return Promise.resolve(`enc:${JSON.stringify(value)}`);
+        });
+
+        const first = stream.sendInput('first');
+        const second = stream.sendInput('second');
+        await flush();
+        expect(socketSend).not.toHaveBeenCalled();
+
+        resolveFirst('enc:' + JSON.stringify({
+            version: 3,
+            epoch: 'epoch-1',
+            streamId: stream.streamId,
+            terminalId: 't1',
+            machineId: 'machine-1',
+            direction: 'client-to-daemon',
+            seq: 1,
+            kind: 'input',
+            data: 'first',
+        }));
+        await Promise.all([first, second]);
+
+        const frames = socketSend.mock.calls.map((call) => JSON.parse(call[1].payload.slice(4)));
+        expect(frames.map((frame) => frame.seq)).toEqual([1, 2]);
+        expect(frames.map((frame) => frame.data)).toEqual(['first', 'second']);
+    });
+
+    it('resends pending resize and input in order after a gap NACK', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+        await stream.attach();
+        await stream.sendResize(120, 40);
+        await stream.sendInput('echo once');
+
+        emit('terminal:control-nack', {
+            version: 3,
+            epoch: 'epoch-1',
+            streamId: stream.streamId,
+            terminalId: 't1',
+            machineId: 'machine-1',
+            direction: 'daemon-to-client',
+            seq: 2,
+            kind: 'control-nack',
+            receivedSeq: 2,
+            expectedSeq: 1,
+            reason: 'gap',
+        });
+        await flush();
+        await flush();
+
+        const controls = socketSend.mock.calls
+            .filter(([event]) => event === 'terminal:resize' || event === 'terminal:input')
+            .map(([event, data]) => ({ event, frame: JSON.parse(data.payload.slice(4)) }));
+        expect(controls.map(({ event }) => event)).toEqual([
+            'terminal:resize',
+            'terminal:input',
+            'terminal:resize',
+            'terminal:input',
+        ]);
+        expect(controls.slice(2).map(({ frame }) => frame.seq)).toEqual([1, 2]);
+    });
+
+    it('resends every pending control in ascending order on same-epoch reconnect', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+        await stream.attach();
+        await stream.sendResize(120, 40);
+        await stream.sendInput('ls');
+        await stream.sendSignal('SIGINT');
+
+        socketEmitWithAck.mockResolvedValueOnce({
+            writerSocketId: 'socket-a',
+            generation: 1,
+            isWriter: true,
+        });
+        machineRPC.mockResolvedValueOnce(runningAttach(6, 'epoch-1'));
+        const reconnectedListener = socketOnReconnected.mock.calls[0][0];
+        reconnectedListener();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        const controls = socketSend.mock.calls
+            .filter(([event]) => event.startsWith('terminal:') && [
+                'terminal:resize',
+                'terminal:input',
+                'terminal:signal',
+            ].includes(event))
+            .map(([, data]) => JSON.parse(data.payload.slice(4)));
+        expect(controls.map((frame) => frame.seq)).toEqual([1, 2, 3, 1, 2, 3]);
+        expect(controls.slice(3).map((frame) => frame.kind)).toEqual([
+            'resize',
+            'input',
+            'signal',
+        ]);
+    });
+
+    it('rotates a broken control stream and sends only the desired resize first', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const resets: number[] = [];
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onControlReset: () => resets.push(1),
+            onStatusChange: () => undefined,
+        });
+        await stream.attach();
+        await stream.sendResize(90, 30);
+        await stream.sendInput('dangerous');
+        const oldStreamId = stream.streamId;
+
+        emit('terminal:control-ack', {
+            version: 3,
+            epoch: 'epoch-1',
+            streamId: oldStreamId,
+            terminalId: 't1',
+            machineId: 'machine-1',
+            direction: 'daemon-to-client',
+            seq: 1,
+            kind: 'control-ack',
+            status: 'applied',
+        });
+        emit('terminal:control-nack', {
+            version: 3,
+            epoch: 'epoch-1',
+            streamId: oldStreamId,
+            terminalId: 't1',
+            machineId: 'machine-1',
+            direction: 'daemon-to-client',
+            seq: 2,
+            kind: 'control-nack',
+            receivedSeq: 2,
+            expectedSeq: 1,
+            reason: 'gap',
+        });
+        await flush();
+        await flush();
+
+        expect(resets).toEqual([1]);
+        expect(stream.streamId).not.toBe(oldStreamId);
+        const controls = socketSend.mock.calls
+            .filter(([event]) => event === 'terminal:resize' || event === 'terminal:input')
+            .map(([event, data]) => ({ event, frame: JSON.parse(data.payload.slice(4)) }));
+        expect(controls.at(-1)).toEqual(expect.objectContaining({
+            event: 'terminal:resize',
+            frame: expect.objectContaining({
+                streamId: stream.streamId,
+                seq: 1,
+                kind: 'resize',
+                cols: 90,
+                rows: 30,
+            }),
+        }));
+        expect(controls.filter(({ frame }) => frame.streamId === stream.streamId))
+            .toHaveLength(1);
+    });
+
     it('keeps later subscribers view-only until explicit takeover', async () => {
         const { TerminalStream } = await import('./terminalClient');
         socketEmitWithAck.mockImplementation(async (event: string) => {
@@ -612,7 +848,11 @@ describe('TerminalStream', () => {
         await stream.takeControl();
         expect(stream.isWriter).toBe(true);
         await stream.sendInput('visible');
-        expect(socketSend.mock.calls.some(([event]) => event === 'terminal:input')).toBe(true);
+        const controls = socketSend.mock.calls
+            .filter(([event]) => event === 'terminal:resize' || event === 'terminal:input')
+            .map(([event, data]) => ({ event, frame: JSON.parse(data.payload.slice(4)) }));
+        expect(controls.map(({ event }) => event)).toEqual(['terminal:resize', 'terminal:input']);
+        expect(controls.map(({ frame }) => frame.seq)).toEqual([1, 2]);
         expect(writerStates).toEqual([false, true]);
     });
 
