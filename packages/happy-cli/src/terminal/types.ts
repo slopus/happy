@@ -52,9 +52,11 @@ export interface TerminalAttachResult {
     /** Output frames generated while the client was detached (seq > lastSeq). */
     replayFrames: TerminalReplayFrame[];
     exitCode?: number;
+    /** Daemon generation; changes when the daemon restarts. */
+    streamEpoch: string;
 }
 
-export const TERMINAL_FRAME_VERSION = 1;
+export const TERMINAL_FRAME_VERSION = 2;
 
 /**
  * Authenticated control frame carried inside the encrypted streaming payload.
@@ -63,6 +65,8 @@ export const TERMINAL_FRAME_VERSION = 1;
  */
 export interface TerminalInputFrame {
     version: typeof TERMINAL_FRAME_VERSION;
+    /** Daemon generation learned from `terminal-attach`. */
+    epoch: string;
     streamId: string;
     terminalId: string;
     machineId: string;

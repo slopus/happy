@@ -712,31 +712,11 @@ export class ApiMachineClient {
         }
 
         try {
-            switch (kind) {
-                case 'input': {
-                    const status = this.terminalManager.applyInput(
-                        terminalId,
-                        frame.streamId,
-                        frame.seq,
-                        frame.data ?? '',
-                    );
-                    if (status === 'applied' || status === 'duplicate') {
-                        this.emitTerminalInputAck(terminalId, frame.streamId, frame.seq);
-                    } else {
-                        logger.debug('[API MACHINE] Terminal input rejected', { status });
-                    }
-                    break;
-                }
-                case 'resize':
-                    this.terminalManager.resize(
-                        terminalId,
-                        frame.cols ?? 80,
-                        frame.rows ?? 24,
-                    );
-                    break;
-                case 'signal':
-                    this.terminalManager.signal(terminalId, frame.signal ?? '');
-                    break;
+            const status = this.terminalManager.applyFrame(terminalId, frame);
+            if (kind === 'input' && (status === 'applied' || status === 'duplicate')) {
+                this.emitTerminalInputAck(terminalId, frame.streamId, frame.seq);
+            } else if (status === 'gap' || status === 'invalid') {
+                logger.debug('[API MACHINE] Terminal frame rejected', { kind, status });
             }
         } catch (error) {
             logger.debug('[API MACHINE] Terminal frame handling failed:', error);

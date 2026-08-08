@@ -194,9 +194,7 @@ describe('ApiMachineClient socket reconnection', () => {
             attach: vi.fn(),
             list: vi.fn(async () => []),
             close: vi.fn(),
-            applyInput: vi.fn(() => 'applied'),
-            resize: vi.fn(),
-            signal: vi.fn(),
+            applyFrame: vi.fn(() => 'applied'),
             setTransportPaused: vi.fn(),
             getRunningTerminalIds: vi.fn(() => ['term-1']),
             policyStore: { get: vi.fn(() => 'per-session'), set: vi.fn() },
@@ -231,7 +229,8 @@ describe('ApiMachineClient socket reconnection', () => {
         const { encrypt, encodeBase64, decodeBase64, decrypt } = await import('@/api/encryption');
         const machine = makeMachine();
         const inputFrame = {
-            version: 1,
+            version: 2,
+            epoch: 'epoch-1',
             streamId: 'stream-1',
             terminalId: 'term-1',
             machineId: 'test-machine-id',
@@ -247,7 +246,17 @@ describe('ApiMachineClient socket reconnection', () => {
         ));
         emitSocketEvent('terminal:input', { terminalId: 'term-1', payload });
 
-        expect(terminalManager.applyInput).toHaveBeenCalledWith('term-1', 'stream-1', 7, 'ls -la');
+        expect(terminalManager.applyFrame).toHaveBeenCalledWith('term-1', expect.objectContaining({
+            version: 2,
+            epoch: 'epoch-1',
+            streamId: 'stream-1',
+            terminalId: 'term-1',
+            machineId: 'test-machine-id',
+            direction: 'client-to-daemon',
+            seq: 7,
+            kind: 'input',
+            data: 'ls -la',
+        }));
         const ackCalls = mockSocket.emit.mock.calls.filter(
             ([event]: [string]) => event === 'terminal:input-ack',
         );
@@ -258,7 +267,7 @@ describe('ApiMachineClient socket reconnection', () => {
             decodeBase64(ackCalls[0][1].payload),
         );
         expect(ack).toEqual(expect.objectContaining({
-            version: 1,
+            version: 2,
             streamId: 'stream-1',
             terminalId: 'term-1',
             machineId: 'test-machine-id',
@@ -268,7 +277,7 @@ describe('ApiMachineClient socket reconnection', () => {
         }));
 
         // Duplicate frames are acked again but never re-applied.
-        terminalManager.applyInput.mockReturnValueOnce('duplicate');
+        terminalManager.applyFrame.mockReturnValueOnce('duplicate');
         emitSocketEvent('terminal:input', { terminalId: 'term-1', payload });
         const ackCallsAfterDuplicate = mockSocket.emit.mock.calls.filter(
             ([event]: [string]) => event === 'terminal:input-ack',
@@ -282,7 +291,7 @@ describe('ApiMachineClient socket reconnection', () => {
             { ...inputFrame, terminalId: 'other-term' },
         ));
         emitSocketEvent('terminal:input', { terminalId: 'term-1', payload: misroutedPayload });
-        expect(terminalManager.applyInput).toHaveBeenCalledTimes(2);
+        expect(terminalManager.applyFrame).toHaveBeenCalledTimes(2);
         expect(mockSocket.emit.mock.calls.filter(
             ([event]: [string]) => event === 'terminal:input-ack',
         )).toHaveLength(2);
@@ -292,7 +301,8 @@ describe('ApiMachineClient socket reconnection', () => {
             machine.encryptionKey,
             machine.encryptionVariant,
             {
-                version: 1,
+                version: 2,
+                epoch: 'epoch-1',
                 streamId: 'stream-1',
                 terminalId: 'term-1',
                 machineId: 'test-machine-id',
@@ -304,7 +314,15 @@ describe('ApiMachineClient socket reconnection', () => {
             },
         ));
         emitSocketEvent('terminal:resize', { terminalId: 'term-1', payload: resizePayload });
-        expect(terminalManager.resize).toHaveBeenCalledWith('term-1', 120, 40);
+        expect(terminalManager.applyFrame).toHaveBeenCalledWith('term-1', expect.objectContaining({
+            version: 2,
+            epoch: 'epoch-1',
+            streamId: 'stream-1',
+            seq: 8,
+            kind: 'resize',
+            cols: 120,
+            rows: 40,
+        }));
 
         client.shutdown();
     });
