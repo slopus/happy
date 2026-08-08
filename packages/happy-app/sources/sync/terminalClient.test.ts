@@ -37,6 +37,10 @@ vi.mock('./apiSocket', () => ({
     },
 }));
 
+vi.mock('expo-crypto', () => ({
+    randomUUID: () => 'stream-test-1',
+}));
+
 vi.mock('./sync', () => ({
     sync: {
         encryption: {
@@ -126,6 +130,22 @@ describe('TerminalStream', () => {
         machineRPC.mockResolvedValue(runningAttach());
     });
 
+    const outFrame = (seq: number, data: string) => ({
+        version: 1,
+        terminalId: 't1',
+        machineId: 'machine-1',
+        direction: 'daemon-to-client',
+        seq,
+        kind: 'output',
+        data,
+    });
+    const emit = (event: string, frame: object) => {
+        socketHandlers[event]({
+            terminalId: 't1',
+            payload: 'enc:' + JSON.stringify(frame),
+        });
+    };
+
     it('attaches, subscribes, takes control, and streams live output with dedupe', async () => {
         const { TerminalStream } = await import('./terminalClient');
         const attaches: TerminalAttachResult[] = [];
@@ -148,25 +168,63 @@ describe('TerminalStream', () => {
         expect(socketSend).toHaveBeenCalledWith('terminal:takeover', { terminalId: 't1' });
         expect(statuses).toContain('attached');
 
-        const outputHandler = socketHandlers['terminal:output'];
-        outputHandler({
-            terminalId: 't1',
-            payload: 'enc:' + JSON.stringify({ seq: 4, kind: 'output', data: 'live' }),
-        });
+        emit('terminal:output', outFrame(3, 'live'));
         await flush();
         expect(outputs).toEqual(['live']);
 
         // Duplicate/older frames are ignored.
-        outputHandler({
-            terminalId: 't1',
-            payload: 'enc:' + JSON.stringify({ seq: 4, kind: 'output', data: 'dup' }),
-        });
-        outputHandler({
-            terminalId: 't1',
-            payload: 'enc:' + JSON.stringify({ seq: 3, kind: 'output', data: 'old' }),
-        });
+        emit('terminal:output', outFrame(3, 'dup'));
+        emit('terminal:output', outFrame(2, 'old'));
         await flush();
         expect(outputs).toEqual(['live']);
+    });
+
+    it('buffers live frames during attach and applies them after replay', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const outputs: string[] = [];
+        let resolveAttach!: (value: TerminalAttachResult) => void;
+        machineRPC.mockReturnValueOnce(new Promise((resolve) => {
+            resolveAttach = resolve;
+        }));
+
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: (data) => outputs.push(data),
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+        const attachPromise = stream.attach();
+        await flush();
+
+        // Live frame arrives while attach is still in flight: it must be
+        // buffered and applied after snapshot/replay, not lost.
+        emit('terminal:output', outFrame(3, 'live-3'));
+        await flush();
+        resolveAttach(runningAttach(3));
+        await attachPromise;
+
+        expect(outputs).toEqual(['live-3']);
+    });
+
+    it('resyncs when a live output frame is missing', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+        await stream.attach(); // lastOutputSeq = 2
+
+        machineRPC.mockResolvedValueOnce(runningAttach(8));
+        emit('terminal:output', outFrame(5, 'gap'));
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        expect(machineRPC).toHaveBeenCalledTimes(2);
     });
 
     it('sends input, acks it, and does not resend acked input after reconnect', async () => {
@@ -182,14 +240,30 @@ describe('TerminalStream', () => {
         await stream.attach();
 
         await stream.sendInput('ls -la');
-        expect(socketSend).toHaveBeenCalledWith('terminal:input', {
+        const inputCall = socketSend.mock.calls.find(
+            (call) => call[0] === 'terminal:input',
+        );
+        expect(inputCall).toBeDefined();
+        const inputFrame = JSON.parse(inputCall![1].payload.slice(4));
+        expect(inputFrame).toMatchObject({
+            version: 1,
+            streamId: expect.any(String),
             terminalId: 't1',
-            payload: 'enc:' + JSON.stringify({ seq: 1, kind: 'input', data: 'ls -la' }),
+            machineId: 'machine-1',
+            direction: 'client-to-daemon',
+            seq: 1,
+            kind: 'input',
+            data: 'ls -la',
         });
 
-        socketHandlers['terminal:input-ack']({
+        emit('terminal:input-ack', {
+            version: 1,
+            streamId: inputFrame.streamId,
             terminalId: 't1',
-            payload: 'enc:' + JSON.stringify({ seq: 1, kind: 'input-ack' }),
+            machineId: 'machine-1',
+            direction: 'daemon-to-client',
+            seq: 1,
+            kind: 'input-ack',
         });
         await flush();
 
@@ -233,11 +307,18 @@ describe('TerminalStream', () => {
         await stream.attach();
 
         expect(exits).toEqual([2]);
-        expect(socketSend).not.toHaveBeenCalledWith('terminal:subscribe', { terminalId: 't1' });
+        // Subscribe happens before attach, but an exited terminal never takes
+        // the writer seat.
+        expect(socketSend).not.toHaveBeenCalledWith('terminal:takeover', { terminalId: 't1' });
 
-        socketHandlers['terminal:exit']({
+        emit('terminal:exit', {
+            version: 1,
             terminalId: 't1',
-            payload: 'enc:' + JSON.stringify({ seq: 5, kind: 'exit', exitCode: 3 }),
+            machineId: 'machine-1',
+            direction: 'daemon-to-client',
+            seq: 5,
+            kind: 'exit',
+            exitCode: 3,
         });
         await flush();
         expect(exits).toEqual([2, 3]);

@@ -45,8 +45,15 @@ export interface TerminalAttachResult {
     exitCode?: number;
 }
 
+export const TERMINAL_FRAME_VERSION = 1;
+
 /** Encrypted streaming frame payload (client → daemon). */
 export interface TerminalInputFrame {
+    version: typeof TERMINAL_FRAME_VERSION;
+    streamId: string;
+    terminalId: string;
+    machineId: string;
+    direction: 'client-to-daemon';
     seq: number;
     kind: 'input' | 'resize' | 'signal';
     data?: string;
@@ -57,6 +64,11 @@ export interface TerminalInputFrame {
 
 /** Encrypted streaming frame payload (daemon → client). */
 export interface TerminalOutputFrame {
+    version: typeof TERMINAL_FRAME_VERSION;
+    streamId?: string;
+    terminalId: string;
+    machineId: string;
+    direction: 'daemon-to-client';
     seq: number;
     kind: 'output' | 'exit' | 'error' | 'input-ack';
     data?: string;
