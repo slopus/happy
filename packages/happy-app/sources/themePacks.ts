@@ -99,6 +99,8 @@ function applyAccent(base: typeof lightTheme, a: AccentMode): typeof lightTheme 
             textSecondary: a.textSecondary,
             textLink: a.link,
             surface: a.surface,
+            surfacePressed: a.surfaceHigh,
+            surfaceSelected: a.surfaceHighest,
             surfaceHigh: a.surfaceHigh,
             surfaceHighest: a.surfaceHighest,
             groupped: { ...base.colors.groupped, background: a.bg },
