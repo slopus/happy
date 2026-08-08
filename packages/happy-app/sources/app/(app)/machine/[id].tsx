@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Item } from '@/components/Item';
@@ -19,6 +19,17 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
+import { getTerminalCollectionState } from '@/components/terminal/terminalUiState';
+import {
+    terminalApprove,
+    terminalClose,
+    terminalCreate,
+    terminalGetPolicy,
+    terminalList,
+    terminalSetPolicy,
+    type RemoteTerminal,
+    type TerminalApprovalPolicy,
+} from '@/sync/terminalClient';
 
 const styles = StyleSheet.create((theme) => ({
     pathInputContainer: {
@@ -63,6 +74,48 @@ const styles = StyleSheet.create((theme) => ({
             default: theme.colors.permissionButton?.inactive?.background ?? theme.colors.surfaceHigh,
         }) as any,
     },
+    tabShell: {
+        flexDirection: 'row',
+        marginHorizontal: 8,
+        marginVertical: 8,
+        padding: 3,
+        borderRadius: 11,
+        backgroundColor: theme.colors.surfaceHigh,
+    },
+    tab: {
+        flex: 1,
+        minHeight: 36,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 8,
+    },
+    tabSelected: {
+        backgroundColor: theme.colors.groupped.background,
+    },
+    tabPressed: {
+        opacity: 0.72,
+        transform: [{ scale: 0.98 }],
+    },
+    terminalRowActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    terminalStatus: {
+        ...Typography.default(),
+        fontSize: 14,
+    },
+    terminalMenuButton: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    terminalMenuPressed: {
+        backgroundColor: theme.colors.surfacePressedOverlay,
+        transform: [{ scale: 0.96 }],
+    },
 }));
 
 export default function MachineDetailScreen() {
@@ -80,6 +133,15 @@ export default function MachineDetailScreen() {
     const [isSpawning, setIsSpawning] = useState(false);
     const inputRef = useRef<MultiTextInputHandle>(null);
     const [showAllPaths, setShowAllPaths] = useState(false);
+    const [activeTab, setActiveTab] = useState<'sessions' | 'terminals'>('sessions');
+    const [terminals, setTerminals] = useState<RemoteTerminal[]>([]);
+    const [terminalsLoading, setTerminalsLoading] = useState(false);
+    const [isCreatingTerminal, setIsCreatingTerminal] = useState(false);
+    const [approvalPolicy, setApprovalPolicy] = useState<TerminalApprovalPolicy>('per-session');
+    const [terminalsDisabled, setTerminalsDisabled] = useState(false);
+    const [terminalLoadError, setTerminalLoadError] = useState<string | null>(null);
+    const [closingTerminalId, setClosingTerminalId] = useState<string | null>(null);
+    const [isUpdatingApprovalPolicy, setIsUpdatingApprovalPolicy] = useState(false);
     // Variant D only
 
     const machineSessions = useMemo(() => {
@@ -281,6 +343,223 @@ export default function MachineDetailScreen() {
         return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
     }, []);
 
+    const loadTerminals = useCallback(async () => {
+        if (!machineId) return;
+        setTerminalsLoading(true);
+        setTerminalsDisabled(false);
+        setTerminalLoadError(null);
+        try {
+            const [list, policyResult] = await Promise.all([
+                terminalList(machineId),
+                terminalGetPolicy(machineId),
+            ]);
+            setTerminals(list);
+            setApprovalPolicy(policyResult.policy);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to load terminals';
+            if (message.includes('RPC method not available')) {
+                // The daemon runs with HAPPY_TERMINAL_ENABLED unset/off.
+                setTerminalsDisabled(true);
+                setTerminals([]);
+            } else {
+                setTerminalLoadError(message);
+                setTerminals([]);
+            }
+        } finally {
+            setTerminalsLoading(false);
+        }
+    }, [machineId]);
+
+    useEffect(() => {
+        if (activeTab === 'terminals' && machineId && isMachineOnline(machine!)) {
+            void loadTerminals();
+        }
+    }, [activeTab, machineId, loadTerminals, machine]);
+
+    const handleCreateTerminal = async () => {
+        if (!machine || !machineId) return;
+        try {
+            const name = await Modal.prompt(
+                'New Terminal',
+                'Give this terminal a name (optional).',
+                { defaultValue: '', placeholder: 'e.g. dev', cancelText: t('common.cancel'), confirmText: t('common.create') },
+            );
+            if (name === null) return;
+
+            const cwdInput = await Modal.prompt(
+                'Working Directory',
+                'Choose where this persistent shell should start.',
+                {
+                    defaultValue: customPath.trim() || '~',
+                    placeholder: '~/project',
+                    cancelText: t('common.cancel'),
+                    confirmText: t('common.continue'),
+                },
+            );
+            if (cwdInput === null) return;
+
+            const requestedCwd = cwdInput.trim() || '~';
+            const cwd = resolveAbsolutePath(requestedCwd, machine.metadata?.homeDir);
+            setCustomPath(requestedCwd);
+            setIsCreatingTerminal(true);
+            const result = await terminalCreate(machineId, {
+                name: name.trim() || undefined,
+                cwd,
+                cols: 80,
+                rows: 24,
+            });
+
+            switch (result.type) {
+                case 'success':
+                    router.push({
+                        pathname: '/remote-terminal/[id]',
+                        params: {
+                            id: result.terminalId,
+                            machineId,
+                            name: name.trim() || 'Terminal',
+                            cwd,
+                        },
+                    });
+                    break;
+                case 'awaiting-approval': {
+                    const machineName = machine.metadata?.displayName || machine.metadata?.host || 'this machine';
+                    const approved = await Modal.confirm(
+                        'Open Remote Terminal?',
+                        `This opens a persistent shell on ${machineName} in ${cwd} (${result.terminalId}).`,
+                        { cancelText: t('common.cancel'), confirmText: 'Approve' },
+                    );
+                    if (approved) {
+                        const approvedResult = await terminalApprove(machineId, result.approvalId);
+                        if (approvedResult.type === 'success') {
+                            router.push({
+                                pathname: '/remote-terminal/[id]',
+                                params: {
+                                    id: approvedResult.terminalId,
+                                    machineId,
+                                    name: name.trim() || 'Terminal',
+                                    cwd,
+                                },
+                            });
+                        } else if (approvedResult.type === 'error') {
+                            Modal.alert(t('common.error'), approvedResult.errorMessage);
+                        }
+                    } else {
+                        await terminalClose(machineId, result.terminalId).catch(() => undefined);
+                        await loadTerminals();
+                    }
+                    break;
+                }
+                case 'error':
+                    Modal.alert(t('common.error'), result.errorMessage);
+                    break;
+            }
+        } catch (error) {
+            Modal.alert(
+                t('common.error'),
+                error instanceof Error ? error.message : 'Failed to create terminal',
+            );
+        } finally {
+            setIsCreatingTerminal(false);
+        }
+    };
+
+    const handleCloseTerminal = async (terminal: RemoteTerminal) => {
+        if (!machineId || closingTerminalId) return;
+        const confirmed = await Modal.confirm(
+            'Close Terminal?',
+            `This kills the shell '${terminal.name}' on ${terminal.cwd}.`,
+            { cancelText: t('common.cancel'), confirmText: t('common.delete'), destructive: true },
+        );
+        if (!confirmed) return;
+        setClosingTerminalId(terminal.terminalId);
+        try {
+            await terminalClose(machineId, terminal.terminalId);
+            await loadTerminals();
+        } catch (error) {
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to close terminal');
+        } finally {
+            setClosingTerminalId(null);
+        }
+    };
+
+    const applyApprovalPolicy = async (policy: TerminalApprovalPolicy) => {
+        if (!machineId || isUpdatingApprovalPolicy || policy === approvalPolicy) return;
+        if (policy === 'none') {
+            const confirmed = await Modal.confirm(
+                'Disable terminal approval?',
+                'New remote shells will open without desktop approval on this machine.',
+                { cancelText: t('common.cancel'), confirmText: 'Disable Approval', destructive: true },
+            );
+            if (!confirmed) return;
+        }
+
+        setIsUpdatingApprovalPolicy(true);
+        try {
+            await terminalSetPolicy(machineId, policy);
+            setApprovalPolicy(policy);
+        } catch (error) {
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to update policy');
+        } finally {
+            setIsUpdatingApprovalPolicy(false);
+        }
+    };
+
+    const handleChangeApprovalPolicy = () => {
+        Modal.alert(
+            'Terminal Approval',
+            'Choose when opening a remote shell on this machine requires approval.',
+            [
+                { text: `${approvalPolicy === 'per-session' ? '✓ ' : ''}Approve every session`, onPress: () => void applyApprovalPolicy('per-session') },
+                { text: `${approvalPolicy === 'once-per-machine' ? '✓ ' : ''}Approve once per machine`, onPress: () => void applyApprovalPolicy('once-per-machine') },
+                { text: `${approvalPolicy === 'none' ? '✓ ' : ''}No approval`, onPress: () => void applyApprovalPolicy('none') },
+                { text: t('common.cancel'), style: 'cancel', onPress: () => undefined },
+            ],
+        );
+    };
+
+    const openTerminal = (terminal: RemoteTerminal) => {
+        router.push({
+            pathname: '/remote-terminal/[id]',
+            params: {
+                id: terminal.terminalId,
+                machineId: machineId!,
+                name: terminal.name,
+                cwd: terminal.cwd,
+            },
+        });
+    };
+
+    const handleTerminalMenu = (terminal: RemoteTerminal) => {
+        Modal.alert(
+            terminal.name,
+            `${formatPathRelativeToHome(terminal.cwd, machine?.metadata?.homeDir)} · ${terminalStatusLabel(terminal.status)}`,
+            [
+                { text: 'Open', onPress: () => openTerminal(terminal) },
+                { text: 'Close Terminal', style: 'destructive', onPress: () => void handleCloseTerminal(terminal) },
+                { text: t('common.cancel'), style: 'cancel', onPress: () => undefined },
+            ],
+        );
+    };
+
+    const terminalStatusLabel = (status: RemoteTerminal['status']): string => {
+        switch (status) {
+            case 'running': return 'Running';
+            case 'pending': return 'Waiting for approval';
+            case 'exited': return 'Exited';
+            case 'closed': return 'Closed';
+        }
+    };
+
+    const terminalStatusColor = (status: RemoteTerminal['status'], fallback: string): string => {
+        switch (status) {
+            case 'running': return '#34C759';
+            case 'pending': return '#FF9F0A';
+            case 'exited':
+            case 'closed':
+                return fallback;
+        }
+    };
+
     if (!machine) {
         return (
             <>
@@ -304,6 +583,14 @@ export default function MachineDetailScreen() {
     const machineName = metadata?.displayName || metadata?.host || 'unknown machine';
 
     const spawnButtonDisabled = !customPath.trim() || isSpawning || !isMachineOnline(machine!);
+    const machineOnline = isMachineOnline(machine);
+    const terminalCollectionState = getTerminalCollectionState({
+        online: machineOnline,
+        loading: terminalsLoading,
+        disabled: terminalsDisabled,
+        error: terminalLoadError,
+        count: terminals.length,
+    });
 
     return (
         <>
@@ -368,8 +655,40 @@ export default function MachineDetailScreen() {
                 }
                 keyboardShouldPersistTaps="handled"
             >
+                {/* Sessions / Terminals tabs */}
+                <ItemGroup>
+                    <View style={styles.tabShell}>
+                        {(['sessions', 'terminals'] as const).map((tab) => (
+                            <Pressable
+                                key={tab}
+                                accessibilityRole="tab"
+                                accessibilityState={{ selected: activeTab === tab }}
+                                onPress={() => setActiveTab(tab)}
+                                style={({ pressed }) => [
+                                    styles.tab,
+                                    activeTab === tab ? styles.tabSelected : null,
+                                    pressed ? styles.tabPressed : null,
+                                ]}
+                            >
+                                <Text
+                                    style={[
+                                        Typography.default(activeTab === tab ? 'semiBold' : undefined),
+                                        {
+                                            color: activeTab === tab
+                                                ? theme.colors.button.primary.background
+                                                : theme.colors.textSecondary,
+                                        },
+                                    ]}
+                                >
+                                    {tab === 'sessions' ? 'Sessions' : 'Terminals'}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                </ItemGroup>
+
                 {/* Launch section */}
-                {machine && (
+                {activeTab === 'sessions' && machine && (
                     <>
                         {!isMachineOnline(machine) && (
                             <ItemGroup>
@@ -453,6 +772,110 @@ export default function MachineDetailScreen() {
                                 />
                             )}
                         </View>
+                        </ItemGroup>
+                    </>
+                )}
+
+                {/* Remote terminals */}
+                {activeTab === 'terminals' && (
+                    <>
+                        <ItemGroup title="Remote Terminals">
+                            {terminalCollectionState !== 'offline' && terminalCollectionState !== 'disabled' && (
+                                <Item
+                                    title="New Terminal"
+                                    subtitle="Choose a name and working directory"
+                                    onPress={handleCreateTerminal}
+                                    disabled={isCreatingTerminal}
+                                    rightElement={isCreatingTerminal
+                                        ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                                        : <Ionicons name="add-circle" size={24} color={theme.colors.button.primary.background} />}
+                                />
+                            )}
+                            {terminalCollectionState === 'offline' && (
+                                <Item
+                                    title="Machine is offline"
+                                    subtitle="Reconnect the machine to view or create remote terminals"
+                                    showChevron={false}
+                                />
+                            )}
+                            {terminalCollectionState === 'loading' && (
+                                <Item title="Loading terminals…" showChevron={false} loading />
+                            )}
+                            {terminalCollectionState === 'disabled' && (
+                                <Item
+                                    title="Terminals are disabled on this machine"
+                                    subtitle="Set HAPPY_TERMINAL_ENABLED=1 when starting the daemon to enable remote shells"
+                                    showChevron={false}
+                                />
+                            )}
+                            {terminalCollectionState === 'error' && (
+                                <Item
+                                    title="Unable to load terminals"
+                                    subtitle={terminalLoadError || 'Try again when the machine is available'}
+                                    onPress={() => void loadTerminals()}
+                                    rightElement={<Ionicons name="refresh" size={21} color={theme.colors.button.primary.background} />}
+                                />
+                            )}
+                            {terminalCollectionState === 'empty' && (
+                                <Item
+                                    title="No terminals yet"
+                                    subtitle="Create one to keep a shell alive on this machine"
+                                    showChevron={false}
+                                />
+                            )}
+                            {terminalCollectionState === 'ready' && terminals.map((terminal) => (
+                                <Item
+                                    key={terminal.terminalId}
+                                    title={terminal.name}
+                                    subtitle={formatPathRelativeToHome(terminal.cwd, machine?.metadata?.homeDir)}
+                                    onPress={() => openTerminal(terminal)}
+                                    onLongPress={() => void handleCloseTerminal(terminal)}
+                                    rightElement={(
+                                        <View style={styles.terminalRowActions}>
+                                            {closingTerminalId === terminal.terminalId ? (
+                                                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                                            ) : (
+                                                <Text style={[
+                                                    styles.terminalStatus,
+                                                    { color: terminalStatusColor(terminal.status, theme.colors.textSecondary) },
+                                                ]}>
+                                                    {terminalStatusLabel(terminal.status)}
+                                                </Text>
+                                            )}
+                                            <Pressable
+                                                accessibilityRole="button"
+                                                accessibilityLabel={`More actions for ${terminal.name}`}
+                                                hitSlop={6}
+                                                onPress={(event) => {
+                                                    event.stopPropagation();
+                                                    handleTerminalMenu(terminal);
+                                                }}
+                                                style={({ pressed }) => [
+                                                    styles.terminalMenuButton,
+                                                    pressed ? styles.terminalMenuPressed : null,
+                                                ]}
+                                            >
+                                                <Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.textSecondary} />
+                                            </Pressable>
+                                        </View>
+                                    )}
+                                />
+                            ))}
+                        </ItemGroup>
+                        <ItemGroup title="Remote Terminal Settings">
+                            <Item
+                                title="Approval policy"
+                                subtitle="When opening a shell from this app requires desktop approval"
+                                detail={approvalPolicy === 'none'
+                                    ? 'No approval'
+                                    : approvalPolicy === 'once-per-machine'
+                                        ? 'Once per machine'
+                                        : 'Every session'}
+                                onPress={handleChangeApprovalPolicy}
+                                disabled={isUpdatingApprovalPolicy}
+                                loading={isUpdatingApprovalPolicy}
+                                showChevron={!isUpdatingApprovalPolicy}
+                            />
                         </ItemGroup>
                     </>
                 )}
