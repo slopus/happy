@@ -1,9 +1,8 @@
 import React from 'react';
-import { View, TextInput, StyleSheet, Platform } from 'react-native';
+import { View, TextInput, Platform } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { useUnistyles } from 'react-native-unistyles';
-import { multiplyColorOpacity } from '@/utils/colorOpacity';
+import { StyleSheet } from 'react-native-unistyles';
 import { COMMAND_PALETTE_RESULTS_ID } from './types';
 
 interface CommandPaletteInputProps {
@@ -15,7 +14,7 @@ interface CommandPaletteInputProps {
 }
 
 export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef, activeDescendantId }: CommandPaletteInputProps) {
-    const { theme } = useUnistyles();
+    const styles = stylesheet;
     const handleKeyDown = React.useCallback((e: any) => {
         if (Platform.OS === 'web' && onKeyPress) {
             const key = e.nativeEvent.key;
@@ -37,23 +36,15 @@ export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef,
     }, [onKeyPress]);
 
     return (
-        <View
-            style={[
-                styles.container,
-                {
-                    backgroundColor: theme.colors.surfaceHigh,
-                    borderBottomColor: multiplyColorOpacity(theme.colors.text, 0.12),
-                },
-            ]}
-        >
+        <View style={styles.container}>
             <TextInput
                 testID="command-palette-input"
                 ref={inputRef}
-                style={[styles.input, Typography.default(), { color: theme.colors.text }]}
+                style={styles.input}
                 value={value}
                 onChangeText={onChangeText}
                 placeholder={t('commandPalette.placeholder')}
-                placeholderTextColor={theme.colors.textSecondary}
+                placeholderTextColor={styles.placeholder.color}
                 autoFocus
                 autoCorrect={false}
                 autoCapitalize="none"
@@ -69,19 +60,27 @@ export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef,
     );
 }
 
-const styles = StyleSheet.create({
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
-        borderBottomWidth: 1,
+        backgroundColor: theme.colors.surface,
+        borderBottomColor: theme.colors.divider,
+        borderBottomWidth: StyleSheet.hairlineWidth,
     },
     input: {
-        paddingHorizontal: 32,
-        paddingVertical: 24,
-        fontSize: 20,
-        letterSpacing: -0.3,
+        ...Typography.default(),
+        color: theme.colors.text,
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        fontSize: 16,
+        lineHeight: 22,
+        letterSpacing: -0.15,
         // Remove outline on web
         ...(Platform.OS === 'web' ? {
             outlineStyle: 'none',
             outlineWidth: 0,
         } as any : {}),
     },
-});
+    placeholder: {
+        color: theme.colors.textSecondary,
+    },
+}));

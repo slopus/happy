@@ -1,10 +1,18 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Platform, type StyleProp, type TextStyle } from 'react-native';
+import { View, Text, Pressable, Platform, type StyleProp, type TextStyle } from 'react-native';
 import { Command, getCommandPaletteOptionId } from './types';
 import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { multiplyColorOpacity } from '@/utils/colorOpacity';
+
+function accentWithOpacity(color: string, opacity: number): string {
+    if (Platform.OS === 'web' && color.startsWith('var(')) {
+        return `color-mix(in srgb, ${color} ${opacity * 100}%, transparent)`;
+    }
+
+    return multiplyColorOpacity(color, opacity);
+}
 
 interface CommandPaletteItemProps {
     command: Command;
@@ -61,6 +69,7 @@ function HighlightedText({
     highlightColor: string;
     numberOfLines?: number;
 }) {
+    const styles = stylesheet;
     return (
         <Text style={style} numberOfLines={numberOfLines}>
             {splitHighlightedText(text, query).map((segment, index) => (
@@ -85,7 +94,12 @@ export function CommandPaletteItem({
     onHover,
 }: CommandPaletteItemProps) {
     const { theme } = useUnistyles();
+    const styles = stylesheet;
     const [isHovered, setIsHovered] = React.useState(false);
+    const [isPressed, setIsPressed] = React.useState(false);
+    styles.useVariants({
+        state: isPressed ? 'pressed' : isSelected ? 'selected' : isHovered ? 'hovered' : 'rest',
+    });
     
     const handleMouseEnter = React.useCallback(() => {
         if (Platform.OS === 'web') {
@@ -102,18 +116,10 @@ export function CommandPaletteItem({
     
     const pressableProps: any = {
         testID: `command-palette-item-${command.id}`,
-        style: ({ pressed }: any) => [
-            styles.container,
-            isSelected && {
-                backgroundColor: theme.colors.surfaceHighest,
-                borderColor: multiplyColorOpacity(theme.colors.accent, 0.2),
-            },
-            isHovered && !isSelected && { backgroundColor: theme.colors.surfaceHigh },
-            pressed && Platform.OS === 'web' && {
-                backgroundColor: multiplyColorOpacity(theme.colors.accent, 0.12),
-            },
-        ],
+        style: styles.container,
         onPress,
+        onPressIn: () => setIsPressed(true),
+        onPressOut: () => setIsPressed(false),
         nativeID: getCommandPaletteOptionId(command.id),
         role: 'option',
         'aria-selected': isSelected,
@@ -134,10 +140,10 @@ export function CommandPaletteItem({
         <Pressable {...pressableProps}>
             <View style={styles.content}>
                 {command.icon && (
-                    <View style={[styles.iconContainer, { backgroundColor: theme.colors.surfaceHigh }]}>
+                    <View style={styles.iconContainer}>
                         <Ionicons 
                             name={command.icon as any} 
-                            size={20} 
+                            size={18}
                             color={isSelected ? theme.colors.accent : theme.colors.textSecondary}
                         />
                     </View>
@@ -146,7 +152,7 @@ export function CommandPaletteItem({
                     <HighlightedText
                         text={command.title}
                         query={searchQuery}
-                        style={[styles.title, Typography.default(), { color: theme.colors.text }]}
+                        style={styles.title}
                         highlightColor={theme.colors.accent}
                         numberOfLines={1}
                     />
@@ -154,7 +160,7 @@ export function CommandPaletteItem({
                         <HighlightedText
                             text={command.subtitle}
                             query={searchQuery}
-                            style={[styles.subtitle, Typography.default(), { color: theme.colors.textSecondary }]}
+                            style={styles.subtitle}
                             highlightColor={theme.colors.accent}
                             numberOfLines={1}
                         />
@@ -167,7 +173,7 @@ export function CommandPaletteItem({
                                     <HighlightedText
                                         text={item.text}
                                         query={searchQuery}
-                                        style={[styles.metadataText, Typography.default(), { color: theme.colors.textSecondary }]}
+                                        style={styles.metadataText}
                                         highlightColor={theme.colors.accent}
                                         numberOfLines={1}
                                     />
@@ -177,15 +183,15 @@ export function CommandPaletteItem({
                     )}
                 </View>
                 {quickSelectNumber !== undefined && (
-                    <View style={[styles.shortcutContainer, { backgroundColor: theme.colors.surfaceHigh }]}>
-                        <Text style={[styles.shortcut, Typography.mono(), { color: theme.colors.textSecondary }]}>
+                    <View style={styles.shortcutContainer}>
+                        <Text style={styles.shortcut}>
                             {`Alt+${quickSelectNumber}`}
                         </Text>
                     </View>
                 )}
                 {command.shortcut && (
-                    <View style={[styles.shortcutContainer, { backgroundColor: theme.colors.surfaceHigh }]}>
-                        <Text style={[styles.shortcut, Typography.mono(), { color: theme.colors.textSecondary }]}>
+                    <View style={styles.shortcutContainer}>
+                        <Text style={styles.shortcut}>
                             {command.shortcut}
                         </Text>
                     </View>
@@ -195,16 +201,32 @@ export function CommandPaletteItem({
     );
 }
 
-const styles = StyleSheet.create({
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
-        paddingHorizontal: 24,
-        paddingVertical: 12,
+        minHeight: 48,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
         backgroundColor: 'transparent',
         marginHorizontal: 8,
-        marginVertical: 2,
-        borderRadius: 8,
-        borderWidth: 2,
+        marginVertical: 1,
+        borderRadius: 10,
+        borderWidth: 1,
         borderColor: 'transparent',
+        variants: {
+            state: {
+                rest: {},
+                selected: {
+                    backgroundColor: accentWithOpacity(theme.colors.accent, 0.08),
+                    borderColor: accentWithOpacity(theme.colors.accent, 0.22),
+                },
+                hovered: {
+                    backgroundColor: theme.colors.surfaceHigh,
+                },
+                pressed: {
+                    backgroundColor: accentWithOpacity(theme.colors.accent, 0.12),
+                },
+            },
+        },
     },
     content: {
         flexDirection: 'row',
@@ -212,32 +234,48 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
     },
     iconContainer: {
-        width: 32,
-        height: 32,
+        width: 30,
+        height: 30,
         borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 12,
+        marginRight: 10,
+        backgroundColor: theme.colors.surfaceHigh,
+        variants: {
+            state: {
+                rest: {},
+                selected: {
+                    backgroundColor: accentWithOpacity(theme.colors.accent, 0.1),
+                },
+                hovered: {},
+                pressed: {},
+            },
+        },
     },
     textContainer: {
         flex: 1,
-        marginRight: 12,
+        marginRight: 10,
     },
     title: {
-        fontSize: 15,
-        marginBottom: 2,
-        letterSpacing: -0.2,
+        ...Typography.default('semiBold'),
+        color: theme.colors.text,
+        fontSize: 14,
+        lineHeight: 19,
+        marginBottom: 1,
+        letterSpacing: -0.1,
     },
     subtitle: {
-        fontSize: 13,
-        letterSpacing: -0.1,
+        ...Typography.default(),
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        lineHeight: 16,
     },
     metadataRow: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         alignItems: 'center',
-        gap: 10,
-        marginTop: 5,
+        gap: 8,
+        marginTop: 4,
     },
     metadataItem: {
         flexDirection: 'row',
@@ -246,22 +284,29 @@ const styles = StyleSheet.create({
         maxWidth: '100%',
     },
     metadataText: {
+        ...Typography.default(),
+        color: theme.colors.textSecondary,
         flexShrink: 1,
         fontSize: 11,
         letterSpacing: -0.1,
     },
     match: {
-        fontWeight: '700',
-        textDecorationLine: 'underline',
+        fontWeight: '600',
     },
     shortcutContainer: {
-        paddingHorizontal: 10,
-        paddingVertical: 5,
+        backgroundColor: theme.colors.surfaceHigh,
+        borderColor: theme.colors.divider,
+        paddingHorizontal: 7,
+        paddingVertical: 3,
         borderRadius: 6,
-        marginLeft: 6,
+        borderWidth: StyleSheet.hairlineWidth,
+        marginLeft: 5,
     },
     shortcut: {
-        fontSize: 12,
+        ...Typography.mono(),
+        color: theme.colors.textSecondary,
+        fontSize: 10,
+        lineHeight: 14,
         fontWeight: '500',
     },
-});
+}));

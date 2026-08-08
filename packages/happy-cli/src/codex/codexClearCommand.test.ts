@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { createSerializedTaskRunner, MessageQueue2, type PendingAttachment } from '@/utils/MessageQueue2';
 import { enqueueCodexUserText } from './codexClearCommand';
+
+function createDeferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    const promise = new Promise<T>((res) => {
+        resolve = res;
+    });
+    return { promise, resolve };
+}
 
 describe('enqueueCodexUserText', () => {
     it('queues /clear in isolation instead of batching it into a model prompt', () => {
@@ -16,7 +25,7 @@ describe('enqueueCodexUserText', () => {
             queue,
         });
 
-        expect(result).toBe('clear');
+        expect(result).toEqual({ status: 'clear', displacedAttachments: [] });
         expect(queue.pushIsolateAndClear).toHaveBeenCalledWith('  /clear  ', mode, undefined);
         expect(queue.push).not.toHaveBeenCalled();
     });
@@ -34,7 +43,7 @@ describe('enqueueCodexUserText', () => {
             queue,
         });
 
-        expect(result).toBe('skills');
+        expect(result).toEqual({ status: 'skills', displacedAttachments: [] });
         expect(queue.pushIsolateAndClear).toHaveBeenCalledWith('/skills', mode, undefined);
         expect(queue.push).not.toHaveBeenCalled();
     });
@@ -52,7 +61,7 @@ describe('enqueueCodexUserText', () => {
             queue,
         });
 
-        expect(result).toBe('goal');
+        expect(result).toEqual({ status: 'goal', displacedAttachments: [] });
         expect(queue.pushIsolateAndClear).toHaveBeenCalledWith('/goal Reduce p95 latency', mode, undefined);
         expect(queue.push).not.toHaveBeenCalled();
     });
@@ -80,7 +89,7 @@ describe('enqueueCodexUserText', () => {
             queue,
         });
 
-        expect(result).toBe(expected);
+        expect(result).toEqual({ status: expected, displacedAttachments: [] });
         expect(queue.pushIsolateAndClear).toHaveBeenCalledWith(text, mode, undefined);
         expect(queue.push).not.toHaveBeenCalled();
     });
@@ -100,8 +109,45 @@ describe('enqueueCodexUserText', () => {
             queue,
         });
 
-        expect(result).toBe('queued');
+        expect(result).toEqual({ status: 'queued', displacedAttachments: [] });
         expect(queue.push).toHaveBeenCalledWith('look at this', mode, attachments);
         expect(queue.pushIsolateAndClear).not.toHaveBeenCalled();
+    });
+
+    it('serializes an in-flight PDF prompt before /clear and reports the displaced file', async () => {
+        const queue = new MessageQueue2<{ permissionMode: 'default' }>(() => 'default');
+        const runSerially = createSerializedTaskRunner();
+        const firstAttachments = createDeferred<PendingAttachment[]>();
+        const pdf = {
+            kind: 'file' as const,
+            localPath: '/tmp/queued.pdf',
+            size: 123,
+            mimeType: 'application/pdf',
+            name: 'queued.pdf',
+        };
+        const cleanup = vi.fn(async (_attachments: PendingAttachment[]) => {});
+
+        const first = runSerially(async () => enqueueCodexUserText({
+            text: 'read the PDF',
+            mode: { permissionMode: 'default' },
+            attachments: await firstAttachments.promise,
+            queue,
+        }));
+        const clear = runSerially(async () => {
+            const result = enqueueCodexUserText({
+                text: '/clear',
+                mode: { permissionMode: 'default' },
+                queue,
+            });
+            await cleanup(result.displacedAttachments);
+            return result;
+        });
+
+        firstAttachments.resolve([pdf]);
+        const [, clearResult] = await Promise.all([first, clear]);
+
+        expect(clearResult).toEqual({ status: 'clear', displacedAttachments: [pdf] });
+        expect(queue.queue.map((item) => item.message)).toEqual(['/clear']);
+        expect(cleanup).toHaveBeenCalledWith([pdf]);
     });
 });

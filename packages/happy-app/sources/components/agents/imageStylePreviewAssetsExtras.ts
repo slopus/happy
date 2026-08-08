@@ -2,6 +2,7 @@
 import type { ImageSourcePropType } from 'react-native';
 
 export const EXTRA_IMAGE_STYLE_PREVIEW_ASSETS: Record<string, ImageSourcePropType> = {
+    "github-skills/photo-illustration-diptych/2": require('@/assets/images/gpt-image-2/reference-examples/photo-illustration-diptych-lakeside.jpg'),
     "github-skills/photo-illustration-diptych/1": require('@/assets/images/gpt-image-2/reference-examples/photo-illustration-diptych-user-reference.jpg'),
     "github-skills/scenes-gathered-zine/2": require('@/assets/images/gpt-image-2/reference-examples/scenes-gathered-zine-sea-user-reference.jpg'),
     "github-skills/scenes-gathered-zine/1": require('@/assets/images/gpt-image-2/reference-examples/scenes-gathered-zine-user-reference.jpg'),

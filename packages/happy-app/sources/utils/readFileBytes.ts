@@ -1,11 +1,20 @@
 /**
  * Read file bytes from a URI — native implementation.
- * Uses expo-file-system/legacy to read file:// URIs on iOS/Android.
+ * Uses a bounded native file handle so an underreported provider file cannot
+ * allocate past the caller's limit before validation.
  */
-import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
-import { decodeBase64 } from '@/encryption/base64';
+import { File } from 'expo-file-system';
 
-export async function readFileBytes(uri: string): Promise<Uint8Array> {
-    const base64 = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
-    return decodeBase64(base64);
+export async function readFileBytes(uri: string, maxBytes?: number): Promise<Uint8Array> {
+    const handle = new File(uri).open();
+    try {
+        const size = handle.size;
+        if (size === null) throw new Error('File size is unavailable');
+        if (maxBytes !== undefined && size > maxBytes) {
+            throw new Error(`File exceeds the ${maxBytes}-byte read limit`);
+        }
+        return handle.readBytes(size);
+    } finally {
+        handle.close();
+    }
 }

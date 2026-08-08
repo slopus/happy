@@ -18,6 +18,20 @@ export const PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH = PERSISTENT_NAVIGATION
 export const PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH = PERSISTENT_NAVIGATION_BUTTON_SIZE;
 export const PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH = getPersistentNavigationControlsWidth(4);
 
+export type ResponsiveRightPanelMode = 'edge-handle' | 'drawer-toggle' | 'persistent';
+
+/**
+ * Keeps right-panel access deterministic at the two layout breakpoints used
+ * by the Web workspace. Narrow screens get an out-of-header edge affordance,
+ * compact desktop widths reuse the header toggle for a drawer, and wide
+ * screens reserve a persistent column.
+ */
+export function getResponsiveRightPanelMode(windowWidth: number): ResponsiveRightPanelMode {
+    if (windowWidth >= DESKTOP_RIGHT_PANEL_MIN_WINDOW_WIDTH) return 'persistent';
+    if (windowWidth >= WEB_TABLET_MIN_WIDTH) return 'drawer-toggle';
+    return 'edge-handle';
+}
+
 export function getPersistentHeaderPointerEvents({
     isWeb,
     inTauri,

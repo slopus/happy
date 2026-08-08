@@ -3,7 +3,12 @@ import type { PendingAttachment } from '@/utils/MessageQueue2';
 
 type CodexUserTextQueue<T> = {
     push: (message: string, mode: T, attachments?: PendingAttachment[]) => void;
-    pushIsolateAndClear: (message: string, mode: T, attachments?: PendingAttachment[]) => void;
+    pushIsolateAndClear: (message: string, mode: T, attachments?: PendingAttachment[]) => PendingAttachment[];
+};
+
+export type CodexUserTextEnqueueResult = {
+    status: SpecialCommandType | 'queued';
+    displacedAttachments: PendingAttachment[];
 };
 
 export function isCodexClearText(text: string): boolean {
@@ -20,13 +25,13 @@ export function enqueueCodexUserText<T>(opts: {
     mode: T;
     attachments?: PendingAttachment[];
     queue: CodexUserTextQueue<T>;
-}): SpecialCommandType | 'queued' {
+}): CodexUserTextEnqueueResult {
     const isolatedCommand = getIsolatedCommand(opts.text);
     if (isolatedCommand) {
-        opts.queue.pushIsolateAndClear(opts.text, opts.mode, opts.attachments);
-        return isolatedCommand;
+        const displacedAttachments = opts.queue.pushIsolateAndClear(opts.text, opts.mode, opts.attachments) ?? [];
+        return { status: isolatedCommand, displacedAttachments };
     }
 
     opts.queue.push(opts.text, opts.mode, opts.attachments);
-    return 'queued';
+    return { status: 'queued', displacedAttachments: [] };
 }

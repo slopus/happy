@@ -24,6 +24,7 @@ import { buildSessionNavigationGroups, buildSessionNavigationTimeGroups } from '
 import { sync } from '@/sync/sync';
 import { loadPendingPermissionMessageId } from '@/utils/pendingPermission';
 import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
+import { ProjectSectionHeader } from './ProjectSectionHeader';
 
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean }> = {
     idle: { color: '#6B7280', dotColor: '#9CA3AF', isPulsing: false },
@@ -41,66 +42,6 @@ interface ActiveSessionsGroupProps {
     onStartSelection?: (sessionId: string) => void;
     onToggleSelection?: (sessionId: string) => void;
 }
-
-// Codex-style project header: folder + project name + optional activity dot.
-const SectionHeader = React.memo(({
-    activity,
-    current,
-    displayPath,
-    expanded,
-    onToggle,
-    session,
-    testID,
-}: {
-    activity: { color: string; isPulsing: boolean } | null;
-    current: boolean;
-    displayPath: string;
-    expanded: boolean;
-    onToggle: () => void;
-    session: SessionRowData;
-    testID: string;
-}) => {
-    const styles = stylesheet;
-    const { theme } = useUnistyles();
-    const repoFolderName = (session.path || displayPath)
-        .split(/[/\\]/)
-        .filter(Boolean)
-        .pop() || displayPath;
-
-    return (
-        <Pressable
-            accessibilityLabel={repoFolderName}
-            accessibilityRole="button"
-            accessibilityState={{ expanded }}
-            aria-expanded={expanded}
-            onPress={onToggle}
-            style={({ hovered, pressed }: any) => [
-                styles.sectionHeader,
-                (hovered || pressed) && styles.sectionHeaderHovered,
-            ]}
-            testID={testID}
-        >
-            <View style={styles.sectionFolder}>
-                <Feather
-                    name="folder"
-                    size={18}
-                    color={current ? theme.colors.text : theme.colors.textSecondary}
-                />
-            </View>
-            <Text
-                style={[styles.sectionHeaderPath, expanded && styles.sectionHeaderPathExpanded]}
-                numberOfLines={1}
-            >
-                {repoFolderName}
-            </Text>
-            {activity ? (
-                <View style={styles.projectActivity}>
-                    <StatusDot color={activity.color} isPulsing={activity.isPulsing} />
-                </View>
-            ) : null}
-        </Pressable>
-    );
-});
 
 // Full-width separator between machine groups: ——— 🖥 name ———
 const MachineSeparator = React.memo(({ machineName, machineId }: { machineName: string; machineId: string }) => {
@@ -134,6 +75,7 @@ export function ActiveSessionsGroupCompact({
 }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
+    const router = useRouter();
     const machines = useAllMachines();
     const sessionIds = React.useMemo(() => sessions.map(session => session.id), [sessions]);
     const sessionManagement = useSessionManagementPreferences(sessionIds, { prune: false });
@@ -286,12 +228,15 @@ export function ActiveSessionsGroupCompact({
                                         },
                                     ]}
                                 >
-                                    <SectionHeader
+                                    <ProjectSectionHeader
                                         activity={activity}
                                         current={current}
                                         session={firstSession}
                                         displayPath={projectGroup.displayPath}
                                         expanded={expanded}
+                                        machineId={machineGroup.machineId}
+                                        path={projectGroup.path}
+                                        onCreateSession={() => router.navigate('/new')}
                                         onToggle={() => toggleProject(projectGroup.key)}
                                         testID={`sidebar-project-toggle-${projectGroup.key}`}
                                     />
@@ -566,42 +511,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 4,
         paddingHorizontal: 16,
         ...Typography.default('semiBold'),
-    },
-    sectionHeader: {
-        borderRadius: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginHorizontal: 8,
-        minHeight: 38,
-        minWidth: 0,
-        paddingHorizontal: 10,
-    },
-    sectionHeaderHovered: {
-        backgroundColor: theme.colors.surfaceSelected,
-    },
-    sectionFolder: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 10,
-        width: 18,
-    },
-    sectionHeaderPath: {
-        ...Typography.default('regular'),
-        color: theme.colors.text,
-        flex: 1,
-        fontSize: 14,
-        lineHeight: 20,
-        minWidth: 0,
-    },
-    sectionHeaderPathExpanded: {
-        ...Typography.default('semiBold'),
-    },
-    projectActivity: {
-        alignItems: 'center',
-        height: 18,
-        justifyContent: 'center',
-        marginLeft: 8,
-        width: 18,
     },
     // Machine separator styles
     machineSeparator: {

@@ -283,10 +283,12 @@ test('T09-02 sidebar distinguishes persisted running and pending sessions, then 
         await expect(permissionRow).toBeVisible();
 
         if (evidencePhase === 'after') {
-            await expect(page.getByTestId(`session-row-status-${runningId}`)).toContainText(/running/i);
-            await expect(page.getByTestId(`session-row-status-${permissionIdSession}`)).toContainText(/permission required/i);
             await expect(runningRow).toHaveAccessibleName(/Persisted running after reconnect, running/i);
             await expect(permissionRow).toHaveAccessibleName(/Waiting for confirmation, permission required/i);
+            await runningRow.hover();
+            await expect(page.getByTestId('session-row-details')).toContainText(/running/i);
+            await permissionRow.hover();
+            await expect(page.getByTestId('session-row-details')).toContainText(/permission required/i);
         } else {
             await expect(page.locator('[data-testid^="session-row-status-"]')).toHaveCount(0);
         }
@@ -311,15 +313,15 @@ test('T09-02 sidebar distinguishes persisted running and pending sessions, then 
             for (const action of permissionActions) {
                 await expect(action).toHaveAttribute('aria-disabled', 'true');
             }
-            await expect(page.getByTestId(`session-row-status-${permissionIdSession}`)).toContainText(/permission required/i);
-            await expect(page.getByTestId(`session-row-status-${runningId}`)).toContainText(/running/i);
+            await expect(permissionRow).toHaveAccessibleName(/Waiting for confirmation, permission required/i);
+            await expect(runningRow).toHaveAccessibleName(/Persisted running after reconnect, running/i);
 
             permissionClient = await connectSession(permissionIdSession, false);
             permissionClient.pulse();
             await expect(page.getByTestId('permission-offline-notice')).toHaveCount(0);
             for (const action of permissionActions) await expect(action).toBeEnabled();
-            await expect(page.getByTestId(`session-row-status-${permissionIdSession}`)).toContainText(/permission required/i);
-            await expect(page.getByTestId(`session-row-status-${runningId}`)).toContainText(/running/i);
+            await expect(permissionRow).toHaveAccessibleName(/Waiting for confirmation, permission required/i);
+            await expect(runningRow).toHaveAccessibleName(/Persisted running after reconnect, running/i);
         } else {
             await expect(page).toHaveURL(new RegExp(`/session/${permissionIdSession}/?$`));
         }
@@ -354,16 +356,16 @@ test('T09-03 compact header remains hit-testable at 800/1024 and phone keeps the
                 page.locator('[data-testid="session-header-title"]:visible'),
                 page.locator('[data-testid="session-header-run-status"]:visible'),
                 page.locator('[data-testid="session-header-more-button"]:visible'),
+                page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible'),
             ];
-            if (width === 1440) {
-                controls.push(page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible'));
-            }
             for (const control of controls) {
                 await expect(control).toBeVisible();
                 await expectCenterHitTestable(control);
             }
             const boxes = await Promise.all(controls.map(control => control.boundingBox()));
             expect(boxes[0]!.width).toBeGreaterThanOrEqual(32);
+            expect(boxes[2]!.width).toBeGreaterThanOrEqual(40);
+            expect(boxes[3]!.width).toBeGreaterThanOrEqual(40);
             if (width === 1440) {
                 expect(boxes[0]!.width).toBeGreaterThanOrEqual(120);
                 expect(boxes[1]!.width).toBeGreaterThanOrEqual(44);

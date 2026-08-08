@@ -16,6 +16,8 @@ interface SessionHeaderChipProps {
     agentLabel: string;
     /** Keeps only the essential identity when adjacent desktop actions need the space. */
     compact?: boolean;
+    /** Keeps only agent + connection dot while a modal drawer narrows the workspace. */
+    condensed?: boolean;
     machineName: string | null;
     online: boolean;
     /** Whether the info dropdown is currently open (controls the chevron direction). */
@@ -23,11 +25,11 @@ interface SessionHeaderChipProps {
     onPress: () => void;
 }
 
-export const SessionHeaderChip = React.memo(({ agentLabel, compact = false, machineName, online, open, onPress }: SessionHeaderChipProps) => {
+export const SessionHeaderChip = React.memo(({ agentLabel, compact = false, condensed = false, machineName, online, open, onPress }: SessionHeaderChipProps) => {
     const { theme } = useUnistyles();
     const statusLabel = online ? t('status.online') : t('status.offline');
     const accessibilityLabel = [agentLabel, statusLabel, machineName].filter(Boolean).join(', ');
-    styles.useVariants({ density: compact ? 'compact' : 'regular' });
+    styles.useVariants({ density: condensed ? 'condensed' : compact ? 'compact' : 'regular' });
     return (
         <Pressable
             accessibilityLabel={accessibilityLabel}
@@ -44,11 +46,11 @@ export const SessionHeaderChip = React.memo(({ agentLabel, compact = false, mach
                 importantForAccessibility="no"
                 style={[styles.dot, { backgroundColor: online ? theme.colors.status.connected : theme.colors.status.disconnected }]}
             />
-            <Text style={styles.status} numberOfLines={1}>{statusLabel}</Text>
-            {!compact && machineName ? (
+            {!condensed ? <Text style={styles.status} numberOfLines={1}>{statusLabel}</Text> : null}
+            {!compact && !condensed && machineName ? (
                 <Text style={styles.machine} numberOfLines={1} ellipsizeMode="tail">{machineName}</Text>
             ) : null}
-            <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={13} color={theme.colors.textSecondary} />
+            {!condensed ? <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={13} color={theme.colors.textSecondary} /> : null}
         </Pressable>
     );
 });
@@ -73,6 +75,10 @@ const styles = StyleSheet.create((theme) => ({
                 compact: {
                     gap: 4,
                     paddingHorizontal: 8,
+                },
+                condensed: {
+                    gap: 4,
+                    paddingHorizontal: 6,
                 },
             },
         },

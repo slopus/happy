@@ -75,6 +75,7 @@ describe('uploadMediaFile', () => {
         const [, stream, cfg] = mockPut.mock.calls[0];
         expect(cfg.headers['Content-Type']).toBe('video/mp4');
         expect(cfg.headers.Authorization).toBeUndefined();
+        expect(cfg.proxy).toBe(false);
         stream.destroy();
     });
 
@@ -85,6 +86,7 @@ describe('uploadMediaFile', () => {
         const [, stream, cfg] = mockPut.mock.calls[0];
         expect(cfg.headers.Authorization).toBe('Bearer tok');
         expect(cfg.headers['Content-Type']).toBe('application/octet-stream');
+        expect(cfg.proxy).toBeUndefined();
         stream.destroy();
     });
 });

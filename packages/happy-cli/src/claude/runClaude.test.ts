@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -374,5 +374,92 @@ describe('runClaude remote JSONL scanner', () => {
         }) as never);
         await expect(runPromise).rejects.toThrow('process.exit');
         exitSpy.mockRestore();
+    });
+
+    it('serializes remote messages so /clear atomically discards an earlier in-flight PDF', async () => {
+        const attachmentDir = await mkdtemp(join(tmpdir(), 'happy-clear-attachment-'));
+        const attachmentPath = join(attachmentDir, 'queued.pdf');
+        await writeFile(attachmentPath, '%PDF-1.7');
+
+        const firstAttachments = createDeferred<any[]>();
+        const sessionClient = {
+            sessionId: 'happy-session-1',
+            suppressNextArchiveSignal: vi.fn(),
+            skipExistingMessages: vi.fn(),
+            updateMetadata: vi.fn(),
+            sendClaudeSessionMessage: vi.fn(),
+            onUserMessage: vi.fn(),
+            onFileEvent: vi.fn(),
+            on: vi.fn(),
+            trackAttachmentDownload: vi.fn(),
+            drainAttachmentsForUserMessage: vi.fn()
+                .mockImplementationOnce(() => firstAttachments.promise)
+                .mockResolvedValueOnce([]),
+            downloadAndDecryptAttachment: vi.fn(),
+            getMetadata: vi.fn(() => ({})),
+            sendSessionEvent: vi.fn(),
+            updateAgentState: vi.fn(),
+            rpcHandlerManager: {
+                registerHandler: vi.fn(),
+            },
+            sendSessionDeath: vi.fn(),
+            flush: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+        };
+        const api = {
+            getOrCreateMachine: vi.fn(async () => ({})),
+            getOrCreateSession: vi.fn(async () => ({
+                id: 'happy-session-1',
+                seq: 0,
+                metadata: {},
+                metadataVersion: 0,
+                agentState: {},
+                agentStateVersion: 0,
+                encryptionKey: new Uint8Array(32),
+                encryptionVariant: 'legacy' as const,
+            })),
+            sessionSyncClient: vi.fn(() => sessionClient),
+            deactivateSession: vi.fn(async () => {}),
+        };
+        mockApiClientCreate.mockResolvedValue(api);
+
+        const loopDeferred = createDeferred<number>();
+        mockLoop.mockReturnValue(loopDeferred.promise);
+        const runPromise = runClaude({
+            token: 'token',
+            encryption: { type: 'legacy', secret: new Uint8Array(32) },
+        } as any, {
+            startingMode: 'remote',
+            shouldStartDaemon: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(mockLoop).toHaveBeenCalled();
+            expect(sessionClient.onUserMessage).toHaveBeenCalled();
+        });
+
+        const onUserMessage = sessionClient.onUserMessage.mock.calls[0][0];
+        const firstMessage = onUserMessage({ content: { text: 'read the PDF' } });
+        const clearMessage = onUserMessage({ content: { text: '/clear' } });
+        firstAttachments.resolve([{
+            kind: 'file',
+            localPath: attachmentPath,
+            size: 8,
+            mimeType: 'application/pdf',
+            name: 'queued.pdf',
+        }]);
+        await Promise.all([firstMessage, clearMessage]);
+
+        const messageQueue = mockLoop.mock.calls[0][0].messageQueue;
+        expect(messageQueue.queue.map((item: { message: string }) => item.message)).toEqual(['/clear']);
+        await expect(stat(attachmentPath)).rejects.toMatchObject({ code: 'ENOENT' });
+
+        loopDeferred.resolve(0);
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+            throw new Error('process.exit');
+        }) as never);
+        await expect(runPromise).rejects.toThrow('process.exit');
+        exitSpy.mockRestore();
+        await rm(attachmentDir, { recursive: true, force: true });
     });
 });

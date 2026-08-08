@@ -168,6 +168,55 @@ describe('imageAgentPrompt', () => {
         expect(mixedPrompt).toContain('deterministic-grade 风格先只生成带标签的低分辨率原图/结果预览');
     });
 
+    it('integrates the Lakeside Minimal Diptych variant with complete scene correspondence rules', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/photo-illustration-diptych/2');
+        expect(style).toMatchObject({
+            title: 'Lakeside Minimal Diptych',
+            categoryId: 'github-skills',
+            sourceRepository: 'wangjs-jacky/happy',
+            sourceRevision: '532e49bb711283cbe2738439039298f9cea1ef7b',
+            templateRef: 'skills/photo-illustration-diptych/SKILL.md',
+            promptPath: 'garden-gpt-image-2/prompt/photo-illustration-diptych-lakeside-v1.md',
+            sourceCaseId: 'photo-illustration-diptych/user-reference-lakeside-20260808',
+            executionKind: 'gpt-image-2',
+            inputMode: 'image-required',
+            multiInputMode: 'single',
+        });
+        expect(style?.promptContent).toContain('Photo–Illustration Diptych v1 visual compiler');
+        expect(style?.promptContent).toContain('Apply the Lakeside Minimal Diptych variant');
+        expect(style?.promptContent).toContain('path or boardwalk curve, dock rhythm, vessel position');
+        expect(style?.promptContent).toContain('simple geometric shapes, flat source-derived color fields');
+        expect(style?.promptContent).toContain('Remove roughly 85–95%');
+        expect(style?.promptContent).toContain('premium international design-studio system');
+        expect(style?.sourceLicenseNotice).toContain('Happy Coder Contributors');
+        expect(style?.responseInstructions).toContain('preserved waterside correspondences');
+
+        const prompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: ['github-skills/photo-illustration-diptych/2'] },
+            userPrompt: '把上传的湖景做成上方实景、下方极简几何设计的高级海报。',
+            imageCount: 1,
+        });
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('把上传的湖景做成上方实景、下方极简几何设计的高级海报。');
+        expect(prompt).toContain('mcp__happy__send_image');
+        expect(prompt).toContain('source-derived palette, and geometric reduction');
+
+        const missingInputPrompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: ['github-skills/photo-illustration-diptych/2'] },
+            userPrompt: '做湖景极简二联画。',
+            imageCount: 0,
+        });
+        expect(missingInputPrompt).toContain('请先上传一张源照片');
+
+        const extraInputPrompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: ['github-skills/photo-illustration-diptych/2'] },
+            userPrompt: '做湖景极简二联画。',
+            imageCount: 2,
+        });
+        expect(extraInputPrompt).toContain('一次只接受一张源照片');
+        expect(extraInputPrompt).toContain('不要擅自拼图、混合多个场景或启动图片工具');
+    });
+
     it('integrates Scene Distillation Zine with source privacy and exact color-block semantics', () => {
         const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/scene-distillation-zine/1');
         expect(style).toMatchObject({

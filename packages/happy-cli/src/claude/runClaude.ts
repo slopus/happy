@@ -8,8 +8,8 @@ import { AgentState, Metadata } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
-import { MessageQueue2, type PendingAttachment } from '@/utils/MessageQueue2';
-import { isPlaintextMediaEvent, resolveMediaKind, stagedMediaPath, isMediaFileEvent, buildMediaAttachmentFromBytes } from '@/api/mediaAttachment';
+import { isMediaAttachment, MessageQueue2, type PendingAttachment } from '@/utils/MessageQueue2';
+import { isPlaintextMediaEvent, resolveMediaKind, stagedMediaPath, isMediaFileEvent, buildMediaAttachmentFromBytes, cleanupAllStagedMediaAttachments, cleanupMediaAttachments, secureAndRegisterStagedMediaPath } from '@/api/mediaAttachment';
 import { hashObject } from '@/utils/deterministicJson';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
@@ -501,6 +501,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                     const kind = resolveMediaKind(ev);
                     const destPath = stagedMediaPath(ev, new Date().toISOString(), 0);
                     await session.streamAttachmentToDisk(ev.ref, destPath);
+                    await secureAndRegisterStagedMediaPath(destPath);
                     logger.debug(`[loop] Streamed ${kind} attachment to ${destPath} (${ev.size} bytes)`);
                     return { kind, localPath: destPath, size: ev.size, mimeType: ev.mimeType ?? 'application/octet-stream', name: ev.name };
                 }
@@ -527,7 +528,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         session.trackAttachmentDownload(downloadPromise);
     });
 
-    session.onUserMessage(async (message) => {
+    // Claim each message's attachment bucket immediately, then process user
+    // messages in arrival order. ApiSession intentionally invokes callbacks
+    // without awaiting them; serializing here prevents an earlier attachment
+    // download from enqueueing behind a later /clear or /compact command.
+    let userMessageProcessing: Promise<void> = Promise.resolve();
+    session.onUserMessage((message) => {
 
         // Stamp the prompt so the remote-mode JSONL scanner can dedupe
         // it later — the SDK is about to write this same text to disk
@@ -538,207 +544,228 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
         // Claim every file attachment that arrived strictly before this text.
         // New file events from this point on belong to the next user message.
-        const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
+        const attachmentsForThisMessagePromise = session.drainAttachmentsForUserMessage();
 
-        // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
-        let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
-        if (message.meta?.permissionMode) {
-            const previousPermissionMode = currentPermissionMode;
-            messagePermissionMode = resolveRemoteClaudePermissionMode(
-                currentPermissionMode,
-                message.meta.permissionMode,
-                sandboxEnabled,
-                message.meta.permissionModeExplicit === true,
-            );
-            currentPermissionMode = messagePermissionMode;
-            const ignoredDefaultDowngrade =
-                (previousPermissionMode === 'bypassPermissions' || previousPermissionMode === 'yolo')
-                && message.meta.permissionMode === 'default'
-                && message.meta.permissionModeExplicit !== true
-                && currentPermissionMode === previousPermissionMode;
-            if (ignoredDefaultDowngrade) {
-                logger.debug(`[loop] Ignoring permission mode downgrade from ${previousPermissionMode} to default`);
-            } else {
-                logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
-            }
-        } else {
-            logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
-        }
+        const processing = userMessageProcessing.then(async () => {
+            const attachmentsForThisMessage = await attachmentsForThisMessagePromise;
 
-        // Resolve model - use message.meta.model if provided, otherwise use current model
-        let messageModel = currentModel;
-        if (message.meta?.hasOwnProperty('model')) {
-            messageModel = message.meta.model || undefined; // null becomes undefined
-            currentModel = messageModel;
-            logger.debug(`[loop] Model updated from user message: ${messageModel || 'reset to default'}`);
-        } else {
-            logger.debug(`[loop] User message received with no model override, using current: ${currentModel || 'default'}`);
-        }
-
-        // Resolve custom system prompt - use message.meta.customSystemPrompt if provided, otherwise use current
-        let messageCustomSystemPrompt = currentCustomSystemPrompt;
-        if (message.meta?.hasOwnProperty('customSystemPrompt')) {
-            messageCustomSystemPrompt = message.meta.customSystemPrompt || undefined; // null becomes undefined
-            currentCustomSystemPrompt = messageCustomSystemPrompt;
-            logger.debug(`[loop] Custom system prompt updated from user message: ${messageCustomSystemPrompt ? 'set' : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no custom system prompt override, using current: ${currentCustomSystemPrompt ? 'set' : 'none'}`);
-        }
-
-        // Resolve fallback model - use message.meta.fallbackModel if provided, otherwise use current fallback model
-        let messageFallbackModel = currentFallbackModel;
-        if (message.meta?.hasOwnProperty('fallbackModel')) {
-            messageFallbackModel = message.meta.fallbackModel || undefined; // null becomes undefined
-            currentFallbackModel = messageFallbackModel;
-            logger.debug(`[loop] Fallback model updated from user message: ${messageFallbackModel || 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no fallback model override, using current: ${currentFallbackModel || 'none'}`);
-        }
-
-        // Resolve append system prompt - use message.meta.appendSystemPrompt if provided, otherwise use current
-        let messageAppendSystemPrompt = currentAppendSystemPrompt;
-        if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
-            messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined; // null becomes undefined
-            currentAppendSystemPrompt = messageAppendSystemPrompt;
-            logger.debug(`[loop] Append system prompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no append system prompt override, using current: ${currentAppendSystemPrompt ? 'set' : 'none'}`);
-        }
-
-        // Resolve allowed tools - use message.meta.allowedTools if provided, otherwise use current
-        let messageAllowedTools = currentAllowedTools;
-        if (message.meta?.hasOwnProperty('allowedTools')) {
-            messageAllowedTools = message.meta.allowedTools || undefined; // null becomes undefined
-            currentAllowedTools = messageAllowedTools;
-            logger.debug(`[loop] Allowed tools updated from user message: ${messageAllowedTools ? messageAllowedTools.join(', ') : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no allowed tools override, using current: ${currentAllowedTools ? currentAllowedTools.join(', ') : 'none'}`);
-        }
-
-        // Resolve disallowed tools - use message.meta.disallowedTools if provided, otherwise use current
-        let messageDisallowedTools = currentDisallowedTools;
-        if (message.meta?.hasOwnProperty('disallowedTools')) {
-            messageDisallowedTools = message.meta.disallowedTools || undefined; // null becomes undefined
-            currentDisallowedTools = messageDisallowedTools;
-            logger.debug(`[loop] Disallowed tools updated from user message: ${messageDisallowedTools ? messageDisallowedTools.join(', ') : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
-        }
-
-        // Resolve effort — pass through to Claude SDK as the `effort` option.
-        // Validate against the SDK's accepted set so a stale/garbage value
-        // from the wire doesn't poison the session.
-        let messageEffort = currentEffort;
-        const VALID_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
-        if (message.meta?.hasOwnProperty('effort')) {
-            const incoming = (message.meta as Record<string, unknown>).effort;
-            if (incoming === null || incoming === undefined) {
-                messageEffort = undefined;
-                currentEffort = undefined;
-                logger.debug(`[loop] Effort reset to default`);
-            } else if (typeof incoming === 'string' && VALID_EFFORTS.has(incoming)) {
-                messageEffort = incoming as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-                currentEffort = messageEffort;
-                logger.debug(`[loop] Effort updated from user message: ${messageEffort}`);
-            } else {
-                logger.debug(`[loop] Ignoring invalid effort from user message: ${String(incoming)}`);
-            }
-        } else {
-            logger.debug(`[loop] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
-        }
-
-        // Check for special commands before processing
-        const specialCommand = parseSpecialCommand(message.content.text);
-
-        if (specialCommand.type === 'compact') {
-            logger.debug('[start] Detected /compact command');
-            const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode || 'default',
-                model: messageModel,
-                fallbackModel: messageFallbackModel,
-                customSystemPrompt: messageCustomSystemPrompt,
-                appendSystemPrompt: messageAppendSystemPrompt,
-                allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools,
-                effort: messageEffort,
-            };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
-            logger.debugLargeJson('[start] /compact command pushed to queue:', message);
-            return;
-        }
-
-        if (specialCommand.type === 'clear') {
-            logger.debug('[start] Detected /clear command');
-            const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode || 'default',
-                model: messageModel,
-                fallbackModel: messageFallbackModel,
-                customSystemPrompt: messageCustomSystemPrompt,
-                appendSystemPrompt: messageAppendSystemPrompt,
-                allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools,
-                effort: messageEffort,
-            };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
-            logger.debugLargeJson('[start] /clear command pushed to queue:', message);
-            return;
-        }
-
-        if (specialCommand.type === 'mcp' || specialCommand.type === 'skills') {
-            // In local mode, let Claude Code handle these commands natively
-            if (currentRunMode === 'local') {
-                logger.debug(`[start] /${specialCommand.type} in local mode — passing through to Claude Code`);
-            } else {
-                logger.debug(`[start] Detected /${specialCommand.type} command in remote mode`);
-                const metadata = session.getMetadata();
-                let responseText: string;
-
-                if (specialCommand.type === 'mcp') {
-                    const servers = metadata?.mcpServers;
-                    if (servers && servers.length > 0) {
-                        responseText = '**MCP Servers**\n\n' + servers.map(s => `- **${s.name}** — ${s.status}`).join('\n');
-                    } else {
-                        responseText = 'No MCP servers configured. Session may still be initializing — try again after sending a message.';
-                    }
+            // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
+            let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
+            if (message.meta?.permissionMode) {
+                const previousPermissionMode = currentPermissionMode;
+                messagePermissionMode = resolveRemoteClaudePermissionMode(
+                    currentPermissionMode,
+                    message.meta.permissionMode,
+                    sandboxEnabled,
+                    message.meta.permissionModeExplicit === true,
+                );
+                currentPermissionMode = messagePermissionMode;
+                const ignoredDefaultDowngrade =
+                    (previousPermissionMode === 'bypassPermissions' || previousPermissionMode === 'yolo')
+                    && message.meta.permissionMode === 'default'
+                    && message.meta.permissionModeExplicit !== true
+                    && currentPermissionMode === previousPermissionMode;
+                if (ignoredDefaultDowngrade) {
+                    logger.debug(`[loop] Ignoring permission mode downgrade from ${previousPermissionMode} to default`);
                 } else {
-                    const skills = metadata?.skills ?? metadata?.slashCommands;
-                    if (skills && skills.length > 0) {
-                        responseText = '**Available Skills**\n\n' + skills.map(s => `- /${s}`).join('\n');
-                    } else {
-                        responseText = 'No skills available. Session may still be initializing — try again after sending a message.';
-                    }
+                    logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
                 }
+            } else {
+                logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
+            }
 
-                session.sendClaudeSessionMessage({
-                    type: 'assistant',
-                    uuid: randomUUID(),
-                    parentUuid: null,
-                    isSidechain: false,
-                    sessionId: session.sessionId || 'unknown',
-                    timestamp: new Date().toISOString(),
-                    message: {
-                        role: 'assistant',
-                        model: 'system',
-                        content: [{ type: 'text', text: responseText }],
-                    },
-                } as any);
+            // Resolve model - use message.meta.model if provided, otherwise use current model
+            let messageModel = currentModel;
+            if (message.meta?.hasOwnProperty('model')) {
+                messageModel = message.meta.model || undefined; // null becomes undefined
+                currentModel = messageModel;
+                logger.debug(`[loop] Model updated from user message: ${messageModel || 'reset to default'}`);
+            } else {
+                logger.debug(`[loop] User message received with no model override, using current: ${currentModel || 'default'}`);
+            }
+
+            // Resolve custom system prompt - use message.meta.customSystemPrompt if provided, otherwise use current
+            let messageCustomSystemPrompt = currentCustomSystemPrompt;
+            if (message.meta?.hasOwnProperty('customSystemPrompt')) {
+                messageCustomSystemPrompt = message.meta.customSystemPrompt || undefined; // null becomes undefined
+                currentCustomSystemPrompt = messageCustomSystemPrompt;
+                logger.debug(`[loop] Custom system prompt updated from user message: ${messageCustomSystemPrompt ? 'set' : 'reset to none'}`);
+            } else {
+                logger.debug(`[loop] User message received with no custom system prompt override, using current: ${currentCustomSystemPrompt ? 'set' : 'none'}`);
+            }
+
+            // Resolve fallback model - use message.meta.fallbackModel if provided, otherwise use current fallback model
+            let messageFallbackModel = currentFallbackModel;
+            if (message.meta?.hasOwnProperty('fallbackModel')) {
+                messageFallbackModel = message.meta.fallbackModel || undefined; // null becomes undefined
+                currentFallbackModel = messageFallbackModel;
+                logger.debug(`[loop] Fallback model updated from user message: ${messageFallbackModel || 'reset to none'}`);
+            } else {
+                logger.debug(`[loop] User message received with no fallback model override, using current: ${currentFallbackModel || 'none'}`);
+            }
+
+            // Resolve append system prompt - use message.meta.appendSystemPrompt if provided, otherwise use current
+            let messageAppendSystemPrompt = currentAppendSystemPrompt;
+            if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
+                messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined; // null becomes undefined
+                currentAppendSystemPrompt = messageAppendSystemPrompt;
+                logger.debug(`[loop] Append system prompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to none'}`);
+            } else {
+                logger.debug(`[loop] User message received with no append system prompt override, using current: ${currentAppendSystemPrompt ? 'set' : 'none'}`);
+            }
+
+            // Resolve allowed tools - use message.meta.allowedTools if provided, otherwise use current
+            let messageAllowedTools = currentAllowedTools;
+            if (message.meta?.hasOwnProperty('allowedTools')) {
+                messageAllowedTools = message.meta.allowedTools || undefined; // null becomes undefined
+                currentAllowedTools = messageAllowedTools;
+                logger.debug(`[loop] Allowed tools updated from user message: ${messageAllowedTools ? messageAllowedTools.join(', ') : 'reset to none'}`);
+            } else {
+                logger.debug(`[loop] User message received with no allowed tools override, using current: ${currentAllowedTools ? currentAllowedTools.join(', ') : 'none'}`);
+            }
+
+            // Resolve disallowed tools - use message.meta.disallowedTools if provided, otherwise use current
+            let messageDisallowedTools = currentDisallowedTools;
+            if (message.meta?.hasOwnProperty('disallowedTools')) {
+                messageDisallowedTools = message.meta.disallowedTools || undefined; // null becomes undefined
+                currentDisallowedTools = messageDisallowedTools;
+                logger.debug(`[loop] Disallowed tools updated from user message: ${messageDisallowedTools ? messageDisallowedTools.join(', ') : 'reset to none'}`);
+            } else {
+                logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
+            }
+
+            // Resolve effort — pass through to Claude SDK as the `effort` option.
+            // Validate against the SDK's accepted set so a stale/garbage value
+            // from the wire doesn't poison the session.
+            let messageEffort = currentEffort;
+            const VALID_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+            if (message.meta?.hasOwnProperty('effort')) {
+                const incoming = (message.meta as Record<string, unknown>).effort;
+                if (incoming === null || incoming === undefined) {
+                    messageEffort = undefined;
+                    currentEffort = undefined;
+                    logger.debug(`[loop] Effort reset to default`);
+                } else if (typeof incoming === 'string' && VALID_EFFORTS.has(incoming)) {
+                    messageEffort = incoming as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+                    currentEffort = messageEffort;
+                    logger.debug(`[loop] Effort updated from user message: ${messageEffort}`);
+                } else {
+                    logger.debug(`[loop] Ignoring invalid effort from user message: ${String(incoming)}`);
+                }
+            } else {
+                logger.debug(`[loop] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
+            }
+
+            // Check for special commands before processing
+            const specialCommand = parseSpecialCommand(message.content.text);
+
+            if (specialCommand.type === 'compact') {
+                logger.debug('[start] Detected /compact command');
+                const enhancedMode: EnhancedMode = {
+                    permissionMode: messagePermissionMode || 'default',
+                    model: messageModel,
+                    fallbackModel: messageFallbackModel,
+                    customSystemPrompt: messageCustomSystemPrompt,
+                    appendSystemPrompt: messageAppendSystemPrompt,
+                    allowedTools: messageAllowedTools,
+                    disallowedTools: messageDisallowedTools,
+                    effort: messageEffort,
+                };
+                const discarded = [
+                    ...messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode),
+                    ...attachmentsForThisMessage,
+                ].filter(isMediaAttachment);
+                await cleanupMediaAttachments(discarded);
+                logger.debugLargeJson('[start] /compact command pushed to queue:', message);
                 return;
             }
-        }
 
-        // Push with resolved permission mode, model, system prompts, and tools
-        const enhancedMode: EnhancedMode = {
-            permissionMode: messagePermissionMode || 'default',
-            model: messageModel,
-            fallbackModel: messageFallbackModel,
-            customSystemPrompt: messageCustomSystemPrompt,
-            appendSystemPrompt: messageAppendSystemPrompt,
-            allowedTools: messageAllowedTools,
-            disallowedTools: messageDisallowedTools,
-            effort: messageEffort,
-        };
-        messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage);
-        logger.debugLargeJson('User message pushed to queue:', message)
+            if (specialCommand.type === 'clear') {
+                logger.debug('[start] Detected /clear command');
+                const enhancedMode: EnhancedMode = {
+                    permissionMode: messagePermissionMode || 'default',
+                    model: messageModel,
+                    fallbackModel: messageFallbackModel,
+                    customSystemPrompt: messageCustomSystemPrompt,
+                    appendSystemPrompt: messageAppendSystemPrompt,
+                    allowedTools: messageAllowedTools,
+                    disallowedTools: messageDisallowedTools,
+                    effort: messageEffort,
+                };
+                const discarded = [
+                    ...messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode),
+                    ...attachmentsForThisMessage,
+                ].filter(isMediaAttachment);
+                await cleanupMediaAttachments(discarded);
+                logger.debugLargeJson('[start] /clear command pushed to queue:', message);
+                return;
+            }
+
+            if (specialCommand.type === 'mcp' || specialCommand.type === 'skills') {
+                // In local mode, let Claude Code handle these commands natively
+                if (currentRunMode === 'local') {
+                    logger.debug(`[start] /${specialCommand.type} in local mode — passing through to Claude Code`);
+                } else {
+                    logger.debug(`[start] Detected /${specialCommand.type} command in remote mode`);
+                    await cleanupMediaAttachments(attachmentsForThisMessage.filter(isMediaAttachment));
+                    const metadata = session.getMetadata();
+                    let responseText: string;
+
+                    if (specialCommand.type === 'mcp') {
+                        const servers = metadata?.mcpServers;
+                        if (servers && servers.length > 0) {
+                            responseText = '**MCP Servers**\n\n' + servers.map(s => `- **${s.name}** — ${s.status}`).join('\n');
+                        } else {
+                            responseText = 'No MCP servers configured. Session may still be initializing — try again after sending a message.';
+                        }
+                    } else {
+                        const skills = metadata?.skills ?? metadata?.slashCommands;
+                        if (skills && skills.length > 0) {
+                            responseText = '**Available Skills**\n\n' + skills.map(s => `- /${s}`).join('\n');
+                        } else {
+                            responseText = 'No skills available. Session may still be initializing — try again after sending a message.';
+                        }
+                    }
+
+                    session.sendClaudeSessionMessage({
+                        type: 'assistant',
+                        uuid: randomUUID(),
+                        parentUuid: null,
+                        isSidechain: false,
+                        sessionId: session.sessionId || 'unknown',
+                        timestamp: new Date().toISOString(),
+                        message: {
+                            role: 'assistant',
+                            model: 'system',
+                            content: [{ type: 'text', text: responseText }],
+                        },
+                    } as any);
+                    return;
+                }
+            }
+
+            // Push with resolved permission mode, model, system prompts, and tools
+            const enhancedMode: EnhancedMode = {
+                permissionMode: messagePermissionMode || 'default',
+                model: messageModel,
+                fallbackModel: messageFallbackModel,
+                customSystemPrompt: messageCustomSystemPrompt,
+                appendSystemPrompt: messageAppendSystemPrompt,
+                allowedTools: messageAllowedTools,
+                disallowedTools: messageDisallowedTools,
+                effort: messageEffort,
+            };
+            messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage);
+            logger.debugLargeJson('User message pushed to queue:', message)
+        });
+
+        // Keep later messages moving after a failed callback while attaching a
+        // rejection handler immediately so the fire-and-forget API dispatch
+        // cannot create an unhandled rejection.
+        userMessageProcessing = processing.catch((error) => {
+            logger.debug('[loop] Failed to process remote user message:', error);
+        });
+        return processing;
     });
 
     // Setup signal handlers for graceful shutdown
@@ -809,11 +836,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
             // Stop the remote JSONL scanner (file watchers + intervals).
             await remoteScanner.cleanup();
+            await cleanupAllStagedMediaAttachments();
 
             logger.debug('[START] Cleanup complete, exiting');
             process.exit(0);
         } catch (error) {
             logger.debug('[START] Error during cleanup:', error);
+            await cleanupAllStagedMediaAttachments();
             process.exit(1);
         }
     };
@@ -909,5 +938,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     logger.debug('Stopped Hook server and cleaned up settings file');
 
     // Exit with the code from Claude
+    await cleanupAllStagedMediaAttachments();
     process.exit(exitCode);
 }

@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
 import { encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
 
 const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL!;
@@ -36,71 +36,6 @@ async function countHitTestableRightPanels(page: Page): Promise<number> {
         );
         return hit !== null && element.contains(hit);
     }).length);
-}
-
-async function expectTooltipFullyReadable(page: Page, tooltip: Locator): Promise<void> {
-    await expect(tooltip).toBeVisible();
-    const metrics = await tooltip.evaluate((element) => {
-        const rect = element.getBoundingClientRect();
-        let visibleLeft = Math.max(0, rect.left);
-        let visibleTop = Math.max(0, rect.top);
-        let visibleRight = Math.min(window.innerWidth, rect.right);
-        let visibleBottom = Math.min(window.innerHeight, rect.bottom);
-        const clips = (value: string) => ['hidden', 'clip', 'auto', 'scroll'].includes(value);
-
-        for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
-            const style = window.getComputedStyle(ancestor);
-            const ancestorRect = ancestor.getBoundingClientRect();
-            if (clips(style.overflowX) || clips(style.overflow)) {
-                visibleLeft = Math.max(visibleLeft, ancestorRect.left);
-                visibleRight = Math.min(visibleRight, ancestorRect.right);
-            }
-            if (clips(style.overflowY) || clips(style.overflow)) {
-                visibleTop = Math.max(visibleTop, ancestorRect.top);
-                visibleBottom = Math.min(visibleBottom, ancestorRect.bottom);
-            }
-        }
-
-        const label = element.firstElementChild as HTMLElement | null;
-        return {
-            rect: {
-                bottom: rect.bottom,
-                height: rect.height,
-                left: rect.left,
-                right: rect.right,
-                top: rect.top,
-                width: rect.width,
-            },
-            viewport: {
-                height: window.innerHeight,
-                width: window.innerWidth,
-            },
-            visibleHeight: Math.max(0, visibleBottom - visibleTop),
-            visibleWidth: Math.max(0, visibleRight - visibleLeft),
-            label: label ? {
-                clientHeight: label.clientHeight,
-                clientWidth: label.clientWidth,
-                scrollHeight: label.scrollHeight,
-                scrollWidth: label.scrollWidth,
-                textOverflow: window.getComputedStyle(label).textOverflow,
-                whiteSpace: window.getComputedStyle(label).whiteSpace,
-            } : null,
-        };
-    });
-
-    expect(metrics.rect.width).toBeGreaterThanOrEqual(360);
-    expect(metrics.rect.height).toBeGreaterThanOrEqual(40);
-    expect(metrics.rect.left).toBeGreaterThanOrEqual(0);
-    expect(metrics.rect.top).toBeGreaterThanOrEqual(0);
-    expect(metrics.rect.right).toBeLessThanOrEqual(metrics.viewport.width);
-    expect(metrics.rect.bottom).toBeLessThanOrEqual(metrics.viewport.height);
-    expect(metrics.visibleWidth).toBeGreaterThanOrEqual(metrics.rect.width - 1);
-    expect(metrics.visibleHeight).toBeGreaterThanOrEqual(metrics.rect.height - 1);
-    expect(metrics.label).not.toBeNull();
-    expect(metrics.label!.scrollWidth).toBeLessThanOrEqual(metrics.label!.clientWidth + 1);
-    expect(metrics.label!.scrollHeight).toBeLessThanOrEqual(metrics.label!.clientHeight + 1);
-    expect(metrics.label!.textOverflow).not.toBe('ellipsis');
-    expect(metrics.label!.whiteSpace).not.toBe('nowrap');
 }
 
 async function createSession(request: APIRequestContext): Promise<string> {
@@ -166,15 +101,10 @@ test('T14-01 desktop header stays compact and keeps every required control', asy
     await expect(title).toHaveAccessibleName(/Refactor the desktop session header/);
     await expect(title.locator('div').first()).toHaveCSS('text-overflow', 'ellipsis');
     await title.hover();
-    const titleTooltip = page.getByTestId('session-header-title-tooltip');
-    await expect(titleTooltip).toContainText(
-        'Refactor the desktop session header while preserving every existing task context and Agent control',
-    );
-    await expectTooltipFullyReadable(page, titleTooltip);
+    await expect(page.getByTestId('session-header-title-tooltip')).toHaveCount(0);
     await page.mouse.move(1, 1);
-    await expect(titleTooltip).toHaveCount(0);
     await title.focus();
-    await expectTooltipFullyReadable(page, titleTooltip);
+    await expect(page.getByTestId('session-header-title-tooltip')).toHaveCount(0);
 
     const more = page.locator('[data-testid="session-header-more-button"]:visible');
     await expect(more).toHaveAccessibleName('Session details');

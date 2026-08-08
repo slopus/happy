@@ -52,6 +52,7 @@ function BottomSheet({
     const safeArea = useSafeAreaInsets();
     const fadeAnim = React.useRef(new Animated.Value(0)).current;
     const slideAnim = React.useRef(new Animated.Value(300)).current;
+    const useNativeDriver = Platform.OS !== 'web';
 
     React.useEffect(() => {
         if (Platform.OS === 'ios') {
@@ -59,16 +60,16 @@ function BottomSheet({
         }
         if (visible) {
             Animated.parallel([
-                Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
-                Animated.spring(slideAnim, { toValue: 0, damping: 25, stiffness: 300, useNativeDriver: true }),
+                Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver }),
+                Animated.spring(slideAnim, { toValue: 0, damping: 25, stiffness: 300, useNativeDriver }),
             ]).start();
         } else {
             Animated.parallel([
-                Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-                Animated.timing(slideAnim, { toValue: 300, duration: 200, useNativeDriver: true }),
+                Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver }),
+                Animated.timing(slideAnim, { toValue: 300, duration: 200, useNativeDriver }),
             ]).start();
         }
-    }, [visible, fadeAnim, slideAnim]);
+    }, [visible, fadeAnim, slideAnim, useNativeDriver]);
 
     if (Platform.OS === 'ios') {
         return (

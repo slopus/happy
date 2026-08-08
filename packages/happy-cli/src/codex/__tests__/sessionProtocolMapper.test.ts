@@ -332,6 +332,87 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         expect(waited.envelopes[0].ev.t).toBe('tool-call-start');
     });
 
+    it('keeps a reusable provider child bound to its original Agent owner after completion', () => {
+        const spawned = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'collab_agent_tool_begin',
+            call_id: 'collab-spawn-reusable',
+            tool: 'spawnAgent',
+            receiver_thread_ids: ['thread-reusable-child'],
+            prompt: 'Review repeatedly',
+        }, { currentTurnId: 'turn-1' });
+        const owner = spawned.envelopes.find((envelope) => (
+            envelope.ev.t === 'tool-call-start' && envelope.ev.name === 'Agent'
+        ));
+        const ownedSubagent = owner?.ev.t === 'tool-call-start'
+            ? owner.ev.args.sessionSubagent
+            : undefined;
+
+        const firstMessage = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'agent_message',
+            subagent: 'thread-reusable-child',
+            message: 'First review complete',
+        }, spawned);
+        const completed = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'subagent_completed',
+            subagent: 'thread-reusable-child',
+            status: 'completed',
+        }, firstMessage);
+        const followUpMessage = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'agent_message',
+            subagent: 'thread-reusable-child',
+            message: 'Follow-up review complete',
+        }, completed);
+        const followUpCompleted = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'subagent_completed',
+            subagent: 'thread-reusable-child',
+            status: 'completed',
+        }, followUpMessage);
+        const rootCompleted = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'task_complete',
+        }, followUpCompleted);
+        const nextRoot = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'task_started',
+        }, rootCompleted);
+        const lateMessage = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'agent_message',
+            subagent: 'thread-reusable-child',
+            message: 'Late review from the previous root turn',
+        }, nextRoot);
+
+        expect(ownedSubagent).toEqual(expect.any(String));
+        expect(firstMessage.envelopes).toEqual([
+            expect.objectContaining({
+                turn: 'turn-1',
+                subagent: ownedSubagent,
+                ev: { t: 'text', text: 'First review complete' },
+            }),
+        ]);
+        expect(followUpMessage.envelopes).toEqual([
+            expect.objectContaining({
+                turn: 'turn-1',
+                subagent: ownedSubagent,
+                ev: { t: 'start' },
+            }),
+            expect.objectContaining({
+                turn: 'turn-1',
+                subagent: ownedSubagent,
+                ev: { t: 'text', text: 'Follow-up review complete' },
+            }),
+        ]);
+        expect(lateMessage.envelopes).toEqual([
+            expect.objectContaining({
+                turn: 'turn-1',
+                subagent: ownedSubagent,
+                ev: { t: 'start' },
+            }),
+            expect.objectContaining({
+                turn: 'turn-1',
+                subagent: ownedSubagent,
+                ev: { t: 'text', text: 'Late review from the previous root turn' },
+            }),
+        ]);
+    });
+
     it('skips token_count messages', () => {
         const result = mapCodexMcpMessageToSessionEnvelopes(
             { type: 'token_count', total_tokens: 10 },

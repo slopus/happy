@@ -27,12 +27,13 @@ const SCROLL_THRESHOLD = 300;
 const ANCHOR_PILL_LINGER_MS = 1600;
 
 export const ChatList = React.memo((props: { session: Session }) => {
-    const { messages, hasMoreOlder, isLoadingOlder } = useSessionMessages(props.session.id);
+    const { messages, isLoaded, hasMoreOlder, isLoadingOlder } = useSessionMessages(props.session.id);
     return (
         <ChatListInternal
             metadata={props.session.metadata}
             sessionId={props.session.id}
             messages={messages}
+            isLoaded={isLoaded}
             hasMoreOlder={hasMoreOlder}
             isLoadingOlder={isLoadingOlder}
         />
@@ -69,6 +70,7 @@ const ChatListInternal = React.memo((props: {
     metadata: Metadata | null,
     sessionId: string,
     messages: Message[],
+    isLoaded: boolean,
     hasMoreOlder: boolean,
     isLoadingOlder: boolean,
 }) => {

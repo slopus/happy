@@ -4,16 +4,37 @@ import { logger } from "@/ui/logger";
  * A user-uploaded attachment claimed by a message. Two lanes:
  * - image: E2E-encrypted, decrypted to `data` bytes in memory (small, ≤50MB),
  *   fed to the model as base64 (Claude) / localImage (Codex).
- * - audio/video: plaintext, already streamed to `localPath` on disk (up to
- *   500MB, never held in memory). The model gets the path as text and runs
- *   ffmpeg/whisper itself.
+ * - file/audio/video: staged to `localPath` on disk. PDF files stay E2E
+ *   encrypted in transit, while audio/video may use the plaintext streaming
+ *   lane. The model receives the exact path as text.
  */
 export type ImageAttachment = { kind?: 'image'; data: Uint8Array; mimeType: string; name: string };
-export type MediaAttachment = { kind: 'audio' | 'video'; localPath: string; size: number; mimeType: string; name: string };
+export type MediaAttachment = { kind: 'audio' | 'video' | 'file'; localPath: string; size: number; mimeType: string; name: string };
 export type PendingAttachment = ImageAttachment | MediaAttachment;
 
 export function isMediaAttachment(a: PendingAttachment): a is MediaAttachment {
-    return a.kind === 'audio' || a.kind === 'video';
+    return a.kind === 'audio' || a.kind === 'video' || a.kind === 'file';
+}
+
+/**
+ * Run async tasks strictly in submission order while allowing the caller to
+ * claim per-message resources before enqueueing the task. A failed task does
+ * not poison the tail, and its returned promise still rejects for callers that
+ * need to observe the failure.
+ */
+export function createSerializedTaskRunner(onError?: (error: unknown) => void) {
+    let tail: Promise<void> = Promise.resolve();
+
+    return function runSerially<T>(task: () => T | Promise<T>): Promise<T> {
+        const processing = tail.then(task);
+        tail = processing.then(
+            () => undefined,
+            (error) => {
+                onError?.(error);
+            },
+        );
+        return processing;
+    };
 }
 
 interface QueueItem<T> {
@@ -128,7 +149,7 @@ export class MessageQueue2<T> {
      * Clears any pending messages and ensures this message is never batched with others.
      * Used for special commands that require dedicated processing.
      */
-    pushIsolateAndClear(message: string, mode: T, attachments?: PendingAttachment[]): void {
+    pushIsolateAndClear(message: string, mode: T, attachments?: PendingAttachment[]): PendingAttachment[] {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -136,16 +157,19 @@ export class MessageQueue2<T> {
         const modeHash = this.modeHasher(mode);
         logger.debug(`[MessageQueue2] pushIsolateAndClear() called with mode hash: ${modeHash} - clearing ${this.queue.length} pending messages`);
 
-        // Clear any pending messages to ensure this message is processed in complete isolation
-        this.queue = [];
+        // Capture ownership before replacing the queue so callers can clean up
+        // staged files without inspecting mutable queue state across an await.
+        const displacedAttachments = this.queue.flatMap((item) => item.attachments ?? []);
 
-        this.queue.push({
+        // Replace, rather than clear-then-push, so the displaced snapshot and
+        // isolated command become visible as one synchronous state transition.
+        this.queue = [{
             message,
             mode,
             modeHash,
             isolate: true,
             attachments,
-        });
+        }];
 
         // Trigger message handler if set
         if (this.onMessageHandler) {
@@ -161,6 +185,7 @@ export class MessageQueue2<T> {
         }
 
         logger.debug(`[MessageQueue2] pushIsolateAndClear() completed. Queue size: ${this.queue.length}`);
+        return displacedAttachments;
     }
 
     /**

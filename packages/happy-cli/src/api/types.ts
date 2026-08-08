@@ -302,7 +302,7 @@ export const FileEventMessageSchema = z.object({
         size: z.number(),
         mimeType: z.string().optional(),
         // 附件语义类型；缺省视为 'image'（兼容历史 file event）。
-        kind: z.enum(['image', 'audio', 'video']).optional(),
+        kind: z.enum(['image', 'audio', 'video', 'file']).optional(),
         // 是否 E2E 加密；缺省视为 true。音视频走明文流式直传 OSS 发 false，
         // 终端据此跳过解密、走 streamAttachmentToDisk 流式落盘。
         encrypted: z.boolean().optional(),

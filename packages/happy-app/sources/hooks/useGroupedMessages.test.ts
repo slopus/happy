@@ -17,6 +17,7 @@ function toolMessage(
         pendingPermission?: boolean;
         state?: ToolCallMessage['tool']['state'];
         completedAt?: number | null;
+        name?: string;
     } = {},
 ): ToolCallMessage {
     const state = options.state ?? 'completed';
@@ -26,7 +27,7 @@ function toolMessage(
         localId: null,
         createdAt,
         tool: {
-            name: 'CodexBash',
+            name: options.name ?? 'CodexBash',
             state,
             input: { command: id },
             createdAt,
@@ -238,6 +239,23 @@ describe('useGroupedMessages', () => {
             expect(grouped).toHaveLength(2);
             expect(grouped.map((item) => item.type)).toEqual(['message', 'message']);
             expect(grouped.map((item) => item.id)).toEqual(['generated-video', 'user-video']);
+        }
+    });
+
+    it('keeps PDF documents as individual file cards instead of image galleries', () => {
+        const pdf = fileMessage('user-pdf', 2);
+        pdf.tool.input = {
+            ref: 'sessions/s1/attachments/floor-plan.enc',
+            name: 'floor-plan.pdf',
+            size: 4096,
+            kind: 'file',
+            mimeType: 'application/pdf',
+        };
+
+        for (const enabled of [false, true]) {
+            const grouped = groupMessagesForDisplay([pdf], enabled);
+            expect(grouped).toHaveLength(1);
+            expect(grouped[0]).toMatchObject({ type: 'message', id: 'user-pdf' });
         }
     });
 
@@ -556,7 +574,7 @@ describe('useGroupedMessages', () => {
         });
     });
 
-    it('does not collapse the current turn while the agent is still working', () => {
+    it('keeps current-turn text visible while compacting standalone tools', () => {
         const messages: Message[] = [
             {
                 kind: 'agent-text',
@@ -587,16 +605,16 @@ describe('useGroupedMessages', () => {
 
         expect(items.map((item) => item.type)).toEqual([
             'message',
+            'tool-group',
             'message',
-            'message',
-            'message',
+            'tool-group',
             'message',
         ]);
         expect(items.map((item) => item.id)).toEqual([
             'agent-streaming',
-            'tool-latest',
+            'group-tool-latest',
             'agent-progress',
-            'tool-earliest',
+            'group-tool-earliest',
             'user',
         ]);
     });
@@ -653,7 +671,7 @@ describe('useGroupedMessages', () => {
         });
     });
 
-    it('does not collapse a single standalone tool call into a tool group', () => {
+    it('collapses a single standalone tool call into a compact tool group', () => {
         const messages: Message[] = [
             toolMessage('tool-only', 2),
             {
@@ -667,8 +685,35 @@ describe('useGroupedMessages', () => {
 
         const items = groupMessagesForDisplay(messages, true);
 
-        expect(items.map((item) => item.type)).toEqual(['message', 'message']);
-        expect(items[0]).toMatchObject({ type: 'message', id: 'tool-only' });
+        expect(items.map((item) => item.type)).toEqual(['tool-group', 'message']);
+        expect(items[0]).toMatchObject({
+            type: 'tool-group',
+            id: 'group-tool-only',
+            hasPendingPermission: false,
+            messages: [{ id: 'tool-only' }],
+        });
+    });
+
+    it('renders a standalone Skill as a compact tool group', () => {
+        const skill = toolMessage('skill-only', 2, { name: 'Skill' });
+        skill.tool.input = { skillNames: ['diagnosing-bugs'] };
+
+        const items = groupMessagesForDisplay([skill], true);
+
+        expect(items).toMatchObject([{
+            type: 'tool-group',
+            id: 'group-skill-only',
+            messages: [{ id: 'skill-only' }],
+        }]);
+    });
+
+    it('keeps a standalone question visible so it remains interactive', () => {
+        const question = toolMessage('question-only', 2, { name: 'AskUserQuestion' });
+        const items = groupMessagesForDisplay([question], true);
+
+        expect(items).toEqual([
+            { type: 'message', id: 'question-only', message: question },
+        ]);
     });
 
     it('can collapse single standalone tool calls for nested work details', () => {

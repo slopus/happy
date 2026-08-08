@@ -67,9 +67,9 @@ const sessionFileEventSchema = z.object({
     ref: z.string(),
     name: z.string(),
     size: z.number(),
-    // Audio/video attachments tag kind + mimeType so the chat bubble renders a
-    // media card (icon + filename) instead of an image thumbnail. Absent → image.
-    kind: z.enum(['image', 'audio', 'video']).optional(),
+    // Non-image attachments tag kind + mimeType so the chat bubble renders a
+    // media/document card instead of an image thumbnail. Absent → image.
+    kind: z.enum(['image', 'audio', 'video', 'file']).optional(),
     mimeType: z.string().optional(),
     encrypted: z.boolean().optional(),
     source: z.enum(['user', 'generated']).optional(),

@@ -73,15 +73,6 @@ function consumeCollabCallSubagent(mapping: Map<string, string>, call: string): 
     return subagent;
 }
 
-function forgetSessionSubagent(mapping: Map<string, string>, subagent: string): void {
-    mapping.delete(`${SUBAGENT_TURN_KEY_PREFIX}${subagent}`);
-    for (const [key, value] of mapping) {
-        if (value === subagent) {
-            mapping.delete(key);
-        }
-    }
-}
-
 function maybeEmitSubagentStart(
     subagent: string | undefined,
     opts: CreateEnvelopeOptions,
@@ -548,7 +539,6 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         const turnStart = createEnvelope('agent', { t: 'turn-start' }, { turn: turnId });
         if (activeSubagents.size === 0) {
             startedSubagents.clear();
-            providerSubagentToSessionSubagent.clear();
         }
         return {
             currentTurnId: turnId,
@@ -614,7 +604,6 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                 activeSubagents.delete(startedSubagent);
                 startedSubagents.delete(startedSubagent);
                 envelopes.push(createEnvelope('agent', { t: 'stop', status }, buildEnvelopeOptions(lifecycleTurn, startedSubagent)));
-                forgetSessionSubagent(providerSubagentToSessionSubagent, startedSubagent);
             }
         } else {
             const receiverThreadIds = pickReceiverThreadIds(message);
@@ -684,7 +673,11 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             { t: 'stop', status },
             buildEnvelopeOptions(lifecycleTurn, subagent),
         );
-        forgetSessionSubagent(providerSubagentToSessionSubagent, subagent);
+        // A provider thread can be reused for follow-up work after reporting a
+        // completed turn. Keep its stable session owner and original turn so
+        // late or resumed output remains nested under the Agent that spawned it.
+        // Explicitly starting the same child again updates its turn ownership;
+        // the whole mapping is reset together with the Codex thread state.
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,

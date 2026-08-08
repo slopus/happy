@@ -2,6 +2,14 @@
 import type { ImageStylePreviewEntry } from './imageStylePreviewManifest';
 
 export const EXTRA_IMAGE_STYLE_PREVIEW_MANIFEST: Record<string, ImageStylePreviewEntry> = {
+    "github-skills/photo-illustration-diptych/2": {
+        "fileName": "photo-illustration-diptych-lakeside.jpg",
+        "sourceSet": "github-skill",
+        "sourceCaseId": "photo-illustration-diptych/user-reference-lakeside-20260808",
+        "sourceIndex": 7,
+        "width": 1448,
+        "height": 1086
+    },
     "github-skills/photo-illustration-diptych/1": {
         "fileName": "photo-illustration-diptych-user-reference.jpg",
         "sourceSet": "github-skill",
