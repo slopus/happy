@@ -74,6 +74,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 import { resolveRunningSessionTurnModes } from '@/utils/runningSessionTurnModes';
+import {
+    SubagentInspectorProvider,
+    useSubagentInspector,
+} from '@/components/subagent/SubagentInspectorContext';
+import { SubagentInspectorPanel } from '@/components/subagent/SubagentInspectorPanel';
 
 // Agent display labels for the header chip. Mirrors ComposeHome's map, but keyed
 // off the running session's `flavor` (an active session reports its agent there).
@@ -285,7 +290,13 @@ function SessionHeaderMoreAction({
     );
 }
 
-export const SessionView = React.memo((props: { id: string }) => {
+export const SessionView = React.memo((props: { id: string }) => (
+    <SubagentInspectorProvider sessionId={props.id}>
+        <SessionViewContent {...props} />
+    </SubagentInspectorProvider>
+));
+
+const SessionViewContent = React.memo((props: { id: string }) => {
     const sessionId = props.id;
     const router = useRouter();
     const navigation = useNavigation();
@@ -312,6 +323,8 @@ export const SessionView = React.memo((props: { id: string }) => {
         rightWidth: layoutRightPanelWidth,
     } = useDesktopWorkspaceLayout();
     const sessionComposerHandleRef = React.useRef<ChatComposerHandle | null>(null);
+    const subagentInspector = useSubagentInspector();
+    const subagentSelection = subagentInspector?.selection ?? null;
 
     // The capability hub is a first-class desktop panel. File browsing is an
     // optional mode inside that same panel instead of a separate fourth column.
@@ -526,9 +539,19 @@ export const SessionView = React.memo((props: { id: string }) => {
     // agent + machine + connection state. The dropdown keeps runtime identity
     // read-only while letting next-turn model, effort, and permissions update.
     const [infoPanelOpen, setInfoPanelOpen] = React.useState(false);
+    React.useEffect(() => {
+        if (!subagentSelection || !isDataReady || !session) return;
+        setInfoPanelOpen(false);
+        if (desktopRightPanelAvailable) {
+            setDesktopRightPanelCollapsed(false);
+        } else {
+            setRightDrawerOpen(true);
+        }
+    }, [desktopRightPanelAvailable, isDataReady, session, setDesktopRightPanelCollapsed, subagentSelection]);
     const toggleCompactRightDrawer = React.useCallback(() => {
         if (!compactRightDrawerAvailable) return;
         if (rightDrawerOpen) {
+            subagentInspector?.close();
             setRightDrawerOpen(false);
             return;
         }
@@ -538,7 +561,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         if (hasVisibleWebDialog()) return;
         setInfoPanelOpen(false);
         setRightDrawerOpen(true);
-    }, [compactRightDrawerAvailable, rightDrawerOpen]);
+    }, [compactRightDrawerAvailable, rightDrawerOpen, subagentInspector]);
     useGlobalKeyboard(undefined, {
         onToggleRightSidebar: compactRightDrawerAvailable ? toggleCompactRightDrawer : undefined,
     });
@@ -627,12 +650,15 @@ export const SessionView = React.memo((props: { id: string }) => {
         </View>
     ) : undefined;
 
-    const desktopPanelLabel = desktopPanelMode === 'files' && canShowFilePanel
+    const subagentPanelLabel = subagentSelection
+        ? t('toolGroup.subagentPanelLabel', { title: subagentSelection.title ?? subagentSelection.id })
+        : null;
+    const desktopPanelLabel = subagentPanelLabel ?? (desktopPanelMode === 'files' && canShowFilePanel
         ? t('common.files')
-        : t('rightPanelCapabilityHub.title');
-    const compactPanelLabel = spaceAgent
+        : t('rightPanelCapabilityHub.title'));
+    const compactPanelLabel = subagentPanelLabel ?? (spaceAgent
         ? t('agentSpace.companion.panelTitle')
-        : t('rightPanelCapabilityHub.title');
+        : t('rightPanelCapabilityHub.title'));
     const rightPanelToggleLabel = desktopRightPanelAvailable
         ? desktopPanelLabel
         : compactPanelLabel;
@@ -647,6 +673,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                 : t('desktopWorkspace.showPanel', { panel: rightPanelToggleLabel })}
             onPress={() => {
                 if (desktopRightPanelAvailable) {
+                    if (showDesktopRightPanel) subagentInspector?.close();
                     setDesktopRightPanelCollapsed(showDesktopRightPanel);
                     return;
                 }
@@ -788,7 +815,13 @@ export const SessionView = React.memo((props: { id: string }) => {
     );
 
     if (!desktopRightPanelAvailable) {
-        const rightPanel = (
+        const rightPanel = subagentSelection ? (
+            <SubagentInspectorPanel
+                onBack={() => subagentInspector?.close()}
+                selection={subagentSelection}
+                sessionId={sessionId}
+            />
+        ) : (
             <SessionRightPanelContent
                 composerHandleRef={sessionComposerHandleRef}
                 sessionId={sessionId}
@@ -802,12 +835,14 @@ export const SessionView = React.memo((props: { id: string }) => {
                 mode={responsiveRightPanelMode === 'edge-handle' ? 'edge-handle' : 'drawer-toggle'}
                 onOpenChange={(nextOpen) => {
                     if (nextOpen) setInfoPanelOpen(false);
+                    if (!nextOpen) subagentInspector?.close();
                     setRightDrawerOpen(nextOpen);
                 }}
                 open={rightDrawerOpen}
                 openAccessibilityLabel={t('desktopWorkspace.showPanel', { panel: compactPanelLabel })}
                 panelAccessibilityLabel={compactPanelLabel}
                 panelContent={rightPanel}
+                showEdgeHandle={false}
             >
                 {mainContent}
             </RightSwipePanelHost>
@@ -901,7 +936,13 @@ export const SessionView = React.memo((props: { id: string }) => {
                     ]}
                     testID="desktop-right-panel-motion"
                 >
-                    <DesktopRightPanel
+                    {subagentSelection ? (
+                        <SubagentInspectorPanel
+                            onBack={() => subagentInspector?.close()}
+                            selection={subagentSelection}
+                            sessionId={sessionId}
+                        />
+                    ) : <DesktopRightPanel
                         activeTab={desktopPanelMode}
                         collapseAccessibilityLabel={t('desktopWorkspace.hidePanel', {
                             panel: desktopPanelLabel,
@@ -935,7 +976,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                                 />
                             )}
                         </DesktopPresenceTransition>
-                    </DesktopRightPanel>
+                    </DesktopRightPanel>}
                 </View>
             </Animated.View>
         </View>
@@ -1224,7 +1265,7 @@ function SessionViewLoaded({
 
     const handleAbort = React.useCallback(() => {
         storage.getState().resetSessionAgentOverrides(sessionId);
-        sessionAbort(sessionId);
+        return sessionAbort(sessionId);
     }, [sessionId]);
 
     const handleFileViewerPress = React.useCallback(() => {

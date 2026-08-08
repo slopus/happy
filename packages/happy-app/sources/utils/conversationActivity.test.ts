@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
-import { collectConversationActivities, getSkillNamesFromTool } from './conversationActivity';
+import {
+    collectConversationActivities,
+    findSubagentTranscript,
+    getSkillNamesFromTool,
+} from './conversationActivity';
 
 function toolMessage(
     id: string,
@@ -120,5 +124,130 @@ describe('conversation activity model', () => {
             expect.objectContaining({ id: 'agent-1', depth: 0 }),
             expect.objectContaining({ id: 'agent-2', depth: 1 }),
         ]);
+    });
+});
+
+describe('subagent transcript lookup', () => {
+    it('returns a direct subagent transcript in chronological order', () => {
+        const later: Message = {
+            kind: 'agent-text',
+            id: 'later',
+            localId: null,
+            createdAt: 30,
+            text: 'Done',
+        };
+        const earlier = toolMessage('10', 'Bash', { command: 'pnpm test' });
+        const agent = toolMessage('1', 'Agent', {
+            sessionSubagent: 'agent-direct',
+            description: 'Implementation agent',
+        }, 'completed', [later, earlier]);
+
+        expect(findSubagentTranscript([agent], 'agent-direct')).toEqual({
+            agent,
+            messages: [earlier, later],
+        });
+    });
+
+    it('finds a nested subagent without leaking its parent transcript', () => {
+        const nestedText: Message = {
+            kind: 'agent-text',
+            id: 'nested-text',
+            localId: null,
+            createdAt: 4,
+            text: 'Nested result',
+        };
+        const nestedAgent = toolMessage('3', 'Agent', {
+            sessionSubagent: 'agent-nested',
+            title: 'Reviewer',
+        }, 'completed', [nestedText]);
+        const parentText: Message = {
+            kind: 'agent-text',
+            id: 'parent-text',
+            localId: null,
+            createdAt: 2,
+            text: 'Parent-only result',
+        };
+        const parentAgent = toolMessage('1', 'Agent', {
+            sessionSubagent: 'agent-parent',
+            title: 'Reviewer',
+        }, 'completed', [parentText, nestedAgent]);
+
+        expect(findSubagentTranscript([parentAgent], 'agent-nested')).toEqual({
+            agent: nestedAgent,
+            messages: [nestedText],
+        });
+    });
+
+    it('omits the selected agent own status row while preserving nested agents', () => {
+        const ownStatus: Message = {
+            kind: 'agent-event',
+            id: 'agent-target-status',
+            createdAt: 2,
+            event: {
+                type: 'subagent-status',
+                subagent: 'agent-target',
+                title: 'Implementation agent',
+                status: 'running',
+            },
+        };
+        const nestedStatus: Message = {
+            kind: 'agent-event',
+            id: 'agent-nested-status',
+            createdAt: 4,
+            event: {
+                type: 'subagent-status',
+                subagent: 'agent-nested',
+                title: 'Review agent',
+                status: 'completed',
+            },
+        };
+        const nestedAgent = toolMessage('3', 'Agent', {
+            sessionSubagent: 'agent-nested',
+            title: 'Review agent',
+        }, 'completed', [nestedStatus]);
+        const targetAgent = toolMessage('1', 'Agent', {
+            sessionSubagent: 'agent-target',
+            title: 'Implementation agent',
+        }, 'completed', [ownStatus, nestedAgent]);
+
+        expect(findSubagentTranscript([targetAgent], 'agent-target')?.messages).toEqual([nestedAgent]);
+        expect(findSubagentTranscript([targetAgent], 'agent-nested')?.messages).toEqual([]);
+    });
+
+    it('omits hidden reasoning while retaining visible agent text', () => {
+        const reasoning: Message = {
+            kind: 'agent-text',
+            id: 'agent-reasoning',
+            localId: null,
+            createdAt: 2,
+            text: 'Private chain of thought',
+            isThinking: true,
+        };
+        const visible: Message = {
+            kind: 'agent-text',
+            id: 'agent-visible',
+            localId: null,
+            createdAt: 3,
+            text: 'Visible summary',
+        };
+        const targetAgent = toolMessage('1', 'Agent', {
+            sessionSubagent: 'agent-target',
+        }, 'completed', [reasoning, visible]);
+
+        expect(findSubagentTranscript([targetAgent], 'agent-target')?.messages).toEqual([visible]);
+    });
+
+    it('matches sessionSubagent rather than a shared title', () => {
+        const first = toolMessage('1', 'Agent', {
+            sessionSubagent: 'agent-one',
+            title: 'Reviewer',
+        }, 'completed', []);
+        const second = toolMessage('2', 'Agent', {
+            sessionSubagent: 'agent-two',
+            title: 'Reviewer',
+        }, 'completed', []);
+
+        expect(findSubagentTranscript([first, second], 'agent-two')?.agent).toBe(second);
+        expect(findSubagentTranscript([first, second], 'missing-agent')).toBeNull();
     });
 });

@@ -8,8 +8,13 @@ import { SidebarView } from './SidebarView';
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
+    accountFirstActionFocus: vi.fn(),
+    accountTriggerFocus: vi.fn(),
     dispatch: vi.fn(),
     exitSpace: vi.fn(),
+    focusHistory: [] as string[],
+    helpFirstActionFocus: vi.fn(),
+    helpTriggerFocus: vi.fn(),
     navigate: vi.fn(),
     openCommandPalette: vi.fn(),
     commandPaletteAvailable: false,
@@ -74,7 +79,52 @@ vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }
 vi.mock('./useDrawerHaptics', () => ({ useDrawerHaptics: () => undefined }));
 vi.mock('./VoiceAssistantStatusBar', () => ({ VoiceAssistantStatusBar: 'VoiceAssistantStatusBar' }));
 vi.mock('./MainView', () => ({ MainView: 'MainView' }));
-vi.mock('./SidebarAccountMenu', () => ({ SidebarAccountMenu: 'SidebarAccountMenu' }));
+vi.mock('./SidebarAccountMenu', async () => {
+    const ReactModule = await import('react');
+    return {
+        SidebarAccountMenu: (props: any) => {
+            const wasOpenRef = ReactModule.useRef(false);
+            ReactModule.useEffect(() => {
+                const wasOpen = wasOpenRef.current;
+                wasOpenRef.current = props.open;
+                const timeout = setTimeout(() => {
+                    if (props.open) {
+                        mocks.focusHistory.push('account-first-action');
+                        mocks.accountFirstActionFocus();
+                    } else if (wasOpen && props.restoreFocusOnClose !== false) {
+                        mocks.focusHistory.push('account-trigger');
+                        mocks.accountTriggerFocus();
+                    }
+                }, 0);
+                return () => clearTimeout(timeout);
+            }, [props.open, props.restoreFocusOnClose]);
+            return ReactModule.createElement('SidebarAccountMenu', props);
+        },
+    };
+});
+vi.mock('./SidebarHelpMenu', async () => {
+    const ReactModule = await import('react');
+    return {
+        SidebarHelpMenu: (props: any) => {
+            const wasOpenRef = ReactModule.useRef(false);
+            ReactModule.useEffect(() => {
+                const wasOpen = wasOpenRef.current;
+                wasOpenRef.current = props.open;
+                const timeout = setTimeout(() => {
+                    if (props.open) {
+                        mocks.focusHistory.push('help-first-action');
+                        mocks.helpFirstActionFocus();
+                    } else if (wasOpen && props.restoreFocusOnClose !== false) {
+                        mocks.focusHistory.push('help-trigger');
+                        mocks.helpTriggerFocus();
+                    }
+                }, 0);
+                return () => clearTimeout(timeout);
+            }, [props.open, props.restoreFocusOnClose]);
+            return ReactModule.createElement('SidebarHelpMenu', props);
+        },
+    };
+});
 vi.mock('./agents/AgentSheet', () => ({ AgentSheet: 'AgentSheet' }));
 vi.mock('@/hooks/useAgentSpace', () => ({
     useAgentSpace: () => ({
@@ -96,6 +146,7 @@ describe('SidebarView Agent space exit', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.focusHistory.length = 0;
         mocks.spaceAgent = {
             id: 'health',
             name: 'Health',
@@ -167,6 +218,14 @@ describe('SidebarView Agent space exit', () => {
             expect.objectContaining({ borderWidth: 0 }),
         );
         expect(renderer.root.findByType('SidebarAccountMenu').props.desktopDensity).toBe(true);
+        expect(renderer.root.findAllByType('SidebarAccountMenu')).toHaveLength(1);
+        expect(renderer.root.findAllByType('SidebarHelpMenu')).toHaveLength(1);
+        expect(renderer.root.findByProps({ testID: 'sidebar-footer-menus' }).props.style).toContainEqual(
+            expect.objectContaining({ flexDirection: 'row' }),
+        );
+        expect(renderer.root.findByProps({ testID: 'sidebar-account-menu-slot' }).props.style).toEqual(
+            expect.objectContaining({ flex: 1 }),
+        );
         expect(renderer.root.findAllByProps({ testID: 'sidebar-user-card' })).toHaveLength(0);
         expect(renderer.root.findAllByType('MainView')).toHaveLength(1);
         expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'agents.empty')).toBe(false);
@@ -186,6 +245,7 @@ describe('SidebarView Agent space exit', () => {
 
         expect(renderer.root.findAllByProps({ testID: 'sidebar-desktop-density' })).toHaveLength(0);
         expect(renderer.root.findByType('SidebarAccountMenu').props.desktopDensity).toBe(false);
+        expect(renderer.root.findAllByType('SidebarHelpMenu')).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'sidebar-user-card' })).toHaveLength(0);
         expect(renderer.root.findAllByType('Text').some(
             (node: any) => node.props.children === 'agents.empty',
@@ -200,6 +260,98 @@ describe('SidebarView Agent space exit', () => {
         ).toContainEqual(expect.objectContaining({ marginHorizontal: 16 }));
 
         act(() => renderer.unmount());
+    });
+
+    it('clears an open Help footer layer when desktop density turns off', () => {
+        mocks.spaceAgent = null;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(
+                <SidebarView closeDrawerOnNavigate={false} desktopDensity />,
+            );
+        });
+        act(() => renderer.root.findByType('SidebarHelpMenu').props.onOpenChange(true));
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-footer-menu-dismiss-layer' })).toHaveLength(1);
+
+        act(() => renderer.update(
+            <SidebarView closeDrawerOnNavigate={false} desktopDensity={false} />,
+        ));
+
+        expect(renderer.root.findAllByType('SidebarHelpMenu')).toHaveLength(0);
+        expect(renderer.root.findByType('SidebarAccountMenu').props.open).toBe(false);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-footer-menu-dismiss-layer' })).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the desktop footer menus mutually exclusive and dismisses either from one layer', () => {
+        mocks.spaceAgent = null;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(
+                <SidebarView closeDrawerOnNavigate={false} desktopDensity />,
+            );
+        });
+
+        act(() => renderer.root.findByType('SidebarAccountMenu').props.onOpenChange(true));
+        expect(renderer.root.findByType('SidebarAccountMenu').props.open).toBe(true);
+        expect(renderer.root.findByType('SidebarHelpMenu').props.open).toBe(false);
+
+        act(() => renderer.root.findByType('SidebarHelpMenu').props.onOpenChange(true));
+        expect(renderer.root.findByType('SidebarAccountMenu').props.open).toBe(false);
+        expect(renderer.root.findByType('SidebarHelpMenu').props.open).toBe(true);
+
+        act(() => renderer.root.findByType('SidebarAccountMenu').props.onOpenChange(true));
+        expect(renderer.root.findByType('SidebarAccountMenu').props.open).toBe(true);
+        expect(renderer.root.findByType('SidebarHelpMenu').props.open).toBe(false);
+
+        const dismissLayer = renderer.root.findByProps({ testID: 'sidebar-footer-menu-dismiss-layer' });
+        act(() => dismissLayer.props.onPress());
+        expect(renderer.root.findByType('SidebarAccountMenu').props.open).toBe(false);
+        expect(renderer.root.findByType('SidebarHelpMenu').props.open).toBe(false);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-footer-menu-dismiss-layer' })).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
+
+    it('transfers final focus to the newly opened footer menu and restores on ordinary close', () => {
+        mocks.spaceAgent = null;
+        vi.useFakeTimers();
+        let renderer: any;
+
+        try {
+            act(() => {
+                renderer = TestRenderer.create(
+                    <SidebarView closeDrawerOnNavigate={false} desktopDensity />,
+                );
+            });
+
+            act(() => renderer.root.findByType('SidebarHelpMenu').props.onOpenChange(true));
+            act(() => vi.runOnlyPendingTimers());
+            mocks.focusHistory.length = 0;
+
+            act(() => renderer.root.findByType('SidebarAccountMenu').props.onOpenChange(true));
+            act(() => vi.runOnlyPendingTimers());
+            expect(mocks.focusHistory).toEqual(['account-first-action']);
+
+            mocks.focusHistory.length = 0;
+            act(() => renderer.root.findByType('SidebarHelpMenu').props.onOpenChange(true));
+            act(() => vi.runOnlyPendingTimers());
+            expect(mocks.focusHistory).toEqual(['help-first-action']);
+
+            mocks.focusHistory.length = 0;
+            act(() => renderer.root.findByType('SidebarHelpMenu').props.onOpenChange(false));
+            act(() => vi.runOnlyPendingTimers());
+            expect(mocks.focusHistory).toEqual(['help-trigger']);
+        } finally {
+            if (renderer) {
+                act(() => renderer.unmount());
+            }
+            vi.clearAllTimers();
+            vi.useRealTimers();
+        }
     });
 
     it('opens the shared command palette from desktop Search without routing away', () => {

@@ -314,6 +314,41 @@ describe('RightSwipePanelHost close completion', () => {
         }
     });
 
+    it('can preserve edge-handle drawer geometry and swipe access without rendering the visible handle', () => {
+        (Platform as { OS: string }).OS = 'web';
+        let renderer: any;
+
+        try {
+            act(() => {
+                renderer = TestRenderer.create(
+                    <RightSwipePanelHost
+                        {...PANEL_ACCESSIBILITY_LABELS}
+                        enabled
+                        mode="edge-handle"
+                        panelContent={<View />}
+                        showEdgeHandle={false}
+                    >
+                        <View />
+                    </RightSwipePanelHost>,
+                );
+            });
+
+            expect(findControl(renderer, 'right-swipe-panel-edge-handle')).toBeUndefined();
+            expect(flattenStyle(renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' }).props.style))
+                .toEqual(expect.objectContaining({ width: 288 }));
+
+            act(() => {
+                mocks.gestureHandlers.onStart();
+                mocks.gestureHandlers.onUpdate({ translationX: -160 });
+                mocks.gestureHandlers.onEnd({ translationX: -160, velocityX: 0 });
+            });
+            expect(renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' }).props.role).toBe('dialog');
+        } finally {
+            if (renderer) act(() => renderer.unmount());
+            (Platform as { OS: string }).OS = 'ios';
+        }
+    });
+
     it('lets explicit hide controls close directly without consuming nested back', () => {
         const nestedBack = vi.fn();
         let renderer: any;

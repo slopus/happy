@@ -21,6 +21,7 @@ import {
 } from '@/hooks/useDesktopWorkspaceLayout';
 import { DesktopPanelResizeHandle } from './DesktopPanelResizeHandle';
 import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
+import { KeyboardShortcutsProvider } from './KeyboardShortcuts';
 import {
     getDesktopPanelShortcutPresentation,
     getPersistentHeaderPointerEvents,
@@ -37,7 +38,9 @@ export const SidebarNavigator = React.memo(() => {
 
     return (
         <DesktopWorkspaceLayoutProvider enabled={auth.isAuthenticated && isTablet}>
-            <SidebarNavigatorContent />
+            <KeyboardShortcutsProvider>
+                <SidebarNavigatorContent />
+            </KeyboardShortcutsProvider>
         </DesktopWorkspaceLayoutProvider>
     );
 });

@@ -8,9 +8,6 @@ import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
 import { getAvatarUrl, type Profile } from '@/sync/profile';
 import { t } from '@/text';
-import { openExternalUrl } from '@/utils/openExternalUrl';
-
-const SUPPORT_URL = 'https://github.com/wangjs-jacky/happy/issues';
 
 type SidebarAccountMenuProps = {
     desktopDensity?: boolean;
@@ -19,6 +16,7 @@ type SidebarAccountMenuProps = {
     onOpenChange: (open: boolean) => void;
     open: boolean;
     profile: Profile;
+    restoreFocusOnClose?: boolean;
     unreadCount?: number;
 };
 
@@ -63,6 +61,7 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
     onOpenChange,
     open,
     profile,
+    restoreFocusOnClose = true,
     unreadCount = 0,
 }: SidebarAccountMenuProps) {
     const { logout } = useAuth();
@@ -83,13 +82,13 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
         const timeout = setTimeout(() => {
             if (open) {
                 firstActionRef.current?.focus?.();
-            } else if (wasOpen) {
+            } else if (wasOpen && restoreFocusOnClose) {
                 triggerRef.current?.focus?.();
             }
         }, 0);
 
         return () => clearTimeout(timeout);
-    }, [open]);
+    }, [open, restoreFocusOnClose]);
 
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !open || typeof window === 'undefined') {
@@ -102,22 +101,18 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
             }
             event.preventDefault();
             event.stopPropagation();
+            event.stopImmediatePropagation();
             onOpenChange(false);
         };
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [onOpenChange, open]);
 
     const navigate = React.useCallback((path: string) => {
         onOpenChange(false);
         onNavigate(path);
     }, [onNavigate, onOpenChange]);
-
-    const openSupport = React.useCallback(() => {
-        onOpenChange(false);
-        void openExternalUrl(SUPPORT_URL);
-    }, [onOpenChange]);
 
     const confirmLogout = React.useCallback(() => {
         onOpenChange(false);
@@ -168,12 +163,6 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                         label={t('settings.account')}
                         onPress={() => navigate('/settings/account')}
                         testID="sidebar-account-details-action"
-                    />
-                    <MenuAction
-                        icon="help-buoy-outline"
-                        label={t('settings.reportIssue')}
-                        onPress={openSupport}
-                        testID="sidebar-account-help-action"
                     />
                     <View style={styles.dangerGroup}>
                         <MenuAction

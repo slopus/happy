@@ -43,6 +43,7 @@ export interface PromptModalConfig extends BaseModalConfig {
 export interface CustomModalConfig extends BaseModalConfig {
     type: 'custom';
     component: ComponentType<any>;
+    accessibilityLabel?: string;
     props?: any;
 }
 
