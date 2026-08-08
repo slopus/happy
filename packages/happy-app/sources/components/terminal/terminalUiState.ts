@@ -12,6 +12,14 @@ export interface TerminalNotice {
     message: string;
 }
 
+export type TerminalCollectionState =
+    | 'offline'
+    | 'loading'
+    | 'disabled'
+    | 'error'
+    | 'empty'
+    | 'ready';
+
 export function getTerminalConnectionPresentation(
     status: TerminalStreamStatus,
     isWriter: boolean,
@@ -60,4 +68,19 @@ export function getTerminalNotices(options: {
         });
     }
     return notices;
+}
+
+export function getTerminalCollectionState(options: {
+    online: boolean;
+    loading: boolean;
+    disabled: boolean;
+    error: string | null;
+    count: number;
+}): TerminalCollectionState {
+    if (!options.online) return 'offline';
+    if (options.loading) return 'loading';
+    if (options.disabled) return 'disabled';
+    if (options.error) return 'error';
+    if (options.count === 0) return 'empty';
+    return 'ready';
 }
