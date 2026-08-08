@@ -77,31 +77,49 @@ if (process.env.REDIS_URL) {
 
 /** Single-replica fallback writer state + per-terminal serialization. */
 const writerState = new Map<string, { socketId: string; generation: number }>();
-const takeoverQueues = new Map<string, Promise<void>>();
-const terminalOpQueues = new Map<string, Promise<void>>();
 /** socketId -> [{ key, value }] so disconnect can release owned seats exactly. */
 const socketWriterSeats = new Map<string, Array<{ key: string; value: string }>>();
+
+class KeyedSerialExecutor {
+    private readonly tails = new Map<string, Promise<void>>();
+
+    get size(): number {
+        return this.tails.size;
+    }
+
+    async run<T>(key: string, operation: () => Promise<T>): Promise<T> {
+        const previous = this.tails.get(key) ?? Promise.resolve();
+        let release: () => void = () => undefined;
+        const gate = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const tail = previous.then(() => gate);
+        this.tails.set(key, tail);
+
+        await previous;
+        try {
+            return await operation();
+        } finally {
+            release();
+            if (this.tails.get(key) === tail) {
+                this.tails.delete(key);
+            }
+        }
+    }
+}
+
+const terminalOperations = new KeyedSerialExecutor();
 
 /**
  * Per-terminal in-process serialization for writer operations. Forwarding and
  * takeover share the same lock so an old writer cannot emit after a swap.
  */
 export async function withTerminalOpLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const previous = terminalOpQueues.get(key) ?? Promise.resolve();
-    let release: () => void = () => undefined;
-    const current = new Promise<void>((resolve) => {
-        release = resolve;
-    });
-    terminalOpQueues.set(key, previous.then(() => current));
-    await previous;
-    try {
-        return await fn();
-    } finally {
-        release();
-        if (terminalOpQueues.get(key) === current) {
-            terminalOpQueues.delete(key);
-        }
-    }
+    return terminalOperations.run(key, fn);
+}
+
+export function terminalOpQueueSize(): number {
+    return terminalOperations.size;
 }
 
 async function claimWriter(key: string, socketId: string): Promise<number> {
@@ -118,27 +136,13 @@ async function claimWriter(key: string, socketId: string): Promise<number> {
         return Number(generation);
     }
 
-    const previous = takeoverQueues.get(key) ?? Promise.resolve();
-    let release: () => void = () => undefined;
-    const current = new Promise<void>((resolve) => {
-        release = resolve;
-    });
-    takeoverQueues.set(key, previous.then(() => current));
-    await previous;
-    try {
-        const generation = (writerState.get(key)?.generation ?? 0) + 1;
-        writerState.set(key, { socketId, generation });
-        socketWriterSeats.set(socketId, [...(socketWriterSeats.get(socketId) ?? []), {
-            key,
-            value: socketId,
-        }]);
-        return generation;
-    } finally {
-        release();
-        if (takeoverQueues.get(key) === current) {
-            takeoverQueues.delete(key);
-        }
-    }
+    const generation = (writerState.get(key)?.generation ?? 0) + 1;
+    writerState.set(key, { socketId, generation });
+    socketWriterSeats.set(socketId, [...(socketWriterSeats.get(socketId) ?? []), {
+        key,
+        value: socketId,
+    }]);
+    return generation;
 }
 
 async function writerGeneration(key: string, socketId: string): Promise<number> {
