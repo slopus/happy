@@ -36,8 +36,8 @@ describe('PtyShellSession', () => {
         session.write('printf "pty-hello-123\\n"\r');
         await waitFor(() => output.includes('pty-hello-123'));
 
-        // Let the headless emulator finish parsing before snapshotting.
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        // The flush barrier guarantees the snapshot already includes output
+        // that was emitted, without relying on a timeout.
         const snapshot = await session.snapshot();
         expect(snapshot).toContain('pty-hello-123');
 
