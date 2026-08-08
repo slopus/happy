@@ -9,6 +9,10 @@ import { View } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system';
+import {
+    TerminalOperationQueue,
+    type TerminalOperation,
+} from './terminalOperationQueue';
 
 const xtermJsAsset = require('../../../assets/terminal/xterm.js.txt');
 const addonFitJsAsset = require('../../../assets/terminal/addon-fit.js.txt');
@@ -25,6 +29,7 @@ export interface TerminalViewProps {
     onResize: (cols: number, rows: number) => void;
     fontSize?: number;
     dark?: boolean;
+    readOnly?: boolean;
 }
 
 async function loadAssetText(assetId: number): Promise<string> {
@@ -56,6 +61,7 @@ function buildHtml(xtermJs: string, addonFitJs: string, xtermCss: string): strin
         fontFamily: 'Menlo, Monaco, Consolas, monospace',
         scrollback: 5000,
         theme: { background: '#0d1117', foreground: '#e6edf3', cursor: '#e6edf3' },
+        disableStdin: true,
         allowProposedApi: true
       });
       var fitAddon = new FitAddon();
@@ -68,13 +74,18 @@ function buildHtml(xtermJs: string, addonFitJs: string, xtermCss: string): strin
         }
       }
 
-      term.onData(function (data) { post('data', { data: data }); });
+      term.onData(function (data) {
+        if (!term.options.disableStdin) {
+          post('data', { data: data });
+        }
+      });
       term.onResize(function (size) { post('resize', { cols: size.cols, rows: size.rows }); });
 
       window.__termWrite = function (data) { term.write(data); };
       window.__termClear = function () { term.reset(); };
       window.__termFocus = function () { term.focus(); };
       window.__termFit = function () { try { fitAddon.fit(); } catch (e) {} };
+      window.__termSetReadOnly = function (readOnly) { term.options.disableStdin = Boolean(readOnly); };
 
       window.addEventListener('resize', function () { window.__termFit(); });
       setTimeout(function () { window.__termFit(); post('ready', {}); }, 50);
@@ -85,15 +96,48 @@ function buildHtml(xtermJs: string, addonFitJs: string, xtermCss: string): strin
 }
 
 export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
-    function TerminalView({ onData, onResize }, ref) {
+    function TerminalView({ onData, onResize, readOnly = false }, ref) {
         const webviewRef = useRef<WebView | null>(null);
-        const pendingWritesRef = useRef<string[]>([]);
-        const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
         const [html, setHtml] = useState<string | null>(null);
         const onDataRef = useRef(onData);
         const onResizeRef = useRef(onResize);
+        const readOnlyRef = useRef(readOnly);
+        const operationQueueRef = useRef<TerminalOperationQueue | null>(null);
         onDataRef.current = onData;
         onResizeRef.current = onResize;
+        readOnlyRef.current = readOnly;
+
+        if (!operationQueueRef.current) {
+            operationQueueRef.current = new TerminalOperationQueue((operation: TerminalOperation) => {
+                const webview = webviewRef.current;
+                if (!webview) {
+                    return;
+                }
+
+                switch (operation.type) {
+                    case 'reset':
+                        webview.injectJavaScript('window.__termClear(); true;');
+                        break;
+                    case 'write':
+                        webview.injectJavaScript(
+                            `window.__termWrite(${JSON.stringify(operation.data)}); true;`,
+                        );
+                        break;
+                    case 'focus':
+                        webview.injectJavaScript('window.__termFocus(); true;');
+                        break;
+                    case 'fit':
+                        webview.injectJavaScript('window.__termFit(); true;');
+                        break;
+                    case 'setReadOnly':
+                        webview.injectJavaScript(
+                            `window.__termSetReadOnly(${JSON.stringify(operation.readOnly)}); true;`,
+                        );
+                        break;
+                }
+            });
+        }
+        const operationQueue = operationQueueRef.current;
 
         useEffect(() => {
             let cancelled = false;
@@ -114,32 +158,14 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
         }, []);
 
         useEffect(() => {
-            flushTimerRef.current = setInterval(() => {
-                if (pendingWritesRef.current.length === 0 || !webviewRef.current) {
-                    return;
-                }
-                const data = pendingWritesRef.current.splice(0).join('');
-                webviewRef.current.injectJavaScript(
-                    `window.__termWrite(${JSON.stringify(data)}); true;`,
-                );
-            }, 50);
-            return () => {
-                if (flushTimerRef.current) {
-                    clearInterval(flushTimerRef.current);
-                    flushTimerRef.current = null;
-                }
-            };
-        }, []);
+            operationQueue.enqueue({ type: 'setReadOnly', readOnly });
+        }, [operationQueue, readOnly]);
 
         useImperativeHandle(ref, () => ({
-            write: (data) => {
-                if (html) {
-                    pendingWritesRef.current.push(data);
-                }
-            },
-            clear: () => webviewRef.current?.injectJavaScript('window.__termClear(); true;'),
-            focus: () => webviewRef.current?.injectJavaScript('window.__termFocus(); true;'),
-        }), [html]);
+            write: (data) => operationQueue.enqueue({ type: 'write', data }),
+            clear: () => operationQueue.enqueue({ type: 'reset' }),
+            focus: () => operationQueue.enqueue({ type: 'focus' }),
+        }), [operationQueue]);
 
         const handleMessage = (event: WebViewMessageEvent) => {
             try {
@@ -149,7 +175,9 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
                     cols?: number;
                     rows?: number;
                 };
-                if (message.type === 'data') {
+                if (message.type === 'ready') {
+                    operationQueue.markReady();
+                } else if (message.type === 'data' && !readOnlyRef.current) {
                     onDataRef.current(String(message.data ?? ''));
                 } else if (message.type === 'resize') {
                     onResizeRef.current(
@@ -163,9 +191,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
         };
 
         const handleLayout = () => {
-            setTimeout(() => {
-                webviewRef.current?.injectJavaScript('window.__termFit(); true;');
-            }, 50);
+            operationQueue.enqueue({ type: 'fit' });
         };
 
         return (
@@ -178,6 +204,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
                         javaScriptEnabled
                         domStorageEnabled
                         onMessage={handleMessage}
+                        onLoadStart={() => operationQueue.markNotReady()}
                         style={{ flex: 1, backgroundColor: '#0d1117' }}
                         setSupportMultipleWindows={false}
                         overScrollMode="never"

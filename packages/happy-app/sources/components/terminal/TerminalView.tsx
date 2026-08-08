@@ -19,6 +19,7 @@ export interface TerminalViewProps {
     onResize: (cols: number, rows: number) => void;
     fontSize?: number;
     dark?: boolean;
+    readOnly?: boolean;
 }
 
 const DARK_THEME = {
@@ -36,14 +37,16 @@ const LIGHT_THEME = {
 };
 
 export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
-    function TerminalView({ onData, onResize, fontSize = 14, dark = true }, ref) {
+    function TerminalView({ onData, onResize, fontSize = 14, dark = true, readOnly = false }, ref) {
         const containerRef = useRef<HTMLDivElement | null>(null);
         const terminalRef = useRef<Terminal | null>(null);
         const fitAddonRef = useRef<FitAddon | null>(null);
         const onDataRef = useRef(onData);
         const onResizeRef = useRef(onResize);
+        const readOnlyRef = useRef(readOnly);
         onDataRef.current = onData;
         onResizeRef.current = onResize;
+        readOnlyRef.current = readOnly;
 
         useEffect(() => {
             const terminal = new Terminal({
@@ -52,6 +55,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
                 fontFamily: 'Menlo, Monaco, Consolas, "Liberation Mono", monospace',
                 scrollback: 5000,
                 theme: dark ? DARK_THEME : LIGHT_THEME,
+                disableStdin: readOnly,
                 allowProposedApi: true,
             });
             const fit = new FitAddon();
@@ -62,7 +66,11 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
             } catch {
                 // Container may not have dimensions yet; the resize listener refits.
             }
-            terminal.onData((data) => onDataRef.current(data));
+            terminal.onData((data) => {
+                if (!readOnlyRef.current) {
+                    onDataRef.current(data);
+                }
+            });
             terminal.onResize(({ cols, rows }) => onResizeRef.current(cols, rows));
             terminalRef.current = terminal;
             fitAddonRef.current = fit;
@@ -96,6 +104,12 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
                 terminalRef.current.options.theme = dark ? DARK_THEME : LIGHT_THEME;
             }
         }, [dark]);
+
+        useEffect(() => {
+            if (terminalRef.current) {
+                terminalRef.current.options.disableStdin = readOnly;
+            }
+        }, [readOnly]);
 
         useImperativeHandle(ref, () => ({
             write: (data) => terminalRef.current?.write(data),
