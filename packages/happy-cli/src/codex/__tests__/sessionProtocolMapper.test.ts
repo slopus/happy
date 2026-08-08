@@ -111,6 +111,7 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         const sessionSubagent = spawned.envelopes[0].ev.args.sessionSubagent;
         expect(typeof sessionSubagent).toBe('string');
         expect(isCuid(sessionSubagent as string)).toBe(true);
+        expect(spawned.envelopes[0].ev.args.providerThreadId).toBe('thread-child');
         expect(spawned.envelopes[1]).toMatchObject({
             role: 'agent',
             turn: rootTurn,

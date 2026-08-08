@@ -1160,6 +1160,7 @@ describe('CodexAppServerClient sandbox integration', () => {
     });
 
     it('keeps root turn lifecycle isolated while forwarding interleaved child thread events', async () => {
+        let rawEventsRequested = false;
         let emitNotification = (_payload: unknown): void => {
             throw new Error('App-server notification emitter is not ready');
         };
@@ -1169,6 +1170,7 @@ describe('CodexAppServerClient sandbox integration', () => {
                 emitNotification = (payload) => pushJsonLine(stdout, payload);
 
                 if (msg.method === 'thread/start' && msg.id != null) {
+                    rawEventsRequested = msg.params?.experimentalRawEvents === true;
                     setTimeout(() => {
                         pushJsonLine(stdout, {
                             id: msg.id,
@@ -1268,6 +1270,10 @@ describe('CodexAppServerClient sandbox integration', () => {
             approvalPolicy: 'never',
             sandbox: 'danger-full-access',
         });
+
+        // Independent child threads are emitted by Codex only when the raw
+        // event stream was requested while the root thread was created.
+        expect(rawEventsRequested).toBe(true);
 
         let rootTurnSettled = false;
         const rootTurn = client.sendTurnAndWait('delegate review').then((result) => {
