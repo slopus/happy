@@ -4227,7 +4227,7 @@ test.describe('中文 Web 消息与工具演示', () => {
                     description: 'Implementation agent',
                     args: {
                         description: 'Implementation agent',
-                        prompt: 'Implement the selected feature.',
+                        prompt: 'Implement the authorization change and ask a review agent to verify it.',
                         sessionSubagent: parentSubagent,
                     },
                 },
@@ -4293,7 +4293,7 @@ test.describe('中文 Web 消息与工具演示', () => {
                     description: 'Review agent',
                     args: {
                         description: 'Review agent',
-                        prompt: 'Review the implementation.',
+                        prompt: 'Review the authorization changes in packages/happy-app/sources/api/review.ts. Inspect callers, run focused tests, and report findings with severity plus file and line references. Do not edit files.',
                         sessionSubagent: nestedSubagent,
                     },
                 },
@@ -4307,16 +4307,113 @@ test.describe('中文 Web 消息与工具演示', () => {
                 ev: { t: 'start', title: 'Review agent' },
             },
             {
-                id: 'subagent-nested-text',
+                id: 'subagent-nested-progress',
                 time: baseTime + 8_000,
                 role: 'agent',
                 turn,
                 subagent: nestedSubagent,
-                ev: { t: 'text', text: 'Nested review visible result.' },
+                ev: { t: 'text', text: 'Checking the authorization boundary and every caller before reporting findings.' },
+            },
+            {
+                id: 'subagent-nested-hidden-reasoning',
+                time: baseTime + 8_500,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: { t: 'text', text: 'Private review reasoning must stay hidden.', thinking: true },
+            },
+            {
+                id: 'subagent-review-read-call',
+                time: baseTime + 9_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: {
+                    t: 'tool-call-start',
+                    call: 'subagent-review-read-call',
+                    name: 'Read',
+                    title: 'Read authorization handler',
+                    description: 'Read authorization handler',
+                    args: {
+                        file_path: 'packages/happy-app/sources/api/review.ts',
+                        offset: 32,
+                        limit: 36,
+                    },
+                },
+            },
+            {
+                id: 'subagent-review-read-end',
+                time: baseTime + 10_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: { t: 'tool-call-end', call: 'subagent-review-read-call', status: 'completed' },
+            },
+            {
+                id: 'subagent-review-grep-call',
+                time: baseTime + 11_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: {
+                    t: 'tool-call-start',
+                    call: 'subagent-review-grep-call',
+                    name: 'Grep',
+                    title: 'Find authorization guards',
+                    description: 'Find authorization guards',
+                    args: {
+                        pattern: 'authorize|requireSession',
+                        path: 'packages/happy-app/sources/api',
+                        output_mode: 'content',
+                        '-n': true,
+                    },
+                },
+            },
+            {
+                id: 'subagent-review-grep-end',
+                time: baseTime + 12_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: { t: 'tool-call-end', call: 'subagent-review-grep-call', status: 'completed' },
+            },
+            {
+                id: 'subagent-review-bash-call',
+                time: baseTime + 13_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: {
+                    t: 'tool-call-start',
+                    call: 'subagent-review-bash-call',
+                    name: 'Bash',
+                    title: 'Run focused authorization tests',
+                    description: 'Run focused authorization tests',
+                    args: { command: 'pnpm --filter happy-app test --run authorization.test.ts' },
+                },
+            },
+            {
+                id: 'subagent-review-bash-end',
+                time: baseTime + 14_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: { t: 'tool-call-end', call: 'subagent-review-bash-call', status: 'completed' },
+            },
+            {
+                id: 'subagent-nested-finding',
+                time: baseTime + 15_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: {
+                    t: 'text',
+                    text: '[P1] Missing authorization guard - packages/happy-app/sources/api/review.ts:42\nThe new handler trusts the request owner before requireSession runs, so another signed-in user can read the review. Add the same requireSession ownership check used by the sibling endpoint.',
+                },
             },
             {
                 id: 'subagent-nested-stop',
-                time: baseTime + 9_000,
+                time: baseTime + 16_000,
                 role: 'agent',
                 turn,
                 subagent: nestedSubagent,
@@ -4324,7 +4421,7 @@ test.describe('中文 Web 消息与工具演示', () => {
             },
             {
                 id: 'subagent-nested-call-end',
-                time: baseTime + 10_000,
+                time: baseTime + 17_000,
                 role: 'agent',
                 turn,
                 subagent: parentSubagent,
@@ -4332,7 +4429,7 @@ test.describe('中文 Web 消息与工具演示', () => {
             },
             {
                 id: 'subagent-parent-stop',
-                time: baseTime + 11_000,
+                time: baseTime + 18_000,
                 role: 'agent',
                 turn,
                 subagent: parentSubagent,
@@ -4340,14 +4437,14 @@ test.describe('中文 Web 消息与工具演示', () => {
             },
             {
                 id: 'subagent-parent-call-end',
-                time: baseTime + 12_000,
+                time: baseTime + 19_000,
                 role: 'agent',
                 turn,
                 ev: { t: 'tool-call-end', call: 'subagent-parent-call', status: 'completed' },
             },
             {
                 id: 'subagent-root-final',
-                time: baseTime + 13_000,
+                time: baseTime + 20_000,
                 role: 'agent',
                 turn,
                 ev: { t: 'text', text: 'Root final answer must stay outside the inspector.' },
@@ -4379,25 +4476,41 @@ test.describe('中文 Web 消息与工具演示', () => {
         await expect(inspector).toBeVisible();
         await expect(inspector.getByTestId('subagent-inspector-title')).toHaveText('Implementation agent');
         await expect(inspector.getByTestId('subagent-inspector-status')).toHaveText('已完成');
+        await expect(inspector.getByTestId('subagent-inspector-task')).toHaveText(
+            'Implement the authorization change and ask a review agent to verify it.',
+        );
         await expect(inspector.getByText('Parent agent visible summary.', { exact: true })).toBeVisible();
         await expect(inspector.getByText('pnpm --filter happy-app test', { exact: true })).toBeVisible();
         await expect(inspector.getByText('Private parent reasoning must stay hidden.', { exact: true })).toHaveCount(0);
         await expect(inspector.getByText('Root final answer must stay outside the inspector.', { exact: true })).toHaveCount(0);
         await expect(page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible'))
             .toHaveAttribute('aria-label', '收起子 Agent「Implementation agent」详情');
-        await pauseForRecordedReview(page, 1_000);
-        await page.screenshot({
-            path: subagentInspectorScreenshotPath(testInfo, 'subagent-inspector-desktop-after.png'),
-            fullPage: true,
-        });
-
         const nestedRow = inspector.getByTestId(`activity-subagent-${nestedSubagent}`);
         await expect(nestedRow).toBeVisible();
         await nestedRow.click();
         await expect(inspector.getByTestId('subagent-inspector-title')).toHaveText('Review agent');
-        await expect(inspector.getByText('Nested review visible result.', { exact: true })).toBeVisible();
+        await expect(inspector.getByTestId('subagent-inspector-task')).toContainText(
+            'Review the authorization changes in packages/happy-app/sources/api/review.ts.',
+        );
+        await expect(inspector.getByText(
+            'Checking the authorization boundary and every caller before reporting findings.',
+            { exact: true },
+        )).toBeVisible();
+        await expect(inspector.getByText('packages/happy-app/sources/api/review.ts', { exact: true })).toBeVisible();
+        await expect(inspector.getByText('grep(pattern: authorize|requireSession)', { exact: true })).toBeVisible();
+        await expect(inspector.getByText(
+            'pnpm --filter happy-app test --run authorization.test.ts',
+            { exact: true },
+        )).toBeVisible();
+        await expect(inspector.getByText(/\[P1\] Missing authorization guard/)).toBeVisible();
+        await expect(inspector.getByText('Private review reasoning must stay hidden.', { exact: true })).toHaveCount(0);
         await expect(inspector.getByText('Parent agent visible summary.', { exact: true })).toHaveCount(0);
+        await expect(inspector.getByText('Root final answer must stay outside the inspector.', { exact: true })).toHaveCount(0);
         await pauseForRecordedReview(page, 900);
+        await page.screenshot({
+            path: subagentInspectorScreenshotPath(testInfo, 'subagent-inspector-desktop-after.png'),
+            fullPage: true,
+        });
 
         await inspector.getByTestId('subagent-inspector-back').click();
         await expect(inspector).toHaveCount(0);
@@ -4406,6 +4519,7 @@ test.describe('中文 Web 消息与工具演示', () => {
 
         await page.setViewportSize({ width: 390, height: 844 });
         await expect(page.locator('[data-testid="right-swipe-panel-host"]:visible')).toBeVisible();
+        await expect(page.getByTestId('right-swipe-panel-edge-handle')).toHaveCount(0);
         await expect(desktopPanel).toHaveCount(0);
         await expect(parentRow).toBeVisible();
         const mobileParentRowBox = await parentRow.boundingBox();
@@ -4415,13 +4529,21 @@ test.describe('中文 Web 消息与工具演示', () => {
         await page.screenshot({
             path: subagentInspectorScreenshotPath(testInfo, 'subagent-inspector-mobile-before.png'),
         });
-        await parentRow.click();
+        const mobileReviewRow = page.locator(`[data-testid="activity-subagent-${nestedSubagent}"]:visible`).first();
+        await expect(mobileReviewRow).toBeVisible();
+        await mobileReviewRow.click();
         const drawer = page.locator('[data-testid="right-swipe-panel-drawer"]:visible');
         await expect(drawer).toHaveAttribute('role', 'dialog');
         await expect(drawer.getByTestId('subagent-inspector-panel')).toBeVisible();
-        await expect(drawer.getByText('Parent agent visible summary.', { exact: true })).toBeVisible();
+        await expect(drawer.getByTestId('subagent-inspector-title')).toHaveText('Review agent');
+        await expect(drawer.getByTestId('subagent-inspector-task')).toContainText(
+            'Review the authorization changes in packages/happy-app/sources/api/review.ts.',
+        );
+        await expect(drawer.getByText(/\[P1\] Missing authorization guard/)).toBeVisible();
+        await expect(drawer.getByText('Parent agent visible summary.', { exact: true })).toHaveCount(0);
+        await expect(page.getByTestId('right-swipe-panel-edge-handle')).toHaveCount(0);
         await expect(drawer.getByTestId('right-swipe-panel-close-button'))
-            .toHaveAttribute('aria-label', '收起子 Agent「Implementation agent」详情');
+            .toHaveAttribute('aria-label', '收起子 Agent「Review agent」详情');
         await pauseForRecordedReview(page, 1_000);
         await page.screenshot({
             path: subagentInspectorScreenshotPath(testInfo, 'subagent-inspector-mobile-after.png'),

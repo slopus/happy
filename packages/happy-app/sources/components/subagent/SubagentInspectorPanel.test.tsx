@@ -55,6 +55,7 @@ function toolMessage(
     id: string,
     input: Record<string, unknown>,
     children: Message[] = [],
+    name = 'Agent',
 ): ToolCallMessage {
     return {
         kind: 'tool-call',
@@ -62,7 +63,7 @@ function toolMessage(
         localId: null,
         createdAt: Number(id),
         tool: {
-            name: 'Agent',
+            name,
             input,
             state: 'completed',
             createdAt: Number(id),
@@ -89,20 +90,27 @@ describe('SubagentInspectorPanel', () => {
         mocks.messages = [];
     });
 
-    it('renders only the selected agent transcript and forwards back', () => {
-        const targetText: Message = {
+    it('renders the selected review task, visible work, and finding without leaking hidden or parent content', () => {
+        const visibleProgress: Message = {
             kind: 'agent-text',
-            id: 'target-text',
+            id: 'review-progress',
             localId: null,
             createdAt: 3,
-            text: 'Target output',
+            text: 'Checking the authorization boundary before reviewing callers.',
         };
-        const siblingText: Message = {
+        const finalFinding: Message = {
             kind: 'agent-text',
-            id: 'sibling-text',
+            id: 'review-finding',
             localId: null,
-            createdAt: 5,
-            text: 'Sibling output',
+            createdAt: 7,
+            text: '[P1] Missing authorization guard - sources/api/review.ts:42',
+        };
+        const parentText: Message = {
+            kind: 'agent-text',
+            id: 'parent-text',
+            localId: null,
+            createdAt: 9,
+            text: 'Parent implementation summary must stay outside the review inspector.',
         };
         const ownStatus: Message = {
             kind: 'agent-event',
@@ -123,13 +131,24 @@ describe('SubagentInspectorPanel', () => {
             text: 'Private chain of thought',
             isThinking: true,
         };
+        const readCall = toolMessage('4', { file_path: 'sources/api/review.ts' }, [], 'Read');
+        const grepCall = toolMessage('5', { pattern: 'authorize', path: 'sources/api' }, [], 'Grep');
+        const bashCall = toolMessage('6', { command: 'pnpm --filter happy-app test' }, [], 'Bash');
         mocks.messages = [
-            toolMessage('1', { sessionSubagent: 'agent-target', title: 'Live title' }, [
+            toolMessage('1', {
+                sessionSubagent: 'agent-target',
+                title: 'Live title',
+                prompt: 'Review the authorization change. Report findings with file and line references.',
+            }, [
                 ownStatus,
                 hiddenReasoning,
-                targetText,
+                visibleProgress,
+                readCall,
+                grepCall,
+                bashCall,
+                finalFinding,
             ]),
-            toolMessage('4', { sessionSubagent: 'agent-sibling', title: 'Live title' }, [siblingText]),
+            toolMessage('8', { sessionSubagent: 'agent-parent', title: 'Parent agent' }, [parentText]),
             {
                 kind: 'agent-event',
                 id: 'target-status',
@@ -153,10 +172,18 @@ describe('SubagentInspectorPanel', () => {
         expect(renderer.root.findByProps({ testID: 'subagent-inspector-title' }).props.children).toBe('Live title');
         expect(renderer.root.findByProps({ testID: 'subagent-inspector-status' }).props.children)
             .toBe('toolGroup.subagentStatus.completed');
+        expect(renderer.root.findByProps({ testID: 'subagent-inspector-task' }).props.children)
+            .toBe('Review the authorization change. Report findings with file and line references.');
         const renderedMessages = renderer.root.findAllByType('MessageView');
-        expect(renderedMessages).toHaveLength(1);
-        expect(renderedMessages[0].props.message).toBe(targetText);
+        expect(renderedMessages.map((node: any) => node.props.message)).toEqual([
+            visibleProgress,
+            readCall,
+            grepCall,
+            bashCall,
+            finalFinding,
+        ]);
         expect(JSON.stringify(renderer.toJSON())).not.toContain('Private chain of thought');
+        expect(JSON.stringify(renderer.toJSON())).not.toContain('Parent implementation summary');
 
         act(() => renderer.root.findByProps({ testID: 'subagent-inspector-back' }).props.onPress());
         expect(onBack).toHaveBeenCalledOnce();

@@ -842,6 +842,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                 openAccessibilityLabel={t('desktopWorkspace.showPanel', { panel: compactPanelLabel })}
                 panelAccessibilityLabel={compactPanelLabel}
                 panelContent={rightPanel}
+                showEdgeHandle={false}
             >
                 {mainContent}
             </RightSwipePanelHost>

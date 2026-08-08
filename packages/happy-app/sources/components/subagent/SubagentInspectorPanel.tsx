@@ -35,6 +35,10 @@ export const SubagentInspectorPanel = React.memo(function SubagentInspectorPanel
     const title = liveActivity?.title ?? selection.title ?? selection.id;
     const status = liveActivity?.status ?? selection.status;
     const transcriptMessages = transcript?.messages ?? [];
+    const taskPrompt = typeof transcript?.agent.tool.input?.prompt === 'string'
+        ? transcript.agent.tool.input.prompt.trim()
+        : '';
+    const hasTranscriptContent = taskPrompt.length > 0 || transcriptMessages.length > 0;
 
     return (
         <View style={styles.container} testID="subagent-inspector-panel">
@@ -63,12 +67,20 @@ export const SubagentInspectorPanel = React.memo(function SubagentInspectorPanel
                 </View>
             </View>
 
-            {transcriptMessages.length > 0 ? (
+            {hasTranscriptContent ? (
                 <ScrollView
                     contentContainerStyle={styles.transcript}
                     showsVerticalScrollIndicator={false}
                     testID="subagent-inspector-transcript"
                 >
+                    {taskPrompt.length > 0 && (
+                        <View style={styles.taskBlock} testID="subagent-inspector-task-block">
+                            <Text style={styles.taskLabel}>{t('tools.names.task')}</Text>
+                            <Text selectable style={styles.taskText} testID="subagent-inspector-task">
+                                {taskPrompt}
+                            </Text>
+                        </View>
+                    )}
                     {transcriptMessages.map((message) => (
                         <MessageView
                             key={`${message.kind}-${message.id}`}
@@ -172,6 +184,24 @@ const styles = StyleSheet.create((theme) => ({
     transcript: {
         paddingTop: 12,
         paddingBottom: 24,
+    },
+    taskBlock: {
+        gap: 5,
+        marginBottom: 12,
+        paddingHorizontal: 12,
+        paddingBottom: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: theme.colors.divider,
+    },
+    taskLabel: {
+        color: theme.colors.textSecondary,
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    taskText: {
+        color: theme.colors.text,
+        fontSize: 13,
+        lineHeight: 19,
     },
     empty: {
         flex: 1,

@@ -569,6 +569,7 @@ describe('SessionView Agent-space boundary', () => {
         expect(mocks.globalRightSidebarShortcut).toEqual(expect.any(Function));
         act(() => mocks.globalRightSidebarShortcut?.());
         expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(false);
+        expect(renderer.root.findByType('RightSwipePanelHost').props.showEdgeHandle).toBe(false);
 
         act(() => renderer.unmount());
     });
