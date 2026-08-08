@@ -24,6 +24,7 @@ import {
     TerminalAttachResult,
     TerminalCreateOptions,
     TerminalCreateResult,
+    TerminalInputFrame,
     TerminalOutputEvent,
     TerminalRecord,
 } from './types';
@@ -74,6 +75,9 @@ export class TerminalManager {
     private readonly entries = new Map<string, TerminalEntry>();
     private readonly pendingApprovals = new Map<string, string>();
     private readonly lastProcessedInputSeqByStream = new Map<string, number>();
+    /** Daemon generation. Changes on every daemon start; frames from an older
+     *  epoch are rejected so a restarted daemon never re-executes stale input. */
+    private readonly streamEpoch = createId();
     private persistQueue: Promise<void> = Promise.resolve();
     private readonly options: Required<Pick<TerminalManagerOptions,
         | 'shell'
@@ -94,6 +98,10 @@ export class TerminalManager {
         return this.options.policyStore;
     }
 
+    getStreamEpoch(): string {
+        return this.streamEpoch;
+    }
+
     /**
      * Load the persisted registry and recover what can be recovered.
      * tmux-backed sessions are reattached; plain PTY sessions are marked
@@ -104,6 +112,7 @@ export class TerminalManager {
         await this.options.policyStore.load();
 
         const records = await this.loadRegistry();
+        const recoveredSessions = new Map<string, ShellSession>();
         const kept: TerminalRecord[] = [];
         for (const record of records) {
             if (record.status === 'pending') {
@@ -112,7 +121,7 @@ export class TerminalManager {
             if (record.status === 'running' && record.tmuxTarget) {
                 try {
                     const session = await this.createSession(record, 80, 24);
-                    this.wireSession(record, session);
+                    recoveredSessions.set(record.terminalId, session);
                     record.status = 'running';
                     kept.push(record);
                     continue;
@@ -131,9 +140,17 @@ export class TerminalManager {
         for (const record of kept) {
             this.entries.set(record.terminalId, {
                 record,
-                session: null,
+                session: recoveredSessions.get(record.terminalId) ?? null,
                 ring: new OutputRingBuffer(this.options.ringBufferMaxBytes),
             });
+        }
+        // Wire AFTER entries exist: wireSession resolves the entry by id.
+        for (const record of kept) {
+            const session = recoveredSessions.get(record.terminalId);
+            const entry = this.entries.get(record.terminalId);
+            if (session && entry) {
+                this.wireSession(record, session);
+            }
         }
         await this.persist();
     }
@@ -250,6 +267,7 @@ export class TerminalManager {
                 nextSeq: 0,
                 truncated: false,
                 replayFrames: [],
+                streamEpoch: this.streamEpoch,
             };
         }
         if (entry.record.status !== 'running' || !entry.session) {
@@ -260,11 +278,16 @@ export class TerminalManager {
                 truncated: false,
                 replayFrames: [],
                 exitCode: entry.record.exitCode,
+                streamEpoch: this.streamEpoch,
             };
         }
 
-        const replay = entry.ring.replay(lastSeq);
+        // Snapshot first: the flush barrier guarantees every frame pushed up
+        // to this point is included. Frames arriving afterwards are replayed
+        // against the barrier so nothing is duplicated or lost.
         const snapshot = await entry.session.snapshot();
+        const barrierSeq = entry.ring.nextSeq - 1;
+        const replay = entry.ring.replay(barrierSeq);
         entry.record.lastAttachedAt = Date.now();
         await this.persist();
 
@@ -274,6 +297,7 @@ export class TerminalManager {
             nextSeq: replay.nextSeq,
             truncated: replay.truncated,
             replayFrames: replay.frames,
+            streamEpoch: this.streamEpoch,
         };
     }
 
@@ -283,37 +307,65 @@ export class TerminalManager {
     }
 
     /**
-     * Idempotent input application, keyed by client stream.
-     * Duplicate frames (re-sent after a lost ACK) are acked again but never
-     * executed twice; out-of-order frames are rejected without an ACK.
+     * Unified, idempotent control-frame gate keyed by client stream.
+     * Every kind (input/resize/signal) advances the per-stream sequence, so
+     * ordering is exact across kinds. Duplicate frames are acked but never
+     * executed twice; out-of-order frames are rejected; frames from an older
+     * daemon epoch are rejected outright (at-most-once after restarts).
      */
-    applyInput(
+    applyFrame(
         terminalId: string,
-        streamId: string,
-        seq: number,
-        data: string,
+        frame: TerminalInputFrame,
     ): 'applied' | 'duplicate' | 'gap' | 'invalid' {
-        if (typeof streamId !== 'string' || streamId.length === 0 || streamId.length > 128) {
+        if (frame.epoch !== this.streamEpoch) {
             return 'invalid';
         }
-        if (!Number.isSafeInteger(seq) || seq <= 0) {
+        if (typeof frame.streamId !== 'string'
+            || frame.streamId.length === 0
+            || frame.streamId.length > 128) {
             return 'invalid';
         }
-        if (typeof data !== 'string' || Buffer.byteLength(data, 'utf8') > MAX_INPUT_BYTES) {
+        if (!Number.isSafeInteger(frame.seq) || frame.seq <= 0) {
+            return 'invalid';
+        }
+        if (frame.kind === 'input'
+            && (typeof frame.data !== 'string'
+                || Buffer.byteLength(frame.data, 'utf8') > MAX_INPUT_BYTES)) {
+            return 'invalid';
+        }
+        if ((frame.kind === 'resize' && (!isValidDimension(frame.cols ?? 0)
+            || !isValidDimension(frame.rows ?? 0)))
+            || (frame.kind === 'signal'
+                && (typeof frame.signal !== 'string' || frame.signal.length === 0))) {
             return 'invalid';
         }
 
-        const key = `${terminalId}:${streamId}`;
+        const key = `${terminalId}:${frame.streamId}`;
         const last = this.lastProcessedInputSeqByStream.get(key) ?? 0;
-        if (seq <= last) {
+        if (frame.seq <= last) {
             return 'duplicate';
         }
-        if (seq !== last + 1) {
+        if (frame.seq !== last + 1) {
             return 'gap';
         }
 
-        this.requireRunningSession(terminalId).write(data);
-        this.lastProcessedInputSeqByStream.set(key, seq);
+        const session = this.requireRunningSession(terminalId);
+        switch (frame.kind) {
+            case 'input':
+                session.write(frame.data ?? '');
+                break;
+            case 'resize':
+                session.resize(frame.cols ?? 80, frame.rows ?? 24);
+                break;
+            case 'signal':
+                if (frame.signal === 'SIGINT') {
+                    session.write('\x03');
+                } else {
+                    return 'invalid';
+                }
+                break;
+        }
+        this.lastProcessedInputSeqByStream.set(key, frame.seq);
         return 'applied';
     }
 

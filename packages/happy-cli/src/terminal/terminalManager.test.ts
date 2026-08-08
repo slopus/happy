@@ -2,7 +2,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ApprovalPolicy, ShellSession, TerminalOutputEvent, TerminalRecord } from './types';
+import {
+    ApprovalPolicy,
+    ShellSession,
+    TerminalInputFrame,
+    TerminalOutputEvent,
+    TerminalRecord,
+} from './types';
 import { TerminalManager } from './terminalManager';
 import { TerminalPolicyStore } from './terminalPolicyStore';
 
@@ -97,7 +103,12 @@ interface Harness {
 }
 
 async function createHarness(
-    options: { policy?: ApprovalPolicy; ringBufferMaxBytes?: number } = {},
+    options: {
+        policy?: ApprovalPolicy;
+        ringBufferMaxBytes?: number;
+        sessionKind?: 'pty' | 'tmux';
+        tmuxTargetForRecovery?: string;
+    } = {},
 ): Promise<Harness> {
     const dir = tempDir();
     const files = {
@@ -122,7 +133,10 @@ async function createHarness(
         tmuxEnabled: false,
         ringBufferMaxBytes: options.ringBufferMaxBytes,
         sessionFactory: async (record: TerminalRecord) => {
-            const session = new FakeSession('pty');
+            const session = new FakeSession(
+                options.sessionKind ?? 'pty',
+                options.tmuxTargetForRecovery,
+            );
             sessions.set(record.terminalId, session);
             return session;
         },
@@ -199,9 +213,12 @@ describe('TerminalManager', () => {
 
         const attached = await manager.attach(terminalId, 0);
         expect(attached.snapshot).toBe('fake-snapshot');
-        expect(attached.replayFrames.map((frame) => frame.data)).toEqual(['line-1\n', 'line-2\n']);
+        // Snapshot-first barrier: retained output is inside the snapshot, so
+        // replay only carries frames pushed after the snapshot.
+        expect(attached.replayFrames).toEqual([]);
         expect(attached.nextSeq).toBe(3);
         expect(attached.status).toBe('running');
+        expect(attached.streamEpoch).toBe(manager.getStreamEpoch());
 
         const caughtUp = await manager.attach(terminalId, 2);
         expect(caughtUp.replayFrames).toEqual([]);
@@ -244,7 +261,10 @@ describe('TerminalManager', () => {
     });
 
     it('reattaches tmux-backed terminals after a restart', async () => {
-        const { manager, sessions, files } = await createHarness({ policy: 'none' });
+        const { manager, sessions, frames, files } = await createHarness({
+            policy: 'none',
+            sessionKind: 'tmux',
+        });
         writeFileSync(files.terminals, JSON.stringify({
             version: 1,
             terminals: [{
@@ -259,8 +279,17 @@ describe('TerminalManager', () => {
         }));
         await manager.start();
 
-        expect(manager.get('b'.repeat(24))?.status).toBe('running');
-        expect(sessions.has('b'.repeat(24))).toBe(true);
+        const terminalId = 'b'.repeat(24);
+        expect(manager.get(terminalId)?.status).toBe('running');
+        const session = sessions.get(terminalId);
+        expect(session).toBeDefined();
+
+        // Recovered sessions must be wired end-to-end, not just created.
+        session!.emitOutput('hello-after-recovery\n');
+        expect(frames.map((frame) => frame.data)).toEqual(['hello-after-recovery\n']);
+        const attached = await manager.attach(terminalId, 0);
+        expect(attached.status).toBe('running');
+        expect(attached.snapshot).toBe('fake-snapshot');
     });
 
     it('pauses and resumes the shell via transport backpressure', async () => {
@@ -310,16 +339,99 @@ describe('TerminalManager', () => {
         const result = await manager.create({ cwd: tmpdir(), cols: 80, rows: 24 });
         const terminalId = (result as { terminalId: string }).terminalId;
         const session = sessions.get(terminalId)!;
+        const epoch = manager.getStreamEpoch();
+        const frame = (partial: Partial<TerminalInputFrame>): TerminalInputFrame => ({
+            version: 2,
+            epoch,
+            streamId: 'stream-a',
+            terminalId,
+            machineId: 'machine-1',
+            direction: 'client-to-daemon' as const,
+            seq: 1,
+            kind: 'input',
+            ...partial,
+        });
 
-        expect(manager.applyInput(terminalId, 'stream-a', 1, 'echo one')).toBe('applied');
+        expect(manager.applyFrame(terminalId, frame({ seq: 1, kind: 'input', data: 'echo one' })))
+            .toBe('applied');
         // Duplicate (lost ACK, client resent) must be acked but never re-run.
-        expect(manager.applyInput(terminalId, 'stream-a', 1, 'echo one')).toBe('duplicate');
+        expect(manager.applyFrame(terminalId, frame({ seq: 1, kind: 'input', data: 'echo one' })))
+            .toBe('duplicate');
         // Out-of-order input is rejected without executing.
-        expect(manager.applyInput(terminalId, 'stream-a', 3, 'echo three')).toBe('gap');
+        expect(manager.applyFrame(terminalId, frame({ seq: 3, kind: 'input', data: 'echo three' })))
+            .toBe('gap');
         // A different writer stream starts its own sequence.
-        expect(manager.applyInput(terminalId, 'stream-b', 1, 'echo bee')).toBe('applied');
+        expect(manager.applyFrame(terminalId, frame({
+            streamId: 'stream-b',
+            seq: 1,
+            kind: 'input',
+            data: 'echo bee',
+        }))).toBe('applied');
 
         expect(session.written).toEqual(['echo one', 'echo bee']);
+    });
+
+    it('orders resize and input in a single stream', async () => {
+        const { manager, sessions } = await createHarness({ policy: 'none' });
+        await manager.start();
+        const result = await manager.create({ cwd: tmpdir(), cols: 80, rows: 24 });
+        const terminalId = (result as { terminalId: string }).terminalId;
+        const session = sessions.get(terminalId)!;
+        const epoch = manager.getStreamEpoch();
+        const frame = (partial: Partial<TerminalInputFrame>): TerminalInputFrame => ({
+            version: 2,
+            epoch,
+            streamId: 'stream-a',
+            terminalId,
+            machineId: 'machine-1',
+            direction: 'client-to-daemon' as const,
+            seq: 1,
+            kind: 'input',
+            ...partial,
+        });
+
+        // resize seq=1 advances the watermark; input seq=2 must NOT be seen as
+        // a gap (regression: resize used to break the next input).
+        expect(manager.applyFrame(terminalId, frame({
+            seq: 1,
+            kind: 'resize',
+            cols: 120,
+            rows: 40,
+        }))).toBe('applied');
+        expect(manager.applyFrame(terminalId, frame({ seq: 2, kind: 'input', data: 'ls' })))
+            .toBe('applied');
+        expect(session.resizeCalls).toEqual([[120, 40]]);
+        expect(session.written).toEqual(['ls']);
+
+        // Replayed stale resize is deduped, not re-executed.
+        expect(manager.applyFrame(terminalId, frame({
+            seq: 1,
+            kind: 'resize',
+            cols: 100,
+            rows: 30,
+        }))).toBe('duplicate');
+        expect(session.resizeCalls).toEqual([[120, 40]]);
+    });
+
+    it('rejects frames from an older daemon epoch', async () => {
+        const { manager, sessions } = await createHarness({ policy: 'none' });
+        await manager.start();
+        const result = await manager.create({ cwd: tmpdir(), cols: 80, rows: 24 });
+        const terminalId = (result as { terminalId: string }).terminalId;
+        const session = sessions.get(terminalId)!;
+
+        expect(manager.applyFrame(terminalId, {
+            version: 2,
+            epoch: 'stale-epoch',
+            streamId: 'stream-a',
+            terminalId,
+            machineId: 'machine-1',
+            direction: 'client-to-daemon',
+            seq: 1,
+            kind: 'input',
+            data: 'rm -rf /tmp/x',
+        })).toBe('invalid');
+        expect(session.written).toEqual([]);
     });
 
     it('rejects invalid input frames', async () => {
@@ -327,11 +439,41 @@ describe('TerminalManager', () => {
         await manager.start();
         const result = await manager.create({ cwd: tmpdir(), cols: 80, rows: 24 });
         const terminalId = (result as { terminalId: string }).terminalId;
+        const epoch = manager.getStreamEpoch();
+        const frame = (partial: Partial<TerminalInputFrame>): TerminalInputFrame => ({
+            version: 2,
+            epoch,
+            streamId: 'stream-a',
+            terminalId,
+            machineId: 'machine-1',
+            direction: 'client-to-daemon' as const,
+            seq: 1,
+            kind: 'input',
+            ...partial,
+        });
 
-        expect(manager.applyInput(terminalId, '', 1, 'x')).toBe('invalid');
-        expect(manager.applyInput(terminalId, 'stream-a', 0, 'x')).toBe('invalid');
-        expect(manager.applyInput(terminalId, 'stream-a', 1.5, 'x')).toBe('invalid');
-        expect(manager.applyInput(terminalId, 'stream-a', 1, 'x'.repeat(1024 * 1024 + 1))).toBe('invalid');
+        expect(manager.applyFrame(terminalId, frame({ streamId: '', seq: 1, kind: 'input', data: 'x' })))
+            .toBe('invalid');
+        expect(manager.applyFrame(terminalId, frame({ seq: 0, kind: 'input', data: 'x' })))
+            .toBe('invalid');
+        expect(manager.applyFrame(terminalId, frame({ seq: 1.5, kind: 'input', data: 'x' })))
+            .toBe('invalid');
+        expect(manager.applyFrame(terminalId, frame({
+            seq: 1,
+            kind: 'input',
+            data: 'x'.repeat(1024 * 1024 + 1),
+        }))).toBe('invalid');
+        expect(manager.applyFrame(terminalId, frame({
+            seq: 1,
+            kind: 'resize',
+            cols: 0,
+            rows: 24,
+        }))).toBe('invalid');
+        expect(manager.applyFrame(terminalId, frame({
+            seq: 1,
+            kind: 'signal',
+            signal: 'SIGKILL',
+        }))).toBe('invalid');
     });
 
     it('rejects invalid create parameters at the daemon boundary', async () => {
