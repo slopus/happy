@@ -927,9 +927,6 @@ importers:
       '@paralleldrive/cuid2':
         specifier: ^2.2.2
         version: 2.3.1
-      '@slopus/happy-wire':
-        specifier: workspace:*
-        version: link:../happy-wire
       '@stablelib/base64':
         specifier: ^2.0.1
         version: 2.0.1
@@ -1018,6 +1015,9 @@ importers:
       '@eslint/compat':
         specifier: ^1
         version: 1.4.1(eslint@9.39.2(jiti@2.6.1))
+      '@slopus/happy-wire':
+        specifier: workspace:*
+        version: link:../happy-wire
       '@types/inquirer':
         specifier: ^9.0.9
         version: 9.0.9
