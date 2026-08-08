@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    getTerminalCollectionState,
     getTerminalConnectionPresentation,
     getTerminalNotices,
 } from './terminalUiState';
@@ -46,5 +47,43 @@ describe('terminalUiState', () => {
                 message: 'Older output was trimmed while you were away.',
             },
         ]);
+    });
+
+    it('keeps terminal collection states mutually exclusive', () => {
+        expect(getTerminalCollectionState({
+            online: false,
+            loading: true,
+            disabled: true,
+            error: 'unavailable',
+            count: 2,
+        })).toBe('offline');
+        expect(getTerminalCollectionState({
+            online: true,
+            loading: false,
+            disabled: true,
+            error: null,
+            count: 0,
+        })).toBe('disabled');
+        expect(getTerminalCollectionState({
+            online: true,
+            loading: false,
+            disabled: false,
+            error: 'unavailable',
+            count: 0,
+        })).toBe('error');
+        expect(getTerminalCollectionState({
+            online: true,
+            loading: false,
+            disabled: false,
+            error: null,
+            count: 0,
+        })).toBe('empty');
+        expect(getTerminalCollectionState({
+            online: true,
+            loading: false,
+            disabled: false,
+            error: null,
+            count: 2,
+        })).toBe('ready');
     });
 });
