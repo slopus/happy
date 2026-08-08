@@ -12,6 +12,10 @@ vi.mock('@/components/CommandPalette/CommandPaletteModal', () => ({
     CommandPaletteModal: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+vi.mock('react-native', () => ({
+    Platform: { OS: 'web' },
+}));
+
 vi.mock('./BaseModal', () => ({
     BaseModal: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -59,7 +63,6 @@ describe('CustomModal command palette close order', () => {
         });
 
         act(() => mocks.paletteClose?.(action));
-        act(() => vi.advanceTimersByTime(200));
         expect(events).toEqual(['provider-close']);
 
         act(() => renderer!.unmount());

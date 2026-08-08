@@ -46,7 +46,11 @@ const SidebarNavigatorContent = React.memo(() => {
     const auth = useAuth();
     const isTablet = useIsTablet();
     const { theme } = useUnistyles();
-    const { leftVisible: showSidebar, leftWidth } = useDesktopWorkspaceLayout();
+    const {
+        leftExpandedWidth,
+        leftVisible: showSidebar,
+        leftWidth,
+    } = useDesktopWorkspaceLayout();
     const selectionMode = useSessionSelection((s) => s.active);
     const clearSelection = useSessionSelection((s) => s.clearSelection);
     const isDesktopLayout = auth.isAuthenticated && isTablet;
@@ -55,8 +59,8 @@ const SidebarNavigatorContent = React.memo(() => {
     // Calculate target drawer width
     const fullDrawerWidth = React.useMemo(() => {
         if (!isDesktopLayout) return 320;
-        return leftWidth;
-    }, [isDesktopLayout, leftWidth]);
+        return leftExpandedWidth;
+    }, [isDesktopLayout, leftExpandedWidth]);
     const drawerWidth = showSidebar ? fullDrawerWidth : 0;
 
     React.useEffect(() => {
@@ -132,7 +136,7 @@ const SidebarNavigatorContent = React.memo(() => {
                 backgroundColor: 'white',
                 borderRightWidth: 0,
                 width: drawerWidth,
-                overflow: 'hidden' as const,
+                overflow: Platform.OS === 'web' ? 'visible' as const : 'hidden' as const,
             } as any,
             swipeEnabled: false,
             drawerActiveTintColor: 'transparent',
@@ -148,9 +152,24 @@ const SidebarNavigatorContent = React.memo(() => {
                 aria-hidden={isDesktopLayout && !showSidebar}
                 accessibilityElementsHidden={isDesktopLayout && !showSidebar}
                 importantForAccessibility={isDesktopLayout && !showSidebar ? 'no-hide-descendants' : 'auto'}
+                {...(Platform.OS !== 'web' ? {
+                    pointerEvents: isDesktopLayout && !showSidebar ? 'none' : 'auto',
+                } : {})}
+                {...(isDesktopLayout && Platform.OS === 'web' ? {
+                    dataSet: {
+                        happyMotion: 'desktop-panel',
+                        happyMotionSide: 'left',
+                        happyMotionState: showSidebar ? 'open' : 'closed',
+                    },
+                    inert: showSidebar ? undefined : true,
+                } as any : {})}
                 style={[
                     styles.drawerContent,
-                    isDesktopLayout && !showSidebar && styles.drawerContentHidden,
+                    isDesktopLayout && Platform.OS === 'web' && { width: fullDrawerWidth },
+                    Platform.OS === 'web' && {
+                        pointerEvents: isDesktopLayout && !showSidebar ? 'none' : 'auto',
+                    },
+                    isDesktopLayout && !showSidebar && Platform.OS !== 'web' && styles.drawerContentHidden,
                 ]}
                 testID={isDesktopLayout ? 'desktop-left-sidebar' : undefined}
             >
@@ -160,7 +179,7 @@ const SidebarNavigatorContent = React.memo(() => {
                 />
             </View>
         ),
-        [isDesktopLayout, showSidebar]
+        [fullDrawerWidth, isDesktopLayout, showSidebar]
     );
 
     return (
@@ -404,7 +423,9 @@ const PersistentHeader = React.memo(() => {
 
 const styles = StyleSheet.create((theme) => ({
     drawerContent: {
+        backgroundColor: theme.colors.surface,
         flex: 1,
+        minWidth: 0,
     },
     drawerContentHidden: {
         display: 'none',

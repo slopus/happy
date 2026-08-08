@@ -29,8 +29,8 @@ const FLOW_AMP = 340;
 const NOISE_EPS = 0.8;
 
 interface ParticleCfg {
-    hr: number;     // 家位置离中心的半径
-    ha: number;     // 家位置方位角
+    homeX: number;
+    homeY: number;
 }
 
 // 确定性伪随机，保证每次渲染同一团形态（与原生版同 seed 同形态）。
@@ -43,7 +43,12 @@ function buildConfigs(count: number, seed: number): ParticleCfg[] {
     };
     const TAU = Math.PI * 2;
     for (let i = 0; i < count; i++) {
-        cfgs.push({ hr: HOME_R_MIN + rnd() * HOME_R_SPAN, ha: rnd() * TAU });
+        const radius = HOME_R_MIN + rnd() * HOME_R_SPAN;
+        const angle = rnd() * TAU;
+        cfgs.push({
+            homeX: Math.cos(angle) * radius,
+            homeY: Math.sin(angle) * radius,
+        });
     }
     return cfgs;
 }
@@ -101,6 +106,11 @@ interface Layer {
     noiseOffsetY: number;
 }
 
+// The field changes slowly, so 30fps preserves its ambient character while
+// halving the main-thread noise and draw work compared with an uncapped rAF.
+const WEB_FRAME_INTERVAL = 1000 / 30;
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
 export const ComposeHomeParticles = React.memo(({ mode }: Props) => {
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
     const { theme } = useUnistyles();
@@ -123,23 +133,14 @@ export const ComposeHomeParticles = React.memo(({ mode }: Props) => {
         let w = 0;
         let h = 0;
         let raf = 0;
+        let lastFrameAt = Number.NEGATIVE_INFINITY;
+        let documentVisible = !document.hidden;
+        const motionQuery = window.matchMedia(REDUCED_MOTION_QUERY);
+        let reduceMotion = motionQuery.matches;
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-        const resize = () => {
-            const rect = canvas.getBoundingClientRect();
-            w = rect.width;
-            h = rect.height;
-            canvas.width = Math.max(1, Math.round(w * dpr));
-            canvas.height = Math.max(1, Math.round(h * dpr));
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        };
-        const ro = new ResizeObserver(resize);
-        ro.observe(canvas);
-        resize();
-
         const TAU = Math.PI * 2;
-        const frame = (now: number) => {
-            raf = requestAnimationFrame(frame);
+        const draw = (now: number) => {
             if (w === 0 || h === 0) return;
             const t = now * 0.0017;
             const tz = t * FLOW_TIME;
@@ -154,8 +155,8 @@ export const ComposeHomeParticles = React.memo(({ mode }: Props) => {
                 ctx.beginPath();
                 for (let i = 0; i < layer.cfgs.length; i++) {
                     const p = layer.cfgs[i];
-                    const homeX = cx0 + Math.cos(p.ha) * p.hr;
-                    const homeY = cy0 + Math.sin(p.ha) * p.hr;
+                    const homeX = cx0 + p.homeX;
+                    const homeY = cy0 + p.homeY;
                     const nx = homeX * NOISE_SCALE + layer.noiseOffsetX;
                     const ny = homeY * NOISE_SCALE + layer.noiseOffsetY;
                     const p0 = vnoise(nx, ny, tz);
@@ -169,11 +170,54 @@ export const ComposeHomeParticles = React.memo(({ mode }: Props) => {
                 ctx.fill();
             }
         };
-        raf = requestAnimationFrame(frame);
+
+        const resize = () => {
+            const rect = canvas.getBoundingClientRect();
+            w = rect.width;
+            h = rect.height;
+            canvas.width = Math.max(1, Math.round(w * dpr));
+            canvas.height = Math.max(1, Math.round(h * dpr));
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            if (reduceMotion) draw(0);
+        };
+        const ro = new ResizeObserver(resize);
+        ro.observe(canvas);
+
+        const frame = (now: number) => {
+            raf = requestAnimationFrame(frame);
+            if (!documentVisible || reduceMotion || now - lastFrameAt < WEB_FRAME_INTERVAL) return;
+            lastFrameAt = now;
+            draw(now);
+        };
+
+        const refreshAnimation = () => {
+            cancelAnimationFrame(raf);
+            if (!documentVisible || reduceMotion) {
+                if (reduceMotion) draw(0);
+                return;
+            }
+            lastFrameAt = Number.NEGATIVE_INFINITY;
+            raf = requestAnimationFrame(frame);
+        };
+        const handleVisibilityChange = () => {
+            documentVisible = !document.hidden;
+            refreshAnimation();
+        };
+        const handleMotionPreferenceChange = (event: MediaQueryListEvent) => {
+            reduceMotion = event.matches;
+            refreshAnimation();
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        motionQuery.addEventListener('change', handleMotionPreferenceChange);
+        resize();
+        refreshAnimation();
 
         return () => {
             cancelAnimationFrame(raf);
             ro.disconnect();
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            motionQuery.removeEventListener('change', handleMotionPreferenceChange);
         };
     }, [mode, green, blue]);
 

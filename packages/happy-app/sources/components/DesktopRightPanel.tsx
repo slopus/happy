@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
@@ -61,6 +61,12 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
                                 accessibilityLabel={tab.label}
                                 accessibilityRole="tab"
                                 accessibilityState={{ selected }}
+                                {...(Platform.OS === 'web' ? {
+                                    dataSet: {
+                                        happyMotion: 'desktop-tab',
+                                        happyMotionState: selected ? 'selected' : 'idle',
+                                    },
+                                } as any : {})}
                                 key={tab.key}
                                 onPress={() => onTabChange(tab.key)}
                                 style={({ pressed }) => [

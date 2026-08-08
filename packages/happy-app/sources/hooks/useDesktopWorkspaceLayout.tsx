@@ -23,10 +23,12 @@ type ResizeSession = {
 
 type DesktopWorkspaceLayoutValue = {
     enabled: boolean;
+    leftExpandedWidth: number;
     leftVisible: boolean;
     leftMaximumWidth: number;
     leftWidth: number;
     rightPanelAvailable: boolean;
+    rightExpandedWidth: number;
     rightVisible: boolean;
     rightMaximumWidth: number;
     rightWidth: number;
@@ -41,10 +43,12 @@ type DesktopWorkspaceLayoutValue = {
 
 const EMPTY_LAYOUT: DesktopWorkspaceLayoutValue = {
     enabled: false,
+    leftExpandedWidth: 0,
     leftVisible: false,
     leftMaximumWidth: 0,
     leftWidth: 0,
     rightPanelAvailable: false,
+    rightExpandedWidth: 0,
     rightVisible: false,
     rightMaximumWidth: 0,
     rightWidth: 0,
@@ -114,6 +118,24 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
         rightVisible,
         windowWidth,
     }), [leftVisible, liveLeftWidth, liveRightWidth, rightVisible, windowWidth]);
+    const leftExpandedWidth = React.useMemo(() => enabled
+        ? getDesktopWorkspacePanelWidths({
+            leftVisible: true,
+            requestedLeftWidth: liveLeftWidth,
+            requestedRightWidth: liveRightWidth,
+            rightVisible,
+            windowWidth,
+        }).left
+        : 0, [enabled, liveLeftWidth, liveRightWidth, rightVisible, windowWidth]);
+    const rightExpandedWidth = React.useMemo(() => rightPanelAvailable
+        ? getDesktopWorkspacePanelWidths({
+            leftVisible,
+            requestedLeftWidth: liveLeftWidth,
+            requestedRightWidth: liveRightWidth,
+            rightVisible: true,
+            windowWidth,
+        }).right
+        : 0, [leftVisible, liveLeftWidth, liveRightWidth, rightPanelAvailable, windowWidth]);
     const leftMaximumWidth = getDesktopPanelResizeWidth({
         desiredWidth: Number.MAX_SAFE_INTEGER,
         oppositePanelVisible: rightVisible,
@@ -245,10 +267,12 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
 
     const value = React.useMemo<DesktopWorkspaceLayoutValue>(() => ({
         enabled,
+        leftExpandedWidth,
         leftVisible,
         leftMaximumWidth,
         leftWidth: panelWidths.left,
         rightPanelAvailable,
+        rightExpandedWidth,
         rightVisible,
         rightMaximumWidth,
         rightWidth: panelWidths.right,
@@ -266,10 +290,12 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
         endPanelResize,
         leftVisible,
         leftMaximumWidth,
+        leftExpandedWidth,
         panelWidths.left,
         panelWidths.right,
         resizingSide,
         rightPanelAvailable,
+        rightExpandedWidth,
         resizePanelBy,
         rightVisible,
         rightMaximumWidth,

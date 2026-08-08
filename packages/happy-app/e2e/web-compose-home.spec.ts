@@ -2614,10 +2614,10 @@ test('桌面三栏工作区支持独立折叠并保留禅模式前的偏好', as
 
     await sidebarToggle.click();
     await expect(sidebarToggle).toHaveAttribute('aria-expanded', 'false');
-    await expect.poll(async () => {
-        const box = await accountFooter.boundingBox();
-        return box ? box.x + box.width : 0;
-    }).toBeLessThanOrEqual(0);
+    await expect(leftPanel).toHaveAttribute('data-happy-motion-state', 'closed');
+    await expect(leftPanel).toHaveCSS('pointer-events', 'none');
+    await expect(leftPanel).toHaveCSS('visibility', 'hidden');
+    await expect(accountFooter).toBeHidden();
 
     const leftCollapsedMainBox = await mainPanel.boundingBox();
     expect(leftCollapsedMainBox).not.toBeNull();

@@ -8,6 +8,8 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { SessionHeaderChip } from '@/components/SessionHeaderChip';
 import { SessionInfoDropdown } from '@/components/SessionInfoDropdown';
 import { DesktopRightPanel, DesktopRightPanelToggleButton } from '@/components/DesktopRightPanel';
+import { DesktopPresenceTransition } from '@/components/DesktopPresenceTransition';
+import type { DesktopTransitionDirection } from '@/components/DesktopPresenceTransition.types';
 import { RightSwipePanelHost } from '@/components/RightSwipePanelHost';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
@@ -306,6 +308,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         leftVisible: desktopLeftSidebarVisible,
         leftWidth: desktopLeftSidebarWidth,
         rightPanelAvailable: layoutRightPanelAvailable,
+        rightExpandedWidth: layoutRightPanelExpandedWidth,
         rightWidth: layoutRightPanelWidth,
     } = useDesktopWorkspaceLayout();
     const sessionComposerHandleRef = React.useRef<ChatComposerHandle | null>(null);
@@ -334,7 +337,9 @@ export const SessionView = React.memo((props: { id: string }) => {
         }
     }, [isDataReady, responsiveRightPanelMode, session]);
 
-    const rightPanelWidth = desktopRightPanelAvailable ? layoutRightPanelWidth : 0;
+    const rightPanelWidth = desktopRightPanelAvailable
+        ? Math.max(layoutRightPanelWidth, layoutRightPanelExpandedWidth)
+        : 0;
 
     // Animate diff sidebar width.
     //
@@ -353,8 +358,8 @@ export const SessionView = React.memo((props: { id: string }) => {
     }, [showDesktopRightPanel]);
     const animatedRightPanelStyle = useAnimatedStyle(() => ({
         width: rightPanelAnim.value * rightPanelWidth,
-        opacity: rightPanelAnim.value,
-        overflow: 'hidden' as const,
+        opacity: Platform.OS === 'web' ? 1 : rightPanelAnim.value,
+        overflow: Platform.OS === 'web' ? 'visible' as const : 'hidden' as const,
     }));
 
     const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
@@ -373,19 +378,38 @@ export const SessionView = React.memo((props: { id: string }) => {
         | { kind: 'none' }
         | { kind: 'diff'; file: string }
         | { kind: 'file'; path: string };
-    const [overlayHistory, setOverlayHistory] = React.useState<{ stack: OverlayEntry[]; cursor: number }>(
-        { stack: [{ kind: 'none' }], cursor: 0 }
-    );
+    type OverlayHistoryState = {
+        cursor: number;
+        direction: DesktopTransitionDirection;
+        immediate: boolean;
+        stack: OverlayEntry[];
+    };
+    const [overlayHistory, setOverlayHistory] = React.useState<OverlayHistoryState>({
+        cursor: 0,
+        direction: 'forward',
+        immediate: true,
+        stack: [{ kind: 'none' }],
+    });
     const overlayCurrent = overlayHistory.stack[overlayHistory.cursor] ?? { kind: 'none' };
     const diffViewOpen = overlayCurrent.kind === 'diff';
     const fileViewPath = overlayCurrent.kind === 'file' ? overlayCurrent.path : null;
     const scrollToFile = overlayCurrent.kind === 'diff' ? overlayCurrent.file : null;
+    const overlayTransitionKey = overlayCurrent.kind === 'diff'
+        ? `diff:${overlayCurrent.file}`
+        : overlayCurrent.kind === 'file'
+            ? `file:${overlayCurrent.path}`
+            : 'chat';
 
     const pushOverlay = React.useCallback((entry: OverlayEntry) => {
         setOverlayHistory((prev) => {
             const truncated = prev.stack.slice(0, prev.cursor + 1);
             truncated.push(entry);
-            return { stack: truncated, cursor: truncated.length - 1 };
+            return {
+                stack: truncated,
+                cursor: truncated.length - 1,
+                direction: 'forward',
+                immediate: false,
+            };
         });
     }, []);
 
@@ -401,12 +425,38 @@ export const SessionView = React.memo((props: { id: string }) => {
     // Don't close on zen mode toggle — keep the view visible.
     React.useEffect(() => {
         if (!canShowFilePanel) {
-            setOverlayHistory({ stack: [{ kind: 'none' }], cursor: 0 });
+            setOverlayHistory({
+                stack: [{ kind: 'none' }],
+                cursor: 0,
+                direction: 'back',
+                immediate: true,
+            });
         }
     }, [canShowFilePanel]);
 
     // Right-side header content published by the active overlay (diff toggle / save button).
-    const [headerRightSlot, setHeaderRightSlot] = React.useState<React.ReactNode>(null);
+    type OwnedHeaderRightSlot = { ownerKey: string; slot: React.ReactNode };
+    const [ownedHeaderRightSlot, setOwnedHeaderRightSlot] = React.useState<OwnedHeaderRightSlot>({
+        ownerKey: 'chat',
+        slot: null,
+    });
+    const headerRightSlot = ownedHeaderRightSlot.ownerKey === overlayTransitionKey
+        ? ownedHeaderRightSlot.slot
+        : null;
+    const activeOverlayKeyRef = React.useRef(overlayTransitionKey);
+    const publishOverlayHeaderRightSlot = React.useCallback((slot: React.ReactNode) => {
+        const publisherOwnerKey = overlayTransitionKey;
+        if (activeOverlayKeyRef.current !== publisherOwnerKey) return;
+        setOwnedHeaderRightSlot((current) => {
+            if (activeOverlayKeyRef.current !== publisherOwnerKey) return current;
+            return { ownerKey: publisherOwnerKey, slot };
+        });
+    }, [overlayTransitionKey]);
+
+    React.useLayoutEffect(() => {
+        activeOverlayKeyRef.current = overlayTransitionKey;
+        setOwnedHeaderRightSlot({ ownerKey: overlayTransitionKey, slot: null });
+    }, [overlayTransitionKey]);
 
     // Opens the phone session-list drawer (same root Drawer the compose home opens).
     const openSessionList = React.useCallback(() => {
@@ -423,14 +473,24 @@ export const SessionView = React.memo((props: { id: string }) => {
             back: () => {
                 if (!canOverlayBack) return false;
                 setOverlayHistory((prev) => (
-                    prev.cursor <= 0 ? prev : { ...prev, cursor: prev.cursor - 1 }
+                    prev.cursor <= 0 ? prev : {
+                        ...prev,
+                        cursor: prev.cursor - 1,
+                        direction: 'back',
+                        immediate: false,
+                    }
                 ));
                 return true;
             },
             forward: () => {
                 if (!canOverlayForward) return false;
                 setOverlayHistory((prev) => (
-                    prev.cursor >= prev.stack.length - 1 ? prev : { ...prev, cursor: prev.cursor + 1 }
+                    prev.cursor >= prev.stack.length - 1 ? prev : {
+                        ...prev,
+                        cursor: prev.cursor + 1,
+                        direction: 'forward',
+                        immediate: false,
+                    }
                 ));
                 return true;
             },
@@ -782,50 +842,65 @@ export const SessionView = React.memo((props: { id: string }) => {
                 testID="desktop-workspace-main"
             >
                 {mainContent}
-                {diffViewOpen && canShowFilePanel && (
-                    <View
-                        style={{
-                            pointerEvents: 'box-none',
-                            position: 'absolute',
-                            top: safeArea.top + headerHeight,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            backgroundColor: theme.colors.surface,
-                        }}
+                <View
+                    pointerEvents="box-none"
+                    style={{
+                        position: 'absolute',
+                        top: safeArea.top + headerHeight,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                    }}
+                >
+                    <DesktopPresenceTransition
+                        direction={overlayHistory.direction}
+                        immediate={overlayHistory.immediate}
+                        testID="workspace-overlay-transition"
+                        transitionKey={overlayTransitionKey}
                     >
-                        <AllFilesDiffView
-                            sessionId={sessionId}
-                            scrollToFile={scrollToFile}
-                            onHeaderRightSlotChange={setHeaderRightSlot}
-                        />
-                    </View>
-                )}
-                {fileViewPath && canShowFilePanel && (
-                    <View
-                        style={{
-                            pointerEvents: 'box-none',
-                            position: 'absolute',
-                            top: safeArea.top + headerHeight,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            backgroundColor: theme.colors.surface,
-                        }}
-                    >
-                        <FileViewPanel
-                            sessionId={sessionId}
-                            filePath={fileViewPath}
-                            onHeaderRightSlotChange={setHeaderRightSlot}
-                        />
-                    </View>
-                )}
+                        {diffViewOpen && canShowFilePanel ? (
+                            <View style={workspaceStyles.overlaySurface} testID="workspace-diff-panel">
+                                <AllFilesDiffView
+                                    onHeaderRightSlotChange={publishOverlayHeaderRightSlot}
+                                    scrollToFile={scrollToFile}
+                                    sessionId={sessionId}
+                                />
+                            </View>
+                        ) : fileViewPath && canShowFilePanel ? (
+                            <View style={workspaceStyles.overlaySurface} testID="workspace-file-panel">
+                                <FileViewPanel
+                                    filePath={fileViewPath}
+                                    onHeaderRightSlotChange={publishOverlayHeaderRightSlot}
+                                    sessionId={sessionId}
+                                />
+                            </View>
+                        ) : null}
+                    </DesktopPresenceTransition>
+                </View>
             </View>
             <Animated.View
+                {...(Platform.OS === 'web' ? { inert: showDesktopRightPanel ? undefined : true } as any : {})}
+                aria-hidden={!showDesktopRightPanel}
+                accessibilityElementsHidden={!showDesktopRightPanel}
+                importantForAccessibility={showDesktopRightPanel ? 'auto' : 'no-hide-descendants'}
                 pointerEvents={showDesktopRightPanel ? 'auto' : 'none'}
                 style={[workspaceStyles.desktopPanelClip, animatedRightPanelStyle]}
             >
-                <View style={[workspaceStyles.desktopPanel, { width: rightPanelWidth }]}>
+                <View
+                    {...(Platform.OS === 'web' ? {
+                        dataSet: {
+                            happyMotion: 'desktop-panel',
+                            happyMotionSide: 'right',
+                            happyMotionState: showDesktopRightPanel ? 'open' : 'closed',
+                        },
+                    } as any : {})}
+                    style={[
+                        workspaceStyles.desktopPanel,
+                        { width: rightPanelWidth },
+                        Platform.OS === 'web' && workspaceStyles.desktopPanelWeb,
+                    ]}
+                    testID="desktop-right-panel-motion"
+                >
                     <DesktopRightPanel
                         activeTab={desktopPanelMode}
                         collapseAccessibilityLabel={t('desktopWorkspace.hidePanel', {
@@ -837,22 +912,29 @@ export const SessionView = React.memo((props: { id: string }) => {
                         showCollapseButton={false}
                         tabs={desktopPanelTabs}
                     >
-                        {desktopPanelMode === 'files' && canShowFilePanel ? (
-                            <FilesSidebar
-                                sessionId={sessionId}
-                                selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
-                                onFilePress={handleSidebarFilePress}
-                                mode={sidebarMode}
-                                onModeChange={setSidebarMode}
-                                onAllFilesFilePress={handleAllFilesFilePress}
-                            />
-                        ) : (
-                            <SessionRightPanelContent
-                                composerHandleRef={sessionComposerHandleRef}
-                                sessionId={sessionId}
-                                spaceAgent={spaceAgent}
-                            />
-                        )}
+                        <DesktopPresenceTransition
+                            direction={desktopPanelMode === 'files' ? 'forward' : 'back'}
+                            immediate={!canShowFilePanel}
+                            testID="desktop-right-panel-content-transition"
+                            transitionKey={desktopPanelMode}
+                        >
+                            {desktopPanelMode === 'files' && canShowFilePanel ? (
+                                <FilesSidebar
+                                    mode={sidebarMode}
+                                    onAllFilesFilePress={handleAllFilesFilePress}
+                                    onFilePress={handleSidebarFilePress}
+                                    onModeChange={setSidebarMode}
+                                    selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
+                                    sessionId={sessionId}
+                                />
+                            ) : (
+                                <SessionRightPanelContent
+                                    composerHandleRef={sessionComposerHandleRef}
+                                    sessionId={sessionId}
+                                    spaceAgent={spaceAgent}
+                                />
+                            )}
+                        </DesktopPresenceTransition>
                     </DesktopRightPanel>
                 </View>
             </Animated.View>
@@ -1678,11 +1760,26 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         flex: 1,
         minWidth: DESKTOP_MAIN_MIN_WIDTH,
     },
+    overlaySurface: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        backgroundColor: theme.colors.surface,
+        pointerEvents: 'box-none',
+    },
     desktopPanelClip: {
         minWidth: 0,
         alignSelf: 'stretch',
     },
     desktopPanel: {
         flex: 1,
+    },
+    desktopPanelWeb: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
     },
 }));

@@ -128,6 +128,7 @@ vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({
     DesktopWorkspaceLayoutProvider: ({ children }: { children: React.ReactNode }) => children,
     useDesktopWorkspaceLayout: () => ({
         enabled: mocks.isTablet,
+        leftExpandedWidth: mocks.isTablet ? 360 : 0,
         leftVisible: mocks.isTablet && !mocks.zenMode && !mocks.desktopLeftSidebarCollapsed,
         leftMaximumWidth: 640,
         leftWidth: mocks.isTablet && !mocks.zenMode && !mocks.desktopLeftSidebarCollapsed ? 360 : 0,
@@ -216,7 +217,16 @@ describe('SidebarNavigator drawer behavior', () => {
         expect(drawerContent.props['aria-hidden']).toBe(true);
         expect(drawerContent.props.accessibilityElementsHidden).toBe(true);
         expect(drawerContent.props.importantForAccessibility).toBe('no-hide-descendants');
-        expect(drawerContent.props.style).toContainEqual({ display: 'none' });
+        expect(drawerContent.props.inert).toBe(true);
+        expect(drawerContent.props.pointerEvents).toBeUndefined();
+        expect(drawerContent.props.dataSet).toMatchObject({
+            happyMotion: 'desktop-panel',
+            happyMotionSide: 'left',
+            happyMotionState: 'closed',
+        });
+        expect(drawerContent.props.style).toContainEqual(expect.objectContaining({ width: 360 }));
+        expect(drawerContent.props.style).toContainEqual(expect.objectContaining({ pointerEvents: 'none' }));
+        expect(drawerContent.props.style).not.toContainEqual({ display: 'none' });
 
         const sidebarToggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
         expect(sidebarToggle.props['aria-expanded']).toBe(false);

@@ -297,7 +297,17 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
         <>
             <Pressable style={[styles.backdrop, { top }]} onPress={onClose} />
             <View style={[styles.dropdown, { top }]}>
-                <View style={styles.configBox} testID="session-agent-panel">
+                <View
+                    {...(Platform.OS === 'web' ? {
+                        dataSet: {
+                            happyMotion: 'popover',
+                            happyMotionAlign: 'right',
+                            happyMotionSide: 'below',
+                        },
+                    } as any : {})}
+                    style={styles.configBox}
+                    testID="session-agent-panel"
+                >
                     <View style={styles.section} testID="session-agent-panel-runtime-location">
                         <Text style={styles.sectionTitle}>{t('sessionInfo.agentPanelRuntimeLocation')}</Text>
                         <View style={styles.sectionBody}>

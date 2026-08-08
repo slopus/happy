@@ -20,11 +20,15 @@ export function CommandPaletteModal({
     onClose,
     children
 }: CommandPaletteModalProps) {
-    const fadeAnim = useRef(new Animated.Value(0)).current;
-    const scaleAnim = useRef(new Animated.Value(0.97)).current;
+    const instantKeyboardSurface = Platform.OS === 'web';
+    const fadeAnim = useRef(new Animated.Value(instantKeyboardSurface ? 1 : 0)).current;
+    const scaleAnim = useRef(new Animated.Value(instantKeyboardSurface ? 1 : 0.97)).current;
     const [isModalVisible, setIsModalVisible] = React.useState(true);
 
     useEffect(() => {
+        if (instantKeyboardSurface) {
+            return;
+        }
         if (visible) {
             // Opening animation
             Animated.parallel([
@@ -41,9 +45,14 @@ export function CommandPaletteModal({
                 })
             ]).start();
         }
-    }, [visible, fadeAnim, scaleAnim]);
+    }, [visible, fadeAnim, instantKeyboardSurface, scaleAnim]);
 
     const handleClose = React.useCallback(() => {
+        if (instantKeyboardSurface) {
+            setIsModalVisible(false);
+            onClose?.();
+            return;
+        }
         // Closing animation
         Animated.parallel([
             Animated.timing(fadeAnim, {
@@ -65,7 +74,7 @@ export function CommandPaletteModal({
                 }
             }, 50);
         });
-    }, [fadeAnim, scaleAnim, onClose]);
+    }, [fadeAnim, instantKeyboardSurface, scaleAnim, onClose]);
 
     const handleBackdropPress = () => {
         handleClose();

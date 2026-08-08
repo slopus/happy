@@ -42,6 +42,10 @@ const mocks = vi.hoisted(() => ({
     switchDirectory: vi.fn(),
     renameSession: vi.fn(),
     renameSessionToTitle: vi.fn(),
+    overlayPublish: vi.fn(),
+    overlayReset: vi.fn(),
+    suspendFileViewPanel: false,
+    fileViewPanelSuspender: null as Promise<void> | null,
     session: {
         id: 'session-1',
         seq: 1,
@@ -177,8 +181,26 @@ vi.mock('@/components/Deferred', () => ({ Deferred: ({ children }: { children: R
 vi.mock('@/components/EmptyMessages', () => ({ EmptyMessages: 'EmptyMessages' }));
 vi.mock('@/components/ScreenshotGalleryDrawer', () => ({ ScreenshotGalleryDrawer: 'ScreenshotGalleryDrawer' }));
 vi.mock('@/components/FilesSidebar', () => ({ FilesSidebar: 'FilesSidebar' }));
+vi.mock('@/components/DesktopPresenceTransition', async () => {
+    const ReactModule = await import('react');
+    return {
+        DesktopPresenceTransition: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
+            ReactModule.createElement('DesktopPresenceTransition', props, children)
+        ),
+    };
+});
 vi.mock('@/components/AllFilesDiffView', () => ({ AllFilesDiffView: 'AllFilesDiffView' }));
-vi.mock('@/components/FileViewPanel', () => ({ FileViewPanel: 'FileViewPanel' }));
+vi.mock('@/components/FileViewPanel', async () => {
+    const ReactModule = await import('react');
+    return {
+        FileViewPanel: (props: Record<string, unknown>) => {
+            if (mocks.suspendFileViewPanel && mocks.fileViewPanelSuspender) {
+                throw mocks.fileViewPanelSuspender;
+            }
+            return ReactModule.createElement('FileViewPanel', props);
+        },
+    };
+});
 vi.mock('@/components/diff/PierreDiffView', () => ({ prefetchPierreDiff: vi.fn() }));
 vi.mock('@/hooks/useDraft', () => ({ useDraft: () => ({ clearDraft: vi.fn() }) }));
 vi.mock('@/hooks/useImagePicker', () => ({
@@ -227,6 +249,7 @@ vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({
         rightPanelAvailable: mocks.isTablet
             && (mocks.platformOS === 'web' || mocks.runningOnMac)
             && mocks.windowWidth >= 1100,
+        rightExpandedWidth: getDesktopRightPanelWidth(mocks.windowWidth),
         rightVisible: !mocks.desktopRightPanelCollapsed,
         rightMaximumWidth: 640,
         rightWidth: getDesktopRightPanelWidth(mocks.windowWidth),
@@ -304,7 +327,9 @@ vi.mock('@/utils/sessionUtils', () => ({
 }));
 vi.mock('@/utils/versionUtils', () => ({ isVersionSupported: () => true, MINIMUM_CLI_VERSION: '0.0.0' }));
 vi.mock('@/-session/sessionOverlayNav', () => ({
-    useOverlayNav: { getState: () => ({ publish: vi.fn(), reset: vi.fn() }) },
+    useOverlayNav: {
+        getState: () => ({ publish: mocks.overlayPublish, reset: mocks.overlayReset }),
+    },
 }));
 vi.mock('expo-application', () => ({ applicationId: 'build.paws.preview' }));
 vi.mock('expo-clipboard', () => ({ setStringAsync: vi.fn() }));
@@ -346,6 +371,8 @@ describe('SessionView Agent-space boundary', () => {
         mocks.isTablet = false;
         mocks.platformOS = 'android';
         mocks.desktopRightPanelCollapsed = false;
+        mocks.suspendFileViewPanel = false;
+        mocks.fileViewPanelSuspender = null;
         mocks.globalRightSidebarShortcut = undefined;
         mocks.spaceAgent = null;
         mocks.useSpaceAgentForSession.mockImplementation(() => mocks.spaceAgent);
@@ -589,6 +616,7 @@ describe('SessionView Agent-space boundary', () => {
         mocks.runningOnMac = true;
         mocks.windowWidth = 1400;
         mocks.isTablet = true;
+        mocks.platformOS = 'web';
         let renderer: any;
 
         act(() => {
@@ -598,10 +626,199 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(1);
         expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(0);
         expect(renderer.root.findAllByType('RightSwipePanelHost')).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-content-transition' }).props).toMatchObject({
+            direction: 'back',
+            transitionKey: 'capabilities',
+        });
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-capabilities-tab' }).props.dataSet).toMatchObject({
+            happyMotion: 'desktop-tab',
+            happyMotionState: 'selected',
+        });
 
-        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.onPress());
+        const filesTab = renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' });
+        expect(filesTab.props.accessibilityRole).toBe('tab');
+        expect(filesTab.props.dataSet).toMatchObject({
+            happyMotion: 'desktop-tab',
+            happyMotionState: 'idle',
+        });
+
+        act(() => filesTab.props.onPress());
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-content-transition' }).props).toMatchObject({
+            direction: 'forward',
+            transitionKey: 'files',
+        });
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-capabilities-tab' }).props.dataSet.happyMotionState).toBe('idle');
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.dataSet.happyMotionState).toBe('selected');
         expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(1);
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
+
+    it('animates file overlay history without remounting chat or accepting stale header cleanup', () => {
+        mocks.isDataReady = true;
+        mocks.fileDiffsSidebarEnabled = true;
+        mocks.windowWidth = 1400;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        const chatContent = renderer.root.findByType('MessageComposer');
+        expect(renderer.root.findByProps({ testID: 'workspace-overlay-transition' }).props).toMatchObject({
+            direction: 'forward',
+            immediate: true,
+            transitionKey: 'chat',
+        });
+
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.onPress());
+        let filesSidebar = renderer.root.findByType('FilesSidebar');
+        act(() => filesSidebar.props.onFilePress({
+            status: 'modified',
+            fullPath: 'src/changed-motion.ts',
+        }));
+        expect(renderer.root.findByProps({ testID: 'workspace-overlay-transition' }).props).toMatchObject({
+            direction: 'forward',
+            immediate: false,
+            transitionKey: 'diff:src/changed-motion.ts',
+        });
+        expect(renderer.root.findAllByProps({ testID: 'workspace-diff-panel' })).toHaveLength(1);
+        expect(renderer.root.findByType('MessageComposer')).toBe(chatContent);
+
+        const publishedAfterDiff = mocks.overlayPublish.mock.calls.at(-1)?.[0];
+        act(() => publishedAfterDiff.back());
+        expect(renderer.root.findByProps({ testID: 'workspace-overlay-transition' }).props).toMatchObject({
+            direction: 'back',
+            immediate: false,
+            transitionKey: 'chat',
+        });
+        expect(renderer.root.findAllByProps({ testID: 'workspace-diff-panel' })).toHaveLength(0);
+        expect(renderer.root.findByType('MessageComposer')).toBe(chatContent);
+
+        const publishedAfterBack = mocks.overlayPublish.mock.calls.at(-1)?.[0];
+        act(() => publishedAfterBack.forward());
+        expect(renderer.root.findByProps({ testID: 'workspace-overlay-transition' }).props).toMatchObject({
+            direction: 'forward',
+            immediate: false,
+            transitionKey: 'diff:src/changed-motion.ts',
+        });
+
+        filesSidebar = renderer.root.findByType('FilesSidebar');
+        const oldDiffPublisher = renderer.root.findByType('AllFilesDiffView').props.onHeaderRightSlotChange;
+        act(() => filesSidebar.props.onAllFilesFilePress('src/second-motion.ts'));
+        expect(renderer.root.findByProps({ testID: 'workspace-overlay-transition' }).props).toMatchObject({
+            direction: 'forward',
+            immediate: false,
+            transitionKey: 'file:src/second-motion.ts',
+        });
+        expect(renderer.root.findAllByProps({ testID: 'workspace-file-panel' })).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'workspace-diff-panel' })).toHaveLength(0);
+
+        const filePublisher = renderer.root.findByType('FileViewPanel').props.onHeaderRightSlotChange;
+        act(() => filePublisher('file-header-slot'));
+        act(() => oldDiffPublisher('stale-diff-slot'));
+        let header = renderer.root.findByType('ChatHeaderView');
+        expect(header.findAll((node: any) => node.children.includes('file-header-slot'))).not.toHaveLength(0);
+        expect(header.findAll((node: any) => node.children.includes('stale-diff-slot'))).toHaveLength(0);
+        act(() => oldDiffPublisher(null));
+        header = renderer.root.findByType('ChatHeaderView');
+        expect(header.findAll((node: any) => node.children.includes('file-header-slot'))).not.toHaveLength(0);
+        expect(renderer.root.findByType('MessageComposer')).toBe(chatContent);
+
+        act(() => renderer.unmount());
+    });
+
+    it('immediately clears file overlays when the capability becomes unavailable', () => {
+        mocks.isDataReady = true;
+        mocks.fileDiffsSidebarEnabled = true;
+        mocks.windowWidth = 1400;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.onPress());
+        const filesSidebar = renderer.root.findByType('FilesSidebar');
+        act(() => filesSidebar.props.onFilePress({
+            status: 'modified',
+            fullPath: 'src/changed-motion.ts',
+        }));
+        expect(renderer.root.findAllByProps({ testID: 'workspace-diff-panel' })).toHaveLength(1);
+
+        mocks.fileDiffsSidebarEnabled = false;
+        act(() => filesSidebar.props.onModeChange('allFiles'));
+
+        expect(renderer.root.findByProps({ testID: 'workspace-overlay-transition' }).props).toMatchObject({
+            direction: 'back',
+            immediate: true,
+            transitionKey: 'chat',
+        });
+        expect(renderer.root.findAllByProps({ testID: 'workspace-diff-panel' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'workspace-file-panel' })).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
+
+    it('changes overlay publisher ownership only after a suspended overlay commits', async () => {
+        mocks.isDataReady = true;
+        mocks.fileDiffsSidebarEnabled = true;
+        mocks.windowWidth = 1400;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        let renderer: any;
+
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />, {
+                unstable_isConcurrent: true,
+            } as any);
+        });
+
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.onPress());
+        const filesSidebar = renderer.root.findByType('FilesSidebar');
+        act(() => filesSidebar.props.onFilePress({
+            status: 'modified',
+            fullPath: 'src/changed-motion.ts',
+        }));
+        const diffPublisher = renderer.root.findByType('AllFilesDiffView').props.onHeaderRightSlotChange;
+        act(() => diffPublisher('committed-diff-slot'));
+
+        let releaseFilePanel!: () => void;
+        mocks.fileViewPanelSuspender = new Promise<void>((resolve) => {
+            releaseFilePanel = resolve;
+        });
+        mocks.suspendFileViewPanel = true;
+        act(() => {
+            React.startTransition(() => {
+                filesSidebar.props.onAllFilesFilePress('src/suspended-motion.ts');
+            });
+        });
+
+        expect(renderer.root.findByProps({ testID: 'workspace-overlay-transition' }).props.transitionKey)
+            .toBe('diff:src/changed-motion.ts');
+        act(() => diffPublisher('still-current-diff-slot'));
+        let header = renderer.root.findByType('ChatHeaderView');
+        expect(header.findAll((node: any) => node.children.includes('still-current-diff-slot'))).not.toHaveLength(0);
+
+        mocks.suspendFileViewPanel = false;
+        await act(async () => {
+            releaseFilePanel();
+            await mocks.fileViewPanelSuspender;
+        });
+        expect(renderer.root.findByProps({ testID: 'workspace-overlay-transition' }).props.transitionKey)
+            .toBe('file:src/suspended-motion.ts');
+
+        const filePublisher = renderer.root.findByType('FileViewPanel').props.onHeaderRightSlotChange;
+        act(() => filePublisher('committed-file-slot'));
+        act(() => diffPublisher('stale-after-file-commit'));
+        header = renderer.root.findByType('ChatHeaderView');
+        expect(header.findAll((node: any) => node.children.includes('committed-file-slot'))).not.toHaveLength(0);
+        expect(header.findAll((node: any) => node.children.includes('stale-after-file-commit'))).toHaveLength(0);
 
         act(() => renderer.unmount());
     });
@@ -670,6 +887,11 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-collapse-button' })).toHaveLength(0);
         const toggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
         expect(toggle.props['aria-expanded']).toBe(true);
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-motion' }).props.dataSet).toMatchObject({
+            happyMotion: 'desktop-panel',
+            happyMotionSide: 'right',
+            happyMotionState: 'open',
+        });
         act(() => toggle.props.onPress());
         expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenCalledWith(true);
 
@@ -680,6 +902,13 @@ describe('SessionView Agent-space boundary', () => {
         });
         const collapsedToggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
         expect(collapsedToggle.props['aria-expanded']).toBe(false);
+        const collapsedPanelMotion = renderer.root.findByProps({ testID: 'desktop-right-panel-motion' });
+        expect(collapsedPanelMotion.parent?.props.inert).toBe(true);
+        expect(collapsedPanelMotion.props.dataSet).toMatchObject({
+            happyMotion: 'desktop-panel',
+            happyMotionSide: 'right',
+            happyMotionState: 'closed',
+        });
         act(() => collapsedToggle.props.onPress());
         expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenLastCalledWith(false);
 

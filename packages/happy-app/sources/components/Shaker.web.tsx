@@ -7,23 +7,37 @@ export type ShakeInstance = {
 
 export const Shaker = React.memo(React.forwardRef<ShakeInstance, ViewProps>((props, ref) => {
     const baseRef = React.useRef<View>(null);
+    const animationRef = React.useRef<Animation | null>(null);
+    React.useEffect(() => () => animationRef.current?.cancel(), []);
     React.useImperativeHandle(ref, () => ({
         shake: () => {
-            const shakeElement = baseRef.current as any as HTMLDivElement
-            let offsets = shakeKeyframes();
-            const duration = 300;
-            const animations = [];
-            for (let i = 0; i < offsets.length; i++) {
-                animations.push({
-                    transform: `translateX(${offsets[i]}px)`,
-                    duration: duration / offsets.length,
-                    easing: 'linear'
-                });
-            }
-            shakeElement.animate(animations, {
-                duration: duration,
+            const shakeElement = baseRef.current as any as HTMLDivElement;
+            if (!shakeElement) return;
+
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            const currentTranslateX = readTranslateX(shakeElement);
+            animationRef.current?.cancel();
+
+            const keyframes: Keyframe[] = reduceMotion
+                ? [
+                    { opacity: 1 },
+                    { opacity: 0.72 },
+                    { opacity: 1 },
+                ]
+                : shakeKeyframes().map((offset, index) => ({
+                    transform: `translateX(${index === 0 ? currentTranslateX : offset}px)`,
+                }));
+            const animation = shakeElement.animate(keyframes, {
+                duration: reduceMotion ? 160 : 260,
+                easing: 'linear',
                 iterations: 1,
-                fill: 'forwards'
+                fill: 'forwards',
+            });
+            animationRef.current = animation;
+            void animation.finished.catch(() => undefined).then(() => {
+                if (animationRef.current === animation) {
+                    animationRef.current = null;
+                }
             });
         }
     }));
@@ -32,6 +46,18 @@ export const Shaker = React.memo(React.forwardRef<ShakeInstance, ViewProps>((pro
         <View ref={baseRef} {...props} />
     );
 }));
+
+function readTranslateX(element: HTMLElement): number {
+    const transform = window.getComputedStyle(element).transform;
+    if (!transform || transform === 'none') return 0;
+
+    const matrix3d = transform.match(/^matrix3d\((.+)\)$/);
+    if (matrix3d) {
+        return Number(matrix3d[1].split(',')[12]) || 0;
+    }
+    const matrix = transform.match(/^matrix\((.+)\)$/);
+    return matrix ? Number(matrix[1].split(',')[4]) || 0 : 0;
+}
 
 function shakeKeyframes(amplitude: number = 3.0, count: number = 4, decay: boolean = false) {
     let keyframes: number[] = [];
