@@ -1,5 +1,17 @@
 import { diffLines, diffWordsWithSpace, diffChars } from 'diff';
 
+// Per-line character-length cap for the inline-diff path. Lines longer than
+// this skip word-level tokenization (`diffWordsWithSpace`, O(n·m)) and the
+// common-substring similarity scan (`findCommonSubstrings`, O(n³)). A single
+// very long line — e.g. settings.json's `permissions.allow`/`deny` arrays, or
+// a minified blob — would otherwise peg the JS thread synchronously on the
+// first render of a pending-permission Edit and freeze the whole UI (dead
+// taps, unresponsive back button, blank message history). Long lines fall
+// back to plain add/remove with no inline highlighting, which is
+// imperceptible at that length anyway. Distinct from `INLINE_DIFF_MAX_LINES`
+// in ToolDiffView, which caps the line *count*, not the per-line length.
+const MAX_INLINE_DIFF_LINE_LENGTH = 200;
+
 export interface DiffToken {
     value: string;
     added?: boolean;
@@ -139,6 +151,14 @@ export function calculateUnifiedDiff(
  * Calculate inline diff between two lines
  */
 function calculateInlineDiff(oldLine: string, newLine: string): DiffToken[] {
+    // Skip word-level tokenization for long lines — `diffWordsWithSpace` is
+    // O(n·m) and part of the same first-render freeze. Returning no tokens
+    // makes the pair render as plain add/remove (DiffView treats an empty
+    // token list the same as none), which is what we want at this length.
+    if (oldLine.length > MAX_INLINE_DIFF_LINE_LENGTH || newLine.length > MAX_INLINE_DIFF_LINE_LENGTH) {
+        return [];
+    }
+
     // Use word-level diff for better readability
     const wordDiff = diffWordsWithSpace(oldLine, newLine);
 
@@ -190,6 +210,13 @@ function calculateSimilarity(str1: string, str2: string): number {
 
     for (let i = 0; i < minLen; i++) {
         if (chars1[i] === chars2[i]) matches++;
+    }
+
+    // Skip the O(n³) common-substring scan for long lines (the core of the
+    // first-render freeze). Char-prefix similarity alone is enough to pick a
+    // pairing, and the substring bonus is imperceptible at this length.
+    if (str1.length > MAX_INLINE_DIFF_LINE_LENGTH || str2.length > MAX_INLINE_DIFF_LINE_LENGTH) {
+        return matches / maxLen;
     }
 
     // Also check for common substrings
