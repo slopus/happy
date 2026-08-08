@@ -32,6 +32,8 @@ export const zhHant: TranslationStructure = {
     },
 
     common: {
+        star: '加星號',
+        unstar: '取消星號',
         // Simple string constants
         cancel: '取消',
         authenticate: '驗證',
@@ -243,6 +245,8 @@ export const zhHant: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
         imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
+        starProjects: '星號專案',
+        starProjectsSubtitle: '將星號專案固定在工作階段列表頂端',
     },
 
     errors: {

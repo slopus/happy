@@ -4,6 +4,8 @@ import type { SessionListViewItem, SessionRowData } from '@/sync/storage';
 const mocks = vi.hoisted(() => ({
     data: null as SessionListViewItem[] | null,
     hideArchivedSessions: false,
+    starProjectsEnabled: true,
+    starredProjects: new Set<string>(),
 }));
 
 // The hook only ever reads `React.useMemo`, and storage.ts pulls in React
@@ -15,11 +17,11 @@ vi.mock('react', () => ({
 vi.mock('@/sync/storage', () => ({
     useSessionListViewData: () => mocks.data,
     useSetting: (key: string) => {
-        if (key !== 'hideInactiveSessions') {
-            throw new Error(`Unexpected setting read: ${key}`);
-        }
-        return mocks.hideArchivedSessions;
+        if (key === 'hideInactiveSessions') return mocks.hideArchivedSessions;
+        if (key === 'expStarProjects') return mocks.starProjectsEnabled;
+        throw new Error(`Unexpected setting read: ${key}`);
     },
+    useStarredProjects: () => mocks.starredProjects,
 }));
 
 import { useHasArchivedSessions, useVisibleSessionListViewData } from './useVisibleSessionListViewData';
@@ -35,14 +37,20 @@ function row(id: string, options: { active?: boolean; archived?: boolean } = {})
     } as SessionRowData;
 }
 
-function project(id: string, sessions: SessionRowData[]): SessionListViewItem {
+function project(
+    id: string,
+    sessions: SessionRowData[],
+    path: string | null = null,
+    source: 'rig' | 'happy' = 'rig',
+): SessionListViewItem {
     return {
         type: 'project',
-        source: 'rig',
+        source,
         project: {
             id,
             name: id,
             machineId: 'machine-1',
+            path,
             sessionCount: sessions.length,
             activeCount: sessions.filter((session) => session.active).length,
             workspaces: [{ id: '', name: null, sessions }],
@@ -63,6 +71,8 @@ function flatSessionIds(items: SessionListViewItem[]): string[] {
 beforeEach(() => {
     mocks.data = null;
     mocks.hideArchivedSessions = false;
+    mocks.starProjectsEnabled = true;
+    mocks.starredProjects = new Set<string>();
 });
 
 describe('useVisibleSessionListViewData', () => {
@@ -160,6 +170,80 @@ describe('useVisibleSessionListViewData', () => {
         mocks.hideArchivedSessions = true;
 
         expect(useVisibleSessionListViewData()).toEqual(mocks.data);
+    });
+
+    describe('star ordering', () => {
+        // Two sections, so ordering can be checked against section boundaries.
+        function twoSections(): SessionListViewItem[] {
+            return [
+                { type: 'projects-header', source: 'rig' },
+                project('rig-a', [row('r1')], '/projects/alpha'),
+                project('rig-b', [row('r2')], '/projects/beta'),
+                { type: 'projects-header', source: 'happy' },
+                project('happy-a', [row('h1')], '/projects/gamma', 'happy'),
+                project('happy-b', [row('h2')], '/projects/delta', 'happy'),
+            ];
+        }
+
+        function projectIds(items: SessionListViewItem[]): string[] {
+            return items.map((item) => (item.type === 'project' ? item.project.id : `#${item.type}`));
+        }
+
+        it('leaves the order alone when nothing is starred', () => {
+            mocks.data = twoSections();
+
+            expect(projectIds(useVisibleSessionListViewData()!))
+                .toEqual(['#projects-header', 'rig-a', 'rig-b', '#projects-header', 'happy-a', 'happy-b']);
+        });
+
+        it('lifts a starred project to the top of its own section only', () => {
+            mocks.data = twoSections();
+            mocks.starredProjects = new Set(['machine-1:/projects/delta']);
+
+            expect(projectIds(useVisibleSessionListViewData()!))
+                .toEqual(['#projects-header', 'rig-a', 'rig-b', '#projects-header', 'happy-b', 'happy-a']);
+        });
+
+        it('keeps the incoming order among projects that share a starred state', () => {
+            mocks.data = twoSections();
+            mocks.starredProjects = new Set(['machine-1:/projects/beta', 'machine-1:/projects/alpha']);
+
+            expect(projectIds(useVisibleSessionListViewData()!))
+                .toEqual(['#projects-header', 'rig-a', 'rig-b', '#projects-header', 'happy-a', 'happy-b']);
+        });
+
+        it('stars the repo, so a worktree card rises with it', () => {
+            mocks.data = [
+                { type: 'projects-header', source: 'happy' },
+                project('plain', [row('p')], '/projects/plain', 'happy'),
+                project('worktree', [row('w')], '/projects/repo/.dev/worktree/feature', 'happy'),
+            ];
+            mocks.starredProjects = new Set(['machine-1:/projects/repo']);
+
+            expect(projectIds(useVisibleSessionListViewData()!))
+                .toEqual(['#projects-header', 'worktree', 'plain']);
+        });
+
+        it('ignores stars while the feature is switched off', () => {
+            mocks.data = twoSections();
+            mocks.starredProjects = new Set(['machine-1:/projects/delta']);
+            mocks.starProjectsEnabled = false;
+
+            expect(projectIds(useVisibleSessionListViewData()!))
+                .toEqual(['#projects-header', 'rig-a', 'rig-b', '#projects-header', 'happy-a', 'happy-b']);
+        });
+
+        it('cannot star a card that has no path (Rig projects)', () => {
+            mocks.data = [
+                { type: 'projects-header', source: 'rig' },
+                project('no-path-a', [row('a')]),
+                project('no-path-b', [row('b')]),
+            ];
+            mocks.starredProjects = new Set(['machine-1:/projects/anything']);
+
+            expect(projectIds(useVisibleSessionListViewData()!))
+                .toEqual(['#projects-header', 'no-path-a', 'no-path-b']);
+        });
     });
 });
 

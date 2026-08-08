@@ -30,6 +30,8 @@ export const es: TranslationStructure = {
     },
 
     common: {
+        star: 'Destacar',
+        unstar: 'Quitar destacado',
         // Simple string constants
         cancel: 'Cancelar',
         authenticate: 'Autenticar',
@@ -243,6 +245,8 @@ export const es: TranslationStructure = {
         analyticsEnabled: 'Analítica anónima de uso activa',
         imageUpload: 'Subida de imágenes',
         imageUploadSubtitle: 'Adjunta imágenes a los mensajes para que los agentes compatibles las analicen',
+        starProjects: 'Destacar proyectos',
+        starProjectsSubtitle: 'Fija los proyectos destacados al principio de la lista de sesiones',
     },
 
     errors: {

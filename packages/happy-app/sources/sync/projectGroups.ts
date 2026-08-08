@@ -1,5 +1,6 @@
 import type { Session } from './storageTypes';
 import type { SessionRowData } from './storage';
+import { projectStarKey } from '@/utils/projectPath';
 
 // One git worktree inside a project. `id` is empty and `name` is null for
 // the project's primary tree, which always sorts first.
@@ -15,9 +16,24 @@ export interface ProjectGroupData {
     id: string;
     name: string;
     machineId: string | null;
+    // The working directory this card was grouped by. Rig supplies a durable
+    // project identity instead, so its cards carry no single path and this is
+    // null — which is also what makes them unstarrable (see projectGroupStarKey).
+    path: string | null;
     workspaces: ProjectWorkspaceGroup[];
     sessionCount: number;
     activeCount: number;
+}
+
+/**
+ * The key a project card is starred under, or null when the card cannot be
+ * starred. Stars are stored per machine-and-path, and worktrees inherit the
+ * star of the repo they belong to, so this is `projectStarKey` — the same key
+ * `settings.starredProjects` has always held.
+ */
+export function projectGroupStarKey(project: ProjectGroupData): string | null {
+    if (!project.machineId || !project.path) return null;
+    return projectStarKey(project.machineId, project.path);
 }
 
 /**
@@ -50,6 +66,7 @@ export function buildPathProjectGroups(
                 id: `${idPrefix}:${key}`,
                 name: pathProjectName(path, session.metadata?.homeDir),
                 machineId,
+                path,
                 workspaces: [{ id: '', name: null, sessions: [] }],
                 sessionCount: 0,
                 activeCount: 0,
@@ -122,6 +139,7 @@ export function buildProjectGroups(
                 id: project.id,
                 name: project.name,
                 machineId: session.metadata?.machineId ?? null,
+                path: null,
                 workspaces: [],
                 sessionCount: 0,
                 activeCount: 0,

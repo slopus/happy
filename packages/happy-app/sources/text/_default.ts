@@ -30,6 +30,8 @@ export const en = {
     },
 
     common: {
+        star: 'Star',
+        unstar: 'Unstar',
         // Simple string constants
         cancel: 'Cancel',
         authenticate: 'Authenticate',
@@ -241,6 +243,8 @@ export const en = {
         analyticsEnabled: 'Anonymous usage analytics active',
         imageUpload: 'Image Upload',
         imageUploadSubtitle: 'Attach images to messages for supported agents to analyze',
+        starProjects: 'Star Projects',
+        starProjectsSubtitle: 'Pin starred projects to the top of the session list',
     },
 
     imageUpload: {

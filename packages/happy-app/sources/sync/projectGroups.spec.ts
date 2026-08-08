@@ -180,6 +180,7 @@ describe('filterProjectGroupSessions', () => {
             id: 'happy-project',
             name: 'happy',
             machineId: 'machine-1',
+            path: null,
             sessionCount: 2,
             activeCount: 1,
             workspaces: [{
@@ -203,6 +204,7 @@ describe('filterProjectGroupSessions', () => {
             id: 'rig-project',
             name: 'rig',
             machineId: 'machine-1',
+            path: null,
             sessionCount: 2,
             activeCount: 0,
             workspaces: [{
@@ -228,6 +230,7 @@ describe('filterProjectGroup', () => {
         id: 'p1',
         name: 'happy',
         machineId: 'machine-1',
+        path: null,
         sessionCount: 3,
         activeCount: 3,
         workspaces: [

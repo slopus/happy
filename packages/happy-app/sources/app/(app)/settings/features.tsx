@@ -18,6 +18,7 @@ export default function FeaturesSettingsScreen() {
     const [fileDiffsSidebar, setFileDiffsSidebar] = useSettingMutable('fileDiffsSidebar');
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [expImageUpload, setExpImageUpload] = useSettingMutable('expImageUpload');
+    const [expStarProjects, setExpStarProjects] = useSettingMutable('expStarProjects');
     const [sortSessionsByActivity, setSortSessionsByActivity] = useSettingMutable('sortSessionsByActivity');
 
     return (
@@ -126,6 +127,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={expImageUpload}
                             onValueChange={setExpImageUpload}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.starProjects')}
+                    subtitle={t('settingsFeatures.starProjectsSubtitle')}
+                    icon={<Ionicons name="star-outline" size={29} color="#FFCC00" />}
+                    rightElement={
+                        <Switch
+                            value={expStarProjects}
+                            onValueChange={setExpStarProjects}
                         />
                     }
                     showChevron={false}
