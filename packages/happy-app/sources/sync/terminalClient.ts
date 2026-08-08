@@ -128,10 +128,16 @@ export interface TerminalStreamHandlers {
     onOutput(data: string): void;
     onExit(exitCode: number): void;
     onError(message: string): void;
-    onWriter(writerSocketId: string): void;
+    onWriter(state: TerminalWriterState): void;
     /** Daemon restarted while this stream was connected; queued input dropped. */
     onEpochReset?(): void;
     onStatusChange(status: TerminalStreamStatus): void;
+}
+
+export interface TerminalWriterState {
+    writerSocketId: string | null;
+    generation: number;
+    isWriter: boolean;
 }
 
 /**
@@ -154,6 +160,7 @@ export class TerminalStream {
     private lastOutputSeq = 0;
     private inputSeq = 0;
     private readonly unackedInputs = new Map<number, string>();
+    private desiredSize: { cols: number; rows: number } | null = null;
     private readonly disposers: Array<() => void> = [];
     private wired = false;
     private status: TerminalStreamStatus = 'connecting';
@@ -162,6 +169,10 @@ export class TerminalStream {
     private inboundQueue: Promise<void> = Promise.resolve();
     private attachInFlight: Promise<TerminalAttachResult> | null = null;
     private lastNotifiedEpoch = '';
+    private currentWriterSocketId: string | null = null;
+    private writerGeneration = 0;
+    private writerStateInitialized = false;
+    private writer = false;
     private resyncAttempts = 0;
     private static readonly MAX_RESYNC_ATTEMPTS = 3;
 
@@ -175,6 +186,10 @@ export class TerminalStream {
 
     get streamId(): string {
         return this.controlStreamId;
+    }
+
+    get isWriter(): boolean {
+        return this.writer;
     }
 
     async attach(): Promise<TerminalAttachResult> {
@@ -222,7 +237,11 @@ export class TerminalStream {
             // Subscribe first: any output produced while the attach RPC is in
             // flight reaches this client and is buffered, closing the window
             // between replay capture and live subscription.
-            apiSocket.send('terminal:subscribe', { terminalId: this.terminalId });
+            const writerState = await apiSocket.emitWithAck<TerminalWriterState>(
+                'terminal:subscribe',
+                { terminalId: this.terminalId },
+            );
+            this.applyWriterState(writerState);
             const result = await terminalAttach(this.machineId, this.terminalId, this.lastOutputSeq);
 
             // Daemon generation changed (daemon restarted, tmux kept running):
@@ -239,8 +258,9 @@ export class TerminalStream {
                 // From here on, frames are handled live: anything arriving
                 // during takeover/resend must not be buffered and dropped.
                 this.attaching = false;
-                this.takeControl();
-                await this.resendUnackedInputs();
+                if (this.isWriter) {
+                    await this.resendUnackedInputs();
+                }
                 this.setStatus('attached');
             } else if (result.status === 'exited') {
                 this.setStatus('exited');
@@ -254,6 +274,9 @@ export class TerminalStream {
     }
 
     async sendInput(data: string): Promise<void> {
+        if (!this.isWriter) {
+            return;
+        }
         const seq = ++this.inputSeq;
         this.unackedInputs.set(seq, data);
         const frame = this.inputFrame({ seq, kind: 'input', data });
@@ -266,6 +289,10 @@ export class TerminalStream {
     }
 
     async sendResize(cols: number, rows: number): Promise<void> {
+        this.desiredSize = { cols, rows };
+        if (!this.isWriter) {
+            return;
+        }
         const seq = ++this.inputSeq;
         const frame = this.inputFrame({ seq, kind: 'resize', cols, rows });
         const payload = await this.encrypt<TerminalInputFrame>(frame);
@@ -275,8 +302,12 @@ export class TerminalStream {
         apiSocket.send('terminal:resize', { terminalId: this.terminalId, payload });
     }
 
-    takeControl(): void {
-        apiSocket.send('terminal:takeover', { terminalId: this.terminalId });
+    async takeControl(): Promise<void> {
+        const state = await apiSocket.emitWithAck<TerminalWriterState>(
+            'terminal:takeover',
+            { terminalId: this.terminalId },
+        );
+        this.applyWriterState(state);
     }
 
     detach(): void {
@@ -288,6 +319,10 @@ export class TerminalStream {
         this.bufferedFrames = [];
         this.resyncAttempts = 0;
         this.streamEpoch = '';
+        this.writer = false;
+        this.writerStateInitialized = false;
+        this.currentWriterSocketId = null;
+        this.writerGeneration = 0;
         apiSocket.send('terminal:unsubscribe', { terminalId: this.terminalId });
         this.setStatus('detached');
     }
@@ -322,8 +357,15 @@ export class TerminalStream {
         }));
 
         this.disposers.push(apiSocket.onMessage('terminal:writer', (data: any) => {
-            if (data?.terminalId === this.terminalId && typeof data.writerSocketId === 'string') {
-                this.handlers.onWriter(data.writerSocketId);
+            if (data?.terminalId === this.terminalId
+                && (typeof data.writerSocketId === 'string' || data.writerSocketId === null)
+                && Number.isSafeInteger(data.generation)) {
+                this.applyWriterState({
+                    writerSocketId: data.writerSocketId,
+                    generation: data.generation,
+                    isWriter: data.writerSocketId !== null
+                        && data.writerSocketId === apiSocket.getSocketId(),
+                });
             }
         }));
 
@@ -503,14 +545,45 @@ export class TerminalStream {
             return false;
         }
 
-        this.unackedInputs.clear();
-        this.inputSeq = 0;
-        this.controlStreamId = Crypto.randomUUID();
+        this.rotateControlStream();
         if (this.lastNotifiedEpoch !== epoch) {
             this.lastNotifiedEpoch = epoch;
             this.handlers.onEpochReset?.();
         }
         return true;
+    }
+
+    private applyWriterState(state: TerminalWriterState): void {
+        const writerSocketId = typeof state.writerSocketId === 'string'
+            ? state.writerSocketId
+            : null;
+        const generation = Number.isSafeInteger(state.generation) && state.generation >= 0
+            ? state.generation
+            : 0;
+        const writerChanged = this.writerStateInitialized
+            && writerSocketId !== this.currentWriterSocketId;
+        const ownershipChanged = this.writerStateInitialized
+            && this.writer !== (state.isWriter === true);
+
+        this.currentWriterSocketId = writerSocketId;
+        this.writerGeneration = generation;
+        this.writer = state.isWriter === true;
+        this.writerStateInitialized = true;
+
+        if (writerChanged || ownershipChanged) {
+            this.rotateControlStream();
+        }
+        this.handlers.onWriter({
+            writerSocketId: this.currentWriterSocketId,
+            generation: this.writerGeneration,
+            isWriter: this.writer,
+        });
+    }
+
+    private rotateControlStream(): void {
+        this.unackedInputs.clear();
+        this.inputSeq = 0;
+        this.controlStreamId = Crypto.randomUUID();
     }
 
     private enqueueInbound(operation: () => Promise<void>): void {

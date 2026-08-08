@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     TerminalStream,
     TerminalStreamStatus,
+    TerminalWriterState,
 } from '@/sync/terminalClient';
 import type { TerminalAttachResult } from '@/sync/terminalTypes';
 
@@ -10,7 +11,7 @@ export interface TerminalSessionCallbacks {
     onOutput(data: string): void;
     onExit(exitCode: number): void;
     onError(message: string): void;
-    onWriter(writerSocketId: string): void;
+    onWriter(state: TerminalWriterState): void;
 }
 
 export function useTerminalSession(
@@ -23,6 +24,7 @@ export function useTerminalSession(
 
     const [status, setStatus] = useState<TerminalStreamStatus>('connecting');
     const [writerSocketId, setWriterSocketId] = useState<string | null>(null);
+    const [isWriter, setIsWriter] = useState(false);
     const [exitCode, setExitCode] = useState<number | undefined>();
     const [error, setError] = useState<string | null>(null);
     const [epochReset, setEpochReset] = useState(false);
@@ -41,9 +43,10 @@ export function useTerminalSession(
                 setError(message);
                 callbacksRef.current.onError(message);
             },
-            onWriter: (writerId) => {
-                setWriterSocketId(writerId);
-                callbacksRef.current.onWriter(writerId);
+            onWriter: (writerState) => {
+                setWriterSocketId(writerState.writerSocketId);
+                setIsWriter(writerState.isWriter);
+                callbacksRef.current.onWriter(writerState);
             },
             onEpochReset: () => setEpochReset(true),
             onStatusChange: setStatus,
@@ -71,7 +74,7 @@ export function useTerminalSession(
     }, []);
 
     const takeControl = useCallback(() => {
-        streamRef.current?.takeControl();
+        void streamRef.current?.takeControl();
     }, []);
 
     const refresh = useCallback(() => {
@@ -81,6 +84,7 @@ export function useTerminalSession(
     return {
         status,
         writerSocketId,
+        isWriter,
         exitCode,
         error,
         epochReset,

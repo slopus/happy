@@ -4,16 +4,19 @@ import type { TerminalAttachResult } from './terminalTypes';
 const {
     machineRPC,
     socketSend,
+    socketEmitWithAck,
     socketOnMessage,
     socketOnReconnected,
     socketHandlers,
     fakeEncryption,
     randomUUID,
+    getSocketId,
 } = vi.hoisted(() => {
     const handlers: Record<string, (data: any) => void> = {};
     return {
         machineRPC: vi.fn(),
         socketSend: vi.fn(),
+        socketEmitWithAck: vi.fn(),
         socketOnMessage: vi.fn((event: string, handler: (data: any) => void) => {
             handlers[event] = handler;
             return () => {
@@ -27,6 +30,7 @@ const {
             decryptRaw: vi.fn(async (payload: string) => JSON.parse(payload.slice(4))),
         },
         randomUUID: vi.fn(),
+        getSocketId: vi.fn(() => 'socket-a'),
     };
 });
 
@@ -34,8 +38,10 @@ vi.mock('./apiSocket', () => ({
     apiSocket: {
         machineRPC,
         send: socketSend,
+        emitWithAck: socketEmitWithAck,
         onMessage: socketOnMessage,
         onReconnected: socketOnReconnected,
+        getSocketId,
     },
 }));
 
@@ -141,6 +147,12 @@ describe('TerminalStream', () => {
         fakeEncryption.decryptRaw.mockImplementation(
             async (payload: string) => JSON.parse(payload.slice(4)),
         );
+        getSocketId.mockReturnValue('socket-a');
+        socketEmitWithAck.mockResolvedValue({
+            writerSocketId: 'socket-a',
+            generation: 1,
+            isWriter: true,
+        });
         machineRPC.mockResolvedValue(runningAttach());
     });
 
@@ -179,8 +191,15 @@ describe('TerminalStream', () => {
         const result = await stream.attach();
         expect(result.nextSeq).toBe(3);
         expect(attaches).toHaveLength(1);
-        expect(socketSend).toHaveBeenCalledWith('terminal:subscribe', { terminalId: 't1' });
-        expect(socketSend).toHaveBeenCalledWith('terminal:takeover', { terminalId: 't1' });
+        expect(socketEmitWithAck).toHaveBeenCalledWith(
+            'terminal:subscribe',
+            { terminalId: 't1' },
+        );
+        expect(socketEmitWithAck).not.toHaveBeenCalledWith(
+            'terminal:takeover',
+            { terminalId: 't1' },
+        );
+        expect(stream.isWriter).toBe(true);
         expect(statuses).toContain('attached');
 
         emit('terminal:output', outFrame(3, 'live'));
@@ -330,9 +349,10 @@ describe('TerminalStream', () => {
         await stream.attach();
 
         expect(exits).toEqual([2]);
-        // Subscribe happens before attach, but an exited terminal never takes
-        // the writer seat.
-        expect(socketSend).not.toHaveBeenCalledWith('terminal:takeover', { terminalId: 't1' });
+        expect(socketEmitWithAck).not.toHaveBeenCalledWith(
+            'terminal:takeover',
+            { terminalId: 't1' },
+        );
 
         emit('terminal:exit', {
             version: 3,
@@ -561,6 +581,75 @@ describe('TerminalStream', () => {
             kind: 'input',
             data: 'ls',
         });
+    });
+
+    it('keeps later subscribers view-only until explicit takeover', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        socketEmitWithAck.mockImplementation(async (event: string) => {
+            if (event === 'terminal:takeover') {
+                return { writerSocketId: 'socket-a', generation: 2, isWriter: true };
+            }
+            return { writerSocketId: 'socket-b', generation: 1, isWriter: false };
+        });
+        const writerStates: boolean[] = [];
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: (state) => writerStates.push(state.isWriter),
+            onStatusChange: () => undefined,
+        });
+        await stream.attach();
+
+        expect(stream.isWriter).toBe(false);
+        await stream.sendInput('hidden');
+        await stream.sendResize(100, 30);
+        expect(socketSend.mock.calls.some(
+            ([event]) => event === 'terminal:input' || event === 'terminal:resize',
+        )).toBe(false);
+
+        await stream.takeControl();
+        expect(stream.isWriter).toBe(true);
+        await stream.sendInput('visible');
+        expect(socketSend.mock.calls.some(([event]) => event === 'terminal:input')).toBe(true);
+        expect(writerStates).toEqual([false, true]);
+    });
+
+    it('demotes on writer broadcast and drops pending input before resync', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+        await stream.attach();
+        const originalStreamId = stream.streamId;
+        await stream.sendInput('dangerous');
+
+        socketHandlers['terminal:writer']({
+            terminalId: 't1',
+            writerSocketId: 'socket-b',
+            generation: 2,
+        });
+        expect(stream.isWriter).toBe(false);
+        expect(stream.streamId).not.toBe(originalStreamId);
+
+        socketEmitWithAck.mockResolvedValueOnce({
+            writerSocketId: 'socket-b',
+            generation: 2,
+            isWriter: false,
+        });
+        machineRPC.mockResolvedValueOnce(runningAttach(6));
+        const reconnectedListener = socketOnReconnected.mock.calls[0][0];
+        reconnectedListener();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        const inputCalls = socketSend.mock.calls.filter(([event]) => event === 'terminal:input');
+        expect(inputCalls).toHaveLength(1);
     });
 
     it('drops unacked input when the daemon epoch changes', async () => {

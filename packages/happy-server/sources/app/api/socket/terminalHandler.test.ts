@@ -10,6 +10,12 @@ let ioServer: Server;
 let baseUrl: string;
 const sockets: ClientSocket[] = [];
 
+interface WriterState {
+    writerSocketId: string | null;
+    generation: number;
+    isWriter: boolean;
+}
+
 function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -30,6 +36,14 @@ async function connect(
     });
     sockets.push(socket);
     return socket;
+}
+
+async function subscribe(socket: ClientSocket, terminalId: string): Promise<WriterState> {
+    return await socket.emitWithAck('terminal:subscribe', { terminalId }) as WriterState;
+}
+
+async function takeover(socket: ClientSocket, terminalId: string): Promise<WriterState> {
+    return await socket.emitWithAck('terminal:takeover', { terminalId }) as WriterState;
 }
 
 beforeAll(async () => {
@@ -98,9 +112,8 @@ describe('terminalHandler', () => {
         const terminalId = 'term-relay';
 
         daemon.emit('terminal:register', { terminalId });
-        client.emit('terminal:subscribe', { terminalId });
-        stranger.emit('terminal:subscribe', { terminalId });
-        await delay(50);
+        await subscribe(client, terminalId);
+        await subscribe(stranger, terminalId);
 
         const outputPromise = new Promise<string>((resolve) => {
             client.on('terminal:output', (data: { payload: string }) => resolve(data.payload));
@@ -122,8 +135,7 @@ describe('terminalHandler', () => {
         const terminalId = 'term-exit';
 
         daemon.emit('terminal:register', { terminalId });
-        client.emit('terminal:subscribe', { terminalId });
-        await delay(50);
+        await subscribe(client, terminalId);
 
         const exitPromise = new Promise<string>((resolve) => {
             client.on('terminal:exit', (data: { payload: string }) => resolve(data.payload));
@@ -138,8 +150,7 @@ describe('terminalHandler', () => {
         const terminalId = 'term-epoch';
 
         daemon.emit('terminal:register', { terminalId });
-        client.emit('terminal:subscribe', { terminalId });
-        await delay(50);
+        await subscribe(client, terminalId);
 
         const epochPromise = new Promise<string>((resolve) => {
             client.on('terminal:epoch', (data: { payload: string }) => resolve(data.payload));
@@ -155,16 +166,21 @@ describe('terminalHandler', () => {
         const terminalId = 'term-writer';
 
         daemon.emit('terminal:register', { terminalId });
-        clientA.emit('terminal:subscribe', { terminalId });
-        clientB.emit('terminal:subscribe', { terminalId });
-        await delay(50);
+        const stateA = await subscribe(clientA, terminalId);
+        const stateB = await subscribe(clientB, terminalId);
+        expect(stateA).toEqual(expect.objectContaining({
+            writerSocketId: clientA.id,
+            isWriter: true,
+        }));
+        expect(stateB).toEqual(expect.objectContaining({
+            writerSocketId: clientA.id,
+            isWriter: false,
+        }));
 
         const daemonInputs: string[] = [];
         daemon.on('terminal:input', (data: { payload: string }) => daemonInputs.push(data.payload));
 
-        // A takes the writer seat and its input reaches the daemon.
-        clientA.emit('terminal:takeover', { terminalId });
-        await delay(50);
+        // The first subscriber owns the writer seat without an implicit takeover.
         clientA.emit('terminal:input', { terminalId, payload: 'FROM-A' });
         await delay(100);
         expect(daemonInputs).toContain('FROM-A');
@@ -178,7 +194,11 @@ describe('terminalHandler', () => {
         const writerNotice = new Promise<string>((resolve) => {
             clientA.on('terminal:writer', (data: { writerSocketId: string }) => resolve(data.writerSocketId));
         });
-        clientB.emit('terminal:takeover', { terminalId });
+        const takeoverState = await takeover(clientB, terminalId);
+        expect(takeoverState).toEqual(expect.objectContaining({
+            writerSocketId: clientB.id,
+            isWriter: true,
+        }));
         await expect(writerNotice).resolves.toBe(clientB.id);
         await delay(50);
 
@@ -196,18 +216,18 @@ describe('terminalHandler', () => {
         const terminalId = 'term-race';
 
         daemon.emit('terminal:register', { terminalId });
-        clientA.emit('terminal:subscribe', { terminalId });
-        clientB.emit('terminal:subscribe', { terminalId });
-        await delay(50);
+        await subscribe(clientA, terminalId);
+        await subscribe(clientB, terminalId);
 
         const daemonInputs: string[] = [];
         daemon.on('terminal:input', (data: { payload: string }) => daemonInputs.push(data.payload));
 
         // Fire both takeovers without waiting: takeover must be serialized and
         // end with exactly one writer, never zero or two.
-        clientA.emit('terminal:takeover', { terminalId });
-        clientB.emit('terminal:takeover', { terminalId });
-        await delay(100);
+        await Promise.all([
+            takeover(clientA, terminalId),
+            takeover(clientB, terminalId),
+        ]);
 
         clientA.emit('terminal:input', { terminalId, payload: 'FROM-A' });
         clientB.emit('terminal:input', { terminalId, payload: 'FROM-B' });
@@ -224,23 +244,19 @@ describe('terminalHandler', () => {
         const terminalId = 'term-unsub';
 
         daemon.emit('terminal:register', { terminalId });
-        clientA.emit('terminal:subscribe', { terminalId });
-        clientB.emit('terminal:subscribe', { terminalId });
-        await delay(50);
+        await subscribe(clientA, terminalId);
+        await subscribe(clientB, terminalId);
 
         const daemonInputs: string[] = [];
         daemon.on('terminal:input', (data: { payload: string }) => daemonInputs.push(data.payload));
 
-        clientA.emit('terminal:takeover', { terminalId });
-        await delay(50);
         clientA.emit('terminal:unsubscribe', { terminalId });
         await delay(50);
         clientA.emit('terminal:input', { terminalId, payload: 'FROM-A-AFTER' });
         await delay(100);
         expect(daemonInputs).toEqual([]);
 
-        clientB.emit('terminal:takeover', { terminalId });
-        await delay(50);
+        await takeover(clientB, terminalId);
         clientB.emit('terminal:input', { terminalId, payload: 'FROM-B' });
         await delay(100);
         expect(daemonInputs).toEqual(['FROM-B']);
@@ -252,8 +268,7 @@ describe('terminalHandler', () => {
         const terminalId = 'ok-terminal';
 
         daemon.emit('terminal:register', { terminalId });
-        client.emit('terminal:subscribe', { terminalId });
-        await delay(50);
+        await subscribe(client, terminalId);
 
         let received = 0;
         client.on('terminal:output', () => {
