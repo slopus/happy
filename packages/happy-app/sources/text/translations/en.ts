@@ -963,6 +963,9 @@ export const en: TranslationStructure = {
         codeCopied: 'Code copied',
         copyFailed: 'Failed to copy',
         mermaidRenderFailed: 'Failed to render mermaid diagram',
+        // Multi-select on option chips
+        optionsRunInSequence: 'Run in sequence',
+        optionsSequencePrompt: 'Please do the following in order:',
     },
 
     artifacts: {

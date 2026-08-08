@@ -949,6 +949,9 @@ export const zhHant: TranslationStructure = {
         codeCopied: '程式碼已複製',
         copyFailed: '複製失敗',
         mermaidRenderFailed: '渲染 mermaid 圖表失敗',
+        // Multi-select on option chips
+        optionsRunInSequence: '依序執行',
+        optionsSequencePrompt: '請依序完成以下事項：',
     },
 
     artifacts: {

@@ -950,6 +950,9 @@ export const zhHans: TranslationStructure = {
         codeCopied: '代码已复制',
         copyFailed: '复制失败',
         mermaidRenderFailed: '渲染 mermaid 图表失败',
+        // Multi-select on option chips
+        optionsRunInSequence: '依次执行',
+        optionsSequencePrompt: '请依次完成以下事项：',
     },
 
     artifacts: {

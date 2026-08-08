@@ -1,6 +1,7 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import * as React from 'react';
 import { Image, Pressable, View, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { HorizontalScrollView } from '../HorizontalScrollView';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
@@ -225,28 +226,95 @@ function RenderImageBlock(props: { url: string, alt: string, first: boolean, las
     );
 }
 
-function RenderOptionsBlock(props: { 
-    items: string[], 
-    first: boolean, 
-    last: boolean, 
+function RenderOptionsBlock(props: {
+    items: string[],
+    first: boolean,
+    last: boolean,
     selectable: boolean,
-    onOptionPress?: (option: Option) => void 
+    onOptionPress?: (option: Option) => void
 }) {
+    // Multi-select mode is per-block local state only: null == off, a Set of
+    // selected indices == on. Not persisted, not synced, dies on unmount.
+    // Single tap keeps sending immediately; long-press enters selection mode
+    // so the user can batch several options into one "run in sequence" message.
+    const [selected, setSelected] = React.useState<Set<number> | null>(null);
+    const inSelectionMode = selected !== null;
+
+    const enterSelection = React.useCallback((index: number) => {
+        setSelected(new Set([index]));
+    }, []);
+
+    const toggle = React.useCallback((index: number) => {
+        setSelected((prev) => {
+            const next = new Set(prev ?? []);
+            if (next.has(index)) {
+                next.delete(index);
+            } else {
+                next.add(index);
+            }
+            return next;
+        });
+    }, []);
+
+    const cancel = React.useCallback(() => {
+        setSelected(null);
+    }, []);
+
+    const runInSequence = React.useCallback(() => {
+        if (!props.onOptionPress || !selected || selected.size === 0) {
+            return;
+        }
+        // Compose one message from the selected options in display order.
+        const chosen = props.items.filter((_, index) => selected.has(index));
+        const combined = [t('markdown.optionsSequencePrompt'), ...chosen.map((text, i) => `${i + 1}. ${text}`)].join('\n');
+        props.onOptionPress({ title: combined });
+        setSelected(null);
+    }, [props.onOptionPress, props.items, selected]);
+
     return (
         <View style={[style.optionsContainer, props.first && style.first, props.last && style.last]}>
             {props.items.map((item, index) => {
                 if (props.onOptionPress) {
+                    const isSelected = selected?.has(index) ?? false;
                     return (
-                        <Pressable 
-                            key={index} 
+                        <Pressable
+                            key={index}
                             style={({ pressed }) => [
                                 style.optionPressable,
                                 style.optionItem,
+                                isSelected && style.optionItemSelected,
                                 pressed && style.optionItemPressed
                             ]}
-                            onPress={() => props.onOptionPress?.({ title: item })}
+                            onPress={() => {
+                                if (inSelectionMode) {
+                                    toggle(index);
+                                } else {
+                                    props.onOptionPress?.({ title: item });
+                                }
+                            }}
+                            onLongPress={() => enterSelection(index)}
+                            // Web: mouse-hold fires onLongPress, but the browser also pops
+                            // its native context menu on right-click / long-press. Suppress it
+                            // and enter selection mode, mirroring SessionsList's precedent.
+                            {...(Platform.OS === 'web' ? ({
+                                onContextMenu: (event: any) => {
+                                    event.preventDefault?.();
+                                    event.stopPropagation?.();
+                                    enterSelection(index);
+                                },
+                            } as any) : {})}
                         >
-                            <Text selectable={props.selectable} style={style.optionText}>{item}</Text>
+                            <View style={style.optionRow}>
+                                {inSelectionMode ? (
+                                    <Ionicons
+                                        name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                                        size={20}
+                                        color={isSelected ? style.optionCheckSelected.color : style.optionCheck.color}
+                                        style={style.optionCheckIcon}
+                                    />
+                                ) : null}
+                                <Text selectable={props.selectable && !inSelectionMode} style={style.optionText}>{item}</Text>
+                            </View>
                         </Pressable>
                     );
                 } else {
@@ -257,6 +325,32 @@ function RenderOptionsBlock(props: {
                     );
                 }
             })}
+            {inSelectionMode ? (
+                <View style={style.optionsActionsRow}>
+                    <Pressable
+                        style={({ pressed }) => [
+                            style.optionsActionButton,
+                            style.optionsActionRun,
+                            (selected?.size ?? 0) === 0 && style.optionsActionDisabled,
+                            pressed && style.optionItemPressed,
+                        ]}
+                        disabled={(selected?.size ?? 0) === 0}
+                        onPress={runInSequence}
+                    >
+                        <Text style={style.optionsActionRunText}>{t('markdown.optionsRunInSequence')}</Text>
+                    </Pressable>
+                    <Pressable
+                        style={({ pressed }) => [
+                            style.optionsActionButton,
+                            style.optionsActionCancel,
+                            pressed && style.optionItemPressed,
+                        ]}
+                        onPress={cancel}
+                    >
+                        <Text style={style.optionsActionCancelText}>{t('common.cancel')}</Text>
+                    </Pressable>
+                </View>
+            ) : null}
         </View>
     );
 }
@@ -615,6 +709,58 @@ const style = StyleSheet.create((theme) => ({
         fontSize: 16,
         lineHeight: 24,
         color: theme.colors.text,
+    },
+    optionItemSelected: {
+        borderColor: theme.colors.textLink,
+    },
+    optionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    optionCheckIcon: {
+        marginLeft: -2,
+    },
+    optionCheck: {
+        color: theme.colors.textSecondary,
+    },
+    optionCheckSelected: {
+        color: theme.colors.textLink,
+    },
+    optionsActionsRow: {
+        flexDirection: 'row',
+        gap: 8,
+        marginTop: 4,
+    },
+    optionsActionButton: {
+        borderRadius: Platform.select({ web: 8, default: 18 }),
+        paddingHorizontal: 20,
+        paddingVertical: Platform.select({ web: 12, default: 14 }),
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    optionsActionRun: {
+        backgroundColor: theme.colors.textLink,
+    },
+    optionsActionRunText: {
+        ...Typography.default('semiBold'),
+        fontSize: 16,
+        lineHeight: 20,
+        color: theme.colors.button.primary.tint,
+    },
+    optionsActionCancel: {
+        backgroundColor: Platform.select({ web: theme.colors.surfaceHighest, default: theme.colors.surface }),
+        borderWidth: Platform.select({ web: 1, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.divider,
+    },
+    optionsActionCancelText: {
+        ...Typography.default(),
+        fontSize: 16,
+        lineHeight: 20,
+        color: theme.colors.text,
+    },
+    optionsActionDisabled: {
+        opacity: 0.5,
     },
 
     //
