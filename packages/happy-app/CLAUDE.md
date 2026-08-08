@@ -204,6 +204,22 @@ This ensures consistent header appearance and behavior across iOS, Android, and 
 
 ## Unistyles Styling Guide
 
+### Theme and Interactive Surface Contract
+
+All user-visible colors must come from the active `theme.colors` semantic tokens. This applies to PC Web as well as Android and iOS.
+
+- Do not hardcode hex colors, pull from a specific theme pack, or reuse a default-theme color inside a component for an interactive surface.
+- Use `surface` for the resting surface, `surfacePressed` for hover/pressed feedback, and `surfaceSelected` for selected, active, or focused surfaces. Do not substitute `background` or a warm default color for these states.
+- If a needed semantic color does not exist, add it to the theme contract first, including every light/dark theme pack in `sources/themePacks.ts`, then consume it through `theme.colors`.
+- In `applyAccent`, keep the shared interactive-surface mapping intact: `surfacePressed` follows the pack's `surfaceHigh` and `surfaceSelected` follows `surfaceHighest`. This prevents a dark theme from retaining caramel base-theme interaction colors.
+- Static product artwork and intentionally fixed brand assets are the only exception. A fixed UI surface color is not an exception.
+
+When changing theme tokens or interactive-state styling:
+
+1. Add or update a unit assertion for a non-default dark pack (prefer `ginghamDark`) in the relevant theme test.
+2. Check resting, hover/pressed, and selected/active states after switching to that pack.
+3. For PC Web visual changes, include that themed state in the PR's per-case visual evidence.
+
 ### Creating Styles
 
 Always use `StyleSheet.create` from 'react-native-unistyles':

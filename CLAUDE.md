@@ -83,6 +83,21 @@ gh pr create --repo wangjs-jacky/happy --base main --head <branch-name>
 
 使用根目录 [`.github/pull_request_template.md`](.github/pull_request_template.md) 的 Visual evidence 区块，不要在 `gh pr create --body` 时删掉该区块。非视觉 PR 填 `Visible UI cases: 0` 并说明原因。
 
+### 主题与交互表面颜色规范
+
+所有用户可见的界面和交互态都必须从**当前 Unistyles 主题的语义 token**取色；主题包不是仅供页面背景和主按钮使用的色板。该规则同时适用于 Android、iOS、PC Web。
+
+- 组件不得为卡片、列表项、按钮、图标按钮、菜单项、导航项、文件夹入口等交互表面写死 `#...` 色值，也不得从某个主题包/基础主题直接挑色。需要新颜色时，先在主题定义中增加有语义的 token，再由组件消费该 token。
+- 普通、hover、pressed、selected/active/focused、drag-over 等状态必须使用对应的语义表面 token。现有通用层级为：`surface`（普通）、`surfacePressed`（按下/hover）和 `surfaceSelected`（选中/激活）；不要用 `background`、焦糖色或其他默认主题颜色临时替代交互态。
+- 主题包的 `light` 和 `dark` 两态必须完整覆盖交互表面层级。在 `sources/themePacks.ts` 的 `applyAccent` 中，`surfacePressed` 必须映射到当前主题包的 `surfaceHigh`，`surfaceSelected` 必须映射到 `surfaceHighest`，避免深蓝/深色主题仍露出基础焦糖暖色。
+- 固定品牌资产、图片和明确不可主题化的内容色可以例外；例外必须是有意的产品设计，而不是为了省略 token。
+
+主题相关改动的验收门禁：
+
+1. 修改主题 token 或主题包映射时，为至少一个非默认深色主题补充/更新单测，断言交互态 token 来自该主题包；不得只验证默认焦糖主题。
+2. 修改可见交互态时，在深色非默认主题（优先 `ginghamDark`）下检查普通、hover/pressed 和 selected/active 状态。PC Web 的可见变更还必须在 PR 的逐 Case 前后证据中展示该主题状态。
+3. 若发现某个主题下出现与当前主题不协调的残留底色，优先检查组件是否绕过 `theme.colors.*`，以及主题包是否遗漏了语义 token；不要用局部硬编码掩盖问题。
+
 ## 四、Worktree 开发流程（隔离开发，推荐）
 
 需要在不打断当前工作区的前提下并行开发时，用 git worktree。约定如下（与全局 `~/.claude/CLAUDE.md` 一致）：
