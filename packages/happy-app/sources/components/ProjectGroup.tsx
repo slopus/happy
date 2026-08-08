@@ -4,7 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
+import { useRouter } from 'expo-router';
 import { ProjectGroupData, ProjectWorkspaceGroup, useAllMachines, useLocalSettingMutable } from '@/sync/storage';
+import { t } from '@/text';
+import { seedNewSessionDraftFrom } from '@/utils/newSessionFromProject';
 import { CompactSessionRow } from './ActiveSessionsGroupCompact';
 
 interface ProjectGroupProps {
@@ -36,6 +39,20 @@ export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectG
     // Worktrees only need naming when the project actually has more than one
     const showWorkspaceLabels = project.workspaces.length > 1;
 
+    // A card carries no working directory of its own — the cards keyed by path
+    // are grouped on (machine, path), so every session under one shares both and
+    // any of them answers "where would a new session here run".
+    const seedSession = React.useMemo(
+        () => project.workspaces.flatMap(w => w.sessions).find(s => s.path) ?? null,
+        [project.workspaces],
+    );
+    const router = useRouter();
+    const handleNewSession = React.useCallback(() => {
+        if (!seedSession) return;
+        seedNewSessionDraftFrom(seedSession);
+        router.navigate('/new');
+    }, [router, seedSession]);
+
     return (
         <View style={styles.container}>
             <Pressable style={styles.header} onPress={toggleCollapsed} hitSlop={8}>
@@ -55,6 +72,17 @@ export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectG
                         </Text>
                     )}
                 </View>
+                {seedSession && (
+                    <Pressable
+                        onPress={handleNewSession}
+                        hitSlop={{ top: 15, bottom: 15, left: 8, right: 8 }}
+                        style={styles.addButton}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('sidebar.newSession')}
+                    >
+                        <Ionicons name="add" size={16} color={theme.colors.textSecondary} />
+                    </Pressable>
+                )}
                 <Text style={styles.count}>
                     {project.activeCount > 0 ? `${project.activeCount}/${project.sessionCount}` : project.sessionCount}
                 </Text>
@@ -138,6 +166,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         marginTop: 1,
         ...Typography.default(),
+    },
+    addButton: {
+        paddingHorizontal: 4,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     count: {
         fontSize: 12,
