@@ -153,6 +153,48 @@ export async function claudeRemote(opts: {
         }
     };
 
+    /**
+     * Background-task system messages the SDK streams alongside a turn. They are
+     * not part of SDKSystemMessage, whose subtype is narrowed to 'init'.
+     */
+    interface BackgroundTaskMessage {
+        subtype?: string;
+        tasks?: unknown[];
+        description?: string;
+        last_tool_name?: string;
+        patch?: { status?: string };
+    }
+
+    /**
+     * The SDK emits `result` as soon as the main thread hands work to a
+     * subagent, so reporting the turn as finished there tells the app the
+     * session is idle — and fires a "done" push — while the subagent keeps
+     * running, sometimes for many minutes.
+     *
+     * `background_tasks_changed` carries the full set of running tasks rather
+     * than incremental start/stop events, so a dropped message cannot leave the
+     * count permanently skewed. Release is purely event driven: either the set
+     * empties or the query ends.
+     */
+    let backgroundTasks = 0;
+    let readyDeferred = false;
+    let lastProgress: string | null = null;
+    const subagentChat = (process.env.HAPPY_SUBAGENT_CHAT ?? 'lifecycle').toLowerCase();
+    const announce = (text: string) => {
+        if (subagentChat !== 'off' && opts.onCompletionEvent) {
+            opts.onCompletionEvent(text);
+        }
+    };
+    const releaseDeferredReady = (reason: string) => {
+        if (!readyDeferred) {
+            return;
+        }
+        readyDeferred = false;
+        logger.debug(`[claudeRemote] Releasing deferred ready (${reason})`);
+        updateThinking(false);
+        opts.onReady();
+    };
+
     // Push initial message
     let messages = new PushableAsyncIterable<SDKUserMessage>();
     messages.push({
@@ -268,6 +310,36 @@ export async function claudeRemote(opts: {
                 : message;
             opts.onMessage(outboundMessage);
 
+            // Track background subagent work so turn completion is not reported early
+            if (message.type === 'system') {
+                // SDKSystemMessage narrows subtype to 'init', while the SDK also
+                // streams background-task system messages that it does not type.
+                const systemMessage = message as unknown as BackgroundTaskMessage;
+                if (systemMessage.subtype === 'background_tasks_changed') {
+                    const running = Array.isArray(systemMessage.tasks) ? systemMessage.tasks.length : 0;
+                    if (running !== backgroundTasks) {
+                        logger.debug(`[claudeRemote] Background tasks: ${backgroundTasks} -> ${running}`);
+                    }
+                    backgroundTasks = running;
+                    if (running === 0) {
+                        releaseDeferredReady('task set empty');
+                    }
+                } else if (systemMessage.subtype === 'task_started' && systemMessage.description) {
+                    announce(`▸ subagent: ${systemMessage.description}`);
+                } else if (systemMessage.subtype === 'task_updated' && systemMessage.patch?.status) {
+                    announce(`✓ subagent ${systemMessage.patch.status}`);
+                } else if (systemMessage.subtype === 'task_progress' && systemMessage.description) {
+                    if (systemMessage.description !== lastProgress) {
+                        lastProgress = systemMessage.description;
+                        logger.debug(`[claudeRemote] Task progress: ${systemMessage.description} (${systemMessage.last_tool_name ?? '?'})`);
+                        if (subagentChat === 'progress') {
+                            const tool = systemMessage.last_tool_name ? ` · ${systemMessage.last_tool_name}` : '';
+                            announce(`… ${systemMessage.description}${tool}`);
+                        }
+                    }
+                }
+            }
+
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
                 // Start thinking when session initializes
@@ -324,7 +396,12 @@ export async function claudeRemote(opts: {
 
             // Handle result messages
             if (message.type === 'result') {
-                updateThinking(false);
+                if (backgroundTasks > 0) {
+                    readyDeferred = true;
+                    logger.debug(`[claudeRemote] Result received while ${backgroundTasks} background task(s) run — deferring idle state`);
+                } else {
+                    updateThinking(false);
+                }
                 logger.debug('[claudeRemote] Result received');
 
                 // Fire-and-forget: unavailable for API key / Bedrock / Vertex
@@ -340,8 +417,10 @@ export async function claudeRemote(opts: {
                     isCompactCommand = false;
                 }
 
-                // Send ready event
-                opts.onReady();
+                // Send ready event, unless subagents are still running
+                if (!readyDeferred) {
+                    opts.onReady();
+                }
 
                 // Wait for next user message without blocking the message loop.
                 // Background task messages (task_started, task_progress, task_notification)
@@ -379,6 +458,8 @@ export async function claudeRemote(opts: {
             throw e;
         }
     } finally {
+        // The query is over, so any deferred idle state is now unconditionally true
+        readyDeferred = false;
         updateThinking(false);
     }
 }
