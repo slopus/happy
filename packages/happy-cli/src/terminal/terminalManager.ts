@@ -11,7 +11,7 @@
 import { createId } from '@paralleldrive/cuid2';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, isAbsolute } from 'node:path';
 import { isTmuxAvailable } from '@/utils/tmux';
 import { logger } from '@/ui/logger';
 import { OutputRingBuffer } from './ringBuffer';
@@ -24,7 +24,7 @@ import {
     TerminalAttachResult,
     TerminalCreateOptions,
     TerminalCreateResult,
-    TerminalOutputFrame,
+    TerminalOutputEvent,
     TerminalRecord,
 } from './types';
 
@@ -32,9 +32,9 @@ export interface TerminalManagerOptions {
     terminalsFile: string;
     policyStore: TerminalPolicyStore;
     shell: string;
-    emitOutput: (terminalId: string, frame: TerminalOutputFrame) => void;
-    emitExit: (terminalId: string, frame: TerminalOutputFrame) => void;
-    emitError: (terminalId: string, frame: TerminalOutputFrame) => void;
+    emitOutput: (terminalId: string, frame: TerminalOutputEvent) => void;
+    emitExit: (terminalId: string, frame: TerminalOutputEvent) => void;
+    emitError: (terminalId: string, frame: TerminalOutputEvent) => void;
     env?: NodeJS.ProcessEnv;
     tmuxEnabled?: boolean;
     ringBufferMaxBytes?: number;
@@ -56,14 +56,24 @@ interface PersistedTerminalRegistry {
 const REGISTRY_VERSION = 1;
 const DEFAULT_RING_BUFFER_MAX_BYTES = 64 * 1024;
 const DEFAULT_SCROLLBACK = 5000;
+const MAX_INPUT_BYTES = 1024 * 1024;
+const MAX_NAME_LENGTH = 80;
+const MAX_SHELL_LENGTH = 256;
+const MIN_DIMENSION = 1;
+const MAX_DIMENSION = 1000;
 
 function isValidCuid(value: string): boolean {
     return /^[a-z0-9]{20,32}$/i.test(value);
 }
 
+function isValidDimension(value: number): boolean {
+    return Number.isSafeInteger(value) && value >= MIN_DIMENSION && value <= MAX_DIMENSION;
+}
+
 export class TerminalManager {
     private readonly entries = new Map<string, TerminalEntry>();
     private readonly pendingApprovals = new Map<string, string>();
+    private readonly lastProcessedInputSeqByStream = new Map<string, number>();
     private persistQueue: Promise<void> = Promise.resolve();
     private readonly options: Required<Pick<TerminalManagerOptions,
         | 'shell'
@@ -148,6 +158,22 @@ export class TerminalManager {
 
     async create(options: TerminalCreateOptions): Promise<TerminalCreateResult> {
         const cwd = options.cwd;
+        if (!isAbsolute(cwd)) {
+            return { type: 'error', errorMessage: `cwd must be an absolute path: ${cwd}` };
+        }
+        if (!isValidDimension(options.cols) || !isValidDimension(options.rows)) {
+            return {
+                type: 'error',
+                errorMessage: `cols and rows must be integers between ${MIN_DIMENSION} and ${MAX_DIMENSION}`,
+            };
+        }
+        if (options.name && options.name.trim().length > MAX_NAME_LENGTH) {
+            return { type: 'error', errorMessage: `name must be at most ${MAX_NAME_LENGTH} characters` };
+        }
+        if (options.shell !== undefined
+            && (options.shell.trim().length === 0 || options.shell.trim().length > MAX_SHELL_LENGTH)) {
+            return { type: 'error', errorMessage: `shell must be between 1 and ${MAX_SHELL_LENGTH} characters` };
+        }
         try {
             const cwdStat = await stat(cwd);
             if (!cwdStat.isDirectory()) {
@@ -256,12 +282,55 @@ export class TerminalManager {
         session.write(data);
     }
 
+    /**
+     * Idempotent input application, keyed by client stream.
+     * Duplicate frames (re-sent after a lost ACK) are acked again but never
+     * executed twice; out-of-order frames are rejected without an ACK.
+     */
+    applyInput(
+        terminalId: string,
+        streamId: string,
+        seq: number,
+        data: string,
+    ): 'applied' | 'duplicate' | 'gap' | 'invalid' {
+        if (typeof streamId !== 'string' || streamId.length === 0 || streamId.length > 128) {
+            return 'invalid';
+        }
+        if (!Number.isSafeInteger(seq) || seq <= 0) {
+            return 'invalid';
+        }
+        if (typeof data !== 'string' || Buffer.byteLength(data, 'utf8') > MAX_INPUT_BYTES) {
+            return 'invalid';
+        }
+
+        const key = `${terminalId}:${streamId}`;
+        const last = this.lastProcessedInputSeqByStream.get(key) ?? 0;
+        if (seq <= last) {
+            return 'duplicate';
+        }
+        if (seq !== last + 1) {
+            return 'gap';
+        }
+
+        this.requireRunningSession(terminalId).write(data);
+        this.lastProcessedInputSeqByStream.set(key, seq);
+        return 'applied';
+    }
+
     resize(terminalId: string, cols: number, rows: number): void {
+        if (!isValidDimension(cols) || !isValidDimension(rows)) {
+            throw new Error(
+                `cols and rows must be integers between ${MIN_DIMENSION} and ${MAX_DIMENSION}`,
+            );
+        }
         const session = this.requireRunningSession(terminalId);
         session.resize(cols, rows);
     }
 
     signal(terminalId: string, signal: string): void {
+        if (typeof signal !== 'string' || signal.length === 0) {
+            throw new Error('signal is required');
+        }
         if (signal === 'SIGINT') {
             this.requireRunningSession(terminalId).write('\x03');
             return;
@@ -407,14 +476,17 @@ export class TerminalManager {
         if (useTmux) {
             const target = `happy-term-${record.terminalId}`;
             record.tmuxTarget = target;
-            return TmuxShellSession.create({
+            const session = await TmuxShellSession.create({
                 terminalId: record.terminalId,
                 cwd: record.cwd,
                 shell: record.shell,
                 cols,
                 rows,
                 env: this.options.env,
+                paneId: record.tmuxPaneId,
             });
+            record.tmuxPaneId = session.paneId;
+            return session;
         }
 
         return new PtyShellSession({

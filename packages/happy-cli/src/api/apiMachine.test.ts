@@ -194,7 +194,7 @@ describe('ApiMachineClient socket reconnection', () => {
             attach: vi.fn(),
             list: vi.fn(async () => []),
             close: vi.fn(),
-            write: vi.fn(),
+            applyInput: vi.fn(() => 'applied'),
             resize: vi.fn(),
             signal: vi.fn(),
             setTransportPaused: vi.fn(),
@@ -211,6 +211,7 @@ describe('ApiMachineClient socket reconnection', () => {
         });
         client.connect();
         emitSocketEvent('connect');
+        mockSocket.connected = true;
 
         // Control RPCs are registered and routed to the manager.
         const createHandler = mockRpcHandlers['terminal-create'];
@@ -226,21 +227,84 @@ describe('ApiMachineClient socket reconnection', () => {
         // Running terminals re-register their stream rooms on connect.
         expect(mockSocket.emit).toHaveBeenCalledWith('terminal:register', { terminalId: 'term-1' });
 
-        // Encrypted input frames are decrypted and forwarded; input is acked.
-        const { encrypt, encodeBase64 } = await import('@/api/encryption');
+        // Encrypted input frames are decrypted, authenticated, and acked.
+        const { encrypt, encodeBase64, decodeBase64, decrypt } = await import('@/api/encryption');
         const machine = makeMachine();
+        const inputFrame = {
+            version: 1,
+            streamId: 'stream-1',
+            terminalId: 'term-1',
+            machineId: 'test-machine-id',
+            direction: 'client-to-daemon',
+            seq: 7,
+            kind: 'input',
+            data: 'ls -la',
+        };
         const payload = encodeBase64(encrypt(
             machine.encryptionKey,
             machine.encryptionVariant,
-            { seq: 7, kind: 'input', data: 'ls -la' },
+            inputFrame,
         ));
         emitSocketEvent('terminal:input', { terminalId: 'term-1', payload });
 
-        expect(terminalManager.write).toHaveBeenCalledWith('term-1', 'ls -la');
+        expect(terminalManager.applyInput).toHaveBeenCalledWith('term-1', 'stream-1', 7, 'ls -la');
         const ackCalls = mockSocket.emit.mock.calls.filter(
             ([event]: [string]) => event === 'terminal:input-ack',
         );
         expect(ackCalls).toHaveLength(1);
+        const ack = decrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            decodeBase64(ackCalls[0][1].payload),
+        );
+        expect(ack).toEqual(expect.objectContaining({
+            version: 1,
+            streamId: 'stream-1',
+            terminalId: 'term-1',
+            machineId: 'test-machine-id',
+            direction: 'daemon-to-client',
+            seq: 7,
+            kind: 'input-ack',
+        }));
+
+        // Duplicate frames are acked again but never re-applied.
+        terminalManager.applyInput.mockReturnValueOnce('duplicate');
+        emitSocketEvent('terminal:input', { terminalId: 'term-1', payload });
+        const ackCallsAfterDuplicate = mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:input-ack',
+        );
+        expect(ackCallsAfterDuplicate).toHaveLength(2);
+
+        // A frame whose authenticated terminalId does not match the route is dropped.
+        const misroutedPayload = encodeBase64(encrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            { ...inputFrame, terminalId: 'other-term' },
+        ));
+        emitSocketEvent('terminal:input', { terminalId: 'term-1', payload: misroutedPayload });
+        expect(terminalManager.applyInput).toHaveBeenCalledTimes(2);
+        expect(mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:input-ack',
+        )).toHaveLength(2);
+
+        // Resize frames are authenticated and routed to the manager.
+        const resizePayload = encodeBase64(encrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            {
+                version: 1,
+                streamId: 'stream-1',
+                terminalId: 'term-1',
+                machineId: 'test-machine-id',
+                direction: 'client-to-daemon',
+                seq: 8,
+                kind: 'resize',
+                cols: 120,
+                rows: 40,
+            },
+        ));
+        emitSocketEvent('terminal:resize', { terminalId: 'term-1', payload: resizePayload });
+        expect(terminalManager.resize).toHaveBeenCalledWith('term-1', 120, 40);
 
         client.shutdown();
     });
