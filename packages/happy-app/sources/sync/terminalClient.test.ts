@@ -51,13 +51,14 @@ vi.mock('./sync', () => ({
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-function runningAttach(nextSeq = 3): TerminalAttachResult {
+function runningAttach(nextSeq = 3, streamEpoch = 'epoch-1'): TerminalAttachResult {
     return {
         status: 'running',
         snapshot: 'snapshot-ansi',
         nextSeq,
         truncated: false,
         replayFrames: [{ seq: 1, data: 'a' }, { seq: 2, data: 'b' }],
+        streamEpoch,
     };
 }
 
@@ -131,7 +132,7 @@ describe('TerminalStream', () => {
     });
 
     const outFrame = (seq: number, data: string) => ({
-        version: 1,
+        version: 2,
         terminalId: 't1',
         machineId: 'machine-1',
         direction: 'daemon-to-client',
@@ -246,7 +247,8 @@ describe('TerminalStream', () => {
         expect(inputCall).toBeDefined();
         const inputFrame = JSON.parse(inputCall![1].payload.slice(4));
         expect(inputFrame).toMatchObject({
-            version: 1,
+            version: 2,
+            epoch: 'epoch-1',
             streamId: expect.any(String),
             terminalId: 't1',
             machineId: 'machine-1',
@@ -257,7 +259,7 @@ describe('TerminalStream', () => {
         });
 
         emit('terminal:input-ack', {
-            version: 1,
+            version: 2,
             streamId: inputFrame.streamId,
             terminalId: 't1',
             machineId: 'machine-1',
@@ -312,7 +314,7 @@ describe('TerminalStream', () => {
         expect(socketSend).not.toHaveBeenCalledWith('terminal:takeover', { terminalId: 't1' });
 
         emit('terminal:exit', {
-            version: 1,
+            version: 2,
             terminalId: 't1',
             machineId: 'machine-1',
             direction: 'daemon-to-client',
@@ -322,6 +324,74 @@ describe('TerminalStream', () => {
         });
         await flush();
         expect(exits).toEqual([2, 3]);
+    });
+
+    it('sends resize and input on one ordered sequence', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+        await stream.attach();
+
+        await stream.sendResize(120, 40);
+        await stream.sendInput('ls');
+
+        const resizeCall = socketSend.mock.calls.find(
+            (call) => call[0] === 'terminal:resize',
+        );
+        const inputCall = socketSend.mock.calls.find(
+            (call) => call[0] === 'terminal:input',
+        );
+        expect(resizeCall).toBeDefined();
+        expect(inputCall).toBeDefined();
+        expect(JSON.parse(resizeCall![1].payload.slice(4))).toMatchObject({
+            version: 2,
+            epoch: 'epoch-1',
+            seq: 1,
+            kind: 'resize',
+            cols: 120,
+            rows: 40,
+        });
+        expect(JSON.parse(inputCall![1].payload.slice(4))).toMatchObject({
+            version: 2,
+            epoch: 'epoch-1',
+            seq: 2,
+            kind: 'input',
+            data: 'ls',
+        });
+    });
+
+    it('drops unacked input when the daemon epoch changes', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const resets: number[] = [];
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onEpochReset: () => resets.push(1),
+            onStatusChange: () => undefined,
+        });
+        await stream.attach(); // epoch-1
+        await stream.sendInput('npm publish');
+
+        const reconnectedListener = socketOnReconnected.mock.calls[0][0];
+        machineRPC.mockResolvedValueOnce(runningAttach(6, 'epoch-2'));
+        reconnectedListener();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        expect(resets).toHaveLength(1);
+        // The unacked input is dropped, never re-sent against the new epoch.
+        const inputCalls = socketSend.mock.calls.filter(
+            (call) => call[0] === 'terminal:input',
+        );
+        expect(inputCalls).toHaveLength(1);
     });
 
     it('detaches by unsubscribing and disposing socket listeners', async () => {

@@ -43,13 +43,16 @@ export interface TerminalAttachResult {
     truncated: boolean;
     replayFrames: TerminalReplayFrame[];
     exitCode?: number;
+    /** Daemon generation; changes when the daemon restarts. */
+    streamEpoch: string;
 }
 
-export const TERMINAL_FRAME_VERSION = 1;
+export const TERMINAL_FRAME_VERSION = 2;
 
 /** Encrypted streaming frame payload (client → daemon). */
 export interface TerminalInputFrame {
     version: typeof TERMINAL_FRAME_VERSION;
+    epoch: string;
     streamId: string;
     terminalId: string;
     machineId: string;

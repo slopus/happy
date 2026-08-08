@@ -129,6 +129,8 @@ export interface TerminalStreamHandlers {
     onExit(exitCode: number): void;
     onError(message: string): void;
     onWriter(writerSocketId: string): void;
+    /** Daemon restarted while this stream was connected; queued input dropped. */
+    onEpochReset?(): void;
     onStatusChange(status: TerminalStreamStatus): void;
 }
 
@@ -148,6 +150,7 @@ export interface TerminalStreamHandlers {
  */
 export class TerminalStream {
     readonly streamId: string;
+    private streamEpoch = '';
     private lastOutputSeq = 0;
     private inputSeq = 0;
     private readonly unackedInputs = new Map<number, string>();
@@ -187,6 +190,19 @@ export class TerminalStream {
             // between replay capture and live subscription.
             apiSocket.send('terminal:subscribe', { terminalId: this.terminalId });
             const result = await terminalAttach(this.machineId, this.terminalId, this.lastOutputSeq);
+
+            // Daemon generation changed (daemon restarted, tmux kept running):
+            // old unacked input may already have executed, so it is dropped
+            // (at-most-once) instead of being re-sent and run twice.
+            if (result.streamEpoch) {
+                const epochChanged = this.streamEpoch !== ''
+                    && result.streamEpoch !== this.streamEpoch;
+                this.streamEpoch = result.streamEpoch;
+                if (epochChanged) {
+                    this.unackedInputs.clear();
+                    this.handlers.onEpochReset?.();
+                }
+            }
             this.handlers.onAttach(result);
 
             if (result.status === 'running') {
@@ -194,6 +210,9 @@ export class TerminalStream {
                 if (gap) {
                     await this.resync();
                 } else {
+                    // From here on, frames are handled live: anything arriving
+                    // during takeover/resend must not be buffered and dropped.
+                    this.attaching = false;
                     this.takeControl();
                     await this.resendUnackedInputs();
                     this.setStatus('attached');
@@ -238,6 +257,7 @@ export class TerminalStream {
         this.attaching = false;
         this.bufferedFrames = [];
         this.resyncAttempts = 0;
+        this.streamEpoch = '';
         apiSocket.send('terminal:unsubscribe', { terminalId: this.terminalId });
         this.setStatus('detached');
     }
@@ -388,6 +408,7 @@ export class TerminalStream {
     }): TerminalInputFrame {
         return {
             version: TERMINAL_FRAME_VERSION,
+            epoch: this.streamEpoch,
             streamId: this.streamId,
             terminalId: this.terminalId,
             machineId: this.machineId,
