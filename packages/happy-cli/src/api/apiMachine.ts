@@ -100,6 +100,7 @@ interface DaemonToServerEvents {
 
     'terminal:register': (data: { terminalId: string }) => void;
     'terminal:unregister': (data: { terminalId: string }) => void;
+    'terminal:epoch': (data: { terminalId: string; payload: string }) => void;
     'terminal:output': (data: { terminalId: string; payload: string }) => void;
     'terminal:exit': (data: { terminalId: string; payload: string }) => void;
     'terminal:input-ack': (data: { terminalId: string; payload: string }) => void;
@@ -377,7 +378,7 @@ export class ApiMachineClient {
                 rows: typeof rows === 'number' ? rows : 24,
             });
             if (result.type === 'success') {
-                this.socket?.emit('terminal:register', { terminalId: result.terminalId });
+                this.registerTerminalStream(result.terminalId);
             }
             return result;
         });
@@ -389,7 +390,7 @@ export class ApiMachineClient {
             }
             const result = await manager.approve(approvalId);
             if (result.type === 'success') {
-                this.socket?.emit('terminal:register', { terminalId: result.terminalId });
+                this.registerTerminalStream(result.terminalId);
             }
             return result;
         });
@@ -676,8 +677,22 @@ export class ApiMachineClient {
             return;
         }
         for (const terminalId of this.terminalManager.getRunningTerminalIds()) {
-            this.socket.emit('terminal:register', { terminalId });
+            this.registerTerminalStream(terminalId);
         }
+    }
+
+    private registerTerminalStream(terminalId: string): void {
+        if (!this.terminalManager) {
+            return;
+        }
+        this.socket.emit('terminal:register', { terminalId });
+        this.socket.emit('terminal:epoch', {
+            terminalId,
+            payload: this.encryptFrame(this.enrichOutputFrame(terminalId, {
+                seq: 0,
+                kind: 'epoch',
+            })),
+        });
     }
 
     private handleTerminalFrame(
@@ -748,9 +763,14 @@ export class ApiMachineClient {
             error?: string;
         },
     ): TerminalOutputFrame {
+        const epoch = this.terminalManager?.getStreamEpoch();
+        if (!epoch) {
+            throw new Error('Terminal manager epoch is unavailable');
+        }
         return {
             ...frame,
             version: TERMINAL_FRAME_VERSION,
+            epoch,
             terminalId,
             machineId: this.machine.id,
             direction: 'daemon-to-client',

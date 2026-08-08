@@ -341,7 +341,7 @@ describe('TerminalManager', () => {
         const session = sessions.get(terminalId)!;
         const epoch = manager.getStreamEpoch();
         const frame = (partial: Partial<TerminalInputFrame>): TerminalInputFrame => ({
-            version: 2,
+            version: 3,
             epoch,
             streamId: 'stream-a',
             terminalId,
@@ -379,7 +379,7 @@ describe('TerminalManager', () => {
         const session = sessions.get(terminalId)!;
         const epoch = manager.getStreamEpoch();
         const frame = (partial: Partial<TerminalInputFrame>): TerminalInputFrame => ({
-            version: 2,
+            version: 3,
             epoch,
             streamId: 'stream-a',
             terminalId,
@@ -421,7 +421,7 @@ describe('TerminalManager', () => {
         const session = sessions.get(terminalId)!;
 
         expect(manager.applyFrame(terminalId, {
-            version: 2,
+            version: 3,
             epoch: 'stale-epoch',
             streamId: 'stream-a',
             terminalId,
@@ -441,7 +441,7 @@ describe('TerminalManager', () => {
         const terminalId = (result as { terminalId: string }).terminalId;
         const epoch = manager.getStreamEpoch();
         const frame = (partial: Partial<TerminalInputFrame>): TerminalInputFrame => ({
-            version: 2,
+            version: 3,
             epoch,
             streamId: 'stream-a',
             terminalId,

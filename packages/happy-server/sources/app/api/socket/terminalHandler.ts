@@ -238,6 +238,15 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
             terminalEventsCounter.inc({ event: 'unregister', role: 'daemon' });
         });
 
+        socket.on('terminal:epoch', (data: { terminalId?: unknown; payload?: unknown }) => {
+            const { terminalId, payload } = data ?? {};
+            if (!isValidTerminalId(terminalId) || !isValidPayload(payload)) {
+                return;
+            }
+            terminalEventsCounter.inc({ event: 'epoch', role: 'daemon' });
+            io.to(clientRoom(userId, terminalId)).emit('terminal:epoch', { terminalId, payload });
+        });
+
         socket.on('terminal:output', (data: { terminalId?: unknown; payload?: unknown }) => {
             const { terminalId, payload } = data ?? {};
             if (!isValidTerminalId(terminalId) || !isValidPayload(payload)) {

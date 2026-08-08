@@ -56,7 +56,7 @@ export interface TerminalAttachResult {
     streamEpoch: string;
 }
 
-export const TERMINAL_FRAME_VERSION = 2;
+export const TERMINAL_FRAME_VERSION = 3;
 
 /**
  * Authenticated control frame carried inside the encrypted streaming payload.
@@ -94,12 +94,14 @@ export interface TerminalOutputEvent {
 /** Authenticated output frame carried inside the encrypted streaming payload. */
 export interface TerminalOutputFrame {
     version: typeof TERMINAL_FRAME_VERSION;
+    /** Daemon generation that produced this frame. */
+    epoch: string;
     streamId?: string;
     terminalId: string;
     machineId: string;
     direction: 'daemon-to-client';
     seq: number;
-    kind: TerminalOutputEvent['kind'] | 'input-ack';
+    kind: TerminalOutputEvent['kind'] | 'input-ack' | 'epoch';
     data?: string;
     exitCode?: number;
     error?: string;
