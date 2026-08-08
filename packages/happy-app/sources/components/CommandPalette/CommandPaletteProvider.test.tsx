@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
         push: vi.fn(),
     },
     keyboardHandler: undefined as (() => void) | undefined,
+    keyboardOptions: undefined as { onOpenSettings?: () => void } | undefined,
     state: {
         sessions: {
             abc123456: {
@@ -109,8 +110,12 @@ vi.mock('@/hooks/useNavigateToSession', () => ({
 }));
 
 vi.mock('@/hooks/useGlobalKeyboard', () => ({
-    useGlobalKeyboard: (handler: (() => void) | undefined) => {
+    useGlobalKeyboard: (
+        handler: (() => void) | undefined,
+        options?: { onOpenSettings?: () => void },
+    ) => {
         mocks.keyboardHandler = handler;
+        mocks.keyboardOptions = options;
     },
 }));
 
@@ -173,6 +178,7 @@ describe('CommandPaletteProvider', () => {
         mocks.router.push.mockReset();
         mocks.state.localSettings.commandPaletteEnabled = true;
         mocks.keyboardHandler = undefined;
+        mocks.keyboardOptions = undefined;
         latestLauncher = null;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
@@ -260,6 +266,19 @@ describe('CommandPaletteProvider', () => {
         expect(latestLauncher?.isAvailable).toBe(true);
         act(() => latestLauncher?.open());
         expect(mocks.modalShow).toHaveBeenCalledOnce();
+    });
+
+    it('opens app settings from the global settings shortcut', () => {
+        act(() => {
+            renderer = TestRenderer.create(
+                <CommandPaletteProvider>
+                    <></>
+                </CommandPaletteProvider>,
+            );
+        });
+
+        act(() => mocks.keyboardOptions?.onOpenSettings?.());
+        expect(mocks.router.push).toHaveBeenCalledWith('/settings');
     });
 
     it('does not stack repeated shortcut opens and can open again after the palette closes', () => {

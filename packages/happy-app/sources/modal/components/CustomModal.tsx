@@ -20,7 +20,11 @@ export function CustomModal({ config, onClose }: CustomModalProps) {
     }
     
     return (
-        <BaseModal visible={true} onClose={onClose}>
+        <BaseModal
+            accessibilityLabel={config.accessibilityLabel}
+            visible={true}
+            onClose={onClose}
+        >
             <Component {...config.props} onClose={onClose} />
         </BaseModal>
     );

@@ -4,6 +4,8 @@ import { Platform } from 'react-native';
 export function useGlobalKeyboard(
     onCommandPalette: (() => void) | undefined,
     options: {
+        onOpenKeyboardShortcuts?: () => void;
+        onOpenSettings?: () => void;
         onToggleLeftSidebar?: () => void;
         onToggleRightSidebar?: () => void;
     } = {},
@@ -14,12 +16,20 @@ export function useGlobalKeyboard(
         }
 
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.isComposing || e.repeat) {
+                return;
+            }
+
             const isModifierPressed = e.metaKey || e.ctrlKey;
             const key = e.key.toLowerCase();
             let handler: (() => void) | undefined;
 
             if (isModifierPressed && !e.altKey && key === 'k') {
                 handler = onCommandPalette;
+            } else if (isModifierPressed && !e.altKey && key === ',') {
+                handler = options.onOpenSettings;
+            } else if (isModifierPressed && !e.altKey && key === '/') {
+                handler = options.onOpenKeyboardShortcuts;
             } else if (isModifierPressed && e.altKey && key === 'b') {
                 handler = options.onToggleRightSidebar;
             } else if (isModifierPressed && !e.altKey && key === 'b') {
@@ -40,5 +50,5 @@ export function useGlobalKeyboard(
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
         };
-    }, [onCommandPalette, options.onToggleLeftSidebar, options.onToggleRightSidebar]);
+    }, [onCommandPalette, options.onOpenKeyboardShortcuts, options.onOpenSettings, options.onToggleLeftSidebar, options.onToggleRightSidebar]);
 }

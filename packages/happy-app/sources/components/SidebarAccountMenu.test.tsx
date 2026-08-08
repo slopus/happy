@@ -9,10 +9,10 @@ import TestRenderer from 'react-test-renderer';
 const mocks = vi.hoisted(() => ({
     confirm: vi.fn(),
     firstActionFocus: vi.fn(),
+    keydownCapture: false,
     keydownHandler: null as ((event: any) => void) | null,
     logout: vi.fn(),
     navigate: vi.fn(),
-    openExternalUrl: vi.fn(),
     triggerFocus: vi.fn(),
 }));
 
@@ -64,7 +64,6 @@ vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }
 vi.mock('@/modal', () => ({ Modal: { confirm: mocks.confirm } }));
 vi.mock('@/sync/profile', () => ({ getAvatarUrl: () => null }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
-vi.mock('@/utils/openExternalUrl', () => ({ openExternalUrl: mocks.openExternalUrl }));
 
 import { SidebarAccountMenu } from './SidebarAccountMenu';
 
@@ -99,10 +98,14 @@ describe('SidebarAccountMenu', () => {
     beforeEach(() => {
         vi.useFakeTimers();
         vi.clearAllMocks();
+        mocks.keydownCapture = false;
         mocks.keydownHandler = null;
         vi.stubGlobal('window', {
-            addEventListener: vi.fn((event: string, handler: (event: any) => void) => {
-                if (event === 'keydown') mocks.keydownHandler = handler;
+            addEventListener: vi.fn((event: string, handler: (event: any) => void, capture?: boolean) => {
+                if (event === 'keydown') {
+                    mocks.keydownCapture = capture === true;
+                    mocks.keydownHandler = handler;
+                }
             }),
             removeEventListener: vi.fn(),
         });
@@ -137,16 +140,56 @@ describe('SidebarAccountMenu', () => {
 
         const preventDefault = vi.fn();
         const stopPropagation = vi.fn();
-        act(() => mocks.keydownHandler?.({ key: 'Escape', preventDefault, stopPropagation }));
+        const stopImmediatePropagation = vi.fn();
+        act(() => mocks.keydownHandler?.({
+            key: 'Escape',
+            preventDefault,
+            stopImmediatePropagation,
+            stopPropagation,
+        }));
         expect(renderer.root.findAllByProps({ testID: 'sidebar-account-menu' })).toHaveLength(0);
 
         act(() => vi.runOnlyPendingTimers());
         expect(mocks.triggerFocus).toHaveBeenCalledOnce();
         expect(preventDefault).toHaveBeenCalledOnce();
         expect(stopPropagation).toHaveBeenCalledOnce();
+        expect(stopImmediatePropagation).toHaveBeenCalledOnce();
+        expect(mocks.keydownCapture).toBe(true);
     });
 
-    it('offers profile, settings, account, and support destinations', () => {
+    it('does not restore its trigger while focus transfers to another footer menu', () => {
+        const onOpenChange = vi.fn();
+        act(() => {
+            renderer = TestRenderer.create(
+                <SidebarAccountMenu
+                    displayName="Paws User"
+                    onNavigate={mocks.navigate}
+                    onOpenChange={onOpenChange}
+                    open
+                    profile={profile}
+                    restoreFocusOnClose={false}
+                />,
+            );
+        });
+        act(() => vi.runOnlyPendingTimers());
+        mocks.triggerFocus.mockClear();
+
+        act(() => renderer.update(
+            <SidebarAccountMenu
+                displayName="Paws User"
+                onNavigate={mocks.navigate}
+                onOpenChange={onOpenChange}
+                open={false}
+                profile={profile}
+                restoreFocusOnClose={false}
+            />,
+        ));
+        act(() => vi.runOnlyPendingTimers());
+
+        expect(mocks.triggerFocus).not.toHaveBeenCalled();
+    });
+
+    it('offers profile, settings, and account destinations without help actions', () => {
         const onOpenChange = vi.fn();
         act(() => {
             renderer = TestRenderer.create(
@@ -163,14 +206,13 @@ describe('SidebarAccountMenu', () => {
         act(() => renderer.root.findByProps({ testID: 'sidebar-account-profile-action' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'sidebar-account-settings-action' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'sidebar-account-details-action' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'sidebar-account-help-action' }).props.onPress());
 
         expect(mocks.navigate.mock.calls).toEqual([
             ['/settings/profile'],
             ['/settings'],
             ['/settings/account'],
         ]);
-        expect(mocks.openExternalUrl).toHaveBeenCalledWith('https://github.com/wangjs-jacky/happy/issues');
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-account-help-action' })).toHaveLength(0);
         expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 

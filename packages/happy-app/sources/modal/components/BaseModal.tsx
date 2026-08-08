@@ -95,6 +95,7 @@ export function BaseModal({
                         accessible={false}
                         onPress={handleBackdropPress}
                         style={StyleSheet.absoluteFill}
+                        testID="base-modal-backdrop"
                     />
                 </Animated.View>
                 

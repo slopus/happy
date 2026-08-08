@@ -16,6 +16,7 @@ import { AgentSheet } from './agents/AgentSheet';
 import { useAgentSpace } from '@/hooks/useAgentSpace';
 import { AgentSpaceWorkbench } from './agents/AgentSpaceWorkbench';
 import { SidebarAccountMenu } from './SidebarAccountMenu';
+import { SidebarHelpMenu } from './SidebarHelpMenu';
 import { useCommandPaletteLauncher } from './CommandPalette/CommandPaletteProvider';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -175,7 +176,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         ...Typography.default(),
     },
-    accountMenuDismissLayer: {
+    footerMenuDismissLayer: {
         position: 'absolute',
         top: 0,
         right: 0,
@@ -183,8 +184,16 @@ const stylesheet = StyleSheet.create((theme) => ({
         left: 0,
         zIndex: 10,
     },
-    accountMenuFooterSlot: {
+    footerMenuSlot: {
         zIndex: 20,
+    },
+    footerMenusDesktop: {
+        flexDirection: 'row',
+        alignItems: 'stretch',
+    },
+    accountMenuSlot: {
+        flex: 1,
+        minWidth: 0,
     },
     primaryNavigation: {
         paddingTop: 2,
@@ -205,6 +214,8 @@ interface SidebarViewProps {
     desktopDensity?: boolean;
 }
 
+type FooterMenu = 'account' | 'help' | null;
+
 export const SidebarView = React.memo(({
     closeDrawerOnNavigate = true,
     desktopDensity = false,
@@ -219,10 +230,16 @@ export const SidebarView = React.memo(({
     const profile = useProfile();
     const agents = useLocalSetting('agents');
     const [sheetOpen, setSheetOpen] = React.useState(false);
-    const [accountMenuOpen, setAccountMenuOpen] = React.useState(false);
+    const [footerMenu, setFooterMenu] = React.useState<FooterMenu>(null);
     const { agent: spaceAgent, exit: exitSpace } = useAgentSpace();
     const commandPaletteLauncher = useCommandPaletteLauncher();
     const displayName = getDisplayName(profile) ?? t('settings.title');
+
+    React.useEffect(() => {
+        if (!desktopDensity) {
+            setFooterMenu((current) => current === 'help' ? null : current);
+        }
+    }, [desktopDensity]);
 
     const closeDrawer = React.useCallback(() => {
         if (!closeDrawerOnNavigate) {
@@ -253,6 +270,14 @@ export const SidebarView = React.memo(({
         go('/session/search');
     }, [closeDrawer, commandPaletteLauncher, go]);
 
+    const setAccountMenuOpen = React.useCallback((open: boolean) => {
+        setFooterMenu(open ? 'account' : null);
+    }, []);
+
+    const setHelpMenuOpen = React.useCallback((open: boolean) => {
+        setFooterMenu(open ? 'help' : null);
+    }, []);
+
     // 「Agent 空间模式」：进入某个 Agent 后，整个侧栏收敛为该 Agent 的专属工作台，
     // 隐藏全局用户卡/收件箱/会话列表，只看本空间。退出空间即回落到下面的常规侧栏。
     if (spaceAgent) {
@@ -281,13 +306,13 @@ export const SidebarView = React.memo(({
             ]}
             testID={desktopDensity ? 'sidebar-desktop-density' : undefined}
         >
-            {accountMenuOpen ? (
+            {footerMenu !== null ? (
                 <Pressable
                     accessibilityElementsHidden
                     importantForAccessibility="no"
-                    onPress={() => setAccountMenuOpen(false)}
-                    style={styles.accountMenuDismissLayer}
-                    testID="sidebar-account-menu-dismiss-layer"
+                    onPress={() => setFooterMenu(null)}
+                    style={styles.footerMenuDismissLayer}
+                    testID="sidebar-footer-menu-dismiss-layer"
                 />
             ) : null}
 
@@ -389,16 +414,45 @@ export const SidebarView = React.memo(({
             <MainView variant="sidebar" />
 
             {/* Low-frequency account and system actions stay anchored below the work list. */}
-            <View style={[styles.accountMenuFooterSlot, { paddingBottom: safeArea.bottom }]}>
-                <SidebarAccountMenu
-                    desktopDensity={desktopDensity}
-                    displayName={displayName}
-                    onNavigate={go}
-                    onOpenChange={setAccountMenuOpen}
-                    open={accountMenuOpen}
-                    profile={profile}
-                    unreadCount={friendRequests.length}
-                />
+            <View
+                style={[
+                    styles.footerMenuSlot,
+                    desktopDensity && styles.footerMenusDesktop,
+                    { paddingBottom: safeArea.bottom },
+                ]}
+                testID={desktopDensity ? 'sidebar-footer-menus' : undefined}
+            >
+                {desktopDensity ? (
+                    <View style={styles.accountMenuSlot} testID="sidebar-account-menu-slot">
+                        <SidebarAccountMenu
+                            desktopDensity
+                            displayName={displayName}
+                            onNavigate={go}
+                            onOpenChange={setAccountMenuOpen}
+                            open={footerMenu === 'account'}
+                            profile={profile}
+                            restoreFocusOnClose={footerMenu !== 'help'}
+                            unreadCount={friendRequests.length}
+                        />
+                    </View>
+                ) : (
+                    <SidebarAccountMenu
+                        desktopDensity={desktopDensity}
+                        displayName={displayName}
+                        onNavigate={go}
+                        onOpenChange={setAccountMenuOpen}
+                        open={footerMenu === 'account'}
+                        profile={profile}
+                        unreadCount={friendRequests.length}
+                    />
+                )}
+                {desktopDensity ? (
+                    <SidebarHelpMenu
+                        onOpenChange={setHelpMenuOpen}
+                        open={footerMenu === 'help'}
+                        restoreFocusOnClose={footerMenu !== 'account'}
+                    />
+                ) : null}
             </View>
 
             {/* Bottom drawer listing the user's agents (RN Modal — placement in tree is irrelevant) */}
