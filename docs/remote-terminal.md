@@ -59,14 +59,23 @@ Streaming plane (Socket.IO rooms, payloads encrypted with the machine key):
   `terminal:takeover`; exactly one writer per terminal, everyone else
   view-only until takeover.
 
-Every frame carries a sequence number. Attach returns a serialized ANSI
-snapshot plus buffered frames after `lastSeq`; clients dedupe by sequence and
-re-send unacknowledged input in order after reconnect.
+Every encrypted frame binds `version`, `terminalId`, `machineId`, `streamId`,
+and `direction` inside the ciphertext, so a relay cannot cross-route or replay
+a frame. Attach returns a serialized ANSI snapshot plus buffered frames after
+`lastSeq`; clients subscribe before attaching, buffer live frames during the
+snapshot RPC, and apply them against the attach barrier. Output is only
+accepted when `seq === lastSeq + 1`; any gap triggers a resync.
+
+Input is idempotent per writer stream: the daemon tracks
+`lastProcessedSeqByStream` and re-acks duplicate frames without executing them,
+so a command re-sent after a lost ACK never runs twice. Unacknowledged input is
+re-sent in order after reconnect.
 
 ## Security
 
-- Payloads are encrypted end-to-end with the machine encryption key; the
-  relay only routes opaque frames.
+- Payloads are encrypted end-to-end with the machine encryption key; routing
+  metadata is authenticated inside the ciphertext, so the relay only routes
+  opaque frames and cannot replay or misroute them.
 - Opening a shell is approval-gated. Policy (per session by default, configurable
   to once-per-machine or none) is enforced daemon-side before spawn.
 - Terminal IDs and payload sizes are validated server-side; rooms are scoped by
@@ -88,6 +97,8 @@ re-send unacknowledged input in order after reconnect.
 - Kill the app / toggle airplane mode → session keeps running → reopen shows
   reconnected state with no duplicated input.
 - Two devices: first is writer, second is view-only; takeover switches the writer.
+  Concurrent takeovers resolve to exactly one writer (serialized in-process,
+  atomic Redis Lua cross-replica).
 - Close from either device kills the shell; exited state offers Reopen.
 - `HAPPY_TERMINAL_ENABLED=1` on daemon: tab works. Without it: disabled notice.
 - Windows daemon (no tmux): PTY fallback works; restart marks sessions exited.
